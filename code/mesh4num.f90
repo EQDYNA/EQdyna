@@ -1,49 +1,19 @@
-subroutine mesh4num(fltxyz,xmin,xmax,ymin,ymax,zmin,zmax,&
-nnode,nelement,neq,PMLb,maxm,nftnd,master,me,nprocs,nsurnd,nnodPML)!Adding PMLb and maxm
-!... program to generate mesh for 3D models.
-! This model is a strike-slip fault in the half space, for SCEC TPV16 & 17.
-! B.D. 1/1/12
+subroutine mesh4num(nnode,nelement,neq,PMLb,maxm,nftnd,me,nsurnd)
 use globalvar
 implicit none
 include 'mpif.h'
-!...node # and related
-integer (kind=4)::nnode,nelement,nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
-	edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,np=10000,ncnt,nfrt,nbck,edgezn
-!...fault definition: 
-integer (kind=4),dimension(ntotft) :: nftnd
-real (kind=8),dimension(2,4,ntotft) :: fltxyz
-real (kind=8) :: x1,x2,x3=0,y1,y2,y3=0,z1,z2,z3=0 !3 points for fault plane (inc origin)
-!...entire model size
-real (kind=8) :: xmin, xmax, ymin, ymax, zmin, zmax
-!...grid size
-real (kind=8) :: dy,dz	!dx is given in parcon.f90, dy/dz will be from dx
-!...uniform element num from fault y-ccor
-!For Double-couple point source. Ma and Liu (2006) 
-!integer (kind=4) :: dis4uniF=50,dis4uniB=50
-!For TPV8 
-integer (kind=4) :: dis4uniF=100,dis4uniB=100
-!...mesh results
-integer (kind=4)::neq
-!...working variables
-logical,dimension(ntotft) :: ynft
-integer (kind=4) :: nxuni,nyuni,nzuni,maxtotal,ift,n1,n2,n3,n4,m1,m2,m3,m4,alloc_err
-integer (kind=4) :: me, master, nprocs, rlp, rr, ierr,jj,itmp1,itmp2
-integer istatus(MPI_STATUS_SIZE)
-real (kind=8) :: tol,xcoor,ycoor,zcoor,xstep,ystep,zstep, &
-		tmp1,tmp2,tmp3,a,b,fltybtm,linea,lineb,linea1,lineb1,ycoor1,&
-		xmin1,xmax1,ymin1,ymax1,zmin1
-real (kind=8),allocatable,dimension(:) :: xlinet,ylinet,zlinet,xline,yline,zline
-!3D MPI partitioning
-integer(kind=4)::mex,mey,mez,msnode
-!
-!DL
-integer(kind=4)::maxm,ntag,zz,nsurnd,nsx,nsy,nnodPML
+integer(kind=4)::nnode,nelement,nxt,nyt,nzt,nx,ny,nz,ix,iy,iz,&
+	edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,np=10000,edgezn
+logical,dimension(ntotft)::ynft
+integer(kind=4)::neq,maxm,ntag,zz,nsurnd,nsx,nsy,nftnd(ntotft)
+integer(kind=4)::nxuni,nyuni,nzuni,ift,n1,n2,n3,n4,m1,m2,m3,m4,me,rlp,rr,mex,mey,mez,msnode
+real(kind=8)::tol,xcoor,ycoor,zcoor,xstep,ystep,zstep,xmin1,xmax1,ymin1,ymax1,zmin1
 real(kind=8)::PMLb(8),mdx(3)
-!
-!dy = dx * abs(dtan(brangle))
+real(kind=8),allocatable,dimension(:)::xlinet,ylinet,zlinet,xline,yline,zline
+
 dy=dx
-dz = dx
-tol = dx/100
+dz=dx
+tol=dx/100
 
 !3DMPI: Prepare for MPI partitioning
 mex=int(me/(npy*npz))
@@ -269,7 +239,6 @@ nelement = 0
 neq = 0
 nftnd = 0
 nsurnd=0
-nnodPML=0
 !DL 
 ntag=0
 nsx=(surxmax-surxmin)/dx+1
@@ -298,13 +267,6 @@ do ix = 1, nx
 			if (xcoor>PMLb(1).or.xcoor<PMLb(2).or.ycoor>PMLb(3).or.ycoor<PMLb(4) &
 				.or.zcoor<PMLb(5)) then
 				zz = 12
-			endif	
-			if (xcoor>PMLb(1).or.xcoor<PMLb(2).or.ycoor>PMLb(3).or.ycoor<PMLb(4) &
-				.or.zcoor<PMLb(5)) then
-				if(abs(xcoor-xmin1)>tol.and.abs(xcoor-xmax1)>tol.and.abs(ycoor-ymin1)>tol &
-					.and.abs(ycoor-ymax1)>tol.and.abs(zcoor-zmin1)>tol) then
-					nnodPML=nnodPML+1
-				endif
 			endif			
 			!...establish equation numbers for this node
 			do i1=1,zz

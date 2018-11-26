@@ -1,6 +1,5 @@
-SUBROUTINE qdct3(numel,numnp,neq,mat,ien,d,v,rdampk,rdampm,ccosphi,sinphi,&
-mushr,eleporep,elemass,eleshp,eledet,pstrain,c,brhs,me,master,nprocs, &! Delete lm elestress
-maxm,id1,locid,dof1,et,v1,d1,PMLb,x,maxs,ids,s1,nt)!Adding maxm,id1,loci,v1,d1,PMLb,maxs,ids
+SUBROUTINE qdct3(numel,numnp,neq,mat,ien,d,v,eleporep,elemass,eleshp,eledet,pstrain,brhs,me, &
+				maxm,id1,locid,dof1,et,v1,d1,PMLb,x,maxs,ids,s1,nt)
 use globalvar
 implicit none
 include 'mpif.h'
@@ -13,68 +12,22 @@ include 'mpif.h'
 !  Explicitly use central difference method: al() always zero if no
 !	Rayleigh dampling (rdampm = 0), no global a() is needed.
 !	B.D. 7/21/05
-!
 logical :: formkd,zerovl,formma,zeroal
-integer (kind=4) :: nel,m,i,j,ntemp,k,k1,numel,numnp,neq
-real (kind=8) :: det,constk,pstrinc
-real (kind=8),dimension(nee) :: elresf,eleffm
-real (kind=8),dimension(ned,nen) :: dl,vl,al
-!...element arrays
-real(kind=8),dimension(numel,5) :: mat	    
-integer (kind=4),dimension(nen,numel) :: ien
-real (kind=8),dimension(numel) :: eledet,eleporep,pstrain
-real (kind=8),dimension(nee,numel) :: elemass
-real (kind=8),dimension(nrowsh-1,nen,numel) :: eleshp
-!......nodes' arrays
-real (kind=8),dimension(ndof,numnp) :: d,v
-real (kind=8),dimension(neq) :: brhs
-!...material properties
-real (kind=8):: grav=-9.8  !gravity acceleration
-real (kind=8),dimension(numat) :: rdampm,rdampk,ccosphi,sinphi,mushr
-real (kind=8),dimension(nrowc,nrowc,numat) :: c
-integer me, master, nprocs, rlp, rr, ierr,jj
-!*.* variables for PML. D.L. Jan/23/2015
-integer (kind=4):: maxm,maxs,non,itag,eqn,label,nt
-integer (kind=4),dimension(maxm)::id1
-integer (kind=4),dimension(numel)::ids
-integer (kind=4),dimension(numnp)::locid,dof1
-integer (kind=4),dimension(numel)::et
-real (kind=8),dimension(neq)::v1,d1
-real (kind=8),dimension(maxs)::s1
-real (kind=8),dimension(8)::PMLb
-real (kind=8),dimension(96)::evPML,efPML
-real(kind=8),dimension(3,8)::ex
-real (kind=8),dimension(nsd,numnp) :: x
-real(kind=8),dimension(12)::es
-real(kind=8),dimension(21)::esPML
-real(kind=8)::xc(3),matelement(5)
-!do we need to do this? numel now is smaller num, local. B.D. 4/15/09
-!  rlp = numel/nprocs
-!  rr  = numel-rlp*nprocs
-!    if (me ==nprocs-1) then
-!      jj=(me+1)*rlp+rr
-!    else
-!     jj=(me+1)*rlp
-!    endif
-
-!  if (numel /= rlp*nprocs) then
-!        write(*,*) 'The number of processors', nprocs, 'is not suited to the total elements', numel
-!        stop
-!  endif
-
-!
-!*** loop over elements ***
-!
+integer(kind=4)::me,nel,m,i,j,ntemp,k,k1,numel,numnp,neq,maxm,&
+	maxs,non,itag,eqn,label,nt,ien(nen,numel),id1(maxm),&
+	ids(numel),locid(numnp),dof1(numnp),et(numel)
+real(kind=8)::grav=-9.8,det,constk,pstrinc,xc(3),matelement(5),esPML(21),es(12),ex(3,8),evPML(96),efPML(96),PMLb(8),&
+	x(nsd,numnp),s1(maxs),v1(neq),d1(neq),brhs(neq),d(ndof,numnp),v(ndof,numnp),eleshp(nrowsh-1,nen,numel),&
+	elemass(nee,numel),eledet(numel),eleporep(numel),pstrain(numel),mat(numel,5),elresf(nee),eleffm(nee),&
+	dl(ned,nen),vl(ned,nen),al(ned,nen)
+	
 !$omp parallel do default(shared) private(nel,formma,formkd,m,ntemp,dl,vl,al,&
 !$omp	j,i,zeroal,zerovl,elresf,det,eleffm,constk,k,k1)
-!!$omp do private(formkd,zerodl,formma,zeroal,nel,j,i,k,m,ntemp,k1,dl,vl,al,det,constk,elresf,eleffm)
 do nel=1,numel
 	if (nel.lt.0) then 
 		write(*,*) 'me=',me,'nel=',nel,'numel=',numel
 			stop 3
 		endif
-	!  do nel=me*rlp+1,jj
-	!
 	formma = .false.
 	formkd = .false.
 	m = 1
@@ -92,7 +45,7 @@ do nel=1,numel
 		do i=1,ned
 		!...for rate formulation, damping done in qdckd.f90. B.D. 1/5/12
 		!dl(i,j) = dl(i,j) + rdampk(m)*vl(i,j)
-			al(i,j) = al(i,j) + rdampm(m)*vl(i,j)
+			al(i,j) = al(i,j) + rdampm*vl(i,j)
 			if(i==3.and.C_elastic==0) then  !for inelastic off-fault, gravity included
 				al(i,j) = al(i,j) - grav
 			endif
@@ -142,32 +95,18 @@ do nel=1,numel
 	!  endif
 	!*** if either, start time-consuming computing ***
 	if (formma .or. formkd) then
-		!...initialize element right hand vector
 		elresf = 0.0
-		!...directly assign shg and det to avoid recalculation to speed up.
-		! 	only for 1-point Gaussian case. 	B.D. 3/25/05
-		!	   No shg needed in this new formation. B.D. 7/3/05
-		!do i=1,nrowsh
-		!	do j=1,nen
-		!	  shg(i,j) = eleshap(i,j,nel)
-		!	enddo
-		!enddo
 		det = eledet(nel)
-		!*** form inertial and/or body force ***
 		if (formma) then
-		!......assign eleffm from previous stored. B.D. 3/26/05
 			do i=1,nee
 				eleffm(i)=elemass(i,nel)
 			enddo
-		!......call to compute elresf	
 			call contma(eleffm,al,elresf)
 		endif
 		if (formkd) then
 			if (et(nel)==1) then
-				!*** form internal force: most time-consuming part ***
-				!...... form internal force
-				constk = - det
-				do i=1,12!DL using es intead of elestress(1,nel)
+				constk=-det
+				do i=1,12
 					es(i)=s1(ids(nel)+i)
 				enddo
 				do i=1,8
@@ -179,7 +118,7 @@ do nel=1,numel
 					matelement(i)=mat(nel,i)
 				enddo
 				call qdckd(eleshp(1,1,nel),matelement,vl,dl,es,elresf,constk,&
-						zerovl,rdampk(m),ccosphi(m),sinphi(m),eleporep(nel),pstrinc,ex,PMLb)
+						zerovl,eleporep(nel),pstrinc,ex,PMLb)
 				pstrain(nel) = pstrain(nel) + pstrinc
 				do i=1,12!DL update the stress
 					s1(ids(nel)+i)=es(i)
@@ -214,7 +153,7 @@ do nel=1,numel
 				do i=1,5 
 					matelement(i)=mat(nel,i)
 				enddo		
-				call PMLwhg(vl,efPML,evPML,esPML,ex,PMLb,matelement,eleshp(1,1,nel),det,nt,rdampk(m),nel,me)
+				call PMLwhg(vl,efPML,evPML,esPML,ex,PMLb,matelement,eleshp(1,1,nel),det,nt,nel,me)
 				do i=1,8
 					non=ien(i,nel)
 					if (dof1(non)==12) then
@@ -256,15 +195,5 @@ do nel=1,numel
 		endif!formkd
 	endif!either formma or formkd
 enddo!nel loop
-!!$omp end do nowait
 !$omp end parallel do
-!
-!*** form surface force ***
-!     note: assembly of surface loads is performed inside qdcsuf
-!	at present, no surface force applied! B.D. 7/2/05
-!if ( (nsurf.gt.0) .and. (lfsurf.gt.0)) then
-!   call qdcsuf(ielno,ien,x,xl,iside,mat,th,press,shear,elresf, &
-!             brhs,lm,g1(lfsurf),nsurf,nen,nsd,nesd,ned,nee,iopt)
-!endif
-!
 end SUBROUTINE qdct3

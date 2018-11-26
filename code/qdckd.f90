@@ -1,5 +1,5 @@
-SUBROUTINE qdckd(shg,mate,vl,dl,stress,elresf,constk,zerovl,bdamp,&
-ccosphi,sinphi,porep,pstrmag,ex,PMLb)
+SUBROUTINE qdckd(shg,mate,vl,dl,stress,elresf,constk,zerovl,&
+porep,pstrmag,ex,PMLb)
 use globalvar
 implicit none
 !
@@ -17,7 +17,7 @@ implicit none
 !
 logical :: zerovl
 integer (kind=4) :: i,j,j1,j2,j3
-real (kind=8) :: constk,bdamp,temp,ccosphi,sinphi,porep
+real (kind=8) :: constk,temp,porep
 real (kind=8),dimension(nee) :: elresf,work,vl,dl
 real (kind=8),dimension(nstr) :: strainrate,stressrate,strtemp,strain
 real(kind=8)::stress(12),anestr(6),anestr1(6)
@@ -158,31 +158,31 @@ call qdcb(shg,bb)
 	taomax = 0.5*(strdev(1)**2+strdev(2)**2+strdev(3)**2) &
 		+ strdev(4)**2+strdev(5)**2+strdev(6)**2  !second invlriant of deviator
 	taomax = sqrt(taomax)  !kind of max shear
-	yield = ccosphi - sinphi * (strmea + porep)  !yield stress
-	if(yield<0) yield = 0  !non-negative
-	if(taomax > yield) then  !yielding, stress adjust in deviator domain
-		!rjust = yield/taomax  !adjust ratio
-		!implement viscoplasticity now. B.D. 6/2/12
-		rjust=yield/taomax + (1-yield/taomax)*exp(-dt/tv)
-		do i=1,6  !adjust stress
-			stress(i) =strdev(i) * rjust
-			!calculate plastic strain increment components
-			pstrinc(i) = (strdev(i) - stress(i))/miu
-			!back to stress domain by ading mean, which does not change
-			if(i<=3) then
-				stress(i) = stress(i) + strmea
-			endif
-		enddo
-		!calculate plastic strain increment scalar (amplitude)
-		pstrmea = (pstrinc(1)+pstrinc(2)+pstrinc(3))/3.
-		do i=1,6
-			pstrinc(i)=pstrinc(i) - pstrmea
-		enddo
-		pstrmag = 0.5*(pstrinc(1)**2+pstrinc(2)**2+pstrinc(3)**2) &
-				+pstrinc(4)**2+pstrinc(5)**2+pstrinc(6)**2
-		pstrmag = sqrt(pstrmag)
-	endif
-	endif!C_elastic==0(Plastic)
+	! yield = ccosphi - sinphi * (strmea + porep)  !yield stress
+	! if(yield<0) yield = 0  !non-negative
+	! if(taomax > yield) then  !yielding, stress adjust in deviator domain
+		! !rjust = yield/taomax  !adjust ratio
+		! !implement viscoplasticity now. B.D. 6/2/12
+		! rjust=yield/taomax + (1-yield/taomax)*exp(-dt/tv)
+		! do i=1,6  !adjust stress
+			! stress(i) =strdev(i) * rjust
+			! !calculate plastic strain increment components
+			! pstrinc(i) = (strdev(i) - stress(i))/miu
+			! !back to stress domain by ading mean, which does not change
+			! if(i<=3) then
+				! stress(i) = stress(i) + strmea
+			! endif
+		! enddo
+		! !calculate plastic strain increment scalar (amplitude)
+		! pstrmea = (pstrinc(1)+pstrinc(2)+pstrinc(3))/3.
+		! do i=1,6
+			! pstrinc(i)=pstrinc(i) - pstrmea
+		! enddo
+		! pstrmag = 0.5*(pstrinc(1)**2+pstrinc(2)**2+pstrinc(3)**2) &
+				! +pstrinc(4)**2+pstrinc(5)**2+pstrinc(6)**2
+		! pstrmag = sqrt(pstrmag)
+	! endif
+	 endif!C_elastic==0(Plastic)
 !endif !endif not zerovl (update stress)
 
 !...calcuate element internal force
@@ -192,7 +192,7 @@ call qdcb(shg,bb)
 !   internal force here. B.D. 1/5/12
 temp = constk * w
 do i=1,nstr
-	strtemp(i) = temp * (stress(i) + bdamp * stressrate(i))
+	strtemp(i) = temp * (stress(i) + rdampk * stressrate(i))
 	!strtemp(i) = temp * stress(i)
 enddo
 !!$omp parallel do default(shared) privlte(i,j1,j2,j3)

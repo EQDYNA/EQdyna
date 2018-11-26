@@ -2,7 +2,15 @@
 
 A parallel Finite Element software to model earthquake spontaneous dynamic ruptures. The software is designed to use high-performance computing. It is written in FORTRAN 90 and MPI.
 
-### Dunyu Liu, Bin Luo, 09/29/2016 dunyuliu@gmail.com 
+### Dunyu Liu, 10/04/2016, dunyuliu@gmail.com
+# Version 4.1.1
+## Features
+* Significant simplification of the system.
+* Reduction in variable declarations.
+* Moving all controllable parameters into globalvar.f90.
+* This version is tested against SCEC TPV8.
+
+### Dunyu Liu, Bin Luo, 09/29/2016, dunyuliu@gmail.com 
 # Version 4.0
 ## Features
 * 3D MPI (Bin Luo) incorporated with Version 3.2.1 by Dunyu Liu.

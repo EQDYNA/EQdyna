@@ -1,73 +1,33 @@
-SUBROUTINE faulting(ift,nftnd,numnp,neq,lstr,lstr1,fnms,brhs,d,v,x,maxm,id1,locid,dof1,&
-					n4onf,momnt,momntrat,maxslprat,fltsta, &
-					nsmp,fnft,fltslp,un,us,ud,fric,arn,r4nuc,arn4m,slp4fri,anonfs,itmp,&
-					me, master,nprocs,nt,miuonf)
+SUBROUTINE faulting(ift,nftnd,numnp,neq,lstr,fnms,brhs,d,v,x,maxm,id1,locid,dof1,&
+		n4onf,fltsta,nsmp,fnft,fltslp,un,us,ud,fric,arn,r4nuc,arn4m,slp4fri,anonfs,itmp,me,nt,miuonf)
 use globalvar
 implicit none
-!
-!### program to implement faulting boundary conditions.
-!	Call this routine after "form_rhs" to correct right-hand-side force
-!	vector by taking into fault boundary. Basic coding was done in Feb,
-!	2005. Now rewrite. B.D. 7/3/05
-! ...totally rewrite this routine in November of 2006 by implementing
-!     Day et al. (2005) formulation which does not require to treat
-!     slipping, healing seperately. Much nicer! B.D. 11/23/06
-! ...extend to 3D case. B.D. 1/26/07
-!  
-logical :: lstr,lstr1
-integer (kind=4) :: ift,nftnd,numnp,neq,i,i1,j,k,n,isn,imn,n4onf,itmp
+!===================================================================!
+!Day et al.(2005)'s formulation for staggered v/stress structure & central difference/ B.Duan 2006/11/23
+!Extended to 3D case. B.Duan 2007/01/26
+!===================================================================!
+logical::lstr
+character(len=30)::foutmov,mm
+!===================================================================!
+integer(kind=4)::ift,nftnd,numnp,neq,i,i1,j,k,n,isn,imn,n4onf,itmp,me,maxm,ifout,nt
+integer(kind=4)::anonfs(3,itmp),nsmp(2,nftnd),id1(maxm),locid(numnp),dof1(numnp)
+!===================================================================!
 real (kind=8) ::slipn,slips,slipd,slip,slipraten,sliprates,sliprated,&
 sliprate,xmu,mmast,mslav,mtotl,fnfault,fsfault,fdfault,tnrm,tstk, &
 tdip,taox,taoy,taoz,ttao,taoc,ftix,ftiy,ftiz,trupt,tr,&
-tmp1,tmp2,tmp3,tmp4,momnt,momntrat,maxslprat,tnrm0,xmu1,xmu2
-integer (kind=4),dimension(3,itmp) :: anonfs
-integer (kind=4),dimension(2,nftnd) :: nsmp
-real(kind=8),dimension(nftnd) :: miuonf
-real (kind=8),dimension(nftnd) :: fnft,arn,r4nuc,arn4m,slp4fri
-real (kind=8),dimension(3,nftnd) :: un,us,ud,fltslp,fltslr
-real (kind=8),dimension(8,nftnd) :: fric
-real (kind=8),dimension(10,nplpts-1,n4onf) :: fltsta
-real (kind=8),dimension(6,2,3)::fvd=0.0
-real (kind=8),dimension(neq) :: brhs
-real (kind=8),dimension(ndof,numnp) :: d,v,x
-!  integer (kind=4),dimension(ndof,numnp) :: id
-real (kind=8),dimension(numnp) :: fnms
-
-integer master, me, nprocs
-integer (kind=4):: maxm
-integer (kind=4),dimension(maxm)::id1
-integer (kind=4),dimension(numnp)::locid,dof1  
-!
-character(len=30)::foutmov
-character(len=6)::mm
-integer(kind=4)::ifout,nt
-real(kind=8)::rcc
-!
-momnt=0  !for moment and rate calculation
-momntrat=0 
-maxslprat=0  !for max slip rate
-!...do not use OpenMP for better output for ExGM 100runs. B.D. 8/12/10
-!*** loop over slave nodes ***
-!!$omp parallel do default(shared) private(i,j,k,fnfault,fsfault,fdfault,isn,imn,fvd, &
-!!$omp	tmp1,tmp2,tmp3,tmp4,slipn,slips,slipd,slip,slipraten,sliprates,sliprated,sliprate, & 
-!!$omp	mslav,mmast,mtotl,tnrm,tstk,tdip,ttao,taoc,taox,taoy,taoz,ftix,ftiy,ftiz,&
-!!$omp	xmu,trupt)
-!...the above definition of private is very important. xmu was not defined as private
-!	ealier and resulted in problems: it can be imaged that it should if different
-!	OpenMP threads mess up xmu! B.D. 10/31/09
+tmp1,tmp2,tmp3,tmp4,tnrm0,xmu1,xmu2,rcc
+real(kind=8),dimension(nftnd)::fnft,arn,r4nuc,arn4m,slp4fri,miuonf
+real(kind=8),dimension(3,nftnd)::un,us,ud,fltslp,fltslr
+real(kind=8)::fric(8,nftnd),fltsta(10,nplpts-1,n4onf),fvd(6,2,3),brhs(neq),&
+	d(ndof,numnp),v(ndof,numnp),x(ndof,numnp),fnms(numnp) 
+!===================================================================!
+fvd=0.0
 do i=1,nftnd	!just fault nodes
     fnfault = fric(7,i) !initial forces on the fault node
     fsfault = fric(8,i) !norm, strike, dip components directly
     fdfault = 0.0
 	isn = nsmp(1,i)
 	imn = nsmp(2,i)
-	!...get nodal force,velocity, and diplacement in x,y,z.
-	!   B.D. 1/26/07
-	!...aslo add Rayleigh stiffness damping before using d.
-	!   assume stifness coefficient is first material: rdampk(1).
-	!   B.D. 11/26/06
-	!...it seems the damping should not be used here.
-	!   B.D. 1/28/07
 	do j=1,2  !1-slave, 2-master
 		do k=1,3  !1-x comp, 2-y comp, 3-z comp
 		!          fvd(k,j,1) = brhs(id(k,nsmp(j,i)))  !1-force
@@ -86,23 +46,6 @@ do i=1,nftnd	!just fault nodes
 			fvd(6,k,j) = fvd(1,k,j)*ud(1,i) + fvd(2,k,j)*ud(2,i) + fvd(3,k,j)*ud(3,i)  !6-dip
 		enddo
 	enddo
-	!
-	!...no opening and no penetrating constraints for SCEC TPV12/13. B.D. 10/22/09
-	!   should apply before trial traction.
-	!   use the average for normal v and d. B.D. 10/22/09
-	!Actually, my implementation of Day et al. (2005) here may already take care
-	!of this and an extra constraint caused incorrect slip (rate) at surface fault
-	!station in TPV13 (dip-slip). So should not apply again here. B.D. 11/2/09
-	!tmp1 = fvd(4,1,2)
-	!tmp2 = fvd(4,2,2)
-	!tmp3 = fvd(4,1,3)
-	!tmp4 = fvd(4,2,3)
-	!fvd(4,1,2) = 0.5*(tmp1+tmp2)
-	!fvd(4,2,2) = fvd(4,1,2)
-	!fvd(4,1,3) = 0.5*(tmp3+tmp4)
-	!fvd(4,2,3) = fvd(4,1,3)
-	!...slip and slip rate should be calculated from norm, strike, and dip so that
-	!    the above no opening or penetrating constraints included. B.D. 10/22/09
 	slipn = fvd(4,2,3) - fvd(4,1,3)
 	slips = fvd(5,2,3) - fvd(5,1,3)
 	slipd = fvd(6,2,3) - fvd(6,1,3)
@@ -125,11 +68,6 @@ do i=1,nftnd	!just fault nodes
 	!  also, max slip rate for early termination.
 	!...for homogeneous material, i.e., only myshr(1). B.D. 1/3/12
 	! or for heterogeneous case, but mushr(1) for rupture fault.
-	if(time > term-dt) then  !only at the end, do this for LVFZ3D Plastic.
-		momnt = momnt + miuonf(i) * arn4m(i) * slip
-		momntrat = momntrat + miuonf(i) * arn4m(i) *sliprate
-		if(sliprate>maxslprat) maxslprat=sliprate
-	endif
 	!
 	!...nodal mass. Mass of each element may not be distributed among its 
 	! nodes evenly. Instead, distribution is related to element shape. 
@@ -264,7 +202,7 @@ endif
 	!...now, they are directly traction (stress) in version 2.1.2.
 	!   and can be written out here. B.D. 2/28/08
 	!...Store only, no write out. B.D. 10/25/09
-	if(n4onf>0 .and. lstr) then	
+	if(n4onf>0.and.lstr) then	
 		do j=1,n4onf
 			if(anonfs(1,j)==i.and.anonfs(3,j)==ift) then !only selected stations. B.D. 10/25/09    
 				fltsta(1,locplt-1,j) = time
@@ -305,31 +243,6 @@ endif
 !		! write(*,*)'**OF,tnrm,tstk,tdip',tnrm,tstk,tdip
 !		! write(*,*)'**OF,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))	
 !	endif	
-	!...slip rate output. B.D. 8/11/10
-	!    if(lstr1) then
-	!      myrec = myrec + 1
-	!      tmp1 = sqrt(x(2,isn)*x(2,isn)+x(3,isn)*x(3,isn))
-	!      write(ioutrat,rec=myrec) real( x(1,isn)),real(tmp1),&
-	!           real(sliprates),real(-sliprated)
-	!      call flush(ioutrat)
-	!    endif
-	!  if(lstr) then
-	!      write(ioutsl,'(1x,3f10.1,12f10.3)') (x(j,isn),j=1,3),(((fvd(j,k,n),j=1,3), &
-	!      		k=1,2),n=2,3)
-	!flush_ for IBM systems
-	!call flush_(ioutsl)
-	!  call flush(ioutsl)
-	!   if(i==1) write(ioutst,*) 'time=', time
-	!   write(ioutst,'(1x,3f10.1,4e18.7e4)') (x(j,isn),j=1,3),tstk,tdip,taoc,tnrm      		
-	!call flush_(ioutst)
-	!call flush(ioutst)
-	!  endif
-	!    
-	!   enddo	!ending i1
-
-	! flush_ for IBM systems
-	!call flush_(ioutrt)
-	!call flush(ioutrt)
 enddo	!ending i
 !!$omp end parallel do	
 !-------------------------------------------------------------------!

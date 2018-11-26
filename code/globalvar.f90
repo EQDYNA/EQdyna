@@ -1,36 +1,22 @@
-!...To MPI parallel, comment definitions for large arrays.
-! B.D. 12/20/08
-!
+!===================================================================!
 MODULE globalvar
-  implicit none
-  save  
-  !...inout/output units
-  integer (kind=4) :: iingl=11,ioutgl=12, ioutft=13,ioutrt1=14,&
-  	   ioutrt2=15,ioutst=16,ioutsl=17,ioutgm=18,ioutoff=19,&
-           ioutrat=20,ioutdp=21
-  !...measure portion CPU time
-  real (kind=8), dimension (7) :: timeused=0.0
-  real (kind=8) :: time1, time2, time=0.0, btime=0.0,term
-  external gethrtime	!this function in the SUN Fortran library
-  !...execution control parameters	   	   
-  integer (kind=4) :: iexec,irank,numseq,nsd,ndof,numeg
-  !...scalar variables (eps. for hexahedral elements)
-  integer (kind=4),parameter :: nen=8,ned=3,nee=24,nesd=3,nrowsh=4, &
-           nrowb=6,nrowc=6,nstr=6,noid=2
-  real (kind=8) :: w	!integration weight	   	   
-  !...definitions for faults
-  integer (kind=4),parameter :: ntotft=1
-  integer (kind=4) :: nucfault,friclaw
-  real (kind=8) :: critd0, &
-  		mus,mud,cohes,brangle,tv
-  !...time sequence parameters
-  real (kind=8) :: dt	!actual time step 
-  integer (kind=4) :: nplpts,nstep,nhplt,nhplt1,nhshw
-  !...time histories	   	    
-  integer (kind=4) :: locplt,myrec=0
+implicit none
+save  
+integer(kind=4)::iingl=11,ioutgl=12, ioutft=13,ioutrt1=14,&
+  	ioutrt2=15,ioutst=16,ioutsl=17,ioutgm=18,ioutoff=19,&
+    ioutrat=20,ioutdp=21
+real(kind=8),dimension(7)::timeused=0.0
+real(kind=8)::time1,time2,time=0.0, btime=0.0
+external gethrtime	!this function in the SUN Fortran library   	   
+integer(kind=4)::iexec=1,irank=0,numseq=1,nsd=3,ndof=3,numeg=1
+integer(kind=4)::nen=8,ned=3,nee=24,nesd=3,nrowsh=4,nrowb=6,nrowc=6,nstr=6,noid=2
+real(kind=8)::w	!integration weight	   	   
+real(kind=8)::critd0,mus,mud,cohes,brangle,tv
+integer(kind=4)::nplpts,nstep,nhplt=1,nhplt1=2,nhshw=1   	    
+integer(kind=4)::locplt=1,myrec=0
+real(kind=8)::pi=3.1415926535897931,rdampm=0.0,rdampk=0.1
 !-------------------------------------------------------------------!
-!-----------------------Sep.19.2015/ D.Liu--------------------------!
-!-------------Controllable parameters for EQdyna V3.2.1-------------! 
+!-------------Controllable parameters for EQdyna3d V4.0-------------! 
 integer(kind=4)::C_elastic=1
 !	1=elastic version;
 !	0=plastic version;
@@ -53,22 +39,36 @@ real(kind=8)::R=0.01! Theoretical reflection coefficient for PML
 real(kind=8)::kapa_hg=0.1!Coefficient for viscous HG.
 !AAA:Only works when C_hg==2.
 !	Typical valus varies from 0.05~0.15.Goudreau& Hallquist(1982).
-real(kind=8) :: rat=1.0
+real(kind=8)::rat=1.025
 !	Enlarge ratio for buffers to use 
-integer(kind=4)::numat=2!Material types.
-real(kind=8)::dx!Element size. In parcon.f90.
-real(kind=8)::critt0=0.4,srcrad0=4000.,vrupt0=1500.
-real(kind=8)::xsource=-12.2e3,ysource=0.0,zsource=-13.8e3
-integer(kind=4)::ninterval=1
+real(kind=8)::dx=100.,dy,dz!Element size.
+integer(kind=4)::dis4uniF=100,dis4uniB=100
+!Number of uniform sized elements normal to the fault
+real(kind=8)::critt0=0.4,srcrad0=4000.,vrupt0=1500.!Info on forced rupture.
+real(kind=8)::xsource=-12.2e3,ysource=0.0,zsource=-13.8e3!Nucleation point.
+!===================================================================!
+!Specify informations on on- and off- fault stations and
+! model and fault geometries. 
+integer(kind=4)::ninterval=1,nftmx,nonmx,nonfs(1)=8,n4nds=14,an4nds(2,14)
+real(kind=8)::xonfs(2,8,1),x4nds(3,14)
 real(kind=8)::surxmax=0e3,surxmin=0e3,surymax=0e3,surymin=0e3
-real(kind=8)::vmaxPML=5716.
-!	For 3D MPI Partitioning
-integer(kind=4)::npx=6,npy=6,npz=2
+real(kind=8)::xmin=-40e3,xmax=40e3,ymin=-40e3,ymax=40e3,zmin=-50e3,zmax=0.0
+real(kind=8)::fxmin=-15e3,fxmax=15e3,fymin=0.0,fymax=0.0,fzmin=-15e3,fzmax=0.0
+real(kind=8)::fstrike=270.,fdip=90.
+real(kind=8)::fltxyz(2,4,1)
+!===================================================================!
+!Specify maximum Vp for PML and timing information
+real(kind=8)::vmaxPML=5716.,term=15.,dt=0.008
+integer(kind=4)::nucfault=1,friclaw=1,ntotft=1
+real(kind=8),allocatable,dimension(:,:)::dout
+integer(kind=4),allocatable,dimension(:,:)::idhist
+!===================================================================!
+!3DMPI Partitioning along x/y/z axis, repect.
+integer(kind=4)::npx=6,npy=3,npz=4,master=0,nprocs
 logical,dimension(6)::fltMPI
 integer(kind=4),dimension(6)::fltnum=0
 integer(kind=4),allocatable,dimension(:)::fltgm
 integer(kind=4),allocatable,dimension(:)::fltl,fltr,fltf,fltb,fltd,fltu
 integer (kind=4),dimension(9)::numcount
-!--------End of Controllable parameters for EQdyna V3.2.1-----------!  
 !-------------------------------------------------------------------!    
 end MODULE globalvar 	      

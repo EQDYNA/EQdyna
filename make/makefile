@@ -1,31 +1,24 @@
-F90 = mpif90
-OPT = -ipo -O3 -xHost -openmp -heap-arrays -limf -c 
-OPT1 = -ipo -O3 -xHost -openmp -heap-arrays -limf
-OBJ = eqdyna3d.o globalvar.o qdct1.o parcon.o mesh4num.o \
-         meshgen.o qdcshl.o prop3d.o formlm.o driver.o \
+F90 = mpiifort
+OPT2=-ipo -O3 -xHost -openmp -heap-arrays -limf -c 
+OPT=-c
+OPT1= 
+OBJ = eqdyna3d.o globalvar.o mesh4num.o \
+         meshgen.o qdcshl.o driver.o \
 	 qdct2.o qdcshg.o contm.o qdcb.o vlm.o qdct3.o \
 	 contma.o qdckd.o hrglss.o fric.o faulting.o \
 	 PMLwhg.o comdampv.o qconstant.o
 eqdyna3drun: $(OBJ) 
 	$(F90) $(OPT1) $(OBJ) -o eqdyna-hyb
-eqdyna3d.o: eqdyna3d.f90 globalvar.o qdct1.o driver.o parcon.o mesh4num.o meshgen.o
+eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o meshgen.o
 	$(F90) $(OPT) eqdyna3d.f90 
 globalvar.o: globalvar.f90
 	$(F90) $(OPT) globalvar.f90 	
-qdct1.o: qdct1.f90 qdcshl.o prop3d.o formlm.o globalvar.o
-	$(F90) $(OPT) qdct1.f90
-parcon.o: parcon.f90 globalvar.o
-	$(F90) $(OPT) parcon.f90
 mesh4num.o: mesh4num.f90 globalvar.o
 	$(F90) $(OPT) mesh4num.f90
 meshgen.o: meshgen.f90 globalvar.o
 	$(F90) $(OPT) meshgen.f90
 qdcshl.o: qdcshl.f90 globalvar.o
-	$(F90) $(OPT) qdcshl.f90
-prop3d.o: prop3d.f90 globalvar.o
-	$(F90) $(OPT) prop3d.f90
-formlm.o: formlm.f90 globalvar.o
-	$(F90) $(OPT) formlm.f90			
+	$(F90) $(OPT) qdcshl.f90		
 driver.o: driver.f90 qdct2.o qdct3.o hrglss.o faulting.o globalvar.o comdampv.o
 	$(F90) $(OPT) driver.f90
 qdct2.o: qdct2.f90 qdcshg.o contm.o vlm.o globalvar.o

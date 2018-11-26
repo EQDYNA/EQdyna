@@ -1,4 +1,4 @@
-SUBROUTINE hrglss(numel,numnp,neq,ien,d,v,rdampk,mat,ss,phi,brhs,me,master,nprocs,&
+SUBROUTINE hrglss(numel,numnp,neq,ien,d,v,mat,ss,phi,brhs,me,&
 maxm,id1,locid,dof1,et,eledet) !Delete lm ! Add maxm,id1,loci
 use globalvar
 implicit none
@@ -21,13 +21,12 @@ real (kind=8),dimension(ned,nen) :: dl,vl,fhr
 integer (kind=4),dimension(nen,numel) :: ien
 real (kind=8),dimension(ndof,numnp) :: d,v
 real (kind=8),dimension(neq) :: brhs
-real (kind=8),dimension(numat) :: rdampk
 real(kind=8),dimension(numel,5) :: mat	    
 !integer (kind=4),dimension(ned,nen,numel) :: lm
 !...hourglass control arrays
 real (kind=8),dimension(6,numel) :: ss
 real (kind=8),dimension(nen,4,numel) :: phi
-integer me, master, nprocs, rlp, rr, ierr,jj
+integer me, rlp, rr, ierr,jj
 ! real (kind=8),dimension(nprocs) :: btmp
 !real (kind=8) :: btmp
 !integer (kind=4),dimension(nprocs) :: kk	    
@@ -64,7 +63,7 @@ do nel=1,numel
 		do j=1,ned
 		dl(j,i) = d(j,k)
 		vl(j,i) = v(j,k)
-		dl(j,i) = dl(j,i) + rdampk(m) * vl(j,i)
+		dl(j,i) = dl(j,i) + rdampk* vl(j,i)
 		enddo
 	enddo
 	if (C_hg==1) then

@@ -1,4 +1,4 @@
-SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,bdamp,nel,me)
+SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,nel,me)
 !efPML,evPML,esPML,ex,PMLb,c(1,1,1),eleshp(1,1,nel),det,dt
 	use globalvar
 	implicit none  
@@ -10,11 +10,11 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,bdamp,nel,me)
 	! -f: Element force vector.
 	! -c: material matrix	
 	! -PMLb: PML boundary coordinates. 
-	! 	- PMLb(1):xmax
-	! 	- PMLb(2):xmin
-	! 	- PMLb(3):ymax
-	!	- PMLb(4):ymin
-	!	- PMLb(5):zmin
+	! 	- PMLb(1):xmax1
+	! 	- PMLb(2):xmin1
+	! 	- PMLb(3):ymax1
+	!	- PMLb(4):ymin1
+	!	- PMLb(5):zmin1
 	real(kind=8),dimension(3,8)::vl	
 	real(kind=8),dimension(96)::f,v
 	!vxx,vxy,vxz,
@@ -38,8 +38,8 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,bdamp,nel,me)
 	real(kind=8),dimension(3,8)::shg
 	real(kind=8),dimension(3,4)::q
 	integer(kind=4),dimension(4,8)::fi
-	real(kind=8)::xmax,xmin,ymax,ymin,zmin,PMLb(8),&
-					maxdx,maxdy,maxdz,bdamp,mat(5)
+	real(kind=8)::xmax1,xmin1,ymax1,ymin1,zmin1,PMLb(8),&
+					maxdx,maxdy,maxdz,mat(5)
 	integer(kind=4)::i,j,k,nt,j1,j2,j3,nel,me
 	real (kind=8),dimension(nrowb,nee) :: bb	!correspond to b
 	real (kind=8),dimension(nstr) :: strainrate,stressrate	
@@ -48,11 +48,11 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,bdamp,nel,me)
 	lam=mat(4)
 	miu=mat(5)
 	!
-	xmax=PMLb(1)
-	xmin=PMLb(2)
-	ymax=PMLb(3)
-	ymin=PMLb(4)
-	zmin=PMLb(5)
+	xmax1=PMLb(1)
+	xmin1=PMLb(2)
+	ymax1=PMLb(3)
+	ymin1=PMLb(4)
+	zmin1=PMLb(5)
 	maxdx=PMLb(6)
 	maxdy=PMLb(7)
 	maxdz=PMLb(8)
@@ -66,64 +66,64 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,bdamp,nel,me)
 	xc=xc/8
 
 	! Calculate damping profiles.
-	if (xc(3)<zmin) then !region 1
-		damps(3)=abs(xc(3)-zmin)		
-		if (xc(1)>xmax.and.xc(2)>ymax) then !region 11
-			damps(1)=abs(xc(1)-xmax)
-			damps(2)=abs(xc(2)-ymax)			
-		elseif (xc(1)>xmax.and.xc(2)<ymin) then !region 12
-			damps(1)=abs(xc(1)-xmax)
-			damps(2)=abs(xc(2)-ymin)	
-		elseif (xc(1)<xmin.and.xc(2)<ymin) then !region 13
-			damps(1)=abs(xc(1)-xmin)
-			damps(2)=abs(xc(2)-ymin)			
-		elseif (xc(1)<xmin.and.xc(2)>xmax) then !region 14
-			damps(1)=abs(xc(1)-xmin)
-			damps(2)=abs(xc(2)-ymax)
-		elseif (xc(1)>xmax.and.xc(2)>ymin.and.xc(2)<ymax) then !region 1_12
-			damps(1)=abs(xc(1)-xmax)
+	if (xc(3)<zmin1) then !region 1
+		damps(3)=abs(xc(3)-zmin1)		
+		if (xc(1)>xmax1.and.xc(2)>ymax1) then !region 11
+			damps(1)=abs(xc(1)-xmax1)
+			damps(2)=abs(xc(2)-ymax1)			
+		elseif (xc(1)>xmax1.and.xc(2)<ymin1) then !region 12
+			damps(1)=abs(xc(1)-xmax1)
+			damps(2)=abs(xc(2)-ymin1)	
+		elseif (xc(1)<xmin1.and.xc(2)<ymin1) then !region 13
+			damps(1)=abs(xc(1)-xmin1)
+			damps(2)=abs(xc(2)-ymin1)			
+		elseif (xc(1)<xmin1.and.xc(2)>xmax1) then !region 14
+			damps(1)=abs(xc(1)-xmin1)
+			damps(2)=abs(xc(2)-ymax1)
+		elseif (xc(1)>xmax1.and.xc(2)>ymin1.and.xc(2)<ymax1) then !region 1_12
+			damps(1)=abs(xc(1)-xmax1)
 			damps(2)=0.0
-		elseif (xc(2)<ymin.and.xc(1)>xmin.and.xc(1)<xmax) then !region 1_23	
+		elseif (xc(2)<ymin1.and.xc(1)>xmin1.and.xc(1)<xmax1) then !region 1_23	
 			damps(1)=0.0
-			damps(2)=abs(xc(2)-ymin)
-		elseif (xc(1)<xmin.and.xc(2)>ymin.and.xc(2)<ymax) then !region 1_34	
-			damps(1)=abs(xc(1)-xmin)
+			damps(2)=abs(xc(2)-ymin1)
+		elseif (xc(1)<xmin1.and.xc(2)>ymin1.and.xc(2)<ymax1) then !region 1_34	
+			damps(1)=abs(xc(1)-xmin1)
 			damps(2)=0.0
-		elseif (xc(2)>ymax.and.xc(1)>xmin.and.xc(1)<xmax) then !region 1_41	
+		elseif (xc(2)>ymax1.and.xc(1)>xmin1.and.xc(1)<xmax1) then !region 1_41	
 			damps(1)=0.0
-			damps(2)=abs(xc(2)-ymax)
+			damps(2)=abs(xc(2)-ymax1)
 		else
 		!Middle area 9 missing previously.
 		!Feb.18.2016/D.Liu
 			damps(1)=0.0
 			damps(2)=0.0
 		endif
-	elseif (xc(3)>zmin) then !region 2
+	elseif (xc(3)>zmin1) then !region 2
 		damps(3)=0.0
-		if (xc(1)>xmax.and.xc(2)>ymax) then !region 11
-			damps(1)=abs(xc(1)-xmax)
-			damps(2)=abs(xc(2)-ymax)			
-		elseif (xc(1)>xmax.and.xc(2)<ymin) then !region 12
-			damps(1)=abs(xc(1)-xmax)
-			damps(2)=abs(xc(2)-ymin)	
-		elseif (xc(1)<xmin.and.xc(2)<ymin) then !region 13
-			damps(1)=abs(xc(1)-xmin)
-			damps(2)=abs(xc(2)-ymin)			
-		elseif (xc(1)<xmin.and.xc(2)>xmax) then !region 14
-			damps(1)=abs(xc(1)-xmin)
-			damps(2)=abs(xc(2)-ymax)
-		elseif (xc(1)>xmax.and.xc(2)>ymin.and.xc(2)<ymax) then !region 1_12
-			damps(1)=abs(xc(1)-xmax)
+		if (xc(1)>xmax1.and.xc(2)>ymax1) then !region 11
+			damps(1)=abs(xc(1)-xmax1)
+			damps(2)=abs(xc(2)-ymax1)			
+		elseif (xc(1)>xmax1.and.xc(2)<ymin1) then !region 12
+			damps(1)=abs(xc(1)-xmax1)
+			damps(2)=abs(xc(2)-ymin1)	
+		elseif (xc(1)<xmin1.and.xc(2)<ymin1) then !region 13
+			damps(1)=abs(xc(1)-xmin1)
+			damps(2)=abs(xc(2)-ymin1)			
+		elseif (xc(1)<xmin1.and.xc(2)>xmax1) then !region 14
+			damps(1)=abs(xc(1)-xmin1)
+			damps(2)=abs(xc(2)-ymax1)
+		elseif (xc(1)>xmax1.and.xc(2)>ymin1.and.xc(2)<ymax1) then !region 1_12
+			damps(1)=abs(xc(1)-xmax1)
 			damps(2)=0.0
-		elseif (xc(2)<ymin.and.xc(1)>xmin.and.xc(1)<xmax) then !region 1_23	
+		elseif (xc(2)<ymin1.and.xc(1)>xmin1.and.xc(1)<xmax1) then !region 1_23	
 			damps(1)=0.0
-			damps(2)=abs(xc(2)-ymin)
-		elseif (xc(1)<xmin.and.xc(2)>ymin.and.xc(2)<ymax) then !region 1_34	
-			damps(1)=abs(xc(1)-xmin)
+			damps(2)=abs(xc(2)-ymin1)
+		elseif (xc(1)<xmin1.and.xc(2)>ymin1.and.xc(2)<ymax1) then !region 1_34	
+			damps(1)=abs(xc(1)-xmin1)
 			damps(2)=0.0
-		elseif (xc(2)>ymax.and.xc(1)>xmin.and.xc(1)<xmax) then !region 1_41	
+		elseif (xc(2)>ymax1.and.xc(1)>xmin1.and.xc(1)<xmax1) then !region 1_41	
 			damps(1)=0.0
-			damps(2)=abs(xc(2)-ymax)
+			damps(2)=abs(xc(2)-ymax1)
 		else
 		!Middle area 9 missing previously.
 		!Feb.18.2016/D.Liu
@@ -247,12 +247,12 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,bdamp,nel,me)
 	sxz=s(12)+s(13)
 	syz=s(14)+s(15)	
 	
-	s0(1)=s(15+1)+bdamp * stressrate(1)
-	s0(2)=s(15+2)+bdamp * stressrate(2)
-	s0(3)=s(15+3)+bdamp * stressrate(3)
-	s0(6)=s(15+6)+bdamp * stressrate(6)
-	s0(5)=s(15+5)+bdamp * stressrate(5)
-	s0(4)=s(15+4)+bdamp * stressrate(4)!!!
+	s0(1)=s(15+1)+rdampk * stressrate(1)
+	s0(2)=s(15+2)+rdampk * stressrate(2)
+	s0(3)=s(15+3)+rdampk * stressrate(3)
+	s0(6)=s(15+6)+rdampk * stressrate(6)
+	s0(5)=s(15+5)+rdampk * stressrate(5)
+	s0(4)=s(15+4)+rdampk * stressrate(4)!!!
 
 	!Calculate 'nodal forces'
 	do i=1,8

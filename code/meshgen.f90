@@ -1,140 +1,36 @@
-subroutine meshgen(fltxyz,xmin,xmax,ymin,ymax,zmin,zmax,&
-nnode1,nelement1,ien,mat,s1,eleporep,xnode,neq1,& !Delete id !change elestress as s1
-id1,maxm,locid,dof1,et,PMLb,maxs,ids, & !Adding id1,maxm,loci,PMLb,maxs,ids
-nr4mpi,er4mpi,n4out,an4nds,nftnd1,n4onf,xonfs,nonfs,&
-nftmx,nonmx,nsmp,un,us,ud,fric,arn,r4nuc,anonfs,&
-arn4m,master,me,nprocs,nsurnd1,surnode,surid,miuonf,vponf,nnodPML1,nPMLid,nPMLvp)
-!... program to generate mesh for 3D models.
-! This model is a strike-slip fault in the half space, for SCEC TPV16 & 17.
-! B.D. 1/1/12
+subroutine meshgen(nnode1,nelement1,ien,mat,s1,eleporep,xnode,neq1,id1,maxm,locid,&
+				dof1,et,PMLb,maxs,ids,n4out,nftnd1,n4onf,nsmp,un,us,ud,fric,arn,&
+				r4nuc,anonfs,arn4m,me,nsurnd1,surnode,surid,miuonf,vponf)
 use globalvar
 implicit none
 include 'mpif.h'
-!...node # and related
-integer (kind=4)::nnode,nelement,nnode1,nelement1,nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
-edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,np=10000,ncnt,nfrt,nbck,edgezn
-!...fault definition: 
-integer (kind=4) :: nftmx,nonmx
-integer (kind=4),dimension(ntotft) :: nftnd,nftnd1,ixfi,izfi
-real (kind=8),dimension(2,4,ntotft) :: fltxyz
-real (kind=8) :: x1,x2,x3=0,y1,y2,y3=0,z1,z2,z3=0 !3 points for fault plane (inc origin)
-integer (kind=4),dimension(3,nonmx) :: anonfs
-integer (kind=4),dimension(2,nftmx,ntotft) :: nsmp
-real (kind=8),dimension(nftmx,ntotft) :: fnft,arn,r4nuc,arn4m,slp4fri
-real (kind=8),dimension(3,nftmx,ntotft) :: un,us,ud
-real (kind=8),dimension(8,nftmx,ntotft) :: fric
-!...entire model size
-real (kind=8) :: xmin, xmax, ymin, ymax, zmin, zmax
-!...grid size
-real (kind=8) :: dy,dz	!dx is given in parcon.f90, dy/dz will be from dx
-!...uniform element num from fault y-ccor
-!For Double-couple point source. Ma and Liu (2006) 
-!integer (kind=4) :: dis4uniF=50,dis4uniB=50
-!For TPV8 
-integer (kind=4) :: dis4uniF=100,dis4uniB=100
-!...output on-fault stations. B.D. 10/25/09
-integer (kind=4) :: n4onf
-integer,dimension(ntotft)::nonfs
-real (kind=8),dimension(2,8,ntotft) :: xonfs
-!...output node coors. 6 Off-fault stations in this example. B.D. 10/25/11
-integer (kind=4)::n4nds=6,n4out
-integer (kind=4),dimension(6)::n4yn=0
-integer (kind=4),dimension(2,6)::an4nds
-!For TPV8
-real (kind=8),dimension(2,6)::x4nds=reshape((/0.0,-3.0,&!8.0,6.0
-												0.0,-2.0,&
-												0.0,-1.0,&
-												0.0,1.0,&
-												12.0,-3.0,&
-												12.0,3.0/),(/2,6/))
-!For Double-couple point source. Ma and Liu (2006) 
-!real (kind=8),dimension(2,1)::x4nds=reshape((/8.0,6.0/),(/2,1/))											
-! real (kind=8),dimension(2,187)::x4nds=reshape((/-18.93,-112.28,&!Beijing 1
-												! -23.09,3.26,&!Tianjin 2
-												! -15.39,-63.11,&!Langfang 3
-												! -23.24,-1.73,&!NanKai 4
-												! -27.28,-2.33,&!TJRS 5
-												! 9.76,-53.04,&!Yongqing 6
-												! -127.63,-0.82,&!Tangshan 7
-												! -83.06,9.45,&!Ninghe 8
-												! -71.16,-50.39,&!Baodi 9 
-												! -51.04,-70.50,&!Xianghe 10 
-												! 1.51,3.46,&!Jinghai 11 
-												! 39.42,8.28,&!Dacheng 12 
-												! 35.52,30.76,&!Qing Xian 13 
-												! 43.29,-15.93,&!Wen An 14 
-												! -32.31,-33.45,&!Wuqing 15 
-												! 78.88,-19.79,&!Renqiu 16 
-												! 59.40,-43.16,&!Xiong Xian 17
-												! -54.29,34.45,&!BinHai 18
-! -24,15,-24,12,-24,9,-24,6,-24,3,-24,0,-24,-3,-24,-6,-24,-9,-24,-12,-24,-15,-24,-18,-24,-21,-24,-24,&
-! -24,-27,-24,-30,-24,-33,-24,-36,-24,-39,-24,-42,-24,-45,-24,-48,-24,-51,-24,-54,-24,-57,-24,-60,-24,-63,-24,-66,&
-! -24,-69,-24,-72,-24,-75,-24,-78,-24,-81,-24,-84,-24,-87,-24,-90,&!A 36 stations
-! 0.0,15,0.0,12,0.0,9,0.0,6,0.0,3,0.0,0,0.0,-3,0.0,-6,0.0,-9,0.0,-12,0.0,-15,0.0,-18,0.0,-21,0.0,-24,&
-! 0.0,-27,0.0,-30,0.0,-33,0.0,-36,0.0,-39,0.0,-42,0.0,-45,0.0,-48,0.0,-51,0.0,-54,0.0,-57,0.0,-60,0.0,-63,0.0,-66,&
-! 0.0,-69,0.0,-72,0.0,-75,0.0,-78,0.0,-81,0.0,-84,0.0,-87,0.0,-90,&!B
-! 18,15,18,12,18,9,18,6,18,3,18,0,18,-3,18,-6,18,-9,18,-12,18,-15,18,-18,18,-21,18,-24,&
-! 18,-27,18,-30,18,-33,18,-36,18,-39,18,-42,18,-45,18,-48,18,-51,18,-54,18,-57,18,-60,18,-63,18,-66,&
-! 18,-69,18,-72,18,-75,18,-78,18,-81,18,-84,18,-87,18,-90,&!C	
-! 60,15,60,12,60,9,60,6,60,3,60,0,60,-3,60,-6,60,-9,60,-12,60,-15,60,-18,60,-21,60,-24,&
-! 60,-27,60,-30,60,-33,60,-36,60,-39,60,-42,60,-45,60,-48,60,-51,60,-54,60,-57,60,-60,60,-63,60,-66,&
-! 60,-69,60,-72,60,-75,60,-78,60,-81,60,-84,60,-87,60,-90,&!D
-! -60,-50,-55,-50,-50,-50,-45,-50,-40,-50,-35,-50,-30,-50,-25,-50,-20,-50,-15,-50,-10,-50,-5,-50,0,-50,&
-! 5,-50,10,-50,15,-50,20,-50,25,-50,30,-50,35,-50,40,-50,45,-50,50,-50,55,-50,60,-50/),(/2,187/))!E(25)												
-!...mesh results
-integer (kind=4)::neq,neq1
-integer (kind=4),dimension(2,2)::nr4mpi,er4mpi  !node, equation range for MPI
-integer (kind=4),dimension(8,nelement1)::ien 
-!integer (kind=4),dimension(ndof,nnode1)::id
-real (kind=8),dimension(nelement1,5)::mat
-real (kind=8),dimension(nelement1)::eleporep
-!real (kind=8),dimension(nstr,nelement1)::elestress
-real (kind=8),dimension(ndof,nnode1)::xnode
+integer(kind=4)::nnode,nelement,nnode1,nelement1,nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
+edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,np=10000,edgezn
+integer(kind=4)::neq,neq1,n4onf,n4out,n4yn(n4nds),anonfs(3,nonmx),&
+	nsmp(2,nftmx,ntotft),ien(8,nelement1),id1(maxm),locid(nnode1),dof1(nnode1),&
+	et(nelement1),ids(nelement1)
+integer(kind=4)::nxuni,nyuni,nzuni,ift,n1,n2,n3,n4,m1,m2,m3,m4,alloc_err,&
+	istatus(MPI_STATUS_SIZE),bndl,bndr,bndf,bndb,bndd,bndu,me,mex,mey,mez,rlp,rr,ierr,jj,itmp1,&
+	maxm,maxs,label,ntag,ntags,zz,ivp1,ivp2,ixe,iye,ize,itemp,iye1,nxe,nye,nze,nsurnd1,nsurnd,&
+	surid(nsurnd1),nsx,nsy,nfx,nfz,msnode
+integer(kind=4),dimension(ntotft)::nftnd,nftnd1,ixfi,izfi,ifs,ifd
+integer(kind=4),allocatable::plane1(:,:),plane2(:,:),fltrc(:,:,:,:)
+
+real(kind=8)::mat(nelement1,5),eleporep(nelement1),xnode(ndof,nnode1),&
+	fric(8,nftmx,ntotft),PMLb(8),xc(3),s1(4*maxm),surnode(nsurnd1,2),miuonf(nftmx),vponf(nftmx),Dampx,Dampz
+real(kind=8),dimension(nftmx,ntotft)::fnft,arn,r4nuc,arn4m,slp4fri
+real(kind=8),dimension(3,nftmx,ntotft)::un,us,ud
+real(kind=8)::tol,xcoor,ycoor,zcoor,xstep,ystep,zstep,tmp1,tmp2,tmp3,a,b,area,a1,b1,c1,d1,p1,q1
+real(kind=8),allocatable,dimension(:)::xlinet,ylinet,zlinet,xline,yline,zline,btmp,btmp1,btmp2,btmp3
+real(kind=8),allocatable::vpstruct(:,:)
+!Heteogeneous stress setup
+real(kind=8)::initialinput(3,91001)
 !...for initial stress and pore pressure of elements: inelastic. B.D. 1/8/12
 real (kind=8)::grav=9.8,rhow=1000.,b22=0.44327040,b33=0.50911055, &
 	b23=-0.15487679
 logical,dimension(ntotft) :: ynft
-integer (kind=4) :: nxuni,nyuni,nzuni,maxtotal,ift,n1,n2,n3,n4,m1,m2,m3,m4,alloc_err
-!integer (kind=4) :: me, master, nprocs, rlp, rr, ierr,jj,itmp1,itmp2
-integer istatus(MPI_STATUS_SIZE)
-integer (kind=4),dimension(ntotft) :: ifs,ifd
-real (kind=8), allocatable, dimension(:) :: btmp, btmp1,btmp2,btmp3
-real (kind=8) :: tol,xcoor,ycoor,zcoor,xstep,ystep,zstep, &
-	tmp1,tmp2,tmp3,a,b,fltybtm,linea,lineb,linea1,lineb1,ycoor1
-real (kind=8) :: area,a1,b1,c1,d1,p1,q1
-integer (kind=4),allocatable,dimension(:,:) :: plane1,plane2
-integer (kind=4),allocatable,dimension(:,:,:,:) :: fltrc
-real (kind=8),allocatable,dimension(:) :: xlinet,ylinet,zlinet,xline,yline,zline
-  integer ::bndl,bndr,bndf,bndb,bndd,bndu,ik !MPIxyz
-  integer (kind=4) :: rlp, rr, ierr,jj,itmp1,itmp2 !MPIxyz
-  integer (kind=4) :: me,mex,mey,mez,master, nprocs !MPIxyz
-character (len=6) :: mm
-character (len=30) :: meshfile
-
-!*.* Variables for PML. D.L. Jan/23/2015
-integer (kind=4)::maxm,maxs,label,ntag,ntags,zz
-integer (kind=4),dimension(maxm)::id1
-integer (kind=4),dimension(nnode1)::locid,dof1
-integer (kind=4),dimension(nelement1)::et
-real(kind=8),dimension(8)::PMLb
-integer(kind=4),dimension(nelement1)::ids
-real(kind=8),dimension(4*maxm)::s1
-real(kind=8)::xc(3)
+character(len=30)::meshfile,mm
 character(len=100)::fname
-integer(kind=4)::ivp1,ivp2,ixe,iye,ize,itemp,iye1,nxe,nye,nze,nsurnd1,nsurnd
-real(kind=8),allocatable::vpstruct(:,:)
-real(kind=8)::surnode(nsurnd1,2),miuonf(nftmx),vponf(nftmx),Dampx,Dampz
-integer(kind=4)::surid(nsurnd1),nsx,nsy
-!Heteogeneous stress setup
-real(kind=8)::initialinput(3,91001)
-integer(kind=4)::nfx,nfz
-!Vp for PML nodes. Oct.5.2015/D. Liu
-integer(kind=4)::nnodPML,nnodPML1,ncount
-integer(kind=4)::nPMLid(nnodPML1),nPMLvp(nnodPML1)
-real(kind=8)::vptemp
-!Search Tag: 3DMPI
-integer(kind=4)::msnode
-
 !-------------------------------------------------------------------!
 !------------Early Oct.2015/ D.Liu----------------------------------!
 !------------Input of initial stress for TSN------------------------!
@@ -144,25 +40,8 @@ integer(kind=4)::msnode
 ! enddo
 ! close(3001)
 !-------------------------------------------------------------------!
-!*.* D.L. 
-!...because eos and vanerne with linux do not allow 'write(mm,*) me',
-! I have to use a way for conversion from num to char as below for
-! what I want. Currently, only for MPI processes <= 300. For more, need
-! to extend further.  B.D. 8/13/10
-!...actually, use formatted writing, solve the problem
-  write(mm,'(i6)') me
-!  if(me<10) then
-!    mm = char(me+48)
-!  elseif(me<20) then
-!    mm = char(49)//char(me-10+48)
-!  ...
-!  elseif(me<290) then
-!    mm = char(50)//char(56)//char(me-180+48)
-!  elseif(me<300) then
-!    mm = char(50)//char(57)//char(me-190+48)
-!  endif
+write(mm,'(i6)') me
 mm = trim(adjustl(mm))
-
 !on-fault station coordinates are given here 
 !(along strike, z).
 xonfs=reshape((/0.0,0.0,&
@@ -173,37 +52,28 @@ xonfs=reshape((/0.0,0.0,&
 				4.5,-7.5,&
 				12.0,-7.5,&
 				0.0,-12.0/),(/2,8,1/))
-xonfs = xonfs * 1000  !convert from km to m
-
-!allocate fault arrays if nonzero fault node. B.D. 10/16/09
-!only allocate here for nonzero case. B.D. 10/17/09
-!  itmp1 = max(nftnd1(1),nftnd1(2))
-!  itmp2 = nonfs(1) + nonfs(2)
-!  if(itmp1>0) then
-!    allocate(nsmp(2,itmp1,ntotft),fnft(itmp1,ntotft),&
-!      un(3,itmp1,ntotft),us(3,itmp1,ntotft),ud(3,itmp1,ntotft),&
-!      fric(6,itmp1,ntotft),arn(itmp1,ntotft),r4nuc(itmp1,ntotft),&
-!      anonfs(3,itmp2),arn4m(itmp1,ntotft),slp4fri(itmp1,ntotft))
-!    nsmp = 0	!initialize here, already in eqdyna3d.f90
-!    fnft = 1000. !as failure time initialization: should larger than actual!
-!    fric = 0.0
-!    un = 0.0
-!    us = 1000.0
-!    ud = 0.0
-!    arn = 0.0
-!    arn4m = 0.0
-!    r4nuc = 0.0
-!    anonfs = 0
-!    slp4fri = 0.0
-!  endif
- 
-!convert to m from km for output nodes' coor
-x4nds = x4nds * 1000
-
+!(along strike,normal,z(negative)).				
+x4nds=reshape((/0.0,-3.0,0.0,&
+				0.0,-2.0,0.0,&
+				0.0,-1.0,0.0,&
+				0.0,1.0,0.0,&
+				0.0,2.0,0.0,&
+				0.0,3.0,0.0,&
+				12.0,-3.0,0.0,&
+				12.0,3.0,0.0,&
+				0.0,0.5,-0.3,&
+				0.0,-0.5,-0.3,&
+				0.0,1.0,-0.3,&
+				0.0,-1.0,-0.3,&
+				12.0,3.0,-12.0,&
+				12.0,-3.0,-12.0/),(/3,14/))
+xonfs=xonfs*1000.  !convert from km to m
+x4nds=x4nds*1000.
+n4yn=0
 !dy = dx * abs(dtan(brangle))
-dy = dx
-dz = dx
-tol = dx/100
+dy=dx
+dz=dx
+tol=dx/100
 
 !Prepare for 3D MPI partitioning
 !Search Tag: 3DMPI
@@ -436,13 +306,11 @@ plane2 = 0
 neq = 0
 nftnd = 0
 nsurnd=0
-nnodPML=0
 an4nds = 0
 xnode = 0.0
 ien = 0
 ixfi = 0
 izfi = 0
-!DL  
 id1= 0
 ids= 0
 locid=0
@@ -457,8 +325,6 @@ nsy=(surymax-surymin)/dx+1
 do ix = 1, nx
 	do iz = 1, nz
 		do iy = 1, ny
-			!*.* Comments D.L. Jan/23/2015
-			!*.* D.L.
 			xcoor = xline(ix)
 			ycoor = yline(iy)
 			zcoor = zline(iz)
@@ -489,8 +355,6 @@ do ix = 1, nx
 					enddo
 				enddo
 			endif					
-			!write(*,*) nnode,xnode(1,nnode),xnode(2,nnode),xnode(3,nnode)
-			!*.* Find the PML boundary D.L. Jan/23/2015
 			zz=ndof
 			if (xcoor>PMLb(1).or.xcoor<PMLb(2).or.ycoor>PMLb(3).or.ycoor<PMLb(4) &
 			.or.zcoor<PMLb(5)) then
@@ -498,20 +362,6 @@ do ix = 1, nx
 			endif		
 			locid(nnode)=ntag
 			dof1(nnode)=zz
-			if (xcoor>PMLb(1).or.xcoor<PMLb(2).or.ycoor>PMLb(3).or.ycoor<PMLb(4) &
-			.or.zcoor<PMLb(5)) then
-				if(abs(xcoor-xmin)>tol.and.abs(xcoor-xmax)>tol.and.abs(ycoor-ymin)>tol &
-				.and.abs(ycoor-ymax)>tol.and.abs(zcoor-zmin)>tol) then
-					nnodPML=nnodPML+1
-					nPMLid(nnodPML)=nnode
-					if (ix<nx) then!Do not need to care ny and nz. 
-						nPMLvp(nnodPML)=(ix-1)*nye*nze+(iz-1)*nye+iy 
-					elseif (ix==nx) then
-						nPMLvp(nnodPML)=(nx-2)*nye*nze+(iz-1)*nye+iy 
-					endif
-				endif
-			endif			
-			!		
 			!...establish equation numbers for this node
 			do i1=1,zz
 			!...elastoplastic off-fault, stress assigned in entire model,
@@ -544,67 +394,29 @@ do ix = 1, nx
 						numcount(9)=numcount(9)+1
 					endif
 				endif
-!3DPMI: section commented for 3D MPI
-				!!...find two node ranges at edges of the proc for MPI.
-				!! only do here as faults should not be at edges of iy or iz.
-				!! B.D. 4/19/09
-				!! node range for fnms() in faulting, equation range for brhs(), 
-				!£¡ alhs(). B.D. 5/2/09
-
-				!if(ix==1) then
-				!	if(iy==1 .and. iz==1 .and. i1==1) then
-				!		nr4mpi(1,1) = nnode
-				!	elseif(iy==2 .and. iz==2 .and. i1==1) then
-				!		er4mpi(1,1) = neq
-				!	elseif(iy==ny .and. iz==nz .and. i1==zz) then
-				!		nr4mpi(2,1) = nnode
-				!	elseif(iy==ny-1 .and. iz==nz .and. i1==zz) then
-				!		er4mpi(2,1) = neq
-				!	endif
-				!elseif(ix==nx) then
-				!	if(iy==1 .and. iz==1 .and. i1==1) then
-				!		nr4mpi(1,2) = nnode
-				!	elseif(iy==2 .and. iz==2 .and. i1==1) then
-				!		er4mpi(1,2) = neq
-				!	elseif(iy==ny .and. iz==nz .and. i1==zz) then
-				!		nr4mpi(2,2) = nnode
-				!	elseif(iy==ny-1 .and. iz==nz .and. i1==zz) then
-				!		er4mpi(2,2) = neq
-				!	endif
-				!endif
 			enddo ! enddo i1=1,ndof
 			!...identify output nodes (off-fault)
 			!Part1. Stations inside the region.
-			if(ix>1.and.ix<nx .and. iy>1.and.iy<ny .and. abs(zcoor)<tol) then  !at surface only
+			if(ix>1.and.ix<nx .and. iy>1.and.iy<ny) then  !at surface only
 				do i=1,n4nds
 					if(n4yn(i)==0) then
-						if(abs(xcoor-x4nds(1,i))<tol .or.&
-						(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
-						(xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
-						(x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
-						(x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
-							if(abs(ycoor-x4nds(2,i))<tol .or. &
-							(x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
-							(ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-							(x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
-							(x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
-								n4yn(i) = 1
-								n4out = n4out + 1
-								an4nds(1,n4out) = i
-								an4nds(2,n4out) = nnode
-								if(xcoor/=x4nds(1,i)) then
-								!...don't reset xcoor,ycoor for degeneration reason.
-								! but do reset xnode( ) to conform station coor. B.D. 1/9/12
-								!  xcoor=x4nds(1,i)
-								!  xnode(1,nnode)=xcoor
-								!	xnode(1,nnode) = x4nds(1,i)
+						if (abs(zcoor-x4nds(3,i))<tol) then
+							if(abs(xcoor-x4nds(1,i))<tol .or.&
+							(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
+							(xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
+							(x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
+							(x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
+								if(abs(ycoor-x4nds(2,i))<tol .or. &
+								(x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
+								(ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+								(x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
+								(x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+									n4yn(i) = 1
+									n4out = n4out + 1
+									an4nds(1,n4out) = i
+									an4nds(2,n4out) = nnode
+									exit 	!if node found, jump out the loop
 								endif
-								if(ycoor/=x4nds(2,i)) then
-								!  ycoor=x4nds(2,i)
-								!  xnode(2,nnode)=ycoor
-								!	xnode(2,nnode) = x4nds(2,i)
-								endif
-								exit 	!if node found, jump out the loop
 							endif
 						endif
 					endif
@@ -613,34 +425,24 @@ do ix = 1, nx
 			!...identify output nodes (off-fault)
 			!Part2. Stations along ix==1
 			!Big Bug!!!iz==nz is no valid for 3D MPI.
-			if(ix==1.and. iy>1.and.iy<ny .and. abs(zcoor)<tol) then  !at surface only
+			if(ix==1.and. iy>1.and.iy<ny) then  !at surface only
 				do i=1,n4nds
 					if(n4yn(i)==0) then
-						if(abs(xcoor-x4nds(1,i))<tol .or. &
-						(x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
-						(x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
-							if(abs(ycoor-x4nds(2,i))<tol .or. &
-							(x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
-							(ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-							(x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
-							(x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
-								n4yn(i) = 1
-								n4out = n4out + 1
-								an4nds(1,n4out) = i
-								an4nds(2,n4out) = nnode
-								if(xcoor/=x4nds(1,i)) then
-								!...don't reset xcoor,ycoor for degeneration reason.
-								! but do reset xnode( ) to conform station coor. B.D. 1/9/12
-								!  xcoor=x4nds(1,i)
-								!  xnode(1,nnode)=xcoor
-								!	xnode(1,nnode) = x4nds(1,i)
+						if (abs(zcoor-x4nds(3,i))<tol) then
+							if(abs(xcoor-x4nds(1,i))<tol .or. &
+							(x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
+							(x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
+								if(abs(ycoor-x4nds(2,i))<tol .or. &
+								(x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
+								(ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+								(x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
+								(x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+									n4yn(i) = 1
+									n4out = n4out + 1
+									an4nds(1,n4out) = i
+									an4nds(2,n4out) = nnode
+									exit 	!if node found, jump out the loop
 								endif
-								if(ycoor/=x4nds(2,i)) then
-								!  ycoor=x4nds(2,i)
-								!  xnode(2,nnode)=ycoor
-								!	xnode(2,nnode) = x4nds(2,i)
-								endif
-								exit 	!if node found, jump out the loop
 							endif
 						endif
 					endif
@@ -648,33 +450,23 @@ do ix = 1, nx
 			endif
 			!...identify output nodes (off-fault)
 			!Part3. Stations along ix==nx
-			if(ix==nx .and. iy>1.and.iy<ny .and. abs(zcoor)<tol) then  !at surface only
+			if(ix==nx .and. iy>1.and.iy<ny) then  !at surface only
 				do i=1,n4nds
 					if(n4yn(i)==0) then
-						if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
-						(xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) then
-							if(abs(ycoor-x4nds(2,i))<tol .or. &
-							(x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
-							(ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-							(x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
-							(x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
-								n4yn(i) = 1
-								n4out = n4out + 1
-								an4nds(1,n4out) = i
-								an4nds(2,n4out) = nnode
-								if(xcoor/=x4nds(1,i)) then
-								!...don't reset xcoor,ycoor for degeneration reason.
-								! but do reset xnode( ) to conform station coor. B.D. 1/9/12
-								!  xcoor=x4nds(1,i)
-								!  xnode(1,nnode)=xcoor
-								!	xnode(1,nnode) = x4nds(1,i)
+						if (abs(zcoor-x4nds(3,i))<tol) then
+							if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
+							(xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) then
+								if(abs(ycoor-x4nds(2,i))<tol .or. &
+								(x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
+								(ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+								(x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
+								(x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+									n4yn(i) = 1
+									n4out = n4out + 1
+									an4nds(1,n4out) = i
+									an4nds(2,n4out) = nnode
+									exit 	!if node found, jump out the loop
 								endif
-								if(ycoor/=x4nds(2,i)) then
-								!  ycoor=x4nds(2,i)
-								!  xnode(2,nnode)=ycoor
-								!	xnode(2,nnode) = x4nds(2,i)
-								endif
-								exit 	!if node found, jump out the loop
 							endif
 						endif
 					endif
@@ -700,12 +492,9 @@ do ix = 1, nx
 						stop 2001
 						endif
 						nsmp(1,nftnd(ift),ift) = nnode !slave node
-               			msnode=nx*ny*nz+nftnd(ift)						
-!nnode = nnode + 1
-						!D.L.			 
+               			msnode=nx*ny*nz+nftnd(ift)								 
 						locid(msnode)=ntag
-						dof1(msnode)=3
-						!			 
+						dof1(msnode)=3		 
 						nsmp(2,nftnd(ift),ift) = msnode !master node
 						plane2(ny+ift,iz) = msnode
 						xnode(1,msnode) = xcoor
@@ -790,9 +579,10 @@ do ix = 1, nx
 						ifd(ift)=iz-izfi(ift)+1
 						fltrc(1,ifs(ift),ifd(ift),ift) = msnode	!master node
 						fltrc(2,ifs(ift),ifd(ift),ift) = nftnd(ift) !fault node num in sequence
-						!...assign friction parameters for SCEC TPV19. B.D. 1/8/12
-						!...now for Ma and Andrews (2010) model. B.D. 6/1/12
-					!For TPV8	
+!------------------------------ZONE I-------------------------------!
+!------------Assign initial stresses for elastic version------------!
+!----------------------EQ V4.0-2016/10/02 D.Liu---------------------!
+!-------------------------------TPV 8-------------------------------!
 						fric(1,nftnd(ift),ift) = 0.760!mus
 						fric(2,nftnd(ift),ift) = 0.448!mud
 						! if (xcoor<-20e3.and.xcoor>-40e3.and.zcoor<-3e3.and.zcoor>-8e3)then
@@ -805,14 +595,11 @@ do ix = 1, nx
 						!endif
 						fric(5,nftnd(ift),ift) = 0.08  !Not used in TPV8 !T for forced rupture,i.e.,nucleation
 						fric(6,nftnd(ift),ift) = 0.0!rhow*grav*(-zcoor) !pore pressure						
-!------------------------------ZONE I-------------------------------!
-!------------Assign initial stresses for elastic version------------!
-!-----------------------------EQ V3.2.1-----------------------------!	
-!-----------------------Sep.19.2015/ D.Liu--------------------------!
-!-------------------------------TPV 8-------------------------------!						
+						
 						if (C_elastic==1) then
 							fric(7,nftnd(ift),ift) = 7378.0*zcoor! Initial normal stress for ElasticVersion
-							fric(8,nftnd(ift),ift) = abs(0.55*7378.0*zcoor)!Initial shear stress for ElasticVersion
+							if (abs(zcoor)<tol) fric(7,nftnd(ift),ift)=-7378.0*dx/4
+							fric(8,nftnd(ift),ift) = 0.55*abs(fric(7,nftnd(ift),ift))!Initial shear stress for ElasticVersion
 							if (abs(xcoor)<=1500.and.abs(zcoor--12e3)<=1500.)then
 								fric(8,nftnd(ift),ift) =1.0e6+1.005*0.760*abs(7378.0*zcoor)
 							endif
@@ -859,13 +646,15 @@ do ix = 1, nx
 			enddo  !do ift 
 			!...create elements
 			if(ix>=2 .and. iy>=2 .and. iz>=2) then
+                if(xcoor==0.and.ycoor==100..and.zcoor==-100.)then
+					write(*,*) 'me,nele',me,nelement
+				endif
 				nelement = nelement + 1
 				if(nelement>nelement1) then
 					write(*,*) 'more elements in meshgen than in mesh4num'
 					write(*,*) 'x,y,z',xcoor,ycoor,zcoor
 					pause
 				endif
-				!mat(nelement) = 1  !homogeneous half space
 				et(nelement) = 1 !brick element. D.L. Jan/23/2015
 				ien(1,nelement) = plane1(iy-1,iz-1)
 				ien(2,nelement) = plane2(iy-1,iz-1)
@@ -881,12 +670,10 @@ do ix = 1, nx
 				ids(nelement)=ntags
 				do i=1,8
 					do j=1,3
-					!label=label+dof1(ien(i,nelement)) !label=24,corner:
 						xc(j)=xc(j)+xnode(j,ien(i,nelement))
 					enddo
 				enddo
 				xc=xc/8
-				!if (label>24) then
 				if (xc(1)>PMLb(1).or.xc(1)<PMLb(2).or.xc(2)>PMLb(3).or.xc(2)<PMLb(4) &
 					.or.xc(3)<PMLb(5)) then
 					et(nelement) = 2
@@ -899,9 +686,8 @@ do ix = 1, nx
 				! endif
 !------------------------------ZONE II------------------------------!
 !Assign material types according to coordinates of center of the element!
-!-----------------------------EQ V3.2.1-----------------------------!	
-!-----------------------Sep.19.2015/ D.Liu--------------------------!
-			! !For Double-couple point source. Ma and Liu (2006) 	
+!---------------------EQ V4.1-2016/10/02 D.Liu----------------------!
+			!!For Double-couple point source. Ma and Liu (2006) 	
 				! mat(nelement,1)=2800.
 				! mat(nelement,2)=1500.
 				! mat(nelement,3)=2600.
@@ -967,9 +753,7 @@ do ix = 1, nx
 !---------------------------ZONE III--------------------------------!
 !------------Assign initial stresses for plastic version------------!
 !-----------------Use 1D s1 to store initial stress-----------------!
-!-----------------------Jan.23.2015/ D.Liu--------------------------!
-!-----------------------------EQ V3.2.1-----------------------------!	
-!-----------------------Sep.19.2015/ D.Liu--------------------------!	
+!---------------------EQ V4.1-2016/10/02 D.Liu----------------------!	
 				if (C_elastic==0) then				
 					tmp1 = -0.5*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
 					tmp2 = tmp1 * grav
@@ -988,53 +772,6 @@ do ix = 1, nx
 					endif
 				endif
 !--------------------------END ZONE III-----------------------------!				
-				!...when the current node is one element above the branch fault in y-coor,
-				! one hexahedron degenerates into two wedges. B.D. 1/7/12
-				!          if(xcoor>=(fltxyz(1,1,2)-tol).and.xcoor<=(fltxyz(2,1,2)+tol).and. &
-				!            ycoor>(fltxyz(1,2,2)+dy-tol).and.ycoor<=(fltxyz(2,2,2)+dy+tol).and. &
-				!            zcoor>=(fltxyz(1,3,2)-tol).and.zcoor<=(fltxyz(2,3,2)+tol)) then
-				!            !above is x,y,z ranges for possible degeneation. B.D. 1/7/12
-				!            if(abs(ycoor+xcoor*dtan(brangle)-dy)<tol) then !degenerate
-				!              ien(1,nelement) = plane1(iy,iz-1)
-				!              ien(2,nelement) = plane1(iy-1,iz-1)
-				!              ien(3,nelement) = plane2(iy-1,iz-1)
-				!              ien(4,nelement) = ien(3,nelement)
-				!              ien(5,nelement) = plane1(iy,iz)
-				!              ien(6,nelement) = plane1(iy-1,iz)
-				!              ien(7,nelement) = plane2(iy-1,iz)
-				!              ien(8,nelement) = ien(7,nelement) 
-				!              nelement = nelement + 1 !one more wedge element
-				!              mat(nelement) = 1
-				!              ien(1,nelement) = plane2(iy-1,iz-1)
-				!              ien(2,nelement) = plane2(iy,iz-1)
-				!              ien(3,nelement) = plane1(iy,iz-1)
-				!              ien(4,nelement) = ien(3,nelement)
-				!              ien(5,nelement) = plane2(iy-1,iz)
-				!              ien(6,nelement) = plane2(iy,iz)
-				!              ien(7,nelement) = plane1(iy,iz)
-				!              ien(8,nelement) = ien(7,nelement)
-				!              !assign initial stress & pore pressure for this element. B.D. 1/8/12
-				!              !same depth as nelement-1; only for possible nonzero components.
-				!              eleporep(nelement) = eleporep(nelement-1)
-				!              elestress(1,nelement) = elestress(1,nelement-1)
-				!              elestress(2,nelement) = elestress(2,nelement-1)
-				!              elestress(3,nelement) = elestress(3,nelement-1)
-				!              elestress(6,nelement) = elestress(6,nelement-1)
-				!            endif
-				!          endif
-				!          !special treatment for using master nodes above the branch fault (in y-coor).
-				!          ! both degenerated immediately above branch & regular one more ebove. B.D. 1/13/12
-				!          if(xcoor>(fltxyz(1,1,2)+tol).and.xcoor<=(fltxyz(2,1,2)+dx+tol).and. &
-				!            zcoor>(fltxyz(1,3,2)-tol).and.ycoor>(-xcoor*dtan(brangle)+tol).and.&
-				!            ycoor<-xcoor*dtan(brangle)+3*dy) then
-				!            do i=1,nftnd(2)
-				!              do k=1,8
-				!                if(ien(k,nelement)==nsmp(1,i,2)) then
-				!                  ien(k,nelement) = nsmp(2,i,2)  !use master node for the node!
-				!                endif
-				!              enddo
-				!            enddo
-				!          	endif
 			endif!if element
 		enddo!iy
     enddo!iz
@@ -1048,18 +785,12 @@ if (maxs>=(4*maxm)) then
 	write(*,*) '4*maxm',maxm,'is not enough for maxs',maxs
 	stop 2002
 endif
-!   write(*,*) 'nnd,nele,nftnd,neq',nnode,nelement,nftnd,neq
-!   write(*,*) 'nx,ny,nz,dx,dy,dz',nx,ny,nz,dx,dy,dz
-   
-  !...verify consistence with mesh4num.f90. B.D. 4/30/09
-  ! for multiple faults now. 1/7/12
-if(nnode/=nx*ny*nz.or.msnode/=nnode1.or.nelement/=nelement1.or.neq/=neq1.or.nsurnd/=nsurnd1.or.nnodPML/=nnodPML1) then
-	write(*,*) 'Inconsistency in node/element/equation/nsurnd/nnodPML between meshgen and mesh4num: stop!',me
+if(nnode/=nx*ny*nz.or.msnode/=nnode1.or.nelement/=nelement1.or.neq/=neq1.or.nsurnd/=nsurnd1) then
+	write(*,*) 'Inconsistency in node/element/equation/nsurnd between meshgen and mesh4num: stop!',me
 	write(*,*) 'nnode&nnode1=',nnode,nnode1
 	write(*,*) 'nelement,nelement1=',nelement,nelement1
 	write(*,*) 'neq,neq1=',neq,neq1
 	write(*,*) 'nsurnd,nsurnd1=',nsurnd,nsurnd1
-	write(*,*) 'nnodPML,nnodPML1',nnodPML,nnodPML1
 	write(*,*) 'nnode,nx,ny,nz',nnode,nx,ny,nz
 	write(*,*) 'msnode,nnode1',msnode,nnode1
 	stop 2003
@@ -1075,31 +806,6 @@ do i=1,ntotft
 		stop 2005
 	endif
 enddo
-!-------------------------------------------------------------------!
-!---------Loop over nodes in PML to compute vp for these nodes------!
-!------------------Oct.5.2015/ D. Liu-------------------------------!
-!---------Attention: Fault should not penetrate into PML------------!
-!(Abandoned)Oct.6.2015. It is very slow due to large loops----------!
-! do i=1,nnodPML
-	! write(*,*) 'i,me=',i,me
-	! ncount=0 
-	! vptemp=0.0
-	! do j=1,nelement
-		! do k=1,8 
-			! if (ien(k,j)==nPMLid(i)) then
-				! ncount=ncount+1
-				! vptemp=vptemp+mat(j,1)
-			! endif
-		! enddo
-	! enddo 
-	! nPMLvp(i)=vptemp/ncount
-	! if (ncount>8.or.nPMLvp(i)>6475.5) then 
-		! write(*,*) 'ncount,i=',ncount
-		! write(*,*) 'nPMLvp=',nPMLvp(i)
-		! write(*,*) 'x,y,z=',xnode(1,nPMLid(i)),xnode(2,nPMLid(i)),xnode(3,nPMLid(i))
-		! stop 2006
-	! endif
-! enddo 
 !-------------------------------------------------------------------!
 !...calculate area associated with each fault node pair and distance from source. 
 !B.D. 4/19/09
@@ -1157,16 +863,6 @@ do ift=1,ntotft
 	endif!end if nftnd=0/ not
 	!
 	time1 = MPI_WTIME()
-	!*******************MPI***************************
-	!...need to deal with edge nodes of two MPI regions for area.
-	!   make use of fltrc(2,i,ifd) for i=1 and ifs as edges. B.D. 4/20/09
-	! mpi_send arn() for fltrc(2,1,1:ifd) to me-1, for fltrc(2,ifs,1:ifd) to me+1;
-	! sum current me's arn() of fltrc(2,ifs,1:ifd) and received fltrc(2,1,1:ifd) from 
-	! me+1, and sum me's arn() of fltrc(2,1,1:ifd) and received fltrc(2,ifs,1:ifd) from
-	! me-1.
-	!...need to deal with special case: either me or me-1/me+1 has zero fault node.
-	! B.D. 10/17/09 
-
   	!3DMPI: Prepare for MPI partitioning
   	fltMPI=.false.
 
@@ -1261,7 +957,7 @@ do ift=1,ntotft
     	endif !bndr/=0
 	endif !npx>1
 !*****************************************************************************************
- 	if (npy < 1) then   !MPI:no fault message passing along y due to the x-z vertical fault.
+ 	if (npy > 1) then   !MPI:no fault message passing along y due to the x-z vertical fault.
    		bndf=1  !front boundary
    		bndb=ny ! back boundary
    		if (mey == master) then
@@ -1375,76 +1071,6 @@ do ift=1,ntotft
        			endif
     	endif !bndu/=0
   	endif !npz>1
-!	if (nprocs > 1) then
-!		if (me == master) then
-!			call mpi_sendrecv(nftnd(ift), 1, MPI_INTEGER, 1, 1000+me, &
-!                        itmp1, 1, MPI_INTEGER, 1, 1000+me+1, &
-!       		MPI_COMM_WORLD, istatus, ierr)
-!			if(nftnd(ift)>0 .and. itmp1>0) then  
-!				allocate(btmp(ifd(ift)),btmp1(ifd(ift)))
-!				do i = 1, ifd(ift)
-!					btmp(i)=arn(fltrc(2,ifs(ift),i,ift),ift)
-!				enddo
-!				call mpi_sendrecv(btmp, ifd(ift), MPI_DOUBLE_PRECISION, 1, 1000+me, &
-!                        btmp1, ifd(ift), MPI_DOUBLE_PRECISION, 1, 1000+me+1, &
-!                        MPI_COMM_WORLD, istatus, ierr)
-!				do i=1, ifd(ift)
-!					arn(fltrc(2,ifs(ift),i,ift),ift) = arn(fltrc(2,ifs(ift),i,ift),ift) + btmp1(i)
-!				enddo
-!				deallocate(btmp,btmp1)       
-!			endif
-!		elseif (me == nprocs-1) then
-!			call mpi_sendrecv(nftnd(ift), 1, MPI_INTEGER, nprocs-2, 1000+me, &
- !                       itmp1, 1, MPI_INTEGER, nprocs-2, 1000+me-1, &
- !      		MPI_COMM_WORLD, istatus, ierr)
-!			if(nftnd(ift)>0 .and. itmp1>0) then
-!				allocate(btmp(ifd(ift)),btmp1(ifd(ift)))
-!				do i = 1, ifd(ift)
-!					btmp(i)=arn(fltrc(2,1,i,ift),ift)
-!				enddo
-!				call mpi_sendrecv(btmp, ifd(ift), MPI_DOUBLE_PRECISION, nprocs-2, 1000+me, &
- !                       btmp1, ifd(ift), MPI_DOUBLE_PRECISION, nprocs-2, 1000+me-1, &
-  !                      MPI_COMM_WORLD, istatus, ierr)
-!				do i=1, ifd(ift)
-!					arn(fltrc(2,1,i,ift),ift) = arn(fltrc(2,1,i,ift),ift) + btmp1(i)
-!				enddo
-!				deallocate(btmp,btmp1)       
-!			endif
-!		elseif (me > 0 .and. me < nprocs-1) then
-!			call mpi_sendrecv(nftnd(ift), 1, MPI_INTEGER, me-1, 1000+me, &
- !                      itmp1, 1, MPI_INTEGER, me-1, 1000+me-1,&
-  !                     MPI_COMM_WORLD, istatus, ierr)
-!			call mpi_sendrecv(nftnd(ift), 1, MPI_INTEGER, me+1, 1000+me, &
- !                      itmp2, 1, MPI_INTEGER, me+1, 1000+me+1, &
-  !                     MPI_COMM_WORLD, istatus, ierr)
-!			if(nftnd(ift)>0 .and. itmp1>0) then
-!				allocate(btmp(ifd(ift)), btmp1(ifd(ift)))
-!				do i = 1,ifd(ift)
-!					btmp(i)=arn(fltrc(2,1,i,ift),ift)
-!				enddo
-!				call mpi_sendrecv(btmp, ifd(ift), MPI_DOUBLE_PRECISION, me-1, 1000+me, &
- !                        btmp1, ifd(ift), MPI_DOUBLE_PRECISION, me-1, 1000+me-1,&
-  !                       MPI_COMM_WORLD, istatus, ierr)
-!				do i=1,ifd(ift)
-!					arn(fltrc(2,1,i,ift),ift) = arn(fltrc(2,1,i,ift),ift) + btmp1(i)
-!				enddo
-!				deallocate(btmp,btmp1)       
-!			endif
-!			if(nftnd(ift)>0 .and. itmp2>0) then
-!				allocate(btmp(ifd(ift)),btmp1(ifd(ift)))
-!				do i = 1,ifd(ift)
-!					btmp(i)=arn(fltrc(2,ifs(ift),i,ift),ift)
-!				enddo
-!				call mpi_sendrecv(btmp, ifd(ift), MPI_DOUBLE_PRECISION, me+1, 1000+me, &
- !                        btmp1, ifd(ift), MPI_DOUBLE_PRECISION, me+1, 1000+me+1, &
-  !                       MPI_COMM_WORLD, istatus, ierr)
-!				do i=1,ifd(ift)
-!					arn(fltrc(2,ifs(ift),i,ift),ift) = arn(fltrc(2,ifs(ift),i,ift),ift) + btmp1(i)
-!				enddo
-!				deallocate(btmp,btmp1)       
-!			endif
-!		endif
-!	endif
 enddo !ift=i:nft 
 !
 time2 = MPI_WTIME()

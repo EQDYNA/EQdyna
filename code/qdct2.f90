@@ -1,13 +1,10 @@
-SUBROUTINE qdct2(numel,numnp,neq,shl,ien,x,mat,rdampm,alhs, & !delete lm
-eledet,elemass,eleshp,fnms,ss,phi,er4mpi,nr4mpi,master,me,nprocs, &
-maxm,id1,locid,dof1)!Adding maxm,id1,loci
+SUBROUTINE qdct2(numel,numnp,neq,shl,ien,x,mat,alhs,eledet,elemass,&
+				eleshp,fnms,ss,phi,me,maxm,id1,locid,dof1)
 use globalvar
 implicit none
 include 'mpif.h'
-!
 !...program to calcuate lumped mass matrix for 8-node hexahedral
 !	(brick),elastic continue element and assemble.
-!
 logical :: lcubic
 integer(kind=4) :: nel,i,j,k,k1,m,itmp,itmp1,itmp2,&
 	numel,numnp,neq
@@ -21,8 +18,6 @@ real(kind=8),dimension(8,4) :: ha = reshape((/ &
 	1,1,-1,-1,-1,-1,1,1, 1,-1,-1,1,-1,1,1,-1, &
 	1,-1,1,-1,1,-1,1,-1, -1,1,-1,1,1,-1,1,-1/), &
 	(/8,4/))
-!...material properties
-real (kind=8),dimension(numat) :: rdampm
 !...element arrays
 real(kind=8),dimension(numel,5) :: mat	    
 integer (kind=4),dimension(nen,numel) :: ien
@@ -39,8 +34,7 @@ real (kind=8),dimension(neq) :: alhs
 real (kind=8),dimension(6,numel) :: ss
 real (kind=8),dimension(nen,4,numel) :: phi
 !...MPI
-integer  master, me, nprocs, ierr, rlp, rr, jj
-integer (kind=4),dimension(2,2)::er4mpi,nr4mpi !equation, node range for MPI
+integer  me, ierr, rlp, rr, jj
 integer istatus(MPI_STATUS_SIZE)
 real (kind=8), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
 !DL variables for PML layer
@@ -50,8 +44,6 @@ integer (kind=4),dimension(numnp)::locid,dof1
 !*******3D MPI partitioning*************
 integer(kind=4)::mex,mey,mez,ix,iy,iz,nodenumtemp,ntagMPI,izz,nx,ny,nz
 integer(kind=4)::bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj
-!
-!
 !!$omp parallel do private(nel,i,j,k,k1,m, xl)
 !!$omp parallel do default(shared) private(nel,i,j,k,k1,m, xl,eleffm,lcubic,&
 !!$omp	itmp,det,shl,shg,xs,constm,vol,ce,co)
@@ -81,7 +73,7 @@ do nel=1,numel
 	!	point.
 	call qdcshg(xl,det,shl,shg,nel,xs,lcubic)
 	!...form mass matrix for left-hand-side
-	constm = (1.0+rdampm(m)*0.5*dt)*mat(nel,3)
+	constm = (1.0+rdampm*0.5*dt)*mat(nel,3)
 	if(constm /= 0.0) then
 		call contm(shg,det,eleffm,constm)
 	endif
@@ -175,6 +167,9 @@ do nel=1,numel
 		k1= 1 + (i-1) * ned
 		fnms(k) = fnms(k) + eleffm(k1)
 	enddo
+        if (nel==7744.and.me==43) then
+                write(*,*) eleffm(1),eleffm(2),eleffm(3)
+        endif
 	!...SS matrix for "hrglss"
 	call vlm(xl,vol)
 	ce=mat(nel,5)*(3*mat(nel,4)+2*mat(nel,5))/(mat(nel,4)+mat(nel,5))
@@ -671,59 +666,8 @@ enddo
 		!write(*,*) 'me',me,'Finished BNDU-alhs'
   	endif!if npz>1
 	call mpi_barrier(MPI_COMM_WORLD, ierr)
-	! do i=1,numnp
-	! if ((me==22.and.i==1).or.(me==18.and.i==106).or.(me==2.and.i==679036).or.&
-	! (me==17.and.i==6466).or.(me==21.and.i==6361).or.(me==5.and.i==685291).or.&
-	! (me==1.and.i==685396).or.(me==6.and.i==678931)) then 
-	! write(*,*) me,'-1',alhs(id1(locid(i)+1))
-	! write(*,*) me,'-2',alhs(id1(locid(i)+2))
-	! write(*,*) me,'-3',alhs(id1(locid(i)+3))
-	! endif
-	! enddo
-	
-	! do i=1,numnp
-	! if ((me==21.and.i==54).or.(me==22.and.i==3241).or.(me==14.and.i==223939).or.&
-	! (me==23.and.i==1).or.(me==13.and.i==217511).or.(me==12.and.i==223992).or.(me==15.and.i==220699).or.&
-	! (me==20.and.i==3294)) then 
-	! write(*,*) me,'C-1',alhs(id1(locid(i)+1)),dof1(i)
-	! write(*,*) me,'C-2',alhs(id1(locid(i)+2))
-	! write(*,*) me,'C-3',alhs(id1(locid(i)+3))
-	! write(*,*) me,'C-4',alhs(id1(locid(i)+4))
-	! write(*,*) me,'C-5',alhs(id1(locid(i)+5))
-	! write(*,*) me,'C-6',alhs(id1(locid(i)+6))
-	! write(*,*) me,'C-7',alhs(id1(locid(i)+7))
-	! write(*,*) me,'C-8',alhs(id1(locid(i)+8))
-	! write(*,*) me,'C-9',alhs(id1(locid(i)+9))
-	! write(*,*) me,'C-10',alhs(id1(locid(i)+10))
-	! write(*,*) me,'C-11',alhs(id1(locid(i)+11))
-	! write(*,*) me,'C-12',alhs(id1(locid(i)+12))	
-	! endif
-	
-	! if ((me==18.and.i==318).or.(me==20.and.i==271).or.(me==10.and.i==216929).or.&
-	! (me==12.and.i==220969)) then 
-	! write(*,*) me,'P-1',alhs(id1(locid(i)+1)),dof1(i)
-	! write(*,*) me,'P-2',alhs(id1(locid(i)+2))
-	! write(*,*) me,'P-3',alhs(id1(locid(i)+3))
-	! write(*,*) me,'P-4',alhs(id1(locid(i)+4))
-	! write(*,*) me,'P-5',alhs(id1(locid(i)+5))
-	! write(*,*) me,'P-6',alhs(id1(locid(i)+6))
-	! write(*,*) me,'P-7',alhs(id1(locid(i)+7))
-	! write(*,*) me,'P-8',alhs(id1(locid(i)+8))
-	! write(*,*) me,'P-9',alhs(id1(locid(i)+9))
-	! write(*,*) me,'P-10',alhs(id1(locid(i)+10))
-	! write(*,*) me,'P-11',alhs(id1(locid(i)+11))
-	! write(*,*) me,'P-12',alhs(id1(locid(i)+12))	
-	! endif
-	
-	! if (me==13.and.i==217511) then 
-	! write(*,*) me,'I-1',alhs(id1(locid(i)+1)),dof1(i)
-	! write(*,*) me,'I-2',alhs(id1(locid(i)+2))
-	! write(*,*) me,'I-3',alhs(id1(locid(i)+3))
-	 ! endif
-	! enddo	
-!****************************************************************
-!****************3D MPI partioning for fnms**********************
-!****************along x axis**********************
+!===============================3DMPI===============================!
+!=====================Partitioning along x axis=====================!
 if (npx>1) then
 	rr=ny*nz+fltnum(1)
 	jj=ny*nz+fltnum(2)
@@ -811,7 +755,7 @@ if (npx>1) then
 	deallocate(btmp, btmp1, btmp2, btmp3)
 endif !npx>1
 call mpi_barrier(MPI_COMM_WORLD, ierr)
-!****************along y axis**********************
+!=====================Partitioning along y axis=====================!
 if (npy>1) then
 	rr=nx*nz+fltnum(3)
 	jj=nx*nz+fltnum(4)
@@ -899,7 +843,7 @@ if (npy>1) then
 	deallocate(btmp, btmp1, btmp2, btmp3)
 endif !npy>1
 call mpi_barrier(MPI_COMM_WORLD, ierr)
-!****************along z axis**********************
+!=====================Partitioning along z axis=====================!
 if (npz>1) then
 	rr=nx*ny+fltnum(5)
 	jj=nx*ny+fltnum(6)
@@ -987,128 +931,4 @@ if (npz>1) then
 	deallocate(btmp, btmp1, btmp2, btmp3)
 endif !npz>1
 call mpi_barrier(MPI_COMM_WORLD, ierr)
-!write(*,*) '****************************'
-!write(*,*) 'me',me,'Finshed Partitioning'
-!write(*,*) '****************************'
-!	jj = er4mpi(2,1)-er4mpi(1,1)
-!	rr = er4mpi(2,2)-er4mpi(1,2)
-!if (nprocs > 1) then
-!	if (me == master .or. me == nprocs-1) then
-!		if (me == master) then
-!			allocate(btmp(rr))
-!			allocate(btmp1(rr))
-!			do i = 1, rr
-!				btmp(i)=alhs(er4mpi(1,2)+i-1)
-!			enddo
-!			call mpi_sendrecv(btmp,  rr, MPI_DOUBLE_PRECISION, 1, 200000+me, &
-!					btmp1, rr, MPI_DOUBLE_PRECISION, 1, 200000+me+1, &
-!					MPI_COMM_WORLD, istatus, ierr)
-!			do i=1, rr
-!				alhs(er4mpi(1,2)+i-1) = alhs(er4mpi(1,2)+i-1) + btmp1(i)
-!			enddo
-!		endif
-!		if (me == nprocs-1) then
-!			allocate(btmp(jj))
-!			allocate(btmp1(jj))
-!			do i = 1, jj
-!				btmp(i)=alhs(er4mpi(1,1)+i-1)
-!			enddo
-!			call mpi_sendrecv(btmp, jj, MPI_DOUBLE_PRECISION, nprocs-2, 200000+me, &
-!					btmp1, jj, MPI_DOUBLE_PRECISION, nprocs-2, 200000+me-1, &
-!					MPI_COMM_WORLD, istatus, ierr)
-!			do i=1, jj
-!				alhs(er4mpi(1,1)+i-1) = alhs(er4mpi(1,1)+i-1) + btmp1(i)
-!			enddo
-!		endif
-!	elseif (me > 0 .and. me < nprocs-1) then
-!		allocate(btmp(rr))
-!		allocate(btmp1(rr))
-!		allocate(btmp2(jj))
-!		allocate(btmp3(jj))
-!		do i = 1,rr
-!			btmp(i)=alhs(er4mpi(1,2)+i-1)
-!		enddo
-!		do i = 1,jj
-!			btmp2(i)=alhs(er4mpi(1,1)+i-1)
-!		enddo
-!		call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me-1, 200000+me, &
-!							btmp3, jj, MPI_DOUBLE_PRECISION, me-1, 200000+me-1,&
-!							MPI_COMM_WORLD, istatus, ierr)
-!		do i=1, jj
-!			alhs(er4mpi(1,1)+i-1) = alhs(er4mpi(1,1)+i-1) + btmp3(i)
-!		enddo
-!		call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me+1, 200000+me, &
-!							btmp1, rr, MPI_DOUBLE_PRECISION, me+1, 200000+me+1, &
-!
-!
-!							MPI_COMM_WORLD, istatus, ierr)
-!		do i=1, rr
-!			alhs(er4mpi(1,2)+i-1) = alhs(er4mpi(1,2)+i-1) + btmp1(i)
-!		enddo
-!		deallocate(btmp2)
-!		deallocate(btmp3)
-!	endif
-!	deallocate(btmp)
-!	deallocate(btmp1)
-!	!...assemble fnms() for common nodes between adjacent MPI procs.
-!	!   4/19/09
-!	jj = nr4mpi(2,1)-nr4mpi(1,1)
-!	rr = nr4mpi(2,2)-nr4mpi(1,2)
-!	if (me == master .or. me == nprocs-1) then
-!		if (me == master) then
-!			allocate(btmp(rr))
-!			allocate(btmp1(rr))
-!			do i = 1, rr
-!				btmp(i)=fnms(nr4mpi(1,2)+i-1)
-!			enddo
-!			call mpi_sendrecv(btmp,  rr, MPI_DOUBLE_PRECISION, 1, 200000+me, &
-!								btmp1, rr, MPI_DOUBLE_PRECISION, 1, 200000+me+1, &
-!								MPI_COMM_WORLD, istatus, ierr)
-!			do i=1, rr
-!				fnms(nr4mpi(1,2)+i-1) = fnms(nr4mpi(1,2)+i-1) + btmp1(i)
-!			enddo
-!		endif
-!		if (me == nprocs-1) then
-!			allocate(btmp(jj))
-!			allocate(btmp1(jj))
-!			do i = 1, jj
-!				btmp(i)=fnms(nr4mpi(1,1)+i-1)
-!			enddo
-!			call mpi_sendrecv(btmp, jj, MPI_DOUBLE_PRECISION, nprocs-2, 200000+me, &
-!								btmp1, jj, MPI_DOUBLE_PRECISION, nprocs-2, 200000+me-1, &
-!								MPI_COMM_WORLD, istatus, ierr)
-!			do i=1, jj
-!				fnms(nr4mpi(1,1)+i-1) = fnms(nr4mpi(1,1)+i-1) + btmp1(i)
-!			enddo
-!		endif
-!	elseif (me > 0 .and. me < nprocs-1) then
-!		allocate(btmp(rr))
-!		allocate(btmp1(rr))
-!		allocate(btmp2(jj))
-!		allocate(btmp3(jj))
-!		do i = 1,rr
-!			btmp(i)=fnms(nr4mpi(1,2)+i-1)
-!		enddo
-!		do i = 1,jj
-!			btmp2(i)=fnms(nr4mpi(1,1)+i-1)
-!		enddo
-!		call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me-1, 200000+me, &
-!							btmp3, jj, MPI_DOUBLE_PRECISION, me-1, 200000+me-1,&
-!							MPI_COMM_WORLD, istatus, ierr)
-!		do i=1, jj
-!			fnms(nr4mpi(1,1)+i-1) = fnms(nr4mpi(1,1)+i-1) + btmp3(i)
-!		enddo
-!		call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me+1, 200000+me, &
-!							btmp1, rr, MPI_DOUBLE_PRECISION, me+1, 200000+me+1, &
-!						MPI_COMM_WORLD, istatus, ierr)
-!		do i=1, rr
-!			fnms(nr4mpi(1,2)+i-1) = fnms(nr4mpi(1,2)+i-1) + btmp1(i)
-!		enddo
-!		deallocate(btmp2)
-!		deallocate(btmp3)
-!	endif
-!	deallocate(btmp)
-!	deallocate(btmp1)
-!endif 
-!
 end SUBROUTINE qdct2
