@@ -26,8 +26,7 @@ real(kind=8),allocatable::vpstruct(:,:)
 !Heteogeneous stress setup
 real(kind=8)::initialinput(3,91001)
 !...for initial stress and pore pressure of elements: inelastic. B.D. 1/8/12
-real (kind=8)::grav=9.8,rhow=1000.,b22=0.44327040,b33=0.50911055, &
-	b23=-0.15487679
+real (kind=8)::grav=9.8,omega
 logical,dimension(ntotft) :: ynft
 character(len=30)::meshfile,mm
 character(len=100)::fname
@@ -42,31 +41,60 @@ character(len=100)::fname
 !-------------------------------------------------------------------!
 write(mm,'(i6)') me
 mm = trim(adjustl(mm))
-!on-fault station coordinates are given here 
-!(along strike, z).
-xonfs=reshape((/0.0,0.0,&
-				4.5,0.0,&
-				12.0,0.0,&
-				0.0,-4.5,&
-				0.0,-7.5,&
-				4.5,-7.5,&
-				12.0,-7.5,&
-				0.0,-12.0/),(/2,8,1/))
-!(along strike,normal,z(negative)).				
-x4nds=reshape((/0.0,-3.0,0.0,&
-				0.0,-2.0,0.0,&
-				0.0,-1.0,0.0,&
-				0.0,1.0,0.0,&
-				0.0,2.0,0.0,&
-				0.0,3.0,0.0,&
-				12.0,-3.0,0.0,&
-				12.0,3.0,0.0,&
-				0.0,0.5,-0.3,&
-				0.0,-0.5,-0.3,&
-				0.0,1.0,-0.3,&
-				0.0,-1.0,-0.3,&
-				12.0,3.0,-12.0,&
-				12.0,-3.0,-12.0/),(/3,14/))
+!===================================================================!
+!==============================ZONE A===============================!
+!on-fault station coordinates (along strike, z).
+xonfs=reshape((/-5.0,0.0,&
+				15.0,0.0,&
+				-5.0,-5.0,&
+				15.0,-5.0,&
+				-15.0,-10.0,&
+				-5.0,-10.0,&
+				0.0,-10.0,&
+				5.0,-10.0,&
+				10.0,-10.0,&
+				15.0,-10.0,&
+				-5.0,-15.0,&
+				15.0,-15.0/),(/2,12,1/))
+!off-fault station coordinates(along strike,normal,z(negative)).				
+x4nds=reshape((/-20.0,-20.0,0.0,&
+				0.0,-20.0,0.0,&
+				20.0,-20.0,0.0,&
+				-20.0,-10.0,0.0,&
+				0.0,-10.0,0.0,&
+				20.0,-10.0,0.0,&
+				-5.0,-3.0,0.0,&
+				5.0,-3.0,0.0,&
+				15.0,-3.0,0.0,&!9
+				-5.0,3.0,0.0,&
+				5.0,3.0,0.0,&
+				15.0,3.0,0.0,&
+				-20.0,10.0,0.0,&
+				0.0,10.0,0.0,&
+				20.0,10.0,0.0,&
+				-20.0,20.0,0.0,&
+				0.0,20.0,0.0,&
+				20.0,20.0,0.0/),(/3,18/))
+!==========================END ZONE A===============================!
+!===================================================================!
+!==============================ZONE B===============================!
+!Sep.21.2015. D.Liu/ Loading vp structures--------------------------!
+	! write(*,*) 'nxe,me',nxe,me
+	! write(*,*) 'limits',xline(1),xline(nx)
+	! write(*,*) (xline(1)+250-(xlinet(1)+250))/500+1,(xline(nx)+250-(xlinet(1)+250))/500+1
+	!nxe=nx-1
+	!nye=ny-1 
+	!nze=nz-1!!Probematic!!!Should change later.
+	! fname="/scratch/dunyuliu/256coreVP#9/vpstruct"//mm
+	! allocate(vpstruct(nxe*5250,10))
+	! open(3002,file=fname,form='formatted',status='old')
+	! do ivp1=1,nxe*105*50
+		! read(3002,*) (vpstruct(ivp1,ivp2),ivp2=1,10)
+	! enddo
+	! close(3002)
+	! write(*,*) 'Finish loading vp',me
+!==========================END ZONE B===============================!
+!===================================================================!
 xonfs=xonfs*1000.  !convert from km to m
 x4nds=x4nds*1000.
 n4yn=0
@@ -144,37 +172,7 @@ else
 		k1 = mex - (npx - rr)
 		xline(ix) = xlinet(rlp*mex-mex+k1+ix)
     enddo
-endif
-!-------------------------------------------------------------------!
-!Sep.21.2015. D.Liu/ Loading vp structures--------------------------!
-	! write(*,*) 'nxe,me',nxe,me
-	! write(*,*) 'limits',xline(1),xline(nx)
-	! write(*,*) (xline(1)+250-(xlinet(1)+250))/500+1,(xline(nx)+250-(xlinet(1)+250))/500+1
-	!nxe=nx-1
-	!nye=ny-1 
-	!nze=nz-1!!Probematic!!!Should change later.
-	! fname="/scratch/dunyuliu/256coreVP#9/vpstruct"//mm
-	! allocate(vpstruct(nxe*5250,10))
-	! open(3002,file=fname,form='formatted',status='old')
-	! do ivp1=1,nxe*105*50
-		! read(3002,*) (vpstruct(ivp1,ivp2),ivp2=1,10)
-	! enddo
-	! close(3002)
-	! write(*,*) 'Finish loading vp',me
-!-------------------------------------------------------------------!	
-!  if(me==nprocs-1) then
-!    nx=rlp + rr
-!  else
-!    nx=rlp + 1
-!  endif
-!  allocate(xline(nx))
-!  do ix=1,nx
-!    xline(ix) = xlinet(me*rlp+ix)
-!  enddo
-!write(*,*) 'me=',me,'xline(1),xline(nx)',xline(1),xline(nx),'in meshgen'
-  !
-  !...determine num of nodes along y
-  !nyuni = dis4uniF + fltxyz(2,1,1)/dx + dis4uniB + 1
+endif	
 nyuni = dis4uniF + dis4uniB + 1
 ystep = dy
 !ycoor = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
@@ -581,21 +579,20 @@ do ix = 1, nx
 						fltrc(2,ifs(ift),ifd(ift),ift) = nftnd(ift) !fault node num in sequence
 !------------------------------ZONE I-------------------------------!
 !------------Assign initial stresses for elastic version------------!
-!----------------------EQ V4.0-2016/10/02 D.Liu---------------------!
-!-------------------------------TPV 8-------------------------------!
-						fric(1,nftnd(ift),ift) = 0.760!mus
-						fric(2,nftnd(ift),ift) = 0.448!mud
+!----------------------EQ V4.1-2016/10/03 D.Liu---------------------!
+!-------------------------------TPV 27v2-------------------------------!
+						fric(1,nftnd(ift),ift) = 0.18
+						fric(2,nftnd(ift),ift) = 0.12
 						! if (xcoor<-20e3.and.xcoor>-40e3.and.zcoor<-3e3.and.zcoor>-8e3)then
 							! fric(2,nftnd(ift),ift) = 0.5   !mud
 						! endif						
-						fric(3,nftnd(ift),ift) = 0.50    !D0
-						fric(4,nftnd(ift),ift) = 1.0e6  !cohesion
-						!if (abs(zcoor)<4000) then
-						!	fric(4,nftnd(ift),ift) = 0.4e6+0.0002e6*(4000-abs(zcoor))  !cohesion
-						!endif
-						fric(5,nftnd(ift),ift) = 0.08  !Not used in TPV8 !T for forced rupture,i.e.,nucleation
-						fric(6,nftnd(ift),ift) = 0.0!rhow*grav*(-zcoor) !pore pressure						
-						
+						fric(3,nftnd(ift),ift) = 0.30    !D0
+						fric(4,nftnd(ift),ift) = 0.4e6  !cohesion
+						if (abs(zcoor)<5000) then
+							fric(4,nftnd(ift),ift) = 0.4e6+0.00072e6*(5000-abs(zcoor))  !cohesion
+						endif
+						fric(5,nftnd(ift),ift) = 0.03  !Viscoplastic relaxation time
+						fric(6,nftnd(ift),ift) = rhow*grav*(-zcoor) !pore pressure						
 						if (C_elastic==1) then
 							fric(7,nftnd(ift),ift) = 7378.0*zcoor! Initial normal stress for ElasticVersion
 							if (abs(zcoor)<tol) fric(7,nftnd(ift),ift)=-7378.0*dx/4
@@ -646,7 +643,7 @@ do ix = 1, nx
 			enddo  !do ift 
 			!...create elements
 			if(ix>=2 .and. iy>=2 .and. iz>=2) then
-                if(xcoor==0.and.ycoor==100..and.zcoor==-100.)then
+                if((xcoor==-5e3).and.(ycoor==0).and.(zcoor==-10e3))then
 					write(*,*) 'me,nele',me,nelement
 				endif
 				nelement = nelement + 1
@@ -700,9 +697,9 @@ do ix = 1, nx
 				! mat(nelement,4)=mat(nelement,1)**2*mat(nelement,3)-2*mat(nelement,5)!lam=vp**2*rho-2*miu
 !TPV8
 !Feb.19.2016				
-				mat(nelement,1)=5716.
-				mat(nelement,2)=3300.
-				mat(nelement,3)=2700.				
+				mat(nelement,1)=6000.
+				mat(nelement,2)=3464.
+				mat(nelement,3)=2670.				
 				mat(nelement,5)=mat(nelement,2)**2*mat(nelement,3)!miu=vs**2*rho
 				mat(nelement,4)=mat(nelement,1)**2*mat(nelement,3)-2*mat(nelement,5)!lam=vp**2*rho-2*miu				
 !For Tianjin 
@@ -757,18 +754,34 @@ do ix = 1, nx
 				if (C_elastic==0) then				
 					tmp1 = -0.5*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
 					tmp2 = tmp1 * grav
+					if (tmp1<=15e3) then
+						omega=1
+					elseif (tmp1>=15e3.and.tmp1<=20e3)then 
+						omega=(20e3-tmp1)/5e3
+					else
+						omega=0
+					endif
+					
 					if(et(nelement)==1)then
-						eleporep(nelement) = rhow*tmp2  !pore pressure>0
-						s1(ids(nelement)+3)= -mat(nelement,3)*tmp2  !vertical, comp<0
-						s1(ids(nelement)+1)=s1(ids(nelement)+3)
-						s1(ids(nelement)+2)=s1(ids(nelement)+3)
-						s1(ids(nelement)+6)=-0.4 * (s1(ids(nelement)+3)+eleporep(nelement))
+						eleporep(nelement)=rhow*tmp2  !pore pressure>0
+						s1(ids(nelement)+3)=-mat(nelement,3)*tmp2  !vertical, comp<0
+						s1(ids(nelement)+1)=omega*(b11*(s1(ids(nelement)+3)+eleporep(nelement))-eleporep(nelement))+&
+							(1-omega)*s1(ids(nelement)+3)
+						s1(ids(nelement)+2)=omega*(b33*(s1(ids(nelement)+3)+eleporep(nelement))-eleporep(nelement))+&
+							(1-omega)*s1(ids(nelement)+3)
+						s1(ids(nelement)+6)=omega*b13*(s1(ids(nelement)+3)+eleporep(nelement))
 					elseif(et(nelement)==2)then
-						eleporep(nelement) = rhow*tmp2  !pore pressure>0
-						s1(ids(nelement)+3+15)= -mat(nelement,3)*tmp2  !vertical, comp<0
-						s1(ids(nelement)+1+15)=s1(ids(nelement)+3+15)
-						s1(ids(nelement)+2+15)=s1(ids(nelement)+3+15)
-						s1(ids(nelement)+6+15)=-0.4 * (s1(ids(nelement)+3+15)+eleporep(nelement))				
+						eleporep(nelement)=rhow*tmp2  !pore pressure>0
+						s1(ids(nelement)+3+15)=-mat(nelement,3)*tmp2  !vertical, comp<0
+						s1(ids(nelement)+1+15)=omega*(b11*(s1(ids(nelement)+3+15)+eleporep(nelement))-eleporep(nelement))+&
+							(1-omega)*s1(ids(nelement)+3+15)
+						s1(ids(nelement)+2+15)=omega*(b33*(s1(ids(nelement)+3+15)+eleporep(nelement))-eleporep(nelement))+&
+							(1-omega)*s1(ids(nelement)+3+15)
+						s1(ids(nelement)+6+15)=omega*b13*(s1(ids(nelement)+3+15)+eleporep(nelement))							
+					endif
+					if (me==30.and.nnode==604363) then 
+						write(*,*) s1(ids(nelement)+1),s1(ids(nelement)+2),s1(ids(nelement)+3),s1(ids(nelement)+4),s1(ids(nelement)+5),s1(ids(nelement)+6)
+						write(*,*) tmp1,tmp2,grav,omega,zline(iz),zline(iz-1),et(nelement)
 					endif
 				endif
 !--------------------------END ZONE III-----------------------------!				

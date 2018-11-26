@@ -64,6 +64,8 @@ fltxyz(1,3,1)=fzmin
 fltxyz(2,3,1)=fzmax
 fltxyz(1,4,1)=fstrike*pi/180.
 fltxyz(2,4,1)=fdip*pi/180.
+ccosphi=coheplas*dcos(atan(bulk))
+sinphi=dsin(atan(bulk))
 !==============================PHASE2===============================!
 !-------------------------------------------------------------------!
 !INITIATION of 3D MPI.
@@ -254,8 +256,8 @@ if(n4onf>0) then
 			write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j)/1000.d0) 
 			loca = '# location = on fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km down-dip'		
 		endif
-		write(51,*) '# For SCEC TPV8'
-		write(51,*) '# Author=D.Liu'
+		write(51,*) '# ',projectname
+		write(51,*) '# Author=',author
 		call date_and_time(values=time_array)
 		write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',time_array(2), &
 			'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &
@@ -274,13 +276,13 @@ if(n4onf>0) then
 		write(51,*) '# Column #5 = down-dip slip (m)'
 		write(51,*) '# Column #6 = down-dip slip rate (m/s)'
 		write(51,*) '# Column #7 = down-dip shear stress (MPa)'
-		!write(51,*) '# Column #8 = normal stress (MPa)'
+		write(51,*) '# Column #8 = normal stress (MPa)'
 		write(51,*) '# The line below lists the names of the data fields:'
-		write(51,*) 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress'
+		write(51,*) 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress'
 		write(51,*) '#'
 		do j=1,locplt-1
-			write(51,'( f12.5,6e18.7e4)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.e6,&
-					-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(9,j,i)/1.e6
+			write(51,'( f12.5,7e18.7e4)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.e6,&
+					-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(9,j,i)/1.e6,fltsta(10,j,i)/1.e6
 		enddo
 		close(51)
 	enddo
@@ -305,8 +307,8 @@ if(n4out>0) then
 		write(sttmp,'(f5.1)') x4nds(1,an4nds(1,i))/1000. 
 		write(dptmp,'(f5.1)') abs(x4nds(3,an4nds(1,i)))/1000. 
 		loca = '# location = '//trim(adjustl(bodytmp))//' km off fault, '//trim(adjustl(sttmp))//' km along strike'//trim(adjustl(dptmp))//' km depth'
-		write(51,*) '# TPV8'
-		write(51,*) '# Author=D.Liu'
+		write(51,*) '# ',projectname
+		write(51,*) '# Author=',author
 		call date_and_time(values=time_array)
 		write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',time_array(2), &
 				'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &

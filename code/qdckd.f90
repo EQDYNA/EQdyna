@@ -149,39 +149,39 @@ call qdcb(shg,bb)
 		stress(6)=2*miuu*strain(6)/2-0.5*(anestr(6)+anestr1(6))	
 	endif!C_Q
 	if (C_elastic==0) then
-	!...Drucker-Prager plasticity in shear. B.D. 1/5/12
-	! refer to the benchmark problem description.
-	strmea = (stress(1)+stress(2)+stress(3))/3.
-	do i=1,3
-		strdev(i) = stress(i) - strmea
-	enddo
-	taomax = 0.5*(strdev(1)**2+strdev(2)**2+strdev(3)**2) &
-		+ strdev(4)**2+strdev(5)**2+strdev(6)**2  !second invlriant of deviator
-	taomax = sqrt(taomax)  !kind of max shear
-	! yield = ccosphi - sinphi * (strmea + porep)  !yield stress
-	! if(yield<0) yield = 0  !non-negative
-	! if(taomax > yield) then  !yielding, stress adjust in deviator domain
-		! !rjust = yield/taomax  !adjust ratio
-		! !implement viscoplasticity now. B.D. 6/2/12
-		! rjust=yield/taomax + (1-yield/taomax)*exp(-dt/tv)
-		! do i=1,6  !adjust stress
-			! stress(i) =strdev(i) * rjust
-			! !calculate plastic strain increment components
-			! pstrinc(i) = (strdev(i) - stress(i))/miu
-			! !back to stress domain by ading mean, which does not change
-			! if(i<=3) then
-				! stress(i) = stress(i) + strmea
-			! endif
-		! enddo
-		! !calculate plastic strain increment scalar (amplitude)
-		! pstrmea = (pstrinc(1)+pstrinc(2)+pstrinc(3))/3.
-		! do i=1,6
-			! pstrinc(i)=pstrinc(i) - pstrmea
-		! enddo
-		! pstrmag = 0.5*(pstrinc(1)**2+pstrinc(2)**2+pstrinc(3)**2) &
-				! +pstrinc(4)**2+pstrinc(5)**2+pstrinc(6)**2
-		! pstrmag = sqrt(pstrmag)
-	! endif
+		!...Drucker-Prager plasticity in shear. B.D. 1/5/12
+		! refer to the benchmark problem description.
+		strmea = (stress(1)+stress(2)+stress(3))/3.
+		do i=1,3
+			strdev(i) = stress(i) - strmea
+		enddo
+		taomax = 0.5*(strdev(1)**2+strdev(2)**2+strdev(3)**2) &
+			+ strdev(4)**2+strdev(5)**2+strdev(6)**2  !second invlriant of deviator
+		taomax=sqrt(taomax)  !kind of max shear
+		yield=ccosphi-sinphi*(strmea + porep)  !yield stress
+		if(yield<0.0) yield=0.0  !non-negative
+		if(taomax > yield) then  !yielding, stress adjust in deviator domain
+			!rjust = yield/taomax  !adjust ratio
+			!implement viscoplasticity now. B.D. 6/2/12
+			rjust=yield/taomax + (1-yield/taomax)*exp(-dt/tv)
+			do i=1,6  !adjust stress
+				stress(i) =strdev(i) * rjust
+				!calculate plastic strain increment components
+				pstrinc(i) = (strdev(i) - stress(i))/miu
+				!back to stress domain by ading mean, which does not change
+				if(i<=3) then
+					stress(i) = stress(i) + strmea
+				endif
+			enddo
+			!calculate plastic strain increment scalar (amplitude)
+			pstrmea = (pstrinc(1)+pstrinc(2)+pstrinc(3))/3.
+			do i=1,6
+				pstrinc(i)=pstrinc(i) - pstrmea
+			enddo
+			pstrmag = 0.5*(pstrinc(1)**2+pstrinc(2)**2+pstrinc(3)**2) &
+					+pstrinc(4)**2+pstrinc(5)**2+pstrinc(6)**2
+			pstrmag = sqrt(pstrmag)
+		endif
 	 endif!C_elastic==0(Plastic)
 !endif !endif not zerovl (update stress)
 

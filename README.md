@@ -3,6 +3,13 @@
 A parallel Finite Element software to model earthquake spontaneous dynamic ruptures. The software is designed to use high-performance computing. It is written in FORTRAN 90 and MPI.
 
 ### Dunyu Liu, 10/04/2016, dunyuliu@gmail.com
+# Version 4.1.2
+## Patch update
+* Test a plastic model.
+* Disable switches formma and formkd in driver.f90.
+* Add several parameters related to plastic model in globalvar.f90
+
+### Dunyu Liu, 10/04/2016, dunyuliu@gmail.com
 # Version 4.1.1
 ## Features
 * Significant simplification of the system.

@@ -172,6 +172,10 @@ do n=1,nstep
 	time1=MPI_WTIME()
 	call qdct3(numel,numnp,neq,mat,ien,d,v,eleporep,elemass,eleshp,eledet,pstrain,brhs,& 
 				me,maxm,id1,locid,dof1,et,v1,d1,PMLb,x,maxs,ids,s1,n)
+	! if (me==30) then 
+		! write(*,*) '11slave',brhs(id1(604363)+1),brhs(id1(604363)+2),brhs(id1(604363)+3)
+		! write(*,*) 'master',brhs(id1(1276251)+1),brhs(id1(1276251)+2),brhs(id1(1276251)+3)
+	! endif				
 	time2 = MPI_WTIME()
 	timeused(4)=timeused(4)+(time2-time1)
 	time1 = MPI_WTIME()
@@ -598,6 +602,10 @@ do n=1,nstep
 	time2 = MPI_WTIME()
 	btime=btime+(time2-time1)
 	!  Faulting TSN. B.Duan 2005/07/03
+	! if (me==30) then 
+		! write(*,*) 'slave',brhs(id1(604363)+1),brhs(id1(604363)+2),brhs(id1(604363)+3)
+		! write(*,*) 'master',brhs(id1(1276251)+1),brhs(id1(1276251)+2),brhs(id1(1276251)+3)
+	! endif
 	do i=1,ntotft
 		if (nftnd(i)>0) then !only nonzero fault node, does faulting. B.D. 10/16/09
 			time1=MPI_WTIME()

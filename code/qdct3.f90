@@ -94,16 +94,16 @@ do nel=1,numel
 	!400  continue
 	!  endif
 	!*** if either, start time-consuming computing ***
-	if (formma .or. formkd) then
+	!if (formma .or. formkd) then
 		elresf = 0.0
 		det = eledet(nel)
-		if (formma) then
+		!if (formma) then
 			do i=1,nee
 				eleffm(i)=elemass(i,nel)
 			enddo
 			call contma(eleffm,al,elresf)
-		endif
-		if (formkd) then
+		!endif
+		!if (formkd) then
 			if (et(nel)==1) then
 				constk=-det
 				do i=1,12
@@ -119,6 +119,13 @@ do nel=1,numel
 				enddo
 				call qdckd(eleshp(1,1,nel),matelement,vl,dl,es,elresf,constk,&
 						zerovl,eleporep(nel),pstrinc,ex,PMLb)
+				! if (nel==584309.and.me==31) then 
+					! write(*,*) es(1),es(2),es(3),es(4),es(5),es(6)
+					! write(*,*) es(1+6),es(2+6),es(3+6),es(4+6),es(5+6),es(6+6)
+					! write(*,*) elresf(1),elresf(2),elresf(3)
+					! write(*,*) elresf(4),elresf(5),elresf(6)
+					! write(*,*) elresf(7),elresf(8),elresf(9)
+				! endif
 				pstrain(nel) = pstrain(nel) + pstrinc
 				do i=1,12!DL update the stress
 					s1(ids(nel)+i)=es(i)
@@ -192,8 +199,8 @@ do nel=1,numel
 				! write(*,*) 'NEL19-21',vl(1,7),vl(2,7),vl(3,7)
 				! write(*,*) 'NEL22-24',vl(1,8),vl(2,8),vl(3,8)
 			! endif
-		endif!formkd
-	endif!either formma or formkd
+		!endif!formkd
+	!endif!either formma or formkd
 enddo!nel loop
 !$omp end parallel do
 end SUBROUTINE qdct3

@@ -15,7 +15,7 @@ integer(kind=4)::anonfs(3,itmp),nsmp(2,nftnd),id1(maxm),locid(numnp),dof1(numnp)
 real (kind=8) ::slipn,slips,slipd,slip,slipraten,sliprates,sliprated,&
 sliprate,xmu,mmast,mslav,mtotl,fnfault,fsfault,fdfault,tnrm,tstk, &
 tdip,taox,taoy,taoz,ttao,taoc,ftix,ftiy,ftiz,trupt,tr,&
-tmp1,tmp2,tmp3,tmp4,tnrm0,xmu1,xmu2,rcc
+tmp1,tmp2,tmp3,tmp4,tnrm0,rcc,fa,fb
 real(kind=8),dimension(nftnd)::fnft,arn,r4nuc,arn4m,slp4fri,miuonf
 real(kind=8),dimension(3,nftnd)::un,us,ud,fltslp,fltslr
 real(kind=8)::fric(8,nftnd),fltsta(10,nplpts-1,n4onf),fvd(6,2,3),brhs(neq),&
@@ -114,7 +114,7 @@ endif
 	endif
 	! !......for nucleation zone of the nucleation fault,which initiates rupture,
 	! !	rupture propagates at a fixed speed to drop "xmu". B.D. 8/31/06
-	! if(ift == nucfault .and. xmu > fric(2,i)) then	
+	!if(ift == nucfault .and. xmu > fric(2,i)) then	
 		! !only nucleation fault and before finishing dropping, do...
 		! if(r4nuc(i) <= srcrad0) then !only within nucleation zone, do...
 			! tr = r4nuc(i) / vrupt0
@@ -123,19 +123,23 @@ endif
 			! call time_weak(trupt,fric(1,i),xmu)
 			! endif
 		! endif
-      ! !only nucleation fault and before finishing dropping, do...
-      ! ! if(r4nuc(i) <= srcrad0) then !only within nucleation zone, do...
-        ! ! tr=(r4nuc(i)+0.081*srcrad0*(1./(1-(r4nuc(i)/srcrad0)* &
-         ! ! (r4nuc(i)/srcrad0))-1))/(0.7*3464.)
-        ! ! tr = r4nuc(i) / vrupt0
-        ! !if(tr <= time) then !only ready or already fail, do...
-          ! ! trupt = time - tr
-          ! ! call time_weak(trupt,fric(1,i),xmu1)
-        ! ! call slip_weak(slp4fri(i),fric(1,i),xmu2)
-        ! ! xmu=min(xmu1,xmu2)  !minimum friction used. B.D. 2/16/13
-        ! ! endif
-      ! !endif		
-	! endif
+		!only nucleation fault and before finishing dropping, do...
+		if(r4nuc(i)<=srcrad0) then !only within nucleation zone, do...
+			tr=(r4nuc(i)+0.081*srcrad0*(1./(1-(r4nuc(i)/srcrad0)*(r4nuc(i)/srcrad0))-1))/(0.7*3464.)
+		else
+			tr=1.0e9 
+		endif
+		if(time<tr) then 
+			fb=0.0
+		elseif ((time<(tr+critt0)).and.(time>=tr)) then 
+			fb=(time-tr)/critt0
+		else 
+			fb=1.0
+		endif
+		tmp1=fric(1,i)+(fric(2,i)-fric(1,i))*fb
+		tmp2=xmu
+		xmu=min(tmp1,tmp2)  !minimum friction used. B.D. 2/16/13		
+	!endif
 	!
 	!...adjust tstk,tdip and tnrm based on jump conditions on fault.
 	!   before calculate taoc, first adjust tnrm if needed. 
@@ -218,7 +222,7 @@ endif
 			endif
 		enddo 
 	endif   
-!	if (x(1,isn)==xsource.and.x(2,isn)==0.0.and.x(3,isn)==zsource)then
+	if (x(1,isn)==-5.6e3.and.x(2,isn)==0.0.and.x(3,isn)==-9.8e3)then
 !		if (nt==1) then 
 !		!rcc=miu*(S+1)
 !		rcc=miuonf(i)*((fric(1,i)*abs(fnfault)-abs(fsfault))/(abs(fsfault)-fric(2,i)*abs(fnfault))+1)
@@ -232,17 +236,17 @@ endif
 !				write(9001,*) 'Dc=',fric(3,i)
 !			close(9001)			
 !		endif
-!		write(*,*)'S1:slip,ft',slips,fnft(i)
-!		! write(*,*)'source,taoc,ttao',taoc,ttao
-!		! write(*,*)'source,tnrm,tstk,tdip',tnrm,tstk,tdip
-!		! write(*,*)'source,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))	
-!	endif
-!	if (x(1,isn)==55e3.and.x(2,isn)==0.0.and.x(3,isn)==-10e3)then
-!		write(*,*)'S2:slips,fnft',slips,fnft(i)
-!		! write(*,*)'**OF,taoc,ttao',taoc,ttao
-!		! write(*,*)'**OF,tnrm,tstk,tdip',tnrm,tstk,tdip
-!		! write(*,*)'**OF,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))	
-!	endif	
+		write(*,*)'S1:slip,ft',slips,fnft(i),r4nuc(i),tr
+		write(*,*)'source,taoc,ttao',taoc,ttao
+		write(*,*)'source,tnrm,tstk,tdip',tnrm,tstk,tdip
+		!write(*,*)'source,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))	
+	endif
+	if (x(1,isn)==-5.7e3.and.x(2,isn)==0.0.and.x(3,isn)==-9.8e3)then
+		write(*,*)'S2:slips,fnft',slips,fnft(i)
+		write(*,*)'**OF,taoc,ttao',taoc,ttao
+		write(*,*)'**OF,tnrm,tstk,tdip',tnrm,tstk,tdip
+		! write(*,*)'**OF,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))	
+	endif	
 enddo	!ending i
 !!$omp end parallel do	
 !-------------------------------------------------------------------!
