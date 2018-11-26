@@ -17,7 +17,7 @@ integer(kind=4),dimension(ntotft)::nftnd,nftnd1,ixfi,izfi,ifs,ifd
 integer(kind=4),allocatable::plane1(:,:),plane2(:,:),fltrc(:,:,:,:)
 
 real(kind=8)::mat(nelement1,5),eleporep(nelement1),xnode(ndof,nnode1),&
-	fric(8,nftmx,ntotft),PMLb(8),xc(3),s1(4*maxm),surnode(nsurnd1,2),miuonf(nftmx),vponf(nftmx),Dampx,Dampz
+	fric(20,nftmx,ntotft),PMLb(8),xc(3),s1(4*maxm),surnode(nsurnd1,2),miuonf(nftmx),vponf(nftmx),Dampx,Dampz
 real(kind=8),dimension(nftmx,ntotft)::fnft,arn,r4nuc,arn4m,slp4fri
 real(kind=8),dimension(3,nftmx,ntotft)::un,us,ud
 real(kind=8)::tol,xcoor,ycoor,zcoor,xstep,ystep,zstep,tmp1,tmp2,tmp3,a,b,area,a1,b1,c1,d1,p1,q1
@@ -44,37 +44,22 @@ mm = trim(adjustl(mm))
 !===================================================================!
 !==============================ZONE A===============================!
 !on-fault station coordinates (along strike, z).
-xonfs=reshape((/-5.0,0.0,&
-				15.0,0.0,&
-				-5.0,-5.0,&
-				15.0,-5.0,&
-				-15.0,-10.0,&
-				-5.0,-10.0,&
-				0.0,-10.0,&
-				5.0,-10.0,&
-				10.0,-10.0,&
-				15.0,-10.0,&
-				-5.0,-15.0,&
-				15.0,-15.0/),(/2,12,1/))
+xonfs=reshape((/0.0,-3.0,&
+				0.0,-7.5,&
+				0.0,-12.0,&
+				9.0,-7.5,&
+				12.0,-3.0,&
+				12.0,-12.0,&
+				-9.0,-7.5,&
+				-12.0,-3.0,&
+				-12.0,-12.0/),(/2,9,1/))
 !off-fault station coordinates(along strike,normal,z(negative)).				
-x4nds=reshape((/-20.0,-20.0,0.0,&
-				0.0,-20.0,0.0,&
-				20.0,-20.0,0.0,&
-				-20.0,-10.0,0.0,&
-				0.0,-10.0,0.0,&
-				20.0,-10.0,0.0,&
-				-5.0,-3.0,0.0,&
-				5.0,-3.0,0.0,&
-				15.0,-3.0,0.0,&!9
-				-5.0,3.0,0.0,&
-				5.0,3.0,0.0,&
-				15.0,3.0,0.0,&
-				-20.0,10.0,0.0,&
-				0.0,10.0,0.0,&
-				20.0,10.0,0.0,&
-				-20.0,20.0,0.0,&
-				0.0,20.0,0.0,&
-				20.0,20.0,0.0/),(/3,18/))
+x4nds=reshape((/0.0,9.0,0.0,&
+				0.0,-9.0,0.0,&
+				12.0,6.0,0.0,&
+				12.0,-6.0,0.0,&
+				-12.0,6.0,0.0,&
+				-12.0,-6.0,0.0/),(/3,6/))
 !==========================END ZONE A===============================!
 !===================================================================!
 !==============================ZONE B===============================!
@@ -587,19 +572,18 @@ do ix = 1, nx
 							! fric(2,nftnd(ift),ift) = 0.5   !mud
 						! endif						
 						fric(3,nftnd(ift),ift) = 0.30    !D0
-						fric(4,nftnd(ift),ift) = 0.4e6  !cohesion
-						if (abs(zcoor)<5000) then
-							fric(4,nftnd(ift),ift) = 0.4e6+0.00072e6*(5000-abs(zcoor))  !cohesion
-						endif
+						fric(4,nftnd(ift),ift) = 0.0  !cohesion
 						fric(5,nftnd(ift),ift) = 0.03  !Viscoplastic relaxation time
-						fric(6,nftnd(ift),ift) = rhow*grav*(-zcoor) !pore pressure						
+						fric(6,nftnd(ift),ift) = 0.0!pore pressure						
 						if (C_elastic==1) then
-							fric(7,nftnd(ift),ift) = 7378.0*zcoor! Initial normal stress for ElasticVersion
-							if (abs(zcoor)<tol) fric(7,nftnd(ift),ift)=-7378.0*dx/4
-							fric(8,nftnd(ift),ift) = 0.55*abs(fric(7,nftnd(ift),ift))!Initial shear stress for ElasticVersion
-							if (abs(xcoor)<=1500.and.abs(zcoor--12e3)<=1500.)then
-								fric(8,nftnd(ift),ift) =1.0e6+1.005*0.760*abs(7378.0*zcoor)
-							endif
+							! fric(7,nftnd(ift),ift) = 7378.0*zcoor! Initial normal stress for ElasticVersion
+							! if (abs(zcoor)<tol) fric(7,nftnd(ift),ift)=-7378.0*dx/4
+							! fric(8,nftnd(ift),ift) = 0.55*abs(fric(7,nftnd(ift),ift))!Initial shear stress for ElasticVersion
+							! if (abs(xcoor)<=1500.and.abs(zcoor--12e3)<=1500.)then
+								! fric(8,nftnd(ift),ift) =1.0e6+1.005*0.760*abs(7378.0*zcoor)
+							! endif
+							fric(7,nftnd(ift),ift)=-120e6
+							fric(8,nftnd(ift),ift)=40e6
 						endif
 !-------------------------------Tianjin ref-------------------------------!						
 						! if (C_elastic==1) then
@@ -626,7 +610,43 @@ do ix = 1, nx
 							! /initialinput(2,(nfz-1)*901+nfx)						
 							! fric(1,nftnd(ift),ift)=initialinput(3,(nfz-1)*901+nfx)
 						! endif						
-!-----------------------------END ZONE I----------------------------!						
+!-----------------------------END ZONE I----------------------------!
+!-----------------------------ZONE IV RSF---------------------------!
+!---2016.08.28. Bin
+!TPV104 2016.10.05 D.Liu
+						if (friclaw==3.or.friclaw==4)then 
+							if (abs(xcoor)<=15e3) then 
+								tmp1=1.0
+							elseif ((abs(xcoor)<18e3).and.(abs(xcoor)>15e3)) then 
+								tmp1=0.5*(1+dtanh(3e3/(abs(xcoor)-18e3)+3e3/(abs(xcoor)-15e3)))
+							else
+								tmp1=0.0
+							endif
+							if (abs(zcoor--7.5e3)<=7.5e3) then 
+								tmp2=1.0
+							elseif ((abs(zcoor--7.5e3)<10.5e3).and.(abs(zcoor--7.5e3)>7.5e3)) then 
+								tmp2=0.5*(1+dtanh(3e3/(abs(zcoor--7.5e3)-10.5e3)+3e3/(abs(zcoor--7.5e3)-7.5e3)))
+							else
+								tmp2=0.0
+							endif							
+							fric(9,nftnd(ift),ift)=0.01+0.01*(1-tmp1*tmp2)!a
+							if (xcoor==17e3.and.zcoor==-17e3) then 
+								write(*,*) 'tmp1',fric(9,nftnd(ift),ift),tmp1,tmp2 
+							endif
+							fric(10,nftnd(ift),ift)=0.014!b 
+							fric(11,nftnd(ift),ift)=0.4d0!RSF critical distance.
+							fric(12,nftnd(ift),ift)=1.0d-6!RSF:V0
+							fric(13,nftnd(ift),ift)=0.6d0!RSF:miu0
+							if(friclaw==4) then 
+								fric(14,nftnd(ift),ift)  = 0.2d0 !RSF: fw for strong rate weakenging
+								fric(15,nftnd(ift),ift)  = 0.1d0+0.9*(1-tmp1*tmp2) !RSF: Vw for strong rate weakening
+							endif	
+							fric(16,nftnd(ift),ift)=0.0d0 !RSF: initial normal slip rate 
+							fric(17,nftnd(ift),ift)=1.0e-16!RSF:s 
+							fric(18,nftnd(ift),ift)=0.0d0!RSF:d
+							fric(19,nftnd(ift),ift)=1.0e-16!RSF:mag							
+						endif
+!-----------------------------END ZONE IV---------------------------!						
 						!special values below.						
 						if(abs(xcoor-fltxyz(1,1,ift))<tol .or. abs(xcoor-fltxyz(2,1,ift))<tol &
 						.or. abs(zcoor-fltxyz(1,3,ift))<tol) then !-x,+x,-z for 1, +x,-z for 2
@@ -1107,30 +1127,30 @@ btime = btime + (time2 - time1)
 !  write(12,'(1x,4i10)') (((fac(i,j,k),j=1,4),i=1,6),k=1,nelement)
 !  close(12)
 
-!...write out mesh information, including output node coor for check. B.D. 10/27/07
-meshfile = 'meshinfo.txt'//mm 
-open(33,file=meshfile,status='unknown')
-write(33,*) 'me=',me
-write(33,*) 'mex=',mex,'mey=',mey,'mez=',mez
-write(33,*) 'nx=',nx,'ny=',ny,'nz=',nz
-write(33,*) 'x-range for this MPI:',xline(1),xline(nx)
-write(33,*) 'y-range for this MPI:',yline(1),yline(ny)
-write(33,*) 'z-range for this MPI:',zline(1),zline(nz)
-write(33,*) 'numcount1-3',numcount(1),numcount(2),numcount(3)
-write(33,*) 'numcount4-6',numcount(4),numcount(5),numcount(6)
-write(33,*) 'numcount7-9',numcount(7),numcount(8),numcount(9)
-write(33,*) 'fltnum1-3',fltnum(1),fltnum(2),fltnum(3)
-write(33,*) 'fltnum4-6',fltnum(4),fltnum(5),fltnum(6)
-write(33,'( a45,5i10)') 'total in this process:node,ele,neq,nftnd ',nnode,nelement,neq,(nftnd(i),i=1,ntotft)
-write(33,'( a60)') 'off-fault stations # in order and x, y, z- xoor'
-write(33,'( 2i10,2f12.2)') ((an4nds(j,i),j=1,2),(x4nds(j,an4nds(1,i)), &
-  	j=1,2),i=1,n4out)
-write(33,'( a65,i5)') 'on-fault stations # in order and strike and down-dip distance',n4onf
-write(33,'( 3i10,2f12.2)') ((anonfs(j,i),j=1,3),(xonfs(j,anonfs(2,i),anonfs(3,i)),j=1,2), &
-	i=1,n4onf)
-!write(33,*) 'branch fault'
-!write(33,'( 10f8.1)') (arn(i,2),i=1,nftnd(2))
-close(33)
+! !...write out mesh information, including output node coor for check. B.D. 10/27/07
+! meshfile = 'meshinfo.txt'//mm 
+! open(33,file=meshfile,status='unknown')
+! write(33,*) 'me=',me
+! write(33,*) 'mex=',mex,'mey=',mey,'mez=',mez
+! write(33,*) 'nx=',nx,'ny=',ny,'nz=',nz
+! write(33,*) 'x-range for this MPI:',xline(1),xline(nx)
+! write(33,*) 'y-range for this MPI:',yline(1),yline(ny)
+! write(33,*) 'z-range for this MPI:',zline(1),zline(nz)
+! write(33,*) 'numcount1-3',numcount(1),numcount(2),numcount(3)
+! write(33,*) 'numcount4-6',numcount(4),numcount(5),numcount(6)
+! write(33,*) 'numcount7-9',numcount(7),numcount(8),numcount(9)
+! write(33,*) 'fltnum1-3',fltnum(1),fltnum(2),fltnum(3)
+! write(33,*) 'fltnum4-6',fltnum(4),fltnum(5),fltnum(6)
+! write(33,'( a45,5i10)') 'total in this process:node,ele,neq,nftnd ',nnode,nelement,neq,(nftnd(i),i=1,ntotft)
+! write(33,'( a60)') 'off-fault stations # in order and x, y, z- xoor'
+! write(33,'( 2i10,2f12.2)') ((an4nds(j,i),j=1,2),(x4nds(j,an4nds(1,i)), &
+  	! j=1,2),i=1,n4out)
+! write(33,'( a65,i5)') 'on-fault stations # in order and strike and down-dip distance',n4onf
+! write(33,'( 3i10,2f12.2)') ((anonfs(j,i),j=1,3),(xonfs(j,anonfs(2,i),anonfs(3,i)),j=1,2), &
+	! i=1,n4onf)
+! !write(33,*) 'branch fault'
+! !write(33,'( 10f8.1)') (arn(i,2),i=1,nftnd(2))
+! close(33)
 
 !if(me==73) then
 !open(31,file='area73.txt',status='unknown')

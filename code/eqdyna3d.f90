@@ -40,7 +40,7 @@ integer(kind=4),allocatable,dimension(:,:,:)::nsmp
 !===================================================================!
 real(kind=8)::timebegin,timeover,PMLb(8)
 real(kind=8),allocatable,dimension(:,:)::x,d,v,mat,shl,&
-	fnft,arn,r4nuc,arn4m,slp4fri,surnode
+	fnft,arn,r4nuc,arn4m,slp4fri,surnode,state
 real(kind=8),allocatable,dimension(:)::brhs,v1,d1,s1,miuonf,vponf,eleporep,pstrain 
 real(kind=8),allocatable,dimension(:,:,:)::fric,un,us,ud,fltsta,fltslp 
 !==============================PHASE1===============================!
@@ -113,9 +113,9 @@ nftmx=maxval(nftnd) !max fault nodel num for all faults, used for arrays.
 if(nftmx<=0) nftmx=1  !fortran arrays cannot be zero size,use 1 for 0
 nonmx=sum(nonfs)    !max possible on-fault stations number
 allocate(nsmp(2,nftmx,ntotft),fnft(nftmx,ntotft),miuonf(nftmx),vponf(nftmx),un(3,nftmx,ntotft),&
-			us(3,nftmx,ntotft),ud(3,nftmx,ntotft),fric(8,nftmx,ntotft),&
+			us(3,nftmx,ntotft),ud(3,nftmx,ntotft),fric(20,nftmx,ntotft),&
 			arn(nftmx,ntotft),r4nuc(nftmx,ntotft),anonfs(3,nonmx),&
-			arn4m(nftmx,ntotft),slp4fri(nftmx,ntotft),fltslp(3,nftmx,ntotft))
+			arn4m(nftmx,ntotft),slp4fri(nftmx,ntotft),fltslp(3,nftmx,ntotft),state(nftmx,ntotft))
 !ALLOCATE 3DMPI ARRAYS			
 allocate(fltgm(nftmx))  !MPIxyz
 fltgm=0  !MPIxyz
@@ -134,6 +134,7 @@ r4nuc = 0.0
 anonfs = 0
 slp4fri = 0.0
 fltslp = 0.0
+state=0.0
 !==============================PHASE3===============================!
 !--------------------------MESH GENERATION--------------------------!
 write(*,*) 'before meshgen me=',me    
@@ -212,13 +213,12 @@ if (iexec==1) then	!otherwise data check only
 	!write(*,*) 'before driver me=', me,'ndout=',ndout
 	call driver(numel,numnp,neq,nftnd,ndout,x,brhs,d,v,mat,ien,eleporep,pstrain, &
 			id1,maxm,locid,dof1,et,v1,d1,PMLb,maxs,ids,s1,shl,n4onf,nsmp,fnft,fltslp,un, &
-			us,ud,fric,arn,r4nuc,anonfs,arn4m,slp4fri,fltsta,me,nsurnd,surid,miuonf)
+			us,ud,fric,arn,r4nuc,anonfs,arn4m,slp4fri,fltsta,me,nsurnd,surid,miuonf,state)
 endif
 write(*,*) 'after driver me=',me    
-timeover=MPI_WTIME()
-timeused(7)=timeover-timebegin 
 !write(*,*) 'Total seconds consumed = ',timeused(7)
 !==============================PHASE5===============================!
+time1=MPI_WTIME()
 !------------------------------OUTPUT-------------------------------!
 !---------------------OutPut surface nodes coordinates--------------!
 !----------------------Oct.1.2015/ D.Liu----------------------------!
@@ -277,12 +277,13 @@ if(n4onf>0) then
 		write(51,*) '# Column #6 = down-dip slip rate (m/s)'
 		write(51,*) '# Column #7 = down-dip shear stress (MPa)'
 		write(51,*) '# Column #8 = normal stress (MPa)'
+		write(51,*) '# Column #9 = state variable psi (dimensionless)'
 		write(51,*) '# The line below lists the names of the data fields:'
-		write(51,*) 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress'
+		write(51,*) 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress psi'
 		write(51,*) '#'
 		do j=1,locplt-1
-			write(51,'( f12.5,7e18.7e4)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.e6,&
-					-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(9,j,i)/1.e6,fltsta(10,j,i)/1.e6
+			write(51,'( f12.5,8e18.7e4)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.e6,&
+					-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(9,j,i)/1.e6,fltsta(10,j,i)/1.e6,fltsta(4,j,i)
 		enddo
 		close(51)
 	enddo
@@ -346,6 +347,15 @@ if(nftnd(1) > 0) then
 		(fltslp(j,i,1),j=1,3),miuonf(i),i=1,nftnd(1))
 	close(ioutrt1)
 endif
+time2=MPI_WTIME()
+timeused(8)=time2-time1 
+timeover=MPI_WTIME()
+timeused(9)=timeover-timebegin 
+!-------------------------------------------------------------------!
+!----------------------------TIME EXPENSE---------------------------!
+open(unit=ioutrt1,file='timeinfo'//mm,status='unknown')	!rupture time
+write(ioutrt1,'(1x,10e18.7e4,2i10)') (timeused(i),i=1,9),btime,numel,neq
+close(ioutrt1)
 !-------------------------------------------------------------------!
 call MPI_Finalize(ierr)
 stop

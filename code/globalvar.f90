@@ -5,7 +5,7 @@ save
 integer(kind=4)::iingl=11,ioutgl=12, ioutft=13,ioutrt1=14,&
   	ioutrt2=15,ioutst=16,ioutsl=17,ioutgm=18,ioutoff=19,&
     ioutrat=20,ioutdp=21
-real(kind=8),dimension(7)::timeused=0.0
+real(kind=8),dimension(9)::timeused=0.0
 real(kind=8)::time1,time2,time=0.0, btime=0.0
 external gethrtime	!this function in the SUN Fortran library   	   
 integer(kind=4)::iexec=1,irank=0,numseq=1,nsd=3,ndof=3,numeg=1
@@ -17,9 +17,13 @@ integer(kind=4)::locplt=1,myrec=0
 real(kind=8)::pi=3.1415926535897931,rdampm=0.0,rdampk=0.1
 !-------------------------------------------------------------------!
 !-------------Controllable parameters for EQdyna3d V4.0-------------! 
-integer(kind=4)::C_elastic=0
+integer(kind=4)::C_elastic=1
 !	1=elastic version;
 !	0=plastic version;
+integer(kind=4)::C_Nuclea=1
+!	1=allow artificial nucleation;
+!	0=disabled;
+integer(kind=4)::nucfault=1,friclaw=4,ntotft=1
 integer(kind=4)::C_Q=0!
 !AAA:Only works with C_elastic==1.
 !	1=allow Q attenuation;
@@ -47,22 +51,22 @@ integer(kind=4)::dis4uniF=200,dis4uniB=200
 real(kind=8)::rhow=1000.,b11=0.926793,b33=1.073206,b13=-0.169029,&
 	critt0=0.5,srcrad0=4000.,vrupt0=1500.,&!Info on forced rupture.
 	bulk=0.1934,coheplas=1.36e6,tv=0.03,ccosphi,sinphi,mus,mud
-real(kind=8)::xsource=-5e3,ysource=0.0,zsource=-10e3!Nucleation point.
+real(kind=8)::xsource=0e3,ysource=0.0,zsource=-7.5e3!Nucleation point.
 !===================================================================!
 !Specify informations on on- and off- fault stations and
 ! model and fault geometries. 
-integer(kind=4)::ninterval=1,nftmx,nonmx,nonfs(1)=12,n4nds=18,an4nds(2,18)
-real(kind=8)::xonfs(2,12,1),x4nds(3,18)
+integer(kind=4)::ninterval=1,nftmx,nonmx,nonfs(1)=9,n4nds=6,an4nds(2,6)
+real(kind=8)::xonfs(2,9,1),x4nds(3,6)
 real(kind=8)::surxmax=0e3,surxmin=0e3,surymax=0e3,surymin=0e3
-real(kind=8)::xmin=-40e3,xmax=40e3,ymin=-40e3,ymax=35e3,zmin=-50e3,zmax=0.0
-real(kind=8)::fxmin=-20e3,fxmax=20e3,fymin=0.0,fymax=0.0,fzmin=-20e3,fzmax=0.0
+real(kind=8)::xmin=-25e3,xmax=25e3,ymin=-20e3,ymax=22e3,zmin=-25e3,zmax=0.0
+real(kind=8)::fxmin=-18e3,fxmax=18e3,fymin=0.0,fymax=0.0,fzmin=-18e3,fzmax=0.0
 real(kind=8)::fstrike=270.,fdip=90.
 real(kind=8)::fltxyz(2,4,1)
-character(len=15)::projectname='SCECTPV27v2',author='D.Liu'
+character(len=15)::projectname='SCECTPV104',author='D.Liu'
 !===================================================================!
 !Specify maximum Vp for PML and timing information
-real(kind=8)::vmaxPML=6000.,term=20.,dt=0.008
-integer(kind=4)::nucfault=1,friclaw=1,ntotft=1
+real(kind=8)::vmaxPML=6000.,term=12.,dt=0.008
+
 real(kind=8),allocatable,dimension(:,:)::dout
 integer(kind=4),allocatable,dimension(:,:)::idhist
 !===================================================================!

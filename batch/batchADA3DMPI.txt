@@ -1,6 +1,6 @@
-#BSUB -J TPV27v2EQv41
+#BSUB -J TPV104EQv41
 #BSUB -L /bin/bash
-#BSUB -W 01:00
+#BSUB -W 02:00
 #BSUB -n 100              # 900: total number of cores/jobslots to allocate for the job
 #BSUB -R "span[ptile=20]"
 #BSUB -R "rusage[mem=2700]" 

@@ -2,6 +2,13 @@
 
 A parallel Finite Element software to model earthquake spontaneous dynamic ruptures. The software is designed to use high-performance computing. It is written in FORTRAN 90 and MPI.
 
+### Dunyu Liu, Bin Luo, 10/04/2016, dunyuliu@gmail.com
+# Version 4.2
+## Features
+* Add the rate- and state- friction with aging law (friclaw=3) and slip law (friclaw=4) (Bin Luo) incorporated by Dunyu.
+* Time expense analysis with timeanalysis.m.
+* This version is verified against SCEC TPV104.
+
 ### Dunyu Liu, 10/04/2016, dunyuliu@gmail.com
 # Version 4.1.2
 ## Patch update

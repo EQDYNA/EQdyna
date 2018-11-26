@@ -1,3 +1,13 @@
+# Version 4.2
+
+## Modified
+* driver.f90
+* eqdyna3d.f90
+* faulting.f90
+* globalvar.f90
+* meshgen.f90
+* fric.f90
+
 # Version 4.1.2
 
 ## Modified

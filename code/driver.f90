@@ -1,6 +1,6 @@
 SUBROUTINE driver(numel,numnp,neq,nftnd,ndout,x,brhs,d,v,mat,ien,eleporep,pstrain,&
 				id1,maxm,locid,dof1,et,v1,d1,PMLb,maxs,ids,s1,shl,n4onf,nsmp,fnft,fltslp,un,&
-				us,ud,fric,arn,r4nuc,anonfs,arn4m,slp4fri,fltsta,me,nsurnd,surid,miuonf)
+				us,ud,fric,arn,r4nuc,anonfs,arn4m,slp4fri,fltsta,me,nsurnd,surid,miuonf,state)
 use globalvar
 implicit none
 include 'mpif.h'
@@ -14,9 +14,9 @@ integer(kind=4)::me,ierr,rr,jj,izz,ntagMPI,ix,iy,iz,nx,ny,nz,mex,mey,mez,nodenum
 real(kind=8)::PMLb(8),dampv(9)
 real(kind=8)::x(nsd,numnp),alhs(neq),brhs(neq),d(ndof,numnp),v(ndof,numnp),mat(numel,5),&
 	shl(nrowsh,nen),eledet(numel),eleporep(numel),pstrain(numel),elemass(nee,numel),&
-	eleshp(nrowsh-1,nen,numel),fric(8,nftmx,ntotft),miuonf(nftmx),fltsta(10,nplpts-1,n4onf),&
+	eleshp(nrowsh-1,nen,numel),fric(20,nftmx,ntotft),miuonf(nftmx),fltsta(10,nplpts-1,n4onf),&
 	fnms(numnp),ss(6,numel),phi(nen,4,numel),v1(neq),d1(neq),s1(maxs),maxsur(nsurnd,6)
-real(kind=8),dimension(nftmx,ntotft)::fnft,arn,r4nuc,arn4m,slp4fri
+real(kind=8),dimension(nftmx,ntotft)::fnft,arn,r4nuc,arn4m,slp4fri,state
 real(kind=8),dimension(3,nftmx,ntotft)::un,us,ud,fltslp
 real(kind=8),allocatable,dimension(:)::btmp,btmp1,btmp2,btmp3
 !-------------------------------------------------------------------!
@@ -31,6 +31,30 @@ alhs=0.0
 call qdct2(numel,numnp,neq,shl,ien,x,mat,alhs,eledet,elemass,eleshp,fnms,ss,phi,me,maxm,id1,locid,dof1)
 time2 = MPI_WTIME()
 timeused(2)=timeused(2)+(time2-time1)
+
+!RSF: initalize state variable based on the inital friction and inital slip rate  B.L. 1/8/16
+if(friclaw == 3) then 
+    do i=1,ntotft   
+	   if (nftnd(i) > 0) then !RSF
+			do l=1,nftnd(i)
+			!Theta=d0/v0*dexp(a*dlog(2*dsinh()))
+			state(l,i) = fric(11,l,i)/fric(12,l,i)*dexp((fric(9,l,i)*dlog(2.0d0*dsinh &
+			(sqrt(fric(8,l,i)**2+0.0d0**2)/abs(fric(7,l,i))/fric(9,l,i)) &
+			)-fric(13,l,i)-fric(9,l,i)*dlog(sqrt((fric(16,l,i))**2+(fric(17,l,i))**2+(fric(18,l,i))**2)/fric(12,l,i)))/fric(10,l,i))
+			enddo
+		endif
+	enddo
+elseif(friclaw == 4) then
+	do i=1,ntotft   
+		if (nftnd(i) > 0) then !RSF
+			do l=1,nftnd(i)
+				!Theta0=a*log(2V0/Vini*sinh(TAOini/a/SigmaNini))
+				state(l,i)=fric(9,l,i)*dlog(2.0d0*fric(12,l,i)/sqrt((fric(16,l,i))**2+(fric(17,l,i))**2+(fric(18,l,i))**2) &
+				*dsinh(sqrt(fric(8,l,i)**2+0.0d0**2)/abs(fric(7,l,i))/fric(9,l,i)))
+			enddo
+		endif
+	enddo
+endif
 !...allocate/deallicate outside time loop to improve performance.
 ! found by TAMU supercomputing facility colleagues. B.D. 1/12/12
 maxsur=0.0
@@ -182,10 +206,11 @@ do n=1,nstep
 	call hrglss(numel,numnp,neq,ien,d,v,mat,ss,phi,brhs,me,maxm,id1,locid,dof1,et,eledet)
 	time2 = MPI_WTIME()
 	timeused(5)=timeused(5)+(time2-time1)
-	time1 = MPI_WTIME()
+
 !===============================3DMPI===============================!
 !=====================Partitioning along x axis=====================!
-  	mex=int(me/(npy*npz))
+ 	time1 = MPI_WTIME() 	
+	mex=int(me/(npy*npz))
   	mey=int((me-mex*npy*npz)/npz)
   	mez=int(me-mex*npy*npz-mey*npz)
 	nx=numcount(1)
@@ -606,17 +631,18 @@ do n=1,nstep
 		! write(*,*) 'slave',brhs(id1(604363)+1),brhs(id1(604363)+2),brhs(id1(604363)+3)
 		! write(*,*) 'master',brhs(id1(1276251)+1),brhs(id1(1276251)+2),brhs(id1(1276251)+3)
 	! endif
+	time1=MPI_WTIME()
 	do i=1,ntotft
 		if (nftnd(i)>0) then !only nonzero fault node, does faulting. B.D. 10/16/09
-			time1=MPI_WTIME()
+			
 			call faulting(i,nftnd(i),numnp,neq,lstr,fnms,brhs,d,v,x,maxm,id1,locid,dof1,n4onf,&
 					fltsta,nsmp(1,1,i),fnft(1,i),fltslp(1,1,i),&
 					un(1,1,i),us(1,1,i),ud(1,1,i),fric(1,1,i),arn(1,i),r4nuc(1,i),arn4m(1,i),&
-					slp4fri(1,i),anonfs,nonmx,me,n,miuonf)
-			time2=MPI_WTIME()
-			timeused(6)=timeused(6)+(time2-time1) 
+					slp4fri(1,i),anonfs,nonmx,me,n,miuonf,state)
 		endif
-	enddo
+	enddo			
+	time2=MPI_WTIME()
+	timeused(6)=timeused(6)+(time2-time1) 
 	!Implementation of Double-couple point source.Sep.12.2015/D.L.
 	if (C_dc==1)then
 		do i=1,numnp
@@ -662,11 +688,14 @@ do n=1,nstep
 		endif
 		enddo!Enddo double-couple point source.	
 	endif!ldc(logical double couple)	
+	time1=MPI_WTIME()
 	!$omp parallel do default(shared) private(i)
 	do i=1,neq
 		brhs(i)=brhs(i)/alhs(i)
 	enddo
 	!$omp end parallel do
+	time2=MPI_WTIME()
+	timeused(7)=timeused(7)+(time2-time1) 	
 enddo 	!end time step loop n
 if (me==master) then
 	write(*,*) 'mpi_send + mpi_recv time:',btime
