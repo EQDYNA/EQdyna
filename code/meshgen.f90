@@ -27,7 +27,7 @@ real (kind=8),dimension(6,nftmx,ntotft) :: fric
 real (kind=8) :: xmin, xmax, ymin, ymax, zmin, zmax
 !...grid size
 real (kind=8) :: dx,dy,dz	!dx is given in parcon.f90, dy/dz will be from dx
-real (kind=8) :: rat=1.025 !enlarge ratio for buffers to use
+real (kind=8) :: rat=1.0 !enlarge ratio for buffers to use
 !...uniform element num from fault y-ccor
 integer (kind=4) :: dis4uniF=20,dis4uniB=20
 !...output on-fault stations. B.D. 10/25/09
@@ -312,6 +312,19 @@ do ix = 1, nx
 			xnode(1,nnode) = xcoor
 			xnode(2,nnode) = ycoor
 			xnode(3,nnode) = zcoor
+		!!
+		if (xcoor.eq.100.0.and.ycoor.eq.0.0.and.zcoor.eq.-2000.0) then
+			write(*,*) 'me,nnode,right',me,nnode
+		endif
+		if (xcoor.eq.-100.0.and.ycoor.eq.0.0.and.zcoor.eq.-2000.0) then
+			write(*,*) 'me,nnode,left',me,nnode
+		endif	
+		if (xcoor.eq.0.0.and.ycoor.eq.100.0.and.zcoor.eq.-2000.0) then
+			write(*,*) 'me,nnode,up',me,nnode
+		endif	
+		if (xcoor.eq.0.0.and.ycoor.eq.-100.0.and.zcoor.eq.-2000.0) then
+			write(*,*) 'me,nnode,down',me,nnode
+		endif				
 			!write(*,*) nnode,xnode(1,nnode),xnode(2,nnode),xnode(3,nnode)
 			!*.* Find the PML boundary D.L. Jan/23/2015
 			zz=ndof
@@ -498,7 +511,7 @@ do ix = 1, nx
 						fltrc(2,ifs(ift),ifd(ift),ift) = nftnd(ift) !fault node num in sequence
 						!...assign friction parameters for SCEC TPV19. B.D. 1/8/12
 						!...now for Ma and Andrews (2010) model. B.D. 6/1/12
-						fric(1,nftnd(ift),ift) = 0.6    !mus
+						fric(1,nftnd(ift),ift) = 10000.    !mus
 						fric(2,nftnd(ift),ift) = 0.3   !mud
 						fric(3,nftnd(ift),ift) = 0.4    !D0
 						fric(4,nftnd(ift),ift) = 0.0e6  !cohesion
@@ -585,19 +598,19 @@ do ix = 1, nx
 				tmp1 = -0.5*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
 				tmp2 = tmp1 * grav
 				!*.* Use 1D s1 to store initial stress. D.L. Jan/23/2015
-				if (et(nelement)==1) then
-					eleporep(nelement) = rhow*tmp2  !pore pressure>0
-					s1(ids(nelement)+3)= -rho(mat(nelement))*tmp2  !vertical, comp<0
-					s1(ids(nelement)+1)=s1(ids(nelement)+3)
-					s1(ids(nelement)+2)=s1(ids(nelement)+3)
-					s1(ids(nelement)+6)=-0.4 * (s1(ids(nelement)+3)+eleporep(nelement))
-				elseif	(et(nelement)==2) then
-					eleporep(nelement) = rhow*tmp2  !pore pressure>0
-					s1(ids(nelement)+3+15)= -rho(mat(nelement))*tmp2  !vertical, comp<0
-					s1(ids(nelement)+1+15)=s1(ids(nelement)+3+15)
-					s1(ids(nelement)+2+15)=s1(ids(nelement)+3+15)
-					s1(ids(nelement)+6+15)=-0.4 * (s1(ids(nelement)+3+15)+eleporep(nelement))				
-				endif
+				! ! ! if (et(nelement)==1) then
+					! ! ! eleporep(nelement) = rhow*tmp2  !pore pressure>0
+					! ! ! s1(ids(nelement)+3)= -rho(mat(nelement))*tmp2  !vertical, comp<0
+					! ! ! s1(ids(nelement)+1)=s1(ids(nelement)+3)
+					! ! ! s1(ids(nelement)+2)=s1(ids(nelement)+3)
+					! ! ! s1(ids(nelement)+6)=-0.4 * (s1(ids(nelement)+3)+eleporep(nelement))
+				! ! ! elseif	(et(nelement)==2) then
+					! ! ! eleporep(nelement) = rhow*tmp2  !pore pressure>0
+					! ! ! s1(ids(nelement)+3+15)= -rho(mat(nelement))*tmp2  !vertical, comp<0
+					! ! ! s1(ids(nelement)+1+15)=s1(ids(nelement)+3+15)
+					! ! ! s1(ids(nelement)+2+15)=s1(ids(nelement)+3+15)
+					! ! ! s1(ids(nelement)+6+15)=-0.4 * (s1(ids(nelement)+3+15)+eleporep(nelement))				
+				! ! ! endif
 				!eleporep(nelement) = rhow*tmp2  !pore pressure>0
 				!elestress(3,nelement) = -rho(mat(nelement))*tmp2  !vertical, comp<0
 				!elestress(1,nelement) = elestress(3,nelement)

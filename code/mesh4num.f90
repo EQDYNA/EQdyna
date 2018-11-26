@@ -17,7 +17,7 @@ real (kind=8) :: x1,x2,x3=0,y1,y2,y3=0,z1,z2,z3=0 !3 points for fault plane (inc
 real (kind=8) :: xmin, xmax, ymin, ymax, zmin, zmax
 !...grid size
 real (kind=8) :: dx,dy,dz	!dx is given in parcon.f90, dy/dz will be from dx
-real (kind=8) :: rat=1.025 !enlarge ratio for buffers to use
+real (kind=8) :: rat=1.0 !enlarge ratio for buffers to use
 !...uniform element num from fault y-ccor
 integer (kind=4) :: dis4uniF=20,dis4uniB=20
 !...mesh results
@@ -32,7 +32,7 @@ real (kind=8) :: tol,xcoor,ycoor,zcoor,xstep,ystep,zstep, &
 		xmin1,xmax1,ymin1,ymax1,zmin1
 real (kind=8),allocatable,dimension(:) :: xlinet,xline,yline,zline
 !DL
-integer(kind=4)::maxm,ntag,zz,nl=12
+integer(kind=4)::maxm,ntag,zz,nl=6
 real(kind=8)::PMLb(8),mdx(3)
 !
 !dy = dx * abs(dtan(brangle))

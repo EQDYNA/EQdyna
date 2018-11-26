@@ -144,24 +144,24 @@ do i=1,nftnd	!just fault nodes
 	!   slip-weakening only so far. B.D. 1/26/07
 	!... based on choices, call corresponding friction laws.
 	! B.D. 10/8/08
-	if(friclaw == 1) then
-		call slip_weak(slp4fri(i),fric(1,i),xmu)
-	elseif(friclaw == 2) then
-		trupt =  time - fnft(i)
-		call time_weak(trupt,fric(1,i),xmu)
-	endif
+	! if(friclaw == 1) then
+		! call slip_weak(slp4fri(i),fric(1,i),xmu)
+	! elseif(friclaw == 2) then
+		! trupt =  time - fnft(i)
+		! call time_weak(trupt,fric(1,i),xmu)
+	! endif
 	!......for nucleation zone of the nucleation fault,which initiates rupture,
 	!	rupture propagates at a fixed speed to drop "xmu". B.D. 8/31/06
-	if(ift == nucfault .and. xmu > fric(2,i)) then	
-		!only nucleation fault and before finishing dropping, do...
-		if(r4nuc(i) <= srcrad0) then !only within nucleation zone, do...
-			tr = r4nuc(i) / vrupt0
-			if(tr <= time) then !only ready or already fail, do...
-				trupt = time - tr
-			call time_weak(trupt,fric(1,i),xmu)
-			endif
-		endif
-	endif
+	! if(ift == nucfault .and. xmu > fric(2,i)) then	
+		!!only nucleation fault and before finishing dropping, do...
+		! if(r4nuc(i) <= srcrad0) then !only within nucleation zone, do...
+			! tr = r4nuc(i) / vrupt0
+			! if(tr <= time) then !only ready or already fail, do...
+				! trupt = time - tr
+			! call time_weak(trupt,fric(1,i),xmu)
+			! endif
+		! endif
+	! endif
 	!
 	!...adjust tstk,tdip and tnrm based on jump conditions on fault.
 	!   before calculate taoc, first adjust tnrm if needed. 

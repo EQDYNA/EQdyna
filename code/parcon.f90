@@ -27,8 +27,8 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   numeg=1
   !
   !...termination, output, & simulation time info
-  term=25.0
-  dt=0.012
+  term=150.0
+  dt=0.008
   nhplt = 1
   nhplt1 = 2
   nhshw = 1
@@ -73,7 +73,7 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   !mud=0.448
   !cohes=0.2e6
   !
-  fltxyz=reshape((/-16100,16100,0,0,-15100,0,270,90/),&
+  fltxyz=reshape((/-100,100,0,0,-100,0,270,90/),&
     (/2,4,1/))
   !...convert degree to arc for strike and dip of faults
   do i=1,ntotft
@@ -100,10 +100,10 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
 !  ymin=-90000.
 !  ymax=90000.
 !  zmin=-95000.
-	xmin=-20000
-	xmax=20000
-	ymin=-20000
-	ymax=20000
-	zmin=-20000
+	xmin=-10000
+	xmax=10000
+	ymin=-10000
+	ymax=10000
+	zmin=-10000
 	zmax=0
 end SUBROUTINE parcon

@@ -160,6 +160,10 @@ do n=1,nstep
 				v(j,i)=v1(eqn)
 				d(j,i)=d1(eqn)
 			enddo
+			if (x(1,i)==8000.0.and.x(2,i)==6000.0.and.x(3,i)==0.0) then
+			open(1234,file='0OUT.txt',form='formatted',position='append')
+			write(1234,'( f12.5,3e18.7e4)'),time,v(1,i),v(2,i),v(3,i)
+			endif			
 !			if (me==5) then
 !				if (i==1737494) then
 !					write(*,*) 'Time=',time
@@ -466,6 +470,34 @@ do n=1,nstep
 	!  After, brhs stores acceleration a. B.D. 7/4/05
 	!
 	!      brhs = brhs/alhs
+! !right
+	 ! if (me==17.and.time<0.2)then
+		 ! brhs(id1(locid(37660)+2))=brhs(id1(locid(37660)+2))+(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+	 ! endif
+	  ! if (me==17.and.time>=0.2)then
+		  ! brhs(id1(locid(37660)+2))=brhs(id1(locid(37660)+2))+1.0e14/2
+	  ! endif	
+! !left
+	  ! if (me==16.and.time<0.2)then
+		  ! brhs(id1(locid(121294)+2))=brhs(id1(locid(121294)+2))-(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+	  ! endif
+	  ! if (me==16.and.time>=0.2)then
+		  ! brhs(id1(locid(121294)+2))=brhs(id1(locid(121294)+2))-1.0e14/2
+	  ! endif	
+! !up	
+	  ! if (me==16.and.time<0.2)then
+		 ! brhs(id1(locid(142206)+1))=brhs(id1(locid(142206)+1))+(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+	  ! endif
+	  ! if (me==16.and.time>=0.2)then
+		  ! brhs(id1(locid(142206)+1))=brhs(id1(locid(142206)+1))+1.0e14/2
+	  ! endif	
+! !down	
+	  ! if (me==16.and.time<0.2)then
+		  ! brhs(id1(locid(142204)+1))=brhs(id1(locid(142204)+1))-(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+	  ! endif
+	  ! if (me==16.and.time>=0.2)then
+		  ! brhs(id1(locid(142204)+1))=brhs(id1(locid(142204)+1))-1.0e14/2
+	  ! endif			
 	!$omp parallel do default(shared) private(i)
 	do i = 1,neq
 		brhs(i) = brhs(i)/alhs(i)

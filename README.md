@@ -2,7 +2,12 @@
 
 A parallel Finite Element software to model earthquake spontaneous dynamic ruptures. The software is designed to use high-performance computing. It is written in FORTRAN 90 and MPI.
 
-### Dunyu Liu, 2015, dunyuliu@gmail.com
+### Dunyu Liu, 09/2015, dunyuliu@gmail.com
+# Version 3.1.2
+## Patch update
+* Double-couple point source is implemented based on Ma and Liu (2006)
+
+### Dunyu Liu, 09/2015, dunyuliu@gmail.com
 # Version 3.1.1
 ## Features
 * Implementation of the Perfectly Matched Layer (Ma and Liu, 2006)

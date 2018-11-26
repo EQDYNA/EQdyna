@@ -1,3 +1,13 @@
+# Version 3.1.2
+
+## Modified 
+* driver.f90
+* faulting.f90
+* mesh4num.f90
+* meshgen.f90
+* parcon.f90
+* qdckd.f90
+
 # Version 3.1.1 
 
 ## Modified: 

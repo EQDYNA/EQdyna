@@ -83,6 +83,7 @@ if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
 		!rjust = yield/taomax  !adjust ratio
 		!implement viscoplasticity now. B.D. 6/2/12
 		rjust=yield/taomax + (1-yield/taomax)*exp(-dt/tv)
+		rjust=1.0
 		do i=1,6  !adjust stress
 			stress(i) =strdev(i) * rjust
 			!calculate plastic strain increment components
