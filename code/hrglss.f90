@@ -1,5 +1,5 @@
 SUBROUTINE hrglss(numel,numnp,neq,ien,d,v,rdampk,mat,ss,phi,brhs,me,master,nprocs,&
-maxm,id1,locid,dof1,et,eledet,rho,vp) !Delete lm ! Add maxm,id1,loci
+maxm,id1,locid,dof1,et,eledet) !Delete lm ! Add maxm,id1,loci
 use globalvar
 implicit none
 include 'mpif.h'
@@ -21,8 +21,8 @@ real (kind=8),dimension(ned,nen) :: dl,vl,fhr
 integer (kind=4),dimension(nen,numel) :: ien
 real (kind=8),dimension(ndof,numnp) :: d,v
 real (kind=8),dimension(neq) :: brhs
-real (kind=8),dimension(numat) :: rho,vp,rdampk
-integer (kind=4),dimension(numel) :: mat	    
+real (kind=8),dimension(numat) :: rdampk
+real(kind=8),dimension(numel,5) :: mat	    
 !integer (kind=4),dimension(ned,nen,numel) :: lm
 !...hourglass control arrays
 real (kind=8),dimension(6,numel) :: ss
@@ -57,7 +57,7 @@ real(kind=8)::f(24),det,coef
 !$omp	zerodl,fhr,phid)
 !$omp do schedule (static)
 do nel=1,numel
-	m = mat(nel)
+	m = 1
 	!...localize dl and account for Rayleigh damping
 	do i=1,nen
 		k=ien(i,nel)
@@ -204,7 +204,7 @@ do nel=1,numel
 	elseif (C_hg==2) then
 		!viscous hourglass control
 		det=eledet(nel)
-		coef=0.25*kapa_hg*rho(m)*vp(m)*(det*w)**(2./3.)
+		coef=0.25*kapa_hg*mat(nel,3)*mat(nel,1)*(det*w)**(2./3.)
 		fi(1,1)=1;fi(1,2)=1;fi(1,3)=-1;fi(1,4)=-1;fi(1,5)=-1;fi(1,6)=-1;fi(1,7)=1;fi(1,8)=1
 		fi(2,1)=1;fi(2,2)=-1;fi(2,3)=-1;fi(2,4)=1;fi(2,5)=-1;fi(2,6)=1;fi(2,7)=1;fi(2,8)=-1
 		fi(3,1)=1;fi(3,2)=-1;fi(3,3)=1;fi(3,4)=-1;fi(3,5)=1;fi(3,6)=-1;fi(3,7)=1;fi(3,8)=-1

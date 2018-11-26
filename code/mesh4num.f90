@@ -1,5 +1,5 @@
 subroutine mesh4num(fltxyz,xmin,xmax,ymin,ymax,zmin,zmax,&
-nnode,nelement,neq,PMLb,maxm,nftnd,master,me,nprocs)!Adding PMLb and maxm
+nnode,nelement,neq,PMLb,maxm,nftnd,master,me,nprocs,nsurnd,nnodPML)!Adding PMLb and maxm
 !... program to generate mesh for 3D models.
 ! This model is a strike-slip fault in the half space, for SCEC TPV16 & 17.
 ! B.D. 1/1/12
@@ -7,7 +7,7 @@ use globalvar
 implicit none
 include 'mpif.h'
 !...node # and related
-integer (kind=4)::nnode,nelement,nxt,nx,ny,nz,ix,iy,iz, &
+integer (kind=4)::nnode,nelement,nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
 	edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,np=10000,ncnt,nfrt,nbck,edgezn
 !...fault definition: 
 integer (kind=4),dimension(ntotft) :: nftnd
@@ -32,9 +32,12 @@ integer istatus(MPI_STATUS_SIZE)
 real (kind=8) :: tol,xcoor,ycoor,zcoor,xstep,ystep,zstep, &
 		tmp1,tmp2,tmp3,a,b,fltybtm,linea,lineb,linea1,lineb1,ycoor1,&
 		xmin1,xmax1,ymin1,ymax1,zmin1
-real (kind=8),allocatable,dimension(:) :: xlinet,xline,yline,zline
+real (kind=8),allocatable,dimension(:) :: xlinet,ylinet,zlinet,xline,yline,zline
+!3D MPI partitioning
+integer(kind=4)::mex,mey,mez,msnode
+!
 !DL
-integer(kind=4)::maxm,ntag,zz
+integer(kind=4)::maxm,ntag,zz,nsurnd,nsx,nsy,nnodPML
 real(kind=8)::PMLb(8),mdx(3)
 !
 !dy = dx * abs(dtan(brangle))
@@ -42,6 +45,10 @@ dy=dx
 dz = dx
 tol = dx/100
 
+!3DMPI: Prepare for MPI partitioning
+mex=int(me/(npy*npz))
+mey=int((me-mex*npy*npz)/npz)
+mez=int(me-mex*npy*npz-mey*npz)
 !...determine num of nodes along x
 nxuni = (fltxyz(2,1,1) - fltxyz(1,1,1)) / dx + 1
 xstep = dx
@@ -90,23 +97,23 @@ xmax1=xlinet(nxt)
 
 
 
-j1 = nxt + nprocs - 1
-rlp = j1/nprocs
-rr = j1 - rlp*nprocs
-if(me<(nprocs-rr)) then
+j1 = nxt + npx - 1
+rlp = j1/npx
+rr = j1 - rlp*npx
+if(mex<(npx-rr)) then
 	nx = rlp
 else
 	nx = rlp + 1	!evenly distributed to last rr
 endif
 allocate(xline(nx))
-if(me<=nprocs-rr) then
+if(mex<=npx-rr) then
 	do ix=1,nx
-		xline(ix) = xlinet(rlp*me-me+ix)
+		xline(ix) = xlinet(rlp*mex-mex+ix)
 	enddo
 else
 	do ix=1,nx
-		k1 = me - (nprocs - rr)
-		xline(ix) = xlinet(rlp*me-me+k1+ix)
+		k1 = mex - (npx - rr)
+		xline(ix) = xlinet(rlp*mex-mex+k1+ix)
 	enddo
 endif
 !  if(me==nprocs-1) then
@@ -139,27 +146,51 @@ do iy = 1, np
 	ycoor = ycoor + ystep
 	if(ycoor >= ymax) exit
 enddo
-ny = nyuni + edgey1 + iy + nPML
+nyt = nyuni + edgey1 + iy + nPML
 !...pre-determine y-coor
-allocate(yline(ny))
+allocate(ylinet(nyt))
 !...predetermine y-coor
-!yline(edgey1+1) = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
-yline(edgey1+1) = -dy*(dis4uniF)
+ylinet(edgey1+1) = -dy*(dis4uniF)
 ystep = dy
 do iy = edgey1, 1, -1
 	ystep = ystep * rat
-	yline(iy) = yline(iy+1) - ystep
+	ylinet(iy) = ylinet(iy+1) - ystep
 enddo
-ymin1=yline(1)
+ymin1=ylinet(1)
 do iy = edgey1+2,edgey1+nyuni
-	yline(iy) = yline(iy-1) + dy
+	ylinet(iy) = ylinet(iy-1) + dy
 enddo
 ystep = dy
-do iy = edgey1+nyuni+1,ny
+do iy = edgey1+nyuni+1,nyt
 	ystep = ystep * rat
-	yline(iy) = yline(iy-1) + ystep
+	ylinet(iy) = ylinet(iy-1) + ystep
 enddo
-ymax1=yline(ny)
+ymax1=ylinet(nyt)
+  !***********MPI***************  
+  !...MPI partitioning based on iy and ylinet.
+  !...need overlap between adjacent procs.
+  !...more evenly distributed. 
+  !...due to overlap, total line num should be: nyt+npy-1
+  !	
+  j1 = nyt + npy - 1
+  rlp = j1/npy
+  rr = j1 - rlp*npy
+  if(mey<(npy-rr)) then
+    ny = rlp
+  else
+    ny = rlp + 1	!evenly distributed to last rr
+  endif
+  allocate(yline(ny))
+  if(mey<=npy-rr) then
+    do iy=1,ny
+      yline(iy) = ylinet(rlp*mey-mey+iy)
+    enddo
+  else
+    do iy=1,ny
+      k1 = mey - (npy - rr)
+      yline(iy) = ylinet(rlp*mey-mey+k1+iy)
+    enddo
+  endif
 !
 !...determine num of nodes along z
 zstep = dz
@@ -171,28 +202,53 @@ do iz=1,np
 enddo
 edgezn = iz + nPML
 nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dx + 1 
-nz = edgezn + nzuni
+nzt = edgezn + nzuni
 !...predetermine z-coor
-allocate(zline(nz))
-zline(nz) = zmax
-do iz = nz-1,nz-nzuni+1,-1
-	zline(iz) = zline(iz+1) - dz
+allocate(zlinet(nzt))
+zlinet(nzt) = zmax
+do iz = nzt-1,nzt-nzuni+1,-1
+	zlinet(iz) = zlinet(iz+1) - dz
 enddo
 zstep = dz
-do iz = nz-nzuni,1,-1
+do iz = nzt-nzuni,1,-1
 	zstep = zstep * rat
-	zline(iz) = zline(iz+1) -zstep
+	zlinet(iz) = zlinet(iz+1) -zstep
 enddo
-zmin1=zline(1)
+zmin1=zlinet(1)
+  !***********MPI***************  
+  !...MPI partitioning based on iz and zlinet.
+  !...need overlap between adjacent procs.
+  !...more evenly distributed. 
+  !...due to overlap, total line num should be: nzt+npz-1
+  !	
+  j1 = nzt + npz - 1
+  rlp = j1/npz
+  rr = j1 - rlp*npz
+  if(mez<(npz-rr)) then
+    nz = rlp
+  else
+    nz = rlp + 1	!evenly distributed to last rr
+  endif
+  allocate(zline(nz))
+  if(mez<=npz-rr) then
+    do iz=1,nz
+      zline(iz) = zlinet(rlp*mez-mez+iz)
+    enddo
+  else
+    do iz=1,nz
+      k1 = mez - (npz - rr)
+      zline(iz) = zlinet(rlp*mez-mez+k1+iz)
+    enddo
+  endif
 !DL  
 PMLb(1)=xlinet(nxt-nPML)!PMLxmax
 PMLb(2)=xlinet(nPML+1)!PMLxmin
-PMLb(3)=yline(ny-nPML)!PMLymax
-PMLb(4)=yline(nPML+1)!PMLymin
-PMLb(5)=zline(nPML+1)!PMLzmin
+PMLb(3)=ylinet(nyt-nPML)!PMLymax
+PMLb(4)=ylinet(nPML+1)!PMLymin
+PMLb(5)=zlinet(nPML+1)!PMLzmin
 mdx(1)=xlinet(nxt)-xlinet(nxt-1)
-mdx(2)=yline(ny)-yline(ny-1)
-mdx(3)=zline(2)-zline(1)
+mdx(2)=ylinet(nyt)-ylinet(nyt-1)
+mdx(3)=zlinet(2)-zlinet(1)
 PMLb(6)=mdx(1)
 PMLb(7)=mdx(2)
 PMLb(8)=mdx(3)
@@ -204,13 +260,20 @@ write(*,*) '---------------------------'
 write(*,*) 'Model boundaries info'
 write(*,*) 'xmax',xmax1,'xmin',xmin1,'ymax',ymax1,'ymin',ymin1,'zmin',zmin1
 endif
+
+!write(*,*) 'me',me,'Mexyz',mex,mey,mez
+!write(*,*) 'Bound',xline(1),xline(nx),yline(1),yline(ny),zline(1),zline(nz)
 !...prepare for digitizing
 nnode = 0
 nelement = 0
 neq = 0
 nftnd = 0
+nsurnd=0
+nnodPML=0
 !DL 
 ntag=0
+nsx=(surxmax-surxmin)/dx+1
+nsy=(surymax-surymin)/dx+1
 !
 !...digitize along constant x plane (normal to fault strike for MPI)
 do ix = 1, nx
@@ -219,6 +282,15 @@ do ix = 1, nx
 			xcoor = xline(ix)
 			ycoor = yline(iy)
 			zcoor = zline(iz)
+			if (zcoor==0.0)then
+				do i=1,nsx
+					do j=1,nsy
+						if (xcoor==(surxmin+(i-1)*dx).and.ycoor==(surymin+(j-1)*dx)) then 
+							nsurnd=nsurnd+1
+						endif
+					enddo
+				enddo
+			endif			
 			!...create nodes
 			nnode = nnode + 1
 			zz=ndof
@@ -227,6 +299,13 @@ do ix = 1, nx
 				.or.zcoor<PMLb(5)) then
 				zz = 12
 			endif	
+			if (xcoor>PMLb(1).or.xcoor<PMLb(2).or.ycoor>PMLb(3).or.ycoor<PMLb(4) &
+				.or.zcoor<PMLb(5)) then
+				if(abs(xcoor-xmin1)>tol.and.abs(xcoor-xmax1)>tol.and.abs(ycoor-ymin1)>tol &
+					.and.abs(ycoor-ymax1)>tol.and.abs(zcoor-zmin1)>tol) then
+					nnodPML=nnodPML+1
+				endif
+			endif			
 			!...establish equation numbers for this node
 			do i1=1,zz
 				!...elastoplastic off-fault, stress assigned in entire model,
@@ -266,7 +345,7 @@ do ix = 1, nx
 			enddo  !do ift 
 			!...create elements
 			if(ix>=2 .and. iy>=2 .and. iz>=2) then
-			nelement = nelement + 1
+			nelement = nelement + 1			
 			!...when the current node is one element above the branch fault in y-coor,
 			! one hexahedron degenerates into two wedges. B.D. 1/7/12
 			!          if(xcoor>=(fltxyz(1,1,2)-tol).and.xcoor<=(fltxyz(2,1,2)+tol).and. &

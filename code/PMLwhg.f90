@@ -1,4 +1,4 @@
-SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me,vp)
+SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,bdamp,nel,me)
 !efPML,evPML,esPML,ex,PMLb,c(1,1,1),eleshp(1,1,nel),det,dt
 	use globalvar
 	implicit none  
@@ -32,19 +32,21 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me,vp)
 	real(kind=8)::lam,miu,det,vp,delta,kapa,rou,coef
 	real(kind=8)::Dx_vx,Dy_vy,Dz_vz,Dx_vy,Dy_vx,Dx_vz,Dz_vx,Dy_vz,Dz_vy
 	real(kind=8)::sxx,syy,szz,sxy,sxz,syz,s0(6)
-	real(kind=8),dimension(6,6)::c
 	real(kind=8),dimension(3,8)::ex
 	real(kind=8),dimension(3)::xc
 	real(kind=8),dimension(3)::damps
 	real(kind=8),dimension(3,8)::shg
 	real(kind=8),dimension(3,4)::q
 	integer(kind=4),dimension(4,8)::fi
-	real(kind=8)::xmax,xmin,ymax,ymin,zmin,PMLb(8),maxdx,maxdy,maxdz,bdamp
+	real(kind=8)::xmax,xmin,ymax,ymin,zmin,PMLb(8),&
+					maxdx,maxdy,maxdz,bdamp,mat(5)
 	integer(kind=4)::i,j,k,nt,j1,j2,j3,nel,me
 	real (kind=8),dimension(nrowb,nee) :: bb	!correspond to b
 	real (kind=8),dimension(nstr) :: strainrate,stressrate	
-	lam=c(1,2)
-	miu=c(4,4)
+	real(kind=8)::c(6,6)
+	vp=mat(1)
+	lam=mat(4)
+	miu=mat(5)
 	!
 	xmax=PMLb(1)
 	xmin=PMLb(2)
@@ -90,6 +92,11 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me,vp)
 		elseif (xc(2)>ymax.and.xc(1)>xmin.and.xc(1)<xmax) then !region 1_41	
 			damps(1)=0.0
 			damps(2)=abs(xc(2)-ymax)
+		else
+		!Middle area 9 missing previously.
+		!Feb.18.2016/D.Liu
+			damps(1)=0.0
+			damps(2)=0.0
 		endif
 	elseif (xc(3)>zmin) then !region 2
 		damps(3)=0.0
@@ -117,6 +124,11 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me,vp)
 		elseif (xc(2)>ymax.and.xc(1)>xmin.and.xc(1)<xmax) then !region 1_41	
 			damps(1)=0.0
 			damps(2)=abs(xc(2)-ymax)
+		else
+		!Middle area 9 missing previously.
+		!Feb.18.2016/D.Liu
+			damps(1)=0.0 
+			damps(2)=0.0
 		endif
 	endif
 	do i=1,3
@@ -127,7 +139,7 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me,vp)
 		elseif (i==3) then
 		delta=nPML*maxdz		
 		endif
-		damps(i)=3*vp/2/delta*log(1/R)*(damps(i)/delta)**(2.)
+		damps(i)=3*vmaxPML/2/delta*log(1/R)*(damps(i)/delta)**(2.)
 	enddo	
 	!-------------------------------------------------! 
 	! Calculate differentials of velocity.		
@@ -136,18 +148,10 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me,vp)
 		va(3*(i-1)+2)=vl(2,i)
 		va(3*(i-1)+3)=vl(3,i)
 	enddo
-	stressrate = 0.0
-	!...calcuate b from shg
+
 	call qdcb(shg,bb)
-	!...calculate strainrate
-	! Take into account zero in bb. B.D. 8/20/05
+	stressrate = 0.0
 	strainrate = 0.0	!initialize
-	!Important: OpenMP directives should not be used in this routine as
-	!  they have been used in the parent roution qdct3.f90. Adding these
-	!  directives did not cause slowdown problem with SUN compiler, but 
-	!  results in significant reduction in comupting speed with Intel 
-	!  compiler!! B.D. 8/7/10
-	!!$omp parallel do default(shared) privlte(i,j1,j2,j3)
 	do i=1,nen
 		j1 = ned * (i - 1) + 1
 		j2 = ned * (i - 1) + 2
@@ -159,9 +163,17 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me,vp)
 		strainrate(5) = strainrate(5) + bb(5,j1) * va(j1) + bb(5,j3) * va(j3)
 		strainrate(6) = strainrate(6) + bb(6,j1) * va(j1) + bb(6,j2) * va(j2)
 	enddo
-	!!$omp end parallel do
-	!...calculate stressrate
-	! Take into account zero in cc. B.D. 8/20/05
+	c=0.0 
+	do i=1,3 
+		c(i,i)=lam+2*miu
+		c(i+3,i+3)=miu 
+	enddo	
+	c(1,2)=lam 
+	c(2,1)=lam 
+	c(2,3)=lam 
+	c(3,2)=lam 
+	c(1,3)=lam 
+	c(3,1)=lam 
 	do i=1,3
 		do j=1,3
 			stressrate(i) = stressrate(i) + c(i,j)*strainrate(j)
@@ -253,9 +265,12 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me,vp)
 		f((i-1)*12+7)=f((i-1)*12+7)-det*w*shg(1,i)*sxz
 		f((i-1)*12+8)=f((i-1)*12+8)-det*w*shg(2,i)*syz
 		f((i-1)*12+9)=f((i-1)*12+9)-det*w*shg(3,i)*szz
-		f((i-1)*12+10)=f((i-1)*12+10)-det*w*(bb(1,3*(i-1)+1)*s0(1)+bb(5,3*(i-1)+1)*s0(5)+bb(6,3*(i-1)+1)*s0(6))
-		f((i-1)*12+11)=f((i-1)*12+11)-det*w*(bb(2,3*(i-1)+2)*s0(2)+bb(4,3*(i-1)+2)*s0(4)+bb(6,3*(i-1)+2)*s0(6))
-		f((i-1)*12+12)=f((i-1)*12+12)-det*w*(bb(3,3*(i-1)+3)*s0(3)+bb(4,3*(i-1)+3)*s0(4)+bb(5,3*(i-1)+3)*s0(5))
+		f((i-1)*12+10)=f((i-1)*12+10)-&
+		det*w*(bb(1,3*(i-1)+1)*s0(1)+bb(5,3*(i-1)+1)*s0(5)+bb(6,3*(i-1)+1)*s0(6))
+		f((i-1)*12+11)=f((i-1)*12+11)-&
+		det*w*(bb(2,3*(i-1)+2)*s0(2)+bb(4,3*(i-1)+2)*s0(4)+bb(6,3*(i-1)+2)*s0(6))
+		f((i-1)*12+12)=f((i-1)*12+12)-&
+		det*w*(bb(3,3*(i-1)+3)*s0(3)+bb(4,3*(i-1)+3)*s0(4)+bb(5,3*(i-1)+3)*s0(5))
 	enddo
 	!
 end subroutine PMLwhg

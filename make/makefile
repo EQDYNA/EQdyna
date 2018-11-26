@@ -1,6 +1,6 @@
 F90 = mpif90
-OPT =  -ipo -O3 -xHost -openmp -heap-arrays -limf -c 
-OPT1 =  -ipo -O3 -xHost -openmp -heap-arrays -limf
+OPT = -ipo -O3 -xHost -openmp -heap-arrays -limf -c 
+OPT1 = -ipo -O3 -xHost -openmp -heap-arrays -limf
 OBJ = eqdyna3d.o globalvar.o qdct1.o parcon.o mesh4num.o \
          meshgen.o qdcshl.o prop3d.o formlm.o driver.o \
 	 qdct2.o qdcshg.o contm.o qdcb.o vlm.o qdct3.o \
@@ -56,3 +56,9 @@ comdampv.o: comdampv.f90
 	$(F90) $(OPT) comdampv.f90
 qconstant.o: qconstant.f90
 	$(F90) $(OPT) qconstant.f90
+	
+clean:
+	rm fslipout_*
+	rm fsurout_*
+	rm frt*
+	rm fnode*

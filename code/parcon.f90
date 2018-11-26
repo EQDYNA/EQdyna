@@ -27,7 +27,7 @@ SUBROUTINE parcon(xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   numeg=1
   !
   !...termination, output, & simulation time info
-  term=15.0
+  term=15.
   dt=0.008
   nhplt = 1
   nhplt1 = 2
@@ -43,9 +43,13 @@ SUBROUTINE parcon(xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   ! vp=(/2800.,6000./)
   ! vs=(/1500.,3464./)
 !For TPV8  
-rho=(/2700.,2700./)
-  vp=(/5716.,5716./)
-  vs=(/3300.,3300./)
+	! rho=(/2700.,2700./)
+  ! vp=(/5716.,5716./)
+  ! vs=(/3300.,3300./)
+!For TianJin
+	! rho=(/2700.,2700./)
+	! vp=(6470.,6470.)
+	! vs=(3736.,3736.)
   coh4p=(/0.e6,0.0/)
   tanphi=(/0.75,0.75/)
   do i=1,numat
@@ -66,24 +70,17 @@ rho=(/2700.,2700./)
   !...fault and friction
   nucfault=1
   friclaw=1
-  !critd0=0.5
   tv= 0.03 !time for viscoplasticity: s wave travel one element size
-  critt0=0.08  !time-weakening for nucleation
-  srcrad0=4000.0
-  vrupt0=2000.0
-  xsource=0.0
-  ysource=0.0
-  zsource=-5000.
-  !mus=0.76
-  !mud=0.448
-  !cohes=0.2e6
   !
 !For Double-couple point source. Ma and Liu (2006)    
   ! fltxyz=reshape((/0,100,0,0,-100,0,270,90/),&
     ! (/2,4,1/))
 !For TPV8	
+  ! fltxyz=reshape((/-15e3,15e3,0,0,-15e3,0,270,90/),&
+    ! (/2,4,1/))
+!For Tianjin
   fltxyz=reshape((/-15e3,15e3,0,0,-15e3,0,270,90/),&
-    (/2,4,1/))
+    (/2,4,1/))	
   !...convert degree to arc for strike and dip of faults
   do i=1,ntotft
     do j=1,2
@@ -104,18 +101,27 @@ rho=(/2700.,2700./)
   !
   !...element size and model boundary
 !For Double-couple point source. Ma and Liu (2006)  
-	! dx=100
-	! xmin=-10e3
-	! xmax=10e3
-	! ymin=-10e3
-	! ymax=10e3
-	! zmin=-12e3
-	! zmax=0
 	dx=100
-	xmin=-40e3
-	xmax=40e3
-	ymin=-40e3
-	ymax=40e3
-	zmin=-50e3
+	xmin=-40e3+nPML*dx
+	xmax=40e3-nPML*dx
+	ymin=-40e3+nPML*dx
+	ymax=40e3-nPML*dx
+	zmin=-50e3+nPML*dx
 	zmax=0	
+!For TPV8	
+	! dx=100
+	! xmin=-40e3
+	! xmax=40e3
+	! ymin=-40e3
+	! ymax=40e3
+	! zmin=-50e3
+	! zmax=0	
+!For TianJin
+	! dx=200
+	! xmin=-130e3+nPML*dx
+	! xmax=130e3-nPML*dx
+	! ymin=-160e3+nPML*dx
+	! ymax=50e3-nPML*dx
+	! zmin=-70e3+nPML*dx
+	! zmax=0	
 end SUBROUTINE parcon

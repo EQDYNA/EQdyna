@@ -1,0 +1,21 @@
+#BSUB -J TPV8redoADA
+#BSUB -L /bin/bash
+#BSUB -W 04:00
+#BSUB -n 72              # 900: total number of cores/jobslots to allocate for the job
+#BSUB -R "span[ptile=18]"
+#BSUB -R "rusage[mem=3000]" 
+#BSUB -M 3000
+#BSUB -o mpiout.%J       # directs the job's standard output to stdout1.jobid
+##BSUB -P project_ID      # This is the project number against which the used service units (SUs) are charged.
+#BSUB -u dunyuliu@tamu.edu  # sends email to the specified address (e.g., netid@tamu.edu,
+                         # myname@gmail.com) with information about main job events (next line).
+#BSUB -B -N              # send emails on job begin (-B) and end (-N)
+
+# load intel toolchain
+ml intel/2016b
+ml
+
+export OMP_NUM_THREADS=1
+
+# launch MPI program using the hydra launcher
+mpirun -np 72 ./eqdyna-hyb

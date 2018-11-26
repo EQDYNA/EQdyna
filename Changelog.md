@@ -1,3 +1,24 @@
+# Version 4.0
+
+## Modified
+* PMLwhg.f90
+* comdampv.f90
+* driver.f90
+* eqdyna3d.f90
+* faulting.f90
+* globalvar.f90
+* hrglss.f90
+* mesh4num.f90
+* meshgen.f90
+* parcon.f90
+* qdckd.f90
+* qdct2.f90
+* qdct3.f90
+* makefile
+
+## Added 
+* batchADA3DMPI.txt
+
 # Version 3.2.1
 
 ## Modified

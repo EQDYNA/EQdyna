@@ -1,7 +1,7 @@
-SUBROUTINE faulting(ift,nftnd,numnp,neq,lstr,lstr1,fnms,brhs,d,v,x,maxm,id1,locid,dof1,& ! Delete id. Add maxm,id1,loci
-					n4onf,mushr,momnt,momntrat,maxslprat,fltsta, &
+SUBROUTINE faulting(ift,nftnd,numnp,neq,lstr,lstr1,fnms,brhs,d,v,x,maxm,id1,locid,dof1,&
+					n4onf,momnt,momntrat,maxslprat,fltsta, &
 					nsmp,fnft,fltslp,un,us,ud,fric,arn,r4nuc,arn4m,slp4fri,anonfs,itmp,&
-					me, master,nprocs)
+					me, master,nprocs,nt,miuonf)
 use globalvar
 implicit none
 !
@@ -22,8 +22,9 @@ tdip,taox,taoy,taoz,ttao,taoc,ftix,ftiy,ftiz,trupt,tr,&
 tmp1,tmp2,tmp3,tmp4,momnt,momntrat,maxslprat,tnrm0,xmu1,xmu2
 integer (kind=4),dimension(3,itmp) :: anonfs
 integer (kind=4),dimension(2,nftnd) :: nsmp
+real(kind=8),dimension(nftnd) :: miuonf
 real (kind=8),dimension(nftnd) :: fnft,arn,r4nuc,arn4m,slp4fri
-real (kind=8),dimension(3,nftnd) :: un,us,ud,fltslp
+real (kind=8),dimension(3,nftnd) :: un,us,ud,fltslp,fltslr
 real (kind=8),dimension(8,nftnd) :: fric
 real (kind=8),dimension(10,nplpts-1,n4onf) :: fltsta
 real (kind=8),dimension(6,2,3)::fvd=0.0
@@ -31,11 +32,16 @@ real (kind=8),dimension(neq) :: brhs
 real (kind=8),dimension(ndof,numnp) :: d,v,x
 !  integer (kind=4),dimension(ndof,numnp) :: id
 real (kind=8),dimension(numnp) :: fnms
-real (kind=8),dimension(numat) :: mushr
+
 integer master, me, nprocs
 integer (kind=4):: maxm
 integer (kind=4),dimension(maxm)::id1
 integer (kind=4),dimension(numnp)::locid,dof1  
+!
+character(len=30)::foutmov
+character(len=6)::mm
+integer(kind=4)::ifout,nt
+real(kind=8)::rcc
 !
 momnt=0  !for moment and rate calculation
 momntrat=0 
@@ -103,11 +109,16 @@ do i=1,nftnd	!just fault nodes
 	slip = sqrt(slipn**2 + slips**2 + slipd**2) !slip mag
 	fltslp(1,i) = slips  !save for final slip output
 	fltslp(2,i) = slipd
-	fltslp(3,i) = slipn  !normal should be zero, but still keep to ensure
+	!fltslp(3,i) = slipn  !normal should be zero, but still keep to ensure
 	slipraten = fvd(4,2,2) - fvd(4,1,2)
 	sliprates = fvd(5,2,2) - fvd(5,1,2)
 	sliprated = fvd(6,2,2) - fvd(6,1,2)
+	fltslr(1,i) = sliprates  !save for final slip output
+	fltslr(2,i) = sliprated
 	sliprate = sqrt(slipraten**2+sliprates**2+sliprated**2)
+	if (sliprate>fltslp(3,i)) then 
+		fltslp(3,i)=sliprate
+	endif
 	!...path-itegrated slip for slip-weakening. B.D. 8/12/10
 	slp4fri(i) = slp4fri(i) + sliprate * dt
 	!...calculate moment rate and moment if needed. B.D. 8/11/10
@@ -115,8 +126,8 @@ do i=1,nftnd	!just fault nodes
 	!...for homogeneous material, i.e., only myshr(1). B.D. 1/3/12
 	! or for heterogeneous case, but mushr(1) for rupture fault.
 	if(time > term-dt) then  !only at the end, do this for LVFZ3D Plastic.
-		momnt = momnt + mushr(1) * arn4m(i) * slip
-		momntrat = momntrat + mushr(1) * arn4m(i) *sliprate
+		momnt = momnt + miuonf(i) * arn4m(i) * slip
+		momntrat = momntrat + miuonf(i) * arn4m(i) *sliprate
 		if(sliprate>maxslprat) maxslprat=sliprate
 	endif
 	!
@@ -163,9 +174,9 @@ endif
 		trupt =  time - fnft(i)
 		call time_weak(trupt,fric(1,i),xmu)
 	endif
-	!......for nucleation zone of the nucleation fault,which initiates rupture,
-	!	rupture propagates at a fixed speed to drop "xmu". B.D. 8/31/06
-	if(ift == nucfault .and. xmu > fric(2,i)) then	
+	! !......for nucleation zone of the nucleation fault,which initiates rupture,
+	! !	rupture propagates at a fixed speed to drop "xmu". B.D. 8/31/06
+	! if(ift == nucfault .and. xmu > fric(2,i)) then	
 		! !only nucleation fault and before finishing dropping, do...
 		! if(r4nuc(i) <= srcrad0) then !only within nucleation zone, do...
 			! tr = r4nuc(i) / vrupt0
@@ -174,19 +185,19 @@ endif
 			! call time_weak(trupt,fric(1,i),xmu)
 			! endif
 		! endif
-      !only nucleation fault and before finishing dropping, do...
-      ! if(r4nuc(i) <= srcrad0) then !only within nucleation zone, do...
-        ! tr=(r4nuc(i)+0.081*srcrad0*(1./(1-(r4nuc(i)/srcrad0)* &
-         ! (r4nuc(i)/srcrad0))-1))/(0.7*3464.)
-        ! tr = r4nuc(i) / vrupt0
-        !if(tr <= time) then !only ready or already fail, do...
-          ! trupt = time - tr
-          ! call time_weak(trupt,fric(1,i),xmu1)
-        ! call slip_weak(slp4fri(i),fric(1,i),xmu2)
-        ! xmu=min(xmu1,xmu2)  !minimum friction used. B.D. 2/16/13
-        ! endif
-      !endif		
-	endif
+      ! !only nucleation fault and before finishing dropping, do...
+      ! ! if(r4nuc(i) <= srcrad0) then !only within nucleation zone, do...
+        ! ! tr=(r4nuc(i)+0.081*srcrad0*(1./(1-(r4nuc(i)/srcrad0)* &
+         ! ! (r4nuc(i)/srcrad0))-1))/(0.7*3464.)
+        ! ! tr = r4nuc(i) / vrupt0
+        ! !if(tr <= time) then !only ready or already fail, do...
+          ! ! trupt = time - tr
+          ! ! call time_weak(trupt,fric(1,i),xmu1)
+        ! ! call slip_weak(slp4fri(i),fric(1,i),xmu2)
+        ! ! xmu=min(xmu1,xmu2)  !minimum friction used. B.D. 2/16/13
+        ! ! endif
+      ! !endif		
+	! endif
 	!
 	!...adjust tstk,tdip and tnrm based on jump conditions on fault.
 	!   before calculate taoc, first adjust tnrm if needed. 
@@ -269,18 +280,31 @@ endif
 			endif
 		enddo 
 	endif   
-	if (x(1,isn)==0.0.and.x(2,isn)==0.0.and.x(3,isn)==-12e3)then
-		write(*,*)'source,slip,sliprate',slips,sliprate,fnft(i)
-		! write(*,*)'source,taoc,ttao',taoc,ttao
-		! write(*,*)'source,tnrm,tstk,tdip',tnrm,tstk,tdip
-		! write(*,*)'source,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))	
-	endif
-	if (x(1,isn)==-1000.and.x(2,isn)==0.0.and.x(3,isn)==-8900.0)then
-		write(*,*)'**OF',slips,fnft(i)
-		! write(*,*)'**OF,taoc,ttao',taoc,ttao
-		! write(*,*)'**OF,tnrm,tstk,tdip',tnrm,tstk,tdip
-		! write(*,*)'**OF,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))	
-	endif	
+!	if (x(1,isn)==xsource.and.x(2,isn)==0.0.and.x(3,isn)==zsource)then
+!		if (nt==1) then 
+!		!rcc=miu*(S+1)
+!		rcc=miuonf(i)*((fric(1,i)*abs(fnfault)-abs(fsfault))/(abs(fsfault)-fric(2,i)*abs(fnfault))+1)
+!		!rc=rc*D0/delta_tao
+!		rcc=rcc*fric(3,i)/(abs(fsfault)-fric(2,i)*abs(fnfault))
+!		rcc=rcc*7*3.14/24
+!			open(unit=9001,file='Rc.txt',form='formatted',status='unknown')
+!				write(9001,*) 'Rc=',rcc,'miu=',miuonf(i)
+!				write(9001,*) 'Fn=',fnfault,'Fs=',fsfault
+!				write(9001,*) 'mius=',fric(1,i),'miud=',fric(2,i)
+!				write(9001,*) 'Dc=',fric(3,i)
+!			close(9001)			
+!		endif
+!		write(*,*)'S1:slip,ft',slips,fnft(i)
+!		! write(*,*)'source,taoc,ttao',taoc,ttao
+!		! write(*,*)'source,tnrm,tstk,tdip',tnrm,tstk,tdip
+!		! write(*,*)'source,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))	
+!	endif
+!	if (x(1,isn)==55e3.and.x(2,isn)==0.0.and.x(3,isn)==-10e3)then
+!		write(*,*)'S2:slips,fnft',slips,fnft(i)
+!		! write(*,*)'**OF,taoc,ttao',taoc,ttao
+!		! write(*,*)'**OF,tnrm,tstk,tdip',tnrm,tstk,tdip
+!		! write(*,*)'**OF,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))	
+!	endif	
 	!...slip rate output. B.D. 8/11/10
 	!    if(lstr1) then
 	!      myrec = myrec + 1
@@ -302,6 +326,30 @@ endif
 	!  endif
 	!    
 	!   enddo	!ending i1
+
+	! flush_ for IBM systems
+	!call flush_(ioutrt)
+	!call flush(ioutrt)
 enddo	!ending i
-!!$omp end parallel do
+!!$omp end parallel do	
+!-------------------------------------------------------------------!
+!-------------Late Sep.2015/ D.Liu----------------------------------!
+!-----------Writing out results on fault for evert nstep------------!
+!if(mod(nt,315)==1.and.nt<5000) then 
+!	write(mm,'(i6)') me
+!	mm = trim(adjustl(mm))
+!	foutmov='fslipout_'//mm
+!	open(9002+me,file=foutmov,form='formatted',status='unknown',position='append')
+!		write(9002+me,'(1x,4f10.3)') ((fltslp(j,ifout),j=1,3),fltslr(1,ifout),ifout=1,nftnd)
+!endif
+!----nftnd for each me for plotting---------------------------------!
+!if (nt==1) then
+!	write(mm,'(i6)') me	
+!	mm = trim(adjustl(mm))			
+!	foutmov='fnode.txt'//mm
+!	open(unit=9800,file=foutmov,form='formatted',status='unknown')
+!		write(9800,'(2I7)') me,nftnd 
+!	close(9800)			
+!endif 	
+!-------------------------------------------------------------------!	
 end SUBROUTINE faulting	 

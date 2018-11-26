@@ -1,5 +1,5 @@
-SUBROUTINE qdckd(shg,cc,vl,dl,stress,elresf,constk,zerovl,bdamp,&
-ccosphi,sinphi,porep,mushr,pstrmag,ex,PMLb)
+SUBROUTINE qdckd(shg,mate,vl,dl,stress,elresf,constk,zerovl,bdamp,&
+ccosphi,sinphi,porep,pstrmag,ex,PMLb)
 use globalvar
 implicit none
 !
@@ -17,7 +17,7 @@ implicit none
 !
 logical :: zerovl
 integer (kind=4) :: i,j,j1,j2,j3
-real (kind=8) :: constk,bdamp,temp,ccosphi,sinphi,porep,mushr
+real (kind=8) :: constk,bdamp,temp,ccosphi,sinphi,porep
 real (kind=8),dimension(nee) :: elresf,work,vl,dl
 real (kind=8),dimension(nstr) :: strainrate,stressrate,strtemp,strain
 real(kind=8)::stress(12),anestr(6),anestr1(6)
@@ -29,12 +29,25 @@ real (kind=8) :: strmea,taomax, yield, rjust,pstrmea,pstrmag,xc(3),ex(3,8),PMLb(
 real (kind=8),dimension(nstr) :: strdev,pstrinc
 !Parameters for Q model.
 real(kind=8)::Qp,Qs,wkp,wks,taok,cv,cs
-real(kind=8)::lam,miu,Mu,miuu,vols
+real(kind=8)::lam,miu,Mu,miuu,vols,mate(5)
 integer(kind=4)::k,ip,iq,ir
 !
 pstrmag = 0.0
 stressrate = 0.0
 strain=0.0
+cc=0.0
+lam=mate(4)
+miu=mate(5)
+do i=1,3 
+	cc(i,i)=lam+2*miu
+	cc(i+3,i+3)=miu 
+enddo	
+cc(1,2)=lam 
+cc(2,1)=lam 
+cc(1,3)=lam
+cc(3,1)=lam 
+cc(2,3)=lam 
+cc(3,2)=lam 
 !...calcuate b from shg
 call qdcb(shg,bb)
 !if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
@@ -86,7 +99,8 @@ call qdcb(shg,bb)
 				xc(i)=xc(i)+ex(i,j)
 			enddo
 		enddo
-		xc=xc/8			
+		xc=xc/8	
+!For DCPS		
 		if (xc(3)>-1000.)then
 			Qs=10.
 			Qp=20.
@@ -94,12 +108,16 @@ call qdcb(shg,bb)
 			Qs=50.
 			Qp=100.
 		endif
-		lam=cc(1,2)
-		miu=cc(4,4)
-
-		ip=(xc(1)-(-10e3+dx/2))/dx+1
-		iq=(xc(2)-(-10e3+dx/2))/dx+1
-		ir=(xc(3)-(-12e3+dx/2))/dx+1
+!For Tianjin
+		! if (mate(2)<1500)then
+		! Qs=0.02*mate(2)
+		! else
+		! Qs=0.1*mate(2)
+		! endif
+		! Qp=1.5*Qs
+		ip=(xc(1)-(PMLb(2)+dx/2))/dx+1
+		iq=(xc(2)-(PMLb(4)+dx/2))/dx+1
+		ir=(xc(3)-(PMLb(5)+dx/2))/dx+1
 		k=1+mod(ip,2)+2*mod(iq,2)+4*mod(ir,2)
 		! Modified Day and Bradley(2001) based on Liu(2006)	
 		call qconstant(Qp,taok,wkp,k,cv)
@@ -149,7 +167,7 @@ call qdcb(shg,bb)
 		do i=1,6  !adjust stress
 			stress(i) =strdev(i) * rjust
 			!calculate plastic strain increment components
-			pstrinc(i) = (strdev(i) - stress(i))/mushr
+			pstrinc(i) = (strdev(i) - stress(i))/miu
 			!back to stress domain by ading mean, which does not change
 			if(i<=3) then
 				stress(i) = stress(i) + strmea
