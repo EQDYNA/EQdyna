@@ -4,7 +4,8 @@ OPT1 =  -ipo -O3 -xHost -openmp -heap-arrays -limf
 OBJ = eqdyna3d.o globalvar.o qdct1.o parcon.o mesh4num.o \
          meshgen.o qdcshl.o prop3d.o formlm.o driver.o \
 	 qdct2.o qdcshg.o contm.o qdcb.o vlm.o qdct3.o \
-	 contma.o qdckd.o hrglss.o fric.o faulting.o
+	 contma.o qdckd.o hrglss.o fric.o faulting.o \
+	 PMLwhg.o comdampv.o
 eqdyna3drun: $(OBJ) 
 	$(F90) $(OPT1) $(OBJ) -o eqdyna-hyb
 eqdyna3d.o: eqdyna3d.f90 globalvar.o qdct1.o driver.o parcon.o mesh4num.o meshgen.o
@@ -25,7 +26,7 @@ prop3d.o: prop3d.f90 globalvar.o
 	$(F90) $(OPT) prop3d.f90
 formlm.o: formlm.f90 globalvar.o
 	$(F90) $(OPT) formlm.f90			
-driver.o: driver.f90 qdct2.o qdct3.o hrglss.o faulting.o globalvar.o
+driver.o: driver.f90 qdct2.o qdct3.o hrglss.o faulting.o globalvar.o comdampv.o
 	$(F90) $(OPT) driver.f90
 qdct2.o: qdct2.f90 qdcshg.o contm.o vlm.o globalvar.o
 	$(F90) $(OPT) qdct2.f90
@@ -35,7 +36,7 @@ contm.o: contm.f90 globalvar.o
 	$(F90) $(OPT) contm.f90
 vlm.o: vlm.f90 globalvar.o
 	$(F90) $(OPT) vlm.f90		
-qdct3.o: qdct3.f90 contma.o qdckd.o globalvar.o
+qdct3.o: qdct3.f90 contma.o qdckd.o globalvar.o PMLwhg.o
 	$(F90) $(OPT) qdct3.f90
 contma.o: contma.f90 globalvar.o
 	$(F90) $(OPT) contma.f90
@@ -49,3 +50,7 @@ fric.o: fric.f90 globalvar.o
 	$(F90) $(OPT) fric.f90	
 faulting.o: faulting.f90 fric.o globalvar.o
 	$(F90) $(OPT) faulting.f90	
+PMLwhg.o: PMLwhg.f90 globalvar.o
+	$(F90) $(OPT) PMLwhg.f90 
+comdampv.o: comdampv.f90
+	$(F90) $(OPT) comdampv.f90

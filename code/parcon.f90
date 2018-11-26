@@ -27,11 +27,11 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   numeg=1
   !
   !...termination, output, & simulation time info
-  term=25.
+  term=25.0
   dt=0.012
   nhplt = 1
   nhplt1 = 2
-  nhshw = 50
+  nhshw = 1
   nstep = idnint(term/dt)
   !
   !...material properties: normally Vp, Vs are given, we need to 
@@ -95,11 +95,15 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   !
   !...element size and model boundary
   dx=100
-  xmin=-95000.
-  xmax=95000.
-  ymin=-90000.
-  ymax=90000.
-  zmin=-95000.
-  zmax=0
-
+!  xmin=-95000.
+!  xmax=95000.
+!  ymin=-90000.
+!  ymax=90000.
+!  zmin=-95000.
+	xmin=-20000
+	xmax=20000
+	ymin=-20000
+	ymax=20000
+	zmin=-20000
+	zmax=0
 end SUBROUTINE parcon

@@ -28,12 +28,12 @@ SUBROUTINE prop3d(e,pois,c)
     !c = 0.0
     !...calculate non-zero top diagonal elements of C
     c(1,1,m) = temp
-    c(1,2,m) = temp1
+    c(1,2,m) = temp1!e/(1+v)/(1-2v)*v!Lamta
     c(1,3,m) = temp1
     c(2,2,m) = temp
     c(2,3,m) = temp1
     c(3,3,m) = temp
-    c(4,4,m) = temp2
+    c(4,4,m) = temp2!e/(1+v)/2 !miu
     c(5,5,m) = temp2
     c(6,6,m) = temp2
     !...use symmetry for other non-zero elements

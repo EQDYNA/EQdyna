@@ -1,8 +1,17 @@
 # EQdyna
 
-A parallel Finite Element software to model earthquake spontaneous 
-dynamic ruptures. The software is designed to use high-performance 
-computing. It is written in FORTRAN 90 and MPI.
+A parallel Finite Element software to model earthquake spontaneous dynamic ruptures. The software is designed to use high-performance computing. It is written in FORTRAN 90 and MPI.
+
+### Dunyu Liu, 2015, dunyuliu@gmail.com
+# Version 3.1.1
+## Features
+* Implementation of the Perfectly Matched Layer (Ma and Liu, 2006)
+* Major update to use 1D array to store nodal forces, and kinematic quantities. It is designed to solve the different dimensions of regular and PML elements. It involves many files that pass such quantities. 
+* Element type is introduced to sperate regular and PML elements.
+* 2 F90 files are added and 13 are modified. 
+* Both viscous and KF78 hourglass controls are implemented.
+* Makefile updated to include the 2 new files. 
+* This version is verified against SCEC TPV29&30. 
 
 ### Benchun Duan, 09/12/2014, bduan@tamu.edu
 # Version 3.1
