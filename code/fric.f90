@@ -12,7 +12,7 @@ SUBROUTINE slip_weak(slip,fricsgl,xmu)
   real (kind=8) :: xmu,slip
   real (kind=8),dimension(6) :: fricsgl
   !
-  if(slip == 0.0) then
+  if(abs(slip).lt.1.0e-10) then
     xmu = fricsgl(1)	!xmu is frictional coefficient, node by node on fault
   elseif(slip < fricsgl(3)) then
     xmu = fricsgl(1) - (fricsgl(1) - fricsgl(2))*slip/fricsgl(3)

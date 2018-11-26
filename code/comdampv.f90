@@ -1,13 +1,11 @@
 subroutine comdampv(x,y,z,PMLb,dv)
-	! D.L. Feb/2015
-	!-------------------------------------------!
-	! Compute damping distance for PML element nodes.
-	implicit none
-	integer(kind=4)::i
-	real (kind=8) :: x,y,z,xmax,xmin,ymax,ymin,zmin,R,vp,delta,maxdx,maxdy,maxdz
-	real (kind=8),dimension(6):: PMLb
-	real (kind=8),dimension(3)::damp
-	real (kind=8),dimension(9)::dv
+use globalvar
+implicit none
+integer(kind=4)::i
+real (kind=8) :: x,y,z,xmax,xmin,ymax,ymin,zmin,vp,delta,maxdx,maxdy,maxdz
+real (kind=8),dimension(8):: PMLb
+real (kind=8),dimension(3)::damp
+real (kind=8),dimension(9)::dv
 	!
 	xmax=PMLb(1)
 	xmin=PMLb(2)
@@ -73,15 +71,23 @@ subroutine comdampv(x,y,z,PMLb,dv)
 			damp(2)=abs(y-ymax)
 		endif
 	endif	
-	R=0.01
-	vp=6000.
+!For Double-couple point source. Ma and Liu (2006) 	
+	! if (z>-1000.) then
+	! vp=2800.
+	! elseif(z==-1000.)then
+	! vp=4400.
+	! else
+	! vp=6000.
+	! endif
+!For TPV 8
+	vp=5716.
 	do i=1,3
 		if (i==1) then
-		delta=6*maxdx
+		delta=nPML*maxdx
 		elseif (i==2) then
-		delta=6*maxdy
+		delta=nPML*maxdy
 		elseif (i==3) then
-		delta=6*maxdz		
+		delta=nPML*maxdz		
 		endif	
 		damp(i)=3*vp/2/delta*log(1/R)*(damp(i)/delta)**(2.)
 	enddo
@@ -96,7 +102,7 @@ subroutine comdampv(x,y,z,PMLb,dv)
 	dv(9)=damp(3)
 	do i=1,9
 		if (dv(i)<0.0) then
-			write(*,*) 'Wrong damping distance. Should be positive'
+			write(*,*) 'wrong dv'
 			stop
 		endif
 	enddo

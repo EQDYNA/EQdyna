@@ -1,4 +1,4 @@
-subroutine meshgen(fltxyz,dx,xmin,xmax,ymin,ymax,zmin,zmax,&
+subroutine meshgen(fltxyz,xmin,xmax,ymin,ymax,zmin,zmax,&
 nnode1,nelement1,ien,mat,s1,eleporep,rho,vs,xnode,neq1,& !Delete id !change elestress as s1
 id1,maxm,locid,dof1,et,PMLb,maxs,ids, & !Adding id1,maxm,loci,PMLb,maxs,ids
 nr4mpi,er4mpi,n4out,an4nds,nftnd1,n4onf,xonfs,nonfs,&
@@ -22,24 +22,30 @@ integer (kind=4),dimension(3,nonmx) :: anonfs
 integer (kind=4),dimension(2,nftmx,ntotft) :: nsmp
 real (kind=8),dimension(nftmx,ntotft) :: fnft,arn,r4nuc,arn4m,slp4fri
 real (kind=8),dimension(3,nftmx,ntotft) :: un,us,ud
-real (kind=8),dimension(6,nftmx,ntotft) :: fric
+real (kind=8),dimension(8,nftmx,ntotft) :: fric
 !...entire model size
 real (kind=8) :: xmin, xmax, ymin, ymax, zmin, zmax
 !...grid size
-real (kind=8) :: dx,dy,dz	!dx is given in parcon.f90, dy/dz will be from dx
-real (kind=8) :: rat=1.0 !enlarge ratio for buffers to use
+real (kind=8) :: dy,dz	!dx is given in parcon.f90, dy/dz will be from dx
 !...uniform element num from fault y-ccor
-integer (kind=4) :: dis4uniF=20,dis4uniB=20
+!For Double-couple point source. Ma and Liu (2006) 
+!integer (kind=4) :: dis4uniF=50,dis4uniB=50
+!For TPV8 
+integer (kind=4) :: dis4uniF=100,dis4uniB=100
 !...output on-fault stations. B.D. 10/25/09
 integer (kind=4) :: n4onf
 integer,dimension(ntotft)::nonfs
-real (kind=8),dimension(2,6,ntotft) :: xonfs
+real (kind=8),dimension(2,8,ntotft) :: xonfs
 !...output node coors. 6 Off-fault stations in this example. B.D. 10/25/11
 integer (kind=4)::n4nds=6,n4out
 integer (kind=4),dimension(6)::n4yn=0
 integer (kind=4),dimension(2,6)::an4nds
-real (kind=8),dimension(2,6)::x4nds=reshape((/-12,-6,0,-6,10,-6,&
-	-12,-10,0,-10,10,-10/),(/2,6/))
+real (kind=8),dimension(2,6)::x4nds=reshape((/0.0,-3.0,&!8.0,6.0
+												0.0,-2.0,&
+												0.0,-1.0,&
+												0.0,1.0,&
+												12.0,-3.0,&
+												12.0,3.0/),(/2,6/))
 !...mesh results
 integer (kind=4)::neq,neq1
 integer (kind=4),dimension(2,2)::nr4mpi,er4mpi  !node, equation range for MPI
@@ -75,7 +81,7 @@ integer (kind=4),dimension(nnode1)::locid,dof1
 integer (kind=4),dimension(nelement1)::et
 real(kind=8),dimension(8)::PMLb
 integer(kind=4),dimension(nelement1)::ids
-real(kind=8),dimension(2*maxm)::s1
+real(kind=8),dimension(4*maxm)::s1
 real(kind=8)::xc(3)
 !*.* D.L. 
 !...because eos and vanerne with linux do not allow 'write(mm,*) me',
@@ -96,8 +102,16 @@ real(kind=8)::xc(3)
 !  endif
 mm = trim(adjustl(mm))
 
-!on-fault station coordinates are given here (along strike, z).
-xonfs=reshape((/-6.,0.,0.,0.,12.,0.,-6.,-7.5,0.,-7.5,12.,-7.5/),(/2,6,1/))
+!on-fault station coordinates are given here 
+!(along strike, z).
+xonfs=reshape((/0.0,0.0,&
+				4.5,0.0,&
+				12.0,0.0,&
+				0.0,-4.5,&
+				0.0,-7.5,&
+				4.5,-7.5,&
+				12.0,-7.5,&
+				0.0,-12.0/),(/2,8,1/))
 xonfs = xonfs * 1000  !convert from km to m
 
 !allocate fault arrays if nonzero fault node. B.D. 10/16/09
@@ -137,34 +151,34 @@ xcoor = fltxyz(1,1,1)
 do ix = 1, np
 	xstep = xstep * rat
     xcoor = xcoor - xstep
-    if(xcoor < xmin) exit
+    if(xcoor <= xmin) exit
 enddo
-edgex1 = ix + 1
+edgex1 = ix + nPML
 xstep = dx
 xcoor = fltxyz(2,1,1)
 do ix = 1, np
     xstep = xstep * rat
     xcoor = xcoor + xstep
-    if(xcoor > xmax) exit
+    if(xcoor >= xmax) exit
 enddo
-nxt = nxuni + edgex1 + ix + 1
+nxt = nxuni + edgex1 + ix + nPML
 allocate(xlinet(nxt))
 !
 !...predetermine x-coor
 xlinet(edgex1+1) = fltxyz(1,1,1)
 xstep = dx
 do ix = edgex1, 1, -1
-	xlinet(ix) = xlinet(ix+1) - xstep
     xstep = xstep * rat
+	xlinet(ix) = xlinet(ix+1) - xstep
 enddo
 xmin = xlinet(1)
-do ix = edgex1+2,edgex1+nxuni+1
+do ix = edgex1+2,edgex1+nxuni
 	xlinet(ix) = xlinet(ix-1) + dx
 enddo
 xstep = dx
-do ix = edgex1+nxuni+2,nxt
-	xlinet(ix) = xlinet(ix-1) + xstep
+do ix = edgex1+nxuni+1,nxt
     xstep = xstep * rat
+	xlinet(ix) = xlinet(ix-1) + xstep
 enddo
 xmax = xlinet(nxt)
 !
@@ -209,39 +223,39 @@ endif
 nyuni = dis4uniF + dis4uniB + 1
 ystep = dy
 !ycoor = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
-ycoor = -dy*(dis4uniF+1)
+ycoor = -dy*(dis4uniF)
 do iy = 1, np
     ystep = ystep * rat
     ycoor = ycoor - ystep
-    if(ycoor < ymin) exit
+    if(ycoor <= ymin) exit
 enddo
-edgey1 = iy + 1
+edgey1 = iy + nPML
 ystep = dy
-ycoor = dy*(dis4uniB+1)
+ycoor = dy*(dis4uniB)
 do iy = 1, np
 	ystep = ystep * rat
     ycoor = ycoor + ystep
-    if(ycoor > ymax) exit
+    if(ycoor >= ymax) exit
 enddo
-ny = nyuni + edgey1 + iy + 1
+ny = nyuni + edgey1 + iy + nPML
 !...pre-determine y-coor
 allocate(yline(ny))
 !...predetermine y-coor
 !yline(edgey1+1) = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
-yline(edgey1+1) = -dy*(dis4uniF+1)
+yline(edgey1+1) = -dy*(dis4uniF)
 ystep = dy
 do iy = edgey1, 1, -1
-    yline(iy) = yline(iy+1) - ystep
-    ystep = ystep * rat
+    ystep = ystep * rat    
+	yline(iy) = yline(iy+1) - ystep
 enddo
 ymin = yline(1)
-do iy = edgey1+2,edgey1+nyuni+1
+do iy = edgey1+2,edgey1+nyuni
     yline(iy) = yline(iy-1) + dy
 enddo
 ystep = dy
-do iy = edgey1+nyuni+2,ny
-	yline(iy) = yline(iy-1) + ystep
+do iy = edgey1+nyuni+1,ny
     ystep = ystep * rat
+	yline(iy) = yline(iy-1) + ystep
 enddo
 ymax = yline(ny)
 !
@@ -251,21 +265,21 @@ zcoor = fltxyz(1,3,1)
 do iz=1,np
     zstep = zstep * rat
     zcoor = zcoor - zstep
-    if(zcoor < zmin) exit
+    if(zcoor <= zmin) exit
 enddo
-edgezn = iz + 1
+edgezn = iz + nPML
 nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dx + 1 
 nz = edgezn + nzuni
 !...predetermine z-coor
 allocate(zline(nz))
 zline(nz) = zmax
-do iz = nz-1,nz-nzuni,-1
+do iz = nz-1,nz-nzuni+1,-1
     zline(iz) = zline(iz+1) - dz
 enddo
 zstep = dz
-do iz = nz-nzuni-1,1,-1
-	zline(iz) = zline(iz+1) -zstep
+do iz = nz-nzuni,1,-1
 	zstep = zstep * rat
+	zline(iz) = zline(iz+1) -zstep
 enddo
 	zmin = zline(1) !these needed for fixed boundaryies
 
@@ -312,37 +326,13 @@ do ix = 1, nx
 			xnode(1,nnode) = xcoor
 			xnode(2,nnode) = ycoor
 			xnode(3,nnode) = zcoor
-		!!
-		if (xcoor.eq.100.0.and.ycoor.eq.0.0.and.zcoor.eq.-2000.0) then
-			write(*,*) 'me,nnode,right',me,nnode
-		endif
-		if (xcoor.eq.-100.0.and.ycoor.eq.0.0.and.zcoor.eq.-2000.0) then
-			write(*,*) 'me,nnode,left',me,nnode
-		endif	
-		if (xcoor.eq.0.0.and.ycoor.eq.100.0.and.zcoor.eq.-2000.0) then
-			write(*,*) 'me,nnode,up',me,nnode
-		endif	
-		if (xcoor.eq.0.0.and.ycoor.eq.-100.0.and.zcoor.eq.-2000.0) then
-			write(*,*) 'me,nnode,down',me,nnode
-		endif				
 			!write(*,*) nnode,xnode(1,nnode),xnode(2,nnode),xnode(3,nnode)
 			!*.* Find the PML boundary D.L. Jan/23/2015
 			zz=ndof
 			if (xcoor>PMLb(1).or.xcoor<PMLb(2).or.ycoor>PMLb(3).or.ycoor<PMLb(4) &
 			.or.zcoor<PMLb(5)) then
 				zz = 12
-			endif
-			!if ((abs(zcoor-PMLb(5))<tol).and.(xcoor<PMLb(1)+tol).and.(xcoor>PMLb(2)-tol).and.(ycoor<PMLb(3)+tol).and.(ycoor>PMLb(4)-tol)) then! z face
-			!	zz=15
-			!elseif ((abs(xcoor-PMLb(1))<tol).and.(ycoor<PMLb(3)+tol).and.(ycoor>PMLb(4)-tol).and.(zcoor>PMLb(5)-tol)) then!12 wall
-			!	zz=15
-			!elseif ((abs(xcoor-PMLb(2))<tol).and.(ycoor<PMLb(3)+tol).and.(ycoor>PMLb(4)-tol).and.(zcoor>PMLb(5)-tol)) then!34 wall
-			!	zz=15	
-			!elseif ((abs(ycoor-PMLb(3))<tol).and.(xcoor<PMLb(1)+tol).and.(xcoor>PMLb(2)-tol).and.(zcoor>PMLb(5)-tol)) then!41 wall
-			!	zz=15		
-			!elseif ((abs(ycoor-PMLb(4))<tol).and.(xcoor<PMLb(1)+tol).and.(xcoor>PMLb(2)-tol).and.(zcoor>PMLb(5)-tol)) then!23 wall
-			!	zz=15					
-			!endif			
+			endif		
 			locid(nnode)=ntag
 			dof1(nnode)=zz
 			!		
@@ -352,12 +342,10 @@ do ix = 1, nx
 			! need to fix model boundaries (except free surface).
 				if(abs(xcoor-xmin)<tol.or.abs(xcoor-xmax)<tol.or.abs(ycoor-ymin)<tol &
 				.or.abs(ycoor-ymax)<tol.or.abs(zcoor-zmin)<tol) then
-!					id(i1,nnode) = -1  !-1 for fixed boundary nodes
 					ntag=ntag+1
-					id1(ntag)=-1
+					id1(ntag)=-1!-1 for fixed boundary nodes
 				else
 					neq = neq + 1
-!					id(i1,nnode) = neq
 					ntag=ntag+1
 					id1(ntag)=neq
 				endif
@@ -445,7 +433,7 @@ do ix = 1, nx
 						endif
 						nsmp(1,nftnd(ift),ift) = nnode !slave node
 						nnode = nnode + 1
-						!DL			 
+						!D.L.			 
 						locid(nnode)=ntag
 						dof1(nnode)=3
 						!			 
@@ -488,11 +476,10 @@ do ix = 1, nx
 						!...establish equation numbers for this master node
 						do i1=1,ndof
 							neq = neq + 1
-!							id(i1,nnode) = neq  !assume no explicit boundary nodes
 							ntag=ntag+1
-							id1(ntag)=neq
+							id1(ntag)=neq!assume no explicit boundary nodes
 						enddo
-						!...assign unit vectors to the split node pair
+						!...assign unit vectors to the split node pair	
 						un(1,nftnd(ift),ift) = dcos(fltxyz(1,4,ift))*dsin(fltxyz(2,4,ift))
 						un(2,nftnd(ift),ift) = -dsin(fltxyz(1,4,ift))*dsin(fltxyz(2,4,ift))
 						un(3,nftnd(ift),ift) = dcos(fltxyz(2,4,ift))		
@@ -511,33 +498,35 @@ do ix = 1, nx
 						fltrc(2,ifs(ift),ifd(ift),ift) = nftnd(ift) !fault node num in sequence
 						!...assign friction parameters for SCEC TPV19. B.D. 1/8/12
 						!...now for Ma and Andrews (2010) model. B.D. 6/1/12
-						fric(1,nftnd(ift),ift) = 10000.    !mus
-						fric(2,nftnd(ift),ift) = 0.3   !mud
-						fric(3,nftnd(ift),ift) = 0.4    !D0
-						fric(4,nftnd(ift),ift) = 0.0e6  !cohesion
-						fric(5,nftnd(ift),ift) = 0.08  !T for forced rupture,i.e.,nucleation
-						fric(6,nftnd(ift),ift) = rhow*grav*(-zcoor) !pore pressure
-						!special values below.
-						if(abs(zcoor)<tol) fric(6,nftnd(ift),ift) = 0.5 * dz  !surface pore pressure
+						fric(1,nftnd(ift),ift) = 0.760!10000.!mus
+						fric(2,nftnd(ift),ift) = 0.448   !mud
+						fric(3,nftnd(ift),ift) = 0.5    !D0
+						fric(4,nftnd(ift),ift) = 1.0e6  !cohesion
+						fric(5,nftnd(ift),ift) = 0.08  !Not used in TPV8 !T for forced rupture,i.e.,nucleation
+						fric(6,nftnd(ift),ift) = 0.0!rhow*grav*(-zcoor) !pore pressure	
+!------------------------------ZONE I-------------------------------!
+!------------Assign initial stresses for elastic version------------!
+!-----------------------------EQ V3.2.1-----------------------------!	
+!-----------------------Sep.19.2015/ D.Liu--------------------------!
+!-------------------------------TPV 8-------------------------------!						
+						if (C_elastic==1) then
+							fric(7,nftnd(ift),ift) = 7378.0*zcoor! Initial normal stress for ElasticVersion
+							fric(8,nftnd(ift),ift) = abs(0.55*7378.0*zcoor)!Initial shear stress for ElasticVersion
+							if (abs(xcoor)<=1500.and.abs(zcoor--12e3)<=1500.)then
+								fric(8,nftnd(ift),ift) =1.0e6+1.005*0.760*abs(7378.0*zcoor)
+							endif
+						endif
+!-----------------------------END ZONE I----------------------------!						
+						!special values below.						
 						if(abs(xcoor-fltxyz(1,1,1))<tol .or. abs(xcoor-fltxyz(2,1,ift))<tol &
 						.or. abs(zcoor-fltxyz(1,3,ift))<tol) then !-x,+x,-z for 1, +x,-z for 2
 							fric(1,nftnd(ift),ift) = 10000.	!fault edge, pinned
 						endif
+						!if(abs(zcoor)<tol) fric(6,nftnd(ift),ift) = 0.5 * dz  !surface pore pressure
 						!if(ift==2)  then !branch, fault 2, only 12 km strike rupturable
 						!  tmp1=sqrt(xcoor**2+ycoor**2)
 						!  if(tmp1>12000) fric(1,nftnd(ift),ift) = 10000.
 						!endif               
-						if(zcoor>=-3000) then !taper mud at top & bottom
-							fric(2,nftnd(ift),ift) = 0.3 + 0.3*(3000+zcoor)/3000
-						elseif(zcoor<=-12000) then
-							fric(2,nftnd(ift),ift) = 0.3 + 0.3*(abs(zcoor)-12000)/3100
-						endif
-						if(xcoor<-13000.and.xcoor>=fltxyz(1,1,ift)) then ! taper left edge mud to mus
-							fric(2,nftnd(ift),ift) = 0.3 + 0.3*(abs(xcoor)-13000)/3100  !assume -16100 edge
-						elseif(xcoor>13000.and.xcoor<=fltxyz(2,1,ift)) then ! taper right edge
-							fric(2,nftnd(ift),ift) = 0.3 + 0.3*(xcoor-13000)/3100 !assume 16100 edge
-						endif
-						!
 						exit !can only be on 1 fault, thus if ynft(ift), exit do loop       
 					endif  !if ynft(ift)
 				endif  !if flt range
@@ -577,9 +566,17 @@ do ix = 1, nx
 					et(nelement) = 2
 					ntags=ntags+15+6
 				else
-					ntags=ntags+6
+					ntags=ntags+12
 				endif
-				!*.* D.L.
+!------------------------------ZONE II------------------------------!
+!Assign material types according to coordinates of center of the element!
+!-----------------------------EQ V3.2.1-----------------------------!	
+!-----------------------Sep.19.2015/ D.Liu--------------------------!
+			!For Double-couple point source. Ma and Liu (2006) 				
+				! if (xc(3)<-1000.)then
+					! mat(nelement)=2
+				! endif
+!----------------------------END ZONE II----------------------------!
 				!special treatment for using master nodes above the main fault.
 				! B.D. 1/7/12
 				if((xcoor>(fltxyz(1,1,1)-tol).and.xcoor<(fltxyz(2,1,1)+dx+tol).and. &
@@ -595,37 +592,30 @@ do ix = 1, nx
 				!...assign initial stress and pore pressure to element for inelastic
 				! off-fault rheology. for SCEC TPV18-21. B.D. 1/8/12
 				!...now change to Ma & Andrews (2010) models. B.D. 6/1/12
-				tmp1 = -0.5*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
-				tmp2 = tmp1 * grav
-				!*.* Use 1D s1 to store initial stress. D.L. Jan/23/2015
-				! ! ! if (et(nelement)==1) then
-					! ! ! eleporep(nelement) = rhow*tmp2  !pore pressure>0
-					! ! ! s1(ids(nelement)+3)= -rho(mat(nelement))*tmp2  !vertical, comp<0
-					! ! ! s1(ids(nelement)+1)=s1(ids(nelement)+3)
-					! ! ! s1(ids(nelement)+2)=s1(ids(nelement)+3)
-					! ! ! s1(ids(nelement)+6)=-0.4 * (s1(ids(nelement)+3)+eleporep(nelement))
-				! ! ! elseif	(et(nelement)==2) then
-					! ! ! eleporep(nelement) = rhow*tmp2  !pore pressure>0
-					! ! ! s1(ids(nelement)+3+15)= -rho(mat(nelement))*tmp2  !vertical, comp<0
-					! ! ! s1(ids(nelement)+1+15)=s1(ids(nelement)+3+15)
-					! ! ! s1(ids(nelement)+2+15)=s1(ids(nelement)+3+15)
-					! ! ! s1(ids(nelement)+6+15)=-0.4 * (s1(ids(nelement)+3+15)+eleporep(nelement))				
-				! ! ! endif
-				!eleporep(nelement) = rhow*tmp2  !pore pressure>0
-				!elestress(3,nelement) = -rho(mat(nelement))*tmp2  !vertical, comp<0
-				!elestress(1,nelement) = elestress(3,nelement)
-				!elestress(2,nelement) = elestress(3,nelement)
-				!elestress(6,nelement) = -0.4 * (elestress(1,nelement) + eleporep(nelement))
-				!*.* D.L.
-				!if(tmp1<=15000) then
-				!  tmp3 = elestress(3,nelement) + eleporep(nelement)
-				!  elestress(1,nelement) = b22 * tmp3 - eleporep(nelement)
-				!  elestress(2,nelement) = b33 * tmp3 - eleporep(nelement)
-				!  elestress(6,nelement) = b23 * tmp3
-				!else
-				!  elestress(1,nelement) = elestress(3,nelement)
-				!  elestress(2,nelement) = elestress(3,nelement)
-				!endif
+!---------------------------ZONE III--------------------------------!
+!------------Assign initial stresses for plastic version------------!
+!-----------------Use 1D s1 to store initial stress-----------------!
+!-----------------------Jan.23.2015/ D.Liu--------------------------!
+!-----------------------------EQ V3.2.1-----------------------------!	
+!-----------------------Sep.19.2015/ D.Liu--------------------------!	
+				if (C_elastic==0) then				
+					tmp1 = -0.5*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
+					tmp2 = tmp1 * grav
+					if(et(nelement)==1)then
+						eleporep(nelement) = rhow*tmp2  !pore pressure>0
+						s1(ids(nelement)+3)= -rho(mat(nelement))*tmp2  !vertical, comp<0
+						s1(ids(nelement)+1)=s1(ids(nelement)+3)
+						s1(ids(nelement)+2)=s1(ids(nelement)+3)
+						s1(ids(nelement)+6)=-0.4 * (s1(ids(nelement)+3)+eleporep(nelement))
+					elseif(et(nelement)==2)then
+						eleporep(nelement) = rhow*tmp2  !pore pressure>0
+						s1(ids(nelement)+3+15)= -rho(mat(nelement))*tmp2  !vertical, comp<0
+						s1(ids(nelement)+1+15)=s1(ids(nelement)+3+15)
+						s1(ids(nelement)+2+15)=s1(ids(nelement)+3+15)
+						s1(ids(nelement)+6+15)=-0.4 * (s1(ids(nelement)+3+15)+eleporep(nelement))				
+					endif
+				endif
+!--------------------------END ZONE III-----------------------------!				
 				!...when the current node is one element above the branch fault in y-coor,
 				! one hexahedron degenerates into two wedges. B.D. 1/7/12
 				!          if(xcoor>=(fltxyz(1,1,2)-tol).and.xcoor<=(fltxyz(2,1,2)+tol).and. &
@@ -673,14 +663,14 @@ do ix = 1, nx
 				!              enddo
 				!            enddo
 				!          	endif
-			endif  !if element
-		enddo	!iy
-    enddo	!iz
+			endif!if element
+		enddo!iy
+    enddo!iz
     plane1 = plane2
-enddo		!ix
+enddo!ix
 maxs=ntags
-if (maxs>=(2*maxm)) then
-	write(*,*) '2*maxm',maxm,'is not enough for maxs',maxs
+if (maxs>=(4*maxm)) then
+	write(*,*) '4*maxm',maxm,'is not enough for maxs',maxs
 	stop
 endif
 !   write(*,*) 'nnd,nele,nftnd,neq',nnode,nelement,nftnd,neq

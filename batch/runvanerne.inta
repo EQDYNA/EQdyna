@@ -3,5 +3,5 @@
 #setenv PATH /usr/local/mpich1/bin:$PATH
 foreach size (1)
 	setenv OMP_NUM_THREADS ${size}
-	mpirun -np 12 ./eqdyna-hyb
+	mpirun -np 24 ./eqdyna-hyb
 end

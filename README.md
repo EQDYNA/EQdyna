@@ -2,6 +2,15 @@
 
 A parallel Finite Element software to model earthquake spontaneous dynamic ruptures. The software is designed to use high-performance computing. It is written in FORTRAN 90 and MPI.
 
+### Dunyu Liu, 09/19/2015, dunyuliu@gmail.com
+# Version 3.2.1
+## Features
+* Coarse-grained Q model is implemented (Ma and Liu, 2006; Day, 1998).
+* Elastic and plastic models are combined. 
+* qconstant.f90 is added.
+* Controllable parameters are moved to globalvar.f90 and switched to change mechanicms are added.
+* The code is validated against the model with PML and Q model in Ma and Liu (2006) and is later used in the Tianjin Scenario Earthquake project (Duan et al., 2017; Liu and Duan, 2018).
+
 ### Dunyu Liu, 09/2015, dunyuliu@gmail.com
 # Version 3.1.2
 ## Patch update

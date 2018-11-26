@@ -1,4 +1,4 @@
-SUBROUTINE qdckd(shg,cc,vl,stress,elresf,constk,zerovl,bdamp,&
+SUBROUTINE qdckd(shg,cc,vl,dl,stress,elresf,constk,zerovl,bdamp,&
 ccosphi,sinphi,porep,mushr,pstrmag,ex,PMLb)
 use globalvar
 implicit none
@@ -18,20 +18,26 @@ implicit none
 logical :: zerovl
 integer (kind=4) :: i,j,j1,j2,j3
 real (kind=8) :: constk,bdamp,temp,ccosphi,sinphi,porep,mushr
-real (kind=8),dimension(nee) :: elresf,work,vl
-real (kind=8),dimension(nstr) :: strainrate,stressrate,stress,strtemp
+real (kind=8),dimension(nee) :: elresf,work,vl,dl
+real (kind=8),dimension(nstr) :: strainrate,stressrate,strtemp,strain
+real(kind=8)::stress(12),anestr(6),anestr1(6)
 real (kind=8),dimension(nrowsh-1,nen) :: shg
 real (kind=8),dimension(nrowb,nee) :: bb	!correspond to b
 real (kind=8),dimension(nrowc,nrowc) :: cc	!correspond to c
 !...plasticity vlrables. B.D. 1/5/12
-real (kind=8) :: strmea,taomax, yield, rjust,pstrmea,pstrmag,xc(3),ex(3,8),PMLb(6)
+real (kind=8) :: strmea,taomax, yield, rjust,pstrmea,pstrmag,xc(3),ex(3,8),PMLb(8)
 real (kind=8),dimension(nstr) :: strdev,pstrinc
+!Parameters for Q model.
+real(kind=8)::Qp,Qs,wkp,wks,taok,cv,cs
+real(kind=8)::lam,miu,Mu,miuu,vols
+integer(kind=4)::k,ip,iq,ir
 !
 pstrmag = 0.0
 stressrate = 0.0
+strain=0.0
 !...calcuate b from shg
 call qdcb(shg,bb)
-if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
+!if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
 	!...calculate strainrate
 	! Take into account zero in bb. B.D. 8/20/05
 	strainrate = 0.0	!initialize
@@ -40,7 +46,6 @@ if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
 	!  directives did not cause slowdown problem with SUN compiler, but 
 	!  results in significant reduction in comupting speed with Intel 
 	!  compiler!! B.D. 8/7/10
-	!!$omp parallel do default(shared) privlte(i,j1,j2,j3)
 	do i=1,nen
 		j1 = ned * (i - 1) + 1
 		j2 = ned * (i - 1) + 2
@@ -51,8 +56,13 @@ if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
 		strainrate(4) = strainrate(4) + bb(4,j2) * vl(j2) + bb(4,j3) * vl(j3)
 		strainrate(5) = strainrate(5) + bb(5,j1) * vl(j1) + bb(5,j3) * vl(j3)
 		strainrate(6) = strainrate(6) + bb(6,j1) * vl(j1) + bb(6,j2) * vl(j2)
+		strain(1) = strain(1) + bb(1,j1) * dl(j1)
+		strain(2) = strain(2) + bb(2,j2) * dl(j2)
+		strain(3) = strain(3) + bb(3,j3) * dl(j3)
+		strain(4) = strain(4) + bb(4,j2) * dl(j2) + bb(4,j3) * dl(j3)
+		strain(5) = strain(5) + bb(5,j1) * dl(j1) + bb(5,j3) * dl(j3)
+		strain(6) = strain(6) + bb(6,j1) * dl(j1) + bb(6,j2) * dl(j2)		
 	enddo
-	!!$omp end parallel do
 	!...calculate stressrate
 	! Take into account zero in cc. B.D. 8/20/05
 	do i=1,3
@@ -64,10 +74,63 @@ if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
 		stressrate(i) = cc(i,i) * strainrate(i)
 	enddo
 	!...calculate stress from stress rate & previous stress. B.D. 1/5/12
-	do i=1,6
-		stress(i) = stress(i) + stressrate(i) * dt
-		strdev(i) = stress(i)
-	enddo
+	if (C_Q==0) then
+		do i=1,6
+			stress(i) = stress(i) + stressrate(i) * dt
+			strdev(i) = stress(i)
+		enddo
+	elseif (C_Q==1) then
+		xc=0.0	
+		do i=1,3
+			do j=1,8
+				xc(i)=xc(i)+ex(i,j)
+			enddo
+		enddo
+		xc=xc/8			
+		if (xc(3)>-1000.)then
+			Qs=10.
+			Qp=20.
+		else
+			Qs=50.
+			Qp=100.
+		endif
+		lam=cc(1,2)
+		miu=cc(4,4)
+
+		ip=(xc(1)-(-10e3+dx/2))/dx+1
+		iq=(xc(2)-(-10e3+dx/2))/dx+1
+		ir=(xc(3)-(-12e3+dx/2))/dx+1
+		k=1+mod(ip,2)+2*mod(iq,2)+4*mod(ir,2)
+		! Modified Day and Bradley(2001) based on Liu(2006)	
+		call qconstant(Qp,taok,wkp,k,cv)
+		call qconstant(Qs,taok,wks,k,cs)
+		wkp=wkp*8;
+		wks=wks*8;
+		miuu=miu*cs
+		Mu=(lam+2*miu)*cv
+		vols=strain(1)+strain(2)+strain(3)
+		do i=1,6
+			anestr1(i)=stress(i+6)
+		enddo	
+		do i=1,3
+		anestr(i)=exp(-dt/taok)*anestr1(i)+(1-exp(-dt/taok)) &
+			 *(2*miuu*strain(i)*wks+(Mu*wkp-2*miuu*wks)*vols)
+		enddo
+		do i=4,6
+		anestr(i)=exp(-dt/taok)*anestr1(i)+(1-exp(-dt/taok)) &
+			 *(miuu*strain(i)*wks)
+		enddo	
+		do i=1,6
+			stress(i+6)=anestr(i)
+		enddo
+		stress(1)=2*miuu*strain(1)+(Mu-2*miuu)*vols-0.5*(anestr(1)+anestr1(1))
+		stress(2)=2*miuu*strain(2)+(Mu-2*miuu)*vols-0.5*(anestr(2)+anestr1(2))	
+		stress(3)=2*miuu*strain(3)+(Mu-2*miuu)*vols-0.5*(anestr(3)+anestr1(3))	
+		stress(4)=2*miuu*strain(4)/2-0.5*(anestr(4)+anestr1(4))	
+		stress(5)=2*miuu*strain(5)/2-0.5*(anestr(5)+anestr1(5))	
+		stress(6)=2*miuu*strain(6)/2-0.5*(anestr(6)+anestr1(6))	
+	endif!C_Q
+	if (C_elastic==0) then
 	!...Drucker-Prager plasticity in shear. B.D. 1/5/12
 	! refer to the benchmark problem description.
 	strmea = (stress(1)+stress(2)+stress(3))/3.
@@ -83,7 +146,6 @@ if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
 		!rjust = yield/taomax  !adjust ratio
 		!implement viscoplasticity now. B.D. 6/2/12
 		rjust=yield/taomax + (1-yield/taomax)*exp(-dt/tv)
-		rjust=1.0
 		do i=1,6  !adjust stress
 			stress(i) =strdev(i) * rjust
 			!calculate plastic strain increment components
@@ -102,8 +164,9 @@ if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
 				+pstrinc(4)**2+pstrinc(5)**2+pstrinc(6)**2
 		pstrmag = sqrt(pstrmag)
 	endif
-	!
-endif !endif not zerovl (update stress)
+	endif!C_elastic==0(Plastic)
+!endif !endif not zerovl (update stress)
+
 !...calcuate element internal force
 ! Take into account zero in bbT. B.D. 8/20/05
 ! Now, damping force and internal force are separated in
@@ -132,24 +195,5 @@ enddo
 do i=1,nee
 	elresf(i) = elresf(i) + work(i)
 enddo
-	!xc=0.0
-	!do i=1,3
-	!	do j=1,8
-	!		xc(i)=xc(i)+ex(i,j)
-	!	enddo
-	!enddo
-	!xc=xc/8
-	!if(xc(1)<51.and.xc(1)>49.and.xc(2)<51.and.xc(2)>49.and.(xc(3)<(PMLb(5)+200))) then
-		!write(*,*) 'qdckd 1'
-		!write(*,*) 'vel1',vl(1),vl(2),vl(3)
-		!write(*,*) 'vel2',vl(4),vl(5),vl(6)
-		!write(*,*) 'vel3',vl(7),vl(8),vl(9)
-		!write(*,*) 'vel4',vl(10),vl(11),vl(12)
-		!write(*,*) 'vel5',vl(13),vl(14),vl(15)
-		!write(*,*) 'vel6',vl(16),vl(17),vl(18)
-		!write(*,*) 'vel7',vl(19),vl(20),vl(21)
-		!write(*,*) 'vel8',vl(22),vl(23),vl(24)
-		!write(*,*) 'str',stress(1),stress(2),stress(3),stress(4),stress(5),stress(6)
-	!endif
 !!$omp end parallel do
 end SUBROUTINE qdckd

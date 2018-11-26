@@ -1,5 +1,5 @@
-SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
-  emod,pois,mushr,rho,vs,rdampm,rdampk,ccosphi,sinphi)
+SUBROUTINE parcon(xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
+  emod,pois,mushr,rho,vp,vs,rdampm,rdampk,ccosphi,sinphi)
 !...provide control and property parameters for 3D FEM mesh and dynamic 
 !	simulation. B.D. 4/21/09
 !...incorporate into EQdyna. B.D. 10/28/09
@@ -12,7 +12,7 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   real (kind=8)::pi=3.1415926535897931
   !...define non-global parameters
   integer(kind=4)::i,j
-  real(kind=8)::fltwdt,fltx1,fltx2,flty,fltz1,fltz2,dx, &
+  real(kind=8)::fltwdt,fltx1,fltx2,flty,fltz1,fltz2, &
   	xmin,xmax,ymin,ymax,zmin,zmax,temp
   real (kind=8),dimension(numat) :: emod,pois,mushr,rho,rdampm,rdampk, &
        vp,vs,lamda,coh4p,tanphi,ccosphi,sinphi
@@ -27,7 +27,7 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   numeg=1
   !
   !...termination, output, & simulation time info
-  term=150.0
+  term=15.0
   dt=0.008
   nhplt = 1
   nhplt1 = 2
@@ -38,11 +38,16 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   !  calculate emod and pois here. B.D. 8/20/10
   !  similarly, given cohesion, and internal friction, calculate
   !  c*cos(phi) and sin(phi). B.D. 1/6/12
-  rho=(/2670./)
-  vp=(/6000./)
-  vs=(/3464./)
-  coh4p=(/0.e6/)
-  tanphi=(/0.75/)
+!For Double-couple point source. Ma and Liu (2006)   
+  ! rho=(/2600.,2700./)
+  ! vp=(/2800.,6000./)
+  ! vs=(/1500.,3464./)
+!For TPV8  
+rho=(/2700.,2700./)
+  vp=(/5716.,5716./)
+  vs=(/3300.,3300./)
+  coh4p=(/0.e6,0.0/)
+  tanphi=(/0.75,0.75/)
   do i=1,numat
     mushr(i) = rho(i) * vs(i) * vs(i)
     lamda(i) = vp(i) * vp(i) * rho(i) - 2. * mushr(i)
@@ -52,8 +57,8 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
     ccosphi(i) = coh4p(i) * dcos(temp)
     sinphi(i) = dsin(temp)
   enddo
-  rdampm=(/0.0/)
-  rdampk=(/0.1/)
+  rdampm=(/0.0,0.0/)
+  rdampk=(/0.1,0.1/)
   do i=1,numat
     rdampk(i) = rdampk(i) * dt	!related to dt
   enddo
@@ -68,12 +73,16 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   vrupt0=2000.0
   xsource=0.0
   ysource=0.0
-  zsource=-7500.0
+  zsource=-5000.
   !mus=0.76
   !mud=0.448
   !cohes=0.2e6
   !
-  fltxyz=reshape((/-100,100,0,0,-100,0,270,90/),&
+!For Double-couple point source. Ma and Liu (2006)    
+  ! fltxyz=reshape((/0,100,0,0,-100,0,270,90/),&
+    ! (/2,4,1/))
+!For TPV8	
+  fltxyz=reshape((/-15e3,15e3,0,0,-15e3,0,270,90/),&
     (/2,4,1/))
   !...convert degree to arc for strike and dip of faults
   do i=1,ntotft
@@ -94,16 +103,19 @@ SUBROUTINE parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
   !fltz2=0.0
   !
   !...element size and model boundary
-  dx=100
-!  xmin=-95000.
-!  xmax=95000.
-!  ymin=-90000.
-!  ymax=90000.
-!  zmin=-95000.
-	xmin=-10000
-	xmax=10000
-	ymin=-10000
-	ymax=10000
-	zmin=-10000
-	zmax=0
+!For Double-couple point source. Ma and Liu (2006)  
+	! dx=100
+	! xmin=-10e3
+	! xmax=10e3
+	! ymin=-10e3
+	! ymax=10e3
+	! zmin=-12e3
+	! zmax=0
+	dx=100
+	xmin=-40e3
+	xmax=40e3
+	ymin=-40e3
+	ymax=40e3
+	zmin=-50e3
+	zmax=0	
 end SUBROUTINE parcon

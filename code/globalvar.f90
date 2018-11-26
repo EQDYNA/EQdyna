@@ -4,7 +4,6 @@
 MODULE globalvar
   implicit none
   save  
-  !
   !...inout/output units
   integer (kind=4) :: iingl=11,ioutgl=12, ioutft=13,ioutrt1=14,&
   	   ioutrt2=15,ioutst=16,ioutsl=17,ioutgm=18,ioutoff=19,&
@@ -17,7 +16,7 @@ MODULE globalvar
   integer (kind=4) :: iexec,irank,numseq,nsd,ndof,numeg
   !...scalar variables (eps. for hexahedral elements)
   integer (kind=4),parameter :: nen=8,ned=3,nee=24,nesd=3,nrowsh=4, &
-           nrowb=6,nrowc=6,nstr=6,noid=2,numat=1
+           nrowb=6,nrowc=6,nstr=6,noid=2
   real (kind=8) :: w	!integration weight	   	   
   !...definitions for faults
   integer (kind=4),parameter :: ntotft=1
@@ -29,15 +28,35 @@ MODULE globalvar
   integer (kind=4) :: nplpts,nstep,nhplt,nhplt1,nhshw
   !...time histories	   	    
   integer (kind=4) :: locplt,myrec=0
-  !...global arrays to dea lwith possible zero arrays. B.D. 8/12/10
-!  integer (kind=4),allocatable,dimension(:,:) :: idhist
-!  real (kind=8),allocatable,dimension(:,:) :: dout
-  !...global fault arrays to deal with zero fault node for some processor. 
-  !only allocate once in meshgen.f90 whrn fault node is nonzero. B.D. 10/17/09
-!  integer (kind=4),allocatable,dimension(:,:) :: anonfs
-!  integer (kind=4),allocatable,dimension(:,:,:) :: nsmp
-!  real (kind=8),allocatable,dimension(:,:) :: fnft,arn,r4nuc,arn4m,slp4fri
-!  real (kind=8),allocatable,dimension(:,:,:) :: fric,un,us,ud
-!  real (kind=8),allocatable,dimension(:,:,:) :: fltsta
-	     
+!-------------------------------------------------------------------!
+!-----------------------Sep.19.2015/ D.Liu--------------------------!
+!-------------Controllable parameters for EQdyna V3.2.1-------------! 
+integer(kind=4)::C_elastic=1
+!	1=elastic version;
+!	0=plastic version;
+integer(kind=4)::C_Q=0!
+!AAA:Only works with C_elastic==1.
+!	1=allow Q attenuation;
+!	0=do not allow Q.
+integer(kind=4)::C_hg=1
+!	1=KF78 hourglass control(HG);
+!	2=Viscous HG
+integer(kind=4)::C_dc=0!In driver.f90
+!AAA: fault should be fixed.(mus==10000.)
+!	1=allow double couple(DC) point source;
+!	0=do not allow.
+integer(kind=4)::nPML=6
+!	Thickness (counted by nodes) of PML.
+real(kind=8)::R=0.01! Theoretical reflection coefficient for PML
+!	Other options for pairs of (nPML/R)
+!	nPML/R=6/0.01;10/0.001;20/0.0001.Collino& Tsogka(2001)
+real(kind=8)::kapa_hg=0.1!Coefficient for viscous HG.
+!AAA:Only works when C_hg==2.
+!	Typical valus varies from 0.05~0.15.Goudreau& Hallquist(1982).
+real(kind=8) :: rat=1.025 
+!	Enlarge ratio for buffers to use 
+integer(kind=4)::numat=2!Material types.
+real(kind=8)::dx!Element size. In parcon.f90.
+!--------End of Controllable parameters for EQdyna V3.2.1-----------!  
+!-------------------------------------------------------------------!    
 end MODULE globalvar 	      

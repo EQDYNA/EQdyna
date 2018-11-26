@@ -1,0 +1,16 @@
+#PBS -l nodes=8:ppn=8,walltime=5:00:00,mem=160gb
+#PBS -N LVFZtest
+#PBS -S /bin/bash
+#PBS -j oe
+#PBS -m abe
+##PBS -M dunyuliu@gmail.com	
+
+module load intel/compilers
+module load openmpi
+
+export OMP_NUM_THREADS=1
+
+cd $PBS_O_WORKDIR
+
+#mpirun -n 8 -bynode --display-map --display-allocation eqdyna-hyb 
+mpirun -n 64 -npernode 8 --display-map --display-allocation --debug-daemons eqdyna-hyb

@@ -1,4 +1,4 @@
-subroutine mesh4num(fltxyz,dx,xmin,xmax,ymin,ymax,zmin,zmax,&
+subroutine mesh4num(fltxyz,xmin,xmax,ymin,ymax,zmin,zmax,&
 nnode,nelement,neq,PMLb,maxm,nftnd,master,me,nprocs)!Adding PMLb and maxm
 !... program to generate mesh for 3D models.
 ! This model is a strike-slip fault in the half space, for SCEC TPV16 & 17.
@@ -16,10 +16,12 @@ real (kind=8) :: x1,x2,x3=0,y1,y2,y3=0,z1,z2,z3=0 !3 points for fault plane (inc
 !...entire model size
 real (kind=8) :: xmin, xmax, ymin, ymax, zmin, zmax
 !...grid size
-real (kind=8) :: dx,dy,dz	!dx is given in parcon.f90, dy/dz will be from dx
-real (kind=8) :: rat=1.0 !enlarge ratio for buffers to use
+real (kind=8) :: dy,dz	!dx is given in parcon.f90, dy/dz will be from dx
 !...uniform element num from fault y-ccor
-integer (kind=4) :: dis4uniF=20,dis4uniB=20
+!For Double-couple point source. Ma and Liu (2006) 
+!integer (kind=4) :: dis4uniF=50,dis4uniB=50
+!For TPV8 
+integer (kind=4) :: dis4uniF=100,dis4uniB=100
 !...mesh results
 integer (kind=4)::neq
 !...working variables
@@ -32,7 +34,7 @@ real (kind=8) :: tol,xcoor,ycoor,zcoor,xstep,ystep,zstep, &
 		xmin1,xmax1,ymin1,ymax1,zmin1
 real (kind=8),allocatable,dimension(:) :: xlinet,xline,yline,zline
 !DL
-integer(kind=4)::maxm,ntag,zz,nl=6
+integer(kind=4)::maxm,ntag,zz
 real(kind=8)::PMLb(8),mdx(3)
 !
 !dy = dx * abs(dtan(brangle))
@@ -47,34 +49,34 @@ xcoor = fltxyz(1,1,1)
 do ix = 1, np
 	xstep = xstep * rat
 	xcoor = xcoor - xstep
-	if(xcoor < xmin) exit
+	if(xcoor <= xmin) exit
 enddo
-edgex1 = ix + 1
+edgex1 = ix + nPML
 xstep = dx
 xcoor = fltxyz(2,1,1)
 do ix = 1, np
 	xstep = xstep * rat
 	xcoor = xcoor + xstep
-	if(xcoor > xmax) exit
+	if(xcoor >= xmax) exit
 enddo
-nxt = nxuni + edgex1 + ix + 1
+nxt = nxuni + edgex1 + ix + nPML
 allocate(xlinet(nxt))
 !
 !...predetermine x-coor
 xlinet(edgex1+1) = fltxyz(1,1,1)
 xstep = dx
 do ix = edgex1, 1, -1
-	xlinet(ix) = xlinet(ix+1) - xstep
 	xstep = xstep * rat
+	xlinet(ix) = xlinet(ix+1) - xstep
 enddo
 xmin1=xlinet(1)
-do ix = edgex1+2,edgex1+nxuni+1
+do ix = edgex1+2,edgex1+nxuni
 	xlinet(ix) = xlinet(ix-1) + dx
 enddo
 xstep = dx
-do ix = edgex1+nxuni+2,nxt
-	xlinet(ix) = xlinet(ix-1) + xstep
+do ix = edgex1+nxuni+1,nxt
 	xstep = xstep * rat
+	xlinet(ix) = xlinet(ix-1) + xstep
 enddo
 xmax1=xlinet(nxt)
 !  
@@ -85,6 +87,9 @@ xmax1=xlinet(nxt)
 !...more evenly distributed. B.D. 11/1/09
 !...due to overlap, total line num should be: nxt+nprocs-1
 !	B.D. 1/19/10
+
+
+
 j1 = nxt + nprocs - 1
 rlp = j1/nprocs
 rr = j1 - rlp*nprocs
@@ -120,39 +125,39 @@ endif
 nyuni = dis4uniF + dis4uniB + 1
 ystep = dy
 !ycoor = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
-ycoor = -dy*(dis4uniF+1)
+ycoor = -dy*(dis4uniF)
 do iy = 1, np
 	ystep = ystep * rat
 	ycoor = ycoor - ystep
-	if(ycoor < ymin) exit
+	if(ycoor <= ymin) exit
 enddo
-edgey1 = iy + 1
+edgey1 = iy + nPML
 ystep = dy
-ycoor = dy*(dis4uniB+1)
+ycoor = dy*(dis4uniB)
 do iy = 1, np
 	ystep = ystep * rat
 	ycoor = ycoor + ystep
-	if(ycoor > ymax) exit
+	if(ycoor >= ymax) exit
 enddo
-ny = nyuni + edgey1 + iy + 1
+ny = nyuni + edgey1 + iy + nPML
 !...pre-determine y-coor
 allocate(yline(ny))
 !...predetermine y-coor
 !yline(edgey1+1) = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
-yline(edgey1+1) = -dy*(dis4uniF+1)
+yline(edgey1+1) = -dy*(dis4uniF)
 ystep = dy
 do iy = edgey1, 1, -1
-	yline(iy) = yline(iy+1) - ystep
 	ystep = ystep * rat
+	yline(iy) = yline(iy+1) - ystep
 enddo
 ymin1=yline(1)
-do iy = edgey1+2,edgey1+nyuni+1
+do iy = edgey1+2,edgey1+nyuni
 	yline(iy) = yline(iy-1) + dy
 enddo
 ystep = dy
-do iy = edgey1+nyuni+2,ny
-	yline(iy) = yline(iy-1) + ystep
+do iy = edgey1+nyuni+1,ny
 	ystep = ystep * rat
+	yline(iy) = yline(iy-1) + ystep
 enddo
 ymax1=yline(ny)
 !
@@ -162,44 +167,43 @@ zcoor = fltxyz(1,3,1)
 do iz=1,np
 	zstep = zstep * rat
 	zcoor = zcoor - zstep
-	if(zcoor < zmin) exit
+	if(zcoor <= zmin) exit
 enddo
-edgezn = iz + 1
+edgezn = iz + nPML
 nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dx + 1 
 nz = edgezn + nzuni
 !...predetermine z-coor
 allocate(zline(nz))
 zline(nz) = zmax
-do iz = nz-1,nz-nzuni,-1
+do iz = nz-1,nz-nzuni+1,-1
 	zline(iz) = zline(iz+1) - dz
 enddo
 zstep = dz
-do iz = nz-nzuni-1,1,-1
-	zline(iz) = zline(iz+1) -zstep
+do iz = nz-nzuni,1,-1
 	zstep = zstep * rat
+	zline(iz) = zline(iz+1) -zstep
 enddo
 zmin1=zline(1)
 !DL  
-PMLb(1)=xlinet(nxt-nl)!PMLxmax
-PMLb(2)=xlinet(nl+1)!PMLxmin
-PMLb(3)=yline(ny-nl)!PMLymax
-PMLb(4)=yline(nl+1)!PMLymin
-PMLb(5)=zline(nl+1)!PMLzmin
+PMLb(1)=xlinet(nxt-nPML)!PMLxmax
+PMLb(2)=xlinet(nPML+1)!PMLxmin
+PMLb(3)=yline(ny-nPML)!PMLymax
+PMLb(4)=yline(nPML+1)!PMLymin
+PMLb(5)=zline(nPML+1)!PMLzmin
 mdx(1)=xlinet(nxt)-xlinet(nxt-1)
 mdx(2)=yline(ny)-yline(ny-1)
 mdx(3)=zline(2)-zline(1)
 PMLb(6)=mdx(1)
 PMLb(7)=mdx(2)
 PMLb(8)=mdx(3)
+if (me==0) then
 write(*,*) 'PML info',me
 write(*,*) 'xmax',PMLb(1),'xmin',PMLb(2),'ymax',PMLb(3),'ymin',PMLb(4),'zmin',PMLb(5)
-write(*,*) 'Max dx',mdx(1),'Max dy',mdx(2),'Max dz',mdx(3)
 write(*,*) 'Max',PMLb(6),PMLb(7),PMLb(8)
-	if (PMLb(5).gt.fltxyz(1,3,1)) then
-		stop 111
-	elseif (PMLb(1).lt.fltxyz(2,1,1)) then
-		stop 112
-	endif	
+write(*,*) '---------------------------'
+write(*,*) 'Model boundaries info'
+write(*,*) 'xmax',xmax1,'xmin',xmin1,'ymax',ymax1,'ymin',ymin1,'zmin',zmin1
+endif
 !...prepare for digitizing
 nnode = 0
 nelement = 0
@@ -223,17 +227,6 @@ do ix = 1, nx
 				.or.zcoor<PMLb(5)) then
 				zz = 12
 			endif	
-			!if ((abs(zcoor-PMLb(5))<tol).and.(xcoor<PMLb(1)+tol).and.(xcoor>PMLb(2)-tol).and.(ycoor<PMLb(3)+tol).and.(ycoor>PMLb(4)-tol)) then! z face
-			!	zz=15
-			!elseif ((abs(xcoor-PMLb(1))<tol).and.(ycoor<PMLb(3)+tol).and.(ycoor>PMLb(4)-tol).and.(zcoor>PMLb(5)-tol)) then!12 wall
-			!	zz=15
-			!elseif ((abs(xcoor-PMLb(2))<tol).and.(ycoor<PMLb(3)+tol).and.(ycoor>PMLb(4)-tol).and.(zcoor>PMLb(5)-tol)) then!34 wall
-			!	zz=15	
-			!elseif ((abs(ycoor-PMLb(3))<tol).and.(xcoor<PMLb(1)+tol).and.(xcoor>PMLb(2)-tol).and.(zcoor>PMLb(5)-tol)) then!41 wall
-			!	zz=15		
-			!elseif ((abs(ycoor-PMLb(4))<tol).and.(xcoor<PMLb(1)+tol).and.(xcoor>PMLb(2)-tol).and.(zcoor>PMLb(5)-tol)) then!23 wall
-			!	zz=15					
-			!endif
 			!...establish equation numbers for this node
 			do i1=1,zz
 				!...elastoplastic off-fault, stress assigned in entire model,

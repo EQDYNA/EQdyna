@@ -1,7 +1,7 @@
 SUBROUTINE driver(numel,numnp,neq,nftnd,ndout,dout,idhist,x,brhs,d,v, &
 mat,ien,eleporep,pstrain, & !Delete id
 id1,maxm,locid,dof1,et,v1,d1,PMLb,maxs,ids,s1, & !Adding id1,maxm,loci,v1,d1,PMLb
-shl,e,pois,mushr,rho,rdampm,rdampk,& !Delete lm
+shl,e,pois,mushr,rho,vp,vs,rdampm,rdampk,& !Delete lm
 c,ccosphi,sinphi,er4mpi,nr4mpi,n4onf,momntall,momntratall,maxslpratall, &
 itmp1,itmp2,nsmp,fnft,fltslp,un,us,ud,fric,arn,r4nuc,anonfs,arn4m,slp4fri,fltsta,& 
 master,me,nprocs)
@@ -40,10 +40,10 @@ integer (kind=4),dimension(3,itmp2) :: anonfs
 integer (kind=4),dimension(2,itmp1,ntotft) :: nsmp
 real (kind=8),dimension(itmp1,ntotft) :: fnft,arn,r4nuc,arn4m,slp4fri
 real (kind=8),dimension(3,itmp1,ntotft) :: un,us,ud,fltslp
-real (kind=8),dimension(6,itmp1,ntotft) :: fric
+real (kind=8),dimension(8,itmp1,ntotft) :: fric
 real (kind=8),dimension(10,nplpts-1,n4onf) :: fltsta
 !...material properties
-real (kind=8),dimension(numat) :: e,pois,mushr,rho,rdampm,rdampk,&
+real (kind=8),dimension(numat) :: e,pois,mushr,rho,vp,vs,rdampm,rdampk,&
 ccosphi,sinphi
 real (kind=8),dimension(nrowc,nrowc,numat) :: c
 !... equations,node mass,weight,solutions,coordinate,shape
@@ -75,7 +75,7 @@ integer (kind=4),dimension(numnp)::locid,dof1
 integer (kind=4),dimension(numel)::et
 real (kind=8),dimension(neq)::v1,d1
 real (kind=8),dimension(maxs)::s1
-real(kind=8),dimension(6)::PMLb
+real(kind=8),dimension(8)::PMLb
 real(kind=8),dimension(9)::dampv
 !*.* D.L.
 !*** write out a reminder for code user ***
@@ -134,21 +134,6 @@ do n=1,nstep
 	!	 than at the end of time step. B.D. 7/21/05
 	!
 	time1 = MPI_WTIME()
-	! !$omp parallel do default(shared) private(l,j,k)
-	! do l=1,numnp
-		! do j=1,ndof
-			! k=id(j,l)
-			! if(k > 0) then	!only non-boundary,update
-	! !	    acc(j,l) = brhs(k)
-				! v(j,l) = v(j,l) + brhs(k) * dt
-				! d(j,l) = d(j,l) + v(j,l) * dt
-			! elseif(k == -1) then !fixed boundary
-				! v(j,l) = 0.0
-				! d(j,l) = 0.0
-			! endif
-		! enddo
-	! enddo
-	! !$omp end parallel do
 	!*.* Update velocity and displacement from brhs. D.L. Jan/23/2015
 	do i=1,numnp
 		if (dof1(i)==3) then
@@ -160,21 +145,10 @@ do n=1,nstep
 				v(j,i)=v1(eqn)
 				d(j,i)=d1(eqn)
 			enddo
-			if (x(1,i)==8000.0.and.x(2,i)==6000.0.and.x(3,i)==0.0) then
-			open(1234,file='0OUT.txt',form='formatted',position='append')
-			write(1234,'( f12.5,3e18.7e4)'),time,v(1,i),v(2,i),v(3,i)
-			endif			
-!			if (me==5) then
-!				if (i==1737494) then
-!					write(*,*) 'Time=',time
-!					write(*,*) '5',v(1,i),v(2,i),v(3,i)
-!					write(*,*) '5',d(1,i),d(2,i),d(3,i)
-!				endif
-!				if (i==1737510) then
-!					write(*,*) '2',v(1,i),v(2,i),v(3,i)
-!					write(*,*) '2',d(1,i),d(2,i),d(3,i)
-!				endif
-!			endif
+	! if (x(1,i)==8000.0.and.x(2,i)==6000.0.and.x(3,i)==0.0)then
+	! open(1234,file='0OUT.dat',form='formatted',position='append')
+	! write(1234,'1x,f10.4,3(f15.5)') time,v(1,i),v(2,i)
+	! endif
 		elseif (dof1(i)==12) then
 			call comdampv(x(1,i),x(2,i),x(3,i),PMLb,dampv)
 			!do j=1,9
@@ -186,11 +160,7 @@ do n=1,nstep
 				itag=locid(i)+j
 				eqn=id1(itag)
 				if (eqn>0) then
-!					if (j==7.or.j==8.or.j==9) then
-!						v1(eqn)=(brhs(eqn)-9.8*dampv(j)*dt+v1(eqn)*(1/dt-dampv(j)/2))/(1/dt+dampv(j)/2)
-!					else 
-						v1(eqn)=(brhs(eqn)+v1(eqn)*(1/dt-dampv(j)/2))/(1/dt+dampv(j)/2)
-!					endif
+					v1(eqn)=(brhs(eqn)+v1(eqn)*(1/dt-dampv(j)/2))/(1/dt+dampv(j)/2)
 				endif
 			enddo
 			do j=10,12
@@ -217,44 +187,7 @@ do n=1,nstep
 				d(1,i)=0.0
 				d(2,i)=0.0
 				d(3,i)=0.0				
-			endif
-		! elseif (dof1(i)==15) then
-			! call comdampv(x(1,i),x(2,i),x(3,i),PMLb,dampv)	
-			
-			! do j=1,9
-				! if (dampv(j).ne.0.0)then
-				! write(*,*) '1',dampv(j)
-				! stop
-				! endif
-			! !	dampv(j)=0.0
-			! enddo			
-			! do j=1,3
-				! itag=locid(i)+j
-				! eqn=id1(itag)
-				! v1(eqn)=v1(eqn)+brhs(eqn)*dt	
-			! enddo
-			! do j=4,12
-				! itag=locid(i)+j
-				! eqn=id1(itag)
-! !				if (j==10.or.j==11.or.j==12) then
-! !					v1(eqn)=(brhs(eqn)+v1(eqn)*(1/dt-dampv(j-3)/2))/(1/dt+dampv(j-3)/2)
-! !				else
-					! v1(eqn)=(brhs(eqn)+v1(eqn)*(1/dt-dampv(j-3)/2))/(1/dt+dampv(j-3)/2)
-! !				endif
-			! enddo
-			! do j=13,15
-				! itag=locid(i)+j
-				! eqn=id1(itag)
-				! v1(eqn)=v1(eqn)+brhs(eqn)*dt		
-			! enddo
-			! ! Update final velocity.
-			! itag=locid(i)			
-			! v(1,i)=v1(id1(itag+1))+v1(id1(itag+4))+v1(id1(itag+5))+v1(id1(itag+6))+v1(id1(itag+13))
-			! v(2,i)=v1(id1(itag+2))+v1(id1(itag+7))+v1(id1(itag+8))+v1(id1(itag+9))+v1(id1(itag+14))
-			! v(3,i)=v1(id1(itag+3))+v1(id1(itag+10))+v1(id1(itag+11))+v1(id1(itag+12))+v1(id1(itag+15))
-			! d(1,i)=d(1,i)+v(1,i)*dt
-			! d(2,i)=d(2,i)+v(2,i)*dt
-			! d(3,i)=d(3,i)+v(3,i)*dt		
+			endif	
 		endif
 	enddo
 	!*.* D.L.
@@ -358,7 +291,7 @@ do n=1,nstep
 	!   !$omp section
 	call qdct3(numel,numnp,neq,mat,ien,d,v,rdampk,rdampm,rho,ccosphi,sinphi,&
 				mushr,eleporep,elemass,eleshp,eledet,pstrain,c,brhs,& ! Delete lm
-				me,master,nprocs,maxm,id1,locid,dof1,et,v1,d1,PMLb,x,maxs,ids,s1,n)!Adding maxm & id1 & loci,v1,d1,PMLb,x,maxs,ids,s1
+				me,master,nprocs,maxm,id1,locid,dof1,et,v1,d1,PMLb,x,maxs,ids,s1,n,vp)!Adding maxm & id1 & loci,v1,d1,PMLb,x,maxs,ids,s1
 	time2 = MPI_WTIME()
 	timeused(4) = timeused(4) + (time2 - time1)
 	!
@@ -368,7 +301,8 @@ do n=1,nstep
 	!
 	time1 = MPI_WTIME()
 	! !$omp section
-	call hrglss(numel,numnp,neq,ien,d,v,rdampk,mat,ss,phi,brhs,me,master,nprocs,maxm,id1,locid,dof1,et,eledet) ! Delete lm !Add maxm,id1,loci
+	call hrglss(numel,numnp,neq,ien,d,v,rdampk,mat,ss,phi,brhs,me,master,nprocs,&
+		maxm,id1,locid,dof1,et,eledet,rho,vp) ! Delete lm !Add maxm,id1,loci
 	time2 = MPI_WTIME()
 	timeused(5) = timeused(5) + (time2 - time1)
 	! !$omp end sections
@@ -466,38 +400,54 @@ do n=1,nstep
 			timeused(6) = timeused(6) + (time2 - time1) 
 		endif
 	enddo
+!Implementation of Double-couple point source.
+!Sep.12.2015/D.L.
+if (C_dc==1)then
+	do i=1,numnp
+	!x positive. Adding a point force in y+ direction.
+	if (x(1,i)==100.0.and.x(2,i)==0.0.and.x(3,i)==-2000.)then
+		write(*,*) 'right',i,me
+		if (time<0.2)then
+			brhs(id1(locid(i)+2))=brhs(id1(locid(i)+2))+&
+			(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+		else
+			brhs(id1(locid(i)+2))=brhs(id1(locid(i)+2))+1.0e14/2
+		endif
+	endif
+	!x negative. Adding a point force in y- direction.
+	if (x(1,i)==-100.0.and.x(2,i)==0.0.and.x(3,i)==-2000.)then
+	write(*,*) 'left',i,me	
+		if (time<0.2)then
+			brhs(id1(locid(i)+2))=brhs(id1(locid(i)+2))-&
+			(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+		else
+			brhs(id1(locid(i)+2))=brhs(id1(locid(i)+2))-1.0e14/2
+		endif
+	endif
+	!y positive. Adding a point force in x+ direction.
+	if (x(1,i)==0.0.and.x(2,i)==100.0.and.x(3,i)==-2000.)then
+		write(*,*) 'up',i,me	
+		if (time<0.2)then
+			brhs(id1(locid(i)+1))=brhs(id1(locid(i)+1))+&
+			(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+		else
+			brhs(id1(locid(i)+1))=brhs(id1(locid(i)+1))+1.0e14/2
+		endif
+	endif
+	!y negative. Adding a point force in x- direction.
+	if (x(1,i)==0.0.and.x(2,i)==-100.0.and.x(3,i)==-2000.)then
+		write(*,*) 'down',i,me	
+		if (time<0.2)then
+			brhs(id1(locid(i)+1))=brhs(id1(locid(i)+1))-&
+			(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+		else
+			brhs(id1(locid(i)+1))=brhs(id1(locid(i)+1))-1.0e14/2
+		endif
+	endif
+	enddo!Enddo double-couple point source.	
+endif!ldc(logical double couple)	
 	!*** solve uncoupled equation for explicit analysis ***
-	!  After, brhs stores acceleration a. B.D. 7/4/05
-	!
-	!      brhs = brhs/alhs
-! !right
-	 ! if (me==17.and.time<0.2)then
-		 ! brhs(id1(locid(37660)+2))=brhs(id1(locid(37660)+2))+(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
-	 ! endif
-	  ! if (me==17.and.time>=0.2)then
-		  ! brhs(id1(locid(37660)+2))=brhs(id1(locid(37660)+2))+1.0e14/2
-	  ! endif	
-! !left
-	  ! if (me==16.and.time<0.2)then
-		  ! brhs(id1(locid(121294)+2))=brhs(id1(locid(121294)+2))-(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
-	  ! endif
-	  ! if (me==16.and.time>=0.2)then
-		  ! brhs(id1(locid(121294)+2))=brhs(id1(locid(121294)+2))-1.0e14/2
-	  ! endif	
-! !up	
-	  ! if (me==16.and.time<0.2)then
-		 ! brhs(id1(locid(142206)+1))=brhs(id1(locid(142206)+1))+(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
-	  ! endif
-	  ! if (me==16.and.time>=0.2)then
-		  ! brhs(id1(locid(142206)+1))=brhs(id1(locid(142206)+1))+1.0e14/2
-	  ! endif	
-! !down	
-	  ! if (me==16.and.time<0.2)then
-		  ! brhs(id1(locid(142204)+1))=brhs(id1(locid(142204)+1))-(1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
-	  ! endif
-	  ! if (me==16.and.time>=0.2)then
-		  ! brhs(id1(locid(142204)+1))=brhs(id1(locid(142204)+1))-1.0e14/2
-	  ! endif			
+	!  After, brhs stores acceleration a. B.D. 7/4/05	
 	!$omp parallel do default(shared) private(i)
 	do i = 1,neq
 		brhs(i) = brhs(i)/alhs(i)

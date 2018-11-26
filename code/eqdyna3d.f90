@@ -32,7 +32,7 @@ real (kind=8) :: temp1,temp2,temp3,temp4,temp5,temp6,temp7,temp8,temp9, &
 integer (kind=4) :: numnp,numel,neq,n4out,ndout=0,n4onf,nftmx,nonmx
 integer (kind=4),allocatable,dimension(:) :: nftnd
 !...model and fault dimension
-real (kind=8) :: xmin,xmax,ymin,ymax,zmin,zmax,dx
+real (kind=8) :: xmin,xmax,ymin,ymax,zmin,zmax
 real (kind=8),allocatable,dimension(:,:,:) :: fltxyz !4: x,y,z,strike/dip
 !......time histories
 integer (kind=4),dimension(2,78)::an4nds
@@ -56,7 +56,7 @@ real (kind=8),allocatable,dimension(:,:) :: fnft,arn,r4nuc,arn4m,slp4fri
 real (kind=8),allocatable,dimension(:,:,:) :: fric,un,us,ud,fltsta,fltslp
 !...material properties
 real (kind=8),allocatable,dimension(:) :: emod,pois,mushr,rho,rdampm,rdampk,&
-ccosphi,sinphi,vs
+ccosphi,sinphi,vp,vs
 real (kind=8),allocatable,dimension(:,:,:) :: c
 !...
 integer (kind=4),dimension(2,2)::nr4mpi,er4mpi  !node,equation range for MPI
@@ -65,8 +65,8 @@ real (kind=8)::momntall,momntratall,maxslpratall,magn
 !...on-fault station info. B.D. 8/11/10
 !  integer (kind=4),dimension(2) :: nonfs=(/8,6/)
 !  real (kind=8),dimension(2,8,2) :: xonfs  !8 is max of nonfs
-integer (kind=4),dimension(1) :: nonfs=(/6/)
-real (kind=8),dimension(2,6,1) :: xonfs
+integer (kind=4),dimension(1) :: nonfs=(/8/)
+real (kind=8),dimension(2,8,1) :: xonfs
 character (len=90) :: loca
 integer time_array(8)
 !...working variables. B.D. 1/15/12
@@ -75,7 +75,7 @@ real (kind=8) :: tmp1,tmp2
 logical:: sts=.false.,dpyn=.false.
 !*.* Variables for new features in PML. D.L. Jan/23/15
 integer(kind=4)::maxm,maxs
-real(kind=8),dimension(6)::PMLb!Adding PMLb(6)
+real(kind=8),dimension(8)::PMLb!Adding PMLb(6)
 real (kind=8),allocatable,dimension(:) :: v1,d1,s1 ! 1D array for velocity,displacement and stress 
 integer (kind=4),allocatable,dimension(:) :: id1,ids,et,locid,dof1 !et: element type.
 !*.* D.L.
@@ -91,7 +91,20 @@ real (kind=8),allocatable,dimension(:) :: aa
 !new variables for MPI. B.D. 4/15/09	    
 integer (kind=4) :: rlp,rr,ierr,jj1,i1,i2,i3
 character (len=6) :: mm
-
+!-------------------------------------------------------------------!
+!-------------Global control of the EQ V3.2.1 system----------------!
+!-----------------------Sep.19.2015/ D.Liu--------------------------!
+if (C_elastic==0.and.C_Q==1) then
+	write(*,*) 'Q model can only work with elastic code'
+	stop 101 
+endif
+if (C_Q==1.and.rat>1) then
+	write(*,*) 'Q model can only work with uniform element size'
+	write(*,*) 'rat should be 1.0'
+	stop 102
+endif
+!-----------End of Global control of the EQ V3.2.1 system-----------!
+!-------------------------------------------------------------------!
 ! MPI initialize
 call MPI_Init(ierr)
 call mpi_comm_rank(MPI_COMM_WORLD,me,ierr)
@@ -139,11 +152,11 @@ outdp = 'srfdp.txt'//mm
 !
 !...parameter control file is incorporated into the code.
 !   no input file is needed. B.D. 10/28/09
-allocate(emod(numat),pois(numat),mushr(numat),rho(numat),vs(numat),&
+allocate(emod(numat),pois(numat),mushr(numat),rho(numat),vp(numat),vs(numat),&
 		rdampm(numat),rdampk(numat),ccosphi(numat),sinphi(numat),&
 		nftnd(ntotft),fltxyz(2,4,ntotft))
-call parcon(dx,xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
-			emod,pois,mushr,rho,vs,rdampm,rdampk,ccosphi,sinphi)
+call parcon(xmin,xmax,ymin,ymax,zmin,zmax,fltxyz,&
+			emod,pois,mushr,rho,vp,vs,rdampm,rdampk,ccosphi,sinphi)
 
 !...time hostories output steps
 nplpts = 0	!initialize number of time history plot
@@ -156,7 +169,7 @@ allocate(c(nrowc,nrowc,numat),shl(nrowsh,nen))
 call qdct1(shl,emod,pois,c)
 
 !*** PRE-MESHING to GET NUMBERS for ARRAYS' DEFINITTION
-call mesh4num(fltxyz,dx,xmin,xmax,ymin,ymax,zmin,zmax, &
+call mesh4num(fltxyz,xmin,xmax,ymin,ymax,zmin,zmax, &
 				numnp,numel,neq,PMLb,maxm,nftnd,master,me,nprocs)!Adding PMLb and maxm
 !  write(*,*) 'me=', me, '# of fault node',(nftnd(i),i=1,ntotft),'# of elements',numel
 write(*,*) 'me=',me,'maxm=',maxm
@@ -180,7 +193,7 @@ nftmx = maxval(nftnd) !max fault nodel num for all faults, used for arrays.
 if(nftmx<=0) nftmx=1  !fortran arrays cannot be zero size,use 1 for 0
 nonmx = sum(nonfs)    !max possible on-fault stations number
 allocate(nsmp(2,nftmx,ntotft),fnft(nftmx,ntotft),un(3,nftmx,ntotft),&
-			us(3,nftmx,ntotft),ud(3,nftmx,ntotft),fric(6,nftmx,ntotft),&
+			us(3,nftmx,ntotft),ud(3,nftmx,ntotft),fric(8,nftmx,ntotft),&
 			arn(nftmx,ntotft),r4nuc(nftmx,ntotft),anonfs(3,nonmx),&
 			arn4m(nftmx,ntotft),slp4fri(nftmx,ntotft),fltslp(3,nftmx,ntotft))
 !after allocate, initialize here before call meshgen
@@ -200,9 +213,9 @@ fltslp = 0.0
 !*** MESH GENERATION **** 
 !  write(*,*) 'before meshgen me=',me    
 allocate(ids(numel))
-allocate(s1(2*maxm))
+allocate(s1(4*maxm))
 s1=0.0
-call meshgen(fltxyz,dx,xmin,xmax,ymin,ymax,zmin,zmax, &
+call meshgen(fltxyz,xmin,xmax,ymin,ymax,zmin,zmax, &
 			numnp,numel,ien,mat,s1,eleporep,rho,vs, &!change elestress as s1
 			x,neq, & !Delete id
 			id1,maxm,locid,dof1,et,PMLb,maxs,ids, &!Adding id1,maxm,loci,PMLb,maxs,ids
@@ -311,7 +324,7 @@ if (iexec == 1) then	!otherwise data check only
 				x,brhs,d,v,mat,ien,eleporep,pstrain, & ! Delete id elestress
 				id1,maxm,locid,dof1,et,v1,d1,PMLb,maxs,ids,s1, & !Adding id1(:),maxm,loci(:,:),v1,d1,PMLb
 				shl, & ! Delete lm
-				emod,pois,mushr,rho,rdampm,rdampk,c,ccosphi,sinphi,&
+				emod,pois,mushr,rho,vp,vs,rdampm,rdampk,c,ccosphi,sinphi,&
 				er4mpi,nr4mpi,n4onf,momntall,momntratall,maxslpratall,&
 				nftmx,nonmx,nsmp,fnft,fltslp,un,us,ud,fric,arn,r4nuc,&
 				anonfs,arn4m,slp4fri,fltsta,master,me,nprocs)
@@ -351,24 +364,30 @@ if(n4onf > 0) then
 	do i=1,n4onf
 		j=anonfs(3,i)
 		if(j==1)  then  !main fault stations
-			if(xonfs(1,anonfs(2,i),j)== -6000 .and. xonfs(2,anonfs(2,i),j)==0) then
-				open(51,file='faultst-060dp000.txt',status='unknown')
-				loca = '# location = on mian fault, -6.0 km along strike, 0 km down-dip'
-			elseif(xonfs(1,anonfs(2,i),j)==0 .and. xonfs(2,anonfs(2,i),j)==0) then
+			if(xonfs(1,anonfs(2,i),j)== 0 .and. xonfs(2,anonfs(2,i),j)==0) then
 				open(51,file='faultst000dp000.txt',status='unknown')
-				loca = '# location = on main fault, 0.0 km along strike, 0 km down-dip'
-			elseif(xonfs(1,anonfs(2,i),j)== 12000 .and. xonfs(2,anonfs(2,i),j)==0) then
+				loca = '# location = on mian fault, 0 km along strike, 0 km down-dip'
+			elseif(xonfs(1,anonfs(2,i),j)==4.5e3 .and. xonfs(2,anonfs(2,i),j)==0) then
+				open(51,file='faultst045dp000.txt',status='unknown')
+				loca = '# location = on main fault, 4.5 km along strike, 0 km down-dip'
+			elseif(xonfs(1,anonfs(2,i),j)== 12e3 .and. xonfs(2,anonfs(2,i),j)==0) then
 				open(51,file='faultst120dp000.txt',status='unknown')
 				loca = '# location = on mian fault, 12.0 km along strike, 0 km down-dip'
-			elseif(xonfs(1,anonfs(2,i),j)== -6000 .and. xonfs(2,anonfs(2,i),j)==-7500) then
-				open(51,file='faultst-060dp075.txt',status='unknown')
-				loca = '# location = on mian fault, -6.0 km along strike, 7.5 km down-dip'
-			elseif(xonfs(1,anonfs(2,i),j)==0 .and. xonfs(2,anonfs(2,i),j)==-7500) then
+			elseif(xonfs(1,anonfs(2,i),j)== 0 .and. xonfs(2,anonfs(2,i),j)==-4.5e3) then
+				open(51,file='faultst000dp045.txt',status='unknown')
+				loca = '# location = on mian fault, 0 km along strike, 4.5 km down-dip'
+			elseif(xonfs(1,anonfs(2,i),j)==0 .and. xonfs(2,anonfs(2,i),j)==-7.5e3) then
 				open(51,file='faultst000dp075.txt',status='unknown')
 				loca = '# location = on main fault, 0.0 km along strike, 7.5 km down-dip'
-			elseif(xonfs(1,anonfs(2,i),j)== 12000 .and. xonfs(2,anonfs(2,i),j)==-7500) then
+			elseif(xonfs(1,anonfs(2,i),j)== 4.5e3 .and. xonfs(2,anonfs(2,i),j)==-7.5e3) then
+				open(51,file='faultst045dp075.txt',status='unknown')
+				loca = '# location = on main fault, 4.5 km along strike, 7.5 km down-dip'				
+			elseif(xonfs(1,anonfs(2,i),j)== 12e3 .and. xonfs(2,anonfs(2,i),j)==-7.5e3) then
 				open(51,file='faultst120dp075.txt',status='unknown')
-				loca = '# location = on mian fault, 12.0 km along strike, 7.5 km down-dip'
+				loca = '# location = on main fault, 12.0 km along strike, 7.5 km down-dip'				
+			elseif(xonfs(1,anonfs(2,i),j)== 0 .and. xonfs(2,anonfs(2,i),j)==-12e3) then
+				open(51,file='faultst000dp120.txt',status='unknown')				
+				loca = '# location = on mian fault, 0 km along strike, 12 km down-dip'
 			endif
 			!     elseif(j==2) then  !branch fault stations
 			!      if(xonfs(1,anonfs(2,i),j)==2000 .and. xonfs(2,anonfs(2,i),j)==0) then
@@ -391,17 +410,15 @@ if(n4onf > 0) then
 			!        loca = '# location = on branch fault, 9.0 km along strike, 7.5 km down-dip'
 			!      endif
 		endif
-		write(51,*) '# For LVFZ project, revised from SCEC TPV19'
-		write(51,*) '# author = Benchun Duan'
-		!    write(51,*) '# date = 8-20-10'
+		write(51,*) '#For SCEC TPV8'
+		write(51,*) '#Author=D.Liu'
 		call date_and_time(values=time_array)
 		write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',time_array(2), &
 			'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &
 			':',time_array(7)
-		write(51,*) '# code = EQdyna'
-		write(51,*) '# code_version = 3.0'
-		!write(51,*) '# element_size = 50 m x 50 m on main fault, 57.7 m x 50 m on branch'
-		write(51,*) '# element_size = 100 m x 100 m on fault'
+		write(51,*) '#code = EQdyna3d'
+		write(51,*) '#code_version=3.2'
+		write(51,*) '#element_size = 100 m x 100 m on fault'
 		write(51,'( a14,f8.4,a3)') '# time_step =', dt, ' s'
 		write(51,'( a19,i6)') '# num_time_steps =', locplt-1
 		write(51,*) loca
@@ -413,13 +430,13 @@ if(n4onf > 0) then
 		write(51,*) '# Column #5 = down-dip slip (m)'
 		write(51,*) '# Column #6 = down-dip slip rate (m/s)'
 		write(51,*) '# Column #7 = down-dip shear stress (MPa)'
-		write(51,*) '# Column #8 = normal stress (MPa)'
+		!write(51,*) '# Column #8 = normal stress (MPa)'
 		write(51,*) '# The line below lists the names of the data fields:'
-		write(51,*) 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress'
+		write(51,*) 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress'
 		write(51,*) '#'
 		do j=1,locplt-1
-			write(51,'( f12.5,7e18.7e4)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.e6,&
-					-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(9,j,i)/1.e6,fltsta(10,j,i)/1.e6
+			write(51,'( f12.5,6e18.7e4)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.e6,&
+					-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(9,j,i)/1.e6
 		enddo
 		close(51)
 	enddo
@@ -428,33 +445,32 @@ endif
 if(n4out > 0) then
 	do i=1,n4out
 		if(an4nds(1,i)==1) then 
-			open(51,file='body-060st-120dp000.txt',status='unknown')
-			loca = '# location = -6.0 km off main fault (near side) , -12.0 km along strike, 0 km depth'
+			open(51,file='body-030st000dp000.txt',status='unknown')
+			loca = '#location=-3.0km off main fault(near side),0.0km along strike,0 km depth'
 		elseif(an4nds(1,i)==2) then
-			open(51,file='body-060st000dp000.txt',status='unknown')
-			loca = '# location = -6.0 km off main fault (near side), 0.0 km along strike, 0 km depth'
+			open(51,file='body-020st000dp000.txt',status='unknown')
+			loca = '# location=-2.0km off main fault(near side),0.0km along strike,0km depth'
 		elseif(an4nds(1,i)==3) then
-			open(51,file='body-060st100dp000.txt',status='unknown')
-			loca = '# location = -6.0 km off main fault (near side), 10.0 km along strike, 0 km depth'
+			open(51,file='body-010st000dp000.txt',status='unknown')
+			loca = '#location=-1.0km off main fault(near side),0.0km along strike,0km depth'
 		elseif(an4nds(1,i)==4) then
-			open(51,file='body-100st-120dp000.txt',status='unknown')
-			loca = '# location = -10.0 km off main fault (near side), -12.0 km along strike, 0 km depth'
+			open(51,file='body010st000dp000.txt',status='unknown')
+			loca = '#location=1.0km off main fault(near side),0.0km along strike,0km depth'
 		elseif(an4nds(1,i)==5) then
-			open(51,file='body-100st000dp000.txt',status='unknown')
-			loca = '# location = -10.0 km off main fault (near side), 0.0 km along strike, 0 km depth'
+			open(51,file='body-030st120dp000.txt',status='unknown')
+			loca = '#location=-3.0km off main fault(near side),12.0km along strike,0km depth'
 		elseif(an4nds(1,i)==6) then
-			open(51,file='body-100st100dp000.txt',status='unknown')
-			loca = '# location = -10.0 km off main fault (near side), 10.0 km along strike, 0 km depth'
+			open(51,file='body030st120dp000.txt',status='unknown')
+			loca = '#location=3.0km off main fault(near side),12.0km along strike,0km depth'
 		endif
-		write(51,*) '# for LVFZ project, revised from SCEC TPV19'
-		write(51,*) '# author = Benchun Duan'
-		!   write(51,*) '# date = 8-20-10'
+		write(51,*) '#For SCEC TPV8'
+		write(51,*) '#Author=D.Liu'
 		call date_and_time(values=time_array)
 		write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',time_array(2), &
 				'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &
 				':',time_array(7)
-		write(51,*) '# code = EQdyna'
-		write(51,*) '# code_version = 3.0'
+		write(51,*) '#code=EQdyna3d'
+		write(51,*) '#code_version = 3.2'
 		write(51,*) '# element_size = 100 m x 100 m on fault'
 		write(51,'( a14,f8.4,a3)') '# time_step =', dt, ' s'
 		write(51,'( a19,i6)') '# num_time_steps =',locplt

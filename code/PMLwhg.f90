@@ -1,30 +1,27 @@
-SUBROUTINE PMLwhg(va,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me)!efPML,evPML,esPML,ex,PMLb,c(1,1,1),eleshp(1,1,nel),det,dt
+SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me,vp)
+!efPML,evPML,esPML,ex,PMLb,c(1,1,1),eleshp(1,1,nel),det,dt
 	use globalvar
 	implicit none  
-	! D.L. Feb/2015
 	!-------------------------------------------!
 	! Perfectly Matched Absorbing Boundary Layer.
 	! Input: 
-	! -vl: Total velocity vector at step (n-1/2) on element nodes.
+	! -vl: Velocity vector at step (n-1/2) on element nodes.
 	! -s: Stress vector at step (n) at the Guass Point of the element.   
 	! -f: Element force vector.
-	! -dt: Time interval
-	! -c: Elastic material matrix	
+	! -c: material matrix	
 	! -PMLb: PML boundary coordinates. 
 	! 	- PMLb(1):xmax
 	! 	- PMLb(2):xmin
 	! 	- PMLb(3):ymax
 	!	- PMLb(4):ymin
 	!	- PMLb(5):zmin
-	! 	- PMLb(6):hx
-	!	- PMLb(7):hy
-	!	- PMLb(8):hz
+	real(kind=8),dimension(3,8)::vl	
 	real(kind=8),dimension(96)::f,v
-	real(kind=8),dimension(24)::va!Total velocity
 	!vxx,vxy,vxz,
 	!vyx,vyy,vyz,
 	!vzx,vzy,vzz,
 	!vhgx,vhgy,vhgz. *8 nodes.
+	real(kind=8),dimension(24)::va!total velocity
 	real(kind=8),dimension(21)::s
 	!sxxx,sxxy,sxxz,
 	!syyx,syyy,syyz,
@@ -32,7 +29,7 @@ SUBROUTINE PMLwhg(va,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me)!efPML,evPML,esPML,
 	!sxyx,sxyy,
 	!sxzx,sxzz,
 	!syzy,syzz.
-	real(kind=8)::lam,miu,det,R,vp,delta,kapa,rou,coef
+	real(kind=8)::lam,miu,det,vp,delta,kapa,rou,coef
 	real(kind=8)::Dx_vx,Dy_vy,Dz_vz,Dx_vy,Dy_vx,Dx_vz,Dz_vx,Dy_vz,Dz_vy
 	real(kind=8)::sxx,syy,szz,sxy,sxz,syz,s0(6)
 	real(kind=8),dimension(6,6)::c
@@ -44,7 +41,7 @@ SUBROUTINE PMLwhg(va,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me)!efPML,evPML,esPML,
 	integer(kind=4),dimension(4,8)::fi
 	real(kind=8)::xmax,xmin,ymax,ymin,zmin,PMLb(8),maxdx,maxdy,maxdz,bdamp
 	integer(kind=4)::i,j,k,nt,j1,j2,j3,nel,me
-	real (kind=8),dimension(nrowb,nee) :: bb
+	real (kind=8),dimension(nrowb,nee) :: bb	!correspond to b
 	real (kind=8),dimension(nstr) :: strainrate,stressrate	
 	lam=c(1,2)
 	miu=c(4,4)
@@ -65,6 +62,7 @@ SUBROUTINE PMLwhg(va,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me)!efPML,evPML,esPML,
 		enddo
 	enddo
 	xc=xc/8
+
 	! Calculate damping profiles.
 	if (xc(3)<zmin) then !region 1
 		damps(3)=abs(xc(3)-zmin)		
@@ -121,23 +119,35 @@ SUBROUTINE PMLwhg(va,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me)!efPML,evPML,esPML,
 			damps(2)=abs(xc(2)-ymax)
 		endif
 	endif
-	R=0.01
-	vp=6000.
 	do i=1,3
 		if (i==1) then
-			delta=6*maxdx
+		delta=nPML*maxdx
 		elseif (i==2) then
-			delta=6*maxdy
+		delta=nPML*maxdy
 		elseif (i==3) then
-			delta=6*maxdz		
+		delta=nPML*maxdz		
 		endif
 		damps(i)=3*vp/2/delta*log(1/R)*(damps(i)/delta)**(2.)
 	enddo	
 	!-------------------------------------------------! 
 	! Calculate differentials of velocity.		
+	do i=1,8
+		va(3*(i-1)+1)=vl(1,i)
+		va(3*(i-1)+2)=vl(2,i)
+		va(3*(i-1)+3)=vl(3,i)
+	enddo
 	stressrate = 0.0
 	!...calcuate b from shg
 	call qdcb(shg,bb)
+	!...calculate strainrate
+	! Take into account zero in bb. B.D. 8/20/05
+	strainrate = 0.0	!initialize
+	!Important: OpenMP directives should not be used in this routine as
+	!  they have been used in the parent roution qdct3.f90. Adding these
+	!  directives did not cause slowdown problem with SUN compiler, but 
+	!  results in significant reduction in comupting speed with Intel 
+	!  compiler!! B.D. 8/7/10
+	!!$omp parallel do default(shared) privlte(i,j1,j2,j3)
 	do i=1,nen
 		j1 = ned * (i - 1) + 1
 		j2 = ned * (i - 1) + 2
@@ -149,6 +159,9 @@ SUBROUTINE PMLwhg(va,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me)!efPML,evPML,esPML,
 		strainrate(5) = strainrate(5) + bb(5,j1) * va(j1) + bb(5,j3) * va(j3)
 		strainrate(6) = strainrate(6) + bb(6,j1) * va(j1) + bb(6,j2) * va(j2)
 	enddo
+	!!$omp end parallel do
+	!...calculate stressrate
+	! Take into account zero in cc. B.D. 8/20/05
 	do i=1,3
 		do j=1,3
 			stressrate(i) = stressrate(i) + c(i,j)*strainrate(j)
@@ -221,14 +234,15 @@ SUBROUTINE PMLwhg(va,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me)!efPML,evPML,esPML,
 	sxy=s(10)+s(11)
 	sxz=s(12)+s(13)
 	syz=s(14)+s(15)	
-	! Take account of damping propertional to K.  
+	
 	s0(1)=s(15+1)+bdamp * stressrate(1)
 	s0(2)=s(15+2)+bdamp * stressrate(2)
 	s0(3)=s(15+3)+bdamp * stressrate(3)
-	s0(4)=s(15+4)+bdamp * stressrate(4)
-	s0(5)=s(15+5)+bdamp * stressrate(5)	
 	s0(6)=s(15+6)+bdamp * stressrate(6)
-	!Calculate nodal forces.
+	s0(5)=s(15+5)+bdamp * stressrate(5)
+	s0(4)=s(15+4)+bdamp * stressrate(4)!!!
+
+	!Calculate 'nodal forces'
 	do i=1,8
 		f((i-1)*12+1)=f((i-1)*12+1)-det*w*shg(1,i)*sxx
 		f((i-1)*12+2)=f((i-1)*12+2)-det*w*shg(2,i)*sxy
@@ -239,50 +253,9 @@ SUBROUTINE PMLwhg(va,f,v,s,ex,PMLb,c,shg,det,nt,bdamp,nel,me)!efPML,evPML,esPML,
 		f((i-1)*12+7)=f((i-1)*12+7)-det*w*shg(1,i)*sxz
 		f((i-1)*12+8)=f((i-1)*12+8)-det*w*shg(2,i)*syz
 		f((i-1)*12+9)=f((i-1)*12+9)-det*w*shg(3,i)*szz
-		! Nodal force contribution from initial stress. 
 		f((i-1)*12+10)=f((i-1)*12+10)-det*w*(bb(1,3*(i-1)+1)*s0(1)+bb(5,3*(i-1)+1)*s0(5)+bb(6,3*(i-1)+1)*s0(6))
 		f((i-1)*12+11)=f((i-1)*12+11)-det*w*(bb(2,3*(i-1)+2)*s0(2)+bb(4,3*(i-1)+2)*s0(4)+bb(6,3*(i-1)+2)*s0(6))
 		f((i-1)*12+12)=f((i-1)*12+12)-det*w*(bb(3,3*(i-1)+3)*s0(3)+bb(4,3*(i-1)+3)*s0(4)+bb(5,3*(i-1)+3)*s0(5))
 	enddo
-	!if(xc(1)<51.and.xc(1)>49.and.xc(2)<51.and.xc(2)>49.and.(xc(3)>(zmin-200))) then
-	!write(*,*) 'x,y,z',xc(1),xc(2),xc(3)
-	!write(*,*) 'nel==',nel,me
-	!write(*,*) 'PMLvel1',va(1),va(2),va(3)
-	!write(*,*) 'PMLvel2',va(4),va(5),va(6)
-	!write(*,*) 'PMLvel3',va(7),va(8),va(9)
-	!write(*,*) 'PMLvel4',va(10),va(11),va(12)
-	!write(*,*) 'PMLvel5',va(13),va(14),va(15)
-	!write(*,*) 'PMLvel6',va(16),va(17),va(18)
-	!write(*,*) 'PMLvel7',va(19),va(20),va(21)
-	!write(*,*) 'PMLvel8',va(22),va(23),va(24)
-	!write(*,*) 'PMLstr',sxx,syy,szz,sxy,sxz,syz
-	!endif	
-	!-------------------------------------------------! 
-	!viscous hourglass control
-	kapa=0.05!0.05~0.15
-	rou=2670.
-	coef=kapa*rou*vp*(det*w)**(2./3.)
-	fi(1,1)=1;fi(1,2)=1;fi(1,3)=-1;fi(1,4)=-1;fi(1,5)=-1;fi(1,6)=-1;fi(1,7)=1;fi(1,8)=1
-	fi(2,1)=1;fi(2,2)=-1;fi(2,3)=-1;fi(2,4)=1;fi(2,5)=-1;fi(2,6)=1;fi(2,7)=1;fi(2,8)=-1
-	fi(3,1)=1;fi(3,2)=-1;fi(3,3)=1;fi(3,4)=-1;fi(3,5)=1;fi(3,6)=-1;fi(3,7)=1;fi(3,8)=-1
-	fi(4,1)=1;fi(4,2)=-1;fi(4,3)=1;fi(4,4)=-1;fi(4,5)=-1;fi(4,6)=1;fi(4,7)=-1;fi(4,8)=1
-	!fi1=[1,1,-1,-1,-1,-1,1,1]
-	!fi2=[1,-1,-1,1,-1,1,1,-1]
-	!fi3=[1,-1,1,-1,1,-1,1,-1]
-	!fi4=[1,-1,1,-1,-1,1,-1,1]
-	q=0.0!q(3,4)
-	do i=1,3
-		do j=1,4
-			do k=1,8
-				!q(i,j)=q(i,j)+va(3*(k-1)+i)*fi(j,k)
-			enddo
-		enddo
-	enddo
-	do k=1,8
-		do i=1,3
-			do j=1,4
-				!f((k-1)*12+9+i)=f((k-1)*12+9+i)-coef*q(i,j)*fi(j,k)
-			enddo
-		enddo
-	enddo	
+	!
 end subroutine PMLwhg

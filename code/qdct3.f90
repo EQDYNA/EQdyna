@@ -1,6 +1,6 @@
 SUBROUTINE qdct3(numel,numnp,neq,mat,ien,d,v,rdampk,rdampm,rho,ccosphi,sinphi,&
 mushr,eleporep,elemass,eleshp,eledet,pstrain,c,brhs,me,master,nprocs, &! Delete lm elestress
-maxm,id1,locid,dof1,et,v1,d1,PMLb,x,maxs,ids,s1,nt)!Adding maxm,id1,loci,v1,d1,PMLb,maxs,ids
+maxm,id1,locid,dof1,et,v1,d1,PMLb,x,maxs,ids,s1,nt,vp)!Adding maxm,id1,loci,v1,d1,PMLb,maxs,ids
 use globalvar
 implicit none
 include 'mpif.h'
@@ -22,17 +22,15 @@ real (kind=8),dimension(ned,nen) :: dl,vl,al
 !...element arrays
 integer (kind=4),dimension(numel) :: mat	    
 integer (kind=4),dimension(nen,numel) :: ien
-!integer (kind=4),dimension(ned,nen,numel) :: lm
 real (kind=8),dimension(numel) :: eledet,eleporep,pstrain
 real (kind=8),dimension(nee,numel) :: elemass
-!real (kind=8),dimension(nstr,numel) :: elestress
 real (kind=8),dimension(nrowsh-1,nen,numel) :: eleshp
 !......nodes' arrays
 real (kind=8),dimension(ndof,numnp) :: d,v
 real (kind=8),dimension(neq) :: brhs
 !...material properties
 real (kind=8):: grav=-9.8  !gravity acceleration
-real (kind=8),dimension(numat) :: rho,rdampm,rdampk,ccosphi,sinphi,mushr
+real (kind=8),dimension(numat) :: rho,vp,rdampm,rdampk,ccosphi,sinphi,mushr
 real (kind=8),dimension(nrowc,nrowc,numat) :: c
 integer me, master, nprocs, rlp, rr, ierr,jj
 !*.* variables for PML. D.L. Jan/23/2015
@@ -43,11 +41,11 @@ integer (kind=4),dimension(numnp)::locid,dof1
 integer (kind=4),dimension(numel)::et
 real (kind=8),dimension(neq)::v1,d1
 real (kind=8),dimension(maxs)::s1
-real (kind=8),dimension(6)::PMLb
+real (kind=8),dimension(8)::PMLb
 real (kind=8),dimension(96)::evPML,efPML
 real(kind=8),dimension(3,8)::ex
 real (kind=8),dimension(nsd,numnp) :: x
-real(kind=8),dimension(6)::es
+real(kind=8),dimension(12)::es
 real(kind=8),dimension(21)::esPML
 real(kind=8)::xc(3)
 !do we need to do this? numel now is smaller num, local. B.D. 4/15/09
@@ -71,7 +69,12 @@ real(kind=8)::xc(3)
 !$omp	j,i,zeroal,zerovl,elresf,det,eleffm,constk,k,k1)
 !!$omp do private(formkd,zerodl,formma,zeroal,nel,j,i,k,m,ntemp,k1,dl,vl,al,det,constk,elresf,eleffm)
 do nel=1,numel
+	if (nel.lt.0) then 
+		write(*,*) 'me=',me,'nel=',nel,'numel=',numel
+			stop 3
+		endif
 	!  do nel=me*rlp+1,jj
+	!
 	formma = .false.
 	formkd = .false.
 	m = mat(nel)
@@ -90,7 +93,7 @@ do nel=1,numel
 		!...for rate formulation, damping done in qdckd.f90. B.D. 1/5/12
 		!dl(i,j) = dl(i,j) + rdampk(m)*vl(i,j)
 			al(i,j) = al(i,j) + rdampm(m)*vl(i,j)
-			if(i==3) then  !for inelastic off-fault, gravity included
+			if(i==3.and.C_elastic==0) then  !for inelastic off-fault, gravity included
 				al(i,j) = al(i,j) - grav
 			endif
 		enddo
@@ -158,54 +161,34 @@ do nel=1,numel
 			!......call to compute elresf	
 		call contma(eleffm,al,elresf)
 		!	endif
-	if (et(nel)==1) then
-		!*** form internal force: most time-consuming part ***
-		!if (formkd) then
-		!...... form internal force
-		constk = - det
-		do i=1,6!DL using es intead of elestress(1,nel)
-			es(i)=s1(ids(nel)+i)
-		enddo
-		do i=1,8
-			do j=1,3
-				ex(j,i)=x(j,ien(i,nel))
+		if (et(nel)==1) then
+			!*** form internal force: most time-consuming part ***
+			!...... form internal force
+			constk = - det
+			do i=1,12!DL using es intead of elestress(1,nel)
+				es(i)=s1(ids(nel)+i)
 			enddo
-		enddo
-		call qdckd(eleshp(1,1,nel),c(1,1,m),vl,es,elresf,constk,&
-					zerovl,rdampk(m),ccosphi(m),sinphi(m),eleporep(nel),mushr(m),pstrinc,ex,PMLb)
-		pstrain(nel) = pstrain(nel) + pstrinc
-		do i=1,6
-			s1(ids(nel)+i)=es(i)
-		enddo				
-		!endif
-		!*** only either formma or formkd, assemble ***
-		do i=1,nen					
-			non=ien(i,nel)
-			do j=1,ned
-				!k=lm(j,i,nel)
-				!k1=j+(i-1)*ned
-				itag=locid(non)+j
-				k=id1(itag)					
-				if(k > 0) then
-					brhs(k) = brhs(k) + elresf((i-1)*ned+j)
-				endif
+			do i=1,8
+				do j=1,3
+					ex(j,i)=x(j,ien(i,nel))
+				enddo
 			enddo
-		enddo
-		xc=0.0
-		do i=1,3
-			do j=1,8
-				xc(i)=xc(i)+ex(i,j)
+			call qdckd(eleshp(1,1,nel),c(1,1,m),vl,dl,es,elresf,constk,&
+						zerovl,rdampk(m),ccosphi(m),sinphi(m),eleporep(nel),mushr(m),pstrinc,ex,PMLb)
+			pstrain(nel) = pstrain(nel) + pstrinc
+			do i=1,12!DL update the stress
+				s1(ids(nel)+i)=es(i)
+			enddo				
+			do i=1,nen					
+				non=ien(i,nel)
+				do j=1,ned
+					itag=locid(non)+j
+					k=id1(itag)					
+					if(k > 0) then
+						brhs(k) = brhs(k) + elresf((i-1)*ned+j)
+					endif
+				enddo
 			enddo
-		enddo
-		xc=xc/8
-		!if(xc(1)<51.and.xc(1)>49.and.xc(2)<51.and.xc(2)>49.and.(xc(3)<(PMLb(5)+200))) then
-		!write(*,*) 'nel==',nel
-		!do i=1,8
-		!write(*,*) 'i',i,'Normal element'
-		!write(*,*) elresf((i-1)*ned+1),elresf((i-1)*ned+2),elresf((i-1)*ned+3)
-		!enddo
-		!endif	
-		!endif
 	elseif (et(nel)==2) then ! PML element. 
 		efPML=0.0
 		evPML=0.0
@@ -223,7 +206,7 @@ do nel=1,numel
 		do i=1,21
 			esPML(i)=s1(ids(nel)+i)
 		enddo
-		call PMLwhg(vl,efPML,evPML,esPML,ex,PMLb,c(1,1,m),eleshp(1,1,nel),det,nt,rdampk(m),nel,me)
+		call PMLwhg(vl,efPML,evPML,esPML,ex,PMLb,c(1,1,m),eleshp(1,1,nel),det,nt,rdampk(m),nel,me,vp(m))
 		do i=1,8
 			non=ien(i,nel)
 			if (dof1(non)==12) then
@@ -246,23 +229,10 @@ do nel=1,numel
 				brhs(eqn)=brhs(eqn)+efPML((i-1)*12+7)+efPML((i-1)*12+8)+efPML((i-1)*12+9)+efPML((i-1)*12+12)				
 			endif
 		enddo
+		!update the stress components 
 		do i=1,21
 			s1(ids(nel)+i)=esPML(i)
 		enddo
-		!if (me==8.and.nel==67232) then
-		!write(*,*) 'nel==',nel
-			!do i=1,8
-			!write(*,*) 'i',i,'PML element'
-			!if (dof1(ien(i,nel))==3) then
-				!write(*,*) 'dof1=3',elresf((i-1)*ned+1),elresf((i-1)*ned+2),elresf((i-1)*ned+3)
-			!elseif (dof1(ien(i,nel))==12) then
-				!write(*,*) 'dof1=12',elresf((i-1)*ned+1),elresf((i-1)*ned+2),elresf((i-1)*ned+3)
-				!write(*,*) 'dof1=121',elresf((i-1)*ned+4),elresf((i-1)*ned+5),elresf((i-1)*ned+6)
-				!write(*,*) 'dof1=122',elresf((i-1)*ned+7),elresf((i-1)*ned+8),elresf((i-1)*ned+9)	
-				!write(*,*) 'dof1=123',elresf((i-1)*ned+10),elresf((i-1)*ned+11),elresf((i-1)*ned+12)
-			!endif
-		!enddo			
-		!endif
 	endif
 enddo
 !!$omp end do nowait

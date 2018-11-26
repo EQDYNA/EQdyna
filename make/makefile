@@ -5,7 +5,7 @@ OBJ = eqdyna3d.o globalvar.o qdct1.o parcon.o mesh4num.o \
          meshgen.o qdcshl.o prop3d.o formlm.o driver.o \
 	 qdct2.o qdcshg.o contm.o qdcb.o vlm.o qdct3.o \
 	 contma.o qdckd.o hrglss.o fric.o faulting.o \
-	 PMLwhg.o comdampv.o
+	 PMLwhg.o comdampv.o qconstant.o
 eqdyna3drun: $(OBJ) 
 	$(F90) $(OPT1) $(OBJ) -o eqdyna-hyb
 eqdyna3d.o: eqdyna3d.f90 globalvar.o qdct1.o driver.o parcon.o mesh4num.o meshgen.o
@@ -40,7 +40,7 @@ qdct3.o: qdct3.f90 contma.o qdckd.o globalvar.o PMLwhg.o
 	$(F90) $(OPT) qdct3.f90
 contma.o: contma.f90 globalvar.o
 	$(F90) $(OPT) contma.f90
-qdckd.o: qdckd.f90 qdcb.o globalvar.o
+qdckd.o: qdckd.f90 qdcb.o qconstant.o globalvar.o
 	$(F90) $(OPT) qdckd.f90
 qdcb.o: qdcb.f90 globalvar.o
 	$(F90) $(OPT) qdcb.f90
@@ -54,3 +54,5 @@ PMLwhg.o: PMLwhg.f90 globalvar.o
 	$(F90) $(OPT) PMLwhg.f90 
 comdampv.o: comdampv.f90
 	$(F90) $(OPT) comdampv.f90
+qconstant.o: qconstant.f90
+	$(F90) $(OPT) qconstant.f90
