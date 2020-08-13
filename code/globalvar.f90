@@ -14,16 +14,16 @@ real(kind=8)::w	!integration weight
 real(kind=8)::critd0,cohes,brangle
 integer(kind=4)::nplpts,nstep,nhplt=1,nhplt1=2,nhshw=1   	    
 integer(kind=4)::locplt=1,myrec=0
-real(kind=8)::pi=3.1415926535897931,rdampm=0.0,rdampk=0.1
+real(kind=8)::pi=3.1415926535897931d0,rdampm=0.0d0,rdampk=0.1d0
 !-------------------------------------------------------------------!
 !-------------Controllable parameters for EQdyna3d V4.0-------------! 
-integer(kind=4)::C_elastic=1
+integer(kind=4)::C_elastic
 !	1=elastic version;
 !	0=plastic version;
-integer(kind=4)::C_Nuclea=1
+integer(kind=4)::C_Nuclea
 !	1=allow artificial nucleation;
 !	0=disabled;
-integer(kind=4)::nucfault=1,friclaw=4,ntotft=1
+integer(kind=4)::nucfault,friclaw,ntotft
 integer(kind=4)::C_Q=0!
 !AAA:Only works with C_elastic==1.
 !	1=allow Q attenuation;
@@ -43,10 +43,10 @@ real(kind=8)::R=0.01! Theoretical reflection coefficient for PML
 real(kind=8)::kapa_hg=0.1!Coefficient for viscous HG.
 !AAA:Only works when C_hg==2.
 !	Typical valus varies from 0.05~0.15.Goudreau& Hallquist(1982).
-real(kind=8)::rat=1.025
+real(kind=8)::rat
 !	Enlarge ratio for buffers to use 
-real(kind=8)::dx=100.,dy,dz!Element size.
-integer(kind=4)::dis4uniF=200,dis4uniB=200
+real(kind=8)::dx,dy,dz!Element size.
+integer(kind=4)::dis4uniF,dis4uniB,nmat,n2mat
 !Number of uniform sized elements normal to the fault
 real(kind=8)::rhow=1000.,b11=0.926793,b33=1.073206,b13=-0.169029,&
 	critt0=0.5,srcrad0=4000.,vrupt0=1500.,&!Info on forced rupture.
@@ -58,20 +58,21 @@ real(kind=8)::xsource=0e3,ysource=0.0,zsource=-7.5e3!Nucleation point.
 integer(kind=4)::ninterval=1,nftmx,nonmx,nonfs(1)=9,n4nds=6,an4nds(2,6)
 real(kind=8)::xonfs(2,9,1),x4nds(3,6)
 real(kind=8)::surxmax=0e3,surxmin=0e3,surymax=0e3,surymin=0e3
-real(kind=8)::xmin=-25e3,xmax=25e3,ymin=-20e3,ymax=22e3,zmin=-25e3,zmax=0.0
-real(kind=8)::fxmin=-18e3,fxmax=18e3,fymin=0.0,fymax=0.0,fzmin=-18e3,fzmax=0.0
+real(kind=8)::xmin,xmax,ymin,ymax,zmin,zmax
+real(kind=8),allocatable,dimension(:)::fxmin,fxmax,fymin,fymax,fzmin,fzmax
+real(kind=8),allocatable,dimension(:,:)::material
+real(kind=8),allocatable,dimension(:,:,:)::fltxyz
 real(kind=8)::fstrike=270.,fdip=90.
-real(kind=8)::fltxyz(2,4,1)
 character(len=15)::projectname='SCECTPV104',author='D.Liu'
 !===================================================================!
 !Specify maximum Vp for PML and timing information
-real(kind=8)::vmaxPML=6000.,term=12.,dt=0.008
+real(kind=8)::vmaxPML=6000.0d0,term,dt
 
 real(kind=8),allocatable,dimension(:,:)::dout
 integer(kind=4),allocatable,dimension(:,:)::idhist
 !===================================================================!
 !3DMPI Partitioning along x/y/z axis, repect.
-integer(kind=4)::npx=5,npy=5,npz=4,master=0,nprocs
+integer(kind=4)::npx,npy,npz,master=0,nprocs
 logical,dimension(6)::fltMPI
 integer(kind=4),dimension(6)::fltnum=0
 integer(kind=4),allocatable,dimension(:)::fltgm

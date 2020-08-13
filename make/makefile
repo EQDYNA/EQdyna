@@ -6,10 +6,10 @@ OBJ = eqdyna3d.o globalvar.o mesh4num.o \
          meshgen.o qdcshl.o driver.o \
 	 qdct2.o qdcshg.o contm.o qdcb.o vlm.o qdct3.o \
 	 contma.o qdckd.o hrglss.o fric.o faulting.o \
-	 PMLwhg.o comdampv.o qconstant.o
+	 PMLwhg.o comdampv.o qconstant.o Read_Input_Files.o
 eqdyna3drun: $(OBJ) 
 	$(F90) $(OPT1) $(OBJ) -o eqdyna-hyb
-eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o meshgen.o
+eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o meshgen.o Read_Input_Files.o
 	$(F90) $(OPT) eqdyna3d.f90 
 globalvar.o: globalvar.f90
 	$(F90) $(OPT) globalvar.f90 	
@@ -49,7 +49,8 @@ comdampv.o: comdampv.f90
 	$(F90) $(OPT) comdampv.f90
 qconstant.o: qconstant.f90
 	$(F90) $(OPT) qconstant.f90
-	
+Read_Input_Files.o: Read_Input_Files.f90 globalvar.o
+	$(F90) $(OPT) Read_Input_Files.f90 
 clean:
 	rm fslipout_*
 	rm fsurout_*

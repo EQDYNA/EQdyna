@@ -1,0 +1,12 @@
+1  # C_elastic: 1 = elastic; 2 = elastoplastic; 3 = poreelastoplastic
+1  # C_Nuclea: 1 = allowing artificial nucleation; 0 = disabled. 
+4  # Friclaw:1=SW;2=;3:RSF-AL;4:RSF-SL
+1  # ntotft, how many faults in the system.
+1  # nucfault, on which fault the nucleation is
+
+5 5 4 # MPI divisions along x, y, z directions
+
+12.0d0  # term
+0.008d0 # dt
+
+

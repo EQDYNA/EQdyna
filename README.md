@@ -2,6 +2,14 @@
 
 A parallel Finite Element software to model earthquake spontaneous dynamic ruptures. The software is designed to use high-performance computing. It is written in FORTRAN 90 and MPI.
 
+### Dunyu Liu, 08/12/2020
+# Version 5.0.0
+## Features
+* A major structural change occurs: controllable parameters, model and fault information, material properties are all moved to input .txt files. This signals the developing goals to move adjustable quantities out of the bones of finite element calculations.
+* Read_Input_Files.f90 is added to load input 4 files FE_Global.txt, FE_Model_Geometry.txt, FE_Model_Geometry.txt, FE_Material.txt. 
+* The code runs smoothly and is verified against TPV104 in terms of rupture time contour.
+* FE_Fric.txt is planned as an input but not developed in this version.
+
 ### Dunyu Liu, Bin Luo, 10/04/2016, dunyuliu@gmail.com
 # Version 4.2
 ## Features

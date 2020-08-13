@@ -44,6 +44,38 @@ real(kind=8),allocatable,dimension(:,:)::x,d,v,mat,shl,&
 real(kind=8),allocatable,dimension(:)::brhs,v1,d1,s1,miuonf,vponf,eleporep,pstrain 
 real(kind=8),allocatable,dimension(:,:,:)::fric,un,us,ud,fltsta,fltslp 
 !==============================PHASE1===============================!
+!INITIATION of 3D MPI.
+call MPI_Init(ierr)
+call mpi_comm_rank(MPI_COMM_WORLD,me,ierr)
+call mpi_comm_size(MPI_COMM_WORLD,nprocs,ierr)
+timebegin=MPI_WTIME()
+time1=MPI_WTIME()	
+
+write(mm,'(i6)') me
+mm=trim(adjustl(mm))!==============================PHASE2===============================!
+!-------------------------------------------------------------------!
+! Read Inputs
+call readglobal(me)
+call readmodelgeometry(me)
+allocate(fxmin(ntotft),fxmax(ntotft),fymin(ntotft),fymax(ntotft),fzmin(ntotft),fzmax(ntotft),material(nmat,n2mat))
+allocate(fltxyz(2,4,ntotft))
+call readfaultgeometry(me)
+call readmaterial(me)
+do i = 1, ntotft
+	fltxyz(1,1,i)=fxmin(i)
+	fltxyz(2,1,i)=fxmax(i)
+	fltxyz(1,2,i)=fymin(i)
+	fltxyz(2,2,i)=fymax(i)
+	fltxyz(1,3,i)=fzmin(i)
+	fltxyz(2,3,i)=fzmax(i)
+	fltxyz(1,4,i)=fstrike*pi/180.0d0
+	fltxyz(2,4,i)=fdip*pi/180.0d0
+enddo
+ccosphi=coheplas*dcos(atan(bulk))
+sinphi=dsin(atan(bulk))
+nstep=idnint(term/dt)
+rdampk=rdampk*dt
+
 !-------------Global control of the EQdyna3d_v4.0-------------------!
 if (C_elastic==0.and.C_Q==1) then
 	write(*,*) 'Q model can only work with elastic code'
@@ -54,30 +86,6 @@ if (C_Q==1.and.rat>1) then
 	write(*,*) 'rat should be 1.0'
 	stop 1002
 endif
-nstep=idnint(term/dt)
-rdampk=rdampk*dt
-fltxyz(1,1,1)=fxmin
-fltxyz(2,1,1)=fxmax
-fltxyz(1,2,1)=fymin
-fltxyz(2,2,1)=fymax
-fltxyz(1,3,1)=fzmin
-fltxyz(2,3,1)=fzmax
-fltxyz(1,4,1)=fstrike*pi/180.
-fltxyz(2,4,1)=fdip*pi/180.
-ccosphi=coheplas*dcos(atan(bulk))
-sinphi=dsin(atan(bulk))
-!==============================PHASE2===============================!
-!-------------------------------------------------------------------!
-!INITIATION of 3D MPI.
-call MPI_Init(ierr)
-call mpi_comm_rank(MPI_COMM_WORLD,me,ierr)
-call mpi_comm_size(MPI_COMM_WORLD,nprocs,ierr)
-timebegin=MPI_WTIME()
-time1=MPI_WTIME()	
-
-write(mm,'(i6)') me
-mm=trim(adjustl(mm))
-
 nplpts=0	!initialize number of time history plot
 if (nhplt>0) then
 	nplpts=int(nstep/nhplt)+2

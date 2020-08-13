@@ -717,9 +717,9 @@ do ix = 1, nx
 				! mat(nelement,4)=mat(nelement,1)**2*mat(nelement,3)-2*mat(nelement,5)!lam=vp**2*rho-2*miu
 !TPV8
 !Feb.19.2016				
-				mat(nelement,1)=6000.
-				mat(nelement,2)=3464.
-				mat(nelement,3)=2670.				
+				mat(nelement,1)=material(1,1)
+				mat(nelement,2)=material(1,2)
+				mat(nelement,3)=material(1,3)				
 				mat(nelement,5)=mat(nelement,2)**2*mat(nelement,3)!miu=vs**2*rho
 				mat(nelement,4)=mat(nelement,1)**2*mat(nelement,3)-2*mat(nelement,5)!lam=vp**2*rho-2*miu				
 !For Tianjin 

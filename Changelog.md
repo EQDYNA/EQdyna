@@ -1,3 +1,17 @@
+# Version 5.0.0
+        modified:   README.md
+        new file:   code/Read_Input_Files.f90
+        modified:   code/eqdyna3d.f90
+        modified:   code/globalvar.f90
+        modified:   code/meshgen.f90
+        new file:   code/runTERRA.slurm
+        new file:   input/FE_Fault_Geometry.txt
+        new file:   input/FE_Global.txt
+        new file:   input/FE_Material.txt
+        new file:   input/FE_Model_Geometry.txt
+        modified:   make/makefile
+
+
 # Version 4.2
 
 ## Modified
