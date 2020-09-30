@@ -17,7 +17,7 @@ integer(kind=4),dimension(ntotft)::nftnd,nftnd1,ixfi,izfi,ifs,ifd
 integer(kind=4),allocatable::plane1(:,:),plane2(:,:),fltrc(:,:,:,:)
 
 real(kind=8)::mat(nelement1,5),eleporep(nelement1),xnode(ndof,nnode1),&
-	fric(20,nftmx,ntotft),PMLb(8),xc(3),s1(4*maxm),surnode(nsurnd1,2),miuonf(nftmx),vponf(nftmx),Dampx,Dampz
+	fric(100,nftmx,ntotft),PMLb(8),xc(3),s1(4*maxm),surnode(nsurnd1,2),miuonf(nftmx),vponf(nftmx),Dampx,Dampz
 real(kind=8),dimension(nftmx,ntotft)::fnft,arn,r4nuc,arn4m,slp4fri
 real(kind=8),dimension(3,nftmx,ntotft)::un,us,ud
 real(kind=8)::tol,xcoor,ycoor,zcoor,xstep,ystep,zstep,tmp1,tmp2,tmp3,a,b,area,a1,b1,c1,d1,p1,q1
@@ -26,7 +26,7 @@ real(kind=8),allocatable::vpstruct(:,:)
 !Heteogeneous stress setup
 real(kind=8)::initialinput(3,91001)
 !...for initial stress and pore pressure of elements: inelastic. B.D. 1/8/12
-real (kind=8)::grav=9.8,omega
+real (kind=8)::grav=9.8d0,omega
 logical,dimension(ntotft) :: ynft
 character(len=30)::meshfile,mm
 character(len=100)::fname
@@ -43,23 +43,27 @@ write(mm,'(i6)') me
 mm = trim(adjustl(mm))
 !===================================================================!
 !==============================ZONE A===============================!
-!on-fault station coordinates (along strike, z).
-xonfs=reshape((/0.0,-3.0,&
-				0.0,-7.5,&
-				0.0,-12.0,&
-				9.0,-7.5,&
-				12.0,-3.0,&
-				12.0,-12.0,&
-				-9.0,-7.5,&
-				-12.0,-3.0,&
-				-12.0,-12.0/),(/2,9,1/))
-!off-fault station coordinates(along strike,normal,z(negative)).				
-x4nds=reshape((/0.0,9.0,0.0,&
-				0.0,-9.0,0.0,&
-				12.0,6.0,0.0,&
-				12.0,-6.0,0.0,&
-				-12.0,6.0,0.0,&
-				-12.0,-6.0,0.0/),(/3,6/))
+! !on-fault station coordinates (along strike, z).
+! xonfs=reshape((/0.0,-3.0,&
+				! 0.0,-7.5,&
+				! 0.0,-12.0,&
+				! 9.0,-7.5,&
+				! 12.0,-3.0,&
+				! 12.0,-12.0,&
+				! 15.0,-7.5,&
+				! 18.0,-7.5,&
+				! -9.0,-7.5,&
+				! -12.0,-3.0,&
+				! -12.0,-12.0,&
+				! -15.0,-7.5,&
+				! -18.0,-7.5/),(/2,13,1/))
+! !off-fault station coordinates(along strike,normal,z(negative)).				
+! x4nds=reshape((/0.0,9.0,0.0,&
+				! 0.0,-9.0,0.0,&
+				! 12.0,6.0,0.0,&
+				! 12.0,-6.0,0.0,&
+				! -12.0,6.0,0.0,&
+				! -12.0,-6.0,0.0/),(/3,6/))
 !==========================END ZONE A===============================!
 !===================================================================!
 !==============================ZONE B===============================!
@@ -80,13 +84,12 @@ x4nds=reshape((/0.0,9.0,0.0,&
 	! write(*,*) 'Finish loading vp',me
 !==========================END ZONE B===============================!
 !===================================================================!
-xonfs=xonfs*1000.  !convert from km to m
-x4nds=x4nds*1000.
+
 n4yn=0
 !dy = dx * abs(dtan(brangle))
 dy=dx
 dz=dx
-tol=dx/100
+tol=dx/100.0d0
 
 !Prepare for 3D MPI partitioning
 !Search Tag: 3DMPI
@@ -582,8 +585,9 @@ do ix = 1, nx
 							! if (abs(xcoor)<=1500.and.abs(zcoor--12e3)<=1500.)then
 								! fric(8,nftnd(ift),ift) =1.0e6+1.005*0.760*abs(7378.0*zcoor)
 							! endif
-							fric(7,nftnd(ift),ift)=-120e6
-							fric(8,nftnd(ift),ift)=40e6
+							fric(7,nftnd(ift),ift) = -max(min(grav*1670.0d0*abs(zcoor),45.0d6),grav*1670.0d0*dx/2.0d0) 
+							fric(8,nftnd(ift),ift) = -fric(7,nftnd(ift),ift)*0.41d0
+							fric(50,nftnd(ift),ift) = fric(8,nftnd(ift),ift)
 						endif
 !-------------------------------Tianjin ref-------------------------------!						
 						! if (C_elastic==1) then
@@ -614,37 +618,58 @@ do ix = 1, nx
 !-----------------------------ZONE IV RSF---------------------------!
 !---2016.08.28. Bin
 !TPV104 2016.10.05 D.Liu
-						if (friclaw==3.or.friclaw==4)then 
-							if (abs(xcoor)<=15e3) then 
-								tmp1=1.0
-							elseif ((abs(xcoor)<18e3).and.(abs(xcoor)>15e3)) then 
-								tmp1=0.5*(1+dtanh(3e3/(abs(xcoor)-18e3)+3e3/(abs(xcoor)-15e3)))
-							else
-								tmp1=0.0
-							endif
-							if (abs(zcoor--7.5e3)<=7.5e3) then 
-								tmp2=1.0
-							elseif ((abs(zcoor--7.5e3)<10.5e3).and.(abs(zcoor--7.5e3)>7.5e3)) then 
-								tmp2=0.5*(1+dtanh(3e3/(abs(zcoor--7.5e3)-10.5e3)+3e3/(abs(zcoor--7.5e3)-7.5e3)))
-							else
-								tmp2=0.0
-							endif							
-							fric(9,nftnd(ift),ift)=0.01+0.01*(1-tmp1*tmp2)!a
-							if (xcoor==17e3.and.zcoor==-17e3) then 
-								write(*,*) 'tmp1',fric(9,nftnd(ift),ift),tmp1,tmp2 
-							endif
-							fric(10,nftnd(ift),ift)=0.014!b 
-							fric(11,nftnd(ift),ift)=0.4d0!RSF critical distance.
-							fric(12,nftnd(ift),ift)=1.0d-6!RSF:V0
-							fric(13,nftnd(ift),ift)=0.6d0!RSF:miu0
-							if(friclaw==4) then 
-								fric(14,nftnd(ift),ift)  = 0.2d0 !RSF: fw for strong rate weakenging
-								fric(15,nftnd(ift),ift)  = 0.1d0+0.9*(1-tmp1*tmp2) !RSF: Vw for strong rate weakening
-							endif	
+						if (friclaw==3.or.friclaw==4.or.friclaw==5)then 
+							! if (abs(xcoor)<=15e3) then 
+								! tmp1=1.0
+							! elseif ((abs(xcoor)<18e3).and.(abs(xcoor)>15e3)) then 
+								! tmp1=0.5*(1+dtanh(3e3/(abs(xcoor)-18e3)+3e3/(abs(xcoor)-15e3)))
+							! else
+								! tmp1=0.0
+							! endif
+							! if (abs(zcoor--7.5e3)<=7.5e3) then 
+								! tmp2=1.0
+							! elseif ((abs(zcoor--7.5e3)<10.5e3).and.(abs(zcoor--7.5e3)>7.5e3)) then 
+								! tmp2=0.5*(1+dtanh(3e3/(abs(zcoor--7.5e3)-10.5e3)+3e3/(abs(zcoor--7.5e3)-7.5e3)))
+							! else
+								! tmp2=0.0
+							! endif							
+							! fric(9,nftnd(ift),ift)=0.01+0.01*(1-tmp1*tmp2)!a
+							! if (xcoor==17e3.and.zcoor==-17e3) then 
+								! write(*,*) 'tmp1',fric(9,nftnd(ift),ift),tmp1,tmp2 
+							! endif
+							call fb1(xcoor,fric_ww,fric_w, tmp1)
+							call fb2(-zcoor,fric_ww,fric_w, tmp2)
+							fric(9,nftnd(ift),ift) = fric_rsf_a + fric_rsf_deltaa0*(1.0d0-tmp1*tmp2)
+							fric(10,nftnd(ift),ift) = fric_rsf_b!b 
+							fric(11,nftnd(ift),ift) = fric_rsf_Dc!RSF critical distance.
+							fric(12,nftnd(ift),ift) = fric_rsf_v0!RSF:V0
+							fric(13,nftnd(ift),ift) = fric_rsf_r0!RSF:miu0
+							fric(14,nftnd(ift),ift) = fric_rsf_fw !RSF: fw for strong rate weakenging
+							call fb1(xcoor,fric_ww,fric_w, tmp1)
+							call fb2(-zcoor,fric_ww,fric_w, tmp2)
+							fric(15,nftnd(ift),ift) = fric_rsf_vw +fric_rsf_deltavw0*(1.0d0-tmp1*tmp2) !RSF: Vw for strong rate weakening
+							call fb1(xcoor,fric_ww,fric_w, tmp1)
+							call fb3(-zcoor,fric_ww,fric_w, tmp2)
+							fric(20,nftnd(ift),ift) = fric_tp_a_hy + fric_tp_deltaa_hy0*(1.0d0-tmp1*tmp2)
 							fric(16,nftnd(ift),ift)=0.0d0 !RSF: initial normal slip rate 
-							fric(17,nftnd(ift),ift)=1.0e-16!RSF:s 
+							fric(17,nftnd(ift),ift)=fric_ini_sliprate!RSF:s 
 							fric(18,nftnd(ift),ift)=0.0d0!RSF:d
-							fric(19,nftnd(ift),ift)=1.0e-16!RSF:mag							
+							fric(19,nftnd(ift),ift)=fric_ini_sliprate!RSF:mag	
+							fric(49,nftnd(ift),ift)=fric_ini_sliprate!RSF:mag			
+							if (xcoor==xsource.and.zcoor==zsource) then
+								write(*,*) 'fric,9,a',fric(9,nftnd(ift),ift)
+								write(*,*) 'fric,10,b',fric(10,nftnd(ift),ift)
+								write(*,*) 'fric,11,Dc',fric(11,nftnd(ift),ift)
+								write(*,*) 'fric,12,v0',fric(12,nftnd(ift),ift)
+								write(*,*) 'fric,13,r0',fric(13,nftnd(ift),ift)
+								write(*,*) 'fric,14,fw',fric(14,nftnd(ift),ift)
+								write(*,*) 'fric,15,rsf_vw',fric(15,nftnd(ift),ift)
+								write(*,*) 'fric,20,a_hy',fric(20,nftnd(ift),ift)
+								write(*,*) 'fric,17,inisliprate',fric(17,nftnd(ift),ift)
+								write(*,*) 'fric,7,norm',fric(7,nftnd(ift),ift)
+								write(*,*) 'fric,8,tstk',fric(8,nftnd(ift),ift)
+								write(*,*) 'fric,50,tstk',fric(50,nftnd(ift),ift)
+							endif
 						endif
 !-----------------------------END ZONE IV---------------------------!						
 						!special values below.						

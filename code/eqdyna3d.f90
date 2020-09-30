@@ -58,9 +58,35 @@ mm=trim(adjustl(mm))!==============================PHASE2=======================
 call readglobal(me)
 call readmodelgeometry(me)
 allocate(fxmin(ntotft),fxmax(ntotft),fymin(ntotft),fymax(ntotft),fzmin(ntotft),fzmax(ntotft),material(nmat,n2mat))
+allocate(nonfs(ntotft))
+
 allocate(fltxyz(2,4,ntotft))
 call readfaultgeometry(me)
 call readmaterial(me)
+call readfric(me)
+call readstations1(me)
+itemp1 = maxval(nonfs)
+write(*,*) 'Maximum on-fault stations are', itemp1,me
+allocate(an4nds(2,n4nds), xonfs(2,itemp1,ntotft), x4nds(3,n4nds))
+call readstations2(me)
+
+xonfs=xonfs*1000.0d0  !convert from km to m
+x4nds=x4nds*1000.0d0
+
+! do i = 1, ntotft
+	! do j = 1, nonfs(i)
+		! do k = 1, 2
+			! xonfs(k,j,i) = int(xonfs(k,j,i)/dx)*dx
+		! enddo 
+	! enddo 
+! enddo 
+! do i = 1, n4nds
+	! do j = 1, 3
+		! x4nds(j,i) = int(x4nds(j,i)/dx)*dx
+	! enddo 
+! enddo 
+
+numtp = int(tpw/dxtp)
 do i = 1, ntotft
 	fltxyz(1,1,i)=fxmin(i)
 	fltxyz(2,1,i)=fxmax(i)
@@ -121,7 +147,7 @@ nftmx=maxval(nftnd) !max fault nodel num for all faults, used for arrays.
 if(nftmx<=0) nftmx=1  !fortran arrays cannot be zero size,use 1 for 0
 nonmx=sum(nonfs)    !max possible on-fault stations number
 allocate(nsmp(2,nftmx,ntotft),fnft(nftmx,ntotft),miuonf(nftmx),vponf(nftmx),un(3,nftmx,ntotft),&
-			us(3,nftmx,ntotft),ud(3,nftmx,ntotft),fric(20,nftmx,ntotft),&
+			us(3,nftmx,ntotft),ud(3,nftmx,ntotft),fric(100,nftmx,ntotft),&
 			arn(nftmx,ntotft),r4nuc(nftmx,ntotft),anonfs(3,nonmx),&
 			arn4m(nftmx,ntotft),slp4fri(nftmx,ntotft),fltslp(3,nftmx,ntotft),state(nftmx,ntotft))
 !ALLOCATE 3DMPI ARRAYS			
@@ -155,7 +181,7 @@ call meshgen(numnp,numel,ien,mat,s1,eleporep,x,neq,id1,maxm,locid,dof1,et,PMLb,m
 write(*,*) 'after meshgen me=',me 
 
 if(n4onf<=0) n4onf=1 
-allocate(fltsta(10,nplpts-1,n4onf),stat=alloc_err)
+allocate(fltsta(12,nplpts-1,n4onf),stat=alloc_err)
 if(alloc_err /=0) then
 	write(*,*) 'me= ',me,'Insufficient memory to allocate fltsta'
 endif
@@ -172,6 +198,10 @@ d1=0.0
 v=0.0
 d=0.0
 !INITIALIZE nodal output time-history data
+
+allocate(frichis(2,nftmx,nplpts,ntotft))
+frichis = 0.0d0
+
 if(n4out>0) then 
 	ndout=n4out*ndof*noid!3 components of 2 quantities: v and d
 	!   write(*,*) 'ndout= ',ndout    
@@ -238,14 +268,14 @@ time1=MPI_WTIME()
 ! endif
 !-------------------------------------------------------------------!
 !----------------------------EVENT SUMMARY--------------------------!
-open(51,file='event_summary.txt',status='unknown')
-write(51,'( i10)') 321
-write(51,'( f10.1)') dx
-write(51,'( i10)') 151
-write(51,'( f10.1)') dx
-write(51,'( i10)') int(locplt/nhplt1)
-write(51,'( f10.5)') dt*2
-close(51)
+! open(51,file='event_summary.txt',status='unknown')
+! write(51,'( i10)') 321
+! write(51,'( f10.1)') dx
+! write(51,'( i10)') 151
+! write(51,'( f10.1)') dx
+! write(51,'( i10)') int(locplt/nhplt1)
+! write(51,'( f10.5)') dt*2
+! close(51)
 !-------------------------------------------------------------------!
 !--------------------------ON-FAULT STATIONS------------------------!
 if(n4onf>0) then
@@ -270,13 +300,13 @@ if(n4onf>0) then
 		write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',time_array(2), &
 			'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &
 			':',time_array(7)
-		write(51,*) '# code = EQdyna3d'
-		write(51,*) '# code_version = 4.1'
+		write(51,*) '# code = EQdyna3D'
+		write(51,*) '# code_version = 5.1.0'
 		write(51,*) '# element_size =',dx
 		write(51,'( a14,f8.4,a3)') '# time_step =', dt, ' s'
 		write(51,'( a19,i6)') '# num_time_steps =', locplt-1
 		!write(51,*) loca !Disable the loca to avoid writting in two lines.
-		write(51,*) '# Time series in 8 columns in format e15.7'
+		write(51,*) '# Time series in 11 columns in format E15.7'
 		write(51,*) '# Column #1 = Time (s)'
 		write(51,*) '# Column #2 = horizontal slip (m)'
 		write(51,*) '# Column #3 = horizontal slip rate (m/s)'
@@ -286,12 +316,26 @@ if(n4onf>0) then
 		write(51,*) '# Column #7 = down-dip shear stress (MPa)'
 		write(51,*) '# Column #8 = normal stress (MPa)'
 		write(51,*) '# Column #9 = state variable psi (dimensionless)'
+		write(51,*) '# Column #10 = Temperature (degrees Kelvin)'
+		write(51,*) '# Column #11 = Pore pressure (MPa)'		
 		write(51,*) '# The line below lists the names of the data fields:'
-		write(51,*) 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress psi'
+		write(51,'(1X,103A)') 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress psi temperature pressure'
 		write(51,*) '#'
+				! fltsta(1,locplt-1,j) = time
+				! fltsta(2,locplt-1,j) = sliprates
+				! fltsta(3,locplt-1,j) = sliprated
+				! fltsta(4,locplt-1,j) = state(i)
+				! fltsta(5,locplt-1,j) = slips
+				! fltsta(6,locplt-1,j) = slipd
+				! fltsta(7,locplt-1,j) = slipn
+				! fltsta(8,locplt-1,j) = tstk
+				! fltsta(9,locplt-1,j) = tdip
+				! fltsta(10,locplt-1,j) = tnrm
+				! fltsta(11,locplt-1,j) = fric(51,i)
+				! fltsta(12,locplt-1,j) = fric(52,i)		
 		do j=1,locplt-1
-			write(51,'( f12.5,8e18.7e4)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.e6,&
-					-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(9,j,i)/1.e6,fltsta(10,j,i)/1.e6,fltsta(4,j,i)
+			write(51,'( E21.13,10E15.7)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.0d6,&
+					-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(8,j,i)/1.0d6, -fltsta(10,j,i)/1.0d6, fltsta(4,j,i), fltsta(12,j,i), fltsta(11,j,i)/1.0d6  
 		enddo
 		close(51)
 	enddo
@@ -322,15 +366,16 @@ if(n4out>0) then
 		write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',time_array(2), &
 				'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &
 				':',time_array(7)
-		write(51,*) '# code = EQdyna3d'
-		write(51,*) '# code_version = 4.1'
+		write(51,*) '# code = EQdyna3D'
+		write(51,*) '# code_version = 5.1.0'
 		write(51,*) '# element_size =',dx
 		write(51,'( a14,f8.4,a3)') '# time_step=', dt, ' s'
 		write(51,'( a19,i6)') '# num_time_steps=',locplt
 		!write(51,*) loca
-		write(51,*) '# Time series in 7 columns in format e15.7'
+		!write(51,*) '# Time series in 11 columns in format E15.7 for data'
 		write(51,*) '# Column #1 = Time (s)'
 		write(51,*) '# Column #2 = horizontal displacement (m)'
+		write(51,*) '# Column #3 = horizontal displacement (m)'
 		write(51,*) '# Column #3 = horizontal velocity (m/s)'
 		write(51,*) '# Column #4 = vertical displacement (m)'
 		write(51,*) '# Column #5 = vertical velocity (m/s)'
@@ -340,7 +385,7 @@ if(n4out>0) then
 		write(51,*) '# The line below lists the names of the data fields:'
 		write(51,*) 't h-disp h-vel v-disp v-vel n-disp n-vel'
 		do j=1,locplt
-			write(51,'( f12.5,6e18.7e4)') dout(1,j),dout((i-1)*6+2,j), &
+			write(51,'( E21.13,6E15.7)') dout(1,j),dout((i-1)*6+2,j), &
 			dout((i-1)*6+3,j),-dout((i-1)*6+6,j),-dout((i-1)*6+7,j), &
 			dout((i-1)*6+4,j),dout((i-1)*6+5,j)
 		enddo

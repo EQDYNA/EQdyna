@@ -51,23 +51,21 @@ integer(kind=4)::dis4uniF,dis4uniB,nmat,n2mat
 real(kind=8)::rhow=1000.,b11=0.926793,b33=1.073206,b13=-0.169029,&
 	critt0=0.5,srcrad0=4000.,vrupt0=1500.,&!Info on forced rupture.
 	bulk=0.1934,coheplas=1.36e6,tv=0.03,ccosphi,sinphi,mus,mud
-real(kind=8)::xsource=0e3,ysource=0.0,zsource=-7.5e3!Nucleation point.
+real(kind=8)::xsource, ysource, zsource!Nucleation point.
 !===================================================================!
 !Specify informations on on- and off- fault stations and
 ! model and fault geometries. 
-integer(kind=4)::ninterval=1,nftmx,nonmx,nonfs(1)=9,n4nds=6,an4nds(2,6)
-real(kind=8)::xonfs(2,9,1),x4nds(3,6)
+integer(kind=4)::ninterval=1,nftmx,nonmx
 real(kind=8)::surxmax=0e3,surxmin=0e3,surymax=0e3,surymin=0e3
 real(kind=8)::xmin,xmax,ymin,ymax,zmin,zmax
 real(kind=8),allocatable,dimension(:)::fxmin,fxmax,fymin,fymax,fzmin,fzmax
 real(kind=8),allocatable,dimension(:,:)::material
 real(kind=8),allocatable,dimension(:,:,:)::fltxyz
 real(kind=8)::fstrike=270.,fdip=90.
-character(len=15)::projectname='SCECTPV104',author='D.Liu'
+character(len=30)::projectname='SCECTPV105-3D',author='D.Liu & B.Luo'
 !===================================================================!
 !Specify maximum Vp for PML and timing information
 real(kind=8)::vmaxPML=6000.0d0,term,dt
-
 real(kind=8),allocatable,dimension(:,:)::dout
 integer(kind=4),allocatable,dimension(:,:)::idhist
 !===================================================================!
@@ -78,5 +76,27 @@ integer(kind=4),dimension(6)::fltnum=0
 integer(kind=4),allocatable,dimension(:)::fltgm
 integer(kind=4),allocatable,dimension(:)::fltl,fltr,fltf,fltb,fltd,fltu
 integer (kind=4),dimension(9)::numcount
+!===================================================================!
+!Thermop, TPV105 3D
+integer(kind=4)::numtp
+real(kind=8)::dxtp,tpw! m
+!Parameters for friction laws
+real(kind=8):: fric_sw_fs, fric_sw_fd, fric_sw_D0, &
+fric_rsf_a, fric_rsf_deltaa0, fric_rsf_b, fric_rsf_Dc, fric_rsf_r0, fric_rsf_v0, &
+fric_rsf_vinix, fric_rsf_viniz, fric_rsf_fw, fric_rsf_vw, fric_rsf_deltavw0, &
+fric_tp_a_th, fric_tp_rouc, fric_tp_lambda, fric_tp_h, &
+fric_tp_a_hy, fric_tp_deltaa_hy0, fric_ww, fric_w, fric_ini_sliprate,&
+fric_tp_pini, fric_tp_Tini
+real(kind = 8), allocatable, dimension(:,:,:,:):: frichis
+!Output
+! integer (kind = 4) :: n4nds = 6, an4nds(2,6), nonfs(1) = 13 ! on-surface station nubmer
+! real (kind = 8) :: xonfs(2,13,1), x4nds(3,6) 
+integer (kind = 4) :: n4nds ! on-surface station nubmer
+integer (kind = 4), allocatable :: an4nds(:,:), nonfs(:) 
+!an4nds(2,n4nds): for indexing on-surface stations in different MPI prcocs.
+!nonfs(ntotft): numbers of on-fault stations for multiple faults.
+real (kind = 8), allocatable :: xonfs(:,:,:), x4nds(:,:)
+!xonfs(2,nonfs(ntotft),ntotft)
+!x4nfs(3,n4nds)
 !-------------------------------------------------------------------!    
 end MODULE globalvar 	      

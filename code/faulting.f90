@@ -18,7 +18,7 @@ tdip,taox,taoy,taoz,ttao,taoc,ftix,ftiy,ftiz,trupt,tr,&
 tmp1,tmp2,tmp3,tmp4,tnrm0,rcc,fa,fb
 real(kind=8),dimension(nftnd)::fnft,arn,r4nuc,arn4m,slp4fri,miuonf
 real(kind=8),dimension(3,nftnd)::un,us,ud,fltslp,fltslr
-real(kind=8)::fric(20,nftnd),fltsta(10,nplpts-1,n4onf),fvd(6,2,3),brhs(neq),&
+real(kind=8)::fric(100,nftnd),fltsta(12,nplpts-1,n4onf),fvd(6,2,3),brhs(neq),&
 	d(ndof,numnp),v(ndof,numnp),x(ndof,numnp),fnms(numnp) 
 !--------------------------------------------------------------------
 !RSF from Bin. 2016.08.28
@@ -32,14 +32,14 @@ real(kind=8)::fric(20,nftnd),fltsta(10,nplpts-1,n4onf),fvd(6,2,3),brhs(neq),&
   logical :: qs	
 real (kind=8),dimension(3,nftnd) ::stresses!2016.08.28 stores norm,shear&yield strength for movies  
 !===================================================================!
-fvd=0.0
+fvd=0.0d0
 do i=1,nftnd	!just fault nodes
 !-------------------------------------------------------------------!
     !RSF nucleate by imposing a horizontal shear traction perturbation
 	!2016.08.28
-    if((C_nuclea==1).and.(friclaw == 3 .or. friclaw == 4).and.(ift == nucfault)) then
-       R0 = 3000.0d0
-       dtao0 = 45.0d6
+    if((C_nuclea==1).and.(friclaw == 3 .or. friclaw == 4 .or. friclaw == 5).and.(ift == nucfault)) then
+       R0 = 1500.0d0
+       dtao0 = 50.0d6
        T = 1.0d0
        F = 0.0d0
        rr=sqrt((x(1,nsmp(1,i))-xsource)**2+(x(3,nsmp(1,i))-zsource)**2)    
@@ -127,6 +127,9 @@ do i=1,nftnd	!just fault nodes
 			- mmast*fvd(6,1,1)) / mtotl + fdfault
 	endif		
 	ttao = sqrt(tstk*tstk + tdip*tdip) !total shear magnitude	  
+	! if (abs(x(1,isn)--22.0d3)<1.0d0 .and. abs(x(3,isn))<0.0d3) then 
+		! write(*,*) 'before fric faulting,i,tnrm,tstk,p,x,z',tnrm/1.0d6,tstk/1.0d6,sliprate,fric(51,i),x(1,isn),x(3,isn)
+	  ! endif	
 	!
 	!...friction law to determine friction coefficient
 	!   slip-weakening only so far. B.D. 1/26/07
@@ -227,8 +230,11 @@ if (friclaw==1.or.friclaw==2)then!Differ 1&2 and 3&4
 		brhs(id1(locid(imn)+2)) = brhs(id1(locid(imn)+2)) - taoy + ftiy
 		brhs(id1(locid(imn)+3)) = brhs(id1(locid(imn)+3)) - taoz + ftiz
 	endif	
-elseif (friclaw==3.or.friclaw==4)then
+elseif (friclaw>=3)then
 !RSF: friclaw=3 selects ageing law, friclaw=4 selects slip law and strong rate weakening  B.L. 1/8/16
+
+		tnrm = tnrm + fric(51,i) ! consider termopressurization.
+		
       slipn = slipn + fric(16,i) * time 
       slips = slips + fric(17,i) * time
       slipd = slipd + fric(18,i) * time
@@ -247,10 +253,12 @@ elseif (friclaw==3.or.friclaw==4)then
       mr =   mmast * mslav / (mmast+mslav) !reduced mass   
       T_coeff = arn(i)* dt / mr
       statetmp = state(i)  !RSF: a temporary variable to store the currently value of state variable. B.L. 1/8/16
-
+	  if (abs(x(1,isn)-xsource)<1.0d0 .and. abs(x(3,isn)-zsource)<1.0d0) then 
+		write(*,*) 'faulting,i,tnrm,tstk,v_trial,p,T,x,z',tnrm/1.0d6,tstk/1.0d6,v_trial,fric(51,i),fric(52,i),x(1,isn),x(3,isn)
+	  endif
       if(friclaw == 3) then
         call rate_state_ageing_law(v_trial,state(i),fric(1,i),xmu,dxmudv) !RSF
-      else
+      elseif (friclaw == 4 .or. friclaw==5) then
         call rate_state_slip_law(v_trial,state(i),fric(1,i),xmu,dxmudv) !RSF
       endif 
 
@@ -297,6 +305,10 @@ elseif (friclaw==3.or.friclaw==4)then
 	stresses(1,i)=tnrm 
 	stresses(2,i)=tstk
 	stresses(3,i)=taoc_new
+	fric(49,i) = v_trial
+	fric(50,i) = (tstk**2 + tdip**2)**0.5 
+	frichis(1,i,nt,ift) = fric(49,i)
+	frichis(2,i,nt,ift) = fric(50,i)
       accn = -slipraten/dt - slipn/dt/dt
       accs = (v_trial * (tstk1 / ttao1) - sliprates)/dt
       accd = (v_trial * (tdip1 / ttao1) - sliprated)/dt
@@ -337,7 +349,9 @@ endif
 				fltsta(7,locplt-1,j) = slipn
 				fltsta(8,locplt-1,j) = tstk
 				fltsta(9,locplt-1,j) = tdip
-				fltsta(10,locplt-1,j) = tnrm+fric(6,i)
+				fltsta(10,locplt-1,j) = tnrm
+				fltsta(11,locplt-1,j) = fric(51,i) + fric_tp_pini
+				fltsta(12,locplt-1,j) = fric(52,i) 
 			endif
 		enddo 
 	endif   

@@ -1,19 +1,47 @@
-# EQdyna
+# EQdyna 3D
 
-A parallel Finite Element software to model earthquake spontaneous dynamic ruptures. The software is designed to use high-performance computing. It is written in FORTRAN 90 and MPI.
+EQdyna 3D is a parallel finite element software to simulate earthquake spontaneous dynamic 
+ruptures and seismic wave propagations for geometrically complex fault systems written in 
+FORTRAN90. EQdyna 3D is highly efficient and scalable due to its adoptions of explicit 
+time integration, underintegrated hexahedral elements, degenerated wedge elements, hourglass 
+controls, perfectly matched layer and parallelization. Frequency independent Q by coarsed
+-grained memory scheme allows seismic attenuation in a time marching FEM. Frictional 
+constitutations such as the classical slip-weakening and various forms of rate- and state-
+friction enables applications to dynamic ruptures, ground motion, fully dynamic earthquake
+cycles, etc. Drucker-prager off-fault viscoplasticity allows integration of numerical models 
+with near-fault geologic observations. EQdyna has been verified against benchmark problems
+from community-led SCEC/USGS code verification excercise. Recently, termalpressurization is 
+implemented.
+
+### Author:  Dunyu Liu and Bin Luo
+### Date:    09/30/2020
+### Contact: dunyuliu@tamu.edu
+## Version 5.1.0; Git tag v5.1.0; Parent 5.0.0.
+# Major changes:
+* Thermal pressurization (tp) is implemented;
+* Library.f90 is created to store non-major subroutines;
+* Input file FE_Fric.txt is added and accordingly subroutine readfric in Read_Input_Files.f90;
+* Additional dimensions in array fric for tp;
+* Input file FE_Stations.txt is added and on- and off-fault stations can be flexibly assinged;
+* [Verification] This version of code has been verified in the benchmark problem SCEC TPV105 3D;
+* Detailed and other minor changes please refer to changelog.md.
 
 ### Dunyu Liu, 08/12/2020
 # Version 5.0.0
 ## Features
-* A major structural change occurs: controllable parameters, model and fault information, material properties are all moved to input .txt files. This signals the developing goals to move adjustable quantities out of the bones of finite element calculations.
-* Read_Input_Files.f90 is added to load input 4 files FE_Global.txt, FE_Model_Geometry.txt, FE_Model_Geometry.txt, FE_Material.txt. 
+* A major structural change occurs: controllable parameters, model and fault information, 
+	material properties are all moved to input .txt files. This signals the developing goals 
+	to move adjustable quantities out of the bones of finite element calculations.
+* Read_Input_Files.f90 is added to load input 4 files FE_Global.txt, FE_Model_Geometry.txt, 
+	FE_Model_Geometry.txt, FE_Material.txt. 
 * The code runs smoothly and is verified against TPV104 in terms of rupture time contour.
 * FE_Fric.txt is planned as an input but not developed in this version.
 
 ### Dunyu Liu, Bin Luo, 10/04/2016, dunyuliu@gmail.com
 # Version 4.2
 ## Features
-* Add the rate- and state- friction with aging law (friclaw=3) and slip law (friclaw=4) (Bin Luo) incorporated by Dunyu.
+* Add the rate- and state- friction with aging law (friclaw=3) and slip law (friclaw=4) 
+	(Bin Luo) incorporated by Dunyu.
 * Time expense analysis with timeanalysis.m.
 * This version is verified against SCEC TPV104.
 
