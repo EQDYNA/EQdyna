@@ -1,35 +1,19 @@
-SUBROUTINE qdct3(numel,numnp,neq,mat,ien,d,v,eleporep,elemass,eleshp,eledet,pstrain,brhs,me, &
-				maxm,id1,locid,dof1,et,v1,d1,PMLb,x,maxs,ids,s1,nt)
+SUBROUTINE qdct3
 use globalvar
 implicit none
 include 'mpif.h'
-!
-!### program to calculate element contributions to residual force
-!        for the 8-node hexahedral, elastic continuum element 
-!        and assemble into the global right-hand-side vector.
-!		Note: only for 1-Gaussian point case now! B.D. 8/20/05
-!
-!  Explicitly use central difference method: al() always zero if no
-!	Rayleigh dampling (rdampm = 0), no global a() is needed.
-!	B.D. 7/21/05
+
 logical :: formkd,zerovl,formma,zeroal
-integer(kind=4)::me,nel,m,i,j,ntemp,k,k1,numel,numnp,neq,maxm,&
-	maxs,non,itag,eqn,label,nt,ien(nen,numel),id1(maxm),&
-	ids(numel),locid(numnp),dof1(numnp),et(numel)
-real(kind=8)::grav=-9.8,det,constk,pstrinc,xc(3),matelement(5),esPML(21),es(12),ex(3,8),evPML(96),efPML(96),PMLb(8),&
-	x(nsd,numnp),s1(maxs),v1(neq),d1(neq),brhs(neq),d(ndof,numnp),v(ndof,numnp),eleshp(nrowsh-1,nen,numel),&
-	elemass(nee,numel),eledet(numel),eleporep(numel),pstrain(numel),mat(numel,5),elresf(nee),eleffm(nee),&
-	dl(ned,nen),vl(ned,nen),al(ned,nen)
+integer(kind=4)::nel,m,i,j,ntemp,k,k1, non,itag,eqn,label
+real(kind=8)::det,constk,pstrinc,xc(3),matelement(5),esPML(21),es(12),ex(3,8),efPML(96),&
+	elresf(nee), eleffm(nee), dl(ned,nen), vl(ned,nen), al(ned,nen)
 	
-!$omp parallel do default(shared) private(nel,formma,formkd,m,ntemp,dl,vl,al,&
-!$omp	j,i,zeroal,zerovl,elresf,det,eleffm,constk,k,k1)
+
 do nel=1,numel
-	if (nel.lt.0) then 
-		write(*,*) 'me=',me,'nel=',nel,'numel=',numel
-			stop 3
-		endif
+
 	formma = .false.
 	formkd = .false.
+	
 	m = 1
 	!...localize dl,vl,al
 	do j=1,nen
@@ -37,7 +21,7 @@ do nel=1,numel
 		do i=1,ned
 			dl(i,j) = d(i,ntemp)
 			vl(i,j) = v(i,ntemp)
-			al(i,j) = 0.0
+			al(i,j) = 0.0d0
 		enddo
 	enddo
 	!...compute effective dl accounting for Rayleigh damping!
@@ -47,7 +31,7 @@ do nel=1,numel
 		!dl(i,j) = dl(i,j) + rdampk(m)*vl(i,j)
 			al(i,j) = al(i,j) + rdampm*vl(i,j)
 			if(i==3.and.C_elastic==0) then  !for inelastic off-fault, gravity included
-				al(i,j) = al(i,j) - grav
+				al(i,j) = al(i,j) + grav
 			endif
 		enddo
 	enddo
@@ -56,20 +40,20 @@ do nel=1,numel
 	outer1: do j=1,nen	!Giving names to control constructs
 	inner1: do i=1,ned
 	!  k=id(i,j)
-		if(al(i,j) /= 0.0) then
+		if(al(i,j) /= 0.0d0) then
 			zeroal = .false.
 			exit outer1
 		endif
 		enddo inner1
 		enddo outer1
-	if ( (.not.zeroal) .and. (mat(nel,3) /= 0.0) ) then
+	if ( (.not.zeroal) .and. (mat(nel,3) /= 0.0d0) ) then
 		formma = .true.
 	endif
 	!...determine if element makes stiffness contribution
 	zerovl = .true.
 	outer2: do j=1,nen
 	inner2: do i=1,ned
-				if(vl(i,j) /= 0.0) then
+				if(vl(i,j) /= 0.0d0) then
 					zerovl = .false.
 					exit outer2
 				endif
@@ -95,7 +79,7 @@ do nel=1,numel
 	!  endif
 	!*** if either, start time-consuming computing ***
 	!if (formma .or. formkd) then
-		elresf = 0.0
+		elresf = 0.0d0 
 		det = eledet(nel)
 		!if (formma) then
 			do i=1,nee
@@ -104,7 +88,7 @@ do nel=1,numel
 			call contma(eleffm,al,elresf)
 		!endif
 		!if (formkd) then
-			if (et(nel)==1) then
+			if (et(nel)==1.or.et(nel)>10) then
 				constk=-det
 				do i=1,12
 					es(i)=s1(ids(nel)+i)
@@ -118,7 +102,7 @@ do nel=1,numel
 					matelement(i)=mat(nel,i)
 				enddo
 				call qdckd(eleshp(1,1,nel),matelement,vl,dl,es,elresf,constk,&
-						zerovl,eleporep(nel),pstrinc,ex,PMLb)
+						zerovl,eleporep(nel),pstrinc,ex)
 				! if (nel==584309.and.me==31) then 
 					! write(*,*) es(1),es(2),es(3),es(4),es(5),es(6)
 					! write(*,*) es(1+6),es(2+6),es(3+6),es(4+6),es(5+6),es(6+6)
@@ -141,9 +125,8 @@ do nel=1,numel
 					enddo
 				enddo
 			elseif (et(nel)==2) then ! PML element. 
-				efPML=0.0
-				evPML=0.0
-				esPML=0.0 
+				efPML=0.0d0
+				esPML=0.0d0 
 				do i=1,8
 					do j=1,3
 					efPML((i-1)*12+9+j)=elresf((i-1)*3+j)
@@ -160,7 +143,7 @@ do nel=1,numel
 				do i=1,5 
 					matelement(i)=mat(nel,i)
 				enddo		
-				call PMLwhg(vl,efPML,evPML,esPML,ex,PMLb,matelement,eleshp(1,1,nel),det,nt,nel,me)
+				call PMLwhg(vl,efPML,esPML,ex,matelement,eleshp(1,1,nel),det,nel)
 				do i=1,8
 					non=ien(i,nel)
 					if (dof1(non)==12) then
@@ -202,5 +185,4 @@ do nel=1,numel
 		!endif!formkd
 	!endif!either formma or formkd
 enddo!nel loop
-!$omp end parallel do
 end SUBROUTINE qdct3

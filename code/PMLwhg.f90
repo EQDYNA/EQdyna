@@ -1,4 +1,4 @@
-SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,nel,me)
+SUBROUTINE PMLwhg(vl,f,s,ex,mat1,shg,det,nel)
 !efPML,evPML,esPML,ex,PMLb,c(1,1,1),eleshp(1,1,nel),det,dt
 	use globalvar
 	implicit none  
@@ -10,13 +10,13 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,nel,me)
 	! -f: Element force vector.
 	! -c: material matrix	
 	! -PMLb: PML boundary coordinates. 
-	! 	- PMLb(1):xmax1
-	! 	- PMLb(2):xmin1
-	! 	- PMLb(3):ymax1
-	!	- PMLb(4):ymin1
-	!	- PMLb(5):zmin1
+	! 	- PMLb(1):xmax2
+	! 	- PMLb(2):xmin2
+	! 	- PMLb(3):ymax2
+	!	- PMLb(4):ymin2
+	!	- PMLb(5):zmin2
 	real(kind=8),dimension(3,8)::vl	
-	real(kind=8),dimension(96)::f,v
+	real(kind=8),dimension(96)::f
 	!vxx,vxy,vxz,
 	!vyx,vyy,vyz,
 	!vzx,vzy,vzz,
@@ -38,26 +38,27 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,nel,me)
 	real(kind=8),dimension(3,8)::shg
 	real(kind=8),dimension(3,4)::q
 	integer(kind=4),dimension(4,8)::fi
-	real(kind=8)::xmax1,xmin1,ymax1,ymin1,zmin1,PMLb(8),&
-					maxdx,maxdy,maxdz,mat(5)
-	integer(kind=4)::i,j,k,nt,j1,j2,j3,nel,me
+	real(kind=8)::xmax2,xmin2,ymax2,ymin2,zmin2,&
+					maxdx,maxdy,maxdz,mat1(5)
+	integer(kind=4)::i,j,k,j1,j2,j3,nel
 	real (kind=8),dimension(nrowb,nee) :: bb	!correspond to b
 	real (kind=8),dimension(nstr) :: strainrate,stressrate	
 	real(kind=8)::c(6,6)
-	vp=mat(1)
-	lam=mat(4)
-	miu=mat(5)
+	
+	vp=mat1(1)
+	lam=mat1(4)
+	miu=mat1(5)
 	!
-	xmax1=PMLb(1)
-	xmin1=PMLb(2)
-	ymax1=PMLb(3)
-	ymin1=PMLb(4)
-	zmin1=PMLb(5)
+	xmax2=PMLb(1)
+	xmin2=PMLb(2)
+	ymax2=PMLb(3)
+	ymin2=PMLb(4)
+	zmin2=PMLb(5)
 	maxdx=PMLb(6)
 	maxdy=PMLb(7)
 	maxdz=PMLb(8)
 	!
-	xc=0.0
+	xc=0.0d0
 	do i=1,3
 		do j=1,8
 			xc(i)=xc(i)+ex(i,j)
@@ -66,69 +67,69 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,nel,me)
 	xc=xc/8
 
 	! Calculate damping profiles.
-	if (xc(3)<zmin1) then !region 1
-		damps(3)=abs(xc(3)-zmin1)		
-		if (xc(1)>xmax1.and.xc(2)>ymax1) then !region 11
-			damps(1)=abs(xc(1)-xmax1)
-			damps(2)=abs(xc(2)-ymax1)			
-		elseif (xc(1)>xmax1.and.xc(2)<ymin1) then !region 12
-			damps(1)=abs(xc(1)-xmax1)
-			damps(2)=abs(xc(2)-ymin1)	
-		elseif (xc(1)<xmin1.and.xc(2)<ymin1) then !region 13
-			damps(1)=abs(xc(1)-xmin1)
-			damps(2)=abs(xc(2)-ymin1)			
-		elseif (xc(1)<xmin1.and.xc(2)>xmax1) then !region 14
-			damps(1)=abs(xc(1)-xmin1)
-			damps(2)=abs(xc(2)-ymax1)
-		elseif (xc(1)>xmax1.and.xc(2)>ymin1.and.xc(2)<ymax1) then !region 1_12
-			damps(1)=abs(xc(1)-xmax1)
-			damps(2)=0.0
-		elseif (xc(2)<ymin1.and.xc(1)>xmin1.and.xc(1)<xmax1) then !region 1_23	
-			damps(1)=0.0
-			damps(2)=abs(xc(2)-ymin1)
-		elseif (xc(1)<xmin1.and.xc(2)>ymin1.and.xc(2)<ymax1) then !region 1_34	
-			damps(1)=abs(xc(1)-xmin1)
-			damps(2)=0.0
-		elseif (xc(2)>ymax1.and.xc(1)>xmin1.and.xc(1)<xmax1) then !region 1_41	
-			damps(1)=0.0
-			damps(2)=abs(xc(2)-ymax1)
+	if (xc(3)<zmin2) then !region 1
+		damps(3)=abs(xc(3)-zmin2)		
+		if (xc(1)>xmax2.and.xc(2)>ymax2) then !region 11
+			damps(1)=abs(xc(1)-xmax2)
+			damps(2)=abs(xc(2)-ymax2)			
+		elseif (xc(1)>xmax2.and.xc(2)<ymin2) then !region 12
+			damps(1)=abs(xc(1)-xmax2)
+			damps(2)=abs(xc(2)-ymin2)	
+		elseif (xc(1)<xmin2.and.xc(2)<ymin2) then !region 13
+			damps(1)=abs(xc(1)-xmin2)
+			damps(2)=abs(xc(2)-ymin2)			
+		elseif (xc(1)<xmin2.and.xc(2)>xmax2) then !region 14
+			damps(1)=abs(xc(1)-xmin2)
+			damps(2)=abs(xc(2)-ymax2)
+		elseif (xc(1)>xmax2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_12
+			damps(1)=abs(xc(1)-xmax2)
+			damps(2)=0.0d0
+		elseif (xc(2)<ymin2.and.xc(1)>xmin2.and.xc(1)<xmax2) then !region 1_23	
+			damps(1)=0.0d0
+			damps(2)=abs(xc(2)-ymin2)
+		elseif (xc(1)<xmin2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_34	
+			damps(1)=abs(xc(1)-xmin2)
+			damps(2)=0.0d0
+		elseif (xc(2)>ymax2.and.xc(1)>xmin2.and.xc(1)<xmax2) then !region 1_41	
+			damps(1)=0.0d0
+			damps(2)=abs(xc(2)-ymax2)
 		else
 		!Middle area 9 missing previously.
 		!Feb.18.2016/D.Liu
-			damps(1)=0.0
-			damps(2)=0.0
+			damps(1)=0.0d0
+			damps(2)=0.0d0
 		endif
-	elseif (xc(3)>zmin1) then !region 2
-		damps(3)=0.0
-		if (xc(1)>xmax1.and.xc(2)>ymax1) then !region 11
-			damps(1)=abs(xc(1)-xmax1)
-			damps(2)=abs(xc(2)-ymax1)			
-		elseif (xc(1)>xmax1.and.xc(2)<ymin1) then !region 12
-			damps(1)=abs(xc(1)-xmax1)
-			damps(2)=abs(xc(2)-ymin1)	
-		elseif (xc(1)<xmin1.and.xc(2)<ymin1) then !region 13
-			damps(1)=abs(xc(1)-xmin1)
-			damps(2)=abs(xc(2)-ymin1)			
-		elseif (xc(1)<xmin1.and.xc(2)>xmax1) then !region 14
-			damps(1)=abs(xc(1)-xmin1)
-			damps(2)=abs(xc(2)-ymax1)
-		elseif (xc(1)>xmax1.and.xc(2)>ymin1.and.xc(2)<ymax1) then !region 1_12
-			damps(1)=abs(xc(1)-xmax1)
-			damps(2)=0.0
-		elseif (xc(2)<ymin1.and.xc(1)>xmin1.and.xc(1)<xmax1) then !region 1_23	
-			damps(1)=0.0
-			damps(2)=abs(xc(2)-ymin1)
-		elseif (xc(1)<xmin1.and.xc(2)>ymin1.and.xc(2)<ymax1) then !region 1_34	
-			damps(1)=abs(xc(1)-xmin1)
-			damps(2)=0.0
-		elseif (xc(2)>ymax1.and.xc(1)>xmin1.and.xc(1)<xmax1) then !region 1_41	
-			damps(1)=0.0
-			damps(2)=abs(xc(2)-ymax1)
+	elseif (xc(3)>zmin2) then !region 2
+		damps(3)=0.0d0
+		if (xc(1)>xmax2.and.xc(2)>ymax2) then !region 11
+			damps(1)=abs(xc(1)-xmax2)
+			damps(2)=abs(xc(2)-ymax2)			
+		elseif (xc(1)>xmax2.and.xc(2)<ymin2) then !region 12
+			damps(1)=abs(xc(1)-xmax2)
+			damps(2)=abs(xc(2)-ymin2)	
+		elseif (xc(1)<xmin2.and.xc(2)<ymin2) then !region 13
+			damps(1)=abs(xc(1)-xmin2)
+			damps(2)=abs(xc(2)-ymin2)			
+		elseif (xc(1)<xmin2.and.xc(2)>xmax2) then !region 14
+			damps(1)=abs(xc(1)-xmin2)
+			damps(2)=abs(xc(2)-ymax2)
+		elseif (xc(1)>xmax2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_12
+			damps(1)=abs(xc(1)-xmax2)
+			damps(2)=0.0d0
+		elseif (xc(2)<ymin2.and.xc(1)>xmin2.and.xc(1)<xmax2) then !region 1_23	
+			damps(1)=0.0d0
+			damps(2)=abs(xc(2)-ymin2)
+		elseif (xc(1)<xmin2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_34	
+			damps(1)=abs(xc(1)-xmin2)
+			damps(2)=0.0d0
+		elseif (xc(2)>ymax2.and.xc(1)>xmin2.and.xc(1)<xmax2) then !region 1_41	
+			damps(1)=0.0d0
+			damps(2)=abs(xc(2)-ymax2)
 		else
 		!Middle area 9 missing previously.
 		!Feb.18.2016/D.Liu
-			damps(1)=0.0 
-			damps(2)=0.0
+			damps(1)=0.0d0
+			damps(2)=0.0d0
 		endif
 	endif
 	do i=1,3
@@ -150,8 +151,8 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,nel,me)
 	enddo
 
 	call qdcb(shg,bb)
-	stressrate = 0.0
-	strainrate = 0.0	!initialize
+	stressrate = 0.0d0
+	strainrate = 0.0d0	!initialize
 	do i=1,nen
 		j1 = ned * (i - 1) + 1
 		j2 = ned * (i - 1) + 2
@@ -163,9 +164,9 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,nel,me)
 		strainrate(5) = strainrate(5) + bb(5,j1) * va(j1) + bb(5,j3) * va(j3)
 		strainrate(6) = strainrate(6) + bb(6,j1) * va(j1) + bb(6,j2) * va(j2)
 	enddo
-	c=0.0 
+	c=0.0d0 
 	do i=1,3 
-		c(i,i)=lam+2*miu
+		c(i,i)=lam+2.0d0*miu
 		c(i+3,i+3)=miu 
 	enddo	
 	c(1,2)=lam 
@@ -182,15 +183,15 @@ SUBROUTINE PMLwhg(vl,f,v,s,ex,PMLb,mat,shg,det,nt,nel,me)
 	do i=4,6
 		stressrate(i) = c(i,i) * strainrate(i)
 	enddo	
-	Dx_vx=0.0
-	Dy_vy=0.0
-	Dz_vz=0.0
-	Dx_vy=0.0
-	Dy_vx=0.0
-	Dx_vz=0.0
-	Dz_vx=0.0
-	Dy_vz=0.0
-	Dz_vy=0.0
+	Dx_vx=0.0d0
+	Dy_vy=0.0d0
+	Dz_vz=0.0d0
+	Dx_vy=0.0d0
+	Dy_vx=0.0d0
+	Dx_vz=0.0d0
+	Dz_vx=0.0d0
+	Dy_vz=0.0d0
+	Dz_vy=0.0d0
 	do i=1,8
 		Dx_vx=Dx_vx+shg(1,i)*va(3*(i-1)+1)
 		Dy_vy=Dy_vy+shg(2,i)*va(3*(i-1)+2)

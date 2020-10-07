@@ -1,75 +1,39 @@
-SUBROUTINE driver(numel,numnp,neq,nftnd,ndout,x,brhs,d,v,mat,ien,eleporep,pstrain,&
-				id1,maxm,locid,dof1,et,v1,d1,PMLb,maxs,ids,s1,shl,n4onf,nsmp,fnft,fltslp,un,&
-				us,ud,fric,arn,r4nuc,anonfs,arn4m,slp4fri,fltsta,me,nsurnd,surid,miuonf,state)
+!/* Copyright (C) 2006-2020, Earthquake Modeling Lab @ Texas A&M University. 
+! * All Rights Reserved.
+! * This code is part of software EQdyna, please see EQdyna License Agreement
+! * attached before you copy, download, install or use EQdyna./
+subroutine driver
+
 use globalvar
 implicit none
 include 'mpif.h'
-logical::lstr
-character(len=30)::foutmov,mm
-integer(kind=4)::ntstep=0,n,i,j,k,k1,l,m,numel,numnp,neq,ndout,n4onf,&
-	nftnd(ntotft),ien(nen,numel),anonfs(3,nonmx),nsmp(2,nftmx,ntotft),&
-	id1(maxm),ids(numel),locid(numnp),dof1(numnp),et(numel),surid(nsurnd)
-integer(kind=4)::me,ierr,rr,jj,izz,ntagMPI,ix,iy,iz,nx,ny,nz,mex,mey,mez,nodenumtemp,&
-	bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj,istatus(MPI_STATUS_SIZE),maxm,maxs,itag,eqn,nsurnd
-real(kind=8)::PMLb(8),dampv(9)
-real(kind=8)::x(nsd,numnp),alhs(neq),brhs(neq),d(ndof,numnp),v(ndof,numnp),mat(numel,5),&
-	shl(nrowsh,nen),eledet(numel),eleporep(numel),pstrain(numel),elemass(nee,numel),&
-	eleshp(nrowsh-1,nen,numel),fric(100,nftmx,ntotft),miuonf(nftmx),fltsta(12,nplpts-1,n4onf),&
-	fnms(numnp),ss(6,numel),phi(nen,4,numel),v1(neq),d1(neq),s1(maxs),maxsur(nsurnd,6)
-real(kind=8),dimension(nftmx,ntotft)::fnft,arn,r4nuc,arn4m,slp4fri,state
-real(kind=8),dimension(3,nftmx,ntotft)::un,us,ud,fltslp
-real(kind=8),allocatable,dimension(:)::btmp,btmp1,btmp2,btmp3
-real(kind=8)::Tatnode(nftmx,ntotft),patnode(nftmx,ntotft)
-!-------------------------------------------------------------------!
-if (me == master) then
-!!$  write(*,*) 'Number of OpenMP threads used:', omp_get_max_threads()
-!!$  write(*,*) 'Number of processors available:', omp_get_num_procs()
-	write(*,*) 'Number of MPI processes used:', nprocs
-	write(*,*) 'Please be patient! Program is running on Process...', me
-endif
+
+integer (kind = 4) ::ntstep=0,i,j,k,k1,l,m,ierr,rr,jj,izz,ntagMPI,ix,iy,iz,nx,ny,nz,mex,mey,mez,nodenumtemp,&
+					bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj,istatus(MPI_STATUS_SIZE),itag,eqn
+real (kind = dp) :: dampv(9)
+real (kind = dp), allocatable,dimension(:) :: btmp,btmp1,btmp2,btmp3
+
 Tatnode = fric_tp_Tini
 patnode = fric_tp_pini
+
 time1=MPI_WTIME()
-alhs=0.0
-call qdct2(numel,numnp,neq,shl,ien,x,mat,alhs,eledet,elemass,eleshp,fnms,ss,phi,me,maxm,id1,locid,dof1)
+
+call qdct2
+
 time2 = MPI_WTIME()
 timeused(2)=timeused(2)+(time2-time1)
 
-!RSF: initalize state variable based on the inital friction and inital slip rate  B.L. 1/8/16
-if(friclaw == 3) then 
-    do i=1,ntotft   
-	   if (nftnd(i) > 0) then !RSF
-			do l=1,nftnd(i)
-			!Theta=d0/v0*dexp(a*dlog(2*dsinh()))
-			state(l,i) = fric(11,l,i)/fric(12,l,i)*dexp((fric(9,l,i)*dlog(2.0d0*dsinh &
-			(sqrt(fric(8,l,i)**2+0.0d0**2)/abs(fric(7,l,i))/fric(9,l,i)) &
-			)-fric(13,l,i)-fric(9,l,i)*dlog(sqrt((fric(16,l,i))**2+(fric(17,l,i))**2+(fric(18,l,i))**2)/fric(12,l,i)))/fric(10,l,i))
-			enddo
-		endif
-	enddo
-elseif(friclaw == 4 .or. friclaw == 5) then
-	do i=1,ntotft   
-		if (nftnd(i) > 0) then !RSF
-			do l=1,nftnd(i)
-				!Theta0=a*log(2V0/Vini*sinh(TAOini/a/SigmaNini))
-				state(l,i)=fric(9,l,i)*dlog(2.0d0*fric(12,l,i)/sqrt((fric(16,l,i))**2+(fric(17,l,i))**2+(fric(18,l,i))**2) &
-				*dsinh(sqrt(fric(8,l,i)**2+0.0d0**2)/abs(fric(7,l,i))/fric(9,l,i)))
-			enddo
-		endif
-	enddo
-endif
-!...allocate/deallicate outside time loop to improve performance.
-! found by TAMU supercomputing facility colleagues. B.D. 1/12/12
-maxsur=0.0
-do n=1,nstep
-	time=time+dt
-	ntstep=ntstep+1 
-	!...print on screen for monitoring
-	if(mod(n,nhshw)==0) then
-		if (me == master) then
-			write(*,'( a6,f9.3)') 'time=',time
-		endif
+do nt=1,nstep
+
+	time = time + dt
+	ntstep = ntstep + 1 
+	
+	if (mod(nt,100) == 1 .and. me == master) then
+		write(*,*) '=                                                                   ='
+		write(*,*) '=     Current time in dynamic rupture                               ='
+		write(*,'(X,A,40X,f7.3,4X,A)') '=',  time  , 's'
 	endif
+	
 	time1=MPI_WTIME()
 	do i=1,numnp
 		if (dof1(i)==3) then
@@ -85,7 +49,7 @@ do n=1,nstep
 			itag=locid(i)+1
 			eqn=id1(itag)
 			if (eqn>0) then
-				call comdampv(x(1,i),x(2,i),x(3,i),PMLb,dampv)
+				call comdampv(x(1,i),x(2,i),x(3,i),dampv)
 			endif
 			do j=1,9
 				itag=locid(i)+j
@@ -112,66 +76,27 @@ do n=1,nstep
 				d(2,i)=d(2,i)+v(2,i)*dt
 				d(3,i)=d(3,i)+v(3,i)*dt
 			elseif (eqn==-1) then
-				v(1,i)=0.0
-				v(2,i)=0.0
-				v(3,i)=0.0
-				d(1,i)=0.0
-				d(2,i)=0.0
-				d(3,i)=0.0				
+				v(1,i)=0.0d0
+				v(2,i)=0.0d0
+				v(3,i)=0.0d0
+				d(1,i)=0.0d0
+				d(2,i)=0.0d0
+				d(3,i)=0.0d0				
 			endif	
 		endif
 		if ((v(1,i)/=v(1,i)).or.v(2,i)/=v(2,i).or.v(3,i)/=v(3,i)) then 
-			write(*,*) x(1,i),x(2,i),x(3,i),me,mex,mey,mez, 'nt=',n
+			write(*,*) x(1,i),x(2,i),x(3,i),me,mex,mey,mez, 'nt=',nt
 			stop 'NAN'
 		endif
 	enddo
-!-------------------------------------------------------------------!
-!-------------------Surface Outputs--Sep.24.2015--------------------!
-!----------------------------D. Liu --------------------------------!
-	if (nsurnd>0) then
-		do i=1,nsurnd
-			if (maxsur(i,1)<abs(v(1,surid(i)))) then
-				maxsur(i,1)=abs(v(1,surid(i)))
-			endif
-			if (maxsur(i,2)<abs(v(2,surid(i)))) then
-				maxsur(i,2)=abs(v(2,surid(i)))
-			endif		
-			if (maxsur(i,3)<abs(v(3,surid(i)))) then
-				maxsur(i,3)=abs(v(3,surid(i)))
-			endif	
-			if (maxsur(i,4)<abs(brhs(id1(locid(surid(i))+1)))) then
-				maxsur(i,4)=abs(brhs(id1(locid(surid(i))+1)))
-			endif	
-			if (maxsur(i,5)<abs(brhs(id1(locid(surid(i))+2)))) then
-				maxsur(i,5)=abs(brhs(id1(locid(surid(i))+2)))
-			endif
-			if (maxsur(i,6)<abs(brhs(id1(locid(surid(i))+3)))) then
-				maxsur(i,6)=abs(brhs(id1(locid(surid(i))+3)))
-			endif			
-		enddo
-		if(n==nstep) then
-			write(mm,'(i6)') me
-			mm = trim(adjustl(mm))
-			foutmov='fmaxsur_'//mm
-			open(unit=2001+me,file=foutmov,form='formatted',status='unknown')	
-				write(2001+me,'(1x,6e18.7e4)') ((maxsur(i,j),j=1,6),i=1,nsurnd)
-		endif			
-		! if(mod(n,ninterval)==0) then
-			! write(mm,'(i6)') me
-			! mm = trim(adjustl(mm))
-			! foutmov='fsurout_'//mm
-			! open(unit=2001+me,file=foutmov,form='formatted',status='unknown',position='append')	
-				! write(2001+me,'(1x,6f10.3)') ((d(j,surid(i)),j=1,3),(v(j,surid(i)),j=1,3),i=1,nsurnd)
-		! endif	
-	endif	
 !-------------------------------------------------------------------!	
 	time2=MPI_WTIME()
 	timeused(3)=timeused(3)+(time2-time1)
 	 
 	!*** store desired results at set time intervals ***
-	if (mod(n,nhplt) == 0) then	
+	if (mod(nt,nhplt) == 0) then	
 		lstr=.true.	
-		locplt=locplt+ 1	!when n=1, locplt=2 due to 1 in eqdy3d.f90
+		locplt=locplt+ 1	!when nt=1, locplt=2 due to 1 in eqdy3d.f90
 	else
 		lstr=.false.
 	endif
@@ -195,18 +120,19 @@ do n=1,nstep
 		endif
 	endif
 
-	brhs=0.0!initialize it every interation
+	brhs=0.0d0
+	
 	time1=MPI_WTIME()
-	call qdct3(numel,numnp,neq,mat,ien,d,v,eleporep,elemass,eleshp,eledet,pstrain,brhs,& 
-				me,maxm,id1,locid,dof1,et,v1,d1,PMLb,x,maxs,ids,s1,n)
-	! if (me==30) then 
-		! write(*,*) '11slave',brhs(id1(604363)+1),brhs(id1(604363)+2),brhs(id1(604363)+3)
-		! write(*,*) 'master',brhs(id1(1276251)+1),brhs(id1(1276251)+2),brhs(id1(1276251)+3)
-	! endif				
+	
+	call qdct3
+				
 	time2 = MPI_WTIME()
 	timeused(4)=timeused(4)+(time2-time1)
+	
 	time1 = MPI_WTIME()
-	call hrglss(numel,numnp,neq,ien,d,v,mat,ss,phi,brhs,me,maxm,id1,locid,dof1,et,eledet)
+	
+	call hrglss
+	
 	time2 = MPI_WTIME()
 	timeused(5)=timeused(5)+(time2-time1)
 
@@ -635,20 +561,14 @@ do n=1,nstep
 		! write(*,*) 'master',brhs(id1(1276251)+1),brhs(id1(1276251)+2),brhs(id1(1276251)+3)
 	! endif
 	time1=MPI_WTIME()
-	do i=1,ntotft
-		if (nftnd(i)>0) then !only nonzero fault node, does faulting. B.D. 10/16/09
-			!write(*,*) 'before thermop, me', me
-			if (friclaw == 5) then 
-				call thermop(nsmp(1,1,i), Tatnode(1,i), patnode(1,i), i, nftnd(i), fric(1,1,i),n)
-			endif	
-			!write(*,*) 'after thermop, me', me
-			call faulting(i,nftnd(i),numnp,neq,lstr,fnms,brhs,d,v,x,maxm,id1,locid,dof1,n4onf,&
-					fltsta,nsmp(1,1,i),fnft(1,i),fltslp(1,1,i),&
-					un(1,1,i),us(1,1,i),ud(1,1,i),fric(1,1,i),arn(1,i),r4nuc(1,i),arn4m(1,i),&
-					slp4fri(1,i),anonfs,nonmx,me,n,miuonf,state)
-			!write(*,*) 'after faulting, me', me	
-		endif
-	enddo			
+	
+	if (friclaw == 5) then 
+		call thermop
+	endif	
+	!write(*,*) 'after thermop, me', me
+	call faulting
+	!write(*,*) 'after faulting, me', me	
+		
 	time2=MPI_WTIME()
 	timeused(6)=timeused(6)+(time2-time1) 
 	!Implementation of Double-couple point source.Sep.12.2015/D.L.
@@ -704,7 +624,7 @@ do n=1,nstep
 	!!$omp end parallel do
 	time2=MPI_WTIME()
 	timeused(7)=timeused(7)+(time2-time1) 	
-enddo 	!end time step loop n
+enddo 	!end time step loop nt
 if (me==master) then
 	write(*,*) 'mpi_send + mpi_recv time:',btime
 endif

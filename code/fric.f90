@@ -45,7 +45,7 @@ SUBROUTINE time_weak(trupt,fricsgl,xmu)
   !
 end SUBROUTINE time_weak
 
-SUBROUTINE rate_state_ageing_law(V,theta,fricsgl,xmu,dxmudv)
+SUBROUTINE rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   use globalvar
   implicit none
   !
@@ -53,9 +53,9 @@ SUBROUTINE rate_state_ageing_law(V,theta,fricsgl,xmu,dxmudv)
   ! friction law for fault dynamics. Bin Luo 4/9/2014
   !
   real (kind=8) :: xmu, dxmudv
-  real (kind=8) :: V,theta
+  real (kind=8) :: V2,theta
   real (kind=8) :: A,B,L,f0,V0
-  real (kind=8),dimension(20) :: fricsgl
+  real (kind=8),dimension(100) :: fricsgl
   real (kind=8) :: tmp, tmpc
   !
   A  = fricsgl(9)
@@ -65,16 +65,16 @@ SUBROUTINE rate_state_ageing_law(V,theta,fricsgl,xmu,dxmudv)
   V0 = fricsgl(12)
 
   tmpc = 1.0d0 / (2.0d0 * V0) * dexp((f0 + B * dlog(V0*theta/L)) / A)
-  tmp = (V+1.d-30) * tmpc
+  tmp = (V2+1.d-30) * tmpc
   xmu = A * dlog(tmp + sqrt(tmp**2 + 1.0d0)) !arcsinh(z)= ln(z+sqrt(z^2+1))
   dxmudv = A * tmpc / sqrt(1.0d0 + tmp**2) ! d(arcsinh(z))/dz = 1/sqrt(1+z^2)
-  theta = L/V + (theta - L/V)*dexp(-V*dt/L)
+  theta = L/V2 + (theta - L/V2)*dexp(-V2*dt/L)
   !
 end SUBROUTINE rate_state_ageing_law
 
 !================================================
 
-SUBROUTINE rate_state_slip_law(V,psi,fricsgl,xmu,dxmudv)
+SUBROUTINE rate_state_slip_law(V2,psi,fricsgl,xmu,dxmudv)
   use globalvar
   implicit none
   !
@@ -82,9 +82,9 @@ SUBROUTINE rate_state_slip_law(V,psi,fricsgl,xmu,dxmudv)
   ! friction law for fault dynamics. Bin Luo 4/9/2014
   !
   real (kind=8) :: xmu, dxmudv
-  real (kind=8) :: V,psi,psiss,fLV,fss
+  real (kind=8) :: V2,psi,psiss,fLV,fss
   real (kind=8) :: A,B,L,f0,V0,fw,Vw
-  real (kind=8),dimension(20) :: fricsgl
+  real (kind=8),dimension(100) :: fricsgl
   real (kind=8) :: tmp, tmpc
   !
   A  = fricsgl(9)
@@ -96,13 +96,13 @@ SUBROUTINE rate_state_slip_law(V,psi,fricsgl,xmu,dxmudv)
   Vw = fricsgl(15)
 
   tmpc = 1.0d0 / (2.0d0 * V0) * dexp(psi/A)
-  tmp = (V+1.d-30) * tmpc
+  tmp = (V2+1.d-30) * tmpc
   xmu = A * dlog(tmp + sqrt(tmp**2 + 1.0d0)) !arcsinh(z)= ln(z+sqrt(z^2+1))
   dxmudv = A * tmpc / sqrt(1.0d0 + tmp**2)  ! d(arcsinh(z))/dz = 1/sqrt(1+z^2)
-  fLV = f0 - (B - A) * dlog(V/V0)
-  fss = fw + (fLV - fw) / ((1.0d0 + (V/Vw)**8)**0.125d0)
-  psiss = A * dlog(2.0d0 * V0 / V * dsinh(fss/A))
-  psi = psiss + (psi - psiss) * dexp(-V*dt/L)
+  fLV = f0 - (B - A) * dlog(V2/V0)
+  fss = fw + (fLV - fw) / ((1.0d0 + (V2/Vw)**8)**0.125d0)
+  psiss = A * dlog(2.0d0 * V0 / V2 * dsinh(fss/A))
+  psi = psiss + (psi - psiss) * dexp(-V2*dt/L)
   !
 end SUBROUTINE rate_state_slip_law
 

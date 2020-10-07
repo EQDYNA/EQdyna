@@ -1,52 +1,31 @@
-SUBROUTINE qdct2(numel,numnp,neq,shl,ien,x,mat,alhs,eledet,elemass,&
-				eleshp,fnms,ss,phi,me,maxm,id1,locid,dof1)
+SUBROUTINE qdct2
 use globalvar
 implicit none
 include 'mpif.h'
 !...program to calcuate lumped mass matrix for 8-node hexahedral
 !	(brick),elastic continue element and assemble.
 logical :: lcubic
-integer(kind=4) :: nel,i,j,k,k1,m,itmp,itmp1,itmp2,&
-	numel,numnp,neq
+integer(kind=4) :: nel,i,j,k,k1,m,itmp,itmp1,itmp2
 real(kind=8) :: det,constm,vol,ce,co
 real(kind=8),dimension(nee) :: eleffm
 real(kind=8),dimension(nesd,nen) :: xl
 real(kind=8),dimension(3,3) :: xs
 real(kind=8),dimension(nrowb,nee) :: b
 real(kind=8),dimension(nrowsh,nen) :: shg
-real(kind=8),dimension(8,4) :: ha = reshape((/ &
+integer(kind=4),dimension(8,4) :: ha = reshape((/ &
 	1,1,-1,-1,-1,-1,1,1, 1,-1,-1,1,-1,1,1,-1, &
 	1,-1,1,-1,1,-1,1,-1, -1,1,-1,1,1,-1,1,-1/), &
 	(/8,4/))
-!...element arrays
-real(kind=8),dimension(numel,5) :: mat	    
-integer (kind=4),dimension(nen,numel) :: ien
-!integer (kind=4),dimension(ned,nen,numel) :: lm
-real (kind=8),dimension(nrowsh,nen) :: shl
-real (kind=8),dimension(numel) :: eledet
-real (kind=8),dimension(nee,numel) :: elemass
-real (kind=8),dimension(nrowsh-1,nen,numel) :: eleshp
-!... equations,node mass,weight,solutions,coordinate,shape
-real (kind=8),dimension(numnp) :: fnms
-real (kind=8),dimension(nsd,numnp) :: x
-real (kind=8),dimension(neq) :: alhs
-!...hourglass control arrays
-real (kind=8),dimension(6,numel) :: ss
-real (kind=8),dimension(nen,4,numel) :: phi
 !...MPI
-integer  me, ierr, rlp, rr, jj
+integer  ierr, rlp, rr, jj
 integer istatus(MPI_STATUS_SIZE)
 real (kind=8), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
 !DL variables for PML layer
-integer (kind=4):: maxm,non,itag,eqn
-integer (kind=4),dimension(maxm)::id1
-integer (kind=4),dimension(numnp)::locid,dof1
+integer (kind=4):: non,itag,eqn
 !*******3D MPI partitioning*************
 integer(kind=4)::mex,mey,mez,ix,iy,iz,nodenumtemp,ntagMPI,izz,nx,ny,nz
 integer(kind=4)::bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj
-!!$omp parallel do private(nel,i,j,k,k1,m, xl)
-!!$omp parallel do default(shared) private(nel,i,j,k,k1,m, xl,eleffm,lcubic,&
-!!$omp	itmp,det,shl,shg,xs,constm,vol,ce,co)
+
 do nel=1,numel
 	!...initialize and localize
 	eleffm = 0.0
@@ -71,10 +50,10 @@ do nel=1,numel
 			enddo outloop
 	!...compute global shape function and derivatives at 1 Gaussian
 	!	point.
-	call qdcshg(xl,det,shl,shg,nel,xs,lcubic)
+	call qdcshg(xl,det,shg,nel,xs,lcubic)
 	!...form mass matrix for left-hand-side
-	constm = (1.0+rdampm*0.5*dt)*mat(nel,3)
-	if(constm /= 0.0) then
+	constm = (1.0d0+rdampm*0.5*dt)*mat(nel,3)
+	if(constm /= 0.0d0) then
 		call contm(shg,det,eleffm,constm)
 	endif
 	!...assemble into left-hand-side
@@ -139,11 +118,7 @@ do nel=1,numel
 		endif
 		! *.* D.L.
 	enddo
-	!...following to compute and store global variables for
-	!	"qdct3","faulting",and "hrglss" to use: assumption here
-	!	is that nodal coordinates do not need to update (valid
-	!	for infinitesmal deformation.
-	!...determinant
+
 	eledet(nel) = det
 	!...derivatives of global shape function
 	do i=1,nen
@@ -154,7 +129,7 @@ do nel=1,numel
 	!...mass matrix for right-hand-side to use.
 	!	Note: different "constm" from above.
 	constm = mat(nel,3)
-	eleffm = 0.0	!must initialize again here
+	eleffm = 0.0d0	!must initialize again here
 	call contm(shg,det,eleffm,constm)
 	do i=1,nee
 		elemass(i,nel) = eleffm(i)
@@ -167,15 +142,12 @@ do nel=1,numel
 		k1= 1 + (i-1) * ned
 		fnms(k) = fnms(k) + eleffm(k1)
 	enddo
-        if (nel==7744.and.me==43) then
-                write(*,*) eleffm(1),eleffm(2),eleffm(3)
-        endif
 	!...SS matrix for "hrglss"
 	call vlm(xl,vol)
 	ce=mat(nel,5)*(3*mat(nel,4)+2*mat(nel,5))/(mat(nel,4)+mat(nel,5))
-	ce = 16.* ce / 15.	!close to plane-strain
+	ce = 16.d0* ce / 15.d0	!close to plane-strain
 	!E=miu*(3*lam+2*miu)/(lam+miu)
-	co = ce * vol / 48.
+	co = ce * vol / 48.d0
 	ss(1,nel)=co*(xs(1,1)**2+xs(2,1)**2+xs(3,1)**2)
 	ss(2,nel)=co*(xs(1,1)*xs(1,2)+xs(2,1)*xs(2,2)+xs(3,1)*xs(3,2))
 	ss(3,nel)=co*(xs(1,1)*xs(1,3)+xs(2,1)*xs(2,3)+xs(3,1)*xs(3,3))
@@ -187,7 +159,7 @@ do nel=1,numel
 	do i=1,4	!4 sets of phi
 		!...phi prime
 		do j=1,nen
-			vol = 0.0	!temp variable
+			vol = 0.0d0	!temp variable
 			do k=1,nen
 				vol = vol + ha(k,i)*(xl(1,k)*shg(1,j) + xl(2,k)  &
 				*shg(2,j) + xl(3,k)*shg(3,j))
@@ -195,11 +167,11 @@ do nel=1,numel
 			phi(j,i,nel) = ha(j,i) - vol
 		enddo
 		!...sum
-		vol = 0.0
+		vol = 0.0d0
 		do j=1,nen
 			vol = vol + phi(j,i,nel)**2
 		enddo
-		vol = sqrt(vol/8.0)
+		vol = sqrt(vol/8.0d0)
 		!...normalize to get phi from phi prime
 		do j=1,nen
 			phi(j,i,nel) = phi(j,i,nel) / vol
@@ -208,8 +180,6 @@ do nel=1,numel
 	enddo
 	!
 enddo  !nel
-!!$omp end parallel do
-
 
 !*******************MPI**********************
 !...assemble alhs() for common nodes between adjacent MPI procs.
@@ -224,7 +194,7 @@ enddo  !nel
 	nx=numcount(1)
 	ny=numcount(2)
 	nz=numcount(3)
-!$omp parallel do default(shared) private(i)
+
 do i=1,neq
 	if(alhs(i)==0.0) then
 		write(*,*) 'i=',i,'alhs=0'
@@ -232,7 +202,7 @@ do i=1,neq
 		stop
 	endif
 enddo
-!$omp end parallel do
+
 !write(*,*) 'me',me,'begin MPI partioning'
 !*************************************************************
 !************Partioning along x axis**************************

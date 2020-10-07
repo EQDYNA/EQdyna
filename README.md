@@ -1,3 +1,5 @@
+/* Copyright 2006-2020, Dunyu Liu, dunyuliu@tamu.edu.
+* All rights reserved. This file is part of EQdyna, see the LICENSE attached.*/ 
 # EQdyna 3D
 
 EQdyna 3D is a parallel finite element software to simulate earthquake spontaneous dynamic 
@@ -12,6 +14,19 @@ cycles, etc. Drucker-prager off-fault viscoplasticity allows integration of nume
 with near-fault geologic observations. EQdyna has been verified against benchmark problems
 from community-led SCEC/USGS code verification excercise. Recently, termalpressurization is 
 implemented.
+
+### Author:  Dunyu Liu
+### Date:    10/07/2020
+### Contact: dunyuliu@tamu.edu
+## Version 5.2.0; Git tag v5.2.0; Parent 5.1.0.
+# Major changes:
+* Library_output is created to handle outputs. 
+* warning.f90 is created to alert users about potential issues.
+* library_degeneration is created to handle mesh degeneration of a hexhedron to wedges/tetras.
+* C_degen is introduced. 
+* Simplification of code structure.
+* Hourglass control and shape functions are consistent for hexas, wedges and tetras. 
+* [Verification] This version has been verifed against benchmark SCEC TPV105 3D.
 
 ### Author:  Dunyu Liu and Bin Luo
 ### Date:    09/30/2020

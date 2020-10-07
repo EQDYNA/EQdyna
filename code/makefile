@@ -1,20 +1,22 @@
-F90 = mpifort
-OPT1 = 
-OPT = -c
-OBJ = eqdyna3d.o globalvar.o mesh4num.o \
-         meshgen.o qdcshl.o driver.o \
-	 qdct2.o qdcshg.o contm.o qdcb.o qdct3.o \
-	 contma.o qdckd.o hrglss.o fric.o faulting.o \
-	 PMLwhg.o comdampv.o qconstant.o Read_Input_Files.o thermop.o library.o
+F90   = mpifort
+OPT1  = 
+OPT   = -c
+
+OBJ   = eqdyna3d.o globalvar.o mesh4num.o meshgen.o qdcshl.o driver.o qdct2.o qdcshg.o contm.o qdcb.o \
+		qdct3.o contma.o qdckd.o hrglss.o fric.o faulting.o PMLwhg.o comdampv.o qconstant.o \
+		Read_Input_Files.o thermop.o library.o warning.o library_degeneration.f90 library_output.o
+		
+clean:run_eqdyna3d
+	rm -r *.o
 run_eqdyna3d: $(OBJ) 
 	$(F90) $(OPT1) $(OBJ) -o run_eqdyna3d
-eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o meshgen.o Read_Input_Files.o
+eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o meshgen.o Read_Input_Files.o warning.o library_output.o
 	$(F90) $(OPT) eqdyna3d.f90 
 globalvar.o: globalvar.f90
 	$(F90) $(OPT) globalvar.f90 	
-mesh4num.o: mesh4num.f90 globalvar.o
+mesh4num.o: mesh4num.f90 globalvar.o library_degeneration.o
 	$(F90) $(OPT) mesh4num.f90
-meshgen.o: meshgen.f90 globalvar.o library.o
+meshgen.o: meshgen.f90 globalvar.o library.o library_degeneration.o
 	$(F90) $(OPT) meshgen.f90
 qdcshl.o: qdcshl.f90 globalvar.o
 	$(F90) $(OPT) qdcshl.f90		
@@ -52,8 +54,9 @@ Read_Input_Files.o: Read_Input_Files.f90 globalvar.o
 	$(F90) $(OPT) Read_Input_Files.f90 
 thermop.o: thermop.f90 globalvar.o
 	$(F90) $(OPT) thermop.f90 
-clean:
-	rm fslipout_*
-	rm fsurout_*
-	rm frt*
-	rm fnode*
+warning.o: warning.f90 globalvar.o
+	$(F90) $(OPT) warning.f90
+library_degeneration.o: library_degeneration.f90 globalvar.o 
+	$(F90) $(OPT) library_degeneration.f90
+library_output.o: library_output.f90 globalvar.o 
+	$(F90) $(OPT) library_output.f90

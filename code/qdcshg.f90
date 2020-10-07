@@ -1,4 +1,4 @@
-SUBROUTINE qdcshg(xl,det,shl,shg,nel,xs,lcubic)
+SUBROUTINE qdcshg(xl,det,shg,nel,xs,lcubic)
   use globalvar
   implicit none
   !
@@ -11,24 +11,24 @@ SUBROUTINE qdcshg(xl,det,shl,shg,nel,xs,lcubic)
   real(kind=8) :: det,temp,cof11,cof12,cof13,cof21,cof22,cof23, &
 		cof31,cof32,cof33
   real(kind=8),dimension(3,3) :: xs
-  real(kind=8),dimension(nrowsh,nen) :: shl,shg,shlg
+  real(kind=8),dimension(nrowsh,nen) :: shg,shlg
   real(kind=8),dimension(nesd,nen) :: xl
   !
   !...equal local to global ,first
   shg = shl
-  !...deal with wedge degeneration. B.D. 11/27/08
-  if(.not.lcubic) then	!degeneration to wedge element by following the book
-    do i=1,nrowsh
-      shg(i,3) = shl(i,3) + shl(i,4)	!always 4=3, 8=7
-      shg(i,4) = 0.0
-      shg(i,7) = shl(i,7) + shl(i,8)
-      shg(i,8) = 0.0
-    enddo
-  endif
+  ! !...deal with wedge degeneration. B.D. 11/27/08
+  ! if( et(nel) == 11 ) then	!degeneration to wedge element by following the book
+    ! do i=1,nrowsh
+      ! shg(i,3) = shl(i,3) + shl(i,4)	!always 4=3, 8=7
+      ! shg(i,4) = 0.0d0
+      ! shg(i,7) = shl(i,7) + shl(i,8)
+      ! shg(i,8) = 0.0d0
+    ! enddo
+  ! endif
   !...calculate x,s
   do i=1,3
     do j=1,3
-      temp = 0.0
+      temp = 0.0d0
       do k=1,nen
       temp = temp + shg(i,k) * xl(j,k)
       enddo

@@ -11,9 +11,9 @@ real (kind=8),dimension(nee) :: elmass
 real (kind=8),dimension(nen) :: work
 real (kind=8),dimension(nrowsh,nen) :: shg
 !...initialize
-dsum   = 0.0
-totmas = 0.0
-work   = 0.0
+dsum   = 0.0d0
+totmas = 0.0d0
+work   = 0.0d0
 !...calculate
 totmas = constm*w*det
 do j=1,nen

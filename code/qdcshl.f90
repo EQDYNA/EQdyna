@@ -1,4 +1,8 @@
-subroutine qdcshl(shl)
+!/* Copyright (C) 2006-2020, Earthquake Modeling Lab @ Texas A&M University. 
+! * All Rights Reserved.
+! * This code is part of software EQdyna, please see EQdyna License Agreement
+! * attached before you copy, download, install or use EQdyna./
+subroutine qdcshl
   use globalvar
   implicit none
   !
@@ -8,13 +12,17 @@ subroutine qdcshl(shl)
   ! 	B.D. 8/19/05
   !
   integer(kind=4) :: i,j
-  real(kind=8) :: cst=1.0/8.0	!constant used intensively
-  real(kind=8),dimension(3,8) :: acoor = reshape((/-1,-1,-1, &
-    		1,-1,-1, 1,1,-1, -1,1,-1, -1,-1,1, 1,-1,1, &
-		1,1,1, -1,1,1/),(/3,8/))
-  real (kind=8),dimension(nrowsh,nen) :: shl
+  real(kind=8) :: cst=1.0d0/8.0d0	!constant used intensively
+  real(kind=8),dimension(3,8) :: acoor = reshape((/ -1.0d0, -1.0d0, -1.0d0, &
+													 1.0d0, -1.0d0, -1.0d0, &
+													 1.0d0,  1.0d0, -1.0d0,  &
+													-1.0d0,  1.0d0, -1.0d0, &
+													-1.0d0, -1.0d0,  1.0d0, &
+													 1.0d0, -1.0d0,  1.0d0,  &
+													 1.0d0,  1.0d0,  1.0d0,   &
+													-1.0d0,  1.0d0,  1.0d0/),(/3,8/))
   !
-  w=8.0	!weight for 1-point Gaussian rule
+  w=8.0d0	!weight for 1-point Gaussian rule
   !
   do i=1,8
     shl(4,i) = cst	!the 4th is shape function itself

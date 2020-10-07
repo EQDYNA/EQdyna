@@ -1,20 +1,8 @@
-SUBROUTINE qdckd(shg,mate,vl,dl,stress,elresf,constk,zerovl,&
-porep,pstrmag,ex,PMLb)
+SUBROUTINE qdckd(shg,mate,vl,dl,stress,elresf,constk,zerovl,porep,pstrmag,ex)
+
 use globalvar
 implicit none
-!
-!### program to form internal force ("-k*d") for a continuum element
-!        with "nen" nodes
-!	Avoid calling subroutines for matrix operations to speed up.
-!	B.D. 3/24/05
-!	Further speed up by taking into account zero in B and D 
-!		for 3-D, isotropic elasticity.
-!	B.D. 8/20/05.
-!	Rewrite again: strain-displacement matrix "b" was stored before
-!		time loops. B.D. 7/2/05
-!     Revise for stress rate-velocity formulation for elastoplastic
-!		calculations. B.D. 1/5/12
-!
+
 logical :: zerovl
 integer (kind=4) :: i,j,j1,j2,j3
 real (kind=8) :: constk,temp,porep
@@ -25,17 +13,17 @@ real (kind=8),dimension(nrowsh-1,nen) :: shg
 real (kind=8),dimension(nrowb,nee) :: bb	!correspond to b
 real (kind=8),dimension(nrowc,nrowc) :: cc	!correspond to c
 !...plasticity vlrables. B.D. 1/5/12
-real (kind=8) :: strmea,taomax, yield, rjust,pstrmea,pstrmag,xc(3),ex(3,8),PMLb(8)
+real (kind=8) :: strmea,taomax, yield, rjust,pstrmea,pstrmag,xc(3),ex(3,8)
 real (kind=8),dimension(nstr) :: strdev,pstrinc
 !Parameters for Q model.
 real(kind=8)::Qp,Qs,wkp,wks,taok,cv,cs
 real(kind=8)::lam,miu,Mu,miuu,vols,mate(5)
 integer(kind=4)::k,ip,iq,ir
 !
-pstrmag = 0.0
-stressrate = 0.0
-strain=0.0
-cc=0.0
+pstrmag = 0.0d0
+stressrate = 0.0d0
+strain=0.0d0
+cc=0.0d0
 lam=mate(4)
 miu=mate(5)
 do i=1,3 
@@ -53,12 +41,8 @@ call qdcb(shg,bb)
 !if(.not.zerovl) then !only nonzero velocity, update stress. B.D. 1/5/12
 	!...calculate strainrate
 	! Take into account zero in bb. B.D. 8/20/05
-	strainrate = 0.0	!initialize
-	!Important: OpenMP directives should not be used in this routine as
-	!  they have been used in the parent roution qdct3.f90. Adding these
-	!  directives did not cause slowdown problem with SUN compiler, but 
-	!  results in significant reduction in comupting speed with Intel 
-	!  compiler!! B.D. 8/7/10
+	strainrate = 0.0d0	!initialize
+	
 	do i=1,nen
 		j1 = ned * (i - 1) + 1
 		j2 = ned * (i - 1) + 2
@@ -93,20 +77,20 @@ call qdcb(shg,bb)
 			strdev(i) = stress(i)
 		enddo
 	elseif (C_Q==1) then
-		xc=0.0	
+		xc=0.0d0	
 		do i=1,3
 			do j=1,8
 				xc(i)=xc(i)+ex(i,j)
 			enddo
 		enddo
-		xc=xc/8	
+		xc=xc/8.0d0		
 !For DCPS		
-		if (xc(3)>-1000.)then
-			Qs=10.
-			Qp=20.
+		if (xc(3)>-1000.0d0)then
+			Qs=10.0d0
+			Qp=20.0d0
 		else
-			Qs=50.
-			Qp=100.
+			Qs=50.0d0
+			Qp=100.0d0
 		endif
 !For Tianjin
 		! if (mate(2)<1500)then
@@ -122,8 +106,8 @@ call qdcb(shg,bb)
 		! Modified Day and Bradley(2001) based on Liu(2006)	
 		call qconstant(Qp,taok,wkp,k,cv)
 		call qconstant(Qs,taok,wks,k,cs)
-		wkp=wkp*8;
-		wks=wks*8;
+		wkp=wkp*8.0d0;
+		wks=wks*8.0d0;
 		miuu=miu*cs
 		Mu=(lam+2*miu)*cv
 		vols=strain(1)+strain(2)+strain(3)
@@ -141,25 +125,25 @@ call qdcb(shg,bb)
 		do i=1,6
 			stress(i+6)=anestr(i)
 		enddo
-		stress(1)=2*miuu*strain(1)+(Mu-2*miuu)*vols-0.5*(anestr(1)+anestr1(1))
-		stress(2)=2*miuu*strain(2)+(Mu-2*miuu)*vols-0.5*(anestr(2)+anestr1(2))	
-		stress(3)=2*miuu*strain(3)+(Mu-2*miuu)*vols-0.5*(anestr(3)+anestr1(3))	
-		stress(4)=2*miuu*strain(4)/2-0.5*(anestr(4)+anestr1(4))	
-		stress(5)=2*miuu*strain(5)/2-0.5*(anestr(5)+anestr1(5))	
-		stress(6)=2*miuu*strain(6)/2-0.5*(anestr(6)+anestr1(6))	
+		stress(1)=2.0d0*miuu*strain(1)+(Mu-2.0d0*miuu)*vols-0.5d0*(anestr(1)+anestr1(1))
+		stress(2)=2.0d0*miuu*strain(2)+(Mu-2.0d0*miuu)*vols-0.5d0*(anestr(2)+anestr1(2))	
+		stress(3)=2.0d0*miuu*strain(3)+(Mu-2.0d0*miuu)*vols-0.5d0*(anestr(3)+anestr1(3))	
+		stress(4)=2.0d0*miuu*strain(4)/2.0d0-0.5d0*(anestr(4)+anestr1(4))	
+		stress(5)=2.0d0*miuu*strain(5)/2.0d0-0.5d0*(anestr(5)+anestr1(5))	
+		stress(6)=2.0d0*miuu*strain(6)/2.0d0-0.5d0*(anestr(6)+anestr1(6))	
 	endif!C_Q
 	if (C_elastic==0) then
 		!...Drucker-Prager plasticity in shear. B.D. 1/5/12
 		! refer to the benchmark problem description.
-		strmea = (stress(1)+stress(2)+stress(3))/3.
+		strmea = (stress(1)+stress(2)+stress(3))/3.0d0
 		do i=1,3
 			strdev(i) = stress(i) - strmea
 		enddo
-		taomax = 0.5*(strdev(1)**2+strdev(2)**2+strdev(3)**2) &
+		taomax = 0.5d0*(strdev(1)**2+strdev(2)**2+strdev(3)**2) &
 			+ strdev(4)**2+strdev(5)**2+strdev(6)**2  !second invlriant of deviator
 		taomax=sqrt(taomax)  !kind of max shear
 		yield=ccosphi-sinphi*(strmea + porep)  !yield stress
-		if(yield<0.0) yield=0.0  !non-negative
+		if(yield<0.0d0) yield=0.0d0  !non-negative
 		if(taomax > yield) then  !yielding, stress adjust in deviator domain
 			!rjust = yield/taomax  !adjust ratio
 			!implement viscoplasticity now. B.D. 6/2/12
@@ -174,28 +158,23 @@ call qdcb(shg,bb)
 				endif
 			enddo
 			!calculate plastic strain increment scalar (amplitude)
-			pstrmea = (pstrinc(1)+pstrinc(2)+pstrinc(3))/3.
+			pstrmea = (pstrinc(1)+pstrinc(2)+pstrinc(3))/3.0d0
 			do i=1,6
 				pstrinc(i)=pstrinc(i) - pstrmea
 			enddo
-			pstrmag = 0.5*(pstrinc(1)**2+pstrinc(2)**2+pstrinc(3)**2) &
+			pstrmag = 0.5d0*(pstrinc(1)**2+pstrinc(2)**2+pstrinc(3)**2) &
 					+pstrinc(4)**2+pstrinc(5)**2+pstrinc(6)**2
 			pstrmag = sqrt(pstrmag)
 		endif
 	 endif!C_elastic==0(Plastic)
 !endif !endif not zerovl (update stress)
 
-!...calcuate element internal force
-! Take into account zero in bbT. B.D. 8/20/05
-! Now, damping force and internal force are separated in
-!   rate formulation. But can put together for total
-!   internal force here. B.D. 1/5/12
 temp = constk * w
 do i=1,nstr
 	strtemp(i) = temp * (stress(i) + rdampk * stressrate(i))
 	!strtemp(i) = temp * stress(i)
 enddo
-!!$omp parallel do default(shared) privlte(i,j1,j2,j3)
+
 do i=1,nen
 	j1 = ned * (i - 1) + 1
 	j2 = ned * (i - 1) + 2
@@ -207,11 +186,9 @@ do i=1,nen
 	work(j3) = bb(3,j3)*strtemp(3) + bb(4,j3)*strtemp(4) &
 			+ bb(5,j3)*strtemp(5)
 enddo		
-!!$omp end parallel do
-!!$omp parallel do default(shared) privlte(i)
-!...add into already element forces
+
 do i=1,nee
 	elresf(i) = elresf(i) + work(i)
 enddo
-!!$omp end parallel do
+
 end SUBROUTINE qdckd

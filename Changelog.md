@@ -1,3 +1,74 @@
+# Version 5.2.0
+*new file:   LICENSE
+*modified:   README.md
+*modified:   code/PMLwhg.f90
+*modified:   code/Read_Input_Files.f90
+*modified:   code/comdampv.f90
+*modified:   code/contm.f90
+*modified:   code/driver.f90
+*modified:   code/eqdyna3d.f90
+*modified:   code/faulting.f90
+*deleted:    code/formlm.f90
+*modified:   code/fric.f90
+*modified:   code/globalvar.f90
+*modified:   code/hrglss.f90
+*new file:   code/library_degeneration.f90
+*new file:   code/library_output.f90
+*modified:   code/makefile
+*modified:   code/mesh4num.f90
+*modified:   code/meshgen.f90
+*deleted:    code/parcon.f90
+*modified:   code/qdckd.f90
+*modified:   code/qdcshg.f90
+*modified:   code/qdcshl.f90
+*deleted:    code/qdct1.f90
+*modified:   code/qdct2.f90
+*modified:   code/qdct3.f90
+*modified:   code/thermop.f90
+*deleted:    code/thermop_new.f90
+*deleted:    code/thermop_new2.f90
+*deleted:    code/thermop_old.f90
+*new file:   code/warning.f90
+*renamed:    script/rtp3DMPI.m -> script/Plot_rpt.m
+*deleted:    Guide_EQdyna_4.2.md
+*deleted:    make/makefile
+#Detailed changes:
+New: a license is attached. 
+New: warning.f90 is introduced. It alerts users about potential limitations 
+	in EQdyna.
+New: library_output.f90 is created to handle output. Subroutines include 
+	output_onfault_st, output_offfault_st, output_frt, output_timeanalysis. 
+	Future output could be implemented here.
+New: library_degeneration.f90 is created. 
+	It contains currently five subroutines: wedge, wedge4num, tetra, tetra4num,
+	and reorder. Wedge and tetra are used in meshgen after creating an element 
+	to decide whether to do degeneration. 
+	
+	A domain is determined in wedge and tetra to be one element off the fault. 
+	[Note: The region could be specified or be related to realistic fault geometry, in future development.] 
+	wedge4num and tetra4num are used in mesh4num to create additional number 
+	counts in numel due to degeneration. 
+	
+	The current function is to degenerate a hexahedron to two wedges or five tetrahedrons. 
+	
+	Subroutine reorder is created to simplify the process of degeneration by 
+	assigning the order of local node number in an element. Repeated indices 
+	indicate collapsing of nodes for degeneration. 
+	[Note: the shape of wedge/tetrahedrons are important. The edges of equivalent edges are desired.]  
+New: a controlling parameter C_degen is introduced. 
+	0 stands for no degeneration. 
+	1 stands for degeneration to wedges.
+	2 stands for degeneration into tetrahedrons. 
+New: mesh quality of wedges are improved in eqdyna when C_degen == 1.
+Improvement: move arrays that don’t change over simulations, i.e., global arrays, 
+	to globalvar.f90. No array transference in major subroutines.
+Improvement: adopt real kind = dp, dp = selected_kind(15,307). 
+Improvement: initials are assigned to double precision.
+Improvement: hourglass control is applied to every element regardless of element types. 
+Improvement: Shape functions are kept constant for all types of elements. 
+	No need to sum up local shape functions for collapsed nodes in degeneration.
+Verification: C_degen = 0, 1, 2 for TPV105 3D in SCEC/USGS code verification project.   
+
 # Version 5.1.0
 *modified:   Changelog.md
 *modified:   README.md

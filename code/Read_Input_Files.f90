@@ -1,52 +1,17 @@
-! subroutine Read_Input_Files(C_elastic, C_nuclea, friclaw, ntotft, nucfault, &
-							! npx, npy, npz, &
-							! term, dt, &
-							! xmin, xmax, ymin, ymax, zmin, zmax, &
-							! dis4uniF, dis4uniB, rat, dx, 
-							! fxmin, fxmax, fymin, fymax, fzmin, fzmax, &
-							! nmat, n2mat material, &
-							! me)
-! ! This subroutine is to read controllable parameters and model information from input files. 
-! ! Input files include 
 
-	! use globalvar
-	! implicit none
-	! include 'mpif.h'
-	! integer(kind=4)::C_elastic, C_nuclea, friclaw, ntotft, nucfault, &
-								! npx, npy, npz, &
-								! nmat, n2mat, &
-								! me
-	! real(kind=8):: term, dt, &
-					! xmin, xmax, ymin, ymax, zmin, zmax, &
-					! dis4uniF, dis4uniB, rat, dx
-	! real(kind=8),allocatable:: fxmin, fxmax, fymin, fymax, fzmin, fzmax, &
-								! material
-								
-	! allocate(fxmin(ntotft),fxmax(ntotft),fymin(ntotft),fymax(ntotft),fzmin(ntotft),fzmax(ntotft),material(nmat,n2mat))
-
-	! call readglobal(C_elastic, C_nuclea, friclaw, ntotft, nucfault, &
-								! npx, npy, npz, &
-								! term, dt, me)
-	! call readmodelgeometry(xmin, xmax, ymin, ymax, zmin, zmax, &
-								! dis4uniF, dis4uniB, rat, dx, me)	
-	! call readfaultgeometry(fxmin, fxmax, fymin, fymax, fzmin, fzmax, me)
-	! call readmaterial(material, me)
-
-! end subroutine Read_Input_Files
-! #1 readgloabl -----------------------------------------------------------
-subroutine readglobal(me)
+subroutine readglobal
 ! This subroutine is read information from FE_global.txt
 	use globalvar
 	implicit none
 	include 'mpif.h'
 
 	logical::file_exists
-	integer(kind=4):: me, i 
+	integer(kind=4):: i 
 	
 	
 	if (me == 0) then 
 		INQUIRE(FILE="FE_Global.txt", EXIST=file_exists)
-		write(*,*) 'Checking FE_global.txt by the master procs', me
+		!write(*,*) 'Checking FE_global.txt by the master procs', me
 		if (file_exists == 0) then
 			write(*,*) 'FE_Global.txt is required but missing ...'
 			pause
@@ -63,6 +28,7 @@ subroutine readglobal(me)
 	open(unit = 1001, file = 'FE_Global.txt', form = 'formatted', status = 'old')
 		read(1001,*) C_elastic
 		read(1001,*) C_nuclea
+		read(1001,*) C_degen
 		read(1001,*) friclaw
 		read(1001,*) ntotft
 		read(1001,*) nucfault
@@ -78,18 +44,17 @@ subroutine readglobal(me)
 	close(1001)
 end subroutine readglobal 
 ! #2 readmodelgeometry -------------------------------------------------
-subroutine readmodelgeometry(me)
+subroutine readmodelgeometry
 ! This subroutine is read information from FE_global.txt
 	use globalvar
 	implicit none
 	include 'mpif.h'
 
 	logical::file_exists
-	integer(kind=4):: me
 	
 	if (me == 0) then 
 		INQUIRE(FILE="FE_Model_Geometry.txt", EXIST=file_exists)
-		write(*,*) 'Checking FE_Model_Geometry.txt by the master procs', me
+		!write(*,*) 'Checking FE_Model_Geometry.txt by the master procs', me
 		if (file_exists == 0) then
 			write(*,*) 'FE_Model_Geometry.txt is required but missing ...'
 			pause
@@ -115,18 +80,18 @@ subroutine readmodelgeometry(me)
 end subroutine readmodelgeometry
 
 ! #3 readfaultgeometry
-subroutine readfaultgeometry(me)
+subroutine readfaultgeometry
 ! This subroutine is read information from FE_Fault_Geometry.txt
 	use globalvar
 	implicit none
 	include 'mpif.h'
 
 	logical::file_exists
-	integer(kind=4)::me,i
+	integer(kind=4)::i
 	
 	if (me == 0) then 
 		INQUIRE(FILE="FE_Fault_Geometry.txt", EXIST=file_exists)
-		write(*,*) 'Checking FE_Fault_Geometry.txt by the master procs', me
+		!write(*,*) 'Checking FE_Fault_Geometry.txt by the master procs', me
 		if (file_exists == 0) then
 			write(*,*) 'FE_Fault_Geometry.txt is required but missing ...'
 			pause
@@ -148,21 +113,33 @@ subroutine readfaultgeometry(me)
 			read(1003,*) fzmin(i), fzmax(i)
 		enddo
 	close(1003)
+
+	do i = 1, ntotft
+		fltxyz(1,1,i)=fxmin(i)
+		fltxyz(2,1,i)=fxmax(i)
+		fltxyz(1,2,i)=fymin(i)
+		fltxyz(2,2,i)=fymax(i)
+		fltxyz(1,3,i)=fzmin(i)
+		fltxyz(2,3,i)=fzmax(i)
+		fltxyz(1,4,i)=fstrike*pi/180.0d0
+		fltxyz(2,4,i)=fdip*pi/180.0d0
+	enddo
+	
 end subroutine readfaultgeometry
 
 ! #4 readmaterial --------------------------------------------------------
-subroutine readmaterial(me)
+subroutine readmaterial
 ! This subroutine is read information from FE_Material.txt
 	use globalvar
 	implicit none
 	include 'mpif.h'
 
 	logical::file_exists
-	integer(kind=4):: me, i, j 
+	integer(kind=4):: i, j 
 	
 	if (me == 0) then 
 		INQUIRE(FILE="FE_Material.txt", EXIST=file_exists)
-		write(*,*) 'Checking FE_Material.txt by the master procs', me
+		!write(*,*) 'Checking FE_Material.txt by the master procs', me
 		if (file_exists == 0) then
 			write(*,*) 'FE_Material.txt is required but missing ...'
 			pause
@@ -180,22 +157,28 @@ subroutine readmaterial(me)
 		do i = 1, nmat
 			read(1004,*) (material(i,j), j = 1, n2mat)
 		enddo 
-	close(1002)
+	close(1004)
+
+	ccosphi=coheplas*dcos(atan(bulk))
+	sinphi=dsin(atan(bulk))
+	nstep=idnint(term/dt)
+	rdampk=rdampk*dt	
+	
 end subroutine readmaterial
 
 ! #5 readfric --------------------------------------------------------
-subroutine readfric(me)
+subroutine readfric
 ! This subroutine is read information from FE_Material.txt
 	use globalvar
 	implicit none
 	include 'mpif.h'
 
 	logical::file_exists
-	integer(kind=4):: me, i, j 
+	integer(kind=4):: i, j 
 	
 	if (me == 0) then 
 		INQUIRE(FILE="FE_Fric.txt", EXIST=file_exists)
-		write(*,*) 'Checking FE_Fric.txt by the master procs', me
+		!write(*,*) 'Checking FE_Fric.txt by the master procs', me
 		if (file_exists == 0) then
 			write(*,*) 'FE_Fric.txt is required but missing ...'
 			pause
@@ -284,18 +267,18 @@ subroutine readfric(me)
 end subroutine readfric
 
 ! #6 readstations --------------------------------------------------------
-subroutine readstations1(me)
+subroutine readstations1
 ! This subroutine is read information from FE_Stations.txt
 	use globalvar
 	implicit none
 	include 'mpif.h'
 
 	logical::file_exists
-	integer(kind=4):: me, i, j 
+	integer(kind=4):: i, j 
 	
 	if (me == 0) then 
 		INQUIRE(FILE="FE_Stations.txt", EXIST=file_exists)
-		write(*,*) 'Checking FE_Stations.txt by the master procs', me
+		!write(*,*) 'Checking FE_Stations.txt by the master procs', me
 		if (file_exists == 0) then
 			write(*,*) 'FE_Stations.txt is required but missing ...'
 			pause
@@ -312,22 +295,22 @@ subroutine readstations1(me)
 	open(unit = 1006, file = 'FE_Stations.txt', form = 'formatted', status = 'old')
 		read(1006,*) n4nds
 		read(1006,*) (nonfs(i), i = 1, ntotft)
-		write(*,*) 'n4nds,nonfs',n4nds, (nonfs(i), i = 1, ntotft), me
+		!write(*,*) 'n4nds,nonfs',n4nds, (nonfs(i), i = 1, ntotft), me
 	close(1006)
 end subroutine readstations1
 ! #7 readstations2 --------------------------------------------------------
-subroutine readstations2(me)
+subroutine readstations2
 ! This subroutine is read information from FE_Stations.txt
 	use globalvar
 	implicit none
 	include 'mpif.h'
 
 	logical::file_exists
-	integer(kind=4):: me, i, j 
+	integer(kind=4):: i, j 
 	
 	if (me == 0) then 
 		INQUIRE(FILE="FE_Stations.txt", EXIST=file_exists)
-		write(*,*) 'Checking FE_Stations.txt by the master procs', me
+		!write(*,*) 'Checking FE_Stations.txt by the master procs', me
 		if (file_exists == 0) then
 			write(*,*) 'FE_Stations.txt is required but missing ...'
 			pause
@@ -354,4 +337,8 @@ subroutine readstations2(me)
 			read(1006,*) x4nds(1,i), x4nds(2,i), x4nds(3,i)
 		enddo 
 	close(1006)
+	
+	xonfs=xonfs*1000.0d0  !convert from km to m
+	x4nds=x4nds*1000.0d0		
+		
 end subroutine readstations2
