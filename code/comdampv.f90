@@ -2,77 +2,77 @@ subroutine comdampv(x2,y,z,dv)
 use globalvar
 implicit none
 integer(kind=4)::i
-real (kind=8) :: x2,y,z,xmax1,xmin1,ymax1,ymin1,zmin1,delta,maxdx,maxdy,maxdz
+real (kind=8) :: x2,y,z,xmax0,xmin0,ymax0,ymin0,zmin0,delta,maxdx,maxdy,maxdz
 real (kind=8),dimension(3)::damp
 real (kind=8),dimension(9)::dv
 	!
-	xmax1=PMLb(1)
-	xmin1=PMLb(2)
-	ymax1=PMLb(3)
-	ymin1=PMLb(4)
-	zmin1=PMLb(5)
+	xmax0=PMLb(1)
+	xmin0=PMLb(2)
+	ymax0=PMLb(3)
+	ymin0=PMLb(4)
+	zmin0=PMLb(5)
 	maxdx=PMLb(6)
 	maxdy=PMLb(7)
 	maxdz=PMLb(8)	
 	!
-	if (z<=zmin1) then !region 1
-		damp(3)=abs(z-zmin1)		
-		if (x2>=xmax1.and.y>=ymax1) then !region 11
-			damp(1)=abs(x2-xmax1)
-			damp(2)=abs(y-ymax1)			
-		elseif (x2>=xmax1.and.y<=ymin1) then !region 12
-			damp(1)=abs(x2-xmax1)
-			damp(2)=abs(y-ymin1)	
-		elseif (x2<=xmin1.and.y<=ymin1) then !region 13
-			damp(1)=abs(x2-xmin1)
-			damp(2)=abs(y-ymin1)			
-		elseif (x2<=xmin1.and.y>=xmax1) then !region 14
-			damp(1)=abs(x2-xmin1)
-			damp(2)=abs(y-ymax1)
-		elseif (x2>=xmax1.and.y>ymin1.and.y<ymax1) then !region 1_12
-			damp(1)=abs(x2-xmax1)
+	if (z<=zmin0) then !region 1
+		damp(3)=abs(z-zmin0)		
+		if (x2>=xmax0.and.y>=ymax0) then !region 11
+			damp(1)=abs(x2-xmax0)
+			damp(2)=abs(y-ymax0)			
+		elseif (x2>=xmax0.and.y<=ymin0) then !region 12
+			damp(1)=abs(x2-xmax0)
+			damp(2)=abs(y-ymin0)	
+		elseif (x2<=xmin0.and.y<=ymin0) then !region 13
+			damp(1)=abs(x2-xmin0)
+			damp(2)=abs(y-ymin0)			
+		elseif (x2<=xmin0.and.y>=xmax0) then !region 14
+			damp(1)=abs(x2-xmin0)
+			damp(2)=abs(y-ymax0)
+		elseif (x2>=xmax0.and.y>ymin0.and.y<ymax0) then !region 1_12
+			damp(1)=abs(x2-xmax0)
 			damp(2)=0.0d0
-		elseif (y<=ymin1.and.x2>xmin1.and.x2<xmax1) then !region 1_23	
+		elseif (y<=ymin0.and.x2>xmin0.and.x2<xmax0) then !region 1_23	
 			damp(1)=0.0d0
-			damp(2)=abs(y-ymin1)
-		elseif (x2<=xmin1.and.y>ymin1.and.y<ymax1) then !region 1_34	
-			damp(1)=abs(x2-xmin1)
+			damp(2)=abs(y-ymin0)
+		elseif (x2<=xmin0.and.y>ymin0.and.y<ymax0) then !region 1_34	
+			damp(1)=abs(x2-xmin0)
 			damp(2)=0.0d0
-		elseif (y>=ymax1.and.x2>xmin1.and.x2<xmax1) then !region 1_41	
+		elseif (y>=ymax0.and.x2>xmin0.and.x2<xmax0) then !region 1_41	
 			damp(1)=0.0d0
-			damp(2)=abs(y-ymax1)
+			damp(2)=abs(y-ymax0)
 		else
 		!Middle area 9 missing previously.
 		!Feb.18.2016/D.Liu
 			damp(1)=0.0d0
 			damp(2)=0.0d0 
 		endif
-	elseif (z>zmin1) then !region 2
+	elseif (z>zmin0) then !region 2
 		damp(3)=0.0d0
-		if (x2>=xmax1.and.y>=ymax1) then !region 11
-			damp(1)=abs(x2-xmax1)
-			damp(2)=abs(y-ymax1)			
-		elseif (x2>=xmax1.and.y<=ymin1) then !region 12
-			damp(1)=abs(x2-xmax1)
-			damp(2)=abs(y-ymin1)	
-		elseif (x2<=xmin1.and.y<=ymin1) then !region 13
-			damp(1)=abs(x2-xmin1)
-			damp(2)=abs(y-ymin1)			
-		elseif (x2<=xmin1.and.y>=xmax1) then !region 14
-			damp(1)=abs(x2-xmin1)
-			damp(2)=abs(y-ymax1)
-		elseif (x2>=xmax1.and.y>ymin1.and.y<ymax1) then !region 1_12
-			damp(1)=abs(x2-xmax1)
+		if (x2>=xmax0.and.y>=ymax0) then !region 11
+			damp(1)=abs(x2-xmax0)
+			damp(2)=abs(y-ymax0)			
+		elseif (x2>=xmax0.and.y<=ymin0) then !region 12
+			damp(1)=abs(x2-xmax0)
+			damp(2)=abs(y-ymin0)	
+		elseif (x2<=xmin0.and.y<=ymin0) then !region 13
+			damp(1)=abs(x2-xmin0)
+			damp(2)=abs(y-ymin0)			
+		elseif (x2<=xmin0.and.y>=xmax0) then !region 14
+			damp(1)=abs(x2-xmin0)
+			damp(2)=abs(y-ymax0)
+		elseif (x2>=xmax0.and.y>ymin0.and.y<ymax0) then !region 1_12
+			damp(1)=abs(x2-xmax0)
 			damp(2)=0.0d0
-		elseif (y<=ymin1.and.x2>xmin1.and.x2<xmax1) then !region 1_23	
+		elseif (y<=ymin0.and.x2>xmin0.and.x2<xmax0) then !region 1_23	
 			damp(1)=0.0d0
-			damp(2)=abs(y-ymin1)
-		elseif (x2<=xmin1.and.y>ymin1.and.y<ymax1) then !region 1_34	
-			damp(1)=abs(x2-xmin1)
+			damp(2)=abs(y-ymin0)
+		elseif (x2<=xmin0.and.y>ymin0.and.y<ymax0) then !region 1_34	
+			damp(1)=abs(x2-xmin0)
 			damp(2)=0.0d0
-		elseif (y>=ymax1.and.x2>xmin1.and.x2<xmax1) then !region 1_41	
+		elseif (y>=ymax0.and.x2>xmin0.and.x2<xmax0) then !region 1_41	
 			damp(1)=0.0d0
-			damp(2)=abs(y-ymax1)
+			damp(2)=abs(y-ymax0)
 		else 
 		!Middle area 9 missing previously.
 		!Feb.18.2016/D.Liu

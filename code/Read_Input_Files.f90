@@ -32,6 +32,8 @@ subroutine readglobal
 		read(1001,*) friclaw
 		read(1001,*) ntotft
 		read(1001,*) nucfault
+		read(1001,*) TPV
+		read(1001,*) output_plastic
 		read(1001,*) 
 		read(1001,*) npx, npy, npz
 		read(1001,*)
@@ -163,7 +165,7 @@ subroutine readmaterial
 	sinphi=dsin(atan(bulk))
 	nstep=idnint(term/dt)
 	rdampk=rdampk*dt	
-	
+	tv = 2.0d0*dx/3464.0d0
 end subroutine readmaterial
 
 ! #5 readfric --------------------------------------------------------
@@ -260,8 +262,8 @@ subroutine readfric
 		read(1005,*) fric_ini_sliprate
 		read(1005,*) fric_tp_Tini
 		read(1005,*) fric_tp_pini
-		read(1005,*) dxtp
-		read(1005,*) tpw
+		! read(1005,*) dxtp
+		! read(1005,*) tpw
 	endif 	
 	close(1005)
 end subroutine readfric
@@ -333,6 +335,7 @@ subroutine readstations2
 				read(1006,*) xonfs(1,j,i), xonfs(2,j,i)
 			enddo 
 		enddo
+		read(1006,*)
 		do i = 1, n4nds
 			read(1006,*) x4nds(1,i), x4nds(2,i), x4nds(3,i)
 		enddo 
@@ -342,3 +345,46 @@ subroutine readstations2
 	x4nds=x4nds*1000.0d0		
 		
 end subroutine readstations2
+
+! #8 read_rough_geometry ------------------------------------------------
+subroutine read_fault_rough_geometry
+! This subroutine is read information from FE_Fault_Rough_Geometry.txt
+	use globalvar
+	implicit none
+	include 'mpif.h'
+
+	logical::file_exists
+	integer(kind=4):: i, j
+	
+	if (me == 0) then 
+		INQUIRE(FILE="FE_Fault_Rough_Geometry.txt", EXIST=file_exists)
+		!write(*,*) 'Checking FE_Fault_Rough_Geometry.txt by the master procs', me
+		if (file_exists == 0) then
+			write(*,*) 'FE_Fault_Rough_Geometry.txt is required but missing ...'
+			pause
+		endif 
+	endif 
+	if (me == 0) then 
+		INQUIRE(FILE="FE_Fault_Rough_Geometry.txt", EXIST=file_exists)
+		if (file_exists == 0) then
+			write(*,*) 'FE_Fault_Rough_Geometry.txt is still missing, so exiting EQdyna'
+			stop
+		endif 
+	endif 	
+	
+	open(unit = 1008, file = 'FE_Fault_Rough_Geometry.txt', form = 'formatted', status = 'old')
+		read(1008,*) nnx, nnz
+		read(1008,*) dxtmp 
+	close(1008)
+	
+	allocate(rough_geo(3,nnx*nnz))
+	
+	open(unit = 1008, file = 'FE_Fault_Rough_Geometry.txt', form = 'formatted', status = 'old')
+		read(1008,*)
+		read(1008,*)
+		do i = 1, nnx*nnz
+			read(1008,*) rough_geo(1,i), rough_geo(2,i), rough_geo(3,i)
+		enddo
+	close(1008)	
+		
+end subroutine read_fault_rough_geometry

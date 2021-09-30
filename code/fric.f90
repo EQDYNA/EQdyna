@@ -81,11 +81,11 @@ SUBROUTINE rate_state_slip_law(V2,psi,fricsgl,xmu,dxmudv)
   !### subroutine to implement rate- and state- 
   ! friction law for fault dynamics. Bin Luo 4/9/2014
   !
-  real (kind=8) :: xmu, dxmudv
-  real (kind=8) :: V2,psi,psiss,fLV,fss
-  real (kind=8) :: A,B,L,f0,V0,fw,Vw
-  real (kind=8),dimension(100) :: fricsgl
-  real (kind=8) :: tmp, tmpc
+  real (kind = dp) :: xmu, dxmudv
+  real (kind = dp) :: V2,psi,psiss,fLV,fss,fssa
+  real (kind = dp) :: A,B,L,f0,V0,fw,Vw
+  real (kind = dp),dimension(100) :: fricsgl
+  real (kind = dp) :: tmp, tmpc
   !
   A  = fricsgl(9)
   B  = fricsgl(10)
@@ -100,11 +100,28 @@ SUBROUTINE rate_state_slip_law(V2,psi,fricsgl,xmu,dxmudv)
   xmu = A * dlog(tmp + sqrt(tmp**2 + 1.0d0)) !arcsinh(z)= ln(z+sqrt(z^2+1))
   dxmudv = A * tmpc / sqrt(1.0d0 + tmp**2)  ! d(arcsinh(z))/dz = 1/sqrt(1+z^2)
   fLV = f0 - (B - A) * dlog(V2/V0)
+  !fLV = max(1.0d-8, fLV)
   fss = fw + (fLV - fw) / ((1.0d0 + (V2/Vw)**8)**0.125d0)
-  psiss = A * dlog(2.0d0 * V0 / V2 * dsinh(fss/A))
+  fssa = fss/A
+  !fssa = max(1.0d-8, fssa)
+  ! Using sinh(x) = (exp(x) - exp(-x))/2
+  !psiss = A * dlog(2.0d0 * V0 / V2 * dsinh(fss/A))
+  psiss = A * dlog(2.0d0 * V0 / V2 * (dexp(fssa) - dexp(-fssa))/2.0d0)
   psi = psiss + (psi - psiss) * dexp(-V2*dt/L)
   !
 end SUBROUTINE rate_state_slip_law
 
-
+subroutine rate_state_normal_stress(V2, theta_pc, theta_pc_dot, tnrm, fricsgl)
+	use globalvar
+	implicit none
+	real (kind = dp) :: V2, theta_pc, theta_pc_dot, tnrm, L
+	real (kind = dp),dimension(100) :: fricsgl
+	
+	L  = fricsgl(11)
+	
+	theta_pc_dot = - V2/L*(theta_pc - abs(tnrm))
+	!theta_pc = theta_pc + theta_pc_dot*dt
+	theta_pc = abs(tnrm) + (theta_pc - abs(tnrm))*dexp(-V2*dt/L)
+	
+end subroutine rate_state_normal_stress
 

@@ -17,7 +17,7 @@ PROGRAM EQdyna_3D
 
 	if (me == master) then 
 		write(*,*) '====================================================================='
-		write(*,*) '================== Welcome to EQdyna 3D 5.2.0 ======================='
+		write(*,*) '================== Welcome to EQdyna 3D 5.2.2 ======================='
 		write(*,*) '===== Product of Earthquake Modeling Lab @ Texas A&M University ====='
 		write(*,*) '========== Website https://seismotamu.wixsite.com/emlam ============='
 		write(*,*) '=========== Contacts: dunyuliu@tamu.edu, bduan@tamu.edu ============='
@@ -56,6 +56,8 @@ PROGRAM EQdyna_3D
 
 	allocate(an4nds(2,n4nds), xonfs(2,itmp,ntotft), x4nds(3,n4nds))
 	call readstations2
+	
+	if (rough_fault == 1) call read_fault_rough_geometry
 
 	call warning
 	
@@ -70,7 +72,7 @@ PROGRAM EQdyna_3D
 
 	call mesh4num
 	
-	allocate(id1(maxm),locid(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp),stat=alloc_err) 
+	allocate(id1(maxm),locid(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp), stat=alloc_err) 
 
 	allocate(ien(nen,numel), mat(numel,5), et(numel), eleporep(numel), pstrain(numel), &
 				eledet(numel), elemass(nee,numel), eleshp(nrowsh-1,nen,numel), &
@@ -111,7 +113,11 @@ PROGRAM EQdyna_3D
 	allocate(s1(5*maxm))
 	s1=0.0d0
 	
+	call memory_estimate
+	
 	call meshgen
+	
+	if (output_ground_motion == 1) call find_surface_node_id
 	
     if (C_degen == 1) then 
         do i = 1, numnp
@@ -188,10 +194,12 @@ PROGRAM EQdyna_3D
 	endif
 	
 	time1=MPI_WTIME()
-
-	call output_onfault_st
 	
-	call output_offfault_st
+	if (output_ground_motion == 0) then 
+		call output_onfault_st
+	
+		call output_offfault_st
+	endif
 	
 	call output_frt
 
@@ -199,8 +207,9 @@ PROGRAM EQdyna_3D
 	timeused(8)=time2-time1 
 	timeover=MPI_WTIME()
 	timeused(9)=timeover-timebegin 
-
-	call output_timeanalysis
+	
+	if (timeinfo == 1) call output_timeanalysis
+	if (output_plastic == 1) call output_plastic_strain
 	
 	call MPI_Finalize(ierr)
 	stop

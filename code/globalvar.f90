@@ -27,7 +27,7 @@ MODULE globalvar
 	real (kind = dp), allocatable, dimension(:) :: brhs, alhs, v1, d1, s1, miuonf, vponf, eleporep, pstrain, eledet, fnms 
 	real (kind = dp), allocatable, dimension(:,:) :: x, d, v, mat, shl, fnft, arn, r4nuc, arn4m, slp4fri, state, elemass, ss, plane1, plane2
 	real (kind = dp), allocatable, dimension(:,:,:) :: fric, un, us, ud, fltsta, fltslp, eleshp, phi
-	integer (kind = 4), allocatable, dimension(:) :: nftnd,  id1, ids, et, locid, dof1
+	integer (kind = 4), allocatable, dimension(:) :: nftnd,  id1, ids, et, locid, dof1, surface_node_id
 	integer (kind = 4), allocatable, dimension(:,:) :: ien, anonfs
 	integer (kind = 4), allocatable, dimension(:,:,:) :: nsmp
 	!-------------------------------------------------------------------!
@@ -66,7 +66,7 @@ MODULE globalvar
 	!	Typical valus varies from 0.05~0.15.Goudreau& Hallquist(1982).
 	real(kind = dp)::rhow=1000.d0, b11=0.926793, b33=1.073206, b13=-0.169029, &
 		critt0=0.5d0, srcrad0=4000.d0, vrupt0=1500.d0, critd0, cohes, brangle, &
-		bulk=0.1934d0,coheplas=1.36d6,tv=0.03d0,ccosphi, sinphi, mus, mud
+		bulk=0.75d0,coheplas=5.0d6, tv, ccosphi, sinphi, mus, mud
 	integer(kind=4)::ninterval=1,nftmx,nonmx, nt
 	real(kind = dp)::fstrike=270.,fdip=90.
 	
@@ -101,5 +101,10 @@ MODULE globalvar
 	!xonfs(2,nonfs(ntotft),ntotft)
 	!x4nfs(3,n4nds)
 	logical :: lstr
+	integer(kind = 4) :: TPV = -1, output_plastic
+	!For arrays of rough fault geometry
+	real (kind = dp) :: dxtmp, perturb = 0.7d0, gamar = 0.66d0, roumax = 2.8d3
+	integer (kind = 4) :: nnx, nnz, rough_fault = 1, timeinfo = 0, output_ground_motion = 1, surface_nnode = 0
+	real (kind = dp), allocatable, dimension(:,:) :: rough_geo	
 	!-------------------------------------------------------------------!    
 end MODULE globalvar 	      

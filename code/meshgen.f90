@@ -25,6 +25,7 @@ subroutine meshgen
 	logical,dimension(ntotft) :: ynft
 	character(len=30)::meshfile
 	character(len=100)::fname
+	real (kind = dp) :: ycoort, pfx = 0.0d0, pfz = 0.0d0
 	!-------------------------------------------------------------------!
 	!------------Early Oct.2015/ D.Liu----------------------------------!
 	!------------Input of initial stress for TSN------------------------!
@@ -274,7 +275,11 @@ subroutine meshgen
 				x(1,nnode) = xcoor
 				x(2,nnode) = ycoor
 				x(3,nnode) = zcoor
-					
+				if (rough_fault == 1) then 
+					call insert_rough_fault(xcoor, ycoor, zcoor, ycoort, pfx, pfz)
+					x(2,nnode) = ycoort
+				endif 
+				
 				zz=ndof
 				if (xcoor>PMLb(1).or.xcoor<PMLb(2).or.ycoor>PMLb(3).or.ycoor<PMLb(4) &
 				.or.zcoor<PMLb(5)) then
@@ -418,6 +423,10 @@ subroutine meshgen
 							x(2,msnode) = ycoor
 							x(3,msnode) = zcoor
 							
+							if (rough_fault == 1) then 
+								x(2,msnode) = ycoort
+							endif
+							
 							!3DMPI
 							if(ix == 1) then
 								fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 1
@@ -484,10 +493,23 @@ subroutine meshgen
 							un(3,nftnd0(ift),ift) = dcos(fltxyz(2,4,ift))		
 							us(1,nftnd0(ift),ift) = -dsin(fltxyz(1,4,ift))
 							us(2,nftnd0(ift),ift) = -dcos(fltxyz(1,4,ift))
-							us(3,nftnd0(ift),ift) = 0.0
+							us(3,nftnd0(ift),ift) = 0.0d0
 							ud(1,nftnd0(ift),ift) = dcos(fltxyz(1,4,ift))*dcos(fltxyz(2,4,ift))
 							ud(2,nftnd0(ift),ift) = dsin(fltxyz(1,4,ift))*dcos(fltxyz(2,4,ift))
 							ud(3,nftnd0(ift),ift) = dsin(fltxyz(2,4,ift))
+							
+							if (rough_fault == 1) then
+								un(1,nftnd0(ift),ift) = -pfx/(pfx**2 + 1.0d0 + pfz**2)**0.5
+								un(2,nftnd0(ift),ift) = 1.0d0/(pfx**2 + 1.0d0 + pfz**2)**0.5
+								un(3,nftnd0(ift),ift) = -pfz/(pfx**2 + 1.0d0 + pfz**2)**0.5	
+								us(1,nftnd0(ift),ift) = 1.0d0/(1.0d0 + pfx**2)**0.5
+								us(2,nftnd0(ift),ift) = pfx/(1.0d0 + pfx**2)**0.5
+								us(3,nftnd0(ift),ift) = 0.0d0
+								ud(1,nftnd0(ift),ift) = us(2,nftnd0(ift),ift)*un(3,nftnd0(ift),ift) - us(3,nftnd0(ift),ift)*un(2,nftnd0(ift),ift)
+								ud(2,nftnd0(ift),ift) = us(3,nftnd0(ift),ift)*un(1,nftnd0(ift),ift) - us(1,nftnd0(ift),ift)*un(3,nftnd0(ift),ift)
+								ud(3,nftnd0(ift),ift) = us(1,nftnd0(ift),ift)*un(2,nftnd0(ift),ift) - us(2,nftnd0(ift),ift)*un(1,nftnd0(ift),ift)
+							endif 							
+							
 							!...prepare for area calculation
 							if(ixfi(ift)==0) ixfi(ift)=ix
 							if(izfi(ift)==0) izfi(ift)=iz
@@ -496,37 +518,108 @@ subroutine meshgen
 							fltrc(1,ifs(ift),ifd(ift),ift) = msnode	!master node
 							fltrc(2,ifs(ift),ifd(ift),ift) = nftnd0(ift) !fault node num in sequence
 
-							fric(1,nftnd0(ift),ift) = 0.18
-							fric(2,nftnd0(ift),ift) = 0.12			
-							fric(3,nftnd0(ift),ift) = 0.30    	!D0
+							fric(1,nftnd0(ift),ift) = fric_sw_fs
+							fric(2,nftnd0(ift),ift) = fric_sw_fd		
+							fric(3,nftnd0(ift),ift) = fric_sw_D0 !D0
 							fric(4,nftnd0(ift),ift) = 0.0  		!cohesion
 							fric(5,nftnd0(ift),ift) = 0.03  	!Viscoplastic relaxation time
-							fric(6,nftnd0(ift),ift) = 0.0		!pore pressure		
+							
+							if (C_elastic == 0) then 
+								fric(6,nftnd0(ift),ift) = 0.0d0!rhow*grav*abs(zcoor)*gama		!pore pressure
+								!if (TPV==2802) fric(6,nftnd0(ift),ift) = rhow*grav*min(abs(zcoor),5.0d3)
+							elseif (C_elastic == 1) then 
+								fric(6,nftnd0(ift),ift) = 0.0d0
+							endif 
 							
 							if (C_elastic==1) then
-								fric(7,nftnd0(ift),ift) = -max(min(grav*1670.0d0*abs(zcoor),45.0d6),grav*1670.0d0*dx/2.0d0) 
-								fric(8,nftnd0(ift),ift) = -fric(7,nftnd0(ift),ift)*0.41d0
+								fric(7,nftnd0(ift),ift) = -120.0d6  
+								fric(8,nftnd0(ift),ift) = 40.0d6 
 								fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
+								if (TPV==104) then 
+									fric(7,nftnd0(ift),ift) = -120.0d6  
+									fric(8,nftnd0(ift),ift) = 40.0d6 
+									fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
+								endif
+								if (TPV==105) then 
+									fric(7,nftnd0(ift),ift) = -max(min(grav*1670.0d0*abs(zcoor),45.0d6),grav*1670.0d0*dx/2.0d0) 
+									fric(8,nftnd0(ift),ift) = -fric(7,nftnd0(ift),ift)*0.41d0
+									fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
+								endif
 							endif
 
 							if (friclaw >= 3)then 
-								call fb1(xcoor,fric_ww,fric_w, tmp1)
-								call fb2(-zcoor,fric_ww,fric_w, tmp2)
-								fric(9,nftnd0(ift),ift) = fric_rsf_a + fric_rsf_deltaa0*(1.0d0-tmp1*tmp2)
+								if (TPV==105) then
+									call fb1(xcoor,fric_ww,fric_w, tmp1)
+									call fb2(-zcoor,fric_ww,fric_w, tmp2)
+								endif
+								if (TPV == 104) then 
+									if (abs(xcoor)<=15e3) then 
+										tmp1=1.0
+									elseif ((abs(xcoor)<18e3).and.(abs(xcoor)>15e3)) then 
+										tmp1=0.5*(1+dtanh(3e3/(abs(xcoor)-18e3)+3e3/(abs(xcoor)-15e3)))
+									else
+										tmp1=0.0
+									endif
+									if (abs(zcoor--7.5e3)<=7.5e3) then 
+										tmp2=1.0
+									elseif ((abs(zcoor--7.5e3)<10.5e3).and.(abs(zcoor--7.5e3)>7.5e3)) then 
+										tmp2=0.5*(1+dtanh(3e3/(abs(zcoor--7.5e3)-10.5e3)+3e3/(abs(zcoor--7.5e3)-7.5e3)))
+									else
+										tmp2=0.0
+									endif				
+								endif
+								if (TPV == 2800 .or. TPV == 2801 .or. TPV == 2802) then 
+									! if (abs(xcoor)<=15.0d3) then 
+										! tmp1=1.0d0
+									! elseif ((abs(xcoor)<18.0d3).and.(abs(xcoor)>15.0d3)) then 
+										! tmp1=0.5d0*(1.0d0+dtanh(3.0d3/(abs(xcoor)-18.0d3)+3.0d3/(abs(xcoor)-15.0d3)))
+									! else
+										! tmp1=0.0d0
+									! endif
+									! if (abs(zcoor--7.5d3)<=7.5d3) then 
+										! tmp2=1.0d0
+									! elseif ((abs(zcoor--7.5d3)<10.5d3).and.(abs(zcoor--7.5d3)>7.5d3)) then 
+										! tmp2=0.5d0*(1+dtanh(3.0d3/(abs(zcoor--7.5d3)-10.5d3)+3.0d3/(abs(zcoor--7.5d3)-7.5d3)))
+									! else
+										! tmp2=0.0d0
+									! endif								
+									if (abs(xcoor)<=20.0d3) then 
+										tmp1 = 1.0d0
+									elseif ((abs(xcoor)>20.0d3).and.(abs(xcoor)<22.0d3)) then 
+										tmp1 = 1.0d0 - (abs(xcoor)-20.0d3)/2.0d3
+									elseif (abs(xcoor)>=22.0d3) then 
+										tmp1 = 0.0d0
+									endif
+									if (abs(zcoor)>=2.0d3 .and. abs(zcoor)<=14.0d3) then 
+										tmp2 = 1.0d0
+									elseif (abs(zcoor)<2.0d3) then 
+										tmp2 = 1.0d0 - (2.0d3 - abs(zcoor))/2.0d3
+									elseif ((abs(zcoor)>14.0d3) .and. (abs(zcoor)<15.0d3)) then
+										tmp2 = 1.0d0 - (abs(zcoor)-14.0d3)/1.0d3
+									elseif (abs(zcoor)>=15.0d3) then 
+										tmp2 = 0.0d0
+									endif				
+									tmp3 = fric_rsf_deltaa0
+									if (abs(zcoor)>15.0d3) then 
+										tmp3 = 2.0d0*fric_rsf_deltaa0
+									endif 
+								endif								
+								fric(9,nftnd0(ift),ift) = fric_rsf_a + tmp3*(1.0d0-tmp1*tmp2)
 								fric(10,nftnd0(ift),ift) = fric_rsf_b!b 
 								fric(11,nftnd0(ift),ift) = fric_rsf_Dc!RSF critical distance.
 								fric(12,nftnd0(ift),ift) = fric_rsf_v0!RSF:V0
 								fric(13,nftnd0(ift),ift) = fric_rsf_r0!RSF:miu0
 								fric(14,nftnd0(ift),ift) = fric_rsf_fw !RSF: fw for strong rate weakenging
-								call fb1(xcoor,fric_ww,fric_w, tmp1)
-								call fb2(-zcoor,fric_ww,fric_w, tmp2)
+								!call fb1(xcoor,fric_ww,fric_w, tmp1)
+								!call fb2(-zcoor,fric_ww,fric_w, tmp2)
 								fric(15,nftnd0(ift),ift) = fric_rsf_vw +fric_rsf_deltavw0*(1.0d0-tmp1*tmp2) !RSF: Vw for strong rate weakening
 								call fb1(xcoor,fric_ww,fric_w, tmp1)
 								call fb3(-zcoor,fric_ww,fric_w, tmp2)
 								fric(20,nftnd0(ift),ift) = fric_tp_a_hy + fric_tp_deltaa_hy0*(1.0d0-tmp1*tmp2)
 								fric(16,nftnd0(ift),ift)=0.0d0 !RSF: initial normal slip rate 
-								fric(17,nftnd0(ift),ift)=fric_ini_sliprate!RSF:s 
-								fric(18,nftnd0(ift),ift)=0.0d0!RSF:d
+								fric(17,nftnd0(ift),ift)=fric_rsf_vinix!RSF:s 
+								fric(18,nftnd0(ift),ift)=fric_rsf_viniz!RSF:d
+								fric_ini_sliprate = sqrt(fric_rsf_vinix**2 + fric_rsf_viniz**2)
 								fric(19,nftnd0(ift),ift)=fric_ini_sliprate!RSF:mag	
 								fric(49,nftnd0(ift),ift)=fric_ini_sliprate!RSF:mag	
 								if(friclaw == 3) then 
@@ -629,35 +722,46 @@ subroutine meshgen
 						enddo
 					endif				
 
-					if (C_elastic==0) then				
-						tmp1 = -0.5*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
+					if (C_elastic==0 .and. TPV==2800) then				
+						tmp1 = -0.5d0*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
 						tmp2 = tmp1 * grav
-						if (tmp1<=15e3) then
-							omega=1
-						elseif (tmp1>=15e3.and.tmp1<=20e3)then 
-							omega=(20e3-tmp1)/5e3
-						else
-							omega=0
-						endif
-						
 						if(et(nelement)==1)then
-							eleporep(nelement)=rhow*tmp2  !pore pressure>0
+							eleporep(nelement)= rhow*tmp2  !pore pressure>0
 							s1(ids(nelement)+3)=-mat(nelement,3)*tmp2  !vertical, comp<0
-							s1(ids(nelement)+1)=omega*(b11*(s1(ids(nelement)+3)+eleporep(nelement))-eleporep(nelement))+&
-								(1-omega)*s1(ids(nelement)+3)
-							s1(ids(nelement)+2)=omega*(b33*(s1(ids(nelement)+3)+eleporep(nelement))-eleporep(nelement))+&
-								(1-omega)*s1(ids(nelement)+3)
-							s1(ids(nelement)+6)=omega*b13*(s1(ids(nelement)+3)+eleporep(nelement))
+							s1(ids(nelement)+1)=-mat(nelement,3)*tmp2 
+							s1(ids(nelement)+2)=-mat(nelement,3)*tmp2 
+							s1(ids(nelement)+6)= (mat(nelement,3)-rhow)*tmp2 /3.0d0
 						elseif(et(nelement)==2)then
-							eleporep(nelement)=rhow*tmp2  !pore pressure>0
+							eleporep(nelement)= rhow*tmp2  !pore pressure>0
 							s1(ids(nelement)+3+15)=-mat(nelement,3)*tmp2  !vertical, comp<0
-							s1(ids(nelement)+1+15)=omega*(b11*(s1(ids(nelement)+3+15)+eleporep(nelement))-eleporep(nelement))+&
-								(1-omega)*s1(ids(nelement)+3+15)
-							s1(ids(nelement)+2+15)=omega*(b33*(s1(ids(nelement)+3+15)+eleporep(nelement))-eleporep(nelement))+&
-								(1-omega)*s1(ids(nelement)+3+15)
-							s1(ids(nelement)+6+15)=omega*b13*(s1(ids(nelement)+3+15)+eleporep(nelement))							
-						endif
+							s1(ids(nelement)+1+15)=-mat(nelement,3)*tmp2
+							s1(ids(nelement)+2+15)=-mat(nelement,3)*tmp2 
+							s1(ids(nelement)+6+15)=(mat(nelement,3)-rhow)*tmp2 /3.0d0						
+						endif						
 					endif
+					if (C_elastic==0 .and. TPV==2801) then				
+						tmp1 = -0.5d0*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
+						tmp2 = tmp1 * grav
+						if(et(nelement)==1)then
+							eleporep(nelement)= rhow*tmp2  !pore pressure>0
+							s1(ids(nelement)+3)=-mat(nelement,3)*tmp2  !vertical, comp<0
+							if (-s1(ids(nelement)+3)>100.0d6) s1(ids(nelement)+3) = -100.0d6
+							s1(ids(nelement)+1)=s1(ids(nelement)+3)
+							s1(ids(nelement)+2)=s1(ids(nelement)+3) 
+							s1(ids(nelement)+6)=(mat(nelement,3) -rhow)*0.4d0*tmp2
+						elseif(et(nelement)==2)then
+							eleporep(nelement)= rhow*tmp2  !pore pressure>0
+							s1(ids(nelement)+3+15)=-mat(nelement,3)*tmp2  !vertical, comp<0
+							if (-s1(ids(nelement)+3+15)>100.0d6) s1(ids(nelement)+3+15) = -100.0d6
+							s1(ids(nelement)+1+15)=s1(ids(nelement)+3+15)
+							s1(ids(nelement)+2+15)=s1(ids(nelement)+3+15) 
+							s1(ids(nelement)+6+15)=(mat(nelement,3) -rhow)*0.4d0*tmp2						
+						endif						
+					endif	
+					if (C_elastic==0 .and. TPV==2802) then 
+						tmp1 = -0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0  !z<0, thus tmp1>0
+						call plastic_set_mat_stress(tmp1, nelement)
+					endif 
 	!--------------------------END ZONE III-----------------------------!				
 				endif!if element
 			enddo!iy

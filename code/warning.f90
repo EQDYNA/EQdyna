@@ -12,5 +12,9 @@ subroutine warning
 		write(*,*) 'rat should be 1.0'
 		stop 1002
 	endif	
-
+	if (output_plastic == 1 .and. C_elastic/=0) then
+		write(*,*) 'Only output plastric strains for C_elastic == 0.'
+		write(*,*) 'Now, C_elastic = ', C_elastic
+		stop 1003
+	endif
 end subroutine warning

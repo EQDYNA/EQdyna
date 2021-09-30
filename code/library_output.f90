@@ -1,3 +1,10 @@
+! Subroutine list:
+! 1. output_onfault_st
+! 2. output_offfault_st
+! 3. output_frt
+! 4. output_timeanalysis
+! 5. output_plastic_strain
+!#1
 subroutine output_onfault_st
 
 	use globalvar
@@ -68,7 +75,7 @@ subroutine output_onfault_st
 		enddo
 	endif 
 end subroutine output_onfault_st
-
+!#2
 subroutine output_offfault_st
 	
 	use globalvar
@@ -132,6 +139,7 @@ subroutine output_offfault_st
 	endif
 end subroutine output_offfault_st
 
+!#3
 subroutine output_frt
 
 	use globalvar
@@ -140,13 +148,14 @@ subroutine output_frt
 	integer (kind = 4) :: i, j 	
 	
 	if(nftnd(1) > 0) then
-		open(unit=14,file='frt.txt'//mm,status='unknown')	!rupture time
-		write(14,'(1x,10E15.7)') ((x(j,nsmp(1,i,1)),j=1,3),fnft(i,1),&
-			(fric(j,i,1),j=71,76),i=1,nftnd(1))
-		close(14)
+		open(unit=10004+me,file='frt.txt'//mm,status='unknown')	!rupture time
+		write(10004+me,'(1x,15E15.7)') ((x(j,nsmp(1,i,1)),j=1,3),fnft(i,1),&
+			(fric(j,i,1),j=71,76), fric(79,i,1), fric(78,i,1), fric(91,i,1), fric(92,i,1), fric(93,i,1), i=1,nftnd(1))
+		close(10004+me)
 	endif
 end subroutine output_frt	
 
+!#4
 subroutine output_timeanalysis
 
 	use globalvar
@@ -158,3 +167,69 @@ subroutine output_timeanalysis
 		write(14,'(1x,10e18.7e4,2i10)') (timeused(i),i=1,9),btime,numel,neq
 	close(14)
 end subroutine output_timeanalysis
+
+!#5
+subroutine output_plastic_strain
+	use globalvar
+	implicit none
+	integer (kind = 4) :: i, j 	
+	real (kind = dp) :: sc(3)
+	if (output_plastic == 1) then	
+		
+		do i=1,numel
+			if ((pstrain(i)>1.0d-4).and.(abs(x(1,ien(1,i)))<5.0d3).and.(abs(x(2,ien(1,i)))<2.0d3).and.(abs(x(3,ien(1,i)))<8.0d3)) then 
+				open(unit=10007+me,file='pstr.txt'//mm,status='unknown',position='append')
+				sc=0.0d0
+				do j=1,8
+					sc(1)=sc(1)+x(1,ien(j,i))
+					sc(2)=sc(2)+x(2,ien(j,i))
+					sc(3)=sc(3)+x(3,ien(j,i))
+				enddo
+				sc(1)=sc(1)/8.0d0
+				sc(2)=sc(2)/8.0d0
+				sc(3)=sc(3)/8.0d0			
+				write(10007+me,'(1x,16e18.7e4)') sc(1),sc(2),sc(3),pstrain(i),(s1(ids(i)+j),j=1,12)	
+			endif
+		enddo
+	endif
+end subroutine output_plastic_strain
+
+!#6
+subroutine find_surface_node_id
+	use globalvar
+	implicit none
+	integer (kind = 4) :: i, j 	
+	real (kind = dp) :: sc(3)
+	if (output_ground_motion == 1) then	
+		do i=1,numnp
+			if ((x(1,i)<fltxyz(2,1,1)+20.0d3) .and. (x(1,i)>fltxyz(1,1,1)-20.0d3) .and. (abs(x(2,i))<20.0d3) .and. (abs(x(3,i))<dx/1000)) then 
+				surface_nnode = surface_nnode + 1
+				surface_node_id(surface_nnode) = i
+				open(unit=10008+me,file='surface_coor.txt'//mm,status='unknown',position='append')		
+					write(10008+me,'(1x,3e18.7e4)') x(1,i),x(2,i),x(3,i)	
+			endif
+		enddo
+	endif
+end subroutine find_surface_node_id
+
+!#7
+subroutine output_gm
+	use globalvar
+	implicit none
+	integer (kind = 4) :: i, j, itag
+
+	! if (output_ground_motion == 1 .and. surface_nnode > 0) then	
+		! open(unit=1009,file='gm.txt'//mm,status='unknown',position='append')		
+			! do i=1,surface_nnode
+				! itag = surface_node_id(i)
+				! write(1009,'(1x,3e15.7)') v(1,itag), v(2,itag), v(3,itag)
+		! enddo
+	! endif
+	if (output_ground_motion == 1 .and. surface_nnode > 0) then	
+		open(unit=10009+me,file='gm'//mm,status='unknown',position='append', access='stream')		
+			do i=1,surface_nnode
+				itag = surface_node_id(i)
+				write(10009+me) v(1,itag), v(2,itag), v(3,itag)
+			enddo
+	endif	
+end subroutine output_gm

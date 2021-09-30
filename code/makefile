@@ -1,4 +1,4 @@
-F90   = mpifort
+F90   = mpiifort
 OPT1  = 
 OPT   = -c
 

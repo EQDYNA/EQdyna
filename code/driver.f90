@@ -624,6 +624,9 @@ do nt=1,nstep
 	!!$omp end parallel do
 	time2=MPI_WTIME()
 	timeused(7)=timeused(7)+(time2-time1) 	
+	
+	if ((mod(nt,10) == 1) .and. (output_ground_motion == 1)) call output_gm
+	
 enddo 	!end time step loop nt
 if (me==master) then
 	write(*,*) 'mpi_send + mpi_recv time:',btime

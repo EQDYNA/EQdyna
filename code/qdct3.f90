@@ -31,7 +31,7 @@ do nel=1,numel
 		!dl(i,j) = dl(i,j) + rdampk(m)*vl(i,j)
 			al(i,j) = al(i,j) + rdampm*vl(i,j)
 			if(i==3.and.C_elastic==0) then  !for inelastic off-fault, gravity included
-				al(i,j) = al(i,j) + grav
+				al(i,j) = al(i,j) + grav*(roumax-(gamar+1.0d0)*rhow)/roumax
 			endif
 		enddo
 	enddo
