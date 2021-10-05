@@ -1,38 +1,38 @@
 # Version 5.2.0
-*new file:   LICENSE
-*modified:   README.md
-*modified:   code/PMLwhg.f90
-*modified:   code/Read_Input_Files.f90
-*modified:   code/comdampv.f90
-*modified:   code/contm.f90
-*modified:   code/driver.f90
-*modified:   code/eqdyna3d.f90
-*modified:   code/faulting.f90
-*deleted:    code/formlm.f90
-*modified:   code/fric.f90
-*modified:   code/globalvar.f90
-*modified:   code/hrglss.f90
-*new file:   code/library_degeneration.f90
-*new file:   code/library_output.f90
-*modified:   code/makefile
-*modified:   code/mesh4num.f90
-*modified:   code/meshgen.f90
-*deleted:    code/parcon.f90
-*modified:   code/qdckd.f90
-*modified:   code/qdcshg.f90
-*modified:   code/qdcshl.f90
-*deleted:    code/qdct1.f90
-*modified:   code/qdct2.f90
-*modified:   code/qdct3.f90
-*modified:   code/thermop.f90
-*deleted:    code/thermop_new.f90
-*deleted:    code/thermop_new2.f90
-*deleted:    code/thermop_old.f90
-*new file:   code/warning.f90
-*renamed:    script/rtp3DMPI.m -> script/Plot_rpt.m
-*deleted:    Guide_EQdyna_4.2.md
-*deleted:    make/makefile
-#Detailed changes:
+* new file:   LICENSE
+* modified:   README.md
+* modified:   code/PMLwhg.f90
+* modified:   code/Read_Input_Files.f90
+* modified:   code/comdampv.f90
+* modified:   code/contm.f90
+* modified:   code/driver.f90
+* modified:   code/eqdyna3d.f90
+* modified:   code/faulting.f90
+* deleted:    code/formlm.f90
+* modified:   code/fric.f90
+* modified:   code/globalvar.f90
+* modified:   code/hrglss.f90
+* new file:   code/library_degeneration.f90
+* new file:   code/library_output.f90
+* modified:   code/makefile
+* modified:   code/mesh4num.f90
+* modified:   code/meshgen.f90
+* deleted:    code/parcon.f90
+* modified:   code/qdckd.f90
+* modified:   code/qdcshg.f90
+* modified:   code/qdcshl.f90
+* deleted:    code/qdct1.f90
+* modified:   code/qdct2.f90
+* modified:   code/qdct3.f90
+* modified:   code/thermop.f90
+* deleted:    code/thermop_new.f90
+* deleted:    code/thermop_new2.f90
+* deleted:    code/thermop_old.f90
+* new file:   code/warning.f90
+* renamed:    script/rtp3DMPI.m -> script/Plot_rpt.m
+* deleted:    Guide_EQdyna_4.2.md
+* deleted:    make/makefile
+# Detailed changes:
 New: a license is attached. 
 New: warning.f90 is introduced. It alerts users about potential limitations 
 	in EQdyna.
@@ -70,37 +70,37 @@ Improvement: Shape functions are kept constant for all types of elements.
 Verification: C_degen = 0, 1, 2 for TPV105 3D in SCEC/USGS code verification project.   
 
 # Version 5.1.0
-*modified:   Changelog.md
-*modified:   README.md
-*renamed:    batch/batchADA3DMPI.txt -> batch/ADArun.txt
-*new file:   batch/TERRArun.slurm
-*deleted:    batch/run256eos.hyb
-*deleted:    batch/runvanerne.inta
-*modified:   code/Read_Input_Files.f90
-*modified:   code/driver.f90
-*modified:   code/eqdyna3d.f90
-*modified:   code/faulting.f90
-*modified:   code/globalvar.f90
-*new file:   code/library.f90
-*new file:   code/makefile
-*modified:   code/meshgen.f90
-*new file:   code/thermop.f90
-*new file:   code/thermop_new.f90
-*new file:   code/thermop_new2.f90
-*new file:   code/thermop_old.f90
-*deleted:    code/vlm.f90
-*new file:   document/Guide_EQdyna_4.2.md
-*modified:   input/FE_Fault_Geometry.txt
-*new file:   input/FE_Fric.txt
-*modified:   input/FE_Global.txt
-*modified:   input/FE_Material.txt
-*modified:   input/FE_Model_Geometry.txt
-*new file:   input/FE_Stations.txt
-*new file:   script/rm.tcsh
-*new file:   script/rtp3DMPI.m
-*deleted:    Guide_EQdyna_4.2.md
-*deleted:    make/makefile
-#Detailed changes:
+* modified:   Changelog.md
+* modified:   README.md
+* renamed:    batch/batchADA3DMPI.txt -> batch/ADArun.txt
+* new file:   batch/TERRArun.slurm
+* deleted:    batch/run256eos.hyb
+* deleted:    batch/runvanerne.inta
+* modified:   code/Read_Input_Files.f90
+* modified:   code/driver.f90
+* modified:   code/eqdyna3d.f90
+* modified:   code/faulting.f90
+* modified:   code/globalvar.f90
+* new file:   code/library.f90
+* new file:   code/makefile
+* modified:   code/meshgen.f90
+* new file:   code/thermop.f90
+* new file:   code/thermop_new.f90
+* new file:   code/thermop_new2.f90
+* new file:   code/thermop_old.f90
+* deleted:    code/vlm.f90
+* new file:   document/Guide_EQdyna_4.2.md
+* modified:   input/FE_Fault_Geometry.txt
+* new file:   input/FE_Fric.txt
+* modified:   input/FE_Global.txt
+* modified:   input/FE_Material.txt
+* modified:   input/FE_Model_Geometry.txt
+* new file:   input/FE_Stations.txt
+* new file:   script/rm.tcsh
+* new file:   script/rtp3DMPI.m
+* deleted:    Guide_EQdyna_4.2.md
+* deleted:    make/makefile
+# Detailed changes:
 New feature: thermal pressurization is done with Eq (17) in Andrews (2002), 
 	which calculates the pore pressure change. Eq (14) can be readily modified 
 	to calculate temperature change due to tp. Use dt in the elastodynamic 
@@ -139,17 +139,17 @@ Verification: The results are verified in the benchmark problem TPV105-3D in
 	SCEC/USGS code verification project.   
 
 # Version 5.0.0
-*modified:   README.md
-*new file:   code/Read_Input_Files.f90
-*modified:   code/eqdyna3d.f90
-*modified:   code/globalvar.f90
-*modified:   code/meshgen.f90
-*new file:   code/runTERRA.slurm
-*new file:   input/FE_Fault_Geometry.txt
-*new file:   input/FE_Global.txt
-*new file:   input/FE_Material.txt
-*new file:   input/FE_Model_Geometry.txt
-*modified:   make/makefile
+* modified:   README.md
+* new file:   code/Read_Input_Files.f90
+* modified:   code/eqdyna3d.f90
+* modified:   code/globalvar.f90
+* modified:   code/meshgen.f90
+* new file:   code/runTERRA.slurm
+* new file:   input/FE_Fault_Geometry.txt
+* new file:   input/FE_Global.txt
+* new file:   input/FE_Material.txt
+* new file:   input/FE_Model_Geometry.txt
+* modified:   make/makefile
 
 # Version 4.2
 
