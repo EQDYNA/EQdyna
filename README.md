@@ -17,3 +17,9 @@ EQdyna is still under heavy development and comes without any guaranteed functio
 
 # Collaboration
 If you are interested in collaboration using EQdyna, please contact Drs. Benchun Duan (bduan@tamu.edu) or Dunyu Liu (dliu@ig.utexas.edu).
+
+# Reference
+Duan, B. (2010). Role of initial stress rotations in rupture dynamics and ground motion: A case study with implications for the Wenchuan earthquake, J. Geophys. Res. 115.
+Duan, B. (2012). Dynamic rupture of the 2011 Mw 9.0 Tohoku-Oki earthquake: Roles of a possible subducting seamount, J. Geophys. Res. 117
+Duan, B., D. Liu, and A. Yin (2017). Seismic shaking in the North China Basin expected from ruptures of a possible seismic gap, Geophys. Res. Lett. 44 4855-4862.
+Liu, D. and B. Duan (2018). "Scenario Earthquake and Ground‐Motion Simulations in North China: Effects of Heterogeneous Fault Stress and 3D Basin Structure." BSSA.
