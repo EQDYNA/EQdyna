@@ -1,4 +1,0 @@
-#For fault No.1
--22.0d3 22.0d3 # fxmin, fxmax;
-0.0d3   0.0d3  # fymin, fymax; Ideally we aling faults along xz planes.
--22.0d3 0.0d3  # fzmin, fzmax;
