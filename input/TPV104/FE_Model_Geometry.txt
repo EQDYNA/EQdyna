@@ -1,0 +1,7 @@
+-42.0d3 42.0d3 # xmin, xmax
+-20.0d3 22.0d3 # ymin, ymax
+-42.0d3 0.0d0  # zmin, zmax
+
+70 70 # dis4uniF, dis4uniB
+1.025d0 # rat
+100.0d0 # dx 
