@@ -1,0 +1,30 @@
+0.18d0     # fric_sw_fs
+0.12d0     # fric_sw_fd
+0.3d0      # fric_sw_D0
+
+0.01d0     # fric_rsf_a
+0.01d0     # fric_rsf_deltaa0
+0.014d0    # fric_rsf_b
+0.4d0      # fric_rsf_Dc
+0.6d0      # fric_rsf_r0
+1.0d-6     # fric_rsf_v0
+
+1.0d-16    # vini_x
+0.0d0      # vini_z
+
+0.2d0      # fric_rsf_fw for strong rate weakening (srw)
+0.1d0      # fric_rsf_vw for strong rate weakening (srw)
+0.9d0      # fric_rsf_deltavw0 for strong rate weakening (srw)
+
+1.0d-6     # fric_tp_a_th (m^2/s)
+2.7d6	   # fric_tp_rouc (J/(m^3K))
+0.1d6      # fric_tp_lambda (PaK^-1)
+0.02d0     # fric_tp_h (m)
+4.0d-4     # fric_tp_a_hy (m^2/s)
+1.0d0      # fric_tp_deltaa_hy0 (m^2/s)
+15.0d3	   # fric_ww (ww=W)
+3.0d3 	   # fric_w
+
+1.0d-16    # fric_ini_sliprate
+483.15	   # fric_tp_Tini (K)
+80.0d6	   # fric_tp_pini (Pa)
