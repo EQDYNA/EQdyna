@@ -6,10 +6,10 @@ OBJ   = eqdyna3d.o globalvar.o mesh4num.o meshgen.o qdcshl.o driver.o qdct2.o qd
 		qdct3.o contma.o qdckd.o hrglss.o fric.o faulting.o PMLwhg.o comdampv.o qconstant.o \
 		Read_Input_Files.o thermop.o library.o warning.o library_degeneration.f90 library_output.o
 		
-clean:run_eqdyna3d
+clean:eqdyna
 	rm -r *.o
-run_eqdyna3d: $(OBJ) 
-	$(F90) $(OPT1) $(OBJ) -o run_eqdyna3d
+eqdyna: $(OBJ) 
+	$(F90) $(OPT1) $(OBJ) -o eqdyna
 eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o meshgen.o Read_Input_Files.o warning.o library_output.o
 	$(F90) $(OPT) eqdyna3d.f90 
 globalvar.o: globalvar.f90
