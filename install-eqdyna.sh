@@ -7,7 +7,7 @@ cd src
 make
 cd ..
 mkdir bin
-mv src/eqquasi bin
+mv src/eqdyna bin
 
 export PATH=$(pwd)/bin:$PATH
 export PATH=$(pwd)/scripts:$PATH
