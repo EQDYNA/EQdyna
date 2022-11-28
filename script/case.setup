@@ -6,32 +6,44 @@ from user_defined_params import *
 import netCDF4 as nc
 
 def create_model_input_file():
-    # Function to create model.txt used by EQquasi.
-    with open('model.txt', 'w') as f:
+    # Function to create bGlobal.txt, bModelGeometry.txt, b.FaultGeometry.txt,
+	#  bMaterial.txt, bStations.txt used by EQdyna.
+    with open('bGlobal.txt', 'w') as f:
+		f.write(str(C_elastic) + "\n")
+		f.write(str(C_nuclea) + "\n")
+		f.write(str(C_degen) + "\n")
+		f.write(str(friclaw) + "\n")
+		f.write(str(ntotft) + "\n")
+		f.write(str(tpv) + "\n")
+		f.write(str(output_plastic) + "\n")
+		f.write(" " + "\n")
+		f.write(str(nx) + " " + str(ny) + " " + str(nz) + "\n")
+		f.write(" " + "\n")
+		f.write(str(term) + "\n")
+		f.write(str(dt) + "\n")
+		f.write(" " + "\n")
+		f.write(str(1) + " " + str(3) + "\n")
+		f.write(" " + "\n")
+		f.write(str(xsource) + " " + str(ysource) + " " + str(zsource) + "\n")
+		
+	with open(bModelGeometry.txt, "w") as f:
         f.write(str(xmin) + "  " + str(xmax) + "\n")
         f.write(str(ymin) + "  " + str(ymax) + "\n")
         f.write(str(zmin) + "  " + str(zmax) + "\n")
-        f.write(str(xminc) + "  " + str(xmaxc) + "  " + str(zminc) + "\n")
-        f.write(str(nuni_y_plus) + "  " + str(nuni_y_minus) + "\n")
-        f.write(str(enlarging_ratio) + "\n")
-        f.write(str(dx) + "\n")
-        f.write(str(vp) + "  " + str(vs) + "  " + str(rou) + "\n")
-        f.write(str(rough_fault) + "\n")
-        f.write(str(rheology) + "\n")
-        f.write(str(friclaw) + "\n")
-        f.write(str(ntotft) + "\n")
-        f.write(str(bp) + "\n")
-        f.write(str(xi) + "  " + str(minDc) + "\n")
-        f.write(str(exit_slip_rate) + "\n")
-        f.write(str(far_vel_load) + "\n")
-        f.write(str(creep_slip_rate) + "\n")
-        f.write(str(init_norm) + "\n")
-        f.write(str(solver) + "\n")
-        f.write(str(az_op) + "\n")
-        f.write(str(az_maxiter) + "\n")
-        f.write(str(az_tol) + "\n")
-        f.write(str(nt_out) + "\n")
-        f.write(str(mode) + "\n")
+		f.write(" " + "\n")
+		f.write(str(nuni_y_plus) + " " + str(nuni_y_minus) + "\n")
+		f.write(str(enlarging_ratio) + "\n")
+		f.write(str(dx))
+		
+	with open(bFaultGeometry.txt, "w") as f:
+		for i in range(ntotft):
+			f.write("For fault No. " + str(i+1))
+			f.write(str(fxmin) + "  " + str(fxmax) + "\n")
+			f.write(str(fymin) + "  " + str(fymax) + "\n")
+			f.write(str(fzmin) + "  " + str(fzmax) + "\n")
+			
+	with open(bMaterial.txt, "w") as f:
+		f.write(str(vp) + " " + str(vs) + " " + str(rou) + "\n")
 
 def create_station_input_file():
     # Function to create model.txt used by EQquasi.
@@ -47,40 +59,81 @@ def create_station_input_file():
 
 def netcdf_write_on_fault_vars():
   # Function to on_fault_vars input used by EQquasi.
-  ds = nc.Dataset("on_fault_vars_input.nc", "w", format="NETCDF4")
-  dip = ds.createDimension('dip', nfz)
-  strike = ds.createDimension('strike', nfx)
-  dip_var = ds.createVariable('dip', np.float64, ('dip',))
+  ds         = nc.Dataset("on_fault_vars_input.nc", "w", format="NETCDF4")
+  dip        = ds.createDimension('dip', nfz)
+  strike     = ds.createDimension('strike', nfx)
+  dip_var    = ds.createVariable('dip', np.float64, ('dip',))
   strike_var = ds.createVariable('strike', np.float64, ('strike',))
-  var0 = ds.createVariable('a', np.float64, ('strike','dip',))
-  var1 = ds.createVariable('b', np.float64, ('strike','dip',))
-  var2 = ds.createVariable('Dc', np.float64, ('strike','dip',))
-  var3 = ds.createVariable('v0', np.float64, ('strike','dip',))
-  var4 = ds.createVariable('r0', np.float64, ('strike','dip',))
-  var5 = ds.createVariable('init_slip_rate', np.float64, ('strike','dip',))
-  var6 = ds.createVariable('init_shear_stress', np.float64, ('strike','dip',))
-  var7 = ds.createVariable('init_normal_stress', np.float64, ('strike','dip',))
-  var8 = ds.createVariable('init_state', np.float64, ('strike','dip',))
+  
+  # for the slip weakening law
+  var0  = ds.createVariable('sw_fs', np.float64, ('strike','dip',))
+  var1  = ds.createVariable('sw_fd', np.float64, ('strike','dip',))
+  var2  = ds.createVariable('sw_D0', np.float64, ('strike','dip',))
+  
+  # for the rsf
+  var3  = ds.createVariable('rsf_a',  np.float64, ('strike','dip',))
+  var4  = ds.createVariable('rsf_b',  np.float64, ('strike','dip',))
+  var5  = ds.createVariable('rsf_Dc', np.float64, ('strike','dip',))
+  var6  = ds.createVariable('rsf_v0', np.float64, ('strike','dip',))
+  var7  = ds.createVariable('rsf_r0', np.float64, ('strike','dip',))
+  
+  # additional for the rsf slip law with strong rate weakening
+  var8  = ds.createVariable('rsf_fw',  np.float64, ('strike','dip',))
+  var9  = ds.createVariable('rsf_vw',  np.float64, ('strike','dip',))
+  
+  # additional for the rsf with thermal pressurization
+  var10 = ds.createVariable('tp_a_hy',  np.float64, ('strike','dip',))
+  
+  # kinematics and initial stresses
+  var11 = ds.createVariable('init_slip_rate',     np.float64, ('strike','dip',))
+  var12 = ds.createVariable('init_shear_stress',  np.float64, ('strike','dip',))
+  var13 = ds.createVariable('init_normal_stress', np.float64, ('strike','dip',))
+  var14 = ds.createVariable('init_state',         np.float64, ('strike','dip',))
+  
+ 
   var0.units = 'unit'
   var1.units = 'unit'
-  var2.units = 'meters'
-  var3.units = 'm/s'
-  var4.units = 'unit'
-  var5.units = 'm/s'
-  var6.units = 'Pa'
-  var7.units = 'Pa'
+  var2.units = 'unit'
+  
+  var3.units = "unit"
+  var4.units = "unit"
+  var5.units = 'meters'
+  var6.units = 'm/s'
+  var7.units = 'unit'
+  
   var8.units = 'unit'
+  var9.units = 'unit' 
+  
+  var10.units = 'm^2/s'
+  
+  var11.units = 'm/s'
+  var12.units = 'Pa'
+  var13.units = 'Pa'
+  var14.units = 'unit'
+  
   strike_var[:] = fx[:]
-  dip_var[:] = fz[:]
-  var0[:,:] = on_fault_vars[:,:,9]
-  var1[:,:] = on_fault_vars[:,:,10]
-  var2[:,:] = on_fault_vars[:,:,11]
-  var3[:,:] = on_fault_vars[:,:,12]
-  var4[:,:] = on_fault_vars[:,:,13]
-  var5[:,:] = on_fault_vars[:,:,46]
-  var6[:,:] = on_fault_vars[:,:,8]
-  var7[:,:] = on_fault_vars[:,:,7]
-  var8[:,:] = on_fault_vars[:,:,20]
+  dip_var[:]    = fz[:]
+  
+  var0[:,:] = on_fault_vars[:,:,1]   # sw_fs
+  var1[:,:] = on_fault_vars[:,:,2]   # sw_fd
+  var2[:,:] = on_fault_vars[:,:,3]   # sw_D0 
+  
+  var3[:,:] = on_fault_vars[:,:,9]   # rsf_a
+  var4[:,:] = on_fault_vars[:,:,10]  # rsf_b 
+  var5[:,:] = on_fault_vars[:,:,11]  # rsf_Dc 
+  var6[:,:] = on_fault_vars[:,:,12]  # rsf_v0
+  var7[:,:] = on_fault_vars[:,:,13]  # rsf_r0 
+  
+  var8[:,:] = on_fault_vars[:,:,14]  # rsf_fw  
+  var9[:,:] = on_fault_vars[:,:,15]  # rsf_vw 
+  
+  var10[:,:] = on_fault_vars[:,:,16] # tp_a_hy
+  
+  var11[:,:] = on_fault_vars[:,:,46]  # init_slip_rate  
+  var12[:,:] = on_fault_vars[:,:,8]  # init_shear_stress
+  var13[:,:] = on_fault_vars[:,:,7]  # init_normal_stress
+  var14[:,:] = on_fault_vars[:,:,20]  # init_state
+  
   ds.close()
   
 def create_batch_script():
@@ -88,7 +141,7 @@ def create_batch_script():
     with open("batch.hpc", "w") as f:
         f.write("#! /bin/bash" + "\n")
         f.write("#SBATCH -J " + str(casename) + "\n")
-        f.write("#SBATCH -o a.eqquasi.log%j" + "\n")
+        f.write("#SBATCH -o a.eqdyna.log%j" + "\n")
         f.write("#SBATCH -N " + str(HPC_nnode) + "\n")
         f.write("#SBATCH -n " + str(HPC_ncpu) + "\n")
         f.write("#SBATCH -p " + str(HPC_queue) + "\n")
@@ -98,15 +151,17 @@ def create_batch_script():
         f.write("#SBATCH --mail-type=begin" + "\n")
         f.write("#SBATCH --mail-type=end" + "\n")
         # Executable part.
-        f.write("for i in $(seq " + str(istart) + " " + str(iend) + ");" + "\n")
-        f.write("do" + "\n")
-        f.write("  echo $i > currentcycle.txt" + "\n")
-        f.write("  ibrun eqquasi" + "\n")
-        f.write("  mkdir \"./Q$((i-1))\"" + "\n")
-        f.write("  mv fltst* srfst* tdyna* global* p1* p2* disp.* fault.* cplot* \"./Q$((i-1))\"" + "\n")
-        f.write("  cp \"./Q$((i-1))/\"*.r.nc ./" + "\n")
-        f.write("done" + "\n")
+		f.write("  ibrun eqdyna" + "\n")
+        #f.write("for i in $(seq " + str(istart) + " " + str(iend) + ");" + "\n")
+        #f.write("do" + "\n")
+        #f.write("  echo $i > currentcycle.txt" + "\n")
+        #f.write("  ibrun eqquasi" + "\n")
+        #f.write("  mkdir \"./Q$((i-1))\"" + "\n")
+        #f.write("  mv fltst* srfst* tdyna* global* p1* p2* disp.* fault.* cplot* \"./Q$((i-1))\"" + "\n")
+        #f.write("  cp \"./Q$((i-1))/\"*.r.nc ./" + "\n")
+        #f.write("done" + "\n")
         # End excutable part.
+
 def estimate_HPC_resource():
     nx = int((xmax-xmin)/dx)
     nz = int((zmax-zmin)/dx)

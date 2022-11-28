@@ -5,7 +5,6 @@
 1  # ntotft, how many faults in the system.
 1  # nucfault, on which fault the nucleation is
 105 # TPV
-0  # output plastic strain (1) or not(0).
 
 4 5 2 # MPI divisions along x, y, z directions
 

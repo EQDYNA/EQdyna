@@ -1,16 +1,21 @@
+# On LS6 at TACC, UTA.
+netcdf_incdir = ${TACC_NETCDF_INC}
+netcdf_libdir = ${TACC_NETCDF_LIB}
+
 F90   = mpiifort
 OPT1  = 
 OPT   = -c
 
 OBJ   = eqdyna3d.o globalvar.o mesh4num.o meshgen.o qdcshl.o driver.o qdct2.o qdcshg.o contm.o qdcb.o \
 		qdct3.o contma.o qdckd.o hrglss.o fric.o faulting.o PMLwhg.o comdampv.o qconstant.o \
-		Read_Input_Files.o thermop.o library.o warning.o library_degeneration.f90 library_output.o
+		readInputFiles.o thermop.o library.o warning.o library_degeneration.f90 \
+		library_output.o netcdf_io.o
 		
 clean:eqdyna
 	rm -r *.o
 eqdyna: $(OBJ) 
-	$(F90) $(OPT1) $(OBJ) -o eqdyna
-eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o meshgen.o Read_Input_Files.o warning.o library_output.o
+	$(F90) $(OPT1) $(OBJ) -o eqdyna -L$(netcdf_libdir) -lnetcdf -L$(netcdf_libdir) -lnetcdff
+eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o meshgen.o readInputFiles.o warning.o library_output.o netcdf_io.o
 	$(F90) $(OPT) eqdyna3d.f90 
 globalvar.o: globalvar.f90
 	$(F90) $(OPT) globalvar.f90 	
@@ -50,8 +55,8 @@ comdampv.o: comdampv.f90
 	$(F90) $(OPT) comdampv.f90
 qconstant.o: qconstant.f90
 	$(F90) $(OPT) qconstant.f90
-Read_Input_Files.o: Read_Input_Files.f90 globalvar.o
-	$(F90) $(OPT) Read_Input_Files.f90 
+readInputFiles.o: readInputFiles.f90 globalvar.o
+	$(F90) $(OPT) readInputFiles.f90 
 thermop.o: thermop.f90 globalvar.o
 	$(F90) $(OPT) thermop.f90 
 warning.o: warning.f90 globalvar.o
@@ -60,3 +65,5 @@ library_degeneration.o: library_degeneration.f90 globalvar.o
 	$(F90) $(OPT) library_degeneration.f90
 library_output.o: library_output.f90 globalvar.o 
 	$(F90) $(OPT) library_output.f90
+netcdf_io.o: netcdf_io.f90 globalvar.o 
+	$(F90) $(OPT) netcdf_io.f90 -I${netcdf_incdir}	
