@@ -518,11 +518,11 @@ subroutine meshgen
 							fltrc(1,ifs(ift),ifd(ift),ift) = msnode	!master node
 							fltrc(2,ifs(ift),ifd(ift),ift) = nftnd0(ift) !fault node num in sequence
 
-							fric(1,nftnd0(ift),ift) = fric_sw_fs
-							fric(2,nftnd0(ift),ift) = fric_sw_fd		
-							fric(3,nftnd0(ift),ift) = fric_sw_D0 !D0
-							fric(4,nftnd0(ift),ift) = 0.0  		!cohesion
-							fric(5,nftnd0(ift),ift) = 0.03  	!Viscoplastic relaxation time
+							! fric(1,nftnd0(ift),ift) = fric_sw_fs
+							! fric(2,nftnd0(ift),ift) = fric_sw_fd		
+							! fric(3,nftnd0(ift),ift) = fric_sw_D0 !D0
+							! fric(4,nftnd0(ift),ift) = 0.0  		!cohesion
+							! fric(5,nftnd0(ift),ift) = 0.03  	!Viscoplastic relaxation time
 							
 							if (C_elastic == 0) then 
 								fric(6,nftnd0(ift),ift) = 0.0d0!rhow*grav*abs(zcoor)*gama		!pore pressure
@@ -532,14 +532,14 @@ subroutine meshgen
 							endif 
 							
 							if (C_elastic==1) then
-								fric(7,nftnd0(ift),ift) = -120.0d6  
-								fric(8,nftnd0(ift),ift) = 40.0d6 
-								fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
-								if (TPV==104) then 
-									fric(7,nftnd0(ift),ift) = -120.0d6  
-									fric(8,nftnd0(ift),ift) = 40.0d6 
-									fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
-								endif
+								! fric(7,nftnd0(ift),ift) = -120.0d6  
+								! fric(8,nftnd0(ift),ift) = 40.0d6 
+								! fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
+								! if (TPV==104) then 
+									! fric(7,nftnd0(ift),ift) = -120.0d6  
+									! fric(8,nftnd0(ift),ift) = 40.0d6 
+									! fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
+								! endif
 								if (TPV==105) then 
 									fric(7,nftnd0(ift),ift) = -max(min(grav*1670.0d0*abs(zcoor),45.0d6),grav*1670.0d0*dx/2.0d0) 
 									fric(8,nftnd0(ift),ift) = -fric(7,nftnd0(ift),ift)*0.41d0
@@ -552,22 +552,22 @@ subroutine meshgen
 									call fb1(xcoor,fric_ww,fric_w, tmp1)
 									call fb2(-zcoor,fric_ww,fric_w, tmp2)
 								endif
-								if (TPV == 104) then 
-									if (abs(xcoor)<=15e3) then 
-										tmp1=1.0
-									elseif ((abs(xcoor)<18e3).and.(abs(xcoor)>15e3)) then 
-										tmp1=0.5*(1+dtanh(3e3/(abs(xcoor)-18e3)+3e3/(abs(xcoor)-15e3)))
-									else
-										tmp1=0.0
-									endif
-									if (abs(zcoor--7.5e3)<=7.5e3) then 
-										tmp2=1.0
-									elseif ((abs(zcoor--7.5e3)<10.5e3).and.(abs(zcoor--7.5e3)>7.5e3)) then 
-										tmp2=0.5*(1+dtanh(3e3/(abs(zcoor--7.5e3)-10.5e3)+3e3/(abs(zcoor--7.5e3)-7.5e3)))
-									else
-										tmp2=0.0
-									endif				
-								endif
+								! if (TPV == 104) then 
+									! if (abs(xcoor)<=15e3) then 
+										! tmp1=1.0
+									! elseif ((abs(xcoor)<18e3).and.(abs(xcoor)>15e3)) then 
+										! tmp1=0.5*(1+dtanh(3e3/(abs(xcoor)-18e3)+3e3/(abs(xcoor)-15e3)))
+									! else
+										! tmp1=0.0
+									! endif
+									! if (abs(zcoor--7.5e3)<=7.5e3) then 
+										! tmp2=1.0
+									! elseif ((abs(zcoor--7.5e3)<10.5e3).and.(abs(zcoor--7.5e3)>7.5e3)) then 
+										! tmp2=0.5*(1+dtanh(3e3/(abs(zcoor--7.5e3)-10.5e3)+3e3/(abs(zcoor--7.5e3)-7.5e3)))
+									! else
+										! tmp2=0.0
+									! endif				
+								! endif
 								if (TPV == 2800 .or. TPV == 2801 .or. TPV == 2802) then 
 									! if (abs(xcoor)<=15.0d3) then 
 										! tmp1=1.0d0
@@ -616,36 +616,36 @@ subroutine meshgen
 								call fb1(xcoor,fric_ww,fric_w, tmp1)
 								call fb3(-zcoor,fric_ww,fric_w, tmp2)
 								fric(20,nftnd0(ift),ift) = fric_tp_a_hy + fric_tp_deltaa_hy0*(1.0d0-tmp1*tmp2)
-								fric(16,nftnd0(ift),ift)=0.0d0 !RSF: initial normal slip rate 
-								fric(17,nftnd0(ift),ift)=fric_rsf_vinix!RSF:s 
-								fric(18,nftnd0(ift),ift)=fric_rsf_viniz!RSF:d
-								fric_ini_sliprate = sqrt(fric_rsf_vinix**2 + fric_rsf_viniz**2)
-								fric(19,nftnd0(ift),ift)=fric_ini_sliprate!RSF:mag	
-								fric(49,nftnd0(ift),ift)=fric_ini_sliprate!RSF:mag	
-								if(friclaw == 3) then 
-									!Theta=d0/v0*dexp(a*dlog(2*dsinh()))
-									fric(21,nftnd0(ift),ift) = fric(11,nftnd0(ift),ift)/fric(12,nftnd0(ift),ift)*dexp((fric(9,nftnd0(ift),ift)*dlog(2.0d0*dsinh &
-																(sqrt(fric(8,nftnd0(ift),ift)**2+0.0d0**2)/abs(fric(7,nftnd0(ift),ift))/fric(9,nftnd0(ift),ift))) &
-																-fric(13,nftnd0(ift),ift)-fric(9,nftnd0(ift),ift)*dlog(sqrt((fric(16,nftnd0(ift),ift))**2+(fric(17,nftnd0(ift),ift))**2+(fric(18,nftnd0(ift),ift))**2)/fric(12,nftnd0(ift),ift)))/fric(10,nftnd0(ift),ift))
-								elseif(friclaw == 4 .or. friclaw == 5) then
-									!Theta0=a*log(2V0/Vini*sinh(TAOini/a/SigmaNini))
-									fric(21,nftnd0(ift),ift)=fric(9,nftnd0(ift),ift)*dlog(2.0d0*fric(12,nftnd0(ift),ift)/sqrt((fric(16,nftnd0(ift),ift))**2+(fric(17,nftnd0(ift),ift))**2+(fric(18,nftnd0(ift),ift))**2) &
-															*dsinh(sqrt(fric(8,nftnd0(ift),ift)**2+0.0d0**2)/abs(fric(7,nftnd0(ift),ift))/fric(9,nftnd0(ift),ift)))
-								endif								
-								if (xcoor==xsource.and.zcoor==zsource) then
-									write(*,*) 'fric,9,a',fric(9,nftnd0(ift),ift)
-									write(*,*) 'fric,10,b',fric(10,nftnd0(ift),ift)
-									write(*,*) 'fric,11,Dc',fric(11,nftnd0(ift),ift)
-									write(*,*) 'fric,12,v0',fric(12,nftnd0(ift),ift)
-									write(*,*) 'fric,13,r0',fric(13,nftnd0(ift),ift)
-									write(*,*) 'fric,14,fw',fric(14,nftnd0(ift),ift)
-									write(*,*) 'fric,15,rsf_vw',fric(15,nftnd0(ift),ift)
-									write(*,*) 'fric,20,a_hy',fric(20,nftnd0(ift),ift)
-									write(*,*) 'fric,17,inisliprate',fric(17,nftnd0(ift),ift)
-									write(*,*) 'fric,7,norm',fric(7,nftnd0(ift),ift)
-									write(*,*) 'fric,8,tstk',fric(8,nftnd0(ift),ift)
-									write(*,*) 'fric,50,tstk',fric(50,nftnd0(ift),ift)
-								endif
+								! fric(16,nftnd0(ift),ift)=0.0d0 !RSF: initial normal slip rate 
+								! fric(17,nftnd0(ift),ift)=fric_rsf_vinix!RSF:s 
+								! fric(18,nftnd0(ift),ift)=fric_rsf_viniz!RSF:d
+								! fric_ini_sliprate = sqrt(fric_rsf_vinix**2 + fric_rsf_viniz**2)
+								! fric(19,nftnd0(ift),ift)=fric_ini_sliprate!RSF:mag	
+								! fric(49,nftnd0(ift),ift)=fric_ini_sliprate!RSF:mag	
+								! if(friclaw == 3) then 
+									! !Theta=d0/v0*dexp(a*dlog(2*dsinh()))
+									! fric(21,nftnd0(ift),ift) = fric(11,nftnd0(ift),ift)/fric(12,nftnd0(ift),ift)*dexp((fric(9,nftnd0(ift),ift)*dlog(2.0d0*dsinh &
+																! (sqrt(fric(8,nftnd0(ift),ift)**2+0.0d0**2)/abs(fric(7,nftnd0(ift),ift))/fric(9,nftnd0(ift),ift))) &
+																! -fric(13,nftnd0(ift),ift)- fric(9,nftnd0(ift),ift)*dlog(sqrt((fric(16,nftnd0(ift),ift))**2+(fric(17,nftnd0(ift),ift))**2+(fric(18,nftnd0(ift),ift))**2)/fric(12,nftnd0(ift),ift)))/fric(10,nftnd0(ift),ift))
+								! elseif(friclaw == 4 .or. friclaw == 5) then
+									! !Theta0=a*log(2V0/Vini*sinh(TAOini/a/SigmaNini))
+									! fric(21,nftnd0(ift),ift)=fric(9,nftnd0(ift),ift)*dlog(2.0d0*fric(12,nftnd0(ift),ift)/sqrt((fric(16,nftnd0(ift),ift))**2+(fric(17,nftnd0(ift),ift))**2+(fric(18,nftnd0(ift),ift))**2) &
+															! *dsinh(sqrt(fric(8,nftnd0(ift),ift)**2+0.0d0**2)/abs(fric(7,nftnd0(ift),ift))/fric(9,nftnd0(ift),ift)))
+								! endif								
+								! if (xcoor==xsource.and.zcoor==zsource) then
+									! write(*,*) 'fric,9,a',fric(9,nftnd0(ift),ift)
+									! write(*,*) 'fric,10,b',fric(10,nftnd0(ift),ift)
+									! write(*,*) 'fric,11,Dc',fric(11,nftnd0(ift),ift)
+									! write(*,*) 'fric,12,v0',fric(12,nftnd0(ift),ift)
+									! write(*,*) 'fric,13,r0',fric(13,nftnd0(ift),ift)
+									! write(*,*) 'fric,14,fw',fric(14,nftnd0(ift),ift)
+									! write(*,*) 'fric,15,rsf_vw',fric(15,nftnd0(ift),ift)
+									! write(*,*) 'fric,20,a_hy',fric(20,nftnd0(ift),ift)
+									! write(*,*) 'fric,17,inisliprate',fric(17,nftnd0(ift),ift)
+									! write(*,*) 'fric,7,norm',fric(7,nftnd0(ift),ift)
+									! write(*,*) 'fric,8,tstk',fric(8,nftnd0(ift),ift)
+									! write(*,*) 'fric,50,tstk',fric(50,nftnd0(ift),ift)
+								! endif
 							endif
 	!-----------------------------END ZONE IV---------------------------!						
 							!special values below.						
