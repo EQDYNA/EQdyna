@@ -7,43 +7,43 @@ import netCDF4 as nc
 
 def create_model_input_file():
     # Function to create bGlobal.txt, bModelGeometry.txt, b.FaultGeometry.txt,
-	#  bMaterial.txt, bStations.txt used by EQdyna.
+    #  bMaterial.txt, bStations.txt used by EQdyna.
     with open('bGlobal.txt', 'w') as f:
-		f.write(str(C_elastic) + "\n")
-		f.write(str(C_nuclea) + "\n")
-		f.write(str(C_degen) + "\n")
-		f.write(str(friclaw) + "\n")
-		f.write(str(ntotft) + "\n")
-		f.write(str(tpv) + "\n")
-		f.write(str(output_plastic) + "\n")
-		f.write(" " + "\n")
-		f.write(str(nx) + " " + str(ny) + " " + str(nz) + "\n")
-		f.write(" " + "\n")
-		f.write(str(term) + "\n")
-		f.write(str(dt) + "\n")
-		f.write(" " + "\n")
-		f.write(str(1) + " " + str(3) + "\n")
-		f.write(" " + "\n")
-		f.write(str(xsource) + " " + str(ysource) + " " + str(zsource) + "\n")
-		
-	with open(bModelGeometry.txt, "w") as f:
+            f.write(str(C_elastic) + "\n")
+        f.write(str(C_nuclea) + "\n")
+        f.write(str(C_degen) + "\n")
+        f.write(str(friclaw) + "\n")
+        f.write(str(ntotft) + "\n")
+        f.write(str(tpv) + "\n")
+        f.write(str(output_plastic) + "\n")
+        f.write(" " + "\n")
+        f.write(str(nx) + " " + str(ny) + " " + str(nz) + "\n")
+        f.write(" " + "\n")
+        f.write(str(term) + "\n")
+        f.write(str(dt) + "\n")
+        f.write(" " + "\n")
+        f.write(str(1) + " " + str(3) + "\n")
+        f.write(" " + "\n")
+        f.write(str(xsource) + " " + str(ysource) + " " + str(zsource) + "\n")
+        
+    with open(bModelGeometry.txt, "w") as f:
         f.write(str(xmin) + "  " + str(xmax) + "\n")
         f.write(str(ymin) + "  " + str(ymax) + "\n")
         f.write(str(zmin) + "  " + str(zmax) + "\n")
-		f.write(" " + "\n")
-		f.write(str(nuni_y_plus) + " " + str(nuni_y_minus) + "\n")
-		f.write(str(enlarging_ratio) + "\n")
-		f.write(str(dx))
-		
-	with open(bFaultGeometry.txt, "w") as f:
-		for i in range(ntotft):
-			f.write("For fault No. " + str(i+1))
-			f.write(str(fxmin) + "  " + str(fxmax) + "\n")
-			f.write(str(fymin) + "  " + str(fymax) + "\n")
-			f.write(str(fzmin) + "  " + str(fzmax) + "\n")
-			
-	with open(bMaterial.txt, "w") as f:
-		f.write(str(vp) + " " + str(vs) + " " + str(rou) + "\n")
+        f.write(" " + "\n")
+        f.write(str(nuni_y_plus) + " " + str(nuni_y_minus) + "\n")
+        f.write(str(enlarging_ratio) + "\n")
+        f.write(str(dx))
+        
+    with open(bFaultGeometry.txt, "w") as f:
+        for i in range(ntotft):
+            f.write("For fault No. " + str(i+1))
+            f.write(str(fxmin) + "  " + str(fxmax) + "\n")
+            f.write(str(fymin) + "  " + str(fymax) + "\n")
+            f.write(str(fzmin) + "  " + str(fzmax) + "\n")
+            
+    with open(bMaterial.txt, "w") as f:
+        f.write(str(vp) + " " + str(vs) + " " + str(rou) + "\n")
 
 def create_station_input_file():
     # Function to create model.txt used by EQquasi.
@@ -151,7 +151,7 @@ def create_batch_script():
         f.write("#SBATCH --mail-type=begin" + "\n")
         f.write("#SBATCH --mail-type=end" + "\n")
         # Executable part.
-		f.write("  ibrun eqdyna" + "\n")
+        f.write("  ibrun eqdyna" + "\n")
         #f.write("for i in $(seq " + str(istart) + " " + str(iend) + ");" + "\n")
         #f.write("do" + "\n")
         #f.write("  echo $i > currentcycle.txt" + "\n")
