@@ -17,7 +17,7 @@ PROGRAM EQdyna_3D
 
 	if (me == master) then 
 		write(*,*) '====================================================================='
-		write(*,*) '================== Welcome to EQdyna 3D 5.2.2 ======================='
+		write(*,*) '================== Welcome to EQdyna 3D 5.2.3 ======================='
 		write(*,*) '===== Product of Earthquake Modeling Lab @ Texas A&M University ====='
 		write(*,*) '========== Website https://seismotamu.wixsite.com/emlam ============='
 		write(*,*) '=========== Contacts: dunyuliu@tamu.edu, bduan@tamu.edu ============='
@@ -50,7 +50,7 @@ PROGRAM EQdyna_3D
 	allocate(fltxyz(2,4,ntotft))
 	call readfaultgeometry
 	call readmaterial
-	call readfric
+	!call readfric
 	call readstations1
 	itmp = maxval(nonfs)
 
@@ -116,6 +116,8 @@ PROGRAM EQdyna_3D
 	call memory_estimate
 	
 	call meshgen
+	
+	call netcdf_read_on_fault_eqdyna("on_fault_vars_input.nc")
 	
 	if (output_ground_motion == 1) call find_surface_node_id
 	
