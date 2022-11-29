@@ -29,11 +29,13 @@ subroutine readglobal
 		read(1001,*) C_elastic
 		read(1001,*) C_nuclea
 		read(1001,*) C_degen
+		read(1001,*) rough_fault
 		read(1001,*) friclaw
 		read(1001,*) ntotft
 		read(1001,*) nucfault
 		read(1001,*) TPV
 		read(1001,*) output_plastic
+		read(1001,*) outputGroundMotion
 		read(1001,*) 
 		read(1001,*) npx, npy, npz
 		read(1001,*)

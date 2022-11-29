@@ -119,7 +119,7 @@ PROGRAM EQdyna_3D
 	
 	call netcdf_read_on_fault_eqdyna("on_fault_vars_input.nc")
 	
-	if (output_ground_motion == 1) call find_surface_node_id
+	if (outputGroundMotion == 1) call find_surface_node_id
 	
     if (C_degen == 1) then 
         do i = 1, numnp
@@ -197,12 +197,8 @@ PROGRAM EQdyna_3D
 	
 	time1=MPI_WTIME()
 	
-	if (output_ground_motion == 0) then 
-		call output_onfault_st
-	
-		call output_offfault_st
-	endif
-	
+	call output_onfault_st
+	call output_offfault_st
 	call output_frt
 
 	time2=MPI_WTIME()

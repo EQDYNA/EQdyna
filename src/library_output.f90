@@ -200,7 +200,7 @@ subroutine find_surface_node_id
 	implicit none
 	integer (kind = 4) :: i, j 	
 	real (kind = dp) :: sc(3)
-	if (output_ground_motion == 1) then	
+	if (outputGroundMotion == 1) then	
 		do i=1,numnp
 			if ((x(1,i)<fltxyz(2,1,1)+20.0d3) .and. (x(1,i)>fltxyz(1,1,1)-20.0d3) .and. (abs(x(2,i))<20.0d3) .and. (abs(x(3,i))<dx/1000)) then 
 				surface_nnode = surface_nnode + 1
@@ -225,7 +225,7 @@ subroutine output_gm
 				! write(1009,'(1x,3e15.7)') v(1,itag), v(2,itag), v(3,itag)
 		! enddo
 	! endif
-	if (output_ground_motion == 1 .and. surface_nnode > 0) then	
+	if (outputGroundMotion == 1 .and. surface_nnode > 0) then	
 		open(unit=10009+me,file='gm'//mm,status='unknown',position='append', access='stream')		
 			do i=1,surface_nnode
 				itag = surface_node_id(i)
