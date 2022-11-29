@@ -33,13 +33,16 @@ dt          = 0.008
 C_elastic   = 1 # elastic(1).
 C_nuclea    = 1 # artificial nucleation (1), no (0). 
 C_degen     = 0 # degenerate hexahedrals (1), no (0).
-output_plastic = 0
 friclaw     = 4 # sw(1), tw(2), rsf_aging(3), rsf_slip(4), rsf_slip_srw(5).
 ntotft      = 1 # number of total faults.
 nucfault    = 1 # the fault id of nucleation fault. Should be no larger than ntotft
 rough_fault = 0 # include rough fault yes(1) or not(0).
 nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault variables will be written out in netCDF format.
 tpv         = 104 
+# Control outputs
+output_plastic = 0
+outputGroundMotion = 0 # output big vel GM time series for all the surface stations?
+
 # currently supported cases
 # 104  (SCEC-TPV104)
 # 105  (SCEC-TPV1053D)
