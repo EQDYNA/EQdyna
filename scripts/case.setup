@@ -86,12 +86,18 @@ def netcdf_write_on_fault_vars():
   
   # additional for the rsf with thermal pressurization
   var10 = ds.createVariable('tp_a_hy',  np.float64, ('strike','dip',))
+  var11 = ds.createVariable('tp_a_th',  np.float64, ('strike','dip',))
+  var12 = ds.createVariable('tp_rouc',  np.float64, ('strike','dip',))
+  var13 = ds.createVariable('tp_lambda',np.float64, ('strike','dip',))
+  var14 = ds.createVariable('tp_h',     np.float64, ('strike','dip',))
+  var15 = ds.createVariable('tp_Tini',  np.float64, ('strike','dip',))
+  var16 = ds.createVariable('tp_pini',  np.float64, ('strike','dip',))
   
   # kinematics and initial stresses
-  var11 = ds.createVariable('init_slip_rate',     np.float64, ('strike','dip',))
-  var12 = ds.createVariable('init_shear_stress',  np.float64, ('strike','dip',))
-  var13 = ds.createVariable('init_normal_stress', np.float64, ('strike','dip',))
-  var14 = ds.createVariable('init_state',         np.float64, ('strike','dip',))
+  var17 = ds.createVariable('init_slip_rate',     np.float64, ('strike','dip',))
+  var18 = ds.createVariable('init_shear_stress',  np.float64, ('strike','dip',))
+  var19 = ds.createVariable('init_normal_stress', np.float64, ('strike','dip',))
+  var20 = ds.createVariable('init_state',         np.float64, ('strike','dip',))
   
  
   var0.units = 'unit'
@@ -108,11 +114,17 @@ def netcdf_write_on_fault_vars():
   var9.units = 'unit' 
   
   var10.units = 'm^2/s'
+  var11.units = 'm^2/s'
+  var12.units = 'J/(m^3K)'
+  var13.units = 'PaK-1'
+  var14.units = 'm'
+  var15.units = 'K'
+  var16.units = 'Pa' 
   
-  var11.units = 'm/s'
-  var12.units = 'Pa'
-  var13.units = 'Pa'
-  var14.units = 'unit'
+  var17.units = 'm/s'
+  var18.units = 'Pa'
+  var19.units = 'Pa'
+  var20.units = 'unit'
   
   strike_var[:] = fx[:]
   dip_var[:]    = fz[:]
@@ -131,11 +143,17 @@ def netcdf_write_on_fault_vars():
   var9[:,:] = on_fault_vars[:,:,15]  # rsf_vw 
   
   var10[:,:] = on_fault_vars[:,:,16] # tp_a_hy
+  var11[:,:] = on_fault_vars[:,:,17] # tp_a_th
+  var12[:,:] = on_fault_vars[:,:,18] # tp_rouc
+  var13[:,:] = on_fault_vars[:,:,19] # tp_lambda
+  var14[:,:] = on_fault_vars[:,:,40] # tp_h
+  var15[:,:] = on_fault_vars[:,:,41] # tp_Tini
+  var16[:,:] = on_fault_vars[:,:,42] # tp_pini
   
-  var11[:,:] = on_fault_vars[:,:,46]  # init_slip_rate  
-  var12[:,:] = on_fault_vars[:,:,8]  # init_shear_stress
-  var13[:,:] = on_fault_vars[:,:,7]  # init_normal_stress
-  var14[:,:] = on_fault_vars[:,:,20]  # init_state
+  var17[:,:] = on_fault_vars[:,:,46]  # init_slip_rate  
+  var18[:,:] = on_fault_vars[:,:,8]  # init_shear_stress
+  var19[:,:] = on_fault_vars[:,:,7]  # init_normal_stress
+  var20[:,:] = on_fault_vars[:,:,20]  # init_state
   
   ds.close()
   

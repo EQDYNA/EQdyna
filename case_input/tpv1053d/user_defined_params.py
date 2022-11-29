@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 
 import numpy as np
-from math import *
-from lib  import *
+from math    import *
+from lib     import *
 
 # model_domain (in meters)
 xmin, xmax   = -42.0e3, 42.0e3
@@ -10,11 +10,11 @@ ymin, ymax   = -20.0e3, 22.0e3
 zmin, zmax   = -42.0e3, 0.0e3
 
 # fault geometry (in meters)
-fxmin, fxmax = -18.0e3, 18.0e3
+fxmin, fxmax = -22.0e3, 22.0e3
 fymin, fymax = 0.0e3,   0.0e3    # for vertical strike-slip faults, we align faults along xz planes.
-fzmin, fzmax = -18.0e3, 0.0e3 
+fzmin, fzmax = -22.0e3, 0.0e3 
 
-xsource, ysource, zsource = 0.0, 0.0, -7.5e3
+xsource, ysource, zsource = -4.0e3, 0.0, -7.5e3
 
 dx           = 100.0e0 # cell size, spatial resolution
 nuni_y_plus  = 70 # along the fault-normal dimension, the number of cells share the dx cell size.
@@ -34,12 +34,12 @@ dt          = 0.008
 C_elastic   = 1 # elastic(1).
 C_nuclea    = 1 # artificial nucleation (1), no (0). 
 C_degen     = 0 # degenerate hexahedrals (1), no (0).
-friclaw     = 4 # sw(1), tw(2), rsf_aging(3), rsf_slip(4), rsf_slip_srw(5).
+friclaw     = 5 # sw(1), tw(2), rsf_aging(3), rsf_slip_srw(4), rsf_slip_srw_tp(5).
 ntotft      = 1 # number of total faults.
 nucfault    = 1 # the fault id of nucleation fault. Should be no larger than ntotft
 rough_fault = 0 # include rough fault yes(1) or not(0).
 nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault variables will be written out in netCDF format.
-tpv         = 104 
+tpv         = 105 
 # Control outputs
 output_plastic = 0
 outputGroundMotion = 0 # output big vel GM time series for all the surface stations?
@@ -94,21 +94,22 @@ fz      = np.linspace(fzmin,fzmax,nfz) # coordinates of fault grids along dip.
 
 # Create on_fault_vars array for on_fault varialbes.
 on_fault_vars = np.zeros((nfx,nfz,100))
+
 # functions are defined in lib.py under scripts/
 # function lists:
 # - shear_steady_state
 # - state_steady_state
 # - B1, defined in TPV104 and TPV105
 # - B2 and B3, defined in TPV105
-  
+
 for ix, xcoor in enumerate(fx):
   for iz, zcoor in enumerate(fz):
   # assign a in RSF. a is a 2D distribution.
     on_fault_vars[ix,iz,1]   = fric_sw_fs 
     on_fault_vars[ix,iz,2]   = fric_sw_fd
     on_fault_vars[ix,iz,3]   = fric_sw_D0
-    on_fault_vars[ix,iz,7]   = -120.0e6     # initial normal stress. Negative compressive.
-    on_fault_vars[ix,iz,8]   = 40.0e6       # initial shear stress.
+    on_fault_vars[ix,iz,7]   = -max(min(grav*1670.*abs*(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
+    on_fault_vars[ix,iz,8]   = -0.41*on_fault_vars[ix,iz,7]       # initial shear stress.
     
     tmp1  = B1(xcoor, 15.e3, 3.e3)
     tmp2  = B2(-zcoor, 15.e3, 3.e3)
@@ -121,8 +122,11 @@ for ix, xcoor in enumerate(fx):
     on_fault_vars[ix,iz,13] = fric_rsf_r0 # initial reference friction.
     
     on_fault_vars[ix,iz,14] = fric_rsf_fw # 
-    on_fault_vars[ix,iz,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  # 
-    on_fault_vars[ix,iz,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp1*tmp2)  #
+    on_fault_vars[ix,iz,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  #
+    
+    tmp3  = B1(xcoor, 15.e3, 3.e3)
+    tmp4  = B3(-zcoor, 15.e3, 3.e3)
+    on_fault_vars[ix,iz,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp3*tmp4)  #
     on_fault_vars[ix,iz,17] = fric_tp_a_th
     on_fault_vars[ix,iz,18] = fric_tp_rouc
     on_fault_vars[ix,iz,19] = fric_tp_lambda
