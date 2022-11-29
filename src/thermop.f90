@@ -8,15 +8,15 @@ implicit none
 ! description of TPV105 3D. 
 ! DL and BL, 20200901
 !
-integer(kind=4) :: i, ift, j, k
-real(kind=8) :: htp, rouctp, lamta, gama, omega, kapa, tmp, tmp2, ker
+integer(kind = 4)  :: i, ift, j, k
+real   (kind = dp) :: htp, rouctp, lamta, gama, omega, kapa, tmp, tmp2, ker
 
 do ift = 1, ntotft
 	do i = 1, nftnd(ift)
 	
-		gama = fric_tp_lambda/fric_tp_rouc
-		omega = fric(16,i,ift)
-		kapa = fric_tp_a_th 
+		gama  = fric(19,i,ift)/fric(18,i,ift) ! tp_lambda/tp_rouc
+		omega = fric(16,i,ift) ! tp_a_hy
+		kapa  = fric(17,i,ift) ! tp_a_th 
 
 		tmp = 0.0d0 
 		do j = 1, nt-1
@@ -31,9 +31,9 @@ do ift = 1, ntotft
 			ker = 1.0d0/(4.0d0*kapa*(nt-j)*dt + 2.0d0*fric_tp_h**2)**0.5
 			tmp = tmp + abs(frichis(2,i,j,ift))*frichis(1,i,j,ift)*ker*dt
 		enddo 
-		Tatnode(i,ift) = tmp/fric_tp_rouc/(pi)**0.5
+		Tatnode(i,ift) = tmp/fric(18,i,ift)/(pi)**0.5
 		fric(51,i,ift) = patnode(i,ift) 
-		fric(52,i,ift) = Tatnode(i,ift) + fric_tp_Tini
+		fric(52,i,ift) = Tatnode(i,ift) + fric(41,i,ift) ! + Tini
 	enddo 	
 enddo
 

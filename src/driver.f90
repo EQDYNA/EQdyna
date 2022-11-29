@@ -13,20 +13,19 @@ integer (kind = 4) ::ntstep=0,i,j,k,k1,l,m,ierr,rr,jj,izz,ntagMPI,ix,iy,iz,nx,ny
 real (kind = dp) :: dampv(9)
 real (kind = dp), allocatable,dimension(:) :: btmp,btmp1,btmp2,btmp3
 
-Tatnode = fric_tp_Tini
-patnode = fric_tp_pini
+! Tatnode = fric_tp_Tini
+! patnode = fric_tp_pini
 
-time1=MPI_WTIME()
-
+time1       = MPI_WTIME()
 call qdct2
 
-time2 = MPI_WTIME()
-timeused(2)=timeused(2)+(time2-time1)
+time2       = MPI_WTIME()
+timeused(2) = timeused(2)+(time2-time1)
 
 do nt=1,nstep
 
-	time = time + dt
-	ntstep = ntstep + 1 
+	time    = time + dt
+	ntstep  = ntstep + 1 
 	
 	if (mod(nt,100) == 1 .and. me == master) then
 		write(*,*) '=                                                                   ='
@@ -34,7 +33,7 @@ do nt=1,nstep
 		write(*,'(X,A,40X,f7.3,4X,A)') '=',  time  , 's'
 	endif
 	
-	time1=MPI_WTIME()
+	time1   = MPI_WTIME()
 	do i=1,numnp
 		if (dof1(i)==3) then
 			do j=1,3
@@ -90,15 +89,15 @@ do nt=1,nstep
 		endif
 	enddo
 !-------------------------------------------------------------------!	
-	time2=MPI_WTIME()
-	timeused(3)=timeused(3)+(time2-time1)
+	time2       = MPI_WTIME()
+	timeused(3) = timeused(3)+(time2-time1)
 	 
 	!*** store desired results at set time intervals ***
 	if (mod(nt,nhplt) == 0) then	
-		lstr=.true.	
-		locplt=locplt+ 1	!when nt=1, locplt=2 due to 1 in eqdy3d.f90
+		lstr    = .true.	
+		locplt  = locplt+ 1	!when nt=1, locplt=2 due to 1 in eqdy3d.f90
 	else
-		lstr=.false.
+		lstr    = .false.
 	endif
 	if (lstr) then
 		if((ndout>0).and.(locplt>1)) then
