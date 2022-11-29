@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 from math import *
+from sys  import *
 
 # functions are defined in lib.py under scripts/
 # function lists:
@@ -13,7 +14,7 @@ def shear_steady_state(a,b,v0,r0,load_rate,norm,slip_rate):
   res = -norm*a*asinh(slip_rate/2.0/v0*exp((r0+b*log(v0/load_rate))/a)) #+ rou*vs/2.0*slip_rate
   return res
 
-def state_steady_state(a,b,d0,v0,r0,shear,norm,slip_rate):
+def state_steady_state(a,b,d0,v0,r0,shear,norm,slip_rate, friclaw):
   # calculate the state variable at steady state
     if friclaw == 3:
         tmp   = a*log(2.*sinh(abs(shear/norm/a))) - r0 - log(slip_rate/v0)
@@ -35,9 +36,9 @@ def B1(x,ww,w):
 def B2(y,ww,w):
   if y<0:
     print('z coordinates should be positive for B3')
-    break
+    sys.exit()
   if y<w:
-    res = 0.5*[1.+tanh(w/(w-y) - w/y)]
+    res = 0.5*(1.+tanh(w/(w-y) - w/y))
   elif y>=w and y<=ww:
     res = 1.0
   elif y>ww and y<ww+w: 
@@ -48,7 +49,7 @@ def B2(y,ww,w):
 def B3(y,ww,w):
   if y<0:
     print('z coordinates should be positive for B3')
-    break
+    sys.exit()
   if y<=ww:
     res = 1.
   elif y>ww and y<ww+w:

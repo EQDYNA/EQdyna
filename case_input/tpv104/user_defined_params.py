@@ -111,7 +111,7 @@ for ix, xcoor in enumerate(fx):
     on_fault_vars[ix,iz,8]   = 40.0e6       # initial shear stress.
     
     tmp1  = B1(xcoor, 15.e3, 3.e3)
-    tmp2  = B2(-zcoor, 15.e3, 3.e3)
+    tmp2  = B1(-zcoor-7.5e3, 15.e3/2., 3.e3)
     on_fault_vars[ix,iz,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
     on_fault_vars[ix,iz,10] = fric_rsf_b # assign b in RSF 
     on_fault_vars[ix,iz,11] = fric_rsf_Dc # assign Dc in RSF.
@@ -141,7 +141,8 @@ for ix, xcoor in enumerate(fx):
                                                 on_fault_vars[ix,iz,13],
                                                 on_fault_vars[ix,iz,8],
                                                 on_fault_vars[ix,iz,7],
-                                                on_fault_vars[ix,iz,46]) # initial state var.
+                                                on_fault_vars[ix,iz,46],
+                                                friclaw) # initial state var.
     
     
 ###############################################

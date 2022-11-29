@@ -312,14 +312,14 @@ subroutine netcdf_read_on_fault_eqdyna(infile)
 	use globalvar
 	implicit none 
 	character (len = 50 ) :: infile
-	integer (kind = 4) :: ncid,  var_id(20), i, j, nvar, ii, jj, fnx, fnz, ift
+	integer (kind = 4) :: ncid,  var_id(40), i, j, nvar, ii, jj, fnx, fnz, ift
 	real (kind = dp), allocatable, dimension(:,:,:) :: on_fault_vars
 	real (kind = dp)   :: xcord, zcord
 	
 	fnx  = (fxmax(1) - fxmin(1))/dx+1
 	fnz  = (fzmax(1) - fzmin(1))/dx+1
 	
-	nvar = 15
+	nvar = 21
 	allocate(on_fault_vars(fnz,fnx,nvar))
 	
 	! Open the file. NF90_NOWRITE tells netCDF we want read-only access to the file. 
@@ -336,11 +336,17 @@ subroutine netcdf_read_on_fault_eqdyna(infile)
 	call check( nf90_inq_varid(ncid, "rsf_r0",   var_id(8)))
 	call check( nf90_inq_varid(ncid, "rsf_fw",   var_id(9)))
 	call check( nf90_inq_varid(ncid, "rsf_vw",   var_id(10)))
-	call check( nf90_inq_varid(ncid, "tp_a_hy", var_id(11)))
-	call check( nf90_inq_varid(ncid, "init_slip_rate", var_id(12)))
-	call check( nf90_inq_varid(ncid, "init_shear_stress", var_id(13)))
-	call check( nf90_inq_varid(ncid, "init_normal_stress", var_id(14)))
-	call check( nf90_inq_varid(ncid, "init_state", var_id(15)))
+	call check( nf90_inq_varid(ncid, "tp_a_hy",  var_id(11)))
+	call check( nf90_inq_varid(ncid, "tp_a_th",  var_id(12)))
+	call check( nf90_inq_varid(ncid, "tp_rouc",  var_id(13)))
+	call check( nf90_inq_varid(ncid, "tp_lambda",var_id(14)))
+	call check( nf90_inq_varid(ncid, "tp_h",     var_id(15)))
+	call check( nf90_inq_varid(ncid, "tp_Tini",  var_id(16)))
+	call check( nf90_inq_varid(ncid, "tp_pini",  var_id(17)))
+	call check( nf90_inq_varid(ncid, "init_slip_rate",     var_id(18)))
+	call check( nf90_inq_varid(ncid, "init_shear_stress",  var_id(19)))
+	call check( nf90_inq_varid(ncid, "init_normal_stress", var_id(20)))
+	call check( nf90_inq_varid(ncid, "init_state",         var_id(21)))
 	
 	! Read the data
 	do i = 1, nvar
@@ -363,11 +369,17 @@ subroutine netcdf_read_on_fault_eqdyna(infile)
 			fric(13, i, 1) = on_fault_vars(jj,ii,8)! rsf_r0
 			fric(14, i, 1) = on_fault_vars(jj,ii,9) ! rsf_fw
 			fric(15, i, 1) = on_fault_vars(jj,ii,10)! rsf_vw
-			fric(16, i, 1) = on_fault_vars(jj,ii,11)! tpv_a_hy
-			fric(46, i, 1) = on_fault_vars(jj,ii,12)! init_slip_rate
-			fric(8,  i, 1) = on_fault_vars(jj,ii,13)! init_shear
-			fric(7,  i, 1) = on_fault_vars(jj,ii,14)! init_norm
-			fric(20, i, 1) = on_fault_vars(jj,ii,15)! init_state variable
+			fric(16, i, 1) = on_fault_vars(jj,ii,11)! tp_a_hy
+			fric(17, i, 1) = on_fault_vars(jj,ii,12)! tp_a_th
+			fric(18, i, 1) = on_fault_vars(jj,ii,13)! tp_rouc
+			fric(19, i, 1) = on_fault_vars(jj,ii,14)! tp_lambda
+			fric(40, i, 1) = on_fault_vars(jj,ii,15)! tp_h
+			fric(41, i, 1) = on_fault_vars(jj,ii,16)! tp_Tini 
+			fric(42, i, 1) = on_fault_vars(jj,ii,17)! tp_pini 
+			fric(46, i, 1) = on_fault_vars(jj,ii,18)! init_slip rate
+			fric(8,  i, 1) = on_fault_vars(jj,ii,19)! init_shear
+			fric(7,  i, 1) = on_fault_vars(jj,ii,20)! init_norm
+			fric(20, i, 1) = on_fault_vars(jj,ii,21)! init_state variable
 			fric(47, i, 1) = fric(46, i, 1)! peak slip rate
 			fric(25, i, 1) = 0.0d0! vini_norm 
 			fric(26, i, 1) = fric(46, i, 1) ! vinix
