@@ -101,14 +101,14 @@ on_fault_vars = np.zeros((nfx,nfz,100))
 # - state_steady_state
 # - B1, defined in TPV104 and TPV105
 # - B2 and B3, defined in TPV105
-
+grav = 9.8
 for ix, xcoor in enumerate(fx):
   for iz, zcoor in enumerate(fz):
   # assign a in RSF. a is a 2D distribution.
     on_fault_vars[ix,iz,1]   = fric_sw_fs 
     on_fault_vars[ix,iz,2]   = fric_sw_fd
     on_fault_vars[ix,iz,3]   = fric_sw_D0
-    on_fault_vars[ix,iz,7]   = -max(min(grav*1670.*abs*(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
+    on_fault_vars[ix,iz,7]   = -max(min(grav*1670.*abs(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
     on_fault_vars[ix,iz,8]   = -0.41*on_fault_vars[ix,iz,7]       # initial shear stress.
     
     tmp1  = B1(xcoor, 15.e3, 3.e3)
@@ -145,7 +145,8 @@ for ix, xcoor in enumerate(fx):
                                                 on_fault_vars[ix,iz,13],
                                                 on_fault_vars[ix,iz,8],
                                                 on_fault_vars[ix,iz,7],
-                                                on_fault_vars[ix,iz,46]) # initial state var.
+                                                on_fault_vars[ix,iz,46],
+                                                friclaw) # initial state var.
     
     
 ###############################################
