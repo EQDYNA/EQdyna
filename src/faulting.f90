@@ -259,9 +259,12 @@ subroutine faulting
 				elseif (friclaw == 4 .or. friclaw==5) then
 					call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
 				endif 
-
-				!taoc_old = fric(4,i,ift) - xmu * MIN(tnrm, 0.0d0)
-				taoc_old = xmu * theta_pc_tmp
+				
+				if (friclaw < 5) then
+					taoc_old = fric(4,i,ift) - xmu * MIN(tnrm, 0.0d0)
+				else 
+					taoc_old = xmu * theta_pc_tmp
+				endif
 				
 				tstk0    = tstk
 				tdip0    = tdip
@@ -284,14 +287,20 @@ subroutine faulting
 						call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
 					endif 
 					
-					fric(23,i,ift)  = theta_pc_tmp 
-					call rate_state_normal_stress(v_trial, fric(23,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))	
-					!taoc_new = fric(4,i,ift) - xmu * MIN(tnrm, 0.0d0)
-					taoc_new        = xmu*theta_pc_tmp
-					rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - ttao1)
-					!drsfeqdv = 1.0d0 + T_coeff * (-dxmudv * MIN(tnrm,0.0d0))*0.5d0  
-					drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * theta_pc_tmp)*0.5d0  
+					! Currently, the code doesn't support normal stress evolution under thermo pressurization.
+					if (friclaw < 5) then
+						fric(23,i,ift)  = theta_pc_tmp 
+						call rate_state_normal_stress(v_trial, fric(23,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))	
+						taoc_new        = xmu*theta_pc_tmp
+						rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - ttao1)
+						drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * theta_pc_tmp)*0.5d0  
+					else
+						taoc_new        = fric(4,i,ift) - xmu * MIN(tnrm, 0.0d0)
+						rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - ttao1)
+						drsfeqdv        = 1.0d0 + T_coeff * (-dxmudv * MIN(tnrm,0.0d0))*0.5d0  
+					endif
 					
+					! Exiting criteria.
 					if(abs(rsfeq/drsfeqdv) < 1.d-14 * abs(v_trial) .and. abs(rsfeq) < 1.d-6 * abs(v_trial)) exit 
 					!if(abs(rsfeq) < 1.d-5 * abs(v_trial)) exit 
 						vtmp = v_trial - rsfeq / drsfeqdv
@@ -321,15 +330,15 @@ subroutine faulting
 					! fric(20,i,ift) = 1.0d-6
 				! endif 
 				
-				! if (x(1,isn)==xsource.and.x(3,isn)==zsource)then
-					! write(*,*) 'time', time
-					! write(*,*) 'tn,tn_pc',tnrm/1e6,theta_pc_tmp/1e6
-					! write(*,*) 'ts, td',          tstk/1e6,tdip/1e6
-					! write(*,*) 'vtrial, theta', v_trial,fric(20,i,ift)
-					! write(*,*) ' iv = ', iv
-					! write(*,*) 'fric(51)', fric(51,i,ift)
-					! write(*,*) 'slip', slip					
-				! endif	
+				if (x(1,isn)==xsource.and.x(3,isn)==zsource)then
+					write(*,*) 'time', time
+					write(*,*) 'tn,tn_pc',tnrm/1e6,theta_pc_tmp/1e6
+					write(*,*) 'ts, td',          tstk/1e6,tdip/1e6
+					write(*,*) 'vtrial, theta', v_trial,fric(20,i,ift)
+					write(*,*) ' iv = ', iv
+					write(*,*) 'fric(51)', fric(51,i,ift)
+					write(*,*) 'slip', slip					
+				endif	
 				tstk = taoc_old*0.5d0 * (sliprates / sliprate) + taoc_new*0.5d0 * (tstk1 / ttao1) 
 				tdip = taoc_old*0.5d0 * (sliprated / sliprate) + taoc_new*0.5d0 * (tdip1 / ttao1) 
 				fric(78,i,ift) = tnrm 
@@ -370,7 +379,7 @@ subroutine faulting
 						fltsta(8,locplt-1,j)  = tstk
 						fltsta(9,locplt-1,j)  = tdip
 						fltsta(10,locplt-1,j) = tnrm
-						fltsta(11,locplt-1,j) = fric(51,i,ift) + fric_tp_pini
+						fltsta(11,locplt-1,j) = fric(51,i,ift) + fric(42,i,ift) ! + fric_tp_pini
 						fltsta(12,locplt-1,j) = fric(52,i,ift) 
 					endif
 				enddo 
