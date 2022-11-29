@@ -137,7 +137,7 @@ subroutine faulting
 				endif
 
 				if((tnrm+fric(6,i,ift))>0) then
-					tnrm0 = 0.0
+					tnrm0 = 0.0d0
 				else
 					tnrm0 = tnrm+fric(6,i,ift)
 				endif
@@ -147,7 +147,7 @@ subroutine faulting
 					tstk = tstk * taoc / ttao
 					tdip = tdip * taoc / ttao
 					if(fnft(i,ift)>600) then	!fnft should be initialized by >10000
-						if(sliprate >= 0.001) then	!first time to reach 1mm/s
+						if(sliprate >= 0.001d0) then	!first time to reach 1mm/s
 							fnft(i,ift) = time	!rupture time for the node
 						endif
 					endif
@@ -208,89 +208,89 @@ subroutine faulting
 				
 				if (tnrm > 0.0d0) tnrm = 0.0d0
 				
-				slipn = slipn + fric(16,i,ift) * time 
-				slips = slips + fric(17,i,ift) * time
-				slipd = slipd + fric(18,i,ift) * time
+				! Add the background slip rate on top. 
+				slipn = slipn + fric(25,i,ift) * time 
+				slips = slips + fric(26,i,ift) * time
+				slipd = slipd + fric(27,i,ift) * time
 				slip = sqrt(slips**2 + slipd**2) !slip mag
-				slipraten =  slipraten + fric(16,i,ift) 
-				sliprates =  sliprates + fric(17,i,ift)
-				sliprated =  sliprated + fric(18,i,ift)
+				slipraten =  slipraten + fric(25,i,ift) 
+				sliprates =  sliprates + fric(26,i,ift)
+				sliprated =  sliprated + fric(27,i,ift)
 				sliprate = sqrt(sliprates**2+sliprated**2)
 				
-				if (nt == 1) then ! For the plastic model, set initial state variable after the first time step calculation of tstk and tnrm.
-					!fric(81,i,ift) = F*tstk
-					!sliprate = 1.0d-16 !fric(12,i,ift)*dexp((fric(13,i,ift) - abs(ttao/tnrm))/(fric(10,i,ift) - fric(9,i,ift)))
-					!fric(21,i,ift) = fric(9,i,ift)*dlog(2.0d0*fric(12,i,ift)/sliprate &
-					!	*dsinh((fric(13,i,ift) - (fric(10,i,ift)-fric(9,i,ift))*dlog(sliprate/fric(12,i,ift)))/fric(9,i,ift)))
-					!fric(13,i,ift) = ttao/abs(tnrm)
-					fric(21,i,ift)=fric(9,i,ift)*dlog(2.0d0*fric(12,i,ift)/sliprate &
-						*dsinh(ttao/abs(tnrm)/fric(9,i,ift)))
-					fric(82,i,ift) = abs(tnrm) !theta_pc
-					fric(91,i,ift) = tstk
-					fric(92,i,ift) = tdip
-					fric(93,i,ift) = tnrm
-				endif				
+				! if (nt == 1) then ! For the plastic model, set initial state variable after the first time step calculation of tstk and tnrm.
+					! !fric(81,i,ift) = F*tstk
+					! !sliprate = 1.0d-16 !fric(12,i,ift)*dexp((fric(13,i,ift) - abs(ttao/tnrm))/(fric(10,i,ift) - fric(9,i,ift)))
+					! !fric(20,i,ift) = fric(9,i,ift)*dlog(2.0d0*fric(12,i,ift)/sliprate &
+					! !	*dsinh((fric(13,i,ift) - (fric(10,i,ift)-fric(9,i,ift))*dlog(sliprate/fric(12,i,ift)))/fric(9,i,ift)))
+					! !fric(13,i,ift) = ttao/abs(tnrm)
+					! fric(20,i,ift)=fric(9,i,ift)*dlog(2.0d0*fric(12,i,ift)/sliprate &
+						! *dsinh(ttao/abs(tnrm)/fric(9,i,ift)))
+					! fric(23,i,ift) = abs(tnrm) !theta_pc
+					! fric(91,i,ift) = tstk
+					! fric(92,i,ift) = tdip
+					! fric(93,i,ift) = tnrm
+				! endif				
 					
 				if(fnft(i,ift)>600.0d0) then	!fnft should be initialized by >10000
-					if(sliprate >= 0.1d0) then	!first time to reach 1mm/s
+					if(sliprate >= 0.001d0) then	!first time to reach 1mm/s
 						fnft(i,ift) = time	!rupture time for the node
 					endif
 				endif
 				v_trial = sliprate
 				
-				theta_pc_tmp = fric(82,i,ift)
-				call rate_state_normal_stress(v_trial, fric(82,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))	
+				theta_pc_tmp = fric(23,i,ift)
+				call rate_state_normal_stress(v_trial, fric(23,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))	
+				fric(24,i,ift) = theta_pc_dot
 				
-				fric(83,i,ift) = theta_pc_dot
-				
-				mr =   mmast * mslav / (mmast+mslav) !reduced mass   
-				T_coeff = arn(i,ift)* dt / mr
-				statetmp = fric(21,i,ift)  !RSF: a temporary variable to store the currently value of state variable. B.L. 1/8/16
+				mr       = mmast * mslav / (mmast+mslav) !reduced mass   
+				T_coeff  = arn(i,ift)* dt / mr
+				statetmp = fric(20,i,ift)  !RSF: a temporary variable to store the currently value of state variable. B.L. 1/8/16
 				
 				! if (abs(x(1,isn)-xsource)<1.0d0 .and. abs(x(3,isn)-zsource)<1.0d0) then 
 					! write(*,*) 'nt = ', nt
-					! write(*,*) 'source: tn,ts,td,v,theta,phi',tnrm/1.0d6,tstk/1.0d6,tdip/1e6, v_trial, theta_pc_tmp/1e6,fric(21,i,ift)
+					! write(*,*) 'source: tn,ts,td,v,theta,phi',tnrm/1.0d6,tstk/1.0d6,tdip/1e6, v_trial, theta_pc_tmp/1e6,fric(20,i,ift)
 					! write(*,*) 'fric(51)', fric(51,i,ift)
 					! write(*,*) 'slip', slip
 				! endif
 				
 				if(friclaw == 3) then
-					call rate_state_ageing_law(v_trial,fric(21,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
+					call rate_state_ageing_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
 				elseif (friclaw == 4 .or. friclaw==5) then
-					call rate_state_slip_law(v_trial,fric(21,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
+					call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
 				endif 
 
 				!taoc_old = fric(4,i,ift) - xmu * MIN(tnrm, 0.0d0)
 				taoc_old = xmu * theta_pc_tmp
 				
-				tstk0=tstk
-				tdip0=tdip
-				tstk1 = tstk0 - taoc_old*0.5d0 * (sliprates / sliprate) + fric(17,i,ift)/T_coeff
-				tdip1 = tdip0 - taoc_old*0.5d0 * (sliprated / sliprate) + fric(18,i,ift)/T_coeff
-				  
-				ttao1 = sqrt(tstk1*tstk1 + tdip1*tdip1)
+				tstk0    = tstk
+				tdip0    = tdip
+				tstk1    = tstk0 - taoc_old*0.5d0 * (sliprates / sliprate) + fric(26,i,ift)/T_coeff
+				tdip1    = tdip0 - taoc_old*0.5d0 * (sliprated / sliprate) + fric(27,i,ift)/T_coeff
+				ttao1    = sqrt(tstk1*tstk1 + tdip1*tdip1)
 			  
-				ivmax = 20  !RSF: maximum 30 loops for iteration, once a criterion is met, jump out of this loop. B.L. 1/8/16
+				! Netwon solver for v_trial.
+				ivmax    = 20  ! Maximum iterations.
 				! if (x(1,isn)==280.0.and.x(3,isn)==-10560.0)then
-					! write(*,*)'tn,ts,td,v,theta',tnrm/1e6,tstk/1e6,tdip/1e6,v_trial,theta_pc_tmp/1e6,fric(21,i,ift)
+					! write(*,*)'tn,ts,td,v,theta',tnrm/1e6,tstk/1e6,tdip/1e6,v_trial,theta_pc_tmp/1e6,fric(20,i,ift)
 					! write(*,*) 'fric(51)', fric(51,i,ift)
 					! write(*,*) 'slip', slip					
 				! endif			  
 				do iv = 1,ivmax
-					fric(21,i,ift) = statetmp
+					fric(20,i,ift)  = statetmp
 					if(friclaw == 3) then
-						call rate_state_ageing_law(v_trial,fric(21,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
+						call rate_state_ageing_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
 					else
-						call rate_state_slip_law(v_trial,fric(21,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
+						call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
 					endif 
 					
-					fric(82,i,ift) = theta_pc_tmp 
-					call rate_state_normal_stress(v_trial, fric(82,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))	
+					fric(23,i,ift)  = theta_pc_tmp 
+					call rate_state_normal_stress(v_trial, fric(23,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))	
 					!taoc_new = fric(4,i,ift) - xmu * MIN(tnrm, 0.0d0)
-					taoc_new = xmu*theta_pc_tmp
-					rsfeq = v_trial + T_coeff * (taoc_new*0.5d0 - ttao1)
+					taoc_new        = xmu*theta_pc_tmp
+					rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - ttao1)
 					!drsfeqdv = 1.0d0 + T_coeff * (-dxmudv * MIN(tnrm,0.0d0))*0.5d0  
-					drsfeqdv = 1.0d0 + T_coeff * (dxmudv * theta_pc_tmp)*0.5d0  
+					drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * theta_pc_tmp)*0.5d0  
 					
 					if(abs(rsfeq/drsfeqdv) < 1.d-14 * abs(v_trial) .and. abs(rsfeq) < 1.d-6 * abs(v_trial)) exit 
 					!if(abs(rsfeq) < 1.d-5 * abs(v_trial)) exit 
@@ -300,34 +300,44 @@ subroutine faulting
 					else
 						v_trial = vtmp
 					endif  
-					! if (x(1,isn)==280.0.and.x(3,isn)==-10560.0)then
-						! write(*,*) 'tn,ts,td,v,theta',tnrm/1e6,tstk/1e6,tdip/1e6,v_trial,theta_pc_tmp/1e6,fric(21,i,ift)
-						! write(*,*) ' iv = ', iv
-					! endif						
+					
+					if (x(1,isn)==xsource.and.x(3,isn)==zsource)then
+						write(*,*) 'time', time
+						write(*,*) 'Newton, iv', iv
+						write(*,*) 'tn,tn_pc',tnrm/1e6,theta_pc_tmp/1e6
+						write(*,*) 'ts, td',          tstk/1e6,tdip/1e6
+						write(*,*) 'vtrial, theta', v_trial,fric(20,i,ift)
+						write(*,*) ' iv = ', iv
+						write(*,*) 'fric(51)', fric(51,i,ift)
+						write(*,*) 'slip', slip					
+					endif	
 				enddo !iv
 
 				! if(v_trial < 1.0d-32) then
 					! v_trial = 1.0d-32
 				! !	taoc_new = ttao1*2.0d0
 				! endif
-				! if (fric(21,i,ift) < 0.0d0) then 
-					! fric(21,i,ift) = 1.0d-6
+				! if (fric(20,i,ift) < 0.0d0) then 
+					! fric(20,i,ift) = 1.0d-6
 				! endif 
 				
-				! if (x(1,isn)==280.0.and.x(3,isn)==-10560.0)then
-					! write(*,*) 'tn,ts,td,v,theta',tnrm/1e6,tstk/1e6,tdip/1e6,v_trial,theta_pc_tmp/1e6,fric(21,i,ift)
-					! write(*,*) ' iv = ', iv
-					! write(*,*) 'fric(51)', fric(51,i,ift)
-					! write(*,*) 'slip', slip					
-				! endif	
+				if (x(1,isn)==xsource.and.x(3,isn)==zsource)then
+					write(*,*) 'time', time
+					write(*,*) 'tn,tn_pc',tnrm/1e6,theta_pc_tmp/1e6
+					write(*,*) 'ts, td',          tstk/1e6,tdip/1e6
+					write(*,*) 'vtrial, theta', v_trial,fric(20,i,ift)
+					write(*,*) ' iv = ', iv
+					write(*,*) 'fric(51)', fric(51,i,ift)
+					write(*,*) 'slip', slip					
+				endif	
 				tstk = taoc_old*0.5d0 * (sliprates / sliprate) + taoc_new*0.5d0 * (tstk1 / ttao1) 
 				tdip = taoc_old*0.5d0 * (sliprated / sliprate) + taoc_new*0.5d0 * (tdip1 / ttao1) 
-				fric(78,i,ift)=tnrm 
-				fric(79,i,ift)=tstk
-				fric(49,i,ift) = v_trial
-				fric(50,i,ift) = (tstk**2 + tdip**2)**0.5 
-				frichis(1,i,nt,ift) = fric(49,i,ift)
-				frichis(2,i,nt,ift) = fric(50,i,ift)
+				fric(78,i,ift) = tnrm 
+				fric(79,i,ift) = tstk
+				fric(47,i,ift) = v_trial
+				fric(48,i,ift) = (tstk**2 + tdip**2)**0.5 
+				frichis(1,i,nt,ift) = fric(47,i,ift)
+				frichis(2,i,nt,ift) = fric(48,i,ift)
 				accn = -slipraten/dt - slipn/dt/dt
 				accs = (v_trial * (tstk1 / ttao1) - sliprates)/dt
 				accd = (v_trial * (tdip1 / ttao1) - sliprated)/dt
@@ -335,19 +345,16 @@ subroutine faulting
 				accx = accn*un(1,i,ift) + accs*us(1,i,ift) + accd*ud(1,i,ift)
 				accy = accn*un(2,i,ift) + accs*us(2,i,ift) + accd*ud(2,i,ift)
 				accz = accn*un(3,i,ift) + accs*us(3,i,ift) + accd*ud(3,i,ift)
-				!if (C_elastic==0) then
-				!	stop 777
-				!elseif (C_elastic==1) then
-					Rx = brhs(id1(locid(isn)+1)) + brhs(id1(locid(imn)+1))
-					Ry = brhs(id1(locid(isn)+2)) + brhs(id1(locid(imn)+2))
-					Rz = brhs(id1(locid(isn)+3)) + brhs(id1(locid(imn)+3))
-					brhs(id1(locid(isn)+1)) = (-accx + Rx/mmast) * mr
-					brhs(id1(locid(isn)+2)) = (-accy + Ry/mmast) * mr
-					brhs(id1(locid(isn)+3)) = (-accz + Rz/mmast) * mr
-					brhs(id1(locid(imn)+1)) = (accx + Rx/mslav) * mr
-					brhs(id1(locid(imn)+2)) = (accy + Ry/mslav) * mr
-					brhs(id1(locid(imn)+3)) = (accz + Rz/mslav) * mr
-				!	endif
+
+				Rx = brhs(id1(locid(isn)+1)) + brhs(id1(locid(imn)+1))
+				Ry = brhs(id1(locid(isn)+2)) + brhs(id1(locid(imn)+2))
+				Rz = brhs(id1(locid(isn)+3)) + brhs(id1(locid(imn)+3))
+				brhs(id1(locid(isn)+1)) = (-accx + Rx/mmast) * mr
+				brhs(id1(locid(isn)+2)) = (-accy + Ry/mmast) * mr
+				brhs(id1(locid(isn)+3)) = (-accz + Rz/mmast) * mr
+				brhs(id1(locid(imn)+1)) = (accx + Rx/mslav) * mr
+				brhs(id1(locid(imn)+2)) = (accy + Ry/mslav) * mr
+				brhs(id1(locid(imn)+3)) = (accz + Rz/mslav) * mr
 			endif
 
 			if(n4onf>0.and.lstr) then	
@@ -356,7 +363,7 @@ subroutine faulting
 						fltsta(1,locplt-1,j)  = time
 						fltsta(2,locplt-1,j)  = sliprates
 						fltsta(3,locplt-1,j)  = sliprated
-						fltsta(4,locplt-1,j)  = fric(21,i,ift)
+						fltsta(4,locplt-1,j)  = fric(20,i,ift)
 						fltsta(5,locplt-1,j)  = slips
 						fltsta(6,locplt-1,j)  = slipd
 						fltsta(7,locplt-1,j)  = slipn

@@ -13,6 +13,8 @@ fxmin, fxmax = -18.0e3, 18.0e3
 fymin, fymax = 0.0e3,   0.0e3    # for vertical strike-slip faults, we align faults along xz planes.
 fzmin, fzmax = -18.0e3, 0.0e3 
 
+xsource, ysource, zsource = 0.0, 0.0, -7.5e3
+
 dx           = 100.0e0 # cell size, spatial resolution
 nuni_y_plus  = 70 # along the fault-normal dimension, the number of cells share the dx cell size.
 nuni_y_minus = 70 
@@ -24,19 +26,20 @@ vp, vs, rou = 6.0e3, 3.464e3, 2.67e3
 init_norm = -25.0e6 # initial normal stress in Pa. Negative compressive.
 
 # total simulation time and dt
-term        = 15.
+term        = 3.
 dt          = 0.008
 
 # Controlling switches for EQquasi system
 C_elastic   = 1 # elastic(1).
 C_nuclea    = 1 # artificial nucleation (1), no (0). 
 C_degen     = 0 # degenerate hexahedrals (1), no (0).
-friclaw     = 3 # sw(1), tw(2), rsf_aging(3), rsf_slip(4), rsf_slip_srw(5).
+output_plastic = 0
+friclaw     = 4 # sw(1), tw(2), rsf_aging(3), rsf_slip(4), rsf_slip_srw(5).
 ntotft      = 1 # number of total faults.
 nucfault    = 1 # the fault id of nucleation fault. Should be no larger than ntotft
 rough_fault = 0 # include rough fault yes(1) or not(0).
 nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault variables will be written out in netCDF format.
-tpv          = 104 
+tpv         = 104 
 # currently supported cases
 # 104  (SCEC-TPV104)
 # 105  (SCEC-TPV1053D)
@@ -64,14 +67,15 @@ fric_rsf_vw     = 0.1
 fric_rsf_deltaavw0 = 0.9
 # additional parameters for thermal pressurization. 
 fric_tp_a_th    = 1.0e-6  # m^2/s
-fric_tp_rouc    = 2.7d6   # J/(m^3K)
-fric_tp_lambbda = 0.1d6   # paK^-1
-fric_tp_h       = 0.02d0  # m
-fric_tp_a_hy    = 4.0d-4  # m^2/s
-fric_tp_deltaa_hy0 = 1.0d0# m^2/s
+fric_tp_rouc    = 2.7e6   # J/(m^3K)
+fric_tp_lambbda = 0.1e6   # paK^-1
+fric_tp_h       = 0.02  # m
+fric_tp_a_hy    = 4.0e-4  # m^2/s
+fric_tp_deltaa_hy0 = 1.0 # m^2/s
 fric_tp_Tini    = 483.15  # K
-fric_tp_pini    = 80.0d6  # Pa
+fric_tp_pini    = 80.0e6  # Pa
 
+creep_slip_rate = 1e-16   # m/s
 #################################
 #####   Initial stresses   ######
 #################################
@@ -81,8 +85,8 @@ fric_tp_pini    = 80.0d6  # Pa
 # Creating the fault interface
 nfx     = int((fxmax - fxmin)/dx + 1)
 nfz     = int((fzmax - fzmin)/dx + 1)
-fx      = np.linspace(xmin,xmax,nfx) # coordinates of fault grids along strike.
-fz      = np.linspace(zmin,zmax,nfz) # coordinates of fault grids along dip.
+fx      = np.linspace(fxmin,fxmax,nfx) # coordinates of fault grids along strike.
+fz      = np.linspace(fzmin,fzmax,nfz) # coordinates of fault grids along dip.
 
 # Create on_fault_vars array for on_fault varialbes.
 on_fault_vars = np.zeros((nfx,nfz,100))
@@ -93,12 +97,12 @@ def shear_steady_state(a,b,v0,r0,load_rate,norm,slip_rate):
 
 def state_steady_state(a,b,d0,v0,r0,shear,norm,slip_rate):
   # calculate the state variable at steady state
-	if friclaw == 3:
-		tmp   = a*np.log(2.*sinh(abs(shear/norm/a))) - r0 - dlog(slip_rate/v0)
-		state = d0/v0*np.exp(tmp/b)
-	elif friclaw == 4 of friclaw == 5:
-		state = a*np.log(2.*v0/slip_rate*sinh(abs(shear/norm/a)))
-  return state
+    if friclaw == 3:
+        tmp   = a*log(2.*sinh(abs(shear/norm/a))) - r0 - log(slip_rate/v0)
+        state = d0/v0*exp(tmp/b)
+    elif friclaw == 4 or friclaw == 5:
+        state = a*log(2.*v0/slip_rate*sinh(abs(shear/norm/a)))
+    return state
   
 for ix, xcoor in enumerate(fx):
   for iz, zcoor in enumerate(fz):
@@ -108,19 +112,19 @@ for ix, xcoor in enumerate(fx):
     on_fault_vars[ix,iz,3]   = fric_sw_D0
     on_fault_vars[ix,iz,7]   = -120.0e6     # initial normal stress. Negative compressive.
     on_fault_vars[ix,iz,8]   = 40.0e6       # initial shear stress.
-	
+    
     if abs(xcoor)<=15e3:
-		tmp1  = 1.0
-	elif abs(xcoor)<18e3 .and. abs(xcoor)>15e3:
-		tmp1  = 0.5*(1. + np.tanh(3e3/(abs(xcoor) - 18e3) + 3e3/(abs(xcoor) - 15e3)))
-	else:
-		tmp1 = 0.0
-	if abs(zcoor - -7.5e3)<=7.5e3:
-		tmp2 = 1.0
-	elif abs(zcoor - -7.5e3)<10.5e3 and abs(zcoor - -7.5e3)>7.5e3:
-		tmp2  = 0.5*(1. + np.tanh(3e3/(abs(zcoor -- 7.5e3) - 10.5e3) + 3e3/(abs(zcoor - -7.5e3) - 7.5e3)))
-	else: 
-		tmp2  = 0.0
+        tmp1  = 1.0
+    elif abs(xcoor)<18e3 and abs(xcoor)>15e3:
+        tmp1  = 0.5*(1. + np.tanh(3e3/(abs(xcoor) - 18e3) + 3e3/(abs(xcoor) - 15e3)))
+    else:
+        tmp1 = 0.0
+    if abs(zcoor - -7.5e3)<=7.5e3:
+        tmp2 = 1.0
+    elif abs(zcoor - -7.5e3)<10.5e3 and abs(zcoor - -7.5e3)>7.5e3:
+        tmp2  = 0.5*(1. + np.tanh(3e3/(abs(zcoor -- 7.5e3) - 10.5e3) + 3e3/(abs(zcoor - -7.5e3) - 7.5e3)))
+    else: 
+        tmp2  = 0.0
 
     on_fault_vars[ix,iz,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
     on_fault_vars[ix,iz,10] = fric_rsf_b # assign b in RSF 
@@ -132,21 +136,21 @@ for ix, xcoor in enumerate(fx):
     
     on_fault_vars[ix,iz,14] = fric_rsf_fw # 
     on_fault_vars[ix,iz,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  # 
-	on_fault_vars[ix,iz,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp1*tmp2)  #
-	
-	on_fault_vars[ix,iz,46] = creep_slip_rate # initial slip rates
+    on_fault_vars[ix,iz,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp1*tmp2)  #
+    
+    on_fault_vars[ix,iz,46] = creep_slip_rate # initial slip rates
     #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
     #  on_fault_vars[ix,iz,46] = 0.03 # initial high slip rate patch.
-	
+    
     on_fault_vars[ix,iz,20] = state_steady_state(on_fault_vars[ix,iz,9], 
-												on_fault_vars[ix,iz,10],
-												on_fault_vars[ix,iz,11],
-												on_fault_vars[ix,iz,12],
-												on_fault_vars[ix,iz,13],
-												on_fault_vars[ix,iz,8],
-												on_fault_vars[ix,iz,7],
-												on_fault_vars[ix,iz,46]) # initial state var.
-	
+                                                on_fault_vars[ix,iz,10],
+                                                on_fault_vars[ix,iz,11],
+                                                on_fault_vars[ix,iz,12],
+                                                on_fault_vars[ix,iz,13],
+                                                on_fault_vars[ix,iz,8],
+                                                on_fault_vars[ix,iz,7],
+                                                on_fault_vars[ix,iz,46]) # initial state var.
+    
     
 ###############################################
 ##### Domain boundaries for transferring ######
@@ -165,9 +169,9 @@ ny = 5
 nz = 2
 
 HPC_ncpu  = nx*ny*nz # Number of CPUs requested.
-HPC_nnode = int(HPC_ncpu, 128) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
+HPC_nnode = int(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
 HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
-HPC_time  = "02:00:00" # WALLTIME, in hh:mm:ss format.
+HPC_time  = "00:10:00" # WALLTIME, in hh:mm:ss format.
 HPC_account = "EAR22013" # Project account to be charged SUs against.
 HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
 
@@ -176,12 +180,13 @@ HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
 ##############################################
 
 # (x,z) coordinate pairs for on-fault stations (in km).
-st_coor_on_fault = [[-36.0, 0.0], [-16.0,0.0], [0.0,0.0], [16.0,0.0], \
-   [36.0,0.0], [-24.0,0.0], [-16.0,0.0], [0.0,-10.0], [16.0,-10.0], [0.0,-22.0]]
+st_coor_on_fault = [[0.0, -3.0], [0.0,-7.5], [0.0, -12.0], [9.0,-7.5], \
+   [12.0, -3.0], [12.0,-12.0], [15.0, -7.5], [18.0,-7.5], [-9.0,-7.5], \
+   [-12.0,-3.0], [-12.0,-12.0], [-15.0, -7.5], [-18.0, -7.5]]
    
 # (x,y,z) coordinates for off-fault stations (in km).
-st_coor_off_fault = [[0,8,0], [0,8,-10], [0,16,0], [0,16,-10], [0,32,0], \
-   [0,32,-10], [0,48,0], [16,8,0], [-16,8,0]]
+st_coor_off_fault = [[0,9,0], [0,-9,0], [12,6,0], [12,-6,0], [-12,6,0], \
+   [-12,-6,0]]
 n_on_fault  = len(st_coor_on_fault)
 n_off_fault = len(st_coor_off_fault)
 

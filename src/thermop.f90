@@ -15,7 +15,7 @@ do ift = 1, ntotft
 	do i = 1, nftnd(ift)
 	
 		gama = fric_tp_lambda/fric_tp_rouc
-		omega = fric(20,i,ift)
+		omega = fric(16,i,ift)
 		kapa = fric_tp_a_th 
 
 		tmp = 0.0d0 

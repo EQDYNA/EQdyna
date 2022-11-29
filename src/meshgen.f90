@@ -604,18 +604,18 @@ subroutine meshgen
 										tmp3 = 2.0d0*fric_rsf_deltaa0
 									endif 
 								endif								
-								fric(9,nftnd0(ift),ift) = fric_rsf_a + tmp3*(1.0d0-tmp1*tmp2)
-								fric(10,nftnd0(ift),ift) = fric_rsf_b!b 
-								fric(11,nftnd0(ift),ift) = fric_rsf_Dc!RSF critical distance.
-								fric(12,nftnd0(ift),ift) = fric_rsf_v0!RSF:V0
-								fric(13,nftnd0(ift),ift) = fric_rsf_r0!RSF:miu0
-								fric(14,nftnd0(ift),ift) = fric_rsf_fw !RSF: fw for strong rate weakenging
-								!call fb1(xcoor,fric_ww,fric_w, tmp1)
-								!call fb2(-zcoor,fric_ww,fric_w, tmp2)
-								fric(15,nftnd0(ift),ift) = fric_rsf_vw +fric_rsf_deltavw0*(1.0d0-tmp1*tmp2) !RSF: Vw for strong rate weakening
-								call fb1(xcoor,fric_ww,fric_w, tmp1)
-								call fb3(-zcoor,fric_ww,fric_w, tmp2)
-								fric(20,nftnd0(ift),ift) = fric_tp_a_hy + fric_tp_deltaa_hy0*(1.0d0-tmp1*tmp2)
+								! fric(9,nftnd0(ift),ift) = fric_rsf_a + tmp3*(1.0d0-tmp1*tmp2)
+								! fric(10,nftnd0(ift),ift) = fric_rsf_b!b 
+								! fric(11,nftnd0(ift),ift) = fric_rsf_Dc!RSF critical distance.
+								! fric(12,nftnd0(ift),ift) = fric_rsf_v0!RSF:V0
+								! fric(13,nftnd0(ift),ift) = fric_rsf_r0!RSF:miu0
+								! fric(14,nftnd0(ift),ift) = fric_rsf_fw !RSF: fw for strong rate weakenging
+								! !call fb1(xcoor,fric_ww,fric_w, tmp1)
+								! !call fb2(-zcoor,fric_ww,fric_w, tmp2)
+								! fric(15,nftnd0(ift),ift) = fric_rsf_vw +fric_rsf_deltavw0*(1.0d0-tmp1*tmp2) !RSF: Vw for strong rate weakening
+								! call fb1(xcoor,fric_ww,fric_w, tmp1)
+								! call fb3(-zcoor,fric_ww,fric_w, tmp2)
+								! fric(20,nftnd0(ift),ift) = fric_tp_a_hy + fric_tp_deltaa_hy0*(1.0d0-tmp1*tmp2)
 								! fric(16,nftnd0(ift),ift)=0.0d0 !RSF: initial normal slip rate 
 								! fric(17,nftnd0(ift),ift)=fric_rsf_vinix!RSF:s 
 								! fric(18,nftnd0(ift),ift)=fric_rsf_viniz!RSF:d

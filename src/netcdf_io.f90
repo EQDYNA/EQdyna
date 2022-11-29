@@ -336,7 +336,7 @@ subroutine netcdf_read_on_fault_eqdyna(infile)
 	call check( nf90_inq_varid(ncid, "rsf_r0",   var_id(8)))
 	call check( nf90_inq_varid(ncid, "rsf_fw",   var_id(9)))
 	call check( nf90_inq_varid(ncid, "rsf_vw",   var_id(10)))
-	call check( nf90_inq_varid(ncid, "tpv_a_hy", var_id(11)))
+	call check( nf90_inq_varid(ncid, "tp_a_hy", var_id(11)))
 	call check( nf90_inq_varid(ncid, "init_slip_rate", var_id(12)))
 	call check( nf90_inq_varid(ncid, "init_shear_stress", var_id(13)))
 	call check( nf90_inq_varid(ncid, "init_normal_stress", var_id(14)))
@@ -351,8 +351,8 @@ subroutine netcdf_read_on_fault_eqdyna(infile)
 		do i = 1, nftnd(ift)
 			xcord = x(1, nsmp(1,i,ift))
 			zcord = x(3, nsmp(1,i,ift))
-			ii    = (xcord - fxmin(ift))/dx
-			jj    = (zcord - fzmin(ift))/dx
+			ii    = (xcord - fxmin(ift))/dx + 1
+			jj    = (zcord - fzmin(ift))/dx + 1
 			fric(1,  i, 1) = on_fault_vars(jj,ii,1)! sw_fs
 			fric(2,  i, 1) = on_fault_vars(jj,ii,2)! sw_fd
 			fric(3,  i, 1) = on_fault_vars(jj,ii,3)! sw_D0
@@ -369,6 +369,10 @@ subroutine netcdf_read_on_fault_eqdyna(infile)
 			fric(7,  i, 1) = on_fault_vars(jj,ii,14)! init_norm
 			fric(20, i, 1) = on_fault_vars(jj,ii,15)! init_state variable
 			fric(47, i, 1) = fric(46, i, 1)! peak slip rate
+			fric(25, i, 1) = 0.0d0! vini_norm 
+			fric(26, i, 1) = fric(46, i, 1) ! vinix
+			fric(27, i, 1) = 0.0d0! viniz
+			
 			fric(23, i, 1) = abs(fric(7, i, 1))! initialize theta_pc as abs(normal stress)
 		enddo 
 	enddo
