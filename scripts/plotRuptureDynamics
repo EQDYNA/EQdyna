@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""
+Script to plot on fault rupture dynamics.
+"""
+import numpy as np
+from math    import *
+from user_defined_params import *
+from os.path import exists
+import matplotlib.pyplot as plt
+from matplotlib import animation, rc
+#
+SMALL_SIZE = 6
+
+def ruptureDynamics():
+    nprocs = nx*ny*nz
+    na     = int((fxmax-fxmin)/dx+1)
+    ma     = int((fzmax-fzmin)/dx+1)
+    rupt   = np.zeros((na*ma,3))
+    rupt2d = np.zeros((ma,na,100))
+
+    [xx,zz] = np.meshgrid(fx,fz)
+
+    print(na, ma)
+    for me in range(nprocs):
+      fname = 'frt.txt' + str(me)
+      if exists(fname):
+        print(fname + '  exisits')
+        a = np.loadtxt(fname)
+        n, m = a.shape
+        print(n,m)
+        for i in range(n):
+            ii = int((a[i,0] - fxmin)/dx)
+            jj = int((a[i,2] - fzmin)/dx)
+            rupt[jj*na+ii,0] = a[i,0]  # xcoor
+            rupt[jj*na+ii,1] = -a[i,2] # zcoor
+            rupt[jj*na+ii,2] = a[i,3]  # rupture time
+            rupt2d[jj,ii,0]  = a[i,3] 
+            rupt2d[jj,ii,1]  = a[i,4]  # slip
+            rupt2d[jj,ii,2]  = a[i,9]  # peak slip rate
+            rupt2d[jj,ii,3]  = a[i,10]/1.e6 # final shear stress
+            rupt2d[jj,ii,4]  = a[i,11]/1.e6 # final normal stress
+            rupt2d[jj,ii,5]  = a[i,12]/1.e6 # initial strike shear
+            rupt2d[jj,ii,6]  = a[i,13]/1.e6 # initial dip shear
+            rupt2d[jj,ii,7]  = a[i,14]/1.e6 # initial norm
+            rupt2d[jj,ii,8]  = rupt2d[jj,ii,3] - rupt2d[jj,ii,5]
+            rupt2d[jj,ii,9]  = rupt2d[jj,ii,4] - rupt2d[jj,ii,7]
+            
+    fig = plt.figure()
+    plt.rc('font', size=SMALL_SIZE)
+    ax11 = fig.add_subplot(321)
+    plt.contourf(xx,zz,rupt2d[:,:,1])
+    plt.colorbar
+    plt.title('Slip (m)')
+
+    ax12 = fig.add_subplot(322)
+    plt.contourf(xx,zz,rupt2d[:,:,2])
+    plt.colorbar
+    plt.title('Peak slip rate (m/s)')
+
+    ax21 = fig.add_subplot(323)
+    plt.contourf(xx,zz,rupt2d[:,:,3])
+    plt.colorbar
+    plt.title('Shear stress (MPa)')
+
+    ax22 = fig.add_subplot(324)
+    plt.contourf(xx,zz,rupt2d[:,:,4])
+    plt.colorbar
+    plt.title('Normal stress (MPa)')
+
+    ax22 = fig.add_subplot(325)
+    plt.contourf(xx,zz,rupt2d[:,:,8])
+    plt.colorbar
+    plt.title('Shear stress change (MPa)')
+
+    ax22 = fig.add_subplot(326)
+    plt.contourf(xx,zz,rupt2d[:,:,9])
+    plt.colorbar
+    plt.title('Normal stress change (MPa)')
+
+    plt.savefig("cRuptureDynamics.png", dpi = 300)
+    plt.close()
+
+    return (fig,)
+
+def _main_func(description):
+    ruptureDynamics()
+
+if __name__ == "__main__":
+    _main_func(__doc__)
