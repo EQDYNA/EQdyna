@@ -1,1 +1,0 @@
-6000.0d0 3464.0d0 2670.0d0  # Vp, Vs, Rou, Material No.1;  nmat by n2mat
