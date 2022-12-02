@@ -173,6 +173,7 @@ def create_batch_script():
         f.write("#SBATCH --mail-type=end" + "\n")
         # Executable part.
         f.write("  ibrun eqdyna" + "\n")
+        f.write("  ibrun -np 1 python plotRuptureDynamics" + "\n") # produce figure of rupture dynamics
         #f.write("for i in $(seq " + str(istart) + " " + str(iend) + ");" + "\n")
         #f.write("do" + "\n")
         #f.write("  echo $i > currentcycle.txt" + "\n")
