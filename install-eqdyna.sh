@@ -12,3 +12,5 @@ mv src/eqdyna bin
 export PATH=$(pwd)/bin:$PATH
 export PATH=$(pwd)/scripts:$PATH
 export ECCIROOT=$(pwd)
+
+chmod -R 755 scripts
