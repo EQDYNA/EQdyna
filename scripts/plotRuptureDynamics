@@ -54,33 +54,33 @@ def ruptureDynamics():
     plt.rc('font', size=SMALL_SIZE)
     ax11 = fig.add_subplot(321)
     plt.contourf(xx,zz,rupt2d[:,:,1])
-    plt.colorbar
+    plt.colorbar()
     plt.contour(xx,zz,rupt2d[:,:,0], levels)
     plt.title('Slip (m) & Rupture time (' + str(dt) + ' s)')
 
     ax12 = fig.add_subplot(322)
     plt.contourf(xx,zz,rupt2d[:,:,2])
-    plt.colorbar
+    plt.colorbar()
     plt.title('Peak slip rate (m/s)')
 
     ax21 = fig.add_subplot(323)
     plt.contourf(xx,zz,rupt2d[:,:,3])
-    plt.colorbar
+    plt.colorbar()
     plt.title('Shear stress (MPa)')
 
     ax22 = fig.add_subplot(324)
     plt.contourf(xx,zz,rupt2d[:,:,4])
-    plt.colorbar
+    plt.colorbar()
     plt.title('Normal stress (MPa)')
 
     ax22 = fig.add_subplot(325)
     plt.contourf(xx,zz,rupt2d[:,:,8])
-    plt.colorbar
+    plt.colorbar()
     plt.title('Shear stress change (MPa)')
 
     ax22 = fig.add_subplot(326)
     plt.contourf(xx,zz,rupt2d[:,:,9])
-    plt.colorbar
+    plt.colorbar()
     plt.title('Normal stress change (MPa)')
 
     plt.savefig("cRuptureDynamics.png", dpi = 300)
