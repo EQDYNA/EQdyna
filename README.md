@@ -58,6 +58,9 @@ For customized case, please choose the most relevant predefined case and modify 
 # Example
 A good starting example would be compset==tpv104 (benchmark problem 104, dynamic rupture with rate- and state- friction with strong rate weakening friction law, 100 m resolution, 40 CPUs, a few minutes for 3 seconds in simulation time.)
 
+# Benchmark computational performance and resource
+TPV104:   15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run 24.20 minutes on Lonestar6.  <br/>
+TPV1053D: 15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run I
 # Note
 *```EQdyna```* is still under heavy development and comes without any guaranteed functionality. But we hope *```EQdyna```* would be easy to use and we bear this goal in mind when developing it. 
 
