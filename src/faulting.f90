@@ -310,35 +310,37 @@ subroutine faulting
 						v_trial = vtmp
 					endif  
 					
-					! if (x(1,isn)==xsource.and.x(3,isn)==zsource)then
+					! if (x(1,isn)==-4.2d3.and.x(3,isn)==0.0)then
 						! write(*,*) 'time', time
-						! write(*,*) 'Newton, iv', iv
 						! write(*,*) 'tn,tn_pc',tnrm/1e6,theta_pc_tmp/1e6
 						! write(*,*) 'ts, td',          tstk/1e6,tdip/1e6
 						! write(*,*) 'vtrial, theta', v_trial,fric(20,i,ift)
 						! write(*,*) ' iv = ', iv
-						! write(*,*) 'fric(51)', fric(51,i,ift)
+						! write(*,*) 'dPressure_fric(51)', fric(51,i,ift)/1.0d6
 						! write(*,*) 'slip', slip					
 					! endif	
 				enddo !iv
-
-				! if(v_trial < 1.0d-32) then
-					! v_trial = 1.0d-32
-				! !	taoc_new = ttao1*2.0d0
-				! endif
+				
+				! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
+				! Also reset taoc_new to 2 X ttao1.
+				! Without this, TPV1053D blew up at the surface station (-4.2,0)
+				if(v_trial < fric(46,i,ift)) then
+					v_trial  = fric(46,i,ift)
+					taoc_new = ttao1*2.0d0
+				endif
 				! if (fric(20,i,ift) < 0.0d0) then 
 					! fric(20,i,ift) = 1.0d-6
 				! endif 
 				
-				if (x(1,isn)==xsource.and.x(3,isn)==zsource)then
-					write(*,*) 'time', time
-					write(*,*) 'tn,tn_pc',tnrm/1e6,theta_pc_tmp/1e6
-					write(*,*) 'ts, td',          tstk/1e6,tdip/1e6
-					write(*,*) 'vtrial, theta', v_trial,fric(20,i,ift)
-					write(*,*) ' iv = ', iv
-					write(*,*) 'fric(51)', fric(51,i,ift)
-					write(*,*) 'slip', slip					
-				endif	
+				! if (x(1,isn)==-4.2d3.and.x(3,isn)==0.0)then
+					! write(*,*) 'time', time
+					! write(*,*) 'tn,tn_pc',tnrm/1e6,theta_pc_tmp/1e6
+					! write(*,*) 'ts, td',          tstk/1e6,tdip/1e6
+					! write(*,*) 'vtrial, theta', v_trial,fric(20,i,ift)
+					! write(*,*) ' iv = ', iv
+					! write(*,*) 'dPressure_fric(51)', fric(51,i,ift)/1.0d6
+					! write(*,*) 'slip', slip					
+				! endif	
 				tstk = taoc_old*0.5d0 * (sliprates / sliprate) + taoc_new*0.5d0 * (tstk1 / ttao1) 
 				tdip = taoc_old*0.5d0 * (sliprated / sliprate) + taoc_new*0.5d0 * (tdip1 / ttao1) 
 				fric(78,i,ift) = tnrm 
