@@ -9,7 +9,7 @@ from os.path import exists
 import matplotlib.pyplot as plt
 from matplotlib import animation, rc
 #
-SMALL_SIZE = 6
+SMALL_SIZE = 12
 
 def ruptureDynamics():
     nprocs = nx*ny*nz
@@ -19,6 +19,8 @@ def ruptureDynamics():
     rupt2d = np.zeros((ma,na,100))
 
     [xx,zz] = np.meshgrid(fx,fz)
+    xx = xx/1.e3
+    zz = zz/1.e3
 
     print(na, ma)
     for me in range(nprocs):
@@ -44,13 +46,17 @@ def ruptureDynamics():
             rupt2d[jj,ii,7]  = a[i,14]/1.e6 # initial norm
             rupt2d[jj,ii,8]  = rupt2d[jj,ii,3] - rupt2d[jj,ii,5]
             rupt2d[jj,ii,9]  = rupt2d[jj,ii,4] - rupt2d[jj,ii,7]
-            
-    fig = plt.figure()
+    
+    levels = np.linspace(0,term,30) 
+    dt     = term/30
+    fig = plt.figure(figsize=(16,12), dpi= 300, facecolor='w', edgecolor='k')
+
     plt.rc('font', size=SMALL_SIZE)
     ax11 = fig.add_subplot(321)
     plt.contourf(xx,zz,rupt2d[:,:,1])
     plt.colorbar
-    plt.title('Slip (m)')
+    plt.contour(xx,zz,rupt2d[:,:,0], levels)
+    plt.title('Slip (m) & Rupture time (' + str(dt) + ' s)')
 
     ax12 = fig.add_subplot(322)
     plt.contourf(xx,zz,rupt2d[:,:,2])
