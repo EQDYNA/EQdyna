@@ -37,7 +37,7 @@ After the installation, you just need three steps to run a predefined case. <br/
 First, create a new case with the utility *create_newcase*. <br/> 
 *create_newcase* takes in two parameters: <br/> 
   (a) case_dir - the case directory where you want to run the job, and <br/>
-  (b) compset  - the predefined case (tpv104, tpv105, etc) <br/>
+  (b) compset  - the predefined case (tpv104, tpv1053d, etc) <br/>
 
 [TPV+number is the naming convention of [SCEC/USGS Spontaneous Rupture Code Verification Excercise](https://strike.scec.org/cvws/).] <br/>
 
@@ -55,8 +55,9 @@ case.submit
 
 For customized case, please choose the most relevant predefined case and modify the user_defined_param.py accordingly. <br/>
 
-# Example
-A good starting example would be compset==tpv104 (benchmark problem 104, dynamic rupture with rate- and state- friction with strong rate weakening friction law, 100 m resolution, 40 CPUs, a few minutes for 3 seconds in simulation time.)
+# Currently supported compset (more to come)
+* tpv104
+* tpv1053d
 
 # Benchmark computational performance and resource
 TPV104:   15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run 24.20 minutes on Lonestar6.  <br/>
