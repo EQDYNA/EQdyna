@@ -144,15 +144,7 @@ for ix, xcoor in enumerate(fx):
     #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
     #  on_fault_vars[ix,iz,46] = 0.03 # initial high slip rate patch.
     
-    on_fault_vars[ix,iz,20] = state_steady_state(on_fault_vars[ix,iz,9], 
-                                                on_fault_vars[ix,iz,10],
-                                                on_fault_vars[ix,iz,11],
-                                                on_fault_vars[ix,iz,12],
-                                                on_fault_vars[ix,iz,13],
-                                                on_fault_vars[ix,iz,8],
-                                                on_fault_vars[ix,iz,7],
-                                                on_fault_vars[ix,iz,46],
-                                                friclaw) # initial state var.
+    on_fault_vars[ix,iz,20] = 0 # initial state var, loaded from restarts.
     
     
 ###############################################
