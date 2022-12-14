@@ -183,6 +183,34 @@ def create_batch_script():
         #f.write("  cp \"./Q$((i-1))/\"*.r.nc ./" + "\n")
         #f.write("done" + "\n")
         # End excutable part.
+		
+def create_batch_script_cycle():
+    # Function to create batch script used by HPC system.
+    with open("batch.cycle.hpc", "w") as f:
+        f.write("#! /bin/bash" + "\n")
+        f.write("#SBATCH -J " + str(casename) + "\n")
+        f.write("#SBATCH -o a.eqdyna.log%j" + "\n")
+        f.write("#SBATCH -N " + str(HPC_nnode) + "\n")
+        f.write("#SBATCH -n " + str(HPC_ncpu) + "\n")
+        f.write("#SBATCH -p " + str(HPC_queue) + "\n")
+        f.write("#SBATCH -t " + str(HPC_time) + "\n")
+        f.write("#SBATCH -A " + str(HPC_account) + "\n")
+        f.write("#SBATCH --mail-user=" + str(HPC_email) + "\n")
+        f.write("#SBATCH --mail-type=begin" + "\n")
+        f.write("#SBATCH --mail-type=end" + "\n")
+        # Executable part.
+        f.write("  read i < currentcycle.txt" + "\n")
+        f.write("  if [$i > 1]" + "\n")
+        f.write("  then" + "\n")
+        f.write("    cp \"../Q$((i-1))/\"*.r.nc ./" + "\n")
+        f.write("  fi" + "\n")
+        f.write("  ibrun eqdyna" + "\n")
+        f.write("  ibrun -np 1 python plotRuptureDynamics" + "\n") 
+        f.write("  mkdir \"../D$((i-1))\"" + "\n")
+        f.write("  mv body* faultst* frt.txt* global* gm* p2* \"../D$((i-1))\"" + "\n")
+        f.write("  i=$((i+1))" + "\n")
+        f.write("  echo $i > currentcycle.txt" + "\n")
+        # End excutable part.
 
 def estimate_HPC_resource():
     nx = int((xmax-xmin)/dx)
@@ -197,6 +225,7 @@ def estimate_HPC_resource():
 def _main_func(description):
   create_model_input_file()
   create_batch_script()
+  create_batch_script_cycle()
   create_station_input_file()
   estimate_HPC_resource()
   netcdf_write_on_fault_vars()
