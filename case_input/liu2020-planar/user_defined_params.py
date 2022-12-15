@@ -117,8 +117,8 @@ for ix, xcoor in enumerate(fx):
     on_fault_vars[ix,iz,7]   = -max(min(grav*1670.*abs(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
     on_fault_vars[ix,iz,8]   = -0.41*on_fault_vars[ix,iz,7]       # initial shear stress.
     
-    tmp1  = B1(xcoor, 20.e3, 3.e3)
-    tmp2  = B2(-zcoor, 20.e3, 3.e3)
+    tmp1  = linear1(xcoor, 20.e3, 3.e3)
+    tmp2  = linear1(-zcoor, 20.e3, 3.e3)
     on_fault_vars[ix,iz,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
     on_fault_vars[ix,iz,10] = fric_rsf_b # assign b in RSF 
     on_fault_vars[ix,iz,11] = fric_rsf_Dc # assign Dc in RSF.
@@ -146,6 +146,10 @@ for ix, xcoor in enumerate(fx):
     
     on_fault_vars[ix,iz,20] = 0 # initial state var, loaded from restarts.
     
+    if mode == 2: # if mode 2, the following parameters are loaded from restarts.
+      on_fault_vars[ix,iz,7]  = 0
+      on_fault_vars[ix,iz,8]  = 0
+      on_fault_vars[ix,iz,20] = 0
     
 ###############################################
 ##### Domain boundaries for transferring ######
@@ -158,7 +162,7 @@ dx_trans = 50
 ####################################
 ##### HPC resource allocation ######
 ####################################
-casename = str(tpv)
+casename = "liu2020-planar-dyna"
 nx = 4
 ny = 5
 nz = 2
@@ -166,8 +170,8 @@ nz = 2
 HPC_ncpu  = nx*ny*nz # Number of CPUs requested.
 HPC_nnode = int(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
 HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
-HPC_time  = "00:10:00" # WALLTIME, in hh:mm:ss format.
-HPC_account = "EAR22013" # Project account to be charged SUs against.
+HPC_time  = "00:00:30" # WALLTIME, in hh:mm:ss format.
+HPC_account = "EAR22012" # Project account to be charged SUs against.
 HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
 
 ##############################################
