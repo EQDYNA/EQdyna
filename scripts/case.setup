@@ -200,14 +200,11 @@ def create_batch_script_cycle():
         f.write("#SBATCH --mail-type=end" + "\n")
         # Executable part.
         f.write("  read i < currentcycle.txt" + "\n")
-        f.write("  if [$i > 1]" + "\n")
-        f.write("  then" + "\n")
-        f.write("    cp \"../Q$((i-1))/\"*.r.nc ./" + "\n")
-        f.write("  fi" + "\n")
+        f.write("  cp \"../Q$((i-1))/\"*.r.nc ./" + "\n")
         f.write("  ibrun eqdyna" + "\n")
         f.write("  ibrun -np 1 python plotRuptureDynamics" + "\n") 
         f.write("  mkdir \"../D$((i-1))\"" + "\n")
-        f.write("  mv body* faultst* frt.txt* global* gm* p2* \"../D$((i-1))\"" + "\n")
+        f.write("  mv a.* body* faultst* frt.txt* global* gm* p2* \"../D$((i-1))\"" + "\n")
         f.write("  i=$((i+1))" + "\n")
         f.write("  echo $i > currentcycle.txt" + "\n")
         # End excutable part.
