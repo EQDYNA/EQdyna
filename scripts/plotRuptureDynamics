@@ -8,6 +8,7 @@ from user_defined_params import *
 from os.path import exists
 import matplotlib.pyplot as plt
 from matplotlib import animation, rc
+import netCDF4 as nc
 #
 SMALL_SIZE = 12
 
@@ -17,7 +18,8 @@ def ruptureDynamics():
     ma     = int((fzmax-fzmin)/dx+1)
     rupt   = np.zeros((na*ma,3))
     rupt2d = np.zeros((ma,na,100))
-
+    fVarArr= np.zeros((na,ma,100)) # it may look weird, but fVarArr should be written in (nx, nz) in Python
+    #  to be read by subroutine netcdf_read_on_fault in netcdf_io.f90 in the (nz,nx) format.  
     [xx,zz] = np.meshgrid(fx,fz)
     xx = xx/1.e3
     zz = zz/1.e3
@@ -36,7 +38,8 @@ def ruptureDynamics():
             rupt[jj*na+ii,0] = a[i,0]  # xcoor
             rupt[jj*na+ii,1] = -a[i,2] # zcoor
             rupt[jj*na+ii,2] = a[i,3]  # rupture time
-            rupt2d[jj,ii,0]  = a[i,3] 
+
+            rupt2d[jj,ii,0]  = a[i,3]  # rupture time
             rupt2d[jj,ii,1]  = a[i,4]  # slip
             rupt2d[jj,ii,2]  = a[i,9]  # peak slip rate
             rupt2d[jj,ii,3]  = a[i,10]/1.e6 # final shear stress
@@ -46,7 +49,20 @@ def ruptureDynamics():
             rupt2d[jj,ii,7]  = a[i,14]/1.e6 # initial norm
             rupt2d[jj,ii,8]  = rupt2d[jj,ii,3] - rupt2d[jj,ii,5]
             rupt2d[jj,ii,9]  = rupt2d[jj,ii,4] - rupt2d[jj,ii,7]
-    
+
+			# fVarArr will be passed to the function generateNcRestart(faultVarArr):
+			fVarArr[ii,jj,0]  = #shear_strike
+			fVarArr[ii,jj,1]  = #shear_dip
+			fVarArr[ii,jj,2]  = #effective_normal 
+			fVarArr[ii,jj,3]  = #slip_rate
+			fVarArr[ii,jj,4]  = #state_variable
+			fVarArr[ii,jj,5]  = #state_normal
+			fVarArr[ii,jj,6]  = #vxm
+			fVarArr[ii,jj,7]  = #vym
+			fVarArr[ii,jj,8]  = #vzm
+			fVarArr[ii,jj,9]  = #vxs
+			fVarArr[ii,jj,10] = #vys
+			fVarArr[ii,jj,11] = #vzs
     levels = np.linspace(0,term,30) 
     dt     = term/30
     fig = plt.figure(figsize=(16,12), dpi= 300, facecolor='w', edgecolor='k')
@@ -88,6 +104,62 @@ def ruptureDynamics():
 
     return (fig,)
 
+def generateNcRestart(faultVarArr):
+  # input fault_arr(nfx, nfz,) and make netCDF file fault.r.4eqquasi.nc for EQquasi. 
+  # According to EQquasi subroutine netcdf_read_on_fault_restart(infile1, infile2),
+  # or according to EQquasi subroutine netcdf_write_on_fault(outfile) in netcdf_io.f90,
+  # The variables transferred include: 
+  # infile1:  5, a, b, Dc, v0, r0
+  # infile2/outfile: 12, shear_strike,, shear_dip, effective_normal, slip_rate, state_variable, state_normal, vxm, vym, vzm, vxs, vys, vzs
+  # infile1 will be provided by EQquasi.
+  # Therefore, we need to generate infile2 from frt.txt* from EQdyna. 
+  # frt.txt* are processed by function ruptureDynamics() in this Python script.
+  
+  ds         = nc.Dataset("fault.r.4eqquasi.nc", "w", format="NETCDF4")
+  
+  dip        = ds.createDimension('dip',    nfz)
+  strike     = ds.createDimension('strike', nfx)
+  dip_var    = ds.createVariable('dip', np.float64, ('dip',))
+  strike_var = ds.createVariable('strike', np.float64, ('strike',))
+  
+  var0       = ds.createVariable('shear_strik',      np.float64, ('strike','dip',))
+  var1       = ds.createVariable('shear_dip',        np.float64, ('strike','dip',))
+  var2       = ds.createVariable('effective_normal', np.float64, ('strike','dip',))
+  var3       = ds.createVariable('slip_rate',        np.float64, ('strike','dip',))
+  var4       = ds.createVariable('state_variable',   np.float64, ('strike','dip',))
+  var5       = ds.createVariable('state_normal',     np.float64, ('strike','dip',))
+  var6       = ds.createVariable('vxm',              np.float64, ('strike','dip',))
+  var7       = ds.createVariable('vym',              np.float64, ('strike','dip',))
+  var8       = ds.createVariable('vzm',              np.float64, ('strike','dip',))
+  var9       = ds.createVariable('vxs',              np.float64, ('strike','dip',))
+  var10      = ds.createVariable('vys',              np.float64, ('strike','dip',))
+  var11      = ds.createVariable('vzs',              np.float64, ('strike','dip',))
+  var0.units = 'Pa'
+  var1.units = 'Pa'
+  var2.units = 'Pa'
+  var3.units = 'm/s'
+  var4.units = 'unit'
+  var5.units = 'Pa'
+  var6.units = 'm/s'
+  var7.units = 'm/s'
+  var8.units = 'm/s'
+  var9.units = 'm/s'
+  var10.units = 'm/s'
+  var11.units = 'm/s'
+
+  strike_var[:] = fx[:]
+  dip_var[:] = fz[:]
+  var0[:,:] = faultVarArr[:,:,9]
+  var1[:,:] = faultVarArr[:,:,10]
+  var2[:,:] = faultVarArr[:,:,11]
+  var3[:,:] = faultVarArr[:,:,12]
+  var4[:,:] = faultVarArr[:,:,13]
+  var5[:,:] = faultVarArr[:,:,46]
+  var6[:,:] = faultVarArr[:,:,8]
+  var7[:,:] = faultVarArr[:,:,7]
+  var8[:,:] = faultVarArr[:,:,20]
+  ds.close()
+  
 def _main_func(description):
     ruptureDynamics()
 

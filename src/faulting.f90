@@ -48,7 +48,7 @@ subroutine faulting
 		!-------------------------------------------------------------------!	
 			fnfault = fric(7,i,ift) !initial forces on the fault node
 			fsfault = fric(8,i,ift)+dtao !norm, strike, dip components directly
-			fdfault = 0.0d0
+			fdfault = fric(49,i,ift)
 			isn = nsmp(1,i,ift)
 			imn = nsmp(2,i,ift)
 			do j=1,2  !1-slave, 2-master
@@ -343,29 +343,52 @@ subroutine faulting
 				! endif	
 				tstk = taoc_old*0.5d0 * (sliprates / sliprate) + taoc_new*0.5d0 * (tstk1 / ttao1) 
 				tdip = taoc_old*0.5d0 * (sliprated / sliprate) + taoc_new*0.5d0 * (tdip1 / ttao1) 
+				
+				! store tnrm, tstk, tdip ... 
+				! [effective normal stress, shear_strike, and shear_dip]
 				fric(78,i,ift) = tnrm 
 				fric(79,i,ift) = tstk
+				fric(80,i,ift) = tdip
+				
+				! store final slip rate and final total traction ...
 				fric(47,i,ift) = v_trial
 				fric(48,i,ift) = (tstk**2 + tdip**2)**0.5 
+				
 				frichis(1,i,nt,ift) = fric(47,i,ift)
 				frichis(2,i,nt,ift) = fric(48,i,ift)
+				
+				! 3 components of relative acceleration bewteen m-s nodes in the fault plane coordinate sys. 
 				accn = -slipraten/dt - slipn/dt/dt
 				accs = (v_trial * (tstk1 / ttao1) - sliprates)/dt
 				accd = (v_trial * (tdip1 / ttao1) - sliprated)/dt
-			 
+				
+				! 3 components of relative acceleration bewteen m-s nodes in the FEM xyz coordinate sys. 
 				accx = accn*un(1,i,ift) + accs*us(1,i,ift) + accd*ud(1,i,ift)
 				accy = accn*un(2,i,ift) + accs*us(2,i,ift) + accd*ud(2,i,ift)
 				accz = accn*un(3,i,ift) + accs*us(3,i,ift) + accd*ud(3,i,ift)
-
+				
+				! determine total forces acting on the node pair ...
 				Rx = brhs(id1(locid(isn)+1)) + brhs(id1(locid(imn)+1))
 				Ry = brhs(id1(locid(isn)+2)) + brhs(id1(locid(imn)+2))
 				Rz = brhs(id1(locid(isn)+3)) + brhs(id1(locid(imn)+3))
-				brhs(id1(locid(isn)+1)) = (-accx + Rx/mmast) * mr
-				brhs(id1(locid(isn)+2)) = (-accy + Ry/mmast) * mr
-				brhs(id1(locid(isn)+3)) = (-accz + Rz/mmast) * mr
-				brhs(id1(locid(imn)+1)) = (accx + Rx/mslav) * mr
-				brhs(id1(locid(imn)+2)) = (accy + Ry/mslav) * mr
-				brhs(id1(locid(imn)+3)) = (accz + Rz/mslav) * mr
+				
+				! calculate xyz components of nodal forces that can generate 
+				!  the above calculated accelerations for the m-s node pair. 
+				brhs(id1(locid(isn)+1)) = (-accx + Rx/mmast) * mr ! asx
+				brhs(id1(locid(isn)+2)) = (-accy + Ry/mmast) * mr ! asy
+				brhs(id1(locid(isn)+3)) = (-accz + Rz/mmast) * mr ! asz
+				brhs(id1(locid(imn)+1)) = (accx  + Rx/mslav) * mr ! amx
+				brhs(id1(locid(imn)+2)) = (accy  + Ry/mslav) * mr ! amy
+				brhs(id1(locid(imn)+3)) = (accz  + Rz/mslav) * mr ! amz
+				
+				! store normal velocities for master-slave node pair ...
+				! v(k,nsmp(j,i,ift)) - k:xyz, j:slave1,master2
+				fric(31,i,ift) = v(1,nsmp(2,i,ift)) + (accx+Rx/mslav)*dt  !vmx 
+				fric(32,i,ift) = v(2,nsmp(2,i,ift)) + (accy+Ry/mslav)*dt  !vmy 
+				fric(33,i,ift) = v(3,nsmp(2,i,ift)) + (accz+Rz/mslav)*dt  !vmz 
+				fric(34,i,ift) = v(1,nsmp(1,i,ift)) + (-accx+Rx/mmast)*dt !vsx 
+				fric(35,i,ift) = v(2,nsmp(1,i,ift)) + (-accy+Ry/mmast)*dt !vsy 
+				fric(36,i,ift) = v(3,nsmp(1,i,ift)) + (-accz+Rz/mmast)*dt !vsz 
 			endif
 
 			if(n4onf>0.and.lstr) then	

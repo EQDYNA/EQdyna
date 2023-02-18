@@ -4,6 +4,10 @@ import numpy as np
 from math import *
 from lib  import *
 
+# mode 
+#mode   = 1  # perform individual dynamic ruptures 
+mode   = 2  # serve in earthquake cycles
+
 # model_domain (in meters)
 xmin, xmax   = -42.0e3, 42.0e3
 ymin, ymax   = -20.0e3, 22.0e3
