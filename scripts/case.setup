@@ -9,6 +9,7 @@ def create_model_input_file():
     # Function to create bGlobal.txt, bModelGeometry.txt, b.FaultGeometry.txt,
     #  bMaterial.txt, bStations.txt used by EQdyna.
     with open('bGlobal.txt', 'w') as f:
+        f.write(str(mode)        + "\n")
         f.write(str(C_elastic)   + "\n")
         f.write(str(C_nuclea)    + "\n")
         f.write(str(C_degen)     + "\n")

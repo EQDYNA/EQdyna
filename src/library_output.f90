@@ -141,19 +141,51 @@ end subroutine output_offfault_st
 
 !#3
 subroutine output_frt
-
+	! The subroutine output_frt generates frt.txt* files for each MPI process.
+	! frt.txt* contain on-fault variables for visualization 
+	!   and restart files for the next deformation phase. 
 	use globalvar
 	implicit none
 	
 	integer (kind = 4) :: i, j 	
 	
 	if(nftnd(1) > 0) then
-		open(unit=10004+me,file='frt.txt'//mm,status='unknown')	!rupture time
-		write(10004+me,'(1x,15E15.7)') ((x(j,nsmp(1,i,1)),j=1,3),fnft(i,1),&
-			(fric(j,i,1),j=71,76), fric(79,i,1), fric(78,i,1), fric(91,i,1), fric(92,i,1), fric(93,i,1), i=1,nftnd(1))
+		open(unit=10004+me,file='frt.txt'//mm,status='unknown')
+		
+		write(10004+me,'(1x,22E15.7)')    &
+				! 3 coordinates of the fault nodes.
+			((x(j,nsmp(1,i,1)), j = 1,3), & 
+				! rupture time 
+			fnft(i,1),                    & 
+				! 71-73: final slips, slipd, slipn
+				! 74-76: final sliprates, sliprated, slipraten
+			(fric(j,i,1), j = 71,76),     &
+				! 47: final slip rate
+			fric(47,i,1),                 &
+				! 78: final effective normal stress, tnrm 
+				! 79: final shear strike stress, tstk
+				! 80: final shear dip stress, tdip 
+			fric(78,i,1),                 &
+			fric(79,i,1),                 &
+			fric(80,i,1),                 &
+				! 31-33, vxm, vym, vzm, 3 vel components of master nodes.
+				! 34-36, vxs, vys, vzs, 3 vel components of slave nodes.
+			fric(31,i,1),                 &
+			fric(32,i,1),                 &
+			fric(33,i,1),                 &
+			fric(34,i,1),                 &
+			fric(35,i,1),                 &
+			fric(36,i,1),                 &
+				! 20: state variable in RSF
+			fric(20,i,1),                 &
+				! 21: state variable for normal stress variation (Shi and Day)
+			fric(23,i,1),                 &
+				!
+			i=1,nftnd(1)) ! Finish the write(10004,me, ...) line.
+			
 		close(10004+me)
 	endif
-end subroutine output_frt	
+end subroutine output_frt
 
 !#4
 subroutine output_timeanalysis

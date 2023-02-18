@@ -26,6 +26,7 @@ subroutine readglobal
 	endif 	
 	
 	open(unit = 1001, file = 'bGlobal.txt', form = 'formatted', status = 'old')
+		read(1001,*) mode
 		read(1001,*) C_elastic
 		read(1001,*) C_nuclea
 		read(1001,*) C_degen

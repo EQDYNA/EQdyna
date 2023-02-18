@@ -120,6 +120,7 @@ PROGRAM EQdyna_3D
 	call meshgen
 	
 	call netcdf_read_on_fault_eqdyna("on_fault_vars_input.nc")
+	if (mode==2) call netcdf_read_on_fault_eqdyna_restart("fault.r.nc")
 	
 	if (outputGroundMotion == 1) call find_surface_node_id
 	
