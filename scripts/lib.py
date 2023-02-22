@@ -57,3 +57,12 @@ def B3(y,ww,w):
   elif y>=ww+w:
     res = 0.
   return res
+
+def linear1(x,ww,w):
+  if abs(x)<=ww:
+    res = 1.0
+  elif abs(x)>ww and abs(x)<ww+w: 
+    res = 1. - abs((abs(x)-ww))/w
+  elif abs(x)>=ww+w:
+    res = 0.0
+  return res
