@@ -70,35 +70,35 @@ def netcdf_write_on_fault_vars():
   strike_var = ds.createVariable('strike', np.float64, ('strike',))
   
   # for the slip weakening law
-  var0  = ds.createVariable('sw_fs', np.float64, ('strike','dip',))
-  var1  = ds.createVariable('sw_fd', np.float64, ('strike','dip',))
-  var2  = ds.createVariable('sw_D0', np.float64, ('strike','dip',))
+  var0  = ds.createVariable('sw_fs', np.float64, ('dip','strike',))
+  var1  = ds.createVariable('sw_fd', np.float64, ('dip','strike',))
+  var2  = ds.createVariable('sw_D0', np.float64, ('dip','strike',))
   
   # for the rsf
-  var3  = ds.createVariable('rsf_a',  np.float64, ('strike','dip',))
-  var4  = ds.createVariable('rsf_b',  np.float64, ('strike','dip',))
-  var5  = ds.createVariable('rsf_Dc', np.float64, ('strike','dip',))
-  var6  = ds.createVariable('rsf_v0', np.float64, ('strike','dip',))
-  var7  = ds.createVariable('rsf_r0', np.float64, ('strike','dip',))
+  var3  = ds.createVariable('rsf_a',  np.float64, ('dip','strike',))
+  var4  = ds.createVariable('rsf_b',  np.float64, ('dip','strike',))
+  var5  = ds.createVariable('rsf_Dc', np.float64, ('dip','strike',))
+  var6  = ds.createVariable('rsf_v0', np.float64, ('dip','strike',))
+  var7  = ds.createVariable('rsf_r0', np.float64, ('dip','strike',))
   
   # additional for the rsf slip law with strong rate weakening
-  var8  = ds.createVariable('rsf_fw',  np.float64, ('strike','dip',))
-  var9  = ds.createVariable('rsf_vw',  np.float64, ('strike','dip',))
+  var8  = ds.createVariable('rsf_fw',  np.float64, ('dip','strike',))
+  var9  = ds.createVariable('rsf_vw',  np.float64, ('dip','strike',))
   
   # additional for the rsf with thermal pressurization
-  var10 = ds.createVariable('tp_a_hy',  np.float64, ('strike','dip',))
-  var11 = ds.createVariable('tp_a_th',  np.float64, ('strike','dip',))
-  var12 = ds.createVariable('tp_rouc',  np.float64, ('strike','dip',))
-  var13 = ds.createVariable('tp_lambda',np.float64, ('strike','dip',))
-  var14 = ds.createVariable('tp_h',     np.float64, ('strike','dip',))
-  var15 = ds.createVariable('tp_Tini',  np.float64, ('strike','dip',))
-  var16 = ds.createVariable('tp_pini',  np.float64, ('strike','dip',))
+  var10 = ds.createVariable('tp_a_hy',  np.float64, ('dip','strike',))
+  var11 = ds.createVariable('tp_a_th',  np.float64, ('dip','strike',))
+  var12 = ds.createVariable('tp_rouc',  np.float64, ('dip','strike',))
+  var13 = ds.createVariable('tp_lambda',np.float64, ('dip','strike',))
+  var14 = ds.createVariable('tp_h',     np.float64, ('dip','strike',))
+  var15 = ds.createVariable('tp_Tini',  np.float64, ('dip','strike',))
+  var16 = ds.createVariable('tp_pini',  np.float64, ('dip','strike',))
   
   # kinematics and initial stresses
-  var17 = ds.createVariable('init_slip_rate',     np.float64, ('strike','dip',))
-  var18 = ds.createVariable('init_shear_stress',  np.float64, ('strike','dip',))
-  var19 = ds.createVariable('init_normal_stress', np.float64, ('strike','dip',))
-  var20 = ds.createVariable('init_state',         np.float64, ('strike','dip',))
+  var17 = ds.createVariable('init_slip_rate',     np.float64, ('dip','strike',))
+  var18 = ds.createVariable('init_shear_stress',  np.float64, ('dip','strike',))
+  var19 = ds.createVariable('init_normal_stress', np.float64, ('dip','strike',))
+  var20 = ds.createVariable('init_state',         np.float64, ('dip','strike',))
   
  
   var0.units = 'unit'
