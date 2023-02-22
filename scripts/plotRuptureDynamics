@@ -18,8 +18,8 @@ def ruptureDynamics():
     ma     = int((fzmax-fzmin)/dx+1)
     rupt   = np.zeros((na*ma,3))
     rupt2d = np.zeros((ma,na,100))
-    fVarArr= np.zeros((na,ma,100)) # it may look weird, but fVarArr should be written in (nx, nz) in Python
-    #  to be read by subroutine netcdf_read_on_fault in netcdf_io.f90 in the (nz,nx) format.  
+    fVarArr= np.zeros((ma,na,100))
+ 
     [xx,zz] = np.meshgrid(fx,fz)
     xx = xx/1.e3
     zz = zz/1.e3
@@ -38,9 +38,9 @@ def ruptureDynamics():
             # frt.txt* file structure:
             # Starting from 1, 1-3: coorx,y,z
             # 4, rupture time
-            # 5-10, final slips,d,n, 
-            #       final sliprates,d
-            #       peak slip rate
+            # 5-9,  final slips,d,n, 
+            #       final sliprates,d.
+            # 10,   peak slip rate.
             # 11,   final sliprate magnitude
             # 12-14, final tnrm, tstk, tdip
             # 15-20, vxm,vym,vzm,
@@ -53,27 +53,26 @@ def ruptureDynamics():
             rupt[jj*na+ii,2] = a[i,3]  # rupture time
 
             rupt2d[jj,ii,0]  = a[i,3]  # rupture time
-            rupt2d[jj,ii,1]  = (a[i,4]**2 + a[i,5]**2)**0.5  # final total slip
-            rupt2d[jj,ii,2]  = a[i,10]  # final slip rate
-            rupt2d[jj,ii,3]  = a[i,9]   # peak slip rate
+            rupt2d[jj,ii,1]  = (a[i,4]**2 + a[i,5]**2)**0.5  # slip magnitude
+            rupt2d[jj,ii,2]  = a[i,9]                        # peak slip rate
+            rupt2d[jj,ii,3]  = a[i,10]                       # final slip magnitude
             rupt2d[jj,ii,4]  = a[i,12]/1.e6 # final shear stress
-            rupt2d[jj,ii,5]  = a[i,13]/1.e6 # final dip stress
-            rupt2d[jj,ii,6]  = a[i,11]/1.e6 # final normal stress
+            rupt2d[jj,ii,5]  = a[i,11]/1.e6 # final normal stress
 
             # 
             # fVarArr will be passed to the function generateNcRestart(faultVarArr):
-            fVarArr[ii,jj,0]  = a[i,12] # shear_strike, Pa
-            fVarArr[ii,jj,1]  = a[i,13] # shear_dip, Pa
-            fVarArr[ii,jj,2]  = a[i,11] # effective_normal, Pa 
-            fVarArr[ii,jj,3]  = a[i,10] # slip_rate, m/s
-            fVarArr[ii,jj,4]  = a[i,20] # state_variable
-            fVarArr[ii,jj,5]  = a[i,21] # state_normal
-            fVarArr[ii,jj,6]  = a[i,14] # vxm, m/s
-            fVarArr[ii,jj,7]  = a[i,15] # vym
-            fVarArr[ii,jj,8]  = a[i,16] # vzm
-            fVarArr[ii,jj,9]  = a[i,17] # vxs
-            fVarArr[ii,jj,10] = a[i,18] # vys
-            fVarArr[ii,jj,11] = a[i,19] # vzs
+            fVarArr[jj,ii,0]  = a[i,12] # shear_strike, Pa
+            fVarArr[jj,ii,1]  = a[i,13] # shear_dip, Pa
+            fVarArr[jj,ii,2]  = a[i,11] # effective_normal, Pa 
+            fVarArr[jj,ii,3]  = a[i,10] # slip_rate, m/s
+            fVarArr[jj,ii,4]  = a[i,20] # state_variable
+            fVarArr[jj,ii,5]  = a[i,21] # state_normal
+            fVarArr[jj,ii,6]  = a[i,14] # vxm, m/s
+            fVarArr[jj,ii,7]  = a[i,15] # vym
+            fVarArr[jj,ii,8]  = a[i,16] # vzm
+            fVarArr[jj,ii,9]  = a[i,17] # vxs
+            fVarArr[jj,ii,10] = a[i,18] # vys
+            fVarArr[jj,ii,11] = a[i,19] # vzs
 
     levels = np.linspace(0,term,30) 
     dt     = term/30
@@ -87,29 +86,29 @@ def ruptureDynamics():
     plt.title('Slip (m) & Rupture time (' + str(dt) + ' s)')
 
     ax12 = fig.add_subplot(322)
-    plt.contourf(xx,zz,rupt2d[:,:,3])
+    plt.contourf(xx,zz,rupt2d[:,:,2])
     plt.colorbar()
     plt.title('Peak slip rate (m/s)')
 
     ax21 = fig.add_subplot(323)
-    plt.contourf(xx,zz,rupt2d[:,:,2])
-    plt.colorbar()
-    plt.title('Final slip rate (m/s)')
-
-    ax22 = fig.add_subplot(324)
     plt.contourf(xx,zz,rupt2d[:,:,3])
     plt.colorbar()
-    plt.title('Final strike shear (MPa)')
+    plt.title('Final slip magnitude (m/s)')
 
-    ax22 = fig.add_subplot(325)
+    ax22 = fig.add_subplot(324)
     plt.contourf(xx,zz,rupt2d[:,:,4])
     plt.colorbar()
-    plt.title('Final dip shear (MPa)')
+    plt.title('Shear stress (MPa)')
 
-    ax22 = fig.add_subplot(326)
+    ax22 = fig.add_subplot(325)
     plt.contourf(xx,zz,rupt2d[:,:,5])
     plt.colorbar()
-    plt.title('Final normal stress (MPa)')
+    plt.title('Normal stress (MPa)')
+
+    #ax22 = fig.add_subplot(326)
+    #plt.contourf(xx,zz,rupt2d[:,:,9])
+    #plt.colorbar()
+    #plt.title('Normal stress change (MPa)')
 
     plt.savefig("cRuptureDynamics.png", dpi = 300)
     plt.close()
@@ -134,18 +133,18 @@ def generateNcRestart(faultVarArr):
     dip_var    = ds.createVariable('dip', np.float64, ('dip',))
     strike_var = ds.createVariable('strike', np.float64, ('strike',))
 
-    var0       = ds.createVariable('shear_strike',     np.float64, ('strike','dip',))
-    var1       = ds.createVariable('shear_dip',        np.float64, ('strike','dip',))
-    var2       = ds.createVariable('effective_normal', np.float64, ('strike','dip',))
-    var3       = ds.createVariable('slip_rate',        np.float64, ('strike','dip',))
-    var4       = ds.createVariable('state_variable',   np.float64, ('strike','dip',))
-    var5       = ds.createVariable('state_normal',     np.float64, ('strike','dip',))
-    var6       = ds.createVariable('vxm',              np.float64, ('strike','dip',))
-    var7       = ds.createVariable('vym',              np.float64, ('strike','dip',))
-    var8       = ds.createVariable('vzm',              np.float64, ('strike','dip',))
-    var9       = ds.createVariable('vxs',              np.float64, ('strike','dip',))
-    var10      = ds.createVariable('vys',              np.float64, ('strike','dip',))
-    var11      = ds.createVariable('vzs',              np.float64, ('strike','dip',))
+    var0       = ds.createVariable('shear_strike',     np.float64, ('dip','strike',))
+    var1       = ds.createVariable('shear_dip',        np.float64, ('dip','strike',))
+    var2       = ds.createVariable('effective_normal', np.float64, ('dip','strike',))
+    var3       = ds.createVariable('slip_rate',        np.float64, ('dip','strike',))
+    var4       = ds.createVariable('state_variable',   np.float64, ('dip','strike',))
+    var5       = ds.createVariable('state_normal',     np.float64, ('dip','strike',))
+    var6       = ds.createVariable('vxm',              np.float64, ('dip','strike',))
+    var7       = ds.createVariable('vym',              np.float64, ('dip','strike',))
+    var8       = ds.createVariable('vzm',              np.float64, ('dip','strike',))
+    var9       = ds.createVariable('vxs',              np.float64, ('dip','strike',))
+    var10      = ds.createVariable('vys',              np.float64, ('dip','strike',))
+    var11      = ds.createVariable('vzs',              np.float64, ('dip','strike',))
     var0.units = 'Pa'
     var1.units = 'Pa'
     var2.units = 'Pa'
