@@ -97,7 +97,7 @@ fx      = np.linspace(fxmin,fxmax,nfx) # coordinates of fault grids along strike
 fz      = np.linspace(fzmin,fzmax,nfz) # coordinates of fault grids along dip.
 
 # Create on_fault_vars array for on_fault varialbes.
-on_fault_vars = np.zeros((nfx,nfz,100))
+on_fault_vars = np.zeros((nfz,nfx,100))
 
 # functions are defined in lib.py under scripts/
 # function lists:
@@ -109,47 +109,47 @@ grav = 9.8
 for ix, xcoor in enumerate(fx):
   for iz, zcoor in enumerate(fz):
   # assign a in RSF. a is a 2D distribution.
-    on_fault_vars[ix,iz,1]   = fric_sw_fs 
-    on_fault_vars[ix,iz,2]   = fric_sw_fd
-    on_fault_vars[ix,iz,3]   = fric_sw_D0
+    on_fault_vars[iz,ix,1]   = fric_sw_fs 
+    on_fault_vars[iz,ix,2]   = fric_sw_fd
+    on_fault_vars[iz,ix,3]   = fric_sw_D0
 
     # 7,8 commented. Don't need to assign for cycles.
-    on_fault_vars[ix,iz,7]   = -max(min(grav*1670.*abs(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
-    on_fault_vars[ix,iz,8]   = -0.41*on_fault_vars[ix,iz,7]       # initial shear stress.
+    on_fault_vars[iz,ix,7]   = -max(min(grav*1670.*abs(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
+    on_fault_vars[iz,ix,8]   = -0.41*on_fault_vars[iz,ix,7]       # initial shear stress.
     
     tmp1  = linear1(xcoor, 20.e3, 3.e3)
     tmp2  = linear1(-zcoor, 20.e3, 3.e3)
-    on_fault_vars[ix,iz,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
-    on_fault_vars[ix,iz,10] = fric_rsf_b # assign b in RSF 
-    on_fault_vars[ix,iz,11] = fric_rsf_Dc # assign Dc in RSF.
+    on_fault_vars[iz,ix,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
+    on_fault_vars[iz,ix,10] = fric_rsf_b # assign b in RSF 
+    on_fault_vars[iz,ix,11] = fric_rsf_Dc # assign Dc in RSF.
     #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
-    #  on_fault_vars[ix,iz,11] = minDc # a special Dc zone.
-    on_fault_vars[ix,iz,12] = fric_rsf_v0 # initial reference slip rate.
-    on_fault_vars[ix,iz,13] = fric_rsf_r0 # initial reference friction.
+    #  on_fault_vars[iz,ix,11] = minDc # a special Dc zone.
+    on_fault_vars[iz,ix,12] = fric_rsf_v0 # initial reference slip rate.
+    on_fault_vars[iz,ix,13] = fric_rsf_r0 # initial reference friction.
     
-    on_fault_vars[ix,iz,14] = fric_rsf_fw # 
-    on_fault_vars[ix,iz,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  #
+    on_fault_vars[iz,ix,14] = fric_rsf_fw # 
+    on_fault_vars[iz,ix,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  #
     
     tmp3  = B1(xcoor, 20.e3, 3.e3)
     tmp4  = B3(-zcoor, 20.e3, 3.e3)
-    on_fault_vars[ix,iz,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp3*tmp4)  #
-    on_fault_vars[ix,iz,17] = fric_tp_a_th
-    on_fault_vars[ix,iz,18] = fric_tp_rouc
-    on_fault_vars[ix,iz,19] = fric_tp_lambda
-    on_fault_vars[ix,iz,40] = fric_tp_h
-    on_fault_vars[ix,iz,41] = fric_tp_Tini
-    on_fault_vars[ix,iz,42] = fric_tp_pini
+    on_fault_vars[iz,ix,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp3*tmp4)  #
+    on_fault_vars[iz,ix,17] = fric_tp_a_th
+    on_fault_vars[iz,ix,18] = fric_tp_rouc
+    on_fault_vars[iz,ix,19] = fric_tp_lambda
+    on_fault_vars[iz,ix,40] = fric_tp_h
+    on_fault_vars[iz,ix,41] = fric_tp_Tini
+    on_fault_vars[iz,ix,42] = fric_tp_pini
     
-    on_fault_vars[ix,iz,46] = creep_slip_rate # initial slip rates
+    on_fault_vars[iz,ix,46] = creep_slip_rate # initial slip rates
     #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
-    #  on_fault_vars[ix,iz,46] = 0.03 # initial high slip rate patch.
+    #  on_fault_vars[iz,ix,46] = 0.03 # initial high slip rate patch.
     
-    on_fault_vars[ix,iz,20] = 0 # initial state var, loaded from restarts.
+    on_fault_vars[iz,ix,20] = 0 # initial state var, loaded from restarts.
     
     if mode == 2: # if mode 2, the following parameters are loaded from restarts.
-      on_fault_vars[ix,iz,7]  = 0
-      on_fault_vars[ix,iz,8]  = 0
-      on_fault_vars[ix,iz,20] = 0
+      on_fault_vars[iz,ix,7]  = 0
+      on_fault_vars[iz,ix,8]  = 0
+      on_fault_vars[iz,ix,20] = 0
     
 ###############################################
 ##### Domain boundaries for transferring ######
@@ -170,7 +170,7 @@ nz = 2
 HPC_ncpu  = nx*ny*nz # Number of CPUs requested.
 HPC_nnode = int(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
 HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
-HPC_time  = "00:00:30" # WALLTIME, in hh:mm:ss format.
+HPC_time  = "00:30:00" # WALLTIME, in hh:mm:ss format.
 HPC_account = "EAR22012" # Project account to be charged SUs against.
 HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
 
