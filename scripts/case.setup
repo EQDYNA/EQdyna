@@ -203,11 +203,13 @@ def create_batch_script_cycle():
         f.write("  read i < currentcycle.txt" + "\n")
         f.write("  cp \"../Q$((i-1))/\"*.r.nc ./" + "\n")
         f.write("  ibrun eqdyna" + "\n")
-        f.write("  ibrun -np 1 python plotRuptureDynamics" + "\n") 
+        f.write("  ibrun -np 1 python plotRuptureDynamics" + "\n")
+	f.write("  rm -rf \"../D$((i-1))\"" + "\n")
         f.write("  mkdir \"../D$((i-1))\"" + "\n")
-        f.write("  mv a.* body* faultst* frt.txt* global* gm* p2* \"../D$((i-1))\"" + "\n")
-        f.write("  i=$((i+1))" + "\n")
-        f.write("  echo $i > currentcycle.txt" + "\n")
+        f.write("  mv a.eqdyna.log* body* faultst* frt.txt* global* gm* p2* cRuptureDynamics.png \"../D$((i-1))\"" + "\n")
+        # leave the update of currentcycle.txt to ESCI scripts? 
+	#f.write("  i=$((i+1))" + "\n")
+        #f.write("  echo $i > currentcycle.txt" + "\n")
         # End excutable part.
 
 def estimate_HPC_resource():
