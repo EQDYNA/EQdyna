@@ -31,7 +31,7 @@ vp, vs, rou = 6.0e3, 3.464e3, 2.67e3
 init_norm   = -50.0e6 # initial normal stress in Pa. Negative compressive.
 
 # total simulation time and dt
-term        = 60.      # total seconds in simulation time 
+term        = 150.      # total seconds in simulation time 
 dt          = 0.5*dx/vp # CFL criteria with alpha=0.5
 
 # Controlling switches for EQquasi system
@@ -118,7 +118,7 @@ for ix, xcoor in enumerate(fx):
     on_fault_vars[iz,ix,8]   = -0.41*on_fault_vars[iz,ix,7]       # initial shear stress.
     
     tmp1  = linear1(xcoor, 20.e3, 3.e3)
-    tmp2  = linear1(-zcoor, 20.e3, 3.e3)
+    tmp2  = linear1(-zcoor-10.0e3, 7.e3, 1.e3)
     on_fault_vars[iz,ix,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
     on_fault_vars[iz,ix,10] = fric_rsf_b # assign b in RSF 
     on_fault_vars[iz,ix,11] = fric_rsf_Dc # assign Dc in RSF.
@@ -170,7 +170,7 @@ nz = 2
 HPC_ncpu  = nx*ny*nz # Number of CPUs requested.
 HPC_nnode = int(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
 HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
-HPC_time  = "00:30:00" # WALLTIME, in hh:mm:ss format.
+HPC_time  = "02:00:00" # WALLTIME, in hh:mm:ss format.
 HPC_account = "EAR22012" # Project account to be charged SUs against.
 HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
 
