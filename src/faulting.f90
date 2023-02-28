@@ -149,7 +149,7 @@ subroutine faulting
 					if(fnft(i,ift)>600) then	!fnft should be initialized by >10000
 						if(sliprate >= 0.001d0 .and. mode==1) then	!first time to reach 1mm/s
 							fnft(i,ift) = time	!rupture time for the node
-						elseif (sliprate >=0.01d0 .and. mode==2) then
+						elseif (sliprate >=0.05d0 .and. mode==2) then
 							fnft(i,ift) = time
 						endif
 					endif
@@ -237,7 +237,7 @@ subroutine faulting
 				if(fnft(i,ift)>600.0d0) then	!fnft should be initialized by >10000
 					if(sliprate >= 0.001d0 .and. mode==1) then	!first time to reach 1mm/s
 						fnft(i,ift) = time	!rupture time for the node
-					elseif (sliprate>=0.01d0 .and. mode==2) then
+					elseif (sliprate>=0.05d0 .and. mode==2) then
 						fnft(i,ift) = time
 					endif
 				endif
