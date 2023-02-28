@@ -147,8 +147,10 @@ subroutine faulting
 					tstk = tstk * taoc / ttao
 					tdip = tdip * taoc / ttao
 					if(fnft(i,ift)>600) then	!fnft should be initialized by >10000
-						if(sliprate >= 0.001d0) then	!first time to reach 1mm/s
+						if(sliprate >= 0.001d0 .and. mode==1) then	!first time to reach 1mm/s
 							fnft(i,ift) = time	!rupture time for the node
+						elseif (sliprate >=0.01d0 .and. mode==2) then
+							fnft(i,ift) = time
 						endif
 					endif
 				endif
@@ -233,12 +235,14 @@ subroutine faulting
 				! endif				
 					
 				if(fnft(i,ift)>600.0d0) then	!fnft should be initialized by >10000
-					if(sliprate >= 0.001d0) then	!first time to reach 1mm/s
+					if(sliprate >= 0.001d0 .and. mode==1) then	!first time to reach 1mm/s
 						fnft(i,ift) = time	!rupture time for the node
+					elseif (sliprate>=0.01d0 .and. mode==2) then
+						fnft(i,ift) = time
 					endif
 				endif
 				v_trial = sliprate
-				
+		
 				theta_pc_tmp = fric(23,i,ift)
 				call rate_state_normal_stress(v_trial, fric(23,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))	
 				fric(24,i,ift) = theta_pc_dot
