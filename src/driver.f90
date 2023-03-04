@@ -647,13 +647,13 @@ subroutine init_vel
     do ift = 1, ntotft
         do i = 1,nftnd(ift)
 			tmp = locid(nsmp(1,i,ift))! slave nodeid i 
-			v1(tmp+1) = fric(34,i,ift) ! vxs
-			v1(tmp+2) = fric(35,i,ift) ! vys
-			v1(tmp+3) = fric(36,i,ift) ! vzs
+			v1(id1(tmp+1)) = fric(34,i,ift) ! vxs
+			v1(id1(tmp+2)) = fric(35,i,ift) ! vys
+			v1(id1(tmp+3)) = fric(36,i,ift) ! vzs
 			tmp = locid(nsmp(2,i,ift))! master nodeid i
-			v1(tmp+1) = fric(31,i,ift) ! vxm
-			v1(tmp+2) = fric(32,i,ift) ! vym
-			v1(tmp+3) = fric(33,i,ift) ! vzm
+			v1(id1(tmp+1)) = fric(31,i,ift) ! vxm
+			v1(id1(tmp+2)) = fric(32,i,ift) ! vym
+			v1(id1(tmp+3)) = fric(33,i,ift) ! vzm
 		enddo
 	enddo
 end subroutine init_vel
