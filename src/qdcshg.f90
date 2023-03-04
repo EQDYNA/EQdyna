@@ -3,23 +3,27 @@ SUBROUTINE qdcshg(xl,det,shg,nel,xs,lcubic)
   implicit none
   !
   !...program to calculate global derivatives of shape function and
-  !	Jacobian determinat for a 8-node hexahedral element.
-  !	1 Gaussian point only!
+  !    Jacobian determinat for a 8-node hexahedral element.
+  !    1 Gaussian point only!
   !
   logical :: lcubic
-  integer(kind=4) :: i,j,k,nel
-  real(kind=8) :: det,temp,cof11,cof12,cof13,cof21,cof22,cof23, &
-		cof31,cof32,cof33
-  real(kind=8),dimension(3,3) :: xs
-  real(kind=8),dimension(nrowsh,nen) :: shg,shlg
-  real(kind=8),dimension(nesd,nen) :: xl
-  !
+  
+  integer (kind = 4) :: i,j,k,nel
+  
+  real(kind = dp) :: det,temp, &
+                    cof11,cof12,cof13, &
+                    cof21,cof22,cof23, &
+                    cof31,cof32,cof33
+  real(kind = dp), dimension(3,3)        :: xs
+  real(kind = dp), dimension(nrowsh,nen) :: shg,shlg
+  real(kind = dp), dimension(nesd,nen)   :: xl
+
   !...equal local to global ,first
   shg = shl
   ! !...deal with wedge degeneration. B.D. 11/27/08
-  ! if( et(nel) == 11 ) then	!degeneration to wedge element by following the book
+  ! if( et(nel) == 11 ) then    !degeneration to wedge element by following the book
     ! do i=1,nrowsh
-      ! shg(i,3) = shl(i,3) + shl(i,4)	!always 4=3, 8=7
+      ! shg(i,3) = shl(i,3) + shl(i,4)    !always 4=3, 8=7
       ! shg(i,4) = 0.0d0
       ! shg(i,7) = shl(i,7) + shl(i,8)
       ! shg(i,8) = 0.0d0
@@ -45,28 +49,30 @@ SUBROUTINE qdcshg(xl,det,shg,nel,xs,lcubic)
   cof31 = xs(1,2)*xs(2,3) - xs(1,3)*xs(2,2)
   cof32 = xs(1,3)*xs(2,1) - xs(1,1)*xs(2,3)
   cof33 = xs(1,1)*xs(2,2) - xs(1,2)*xs(2,1)
-  !...determinant
-  det = xs(1,1)*cof11 + xs(1,2)*cof12 + xs(1,3)*cof13
-  if(det <= 0.0) then
-    write(*,1000) nel
-    write(*,*) 'det=',det
-    stop	!non-positive det: terminate
+  ! Calculate the determinant
+  det   = xs(1,1)*cof11 + xs(1,2)*cof12 + xs(1,3)*cof13
+  
+  if (det <= 0.0d0) then
+    write(*,*) 'Non-positive determinant; stop the code.'
+    write(*,*) 'Element id is ', nel
+    write(*,*) 'det=', det
+    stop
   endif
-  !...derivatives of global shape function
-  shlg = shg
-  do i=1,nen
+  
+  !Calculate derivatives of global shape function
+  shlg  = shg
+  
+  do i  = 1,nen
     shg(1,i) = (shlg(1,i)*cof11 + shlg(2,i)*cof12  &
-		+ shlg(3,i)*cof13)/det
+                + shlg(3,i)*cof13)/det
     shg(2,i) = (shlg(1,i)*cof21 + shlg(2,i)*cof22  &
-		+ shlg(3,i)*cof23)/det
+                + shlg(3,i)*cof23)/det
     shg(3,i) = (shlg(1,i)*cof31 + shlg(2,i)*cof32  &
-		+ shlg(3,i)*cof33)/det
+                + shlg(3,i)*cof33)/det
   enddo
   !...now,get s,x from cof and save in xs to return
-  xs=reshape((/cof11,cof12,cof13, cof21,cof22,cof23, &
-  	cof31,cof32,cof33/),(/3,3/))
-  xs = xs / det	
-!
-1000 format('1','non-positive determinant in element number  ',i10)
-!
+  xs    = reshape((/cof11,cof12,cof13, cof21,cof22,cof23, &
+                 cof31,cof32,cof33/),(/3,3/))
+  xs    = xs/det
+
 end SUBROUTINE qdcshg

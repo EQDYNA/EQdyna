@@ -74,8 +74,8 @@ def ruptureDynamics():
             fVarArr[jj,ii,10] = a[i,18] # vys
             fVarArr[jj,ii,11] = a[i,19] # vzs
 
-    levels = np.linspace(0,term,30) 
-    dt     = term/30
+    levels = np.linspace(0,30,60) 
+    #dt     = 30/60
     fig = plt.figure(figsize=(16,12), dpi= 300, facecolor='w', edgecolor='k')
 
     plt.rc('font', size=SMALL_SIZE)
@@ -83,7 +83,7 @@ def ruptureDynamics():
     plt.contourf(xx,zz,rupt2d[:,:,1])
     plt.colorbar()
     plt.contour(xx,zz,rupt2d[:,:,0], levels)
-    plt.title('Slip (m) & Rupture time (' + str(dt) + ' s)')
+    plt.title('Slip (m) & Rupture time (per 0.05 s)')
 
     ax12 = fig.add_subplot(322)
     plt.contourf(xx,zz,rupt2d[:,:,2])
