@@ -22,6 +22,9 @@ call qdct2
 time2       = MPI_WTIME()
 timeused(2) = timeused(2)+(time2-time1)
 
+! Initiate on-fault node velocities.
+call init_vel
+
 do nt=1,nstep
 
 	time    = time + dt
@@ -102,7 +105,7 @@ do nt=1,nstep
 	if (lstr) then
 		if((ndout>0).and.(locplt>1)) then
 			dout(1,locplt)=time
-			do i=1,ndout
+			do i=1,ndout 
 				j=idhist(1,i)
 				if(j<=0) j=1  !avoid zero that cannot be used below
 					k=idhist(2,i)
@@ -631,3 +634,26 @@ if (me==master) then
 	write(*,*) 'mpi_send + mpi_recv time:',btime
 endif
 end SUBROUTINE driver
+
+subroutine init_vel
+	! initiate the 1d velocity array v1. 
+	! if mode==2, non-zero values for fric(31-36,i,ift) loaded from 
+	!    the restart file.
+	! if mode==1, fric(31-36,i) will be zeros.
+    use globalvar
+    implicit none
+    integer (kind = 4) :: i, ift, tmp
+    
+    do ift = 1, ntotft
+        do i = 1,ntfnd(ift)
+			tmp = locid(nsmp(1,i,ift))! slave nodeid i 
+			v1(tmp+1) = fric(34,i,ift) ! vxs
+			v1(tmp+2) = fric(35,i,ift) ! vys
+			v1(tmp+3) = fric(36,i,ift) ! vzs
+			tmp = locid(nsmp(2,i,ift))! master nodeid i
+			v1(tmp+1) = fric(31,i,ift) ! vxm
+			v1(tmp+2) = fric(32,i,ift) ! vym
+			v1(tmp+3) = fric(33,i,ift) ! vzm
+		enddo
+	enddo
+end subroutine init_vel
