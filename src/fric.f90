@@ -13,7 +13,7 @@ SUBROUTINE slip_weak(slip,fricsgl,xmu)
   real (kind = dp),dimension(20) :: fricsgl
   !
   if(abs(slip).lt.1.0e-10) then
-    xmu = fricsgl(1)	!xmu is frictional coefficient, node by node on fault
+    xmu = fricsgl(1)    !xmu is frictional coefficient, node by node on fault
   elseif(slip < fricsgl(3)) then
     xmu = fricsgl(1) - (fricsgl(1) - fricsgl(2))*slip/fricsgl(3)
   endif
@@ -112,16 +112,16 @@ SUBROUTINE rate_state_slip_law(V2,psi,fricsgl,xmu,dxmudv)
 end SUBROUTINE rate_state_slip_law
 
 subroutine rate_state_normal_stress(V2, theta_pc, theta_pc_dot, tnrm, fricsgl)
-	use globalvar
-	implicit none
-	real (kind = dp) :: V2, theta_pc, theta_pc_dot, tnrm, L
-	real (kind = dp),dimension(100) :: fricsgl
-	
-	L  = fricsgl(11)
-	
-	theta_pc_dot = - V2/L*(theta_pc - abs(tnrm))
-	!theta_pc = theta_pc + theta_pc_dot*dt
-	theta_pc = abs(tnrm) + (theta_pc - abs(tnrm))*dexp(-V2*dt/L)
-	
+    use globalvar
+    implicit none
+    real (kind = dp) :: V2, theta_pc, theta_pc_dot, tnrm, L
+    real (kind = dp),dimension(100) :: fricsgl
+    
+    L  = fricsgl(11)
+    
+    theta_pc_dot = - V2/L*(theta_pc - abs(tnrm))
+    !theta_pc = theta_pc + theta_pc_dot*dt
+    theta_pc = abs(tnrm) + (theta_pc - abs(tnrm))*dexp(-V2*dt/L)
+    
 end subroutine rate_state_normal_stress
 
