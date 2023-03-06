@@ -2,54 +2,54 @@
 ! #
 ! # vlm
 ! -----------------------------------------------
-subroutine fb1(x,ww,w,res)
+subroutine fb1(xtmp,ww,wtmp,res)
     use globalvar
     implicit none
-    real (kind = dp) :: x, ww, w, res
+    real (kind = dp) :: xtmp, ww, wtmp, res
     ! ww == W;
-    if (abs(x)<=ww) then 
+    if (abs(xtmp)<=ww) then 
         res = 1.0d0
-    elseif (abs(x)>ww.and.abs(x)<ww+w) then 
-        res = 0.5d0*(1.0d0 + dtanh(w/(abs(x)-ww-w) + w/(abs(x)-ww)))
-    elseif (abs(x)>=ww+w) then 
+    elseif (abs(xtmp)>ww.and.abs(xtmp)<ww+wtmp) then 
+        res = 0.5d0*(1.0d0 + dtanh(wtmp/(abs(xtmp)-ww-wtmp) + wtmp/(abs(xtmp)-ww)))
+    elseif (abs(xtmp)>=ww+wtmp) then 
         res = 0.0d0
     endif
 end subroutine fb1
 ! -----------------------------------------------
-subroutine fb2(y,ww,w,res)
+subroutine fb2(ytmp,ww,wtmp,res)
     use globalvar
     implicit none
-    real (kind = dp) :: y, ww, w, res
+    real (kind = dp) :: ytmp, ww, wtmp, res
     ! ww == W;  
-    if (y<0.0d0) then
+    if (ytmp<0.0d0) then
         write(*,*) 'z coordinates should be positive for B3'
         stop
     endif   
-    if (y<=w) then 
-        res = 0.5d0*(1.0d0 + dtanh(w/(w-y) - w/y))
-    elseif (y>=w.and.y<=ww) then 
+    if (ytmp<=wtmp) then 
+        res = 0.5d0*(1.0d0 + dtanh(wtmp/(wtmp-ytmp) - wtmp/ytmp))
+    elseif (ytmp>=wtmp.and.ytmp<=ww) then 
         res = 1.0d0 
-    elseif (y>ww.and.y<ww+w) then 
-        res = 0.5d0*(1.0d0 + dtanh(w/(y-ww-w) + w/(y-ww)))
-    elseif (y>=ww+w) then 
+    elseif (ytmp>ww.and.ytmp<ww+wtmp) then 
+        res = 0.5d0*(1.0d0 + dtanh(wtmp/(ytmp-ww-wtmp) + wtmp/(ytmp-ww)))
+    elseif (ytmp>=ww+wtmp) then 
         res = 0.0d0
     endif
 end subroutine fb2
 !------------------------------------------------------
-subroutine fb3(y,ww,w,res)
+subroutine fb3(ytmp,ww,wtmp,res)
     use globalvar
     implicit none
-    real (kind = dp) :: y, ww, w, res
+    real (kind = dp) :: ytmp, ww, wtmp, res
     ! ww == W;  
-    if (y<0.0d0) then
+    if (ytmp<0.0d0) then
         write(*,*) 'z coordinates should be positive for B3'
         stop
     endif 
-    if (y<=ww) then 
+    if (ytmp<=ww) then 
         res = 1.0d0 
-    elseif (y>ww.and.y<ww+w) then 
-        res = 0.5d0*(1.0d0 + dtanh(w/(y-ww-w) + w/(y-ww)))
-    elseif (y>=ww+w) then 
+    elseif (ytmp>ww.and.ytmp<ww+wtmp) then 
+        res = 0.5d0*(1.0d0 + dtanh(wtmp/(ytmp-ww-wtmp) + wtmp/(ytmp-ww)))
+    elseif (ytmp>=ww+wtmp) then 
         res = 0.0d0
     endif
 end subroutine fb3
