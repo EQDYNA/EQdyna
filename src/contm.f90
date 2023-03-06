@@ -6,10 +6,10 @@ implicit none
 !        with "nen" nodes: lumped mass only here!
 !=============================================================
 integer (kind=4) :: j,n,k
-real (kind=8) :: det,dsum,totmas,constm,temp1,temp2
-real (kind=8),dimension(nee) :: elmass
-real (kind=8),dimension(nen) :: work
-real (kind=8),dimension(nrowsh,nen) :: shg
+real (kind = dp) :: det,dsum,totmas,constm,temp1,temp2
+real (kind = dp),dimension(nee) :: elmass
+real (kind = dp),dimension(nen) :: work
+real (kind = dp),dimension(nrowsh,nen) :: shg
 !...initialize
 dsum   = 0.0d0
 totmas = 0.0d0

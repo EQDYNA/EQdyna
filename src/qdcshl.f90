@@ -12,8 +12,8 @@ subroutine qdcshl
   ! 	B.D. 8/19/05
   !
   integer(kind=4) :: i,j
-  real(kind=8) :: cst=1.0d0/8.0d0	!constant used intensively
-  real(kind=8),dimension(3,8) :: acoor = reshape((/ -1.0d0, -1.0d0, -1.0d0, &
+  real(kind = dp) :: cst = 1.0d0/8.0d0	!constant used intensively
+  real(kind = dp), dimension(3,8) :: acoor = reshape((/ -1.0d0, -1.0d0, -1.0d0, &
 													 1.0d0, -1.0d0, -1.0d0, &
 													 1.0d0,  1.0d0, -1.0d0,  &
 													-1.0d0,  1.0d0, -1.0d0, &
@@ -22,7 +22,7 @@ subroutine qdcshl
 													 1.0d0,  1.0d0,  1.0d0,   &
 													-1.0d0,  1.0d0,  1.0d0/),(/3,8/))
   !
-  w=8.0d0	!weight for 1-point Gaussian rule
+  w = 8.0d0	!weight for 1-point Gaussian rule
   !
   do i=1,8
     shl(4,i) = cst	!the 4th is shape function itself

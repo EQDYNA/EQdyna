@@ -7,8 +7,8 @@ integer(kind = 4)::nnode,nelement,nxt,nyt,nzt,nx,ny,nz,ix,iy,iz,&
 logical,dimension(ntotft)::ynft
 integer(kind=4)::ntag,zz,nsx,nsy
 integer(kind=4)::nxuni,nyuni,nzuni,ift,n1,n2,n3,n4,m1,m2,m3,m4,rlp,rr,mex,mey,mez,msnode
-real (kind = 8)::tol,xcoor,ycoor,zcoor,xstep,ystep,zstep,mdx(3)
-real (kind = 8),allocatable,dimension(:)::xlinet,ylinet,zlinet,xline,yline,zline
+real (kind = dp)::tol,xcoor,ycoor,zcoor,xstep,ystep,zstep,mdx(3)
+real (kind = dp),allocatable,dimension(:)::xlinet,ylinet,zlinet,xline,yline,zline
 
 dy=dx
 dz=dx

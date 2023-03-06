@@ -7,8 +7,8 @@ SUBROUTINE contma(elmass,al,elresf)
   !	for lumped mass only.
   !
   integer (kind=4) :: i,j,k
-  real (kind=8),dimension(nee) :: elmass
-  real (kind=8),dimension(ned,nen) :: elresf,al
+  real (kind = dp),dimension(nee) :: elmass
+  real (kind = dp),dimension(ned,nen) :: elresf,al
   do j=1,nen
     k = (j - 1)*ned
     do i=1,ned
