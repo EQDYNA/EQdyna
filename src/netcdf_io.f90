@@ -84,7 +84,7 @@ subroutine netcdf_read_on_fault_eqdyna(infile)
 			fric(40, i, 1) = on_fault_vars(ii,jj,15)! tp_h
 			fric(41, i, 1) = on_fault_vars(ii,jj,16)! tp_Tini 
 			fric(42, i, 1) = on_fault_vars(ii,jj,17)! tp_pini 
-			fric(46, i, 1) = on_fault_vars(ii,jj,18)! init_slip rate
+			fric(46, i, 1) = on_fault_vars(ii,jj,18)! creeping slip rate, lower bound
 			fric(8,  i, 1) = on_fault_vars(ii,jj,19)! init_shear
 			fric(7,  i, 1) = on_fault_vars(ii,jj,20)! init_norm
 			fric(20, i, 1) = on_fault_vars(ii,jj,21)! init_state variable
@@ -155,7 +155,7 @@ subroutine netcdf_read_on_fault_eqdyna_restart(infile)
 			fric(8,  i, ift) = on_fault_vars(ii,jj, 1) ! tstk0
 			fric(49, i, ift) = on_fault_vars(ii,jj, 2) ! tdip0
 			fric(7,  i, ift) = on_fault_vars(ii,jj, 3) ! tnorm0
-			fric(46, i, ift) = on_fault_vars(ii,jj, 4) ! sliprate
+			fric(47, i, ift) = on_fault_vars(ii,jj, 4) ! sliprate
 			fric(20, i, ift) = on_fault_vars(ii,jj, 5) ! state
 			fric(23, i, ift) = on_fault_vars(ii,jj, 6) ! state_normal
 			fric(31, i, ift) = on_fault_vars(ii,jj, 7) ! vxm
@@ -164,7 +164,6 @@ subroutine netcdf_read_on_fault_eqdyna_restart(infile)
 			fric(34, i, ift) = on_fault_vars(ii,jj, 10)! vxs
 			fric(35, i, ift) = on_fault_vars(ii,jj, 11)! vys
 			fric(36, i, ift) = on_fault_vars(ii,jj, 12)! vzs
-			fric(47, i, ift) = fric(46, i, ift)        ! peak slip rate
 			!fric(23, (i-1)*nzt+j, 1) = abs(fric(7, (i-1)*nzt+j, 1))! initialize theta_pc as abs(normal stress)
 		enddo 
 	enddo 
