@@ -1,7 +1,7 @@
 subroutine qconstant(Q,rtaok,rwk,k,c1)
 implicit none
-real(kind=8)::taok(8),alfk(8),betk(8)
-real(kind=8)::kapa,Q,rtaok,rwk,a1,b1,c1,ref,ak0,bk0
+real(kind = dp)::taok(8),alfk(8),betk(8)
+real(kind = dp)::kapa,Q,rtaok,rwk,a1,b1,c1,ref,ak0,bk0
 integer(kind=4)::k,i
 taok=(/1.72333e-3,1.80701e-3,5.38887e-3,1.99322e-2,8.49833e-2,4.09335e-1,2.05951,13.2629/)
 alfk=(/1.66958e-2,3.81644e-2,9.84666e-3,-1.36803e-2,-2.85125e-2,-5.37309e-2,-6.65035e-2,-1.33696e-1/) 

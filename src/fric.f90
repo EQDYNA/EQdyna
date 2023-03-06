@@ -9,8 +9,8 @@ SUBROUTINE slip_weak(slip,fricsgl,xmu)
   !  fricsgl(i,*),i=1 mus, 2 mud, 3 do, 4 cohesion, 
   !  5 time for fixed rutpure, 6 for pore pressure
   !
-  real (kind=8) :: xmu,slip
-  real (kind=8),dimension(20) :: fricsgl
+  real (kind = dp) :: xmu,slip
+  real (kind = dp),dimension(20) :: fricsgl
   !
   if(abs(slip).lt.1.0e-10) then
     xmu = fricsgl(1)	!xmu is frictional coefficient, node by node on fault
@@ -32,8 +32,8 @@ SUBROUTINE time_weak(trupt,fricsgl,xmu)
   !### subroutine to implement linear time-weakening
   ! friction law for fault dynamics. B.D. 8/19/06
   !
-  real (kind=8) :: xmu,trupt
-  real (kind=8),dimension(20) :: fricsgl
+  real (kind = dp) :: xmu,trupt
+  real (kind = dp),dimension(20) :: fricsgl
   !
   if(trupt <= 0.0) then
     xmu = fricsgl(1)
@@ -52,11 +52,11 @@ SUBROUTINE rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   !### subroutine to implement rate- and state- 
   ! friction law for fault dynamics. Bin Luo 4/9/2014
   !
-  real (kind=8) :: xmu, dxmudv
-  real (kind=8) :: V2,theta
-  real (kind=8) :: A,B,L,f0,V0
-  real (kind=8),dimension(100) :: fricsgl
-  real (kind=8) :: tmp, tmpc
+  real (kind = dp) :: xmu, dxmudv
+  real (kind = dp) :: V2,theta
+  real (kind = dp) :: A,B,L,f0,V0
+  real (kind = dp),dimension(100) :: fricsgl
+  real (kind = dp) :: tmp, tmpc
   !
   A  = fricsgl(9)
   B  = fricsgl(10)

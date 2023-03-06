@@ -15,35 +15,35 @@ SUBROUTINE PMLwhg(vl,f,s,ex,mat1,shg,det,nel)
 	! 	- PMLb(3):ymax2
 	!	- PMLb(4):ymin2
 	!	- PMLb(5):zmin2
-	real(kind=8),dimension(3,8)::vl	
-	real(kind=8),dimension(96)::f
+	real(kind = dp),dimension(3,8)::vl	
+	real(kind = dp),dimension(96)::f
 	!vxx,vxy,vxz,
 	!vyx,vyy,vyz,
 	!vzx,vzy,vzz,
 	!vhgx,vhgy,vhgz. *8 nodes.
-	real(kind=8),dimension(24)::va!total velocity
-	real(kind=8),dimension(21)::s
+	real(kind = dp),dimension(24)::va!total velocity
+	real(kind = dp),dimension(21)::s
 	!sxxx,sxxy,sxxz,
 	!syyx,syyy,syyz,
 	!szzx,szzy,szzz,
 	!sxyx,sxyy,
 	!sxzx,sxzz,
 	!syzy,syzz.
-	real(kind=8)::lam,miu,det,vp,delta,kapa,rou,coef
-	real(kind=8)::Dx_vx,Dy_vy,Dz_vz,Dx_vy,Dy_vx,Dx_vz,Dz_vx,Dy_vz,Dz_vy
-	real(kind=8)::sxx,syy,szz,sxy,sxz,syz,s0(6)
-	real(kind=8),dimension(3,8)::ex
-	real(kind=8),dimension(3)::xc
-	real(kind=8),dimension(3)::damps
-	real(kind=8),dimension(3,8)::shg
-	real(kind=8),dimension(3,4)::q
+	real(kind = dp)::lam,miu,det,vp,delta,kapa,rou,coef
+	real(kind = dp)::Dx_vx,Dy_vy,Dz_vz,Dx_vy,Dy_vx,Dx_vz,Dz_vx,Dy_vz,Dz_vy
+	real(kind = dp)::sxx,syy,szz,sxy,sxz,syz,s0(6)
+	real(kind = dp),dimension(3,8)::ex
+	real(kind = dp),dimension(3)::xc
+	real(kind = dp),dimension(3)::damps
+	real(kind = dp),dimension(3,8)::shg
+	real(kind = dp),dimension(3,4)::q
 	integer(kind=4),dimension(4,8)::fi
-	real(kind=8)::xmax2,xmin2,ymax2,ymin2,zmin2,&
+	real(kind = dp)::xmax2,xmin2,ymax2,ymin2,zmin2,&
 					maxdx,maxdy,maxdz,mat1(5)
 	integer(kind=4)::i,j,k,j1,j2,j3,nel
-	real (kind=8),dimension(nrowb,nee) :: bb	!correspond to b
-	real (kind=8),dimension(nstr) :: strainrate,stressrate	
-	real(kind=8)::c(6,6)
+	real (kind = dp),dimension(nrowb,nee) :: bb	!correspond to b
+	real (kind = dp),dimension(nstr) :: strainrate,stressrate	
+	real(kind = dp)::c(6,6)
 	
 	vp=mat1(1)
 	lam=mat1(4)

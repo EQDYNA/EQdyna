@@ -6,12 +6,12 @@ include 'mpif.h'
 !	(brick),elastic continue element and assemble.
 logical :: lcubic
 integer(kind=4) :: nel,i,j,k,k1,m,itmp,itmp1,itmp2
-real(kind=8) :: det,constm,vol,ce,co
-real(kind=8),dimension(nee) :: eleffm
-real(kind=8),dimension(nesd,nen) :: xl
-real(kind=8),dimension(3,3) :: xs
-real(kind=8),dimension(nrowb,nee) :: b
-real(kind=8),dimension(nrowsh,nen) :: shg
+real(kind = dp) :: det,constm,vol,ce,co
+real(kind = dp),dimension(nee) :: eleffm
+real(kind = dp),dimension(nesd,nen) :: xl
+real(kind = dp),dimension(3,3) :: xs
+real(kind = dp),dimension(nrowb,nee) :: b
+real(kind = dp),dimension(nrowsh,nen) :: shg
 integer(kind=4),dimension(8,4) :: ha = reshape((/ &
 	1,1,-1,-1,-1,-1,1,1, 1,-1,-1,1,-1,1,1,-1, &
 	1,-1,1,-1,1,-1,1,-1, -1,1,-1,1,1,-1,1,-1/), &
@@ -19,7 +19,7 @@ integer(kind=4),dimension(8,4) :: ha = reshape((/ &
 !...MPI
 integer  ierr, rlp, rr, jj
 integer istatus(MPI_STATUS_SIZE)
-real (kind=8), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
+real (kind = dp), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
 !DL variables for PML layer
 integer (kind=4):: non,itag,eqn
 !*******3D MPI partitioning*************
@@ -28,7 +28,7 @@ integer(kind=4)::bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj
 
 do nel=1,numel
 	!...initialize and localize
-	eleffm = 0.0
+	eleffm = 0.0d0
 	do i=1,nen
 		k = ien(i,nel)
 		do j=1,nesd
@@ -52,7 +52,7 @@ do nel=1,numel
 	!	point.
 	call qdcshg(xl,det,shg,nel,xs,lcubic)
 	!...form mass matrix for left-hand-side
-	constm = (1.0d0+rdampm*0.5*dt)*mat(nel,3)
+	constm = (1.0d0+rdampm*0.5d0*dt)*mat(nel,3)
 	if(constm /= 0.0d0) then
 		call contm(shg,det,eleffm,constm)
 	endif

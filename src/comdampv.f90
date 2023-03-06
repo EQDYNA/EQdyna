@@ -2,9 +2,9 @@ subroutine comdampv(x2,y,z,dv)
 use globalvar
 implicit none
 integer(kind=4)::i
-real (kind=8) :: x2,y,z,xmax0,xmin0,ymax0,ymin0,zmin0,delta,maxdx,maxdy,maxdz
-real (kind=8),dimension(3)::damp
-real (kind=8),dimension(9)::dv
+real (kind = dp) :: x2,y,z,xmax0,xmin0,ymax0,ymin0,zmin0,delta,maxdx,maxdy,maxdz
+real (kind = dp),dimension(3)::damp
+real (kind = dp),dimension(9)::dv
 	!
 	xmax0=PMLb(1)
 	xmin0=PMLb(2)
