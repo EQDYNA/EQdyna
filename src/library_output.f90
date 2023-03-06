@@ -69,7 +69,7 @@ subroutine output_onfault_st
 					! fltsta(12,locplt-1,j) = fric(52,i)		
 			do j=1,locplt-1
 				write(51,'( E21.13,10E15.7)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.0d6,&
-						-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(8,j,i)/1.0d6, -fltsta(10,j,i)/1.0d6, fltsta(4,j,i), fltsta(12,j,i), fltsta(11,j,i)/1.0d6  
+						-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(9,j,i)/1.0d6, -fltsta(10,j,i)/1.0d6, fltsta(4,j,i), fltsta(12,j,i), fltsta(11,j,i)/1.0d6  
 			enddo
 			close(51)
 		enddo
