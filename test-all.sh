@@ -4,6 +4,7 @@
 # Currently, it includes tpv104 and tpv1053d with smaller domains and coarse element sizes.
 #
 
+rm -rf test
 mkdir test
 cd test
 
