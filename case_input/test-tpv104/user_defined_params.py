@@ -21,8 +21,8 @@ fzmin, fzmax = -18.0e3, 0.0e3
 xsource, ysource, zsource = 0.0, 0.0, -7.5e3
 
 dx           = 400.0e0 # cell size, spatial resolution
-nuni_y_plus  = 70 # along the fault-normal dimension, the number of cells share the dx cell size.
-nuni_y_minus = 70 
+nuni_y_plus  = 5 # along the fault-normal dimension, the number of cells share the dx cell size.
+nuni_y_minus = 5 
 enlarging_ratio = 1.025e0 # along the fault-normal dimension (y), cell size will be enlarged at this ratio compoundly.
 
 # Isotropic material propterty.
