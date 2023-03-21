@@ -9,6 +9,7 @@ cd ..
 mkdir bin
 mv src/eqdyna bin
 
+export ESCIROOT=$(pwd)
 export PATH=$(pwd)/bin:$PATH
 export PATH=$(pwd)/scripts:$PATH
 
