@@ -2,9 +2,9 @@
 netcdf_incdir = ${TACC_NETCDF_INC}
 netcdf_libdir = ${TACC_NETCDF_LIB}
 
-F90   = mpiifort
+F90   = ${FC}
 OPT1  = 
-OPT   = -c
+OPT   = -c -ffree-line-length-none
 
 OBJ   = eqdyna3d.o globalvar.o mesh4num.o meshgen.o qdcshl.o driver.o qdct2.o qdcshg.o contm.o qdcb.o \
 		qdct3.o contma.o qdckd.o hrglss.o fric.o faulting.o PMLwhg.o comdampv.o qconstant.o \
