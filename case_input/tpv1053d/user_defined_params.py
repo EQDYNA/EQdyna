@@ -5,8 +5,8 @@ from math    import *
 from lib     import *
 
 # mode 
-#mode   = 1  # perform individual dynamic ruptures 
-mode   = 2  # serve in earthquake cycles
+mode   = 1  # perform individual dynamic ruptures 
+#mode   = 2  # serve in earthquake cycles
 
 # model_domain (in meters)
 xmin, xmax   = -42.0e3, 42.0e3
