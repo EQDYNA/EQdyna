@@ -5,8 +5,8 @@ from math import *
 from lib  import *
 
 # mode 
-#mode   = 1  # perform individual dynamic ruptures 
-mode   = 2  # serve in earthquake cycles
+mode   = 1  # perform individual dynamic ruptures 
+#mode   = 2  # serve in earthquake cycles
 
 # model_domain (in meters)
 xmin, xmax   = -42.0e3, 42.0e3
@@ -161,9 +161,9 @@ dx_trans = 50
 ##### HPC resource allocation ######
 ####################################
 casename = str(tpv)
-nx = 4
-ny = 5
-nz = 2
+nx = 2
+ny = 2
+nz = 1
 
 HPC_ncpu  = nx*ny*nz # Number of CPUs requested.
 HPC_nnode = int(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
