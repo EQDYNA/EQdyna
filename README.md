@@ -1,3 +1,6 @@
+# News in 2023
+* 20230321 eqdyna.docker is published via [dunyuliu/eqdyna.docker](https://hub.docker.com/repository/docker/dunyuliu/eqdyna.docker/general) 
+
 # News in 2022
 * A set of python utlities that make *```EQdyna```* much easier to use.
 * Thermal pressurization implemented and benchmarked against TPV105-3D.
