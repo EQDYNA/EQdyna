@@ -514,9 +514,12 @@ subroutine meshgen
                                 us(1,nftnd0(ift),ift) = 1.0d0/(1.0d0 + pfx**2)**0.5
                                 us(2,nftnd0(ift),ift) = pfx/(1.0d0 + pfx**2)**0.5
                                 us(3,nftnd0(ift),ift) = 0.0d0
-                                ud(1,nftnd0(ift),ift) = us(2,nftnd0(ift),ift)*un(3,nftnd0(ift),ift) - us(3,nftnd0(ift),ift)*un(2,nftnd0(ift),ift)
-                                ud(2,nftnd0(ift),ift) = us(3,nftnd0(ift),ift)*un(1,nftnd0(ift),ift) - us(1,nftnd0(ift),ift)*un(3,nftnd0(ift),ift)
-                                ud(3,nftnd0(ift),ift) = us(1,nftnd0(ift),ift)*un(2,nftnd0(ift),ift) - us(2,nftnd0(ift),ift)*un(1,nftnd0(ift),ift)
+                                ud(1,nftnd0(ift),ift) = us(2,nftnd0(ift),ift)*un(3,nftnd0(ift),ift) &
+                                    - us(3,nftnd0(ift),ift)*un(2,nftnd0(ift),ift)
+                                ud(2,nftnd0(ift),ift) = us(3,nftnd0(ift),ift)*un(1,nftnd0(ift),ift) &
+                                    - us(1,nftnd0(ift),ift)*un(3,nftnd0(ift),ift)
+                                ud(3,nftnd0(ift),ift) = us(1,nftnd0(ift),ift)*un(2,nftnd0(ift),ift) &
+                                    - us(2,nftnd0(ift),ift)*un(1,nftnd0(ift),ift)
                             endif                             
                             
                             !...prepare for area calculation
@@ -533,14 +536,14 @@ subroutine meshgen
                             ! fric(4,nftnd0(ift),ift) = 0.0          !cohesion
                             ! fric(5,nftnd0(ift),ift) = 0.03      !Viscoplastic relaxation time
                             
-                            if (C_elastic == 0) then 
-                                fric(6,nftnd0(ift),ift) = 0.0d0!rhow*grav*abs(zcoor)*gama        !pore pressure
-                                !if (TPV==2802) fric(6,nftnd0(ift),ift) = rhow*grav*min(abs(zcoor),5.0d3)
-                            elseif (C_elastic == 1) then 
-                                fric(6,nftnd0(ift),ift) = 0.0d0
-                            endif 
+                            !if (C_elastic == 0) then 
+                            !    fric(6,nftnd0(ift),ift) = 0.0d0!rhow*grav*abs(zcoor)*gama        !pore pressure
+                            !    !if (TPV==2802) fric(6,nftnd0(ift),ift) = rhow*grav*min(abs(zcoor),5.0d3)
+                            !elseif (C_elastic == 1) then 
+                            !    fric(6,nftnd0(ift),ift) = 0.0d0
+                            !endif 
                             
-                            if (C_elastic==1) then
+                            !if (C_elastic==1) then
                                 ! fric(7,nftnd0(ift),ift) = -120.0d6  
                                 ! fric(8,nftnd0(ift),ift) = 40.0d6 
                                 ! fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
@@ -549,18 +552,18 @@ subroutine meshgen
                                     ! fric(8,nftnd0(ift),ift) = 40.0d6 
                                     ! fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
                                 ! endif
-                                if (TPV==105) then 
-                                    fric(7,nftnd0(ift),ift) = -max(min(grav*1670.0d0*abs(zcoor),45.0d6),grav*1670.0d0*dx/2.0d0) 
-                                    fric(8,nftnd0(ift),ift) = -fric(7,nftnd0(ift),ift)*0.41d0
-                                    fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
-                                endif
-                            endif
+                                !if (TPV==105) then 
+                                !    fric(7,nftnd0(ift),ift) = -max(min(grav*1670.0d0*abs(zcoor),45.0d6),grav*1670.0d0*dx/2.0d0) 
+                                !    fric(8,nftnd0(ift),ift) = -fric(7,nftnd0(ift),ift)*0.41d0
+                                !    fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
+                                !endif
+                            !endif
 
                             if (friclaw >= 3)then 
-                                if (TPV==105) then
-                                    call fb1(xcoor,fric_ww,fric_w, tmp1)
-                                    call fb2(-zcoor,fric_ww,fric_w, tmp2)
-                                endif
+                                !if (TPV==105) then
+                                !    call fb1(xcoor,fric_ww,fric_w, tmp1)
+                                !    call fb2(-zcoor,fric_ww,fric_w, tmp2)
+                                !endif
                                 ! if (TPV == 104) then 
                                     ! if (abs(xcoor)<=15e3) then 
                                         ! tmp1=1.0
@@ -677,9 +680,11 @@ subroutine meshgen
                     if(nelement>numel) then
                         write(*,*) 'more elements in meshgen than in mesh4num'
                         write(*,*) 'x,y,z',xcoor,ycoor,zcoor
+                        stop
                     endif
                     
-                    et(nelement) = 1 !brick element. D.L. Jan/23/2015
+                    ! creating hexahedral elements, which et=1.
+                    et(nelement)    = 1 
                     ien(1,nelement) = plane1(iy-1,iz-1)
                     ien(2,nelement) = plane2(iy-1,iz-1)
                     ien(3,nelement) = plane2(iy,iz-1)
@@ -688,8 +693,8 @@ subroutine meshgen
                     ien(6,nelement) = plane2(iy-1,iz)
                     ien(7,nelement) = plane2(iy,iz)
                     ien(8,nelement) = plane1(iy,iz)
-                    
-                    !*.* Compute et for PML element. D.L. Jan/23/2015
+
+                    ! using element center coords to determine PML elements, et = 2.
                     xc=0.0d0 
                     ids(nelement)=ntags
                     do i=1,nen
@@ -699,19 +704,20 @@ subroutine meshgen
                     enddo
                     xc=xc/8.0d0
                     
-                    if (xc(1)>PMLb(1).or.xc(1)<PMLb(2).or.xc(2)>PMLb(3).or.xc(2)<PMLb(4) &
+                    if (xc(1)>PMLb(1).or.xc(1)<PMLb(2) &
+                        .or.xc(2)>PMLb(3).or.xc(2)<PMLb(4) &
                         .or.xc(3)<PMLb(5)) then
+                        
                         et(nelement) = 2
-                        ntags=ntags+15+6
+                        ntags        = ntags+15+6
                     else
-                        ntags=ntags+12
+                        ntags        = ntags+12
                     endif
                     
-                    mat(nelement,1)=material(1,1)
-                    mat(nelement,2)=material(1,2)
-                    mat(nelement,3)=material(1,3)                
-                    mat(nelement,5)=mat(nelement,2)**2*mat(nelement,3)!miu=vs**2*rho
-                    mat(nelement,4)=mat(nelement,1)**2*mat(nelement,3)-2*mat(nelement,5)!lam=vp**2*rho-2*miu
+                    ! velocityStructure will assign Vp, Vs and rho
+                    !   to the elem id nelement given its location xc.
+
+                    call velocityStruture(nelement, xc)
                     
                     if (C_degen == 1) then 
                         call wedge(xc(1), xc(2), xc(3), nelement, ntags, iy, iz, nftnd0(1))
@@ -1077,3 +1083,51 @@ subroutine meshgen
     deallocate(xlinet,xline,yline,zline,fltrc)
     
 end subroutine meshgen
+
+subroutine velocityStructure(nelement, xc)
+! Subroutine velocityStructure1D will asign Vp, Vs and rho 
+!   based on input from bMaterial.txt, which is created by 
+!   case input file user_defined_param.py.
+
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nelement, i
+    real (kind = dp) :: xc(3)
+    
+    if (nmat==1 .and. n2mat == 3) then
+    ! homogenous material
+        mat(nelement,1)  = material(1,1)
+        mat(nelement,2)  = material(1,2)
+        mat(nelement,3)  = material(1,3)
+    elseif (nmat>1 .and. n2mat == 4) then 
+        ! 1D velocity structure
+        ! material = material(i,j), i=1,nmat, and j=1,4
+        ! for j
+        !   1: bottom depth of a layer (should be positive in m).
+        !   2: Vp, m/s
+        !   3: Vs, m/s
+        !   4: rho, kg/m3
+        if (abs(xc(3)) < material(1,1)) then
+            mat(nelement,1)  = material(1,1)
+            mat(nelement,2)  = material(1,2)
+            mat(nelement,3)  = material(1,3)
+        else
+            do i = 2, nmat
+                if (abs(xc(3)) < material(i,1) &
+                    .and. abs(xc(3)) >= material(i-1,1)) then
+                    
+                    mat(nelement,1)  = material(i,1)
+                    mat(nelement,2)  = material(i,2)
+                    mat(nelement,3)  = material(i,3)
+                endif 
+            enddo
+        endif
+    endif 
+    
+    ! calculate lambda and mu from Vp, Vs and rho.
+    ! mu = Vs**2*rho
+    mat(nelement,5)  = mat(nelement,2)**2*mat(nelement,3)
+    ! lambda = Vp**2*rho-2*mu
+    mat(nelement,4)  = mat(nelement,1)**2*mat(nelement,3)-2.0d0*mat(nelement,5)
+
+end subroutine velocityStructure
