@@ -51,7 +51,7 @@ init_norm = -25.0e6 # initial normal stress in Pa. Negative compressive.
 
 # total simulation time and dt
 term        = 10.
-dt          = 0.008
+dt          = 0.032
 
 # Controlling switches for EQquasi system
 C_elastic   = 1 # elastic(1).
