@@ -717,7 +717,7 @@ subroutine meshgen
                     ! velocityStructure will assign Vp, Vs and rho
                     !   to the elem id nelement given its location xc.
 
-                    call velocityStruture(nelement, xc)
+                    call velocityStructure(nelement, xc)
                     
                     if (C_degen == 1) then 
                         call wedge(xc(1), xc(2), xc(3), nelement, ntags, iy, iz, nftnd0(1))
@@ -1085,7 +1085,7 @@ subroutine meshgen
 end subroutine meshgen
 
 subroutine velocityStructure(nelement, xc)
-! Subroutine velocityStructure1D will asign Vp, Vs and rho 
+! Subroutine velocityStructure will asign Vp, Vs and rho 
 !   based on input from bMaterial.txt, which is created by 
 !   case input file user_defined_param.py.
 
