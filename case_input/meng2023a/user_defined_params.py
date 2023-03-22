@@ -165,7 +165,8 @@ for ix, xcoor in enumerate(fx):
     #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
     #  on_fault_vars[iz,ix,46] = 0.03 # initial high slip rate patch.
     
-    on_fault_vars[iz,ix,20] = state_steady_state(on_fault_vars[iz,ix,9], 
+    if friclaw >=3:
+        on_fault_vars[iz,ix,20] = state_steady_state(on_fault_vars[iz,ix,9], 
                                                 on_fault_vars[iz,ix,10],
                                                 on_fault_vars[iz,ix,11],
                                                 on_fault_vars[iz,ix,12],
