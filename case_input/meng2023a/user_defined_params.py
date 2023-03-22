@@ -1,34 +1,34 @@
 #! /usr/bin/env python3
 
 import numpy as np
-from math    import *
-from lib     import *
+from math import *
+from lib  import *
 
 # mode 
-#mode   = 1  # perform individual dynamic ruptures 
-mode   = 2  # serve in earthquake cycles
- 
+mode   = 1  # perform individual dynamic ruptures 
+#mode   = 2  # serve in earthquake cycles
+
 # model_domain (in meters)
 xmin, xmax   = -60.0e3, 60.0e3
-ymin, ymax   = -30.0e3, 30.0e3
-zmin, zmax   = -60.0e3, 0.0e3
+ymin, ymax   = -58.0e3, 62.0e3
+zmin, zmax   = -74.0e3, 0.0e3
 
 # fault geometry (in meters)
-fxmin, fxmax = -30.0e3, 30.0e3
+fxmin, fxmax = -6.0e3, 16.0e3
 fymin, fymax = 0.0e3,   0.0e3    # for vertical strike-slip faults, we align faults along xz planes.
-fzmin, fzmax = -30.0e3, 0.0e3 
+fzmin, fzmax = -8.0e3, 0.0e3 
 
-xsource, ysource, zsource = -4.0e3, 0.0, -7.5e3
+xsource, ysource, zsource = 0.0, 0.0, -3.4e3
 
-dx           = 300.0e0 # cell size, spatial resolution
-nuni_y_plus  = 70 # along the fault-normal dimension, the number of cells share the dx cell size.
-nuni_y_minus = 70 
+dx           = 100.0e0 # cell size, spatial resolution
+nuni_y_plus  = 100 # along the fault-normal dimension, the number of cells share the dx cell size.
+nuni_y_minus = 100 
 enlarging_ratio = 1.025e0 # along the fault-normal dimension (y), cell size will be enlarged at this ratio compoundly.
 
 #################################
 #####  Material property   ######
 #################################
-nmat = 1 # 1: isotropic; >1: layered. 
+nmat = 5 # 1: isotropic; >1: layered. 
 # nmat: number of layers
 
 if nmat == 1: 
@@ -51,22 +51,22 @@ elif nmat > 1:
 #################################
 ##### Initial normal stress######
 #################################
-init_norm   = -50.0e6 # initial normal stress in Pa. Negative compressive.
+init_norm = -25.0e6 # initial normal stress in Pa. Negative compressive.
 
 # total simulation time and dt
-term        = 150.      # total seconds in simulation time 
-dt          = 0.5*dx/vp # CFL criteria with alpha=0.5
+term        = 20.
+dt          = 0.01
 
 # Controlling switches for EQquasi system
 C_elastic   = 1 # elastic(1).
-C_nuclea    = 0 # artificial nucleation (1), no (0). 
+C_nuclea    = 1 # artificial nucleation (1), no (0). 
 C_degen     = 0 # degenerate hexahedrals (1), no (0).
-friclaw     = 3 # sw(1), tw(2), rsf_aging(3), rsf_slip_srw(4), rsf_slip_srw_tp(5).
+friclaw     = 2 # sw(1), tw(2), rsf_aging(3), rsf_slip(4), rsf_slip_srw(5).
 ntotft      = 1 # number of total faults.
-nucfault    = -999 # the fault id of nucleation fault. Should be no larger than ntotft
+nucfault    = 1 # the fault id of nucleation fault. Should be no larger than ntotft
 rough_fault = 0 # include rough fault yes(1) or not(0).
 nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault variables will be written out in netCDF format.
-tpv         = 1000 
+tpv         = 201 
 # Control outputs
 output_plastic = 0
 outputGroundMotion = 0 # output big vel GM time series for all the surface stations?
@@ -74,8 +74,9 @@ outputGroundMotion = 0 # output big vel GM time series for all the surface stati
 # currently supported cases
 # 104  (SCEC-TPV104)
 # 105  (SCEC-TPV1053D)
+# 201  (Meng et al. (2023) Model A)
 # 2801 (DRV)
-# 1000 (liu2020-planar, GM-cycle)
+# 1001 (GM-cycle)
 
 #################################
 ##### Frictional variables ######
@@ -84,11 +85,13 @@ outputGroundMotion = 0 # output big vel GM time series for all the surface stati
 fric_sw_fs      = 0.18
 fric_sw_fd      = 0.12
 fric_sw_D0      = 0.3
+# friclaw == 2, time weakening
+fric_tw_t0      = 0.2
 # parameters needed for rsf.
 # friclaw == 3/4, rsf with the aging law/slip law.
-fric_rsf_a      = 0.007 
-fric_rsf_b      = 0.011
-fric_rsf_Dc     = 0.011
+fric_rsf_a      = 0.01 
+fric_rsf_b      = 0.014
+fric_rsf_Dc     = 0.4
 fric_rsf_deltaa = 0.01
 fric_rsf_r0     = 0.6
 fric_rsf_v0     = 1e-6
@@ -121,27 +124,25 @@ fz      = np.linspace(fzmin,fzmax,nfz) # coordinates of fault grids along dip.
 
 # Create on_fault_vars array for on_fault varialbes.
 on_fault_vars = np.zeros((nfz,nfx,100))
-
 # functions are defined in lib.py under scripts/
 # function lists:
 # - shear_steady_state
 # - state_steady_state
 # - B1, defined in TPV104 and TPV105
 # - B2 and B3, defined in TPV105
-grav = 9.8
+  
 for ix, xcoor in enumerate(fx):
   for iz, zcoor in enumerate(fz):
   # assign a in RSF. a is a 2D distribution.
     on_fault_vars[iz,ix,1]   = fric_sw_fs 
     on_fault_vars[iz,ix,2]   = fric_sw_fd
     on_fault_vars[iz,ix,3]   = fric_sw_D0
-
-    # 7,8 commented. Don't need to assign for cycles.
-    on_fault_vars[iz,ix,7]   = -max(min(grav*1670.*abs(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
-    on_fault_vars[iz,ix,8]   = -0.41*on_fault_vars[iz,ix,7]       # initial shear stress.
+    on_fault_vars[iz,ix,5]   = fric_tw_t0
+    on_fault_vars[iz,ix,7]   = -120.0e6     # initial normal stress. Negative compressive.
+    on_fault_vars[iz,ix,8]   = 40.0e6       # initial shear stress.
     
-    tmp1  = linear1(xcoor, 20.e3, 3.e3)
-    tmp2  = linear1(-zcoor-10.0e3, 7.e3, 1.e3)
+    tmp1  = B1(xcoor, 15.e3, 3.e3)
+    tmp2  = B1(-zcoor-7.5e3, 15.e3/2., 3.e3)
     on_fault_vars[iz,ix,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
     on_fault_vars[iz,ix,10] = fric_rsf_b # assign b in RSF 
     on_fault_vars[iz,ix,11] = fric_rsf_Dc # assign Dc in RSF.
@@ -151,11 +152,8 @@ for ix, xcoor in enumerate(fx):
     on_fault_vars[iz,ix,13] = fric_rsf_r0 # initial reference friction.
     
     on_fault_vars[iz,ix,14] = fric_rsf_fw # 
-    on_fault_vars[iz,ix,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  #
-    
-    tmp3  = B1(xcoor, 20.e3, 3.e3)
-    tmp4  = B3(-zcoor, 20.e3, 3.e3)
-    on_fault_vars[iz,ix,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp3*tmp4)  #
+    on_fault_vars[iz,ix,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  # 
+    on_fault_vars[iz,ix,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp1*tmp2)  #
     on_fault_vars[iz,ix,17] = fric_tp_a_th
     on_fault_vars[iz,ix,18] = fric_tp_rouc
     on_fault_vars[iz,ix,19] = fric_tp_lambda
@@ -167,12 +165,16 @@ for ix, xcoor in enumerate(fx):
     #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
     #  on_fault_vars[iz,ix,46] = 0.03 # initial high slip rate patch.
     
-    on_fault_vars[iz,ix,20] = 0 # initial state var, loaded from restarts.
+    on_fault_vars[iz,ix,20] = state_steady_state(on_fault_vars[iz,ix,9], 
+                                                on_fault_vars[iz,ix,10],
+                                                on_fault_vars[iz,ix,11],
+                                                on_fault_vars[iz,ix,12],
+                                                on_fault_vars[iz,ix,13],
+                                                on_fault_vars[iz,ix,8],
+                                                on_fault_vars[iz,ix,7],
+                                                on_fault_vars[iz,ix,46],
+                                                friclaw) # initial state var.
     
-    if mode == 2: # if mode 2, the following parameters are loaded from restarts.
-      on_fault_vars[iz,ix,7]  = 0
-      on_fault_vars[iz,ix,8]  = 0
-      on_fault_vars[iz,ix,20] = 0
     
 ###############################################
 ##### Domain boundaries for transferring ######
@@ -185,16 +187,16 @@ dx_trans = 50
 ####################################
 ##### HPC resource allocation ######
 ####################################
-casename = "liu2020-planar-dyna"
-nx = 4
-ny = 5
-nz = 2
+casename = str(tpv)
+nx = 2
+ny = 2
+nz = 1
 
 HPC_ncpu  = nx*ny*nz # Number of CPUs requested.
 HPC_nnode = int(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
 HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
-HPC_time  = "02:00:00" # WALLTIME, in hh:mm:ss format.
-HPC_account = "EAR22012" # Project account to be charged SUs against.
+HPC_time  = "00:10:00" # WALLTIME, in hh:mm:ss format.
+HPC_account = "EAR22013" # Project account to be charged SUs against.
 HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
 
 ##############################################

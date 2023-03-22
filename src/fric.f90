@@ -26,23 +26,22 @@ end SUBROUTINE slip_weak
 !================================================
 
 SUBROUTINE time_weak(trupt,fricsgl,xmu)
-  use globalvar
-  implicit none
-  !
-  !### subroutine to implement linear time-weakening
-  ! friction law for fault dynamics. B.D. 8/19/06
-  !
-  real (kind = dp) :: xmu,trupt
-  real (kind = dp),dimension(20) :: fricsgl
-  !
-  if(trupt <= 0.0) then
-    xmu = fricsgl(1)
-  elseif(trupt < critt0) then
-    xmu = fricsgl(1) - (fricsgl(1) - fricsgl(2))*trupt/critt0
-  else
-    xmu = fricsgl(2)
-  endif
-  !
+    ! Subroutine time_weak calculates friction xmu under
+    !   the time weakening law.
+    use globalvar
+    implicit none
+
+    real (kind = dp) :: xmu,trupt
+    real (kind = dp),dimension(20) :: fricsgl
+    
+    if(trupt <= 0.0d0) then
+        xmu = fricsgl(1)
+    elseif(trupt < fricsgl(5)) then
+        xmu = fricsgl(1) - (fricsgl(1) - fricsgl(2))*trupt/fricsgl(5)
+    else
+        xmu = fricsgl(2)
+    endif
+
 end SUBROUTINE time_weak
 
 SUBROUTINE rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)

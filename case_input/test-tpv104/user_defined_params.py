@@ -25,9 +25,28 @@ nuni_y_plus  = 5 # along the fault-normal dimension, the number of cells share t
 nuni_y_minus = 5 
 enlarging_ratio = 1.025e0 # along the fault-normal dimension (y), cell size will be enlarged at this ratio compoundly.
 
-# Isotropic material propterty.
-# Vp, Vs, Rou
-vp, vs, rou = 6.0e3, 3.464e3, 2.67e3
+#################################
+#####  Material property   ######
+#################################
+nmat = 1 # 1: isotropic; >1: layered. 
+# nmat: number of layers
+
+if nmat == 1: 
+    # only Vp, Vs, rou, 3 (n2mat) are needed.
+    n2mat = 3 
+    # Vp, Vs, Rou
+    vp, vs, rou = 6.0e3, 3.464e3, 2.67e3
+elif nmat > 1: 
+    n2mat = 4
+    mat = np.zeros((nmat, n2mat))
+    # example here 1D velocity structure for the Cushing earthquake.
+    mat[0,:] = [1.19e3,  2.74e3, 1.45e3, 2.1e3] # top layer
+    mat[1,:] = [2.01e3,  5.75e3, 3.06e3, 2.4e3] # 2nd layer going downwards into the earth.
+    mat[2,:] = [4.94e3,  5.72e3, 3.4e3,  2.6e3] # 3rd
+    mat[3,:] = [10.94e3, 6.18e3, 3.62e3, 2.8e3] # 4th
+    mat[4,:] = [-zmin,   6.32e3, 3.67e3, 2.8e3] # rest
+    print(mat)
+
 init_norm = -25.0e6 # initial normal stress in Pa. Negative compressive.
 
 # total simulation time and dt
