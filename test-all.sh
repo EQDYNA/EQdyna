@@ -12,8 +12,8 @@ cd test
 create.newcase tpv104 test-tpv104
 cd tpv104 
 ./case.setup 
-python plotRuptureDynamics
 mpirun -np 4 eqdyna
+python plotRuptureDynamics
 cd ..
 # need to add a script to calculate errors
 
