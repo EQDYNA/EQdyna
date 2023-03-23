@@ -66,7 +66,7 @@ ntotft      = 1 # number of total faults.
 nucfault    = 1 # the fault id of nucleation fault. Should be no larger than ntotft
 rough_fault = 0 # include rough fault yes(1) or not(0).
 nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault variables will be written out in netCDF format.
-tpv         = 201 
+tpv         = 202 
 # Control outputs
 output_plastic = 0
 outputGroundMotion = 0 # output big vel GM time series for all the surface stations?
@@ -75,16 +75,17 @@ outputGroundMotion = 0 # output big vel GM time series for all the surface stati
 # 104  (SCEC-TPV104)
 # 105  (SCEC-TPV1053D)
 # 201  (Meng et al. (2023) Model A)
+# 202  (Meng et al. (2023) Ckeckerboard 3X3)
 # 2801 (DRV)
 # 1001 (GM-cycle)
 
 #################################
 ########## Nucleation ###########
 #################################
-if C_nuclea == 1: 
-    nucR       = 25.e3   # nucleation patch radius, m
-    nucRuptVel = 1.5e3   # nucleation rupture velocity, m/s; useful for sw and tw.
-    nucdtau0   = -9999.  # peak shear stress increase for TPV104 and 105, Pa; useful for rsf
+
+nucR       = 25.e3   # nucleation patch radius, m
+nucRuptVel = 3.e3   # nucleation rupture velocity, m/s; useful for sw and tw.
+nucdtau0   = -9999.  # peak shear stress increase for TPV104 and 105, Pa; useful for rsf
 
 #################################
 ##### Frictional variables ######
@@ -142,15 +143,24 @@ on_fault_vars = np.zeros((nfz,nfx,100))
 for ix, xcoor in enumerate(fx):
   for iz, zcoor in enumerate(fz):
   # assign a in RSF. a is a 2D distribution.
-    on_fault_vars[iz,ix,1]   = 1000. 
-    on_fault_vars[iz,ix,2]   = 1000.
-    if abs(xcoor)<2.25e3 and zcoor<-3.4e3+2.25e3 and zcoor>-3.4e3-2.25e3:
+    on_fault_vars[iz,ix,1]   = 0.4
+    on_fault_vars[iz,ix,2]   = 0.8
+    if abs(xcoor)<3.e3 and zcoor>-6.4e3 and zcoor<-0.4e3:
         tmp1 = 1.
         tmp2 = 1.
-        if abs(xcoor)>=1.25e3:
-            tmp1 = (2.25e3-abs(xcoor))/1.0e3
-        if abs(zcoor--3.4e3)>=1.25e3:
-            tmp2 = (2.25e3-abs(zcoor--3.4e3))/1.0e3
+        if abs(xcoor-2.0e3)<1.0e3 and abs(zcoor--3.4e3)<1.0e3:
+            tmp1 = 1.
+            tmp2 = -4.
+        if abs(xcoor--2.0e3)<1.0e3 and abs(zcoor--3.4e3)<1.0e3:
+            tmp1 = 1.
+            tmp2 = -4.
+        if abs(xcoor)<1.0e3 and abs(zcoor--1.4e3)<1.0e3:
+            tmp1 = 1.
+            tmp2 = -4.
+        if abs(xcoor)<1.0e3 and abs(zcoor--5.4e3)<1.0e3:
+            tmp1 = 1.
+            tmp2 = -4.
+
         on_fault_vars[iz,ix,1] = fric_sw_fs
         on_fault_vars[iz,ix,2] = fric_sw_fs - 0.1*tmp1*tmp2
      
