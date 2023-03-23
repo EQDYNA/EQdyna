@@ -76,10 +76,9 @@ outputGroundMotion = 0 # output big vel GM time series for all the surface stati
 #################################
 ########## Nucleation ###########
 #################################
-if C_nuclea == 1: 
-    nucR       = 1.5e3   # nucleation patch radius, m
-    nucRuptVel = -9999.   # nucleation rupture velocity, m/s; useful for sw and tw.
-    nucdtau0   = 50.0d6  # peak shear stress increase for TPV104 and 105, Pa; useful for rsf
+nucR       = 1.5e3   # nucleation patch radius, m
+nucRuptVel = -9999.   # nucleation rupture velocity, m/s; useful for sw and tw.
+nucdtau0   = 50.0d6  # peak shear stress increase for TPV104 and 105, Pa; useful for rsf
 
 #################################
 ##### Frictional variables ######
