@@ -1,4 +1,4 @@
-!/* Copyright (C) 2006-2020, Earthquake Modeling Lab @ Texas A&M University. 
+!/* Copyright (C) 2006-2023, Earthquake Modeling Lab @ Texas A&M University. 
 ! * All Rights Reserved.
 ! * This code is part of software EQdyna, please see EQdyna License Agreement
 ! * attached before you copy, download, install or use EQdyna./
@@ -1108,17 +1108,17 @@ subroutine velocityStructure(nelement, xc)
         !   3: Vs, m/s
         !   4: rho, kg/m3
         if (abs(xc(3)) < material(1,1)) then
-            mat(nelement,1)  = material(1,1)
-            mat(nelement,2)  = material(1,2)
-            mat(nelement,3)  = material(1,3)
+            mat(nelement,1)  = material(1,2)
+            mat(nelement,2)  = material(1,3)
+            mat(nelement,3)  = material(1,4)
         else
             do i = 2, nmat
                 if (abs(xc(3)) < material(i,1) &
                     .and. abs(xc(3)) >= material(i-1,1)) then
                     
-                    mat(nelement,1)  = material(i,1)
-                    mat(nelement,2)  = material(i,2)
-                    mat(nelement,3)  = material(i,3)
+                    mat(nelement,1)  = material(i,2)
+                    mat(nelement,2)  = material(i,3)
+                    mat(nelement,3)  = material(i,4)
                 endif 
             enddo
         endif
