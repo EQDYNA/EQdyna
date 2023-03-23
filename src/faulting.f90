@@ -507,7 +507,7 @@ subroutine nucleation(dtau, xmu, xx, yy, zz, twt0, fs, fd)
             tc = 1.0d0
         endif
         
-        tmp1 = fs+(fs-fd)*tc 
+        tmp1 = fs+(fd-fs)*tc 
         tmp2 = xmu
         xmu  = min(tmp1,tmp2)  
     else
