@@ -24,6 +24,20 @@ mpirun -np 4 eqdyna
 python plotRuptureDynamics
 cd ..
 
+create.newcase meng2023a test-meng2023a
+cd meng2023a
+./case.setup 
+mpirun -np 4 eqdyna
+python plotRuptureDynamics
+cd ..
+
+create.newcase meng2023cb test-meng2023cb
+cd meng2023cb
+./case.setup 
+mpirun -np 4 eqdyna
+python plotRuptureDynamics
+cd ..
+
 cd ..
 
 
