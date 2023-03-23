@@ -21,7 +21,7 @@ def _main_func(description):
     shutil.rmtree(str(case_path), ignore_errors=True)
     os.mkdir(str(case_path))
     
-    eqdyna_root = env_var['ESCIROOT']
+    eqdyna_root = env_var['EQDYNAROOT']
     input_path = eqdyna_root + '/case_input/' + str(compset) 
     utils_path = eqdyna_root + '/scripts'
   
