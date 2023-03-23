@@ -469,7 +469,6 @@ subroutine nucleation(dtau, xmu, xx, yy, zz, twt0, fs, fd)
     real(kind = dp) :: tr, tc, tmp1, tmp2, twt0, fs, fd
     
     dtau = 0.0d0 
-    xmu  = 0.0d0 
     
     if (TPV == 105 .or. TPV == 104) then
         T  = 1.0d0
