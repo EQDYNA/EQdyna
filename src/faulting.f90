@@ -45,10 +45,12 @@ subroutine faulting
                ! if (time<=T)  G=dexp((time-T)**2/(time*(time-2*T)))
                ! dtao=dtao0*F*G
             ! endif
-            if (C_nuclea == 1 .and.ift == nucfault) then
-                call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
+            if (TPV == 104 .or. TPV == 105) then
+                if (C_nuclea == 1 .and.ift == nucfault) then
+                    call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
                                 x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
                                 fric(2,i,ift))
+                endif
             endif 
         !-------------------------------------------------------------------!    
             fnfault = fric(7,i,ift) !initial forces on the fault node
@@ -124,10 +126,12 @@ subroutine faulting
                 endif
                 
                 ! Artificial nucleation 
-                if (C_nuclea == 1 .and.ift == nucfault) then
-                    call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
+                if (TPV == 201 .or. TPV == 202) then 
+                    if (C_nuclea == 1 .and.ift == nucfault) then
+                        call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
                                     x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
                                     fric(2,i,ift))
+                    endif
                 endif 
                 ! if (C_Nuclea==1) then    
                     ! if(r4nuc(i,ift)<=srcrad0) then !only within nucleation zone, do...
