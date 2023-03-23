@@ -4,9 +4,10 @@ import numpy as np
 from math    import *
 from lib     import *
 
-# mode 
-#mode   = 1  # perform individual dynamic ruptures 
-mode   = 2  # serve in earthquake cycles
+# mode
+# 1: perform individual dynamic ruptures 
+# 2: serve as a module for earthquake cycles
+mode   = 2 
  
 # model_domain (in meters)
 xmin, xmax   = -60.0e3, 60.0e3
@@ -14,13 +15,13 @@ ymin, ymax   = -30.0e3, 30.0e3
 zmin, zmax   = -60.0e3, 0.0e3
 
 # fault geometry (in meters)
-fxmin, fxmax = -30.0e3, 30.0e3
+fxmin, fxmax = -40.0e3, 40.0e3
 fymin, fymax = 0.0e3,   0.0e3    # for vertical strike-slip faults, we align faults along xz planes.
-fzmin, fzmax = -30.0e3, 0.0e3 
+fzmin, fzmax = -40.0e3, 0.0e3 
 
 xsource, ysource, zsource = -4.0e3, 0.0, -7.5e3
 
-dx           = 300.0e0 # cell size, spatial resolution
+dx           = 250.0e0 # cell size, spatial resolution
 nuni_y_plus  = 70 # along the fault-normal dimension, the number of cells share the dx cell size.
 nuni_y_minus = 70 
 enlarging_ratio = 1.025e0 # along the fault-normal dimension (y), cell size will be enlarged at this ratio compoundly.
@@ -92,10 +93,10 @@ fric_sw_fd      = 0.12
 fric_sw_D0      = 0.3
 # parameters needed for rsf.
 # friclaw == 3/4, rsf with the aging law/slip law.
-fric_rsf_a      = 0.007 
-fric_rsf_b      = 0.011
-fric_rsf_Dc     = 0.011
-fric_rsf_deltaa = 0.01
+fric_rsf_a      = 0.004 
+fric_rsf_b      = 0.03
+fric_rsf_Dc     = 0.014
+fric_rsf_deltaa = 0.036
 fric_rsf_r0     = 0.6
 fric_rsf_v0     = 1e-6
 # additional parameters for friclaw == 5, rsf with the slip law and strong rate weakening.
@@ -143,12 +144,17 @@ for ix, xcoor in enumerate(fx):
     on_fault_vars[iz,ix,3]   = fric_sw_D0
 
     # 7,8 commented. Don't need to assign for cycles.
-    on_fault_vars[iz,ix,7]   = -max(min(grav*1670.*abs(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
-    on_fault_vars[iz,ix,8]   = -0.41*on_fault_vars[iz,ix,7]       # initial shear stress.
-    
-    tmp1  = linear1(xcoor, 20.e3, 3.e3)
-    tmp2  = linear1(-zcoor-10.0e3, 7.e3, 1.e3)
-    on_fault_vars[iz,ix,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
+    # on_fault_vars[iz,ix,7]   = -max(min(grav*1670.*abs(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
+    # on_fault_vars[iz,ix,8]   = -0.41*on_fault_vars[iz,ix,7]       # initial shear stress.
+    if abs(zcoor)>=18e3 or abs(xcoor)>=20e3 or abs(zcoor)<=2e3: 
+      on_fault_vars[iz,ix,9] = fric_rsf_a + fric_rsf_deltaa
+    elif abs(zcoor)<=16e3 and abs(zcoor)>=4e3 and abs(xcoor)<=18e3:
+      on_fault_vars[iz,ix,9] = fric_rsf_a
+    else:
+      tmp1 = (abs(abs(zcoor)-10e3) - 6e3)/2e3
+      tmp2 = (abs(xcoor)-18e3)/2e3
+      on_fault_vars[iz,ix,9] = fric_rsf_a + max(tmp1,tmp2)*fric_rsf_deltaa
+      
     on_fault_vars[iz,ix,10] = fric_rsf_b # assign b in RSF 
     on_fault_vars[iz,ix,11] = fric_rsf_Dc # assign Dc in RSF.
     #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
@@ -159,15 +165,15 @@ for ix, xcoor in enumerate(fx):
     on_fault_vars[iz,ix,14] = fric_rsf_fw # 
     on_fault_vars[iz,ix,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  #
     
-    tmp3  = B1(xcoor, 20.e3, 3.e3)
-    tmp4  = B3(-zcoor, 20.e3, 3.e3)
-    on_fault_vars[iz,ix,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp3*tmp4)  #
-    on_fault_vars[iz,ix,17] = fric_tp_a_th
-    on_fault_vars[iz,ix,18] = fric_tp_rouc
-    on_fault_vars[iz,ix,19] = fric_tp_lambda
-    on_fault_vars[iz,ix,40] = fric_tp_h
-    on_fault_vars[iz,ix,41] = fric_tp_Tini
-    on_fault_vars[iz,ix,42] = fric_tp_pini
+    # tmp3  = B1(xcoor, 20.e3, 3.e3)
+    # tmp4  = B3(-zcoor, 20.e3, 3.e3)
+    # on_fault_vars[iz,ix,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp3*tmp4)  #
+    # on_fault_vars[iz,ix,17] = fric_tp_a_th
+    # on_fault_vars[iz,ix,18] = fric_tp_rouc
+    # on_fault_vars[iz,ix,19] = fric_tp_lambda
+    # on_fault_vars[iz,ix,40] = fric_tp_h
+    # on_fault_vars[iz,ix,41] = fric_tp_Tini
+    # on_fault_vars[iz,ix,42] = fric_tp_pini
     
     on_fault_vars[iz,ix,46] = creep_slip_rate # initial slip rates
     #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
@@ -191,7 +197,7 @@ dx_trans = 50
 ####################################
 ##### HPC resource allocation ######
 ####################################
-casename = "liu2020-planar-dyna"
+casename = "bp1001-fd-250-rough"
 nx = 4
 ny = 5
 nz = 2
