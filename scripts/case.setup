@@ -29,6 +29,7 @@ def create_model_input_file():
         f.write(str(nmat)  + " " + str(n2mat) + "\n")
         f.write(" "     + "\n")
         f.write(str(xsource) + " " + str(ysource) + " " + str(zsource) + "\n")
+        f.write(str(nucR) + " " + str(nucRuptVel) + " " + str(nucdtau0) + "\n")
         
     with open('bModelGeometry.txt', "w") as f:
         f.write(str(xmin) + "  " + str(xmax) + "\n")
