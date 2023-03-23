@@ -47,7 +47,7 @@ subroutine faulting
             ! endif
             if (C_nuclea == 1 .and.ift == nucfault) then
                 call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
-                                x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift) &
+                                x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
                                 fric(2,i,ift))
             endif 
         !-------------------------------------------------------------------!    
@@ -126,7 +126,7 @@ subroutine faulting
                 ! Artificial nucleation 
                 if (C_nuclea == 1 .and.ift == nucfault) then
                     call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
-                                    x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift) &
+                                    x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
                                     fric(2,i,ift))
                 endif 
                 ! if (C_Nuclea==1) then    
