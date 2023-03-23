@@ -14,8 +14,8 @@ subroutine faulting
                         sliprate,xmu,mmast,mslav,mtotl,fnfault,fsfault,fdfault,tnrm,tstk, &
                         tdip,taox,taoy,taoz,ttao,taoc,ftix,ftiy,ftiz,trupt,tr,&
                         tmp1,tmp2,tmp3,tmp4,tnrm0,rcc,fa,fb
-    real (kind = dp):: fvd(6,2,3)
-    real (kind = dp) :: rr,R0,T,F,G,dtao0,dtao=0.0d0 !RSF
+    real (kind = dp) :: fvd(6,2,3)
+    real (kind = dp) :: dtau0,dtau
     real (kind = dp) :: statetmp, v_trial, T_coeff!RSF
     integer (kind=4) :: iv,ivmax  !RSF
     real (kind = dp) :: tstk0, tdip0, tstk1, tdip1, ttao1, taoc_old, taoc_new !RSF
@@ -29,25 +29,30 @@ subroutine faulting
         !-------------------------------------------------------------------!
             !RSF nucleate by imposing a horizontal shear traction perturbation
             !2016.08.28
-            if((C_nuclea==1).and.(friclaw == 3 .or. friclaw == 4 .or. friclaw == 5).and.(ift == nucfault)) then
-                if (TPV == 105) then 
-                    R0 = 1500.0d0
-                    dtao0 = 50.0d6
-                elseif (TPV == 104) then 
-                    R0 = 3000.0d0
-                    dtao0 = 45.0d6 
-                endif
-               T = 1.0d0
-               F = 0.0d0
-               rr=sqrt((x(1,nsmp(1,i,ift))-xsource)**2+(x(3,nsmp(1,i,ift))-zsource)**2)    
-               if (rr<R0)    F=dexp(rr**2/(rr**2-R0**2))
-               G = 1.0d0
-               if (time<=T)  G=dexp((time-T)**2/(time*(time-2*T)))
-               dtao=dtao0*F*G
-            endif
+            !if((C_nuclea==1).and.(friclaw == 3 .or. friclaw == 4 .or. friclaw == 5).and.(ift == nucfault)) then
+            !    if (TPV == 105) then 
+            !        R0 = 1500.0d0
+            !        dtao0 = 50.0d6
+            !   elseif (TPV == 104) then 
+                    ! R0 = 3000.0d0
+                    ! dtao0 = 45.0d6 
+                ! endif
+               ! T = 1.0d0
+               ! F = 0.0d0
+               ! rr=sqrt((x(1,nsmp(1,i,ift))-xsource)**2+(x(3,nsmp(1,i,ift))-zsource)**2)    
+               ! if (rr<R0)    F=dexp(rr**2/(rr**2-R0**2))
+               ! G = 1.0d0
+               ! if (time<=T)  G=dexp((time-T)**2/(time*(time-2*T)))
+               ! dtao=dtao0*F*G
+            ! endif
+            if (C_nuclea == 1 .and.ift == nucfault) then
+                call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
+                                x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift) &
+                                fric(2,i,ift))
+            endif 
         !-------------------------------------------------------------------!    
             fnfault = fric(7,i,ift) !initial forces on the fault node
-            fsfault = fric(8,i,ift)+dtao !norm, strike, dip components directly
+            fsfault = fric(8,i,ift) + dtau !norm, strike, dip components directly
             fdfault = fric(49,i,ift)
             isn = nsmp(1,i,ift)
             imn = nsmp(2,i,ift)
@@ -117,24 +122,30 @@ subroutine faulting
                     trupt =  time - fnft(i,ift)
                     call time_weak(trupt,fric(1,i,ift),xmu)
                 endif
-
-                if (C_Nuclea==1) then    
-                    if(r4nuc(i,ift)<=srcrad0) then !only within nucleation zone, do...
-                        tr=(r4nuc(i,ift)+0.081*srcrad0*(1./(1-(r4nuc(i,ift)/srcrad0)*(r4nuc(i,ift)/srcrad0))-1))/(0.7*3464.)
-                    else
-                        tr=1.0e9 
-                    endif
-                    if(time<tr) then 
-                        fb=0.0
-                    elseif ((time<(tr+fric(5,i,ift))).and.(time>=tr)) then 
-                        fb=(time-tr)/fric(5,i,ift)
-                    else 
-                        fb=1.0
-                    endif
-                    tmp1=fric(1,i,ift)+(fric(2,i,ift)-fric(1,i,ift))*fb
-                    tmp2=xmu
-                    xmu=min(tmp1,tmp2)  !minimum friction used. B.D. 2/16/13    
-                endif
+                
+                ! Artificial nucleation 
+                if (C_nuclea == 1 .and.ift == nucfault) then
+                    call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
+                                    x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift) &
+                                    fric(2,i,ift))
+                endif 
+                ! if (C_Nuclea==1) then    
+                    ! if(r4nuc(i,ift)<=srcrad0) then !only within nucleation zone, do...
+                        ! tr=(r4nuc(i,ift)+0.081*srcrad0*(1./(1-(r4nuc(i,ift)/srcrad0)*(r4nuc(i,ift)/srcrad0))-1))/(0.7*3464.)
+                    ! else
+                        ! tr=1.0e9 
+                    ! endif
+                    ! if(time<tr) then 
+                        ! fb=0.0
+                    ! elseif ((time<(tr+fric(5,i,ift))).and.(time>=tr)) then 
+                        ! fb=(time-tr)/fric(5,i,ift)
+                    ! else 
+                        ! fb=1.0
+                    ! endif
+                    ! tmp1=fric(1,i,ift)+(fric(2,i,ift)-fric(1,i,ift))*fb
+                    ! tmp2=xmu
+                    ! xmu=min(tmp1,tmp2)  !minimum friction used. B.D. 2/16/13    
+                ! endif
 
                 if((tnrm+fric(6,i,ift))>0) then
                     tnrm0 = 0.0d0
@@ -178,30 +189,30 @@ subroutine faulting
                     brhs(id1(locid(imn)+3)) = brhs(id1(locid(imn)+3)) - taoz + ftiz
                 endif    
             elseif (friclaw>=3)then
-                if (C_elastic == 0 .and. friclaw>=4) then 
-                    if ((C_nuclea==1).and.(ift == nucfault)) then
-                        if (TPV == 105) then 
-                            R0 = 1500.0d0
-                            dtao0 = 50.0d6
-                        elseif (TPV == 104) then 
-                            R0 = 3.0d3
-                            dtao0 = 45.0d6 
-                        elseif (TPV==2800 .or. TPV == 2801 .or. TPV ==2802) then
-                            R0 = 3.0d3
-                            if (nt == 1) fric(81,i,ift) = tstk*perturb
-                            dtao0 = fric(81,i,ift) 
-                        endif
-                        T = 1.0d0
-                        F = 0.0d0
-                        rr=sqrt((x(1,nsmp(1,i,ift))-xsource)**2+(x(3,nsmp(1,i,ift))-zsource)**2)    
-                        if (rr<R0)    F=dexp(rr**2/(rr**2-R0**2))
-                        G = 1.0d0
-                        if (time<=T)  G=dexp((time-T)**2/(time*(time-2*T)))
-                        dtao=dtao0*F*G
-                    endif
+                ! if (C_elastic == 0 .and. friclaw>=4) then 
+                    ! if ((C_nuclea==1).and.(ift == nucfault)) then
+                        ! if (TPV == 105) then 
+                            ! R0 = 1500.0d0
+                            ! dtao0 = 50.0d6
+                        ! elseif (TPV == 104) then 
+                            ! R0 = 3.0d3
+                            ! dtao0 = 45.0d6 
+                        ! elseif (TPV==2800 .or. TPV == 2801 .or. TPV ==2802) then
+                            ! R0 = 3.0d3
+                            ! if (nt == 1) fric(81,i,ift) = tstk*perturb
+                            ! dtao0 = fric(81,i,ift) 
+                        ! endif
+                        ! T = 1.0d0
+                        ! F = 0.0d0
+                        ! rr=sqrt((x(1,nsmp(1,i,ift))-xsource)**2+(x(3,nsmp(1,i,ift))-zsource)**2)    
+                        ! if (rr<R0)    F=dexp(rr**2/(rr**2-R0**2))
+                        ! G = 1.0d0
+                        ! if (time<=T)  G=dexp((time-T)**2/(time*(time-2*T)))
+                        ! dtao=dtao0*F*G
+                    ! endif
 
-                    tstk = tstk + dtao
-                endif 
+                    ! tstk = tstk + dtao
+                ! endif 
                 if (friclaw == 5) then 
                     tnrm = tnrm + fric(51,i,ift) ! consider termopressurization.
                 else
@@ -443,3 +454,65 @@ subroutine faulting
     !endif     
     !-------------------------------------------------------------------!    
 end subroutine faulting     
+
+subroutine nucleation(dtau, xmu, xx, yy, zz, twt0, fs, fd)
+    ! Subroutine nucleation handles the artificial nucleation for 
+    !   various friction laws.
+    ! It will return friction coefficient xmu or dtau as a function of time 
+    !   and fault node locations.
+    
+    ! nucR, dtau0, nucRuptVel are loaded from input file bGlobal.txt, which is 
+    !   generated from user_defined_param.py.
+    use globalvar
+    implicit none
+    real(kind = dp) :: T, F, G, rr, dtau, xmu, xx, yy, zz
+    real(kind = dp) :: tr, tc, tmp1, tmp2, twt0, fs, fd
+    
+    dtau = 0.0d0 
+    xmu  = 0.0d0 
+    
+    if (TPV == 105 .or. TPV == 104) then
+        T  = 1.0d0
+        F  = 0.0d0
+        G  = 1.0d0
+        rr = sqrt((xx-xsource)**2 + (yy-ysource)**2 + (zz-zsource)**2)
+        
+        if (rr < nucR) then 
+            F=dexp(rr**2/(rr**2-nucR**2))
+        endif 
+
+        if (time<=T)  then 
+            G=dexp((time-T)**2/(time*(time-2*T)))
+        endif 
+    
+        dtau = nucdtau0*F*G
+    
+    elseif (TPV == 201 .or. TPV == 202) then
+        rr = sqrt((xx-xsource)**2 + (yy-ysource)**2 + (zz-zsource)**2)
+        if(rr <= nucR) then 
+            if (TPV == 201) then 
+                tr = (rr+0.081d0*nucR*(1.0d0/(1.0d0-(rr/nucR)**2)-1.0d0))/(0.7d0*3464.d0)
+            elseif (TPV == 202) then 
+                tr = rr/nucRuptVel
+            endif 
+        else
+            tr = 1.0d9 
+        endif
+        
+        if(time<tr) then 
+            tc = 0.0d0
+        elseif ((time<(tr+twt0)).and.(time>=tr)) then 
+            tc = (time-tr)/twt0
+        else 
+            tc = 1.0d0
+        endif
+        
+        tmp1 = fs+(fs-fd)*tc 
+        tmp2 = xmu
+        xmu  = min(tmp1,tmp2)  
+    else
+        write(*,*) "Artificial nucleation mode is not supported yet"
+        write(*,*) "Exiting ... ..."
+        stop
+    endif 
+end subroutine nucleation

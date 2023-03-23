@@ -46,6 +46,7 @@ subroutine readglobal
         read(1001,*) nmat, n2mat
         read(1001,*) 
         read(1001,*) xsource, ysource, zsource
+        read(1001,*) nucR, nucRuptVel, nucdtau0
     close(1001)
 end subroutine readglobal 
 ! #2 readmodelgeometry -------------------------------------------------

@@ -9,20 +9,20 @@ mode   = 1  # perform individual dynamic ruptures
 #mode   = 2  # serve in earthquake cycles
 
 # model_domain (in meters)
-xmin, xmax   = -60.0e3, 60.0e3
-ymin, ymax   = -58.0e3, 62.0e3
-zmin, zmax   = -74.0e3, 0.0e3
+xmin, xmax   = -30.0e3, 30.0e3
+ymin, ymax   = -28.0e3, 32.0e3
+zmin, zmax   = -34.0e3, 0.0e3
 
 # fault geometry (in meters)
-fxmin, fxmax = -6.0e3, 16.0e3
+fxmin, fxmax = -6.0e3, 6.0e3
 fymin, fymax = 0.0e3,   0.0e3    # for vertical strike-slip faults, we align faults along xz planes.
 fzmin, fzmax = -8.0e3, 0.0e3 
 
 xsource, ysource, zsource = 0.0, 0.0, -3.4e3
 
-dx           = 100.0e0 # cell size, spatial resolution
-nuni_y_plus  = 100 # along the fault-normal dimension, the number of cells share the dx cell size.
-nuni_y_minus = 100 
+dx           = 400.0e0 # cell size, spatial resolution
+nuni_y_plus  = 10 # along the fault-normal dimension, the number of cells share the dx cell size.
+nuni_y_minus = 10 
 enlarging_ratio = 1.025e0 # along the fault-normal dimension (y), cell size will be enlarged at this ratio compoundly.
 
 #################################
@@ -44,18 +44,18 @@ elif nmat > 1:
     mat[1,:] = [2.01e3,  5.75e3, 3.06e3, 2.4e3] # 2nd layer going downwards into the earth.
     mat[2,:] = [4.94e3,  5.72e3, 3.4e3,  2.6e3] # 3rd
     mat[3,:] = [10.94e3, 6.18e3, 3.62e3, 2.8e3] # 4th
-    mat[4,:] = [-zmin,   6.32e3, 3.67e3, 2.8e3] # rest
+    mat[4,:] = [1.e6,    6.32e3, 3.67e3, 2.8e3] # rest
     print(mat)
 
 
 #################################
 ##### Initial normal stress######
 #################################
-init_norm = -25.0e6 # initial normal stress in Pa. Negative compressive.
+init_norm = -100.0e6 # initial normal stress in Pa. Negative compressive.
 
 # total simulation time and dt
-term        = 20.
-dt          = 0.01
+term        = 5.
+dt          = 0.01*dx/100.
 
 # Controlling switches for EQquasi system
 C_elastic   = 1 # elastic(1).
@@ -79,11 +79,19 @@ outputGroundMotion = 0 # output big vel GM time series for all the surface stati
 # 1001 (GM-cycle)
 
 #################################
+########## Nucleation ###########
+#################################
+if C_nuclea == 1: 
+    nucR       = 25.e3   # nucleation patch radius, m
+    nucRuptVel = 1.5e3   # nucleation rupture velocity, m/s; useful for sw and tw.
+    nucdtau0   = -9999.  # peak shear stress increase for TPV104 and 105, Pa; useful for rsf
+
+#################################
 ##### Frictional variables ######
 #################################
 # friclaw == 1, slip weakening
-fric_sw_fs      = 0.18
-fric_sw_fd      = 0.12
+fric_sw_fs      = 0.4
+fric_sw_fd      = 0.3
 fric_sw_D0      = 0.3
 # friclaw == 2, time weakening
 fric_tw_t0      = 0.2
@@ -134,38 +142,47 @@ on_fault_vars = np.zeros((nfz,nfx,100))
 for ix, xcoor in enumerate(fx):
   for iz, zcoor in enumerate(fz):
   # assign a in RSF. a is a 2D distribution.
-    on_fault_vars[iz,ix,1]   = fric_sw_fs 
-    on_fault_vars[iz,ix,2]   = fric_sw_fd
+    on_fault_vars[iz,ix,1]   = 1000. 
+    on_fault_vars[iz,ix,2]   = 1000.
+    if abs(xcoor)<2.25e3 and zcoor<-3.4e3+2.25e3 and zcoor>-3.4e3-2.25e3:
+        tmp1 = 1.
+        tmp2 = 1.
+        if abs(xcoor)>=1.25e3:
+            tmp1 = (2.25e3-abs(xcoor))/1.0e3
+        if abs(zcoor--3.4e3)>=1.25e3:
+            tmp2 = (2.25e3-abs(zcoor--3.4e3))/1.0e3
+        on_fault_vars[iz,ix,1] = fric_sw_fs
+        on_fault_vars[iz,ix,2] = fric_sw_fs - 0.1*tmp1*tmp2
+     
     on_fault_vars[iz,ix,3]   = fric_sw_D0
     on_fault_vars[iz,ix,5]   = fric_tw_t0
-    on_fault_vars[iz,ix,7]   = -120.0e6     # initial normal stress. Negative compressive.
-    on_fault_vars[iz,ix,8]   = 40.0e6       # initial shear stress.
-    
-    tmp1  = B1(xcoor, 15.e3, 3.e3)
-    tmp2  = B1(-zcoor-7.5e3, 15.e3/2., 3.e3)
-    on_fault_vars[iz,ix,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
-    on_fault_vars[iz,ix,10] = fric_rsf_b # assign b in RSF 
-    on_fault_vars[iz,ix,11] = fric_rsf_Dc # assign Dc in RSF.
-    #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
-    #  on_fault_vars[iz,ix,11] = minDc # a special Dc zone.
-    on_fault_vars[iz,ix,12] = fric_rsf_v0 # initial reference slip rate.
-    on_fault_vars[iz,ix,13] = fric_rsf_r0 # initial reference friction.
-    
-    on_fault_vars[iz,ix,14] = fric_rsf_fw # 
-    on_fault_vars[iz,ix,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  # 
-    on_fault_vars[iz,ix,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp1*tmp2)  #
-    on_fault_vars[iz,ix,17] = fric_tp_a_th
-    on_fault_vars[iz,ix,18] = fric_tp_rouc
-    on_fault_vars[iz,ix,19] = fric_tp_lambda
-    on_fault_vars[iz,ix,40] = fric_tp_h
-    on_fault_vars[iz,ix,41] = fric_tp_Tini
-    on_fault_vars[iz,ix,42] = fric_tp_pini
-    
-    on_fault_vars[iz,ix,46] = creep_slip_rate # initial slip rates
-    #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
-    #  on_fault_vars[iz,ix,46] = 0.03 # initial high slip rate patch.
+    on_fault_vars[iz,ix,7]   = -100.0e6     # initial normal stress. Negative compressive.
+    on_fault_vars[iz,ix,8]   = 35.0e6       # initial shear stress.
     
     if friclaw >=3:
+        tmp1  = B1(xcoor, 15.e3, 3.e3)
+        tmp2  = B1(-zcoor-7.5e3, 15.e3/2., 3.e3)
+        on_fault_vars[iz,ix,9]  = fric_rsf_a + (1. - tmp1*tmp2)*fric_rsf_deltaa
+        on_fault_vars[iz,ix,10] = fric_rsf_b # assign b in RSF 
+        on_fault_vars[iz,ix,11] = fric_rsf_Dc # assign Dc in RSF.
+        #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
+        #  on_fault_vars[iz,ix,11] = minDc # a special Dc zone.
+        on_fault_vars[iz,ix,12] = fric_rsf_v0 # initial reference slip rate.
+        on_fault_vars[iz,ix,13] = fric_rsf_r0 # initial reference friction.
+        
+        on_fault_vars[iz,ix,14] = fric_rsf_fw # 
+        on_fault_vars[iz,ix,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  # 
+        on_fault_vars[iz,ix,16] = fric_tp_a_hy + fric_tp_deltaa_hy0*(1. - tmp1*tmp2)  #
+        on_fault_vars[iz,ix,17] = fric_tp_a_th
+        on_fault_vars[iz,ix,18] = fric_tp_rouc
+        on_fault_vars[iz,ix,19] = fric_tp_lambda
+        on_fault_vars[iz,ix,40] = fric_tp_h
+        on_fault_vars[iz,ix,41] = fric_tp_Tini
+        on_fault_vars[iz,ix,42] = fric_tp_pini
+        
+        on_fault_vars[iz,ix,46] = creep_slip_rate # initial slip rates
+        #if (xcoor<=-18e3 and xcoor>=-30e3 and zcoor<=-4e3 and zcoor>=-16e3):
+        #  on_fault_vars[iz,ix,46] = 0.03 # initial high slip rate patch.
         on_fault_vars[iz,ix,20] = state_steady_state(on_fault_vars[iz,ix,9], 
                                                 on_fault_vars[iz,ix,10],
                                                 on_fault_vars[iz,ix,11],

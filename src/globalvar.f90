@@ -36,11 +36,11 @@ MODULE globalvar
     integer (kind = 4), allocatable, dimension(:)     :: nftnd,  id1, ids, et, locid, dof1, surface_node_id
     integer (kind = 4), allocatable, dimension(:,:)   :: ien, anonfs
     integer (kind = 4), allocatable, dimension(:,:,:) :: nsmp
-    !-------------------------------------------------------------------!
-    !------------------     Geometry and Material        ---------------!
-    real (kind = dp)    :: rat, dx, dy, dz, xsource, ysource, zsource, &
+
+    real (kind = dp) :: rat,  dx,   dy,   dz,   xsource,    ysource,    zsource, &
                         xmin, xmax, ymin, ymax, zmin, zmax, &
-                        xmin1, xmax1, ymin1, ymax1, zmin1, zmax1
+                        xmin1,      xmax1,      ymin1,      ymax1,      zmin1,   &
+                        zmax1,      nucR, nucRuptVel, nucdtau0
     real (kind = dp), allocatable, dimension(:) :: fxmin, fxmax, fymin, fymax, fzmin, fzmax
     real (kind = dp), allocatable, dimension(:,:) :: material
     real (kind = dp), allocatable, dimension(:,:,:) :: fltxyz                        
