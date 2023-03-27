@@ -1,5 +1,9 @@
 # News in 2023
-* 20230321 eqdyna.docker is published via [dunyuliu/eqdyna.docker](https://hub.docker.com/repository/docker/dunyuliu/eqdyna.docker/general) 
+* 20230327 
+  * *```EQdyna```* works on Ubuntu now. 
+  * install-eqdyna.sh can support multiple systems. 
+  * test-all.sh will create and run four pre-defined cases with 4 CPUs with a few minutes. 
+* 20230321 *```eqdyna.docker```* is published via [dunyuliu/eqdyna.docker](https://hub.docker.com/repository/docker/dunyuliu/eqdyna.docker/general) 
 
 # News in 2022
 * A set of python utlities that make *```EQdyna```* much easier to use.
@@ -24,18 +28,37 @@ Other features include
 *```EQdyna```* is also part of the fully dynamic earthquake cycle simulator *```EQsimu```* [(*Liu et al., 2020, GJI*)](https://www.researchgate.net/publication/346814142_EQsimu_a_3-D_finite_element_dynamic_earthquake_simulator_for_multicycle_dynamics_of_geometrically_complex_faults_governed_by_rate-_and_state-dependent_friction).
 
 # Dependence
-*```EQdyna```* requires FORTRAN and MPI compiler, python, and netCDF libaries. Currently, some post-processing scripts are written in MATLAB but those will be phased out to python scripts.
+*```EQdyna```* requires the following environments and packages: <br/>
+  - FORTRAN compiler and MPI
+  - Python3
+  - netCDF
+  
+# Installation
+A strengh of *```EQdyna```* is that it doesn't need an external mesh generator. <br/> 
+Except for some really geometrically complex fault systems, it works well for many applications. <br/> 
 
-# Installation on Lonestar6 at TACC, UT Austin.
-A strengh of *```EQdyna```* is that it doesn't need an external mesh generator. Except for some really geometrically complex fault systems, it generally works for lots of applications. So, its installation is pretty easy and straightforward. Although install-eqdyna.sh is written for Lonestar6, what *```EQdyna```* needs are generally available from HPCs. If the netCDF libaries is missing, it could cost you some time to install and link it to *```EQdyna```*.   
+*```EQdyna```* now supports Ubuntu and Lonestar6 at TACC. <br/> 
+
+To install it on Ubuntu, 
 ```
 git clone https://github.com/dunyuliu/EQdyna.git
 cd EQdyna
-source install-eqdyna.sh
+chmod 755 install-eqquasi.sh
+./install-eqquasi.sh -m ubuntu
+```
+
+To install it on Lonestar6 TACC,
+```
+./install-eqquasi.sh -m ls6
+```
+
+To activate environment variable $EQDYNAROOT and add executables to $PATH,
+```
+source install-eqquasi.sh
 ```
 
 # Quick Start Guide
-After the installation, you just need three steps to run a predefined case. <br/>
+After the installation, you just need three steps to run a pre-defined case. <br/>
 
 First, create a new case with the utility *create_newcase*. <br/> 
 *create_newcase* takes in two parameters: <br/> 
@@ -57,6 +80,14 @@ case.submit
 ```
 
 For customized case, please choose the most relevant predefined case and modify the user_defined_param.py accordingly. <br/>
+
+# Test All 
+To routinely test the consistency and stability of *```EQdyna```*, <br/>
+run the following command:
+```
+source $EQDYNAROOT/test-all.sh
+```
+Four pre-defined test cases will be created and run using 4 CPUs, which will take a few minutes.
 
 # Currently supported compset (more to come)
 * tpv104
