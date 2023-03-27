@@ -13,6 +13,7 @@ SYSTEM = ${MACHINE}
 ifeq ($(SYSTEM), ubuntu)
     FFLAGS     = -fopenmp -ffree-line-length-none
     FC         = mpif90.mpich
+    LIB        = /usr/lib/x86_64-linux-gnu
     INC        = /usr/include
     NETCDF_LIB = -L${LIB} -lnetcdf -L{LIB} -lnetcdff
     NETCDF_INC = -I${INC}
@@ -42,7 +43,7 @@ clean:eqdyna
 	rm -r *.o
 
 eqdyna: $(OBJ) 
-	$(FC) $(OPT1) $(OBJ) -o eqdyna {NETCDF_LIB}
+	$(FC) $(OPT1) $(OBJ) -o eqdyna ${NETCDF_LIB}
 eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o \
             meshgen.o readInputFiles.o warning.o         \
             library_output.o netcdf_io.o
@@ -97,4 +98,4 @@ library_degeneration.o: library_degeneration.f90 globalvar.o
 library_output.o: library_output.f90 globalvar.o 
 	$(FC) $(OPT) library_output.f90
 netcdf_io.o: netcdf_io.f90 globalvar.o 
-	$(FC) $(OPT) netcdf_io.f90 -I${NETCDF_INC}
+	$(FC) $(OPT) netcdf_io.f90 ${NETCDF_INC}
