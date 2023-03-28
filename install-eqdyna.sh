@@ -24,21 +24,21 @@ while getopts "m:c:h" OPTION; do
             echo "                                                                     "
             echo "Examples:                                                            "
             echo "                                                                     "
-            echo "./install-eqdyna.sh -h                                              "
+            echo "./install-eqdyna.sh -h                                               "
             echo " -----Display this help message                                      "
             echo "                                                                     "
-            echo "./install-eqdyna.sh -m ls6                                          "
-            echo " -----Install EQdyna on Lonestar6 at TACC                           "
+            echo "./install-eqdyna.sh -m ls6                                           "
+            echo " -----Install EQdyna on Lonestar6 at TACC                            "
             echo "                                                                     "
-            echo "./install-eqdyna.sh -c ubuntu                                       "
-            echo " -----Simply set up envs for EQdyna without installation            "
+            echo "./install-eqdyna.sh -c ubuntu                                        "
+            echo " -----Simply set up envs for EQdyna without installation             "
             echo " -----on ubuntu                                                      "
             echo "                                                                     "
-            echo "source install-eqdyna.sh                                            "
+            echo "source install-eqdyna.sh                                             "
             echo " -----Activate ENV VAR EQQUASIROOT and add exes to PATH              "
             echo "                                                                     "
             echo "Currently supported machines include:                                "
-            echo " ls6/ubuntu                                                          "
+            echo " ls6/ubuntu/grace                                                    "
             ;;
     esac
 done 
@@ -59,6 +59,16 @@ if [ -n "$MACH" ]; then
     elif [ $MACHINE == "ubuntu" ]; then 
         echo "Installing EQdyna on Ubuntu 22.04 ... ..."
         export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+    
+    elif [ $MACHINE == "grace" ]; then 
+        echo "Installing EQdyna on Grace at TAMU ... ..."
+        echo "Loading netcdf module ... ..."
+        module load netCDF
+        ml
+        
+        echo "NETCDF INC and LIB PATH"
+        echo ${EBROOTNETCDF}/include
+        echo ${EBROOTNETCDF}/lib64
     fi 
     
     if [ -n "$CONFIG" ]; then 
