@@ -8,6 +8,7 @@
 # Currently, EQdyna supports: 
 #     ls6
 #     ubuntu
+#     grace
 SYSTEM = ${MACHINE}
 
 ifeq ($(SYSTEM), ubuntu)
@@ -26,6 +27,13 @@ else ifeq ($(SYSTEM), ls6)
     NETCDF_INC = -I${TACC_NETCDF_INC}
     NETCDF_LIB = -L${TACC_NETCDF_LIB} -lnetcdf -L${TACC_NETCDF_LIB} -lnetcdff 
     
+else ifeq ($(SYSTEM), grace)
+    FFLAGS     = 
+    FC         = mpiifort
+    LIB        = ${EBROOTNETCDF}/lib64
+    INC        = ${EBROOTNETCDF}/include
+    NETCDF_INC = -I${INC}
+    NETCDF_LIB = -L${LIB} -lnetcdf -L${LIB} -lnetcdff 
 endif
 
 OPT  = -c ${FFLAGS} 
