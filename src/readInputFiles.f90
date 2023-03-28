@@ -379,8 +379,9 @@ subroutine read_fault_rough_geometry
     
     open(unit = 1008, file = 'bFault_Rough_Geometry.txt', form = 'formatted', status = 'old')
         read(1008,*) nnx, nnz
-        read(1008,*) dxtmp 
+        read(1008,*) dxtmp, rough_fx_min, rough_fz_min 
     close(1008)
+    rough_fx_max = (nnx - 1)*dxtmp + rough_fx_min
     
     allocate(rough_geo(3,nnx*nnz))
     
