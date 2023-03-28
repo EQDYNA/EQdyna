@@ -99,9 +99,9 @@ subroutine insert_rough_fault(xcoor, ycoor, zcoor, ycoort, pfx, pfz)
     integer (kind = 4) :: ixx, izz
     tol = dx/1.0d3
     
-    fx1 = fltxyz(1,1,1)
-    fx2 = fltxyz(2,1,1)
-    fz1 = fltxyz(1,3,1)
+    fx1 = rough_fx_min
+    fx2 = rough_fx_max
+    fz1 = rough_fz_min
     if ((xcoor < fx2 + tol) .and. (xcoor > fx1 - tol) .and. (zcoor > fz1 - tol)) then 
         ixx = (xcoor - fx1)/dx + 1
         izz = (zcoor - fz1)/dx + 1
