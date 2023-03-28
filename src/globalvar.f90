@@ -112,5 +112,6 @@ MODULE globalvar
     real (kind = dp) :: dxtmp, perturb = 0.7d0, gamar = 0.66d0, roumax = 2.8d3
     integer (kind = 4) :: nnx, nnz, rough_fault, timeinfo = 0, outputGroundMotion, surface_nnode = 0
     real (kind = dp), allocatable, dimension(:,:) :: rough_geo    
+    real (kind = dp) :: rough_fx_min, rough_fx_max, rough_fz_min
     !-------------------------------------------------------------------!    
 end MODULE globalvar           
