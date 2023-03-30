@@ -152,7 +152,7 @@ subroutine output_frt
 	if(nftnd(1) > 0) then
 		open(unit=10004+me,file='frt.txt'//mm,status='unknown')
 		
-		write(10004+me,'(1x,22ES15.7)')    &
+		write(10004+me,'(1x,22e18.7e4)')    &
 				! 3 coordinates of the fault nodes.
 			((x(j,nsmp(1,i,1)), j = 1,3), & 
 				! rupture time 
