@@ -17,7 +17,7 @@ MODULE globalvar
     
     real (kind = dp) :: timeused(9) = 0.0d0,&
         time1,      time2,      time=0.0d0, &
-        btime=0.0d0,            timebegin,  timeover    pi=4*atan(1.0_dp), &
+        btime=0.0d0,            timebegin,  timeover,   pi=4*atan(1.0_dp), &
         rdampm=0.0d0,           rdampk=0.1d0,           grav = 9.8d0, &
         w,          term,       dt,         totmemcost, memcost=0.0d0,&
         rat,        dx,         dy,         dz,         xsource,    &
@@ -40,14 +40,14 @@ MODULE globalvar
         ccosphi,    sinphi,     mus,        mud,        fstrike=270.d0, &
         fdip=90.d0, dxtp,       tpw, &
         fric_sw_fs, fric_sw_fd, fric_sw_D0, fric_rsf_a, fric_rsf_deltaa0,&
-        fric_rsf_b, fric_rsf_Dc,            fric_rsf_r0,
-        fric_rsf_v0,            fric_rsf_vinix,         fric_rsf_viniz,  &
+        fric_rsf_b, fric_rsf_Dc,            fric_rsf_r0,                &
+        fric_rsf_v0,            fric_rsf_vinix,         fric_rsf_viniz, &
         fric_rsf_fw,            fric_rsf_vw,            fric_rsf_deltavw0, &
         fric_tp_a_th,           fric_tp_rouc,           fric_tp_lambda, &
         fric_tp_h,  fric_tp_a_hy,           fric_tp_deltaa_hy0,         &
-        fric_ww, fric_w,        fric_ini_sliprate,      fric_tp_pini, &
-        fric_tp_Tini,           dxtmp,      perturb = 0.7d0, &
-        gamar = 0.66d0,         roumax = 2.8d3,         rough_fx_min, &
+        fric_ww, fric_w,        fric_ini_sliprate,      fric_tp_pini,   &
+        fric_tp_Tini,           dxtmp,      perturb = 0.7d0,            &
+        gamar = 0.66d0,         roumax = 2.8d3,         rough_fx_min,   &
         rough_fx_max,           rough_fz_min
         
     integer (kind = 8) :: time_array(8)
