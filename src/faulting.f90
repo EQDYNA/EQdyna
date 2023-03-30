@@ -223,6 +223,19 @@ subroutine faulting
                     tnrm = tnrm + fric(6,i,ift)
                 endif 
                 
+                ! If non-planar fault geometry and elastic material, enforce normal stress caps.
+                if (rough_fault == 1 .and. C_elastic == 1) then
+                    !tnrm = min(min_norm, tnrm) ! Maintain a minimum normal stress level.
+                    max_norm      = -40.0d6
+                    min_norm      = -10.0d6
+                
+                    if (abs(tnrm)<abs(min_norm)) then 
+                        tnrm = min_norm
+                    elseif (abs(tnrm)>abs(max_norm)) then
+                        tnrm = max_norm
+                    endif
+                endif 
+                
                 if (tnrm > 0.0d0) tnrm = 0.0d0
                 
                 ! Add the background slip rate on top. 
