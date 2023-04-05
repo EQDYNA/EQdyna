@@ -217,9 +217,14 @@ subroutine faulting
 
                     ! tstk = tstk + dtao
                 ! endif 
+                
+                ! modify normal stress to effective normal stress.
                 if (friclaw == 5) then 
+                    ! for friclaw==5, where thermopressurization is applied, 
+                    ! needs to add presure from fric(51).
                     tnrm = tnrm + fric(51,i,ift) ! consider termopressurization.
                 else
+                    ! otherwise, update normal stress with assigned pore pressure fric(6).
                     tnrm = tnrm + fric(6,i,ift)
                 endif 
                 
@@ -236,6 +241,7 @@ subroutine faulting
                     endif
                 endif 
                 
+                ! avoid positive effective normal stress.
                 if (tnrm > 0.0d0) tnrm = 0.0d0
                 
                 ! Add the background slip rate on top. 
@@ -270,14 +276,29 @@ subroutine faulting
                     endif
                 endif
                 v_trial = sliprate
-        
+                
+                ! retrieve the state variable for normal stress theta_pc_tmp from fric(23).
+                ! this accounts for normal stress change. 
                 theta_pc_tmp = fric(23,i,ift)
+                ! get updated trial state variable for normal stress [fric(23)] and its rate [fric(24)].
                 call rate_state_normal_stress(v_trial, fric(23,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))    
                 fric(24,i,ift) = theta_pc_dot
                 
+                
                 mr       = mmast * mslav / (mmast+mslav) !reduced mass   
                 T_coeff  = arn(i,ift)* dt / mr
-                statetmp = fric(20,i,ift)  !RSF: a temporary variable to store the currently value of state variable. B.L. 1/8/16
+                
+                ! retrieve the RSF state variable and assign it to a tempraroy statetmp. 
+                statetmp = fric(20,i,ift)  
+                ! get updated trial RSF state variable [fric(20)],
+                !   and trial friction coefficient, xmu,
+                !   and trial derivative d(xmu)/dt, dxmudv,
+                !   for friclaw=3,4,5.
+                if(friclaw == 3) then
+                    call rate_state_ageing_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
+                elseif (friclaw == 4 .or. friclaw==5) then
+                    call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
+                endif            
                 
                 ! if (abs(x(1,isn)-xsource)<1.0d0 .and. abs(x(3,isn)-zsource)<1.0d0) then 
                     ! write(*,*) 'nt = ', nt
@@ -286,25 +307,25 @@ subroutine faulting
                     ! write(*,*) 'slip', slip
                 ! endif
                 
-                if(friclaw == 3) then
-                    call rate_state_ageing_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
-                elseif (friclaw == 4 .or. friclaw==5) then
-                    call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
-                endif 
-                
-                if (friclaw < 5) then
-                    taoc_old = fric(4,i,ift) - xmu * MIN(tnrm, 0.0d0)
-                else 
+                ! compute trial traction.
+                ! for cases with large fluctuations of effective normal stress, 
+                !   use the state variable for effective normal stress, theta_pc_tmp, 
+                !   rather than tnrm, when friclaw==5/rough_fault==1.
+                ! [NOTE]: friclaw=5 doesn't support normal stress evolution yet. See TPV1053D.
+                if (friclaw==5) then 
+                    taoc_old = fric(4,i,ift) - xmu * tnrm
+                else
                     taoc_old = xmu * theta_pc_tmp
                 endif
                 
                 tstk0    = tstk
                 tdip0    = tdip
+                ! get shear tractions, tstk1 and tdip1, and total shear traction, ttao1, updated.
                 tstk1    = tstk0 - taoc_old*0.5d0 * (sliprates / sliprate) + fric(26,i,ift)/T_coeff
                 tdip1    = tdip0 - taoc_old*0.5d0 * (sliprated / sliprate) + fric(27,i,ift)/T_coeff
                 ttao1    = sqrt(tstk1*tstk1 + tdip1*tdip1)
               
-                ! Netwon solver for v_trial.
+                ! Netwon solver for slip rate, v_trial, for the next time step.
                 ivmax    = 20  ! Maximum iterations.
                 ! if (x(1,isn)==280.0.and.x(3,isn)==-10560.0)then
                     ! write(*,*)'tn,ts,td,v,theta',tnrm/1e6,tstk/1e6,tdip/1e6,v_trial,theta_pc_tmp/1e6,fric(20,i,ift)
@@ -312,14 +333,16 @@ subroutine faulting
                     ! write(*,*) 'slip', slip                    
                 ! endif              
                 do iv = 1,ivmax
+                    ! in each iteration, reupdate the new state variable [fric(20)] given the new 
+                    !   slip rate, v_trial.
                     fric(20,i,ift)  = statetmp
                     if(friclaw == 3) then
-                        call rate_state_ageing_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
+                        call rate_state_ageing_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv)
                     else
-                        call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
+                        call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv)
                     endif 
                     
-                    ! Currently, the code doesn't support normal stress evolution under thermo pressurization.
+                    ! [NOTE]: the code doesn't support normal stress evolution under thermo pressurization.
                     if (friclaw < 5) then
                         fric(23,i,ift)  = theta_pc_tmp 
                         call rate_state_normal_stress(v_trial, fric(23,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))    
@@ -332,10 +355,15 @@ subroutine faulting
                         drsfeqdv        = 1.0d0 + T_coeff * (-dxmudv * MIN(tnrm,0.0d0))*0.5d0  
                     endif
                     
-                    ! Exiting criteria.
+                    ! exiting criteria:
+                    !   1. relative residual, rsfeq/drsfeqdv, is smaller than 1e-14*v_trial
+                    !   2. residual, rsfeq, is smaller than 1e-6*v_trial
                     if(abs(rsfeq/drsfeqdv) < 1.d-14 * abs(v_trial) .and. abs(rsfeq) < 1.d-6 * abs(v_trial)) exit 
                     !if(abs(rsfeq) < 1.d-5 * abs(v_trial)) exit 
                         vtmp = v_trial - rsfeq / drsfeqdv
+                    
+                    ! additional constraints for solving trial slip rate, v_trial
+                    !   if vtmp smaller than zero, reset it to half of v_trial in the last try. 
                     if(vtmp <= 0.0d0) then
                         v_trial = v_trial/2.0d0
                     else
@@ -360,9 +388,6 @@ subroutine faulting
                     v_trial  = fric(46,i,ift)
                     taoc_new = ttao1*2.0d0
                 endif
-                ! if (fric(20,i,ift) < 0.0d0) then 
-                    ! fric(20,i,ift) = 1.0d-6
-                ! endif 
                 
                 ! if (x(1,isn)==-4.2d3.and.x(3,isn)==0.0)then
                     ! write(*,*) 'time', time
@@ -471,6 +496,33 @@ subroutine faulting
     !endif     
     !-------------------------------------------------------------------!    
 end subroutine faulting     
+
+! Subroutine rate_state_normal_stress calculates the effect of normal stress change
+! from RSF. The formulation follows Shi and Day (2013), eq B8. {"Frictional sliding experiments with variable normal stress show that the shear strength responds gradually to abrupt changes of normal stress (e.g., Prakash and Clifton, 1993; Prakash, 1998)."}
+
+! theta_pc_dot = - V/L_pc*[theta_pc - abs(tnrm)]
+
+! Input: slip_rate, L_pc, theta_pc, tnrm. 
+! Output: theta_pc, the state variable which is used to calculate shear stress in eq B2
+! B2: abs(traction) = friction * theta_pc.
+subroutine rate_state_normal_stress(V2, theta_pc, theta_pc_dot, tnrm, fricsgl)
+    use globalvar
+    implicit none
+    real (kind = dp) :: V2, theta_pc, theta_pc_dot, tnrm, L
+    real (kind = dp),dimension(100) :: fricsgl
+    
+    L  = fricsgl(11) ! Use Dc in RSF as L_pc
+    
+    theta_pc_dot = - V2/L*(theta_pc - abs(tnrm))
+    ! the following eq is to update theta_pc with theta_pc_doc.
+    ! this is now consistent with EQquasi.
+    theta_pc = theta_pc + theta_pc_dot*dt
+    
+    ! the following eq, which is not used, directly writes out the analytic solution
+    ! of the OED.
+    ! theta_pc = abs(tnrm) + (theta_pc - abs(tnrm))*dexp(-V2*dt/L)
+    
+end subroutine rate_state_normal_stress
 
 subroutine nucleation(dtau, xmu, xx, yy, zz, twt0, fs, fd)
     ! Subroutine nucleation handles the artificial nucleation for 
