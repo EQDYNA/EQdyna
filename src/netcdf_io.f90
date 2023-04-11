@@ -15,7 +15,7 @@
 
 ! Subroutine #1.
 ! netcdf_read_on_fault reads in on-fault quantities from netcdf files created by case.setup.
-subroutine netcdf_read_on_fault_eqdyna(infile)
+subroutine netcdf_read_on_fault_eqdyna
     use netcdf
     use globalvar
     implicit none 
@@ -26,6 +26,8 @@ subroutine netcdf_read_on_fault_eqdyna(infile)
     
     fnx  = (fxmax(1) - fxmin(1))/dx+1
     fnz  = (fzmax(1) - fzmin(1))/dx+1
+    
+    infile = "on_fault_vars_input.nc"
     
     nvar = 22
     allocate(on_fault_vars(fnx,fnz,nvar))
@@ -105,7 +107,7 @@ end subroutine netcdf_read_on_fault_eqdyna
 
 ! Subroutine #2.
 ! netcdf_read_on_fault_eqdyna_restart reads in additional on-fault quantities from restart *.r.nc netcdf files created by previous cycles.
-subroutine netcdf_read_on_fault_eqdyna_restart(infile)
+subroutine netcdf_read_on_fault_eqdyna_restart
     use netcdf
     use globalvar
     implicit none 
@@ -113,6 +115,8 @@ subroutine netcdf_read_on_fault_eqdyna_restart(infile)
     integer (kind = 4) :: ncid,  var_id(20), i, j, nvar, fnx, fnz, ii, jj, ift
     real (kind = dp), allocatable, dimension(:,:,:) :: on_fault_vars
     real (kind = dp)   :: xcord, zcord
+    
+    infile = "fault.r.nc"
     
     fnx  = (fxmax(1) - fxmin(1))/dx+1
     fnz  = (fzmax(1) - fzmin(1))/dx+1
