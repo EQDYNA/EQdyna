@@ -247,6 +247,7 @@ def create_batch_script_cycle():
         f.write("  cp eqdyna/bModelGeometry.txt ./" + "\n")
         f.write("  cp eqdyna/bStations.txt ./"      + "\n")
         f.write("  cp eqdyna/on_fault_vars_input.nc ./" + "\n")
+        f.write("  cp eqdyna/rough_geo_cycle.txt ./" + "\n")
         f.write("# fetch fault.r.nc from Q(i-1)"        + "\n")
         f.write("  cp \"Q$((i-1))/\"fault.r.nc ./"  + "\n") 
         f.write("# run eqdyna"                      + "\n")
