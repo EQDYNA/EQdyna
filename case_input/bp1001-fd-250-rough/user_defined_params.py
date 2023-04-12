@@ -56,7 +56,7 @@ init_norm   = -50.0e6 # initial normal stress in Pa. Negative compressive.
 
 # total simulation time and dt
 term        = 150.      # total seconds in simulation time 
-dt          = 0.5*dx/vp # CFL criteria with alpha=0.5
+dt          = 0.25*dx/vp # CFL criteria with alpha=0.5
 
 # Controlling switches for EQquasi system
 C_elastic   = 1 # elastic(1).
@@ -154,6 +154,7 @@ for ix, xcoor in enumerate(fx):
       tmp1 = (abs(abs(zcoor)-10e3) - 6e3)/2e3
       tmp2 = (abs(xcoor)-18e3)/2e3
       on_fault_vars[iz,ix,9] = fric_rsf_a + max(tmp1,tmp2)*fric_rsf_deltaa
+      on_fault_vars[iz,ix,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  #
       
     on_fault_vars[iz,ix,10] = fric_rsf_b # assign b in RSF 
     on_fault_vars[iz,ix,11] = fric_rsf_Dc # assign Dc in RSF.
@@ -162,8 +163,7 @@ for ix, xcoor in enumerate(fx):
     on_fault_vars[iz,ix,12] = fric_rsf_v0 # initial reference slip rate.
     on_fault_vars[iz,ix,13] = fric_rsf_r0 # initial reference friction.
     
-    on_fault_vars[iz,ix,14] = fric_rsf_fw # 
-    on_fault_vars[iz,ix,15] = fric_rsf_vw  + fric_rsf_deltaavw0*(1. - tmp1*tmp2)  #
+    on_fault_vars[iz,ix,14] = fric_rsf_fw #
     
     # tmp3  = B1(xcoor, 20.e3, 3.e3)
     # tmp4  = B3(-zcoor, 20.e3, 3.e3)
@@ -207,7 +207,7 @@ HPC_nnode = int(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, on
 HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
 HPC_time  = "02:00:00" # WALLTIME, in hh:mm:ss format.
 HPC_account = "EAR22012" # Project account to be charged SUs against.
-HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
+HPC_email = "dliu@ig.utexas.edu" # Email to receive job status.
 
 ##############################################
 ##### Single station time series output ######
