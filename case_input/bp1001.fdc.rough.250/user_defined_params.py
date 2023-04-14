@@ -65,7 +65,7 @@ C_degen     = 0 # degenerate hexahedrals (1), no (0).
 friclaw     = 3 # sw(1), tw(2), rsf_aging(3), rsf_slip_srw(4), rsf_slip_srw_tp(5).
 ntotft      = 1 # number of total faults.
 nucfault    = -999 # the fault id of nucleation fault. Should be no larger than ntotft
-rough_fault = 0 # include rough fault yes(1) or not(0).
+rough_fault = 1 # include rough fault yes(1) or not(0).
 nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault variables will be written out in netCDF format.
 tpv         = 1000 
 # Control outputs
@@ -197,10 +197,10 @@ dx_trans = 50
 ####################################
 ##### HPC resource allocation ######
 ####################################
-casename = "bp1001-fd-250-rough"
-nx = 4
-ny = 5
-nz = 2
+casename = "bp1001.fdc.rough.250.dyna"
+nx = 8
+ny = 4
+nz = 4
 
 HPC_ncpu  = nx*ny*nz # Number of CPUs requested.
 HPC_nnode = int(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
