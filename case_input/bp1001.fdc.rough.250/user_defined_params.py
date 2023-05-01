@@ -70,7 +70,7 @@ nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault
 tpv         = 1000 
 # Control outputs
 output_plastic = 0
-outputGroundMotion = 0 # output big vel GM time series for all the surface stations?
+outputGroundMotion = 1 # output big vel GM time series for all the surface stations?
 
 # currently supported cases
 # 104  (SCEC-TPV104)
@@ -95,7 +95,7 @@ fric_sw_D0      = 0.3
 # friclaw == 3/4, rsf with the aging law/slip law.
 fric_rsf_a      = 0.004 
 fric_rsf_b      = 0.03
-fric_rsf_Dc     = 0.014
+fric_rsf_Dc     = 0.14
 fric_rsf_deltaa = 0.036
 fric_rsf_r0     = 0.6
 fric_rsf_v0     = 1e-6
