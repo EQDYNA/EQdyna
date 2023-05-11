@@ -234,9 +234,9 @@ subroutine faulting
                     max_norm      = -40.0d6
                     min_norm      = -10.0d6
                 
-                    if (abs(tnrm)<abs(min_norm)) then 
+                    if (tnrm>=min_norm) then 
                         tnrm = min_norm
-                    elseif (abs(tnrm)>abs(max_norm)) then
+                    elseif (tnrm<=max_norm) then
                         tnrm = max_norm
                     endif
                 endif 
