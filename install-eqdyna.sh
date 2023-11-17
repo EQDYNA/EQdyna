@@ -48,8 +48,8 @@ if [ -n "$MACH" ]; then
     if [ $MACHINE == "ls6" ]; then 
         echo "Installing EQdyna on Lonestar6 at TACC ... ..."
         
-        echo "Loading netcdf module ... ..."
-        module load netcdf 
+        echo "Loading netcdf/4.6.2 module ... ..."
+        module load netcdf/4.6.2 
         ml
         
         echo "NETCDF INC and LIB PATH"
