@@ -109,7 +109,6 @@ subroutine meshgen
                 xcoor = xline(ix)
                 ycoor = yline(iy)
                 zcoor = zline(iz)
-                
                 !...create nodes
                 nnode = nnode + 1        
                 plane2(iy,iz) = nnode
@@ -121,11 +120,8 @@ subroutine meshgen
                     x(2,nnode) = ycoort
                 endif 
                 
-                zz=ndof
-                if (xcoor>PMLb(1).or.xcoor<PMLb(2).or.ycoor>PMLb(3).or.ycoor<PMLb(4) &
-                .or.zcoor<PMLb(5)) then
-                    zz = 12
-                endif        
+                call setNumDof(xcoor, ycoor, zcoor, zz)
+
                 locid(nnode)=ntag
                 dof1(nnode)=zz
                 !...establish equation numbers for this node
@@ -1115,3 +1111,15 @@ subroutine get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
         enddo
     endif
 end subroutine get1DCoorZLocal
+
+subroutine setNumDof(xcoor,ycoor,zcoor,zz)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: zz
+    real (kind = dp) :: xcoor, ycoor, zcoor
+    zz = ndof !Default
+    if (xcoor>PMLb(1) .or. xcoor<PMLb(2) .or. ycoor>PMLb(3) &
+        .or. ycoor<PMLb(4) .or. zcoor<PMLb(5)) then
+        zz = 12 ! Modify if inside PML
+    endif   
+end subroutine setNumDof
