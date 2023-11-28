@@ -27,24 +27,6 @@ subroutine faulting
 
         do i=1,nftnd(ift)    !just fault nodes
         !-------------------------------------------------------------------!
-            !RSF nucleate by imposing a horizontal shear traction perturbation
-            !2016.08.28
-            !if((C_nuclea==1).and.(friclaw == 3 .or. friclaw == 4 .or. friclaw == 5).and.(ift == nucfault)) then
-            !    if (TPV == 105) then 
-            !        R0 = 1500.0d0
-            !        dtao0 = 50.0d6
-            !   elseif (TPV == 104) then 
-                    ! R0 = 3000.0d0
-                    ! dtao0 = 45.0d6 
-                ! endif
-               ! T = 1.0d0
-               ! F = 0.0d0
-               ! rr=sqrt((x(1,nsmp(1,i,ift))-xsource)**2+(x(3,nsmp(1,i,ift))-zsource)**2)    
-               ! if (rr<R0)    F=dexp(rr**2/(rr**2-R0**2))
-               ! G = 1.0d0
-               ! if (time<=T)  G=dexp((time-T)**2/(time*(time-2*T)))
-               ! dtao=dtao0*F*G
-            ! endif
             if (TPV == 104 .or. TPV == 105) then
                 if (C_nuclea == 1 .and.ift == nucfault) then
                     call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
@@ -133,23 +115,6 @@ subroutine faulting
                                     fric(2,i,ift))
                     endif
                 endif 
-                ! if (C_Nuclea==1) then    
-                    ! if(r4nuc(i,ift)<=srcrad0) then !only within nucleation zone, do...
-                        ! tr=(r4nuc(i,ift)+0.081*srcrad0*(1./(1-(r4nuc(i,ift)/srcrad0)*(r4nuc(i,ift)/srcrad0))-1))/(0.7*3464.)
-                    ! else
-                        ! tr=1.0e9 
-                    ! endif
-                    ! if(time<tr) then 
-                        ! fb=0.0
-                    ! elseif ((time<(tr+fric(5,i,ift))).and.(time>=tr)) then 
-                        ! fb=(time-tr)/fric(5,i,ift)
-                    ! else 
-                        ! fb=1.0
-                    ! endif
-                    ! tmp1=fric(1,i,ift)+(fric(2,i,ift)-fric(1,i,ift))*fb
-                    ! tmp2=xmu
-                    ! xmu=min(tmp1,tmp2)  !minimum friction used. B.D. 2/16/13    
-                ! endif
 
                 if((tnrm+fric(6,i,ift))>0) then
                     tnrm0 = 0.0d0
@@ -193,30 +158,6 @@ subroutine faulting
                     brhs(id1(locid(imn)+3)) = brhs(id1(locid(imn)+3)) - taoz + ftiz
                 endif    
             elseif (friclaw>=3)then
-                ! if (C_elastic == 0 .and. friclaw>=4) then 
-                    ! if ((C_nuclea==1).and.(ift == nucfault)) then
-                        ! if (TPV == 105) then 
-                            ! R0 = 1500.0d0
-                            ! dtao0 = 50.0d6
-                        ! elseif (TPV == 104) then 
-                            ! R0 = 3.0d3
-                            ! dtao0 = 45.0d6 
-                        ! elseif (TPV==2800 .or. TPV == 2801 .or. TPV ==2802) then
-                            ! R0 = 3.0d3
-                            ! if (nt == 1) fric(81,i,ift) = tstk*perturb
-                            ! dtao0 = fric(81,i,ift) 
-                        ! endif
-                        ! T = 1.0d0
-                        ! F = 0.0d0
-                        ! rr=sqrt((x(1,nsmp(1,i,ift))-xsource)**2+(x(3,nsmp(1,i,ift))-zsource)**2)    
-                        ! if (rr<R0)    F=dexp(rr**2/(rr**2-R0**2))
-                        ! G = 1.0d0
-                        ! if (time<=T)  G=dexp((time-T)**2/(time*(time-2*T)))
-                        ! dtao=dtao0*F*G
-                    ! endif
-
-                    ! tstk = tstk + dtao
-                ! endif 
                 
                 ! modify normal stress to effective normal stress.
                 if (friclaw == 5) then 
@@ -254,19 +195,6 @@ subroutine faulting
                 sliprated =  sliprated + fric(27,i,ift)
                 sliprate = sqrt(sliprates**2+sliprated**2)
                 
-                ! if (nt == 1) then ! For the plastic model, set initial state variable after the first time step calculation of tstk and tnrm.
-                    ! !fric(81,i,ift) = F*tstk
-                    ! !sliprate = 1.0d-16 !fric(12,i,ift)*dexp((fric(13,i,ift) - abs(ttao/tnrm))/(fric(10,i,ift) - fric(9,i,ift)))
-                    ! !fric(20,i,ift) = fric(9,i,ift)*dlog(2.0d0*fric(12,i,ift)/sliprate &
-                    ! !    *dsinh((fric(13,i,ift) - (fric(10,i,ift)-fric(9,i,ift))*dlog(sliprate/fric(12,i,ift)))/fric(9,i,ift)))
-                    ! !fric(13,i,ift) = ttao/abs(tnrm)
-                    ! fric(20,i,ift)=fric(9,i,ift)*dlog(2.0d0*fric(12,i,ift)/sliprate &
-                        ! *dsinh(ttao/abs(tnrm)/fric(9,i,ift)))
-                    ! fric(23,i,ift) = abs(tnrm) !theta_pc
-                    ! fric(91,i,ift) = tstk
-                    ! fric(92,i,ift) = tdip
-                    ! fric(93,i,ift) = tnrm
-                ! endif                
                     
                 if(fnft(i,ift)>600.0d0) then    !fnft should be initialized by >10000
                     if(sliprate >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
@@ -300,12 +228,6 @@ subroutine faulting
                     call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
                 endif            
                 
-                ! if (abs(x(1,isn)-xsource)<1.0d0 .and. abs(x(3,isn)-zsource)<1.0d0) then 
-                    ! write(*,*) 'nt = ', nt
-                    ! write(*,*) 'source: tn,ts,td,v,theta,phi',tnrm/1.0d6,tstk/1.0d6,tdip/1e6, v_trial, theta_pc_tmp/1e6,fric(20,i,ift)
-                    ! write(*,*) 'fric(51)', fric(51,i,ift)
-                    ! write(*,*) 'slip', slip
-                ! endif
                 
                 ! compute trial traction.
                 ! for cases with large fluctuations of effective normal stress, 
@@ -327,11 +249,6 @@ subroutine faulting
               
                 ! Netwon solver for slip rate, v_trial, for the next time step.
                 ivmax    = 20  ! Maximum iterations.
-                ! if (x(1,isn)==280.0.and.x(3,isn)==-10560.0)then
-                    ! write(*,*)'tn,ts,td,v,theta',tnrm/1e6,tstk/1e6,tdip/1e6,v_trial,theta_pc_tmp/1e6,fric(20,i,ift)
-                    ! write(*,*) 'fric(51)', fric(51,i,ift)
-                    ! write(*,*) 'slip', slip                    
-                ! endif              
                 do iv = 1,ivmax
                     ! in each iteration, reupdate the new state variable [fric(20)] given the new 
                     !   slip rate, v_trial.
@@ -370,15 +287,6 @@ subroutine faulting
                         v_trial = vtmp
                     endif  
                     
-                    ! if (x(1,isn)==-4.2d3.and.x(3,isn)==0.0)then
-                        ! write(*,*) 'time', time
-                        ! write(*,*) 'tn,tn_pc',tnrm/1e6,theta_pc_tmp/1e6
-                        ! write(*,*) 'ts, td',          tstk/1e6,tdip/1e6
-                        ! write(*,*) 'vtrial, theta', v_trial,fric(20,i,ift)
-                        ! write(*,*) ' iv = ', iv
-                        ! write(*,*) 'dPressure_fric(51)', fric(51,i,ift)/1.0d6
-                        ! write(*,*) 'slip', slip                    
-                    ! endif    
                 enddo !iv
                 
                 ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
@@ -389,15 +297,6 @@ subroutine faulting
                     taoc_new = ttao1*2.0d0
                 endif
                 
-                ! if (x(1,isn)==-4.2d3.and.x(3,isn)==0.0)then
-                    ! write(*,*) 'time', time
-                    ! write(*,*) 'tn,tn_pc',tnrm/1e6,theta_pc_tmp/1e6
-                    ! write(*,*) 'ts, td',          tstk/1e6,tdip/1e6
-                    ! write(*,*) 'vtrial, theta', v_trial,fric(20,i,ift)
-                    ! write(*,*) ' iv = ', iv
-                    ! write(*,*) 'dPressure_fric(51)', fric(51,i,ift)/1.0d6
-                    ! write(*,*) 'slip', slip                    
-                ! endif    
                 tstk = taoc_old*0.5d0 * (sliprates / sliprate) + taoc_new*0.5d0 * (tstk1 / ttao1) 
                 tdip = taoc_old*0.5d0 * (sliprated / sliprate) + taoc_new*0.5d0 * (tdip1 / ttao1) 
                 
@@ -467,12 +366,6 @@ subroutine faulting
                 enddo 
             endif   
             
-            ! if (x(1,isn)==xsource.and.x(2,isn)==ysource.and.x(3,isn)==zsource)then
-                ! write(*,*)'S1:slip,ft',slips,fnft(i,ift),r4nuc(i,ift),tr
-                ! write(*,*)'source,taoc,ttao',(taoc_old+taoc_new)/2,ttao
-                ! !write(*,*)'source,tnrm,tstk,tdip',tnrm,tstk,tdip
-                ! !write(*,*)'source,brhs isn',brhs(id1(locid(isn)+1)),brhs(id1(locid(isn)+2)),brhs(id1(locid(isn)+3))    
-            ! endif
         enddo    !ending i
     enddo !ift
     !-------------------------------------------------------------------!
