@@ -18,7 +18,8 @@ subroutine meshgen
                        mex,mey,mez,rlp,rr,ierr,jj,itmp1,&
                        ntag,ntags,zz,ivp1,ivp2,ixe,iye,ize, &
                        itemp,iye1,nxe,nye,nze,&
-                       nsx,nsy,nfx,nfz,msnode
+                       nsx,nsy,nfx,nfz,msnode,&
+                       nxline
     integer(kind=4),dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
     integer(kind=4),allocatable :: fltrc(:,:,:,:)
 
@@ -46,70 +47,14 @@ subroutine meshgen
     tol=dx/100.0d0
 
     call calcXyzMPIId(mex, mey, mez)
-
-    !...determine num of nodes along x
-    nxuni = (fltxyz(2,1,1) - fltxyz(1,1,1)) / dx + 1
-    xstep = dx
-    xcoor = fltxyz(1,1,1)
-    do ix = 1, np
-        xstep = xstep * rat
-        xcoor = xcoor - xstep
-        if(xcoor <= xmin) exit
-    enddo
-    edgex1 = ix + nPML
-    xstep = dx
-    xcoor = fltxyz(2,1,1)
-    do ix = 1, np
-        xstep = xstep * rat
-        xcoor = xcoor + xstep
-        if(xcoor >= xmax) exit
-    enddo
-    nxt = nxuni + edgex1 + ix + nPML
+    
+    call getSize1DCoorX(nxt, nxuni, edgex1)
     allocate(xlinet(nxt))
-    !
-    !...predetermine x-coor
-    xlinet(edgex1+1) = fltxyz(1,1,1)
-    xstep = dx
-    do ix = edgex1, 1, -1
-        xstep = xstep * rat
-        xlinet(ix) = xlinet(ix+1) - xstep
-    enddo
-    xmin = xlinet(1)
-    do ix = edgex1+2,edgex1+nxuni
-        xlinet(ix) = xlinet(ix-1) + dx
-    enddo
-    xstep = dx
-    do ix = edgex1+nxuni+1,nxt
-        xstep = xstep * rat
-        xlinet(ix) = xlinet(ix-1) + xstep
-    enddo
-    xmax = xlinet(nxt)
-    !
-    !***********MPI***************  
-    !...MPI partitioning based on ix and xlinet. B.D. 4/18/09
-    !...need overlap between adjacent procs. B.D. 5/10/09
-    !...more evenly distributed. B.D. 11/1/09
-    !...due to overlap, total line num should be: nxt+nprocs-1
-    !    B.D. 1/19/10
-    j1 = nxt + npx - 1
-    rlp = j1/npx
-    rr = j1 - rlp*npx
-    if(mex<(npx-rr)) then
-        nx = rlp
-    else
-        nx = rlp + 1    !evenly distributed to last rr
-    endif
+    call get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
     allocate(xline(nx))
-    if(mex<=npx-rr) then
-        do ix=1,nx
-          xline(ix) = xlinet(rlp*mex-mex+ix)
-        enddo
-    else
-        do ix=1,nx
-            k1 = mex - (npx - rr)
-            xline(ix) = xlinet(rlp*mex-mex+k1+ix)
-        enddo
-    endif    
+    call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
+    
+   
     nyuni = dis4uniF + dis4uniB + 1
     ystep = dy
     !ycoor = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
@@ -729,7 +674,7 @@ subroutine meshgen
     time2 = MPI_WTIME()
     btime = btime + (time2 - time1) 
 
-    deallocate(xlinet,xline,yline,zline,fltrc)
+    !deallocate(xlinet,xline,yline,zline,fltrc)
     
 end subroutine meshgen
 
@@ -1042,3 +987,85 @@ subroutine calcXyzMPIId(mex, mey, mez)
     mey=int((me-mex*npy*npz)/npz)
     mez=int(me-mex*npy*npz-mey*npz)
 end subroutine calcXyzMPIId
+
+subroutine getSize1DCoorX(nxt, nxuni, edgex1)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nxuni, ix, edgex1, nxt, j1, rlp, rr, k1, nx
+    real (kind = dp) :: xstep, xcoor
+    
+    
+    nxuni = (fltxyz(2,1,1) - fltxyz(1,1,1)) / dx + 1
+    xstep = dx
+    xcoor = fltxyz(1,1,1)
+    do ix = 1, np
+        xstep = xstep * rat
+        xcoor = xcoor - xstep
+        if(xcoor <= xmin) exit
+    enddo
+    edgex1 = ix + nPML
+    xstep = dx
+    xcoor = fltxyz(2,1,1)
+    do ix = 1, np
+        xstep = xstep * rat
+        xcoor = xcoor + xstep
+        if(xcoor >= xmax) exit
+    enddo
+    nxt = nxuni + edgex1 + ix + nPML
+    
+    end subroutine getSize1DCoorX
+
+subroutine get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nxuni, nxt, edgex1, nx, j1, rlp, rr, mex, ix
+    real (kind = dp) :: xlinet(nxt), xstep
+    
+    xlinet(edgex1+1) = fltxyz(1,1,1)
+    xstep = dx
+    do ix = edgex1, 1, -1
+        xstep = xstep * rat
+        xlinet(ix) = xlinet(ix+1) - xstep
+    enddo
+    xmin = xlinet(1)
+    do ix = edgex1+2,edgex1+nxuni
+        xlinet(ix) = xlinet(ix-1) + dx
+    enddo
+    xstep = dx
+    do ix = edgex1+nxuni+1,nxt
+        xstep = xstep * rat
+        xlinet(ix) = xlinet(ix-1) + xstep
+    enddo
+    xmax = xlinet(nxt)
+
+    j1 = nxt + npx - 1
+    rlp = j1/npx
+    rr = j1 - rlp*npx
+    if(mex<(npx-rr)) then
+        nx = rlp
+    else
+        nx = rlp + 1    !evenly distributed to last rr
+    endif
+
+end subroutine get1DCoorX
+
+subroutine get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: mex, j1, rlp, rr, nxt, nx, k1, ix
+    real (kind = dp) :: xline(nx), xlinet(nxt)
+    
+    j1  = nxt + npx - 1
+    rlp = j1/npx
+    rr  = j1 - rlp*npx
+    if(mex<=npx-rr) then
+        do ix=1,nx
+          xline(ix) = xlinet(rlp*mex-mex+ix)
+        enddo
+    else
+        do ix=1,nx
+            k1 = mex - (npx - rr)
+            xline(ix) = xlinet(rlp*mex-mex+k1+ix)
+        enddo
+    endif    
+end subroutine get1DCoorXLocal
