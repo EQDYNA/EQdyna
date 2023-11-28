@@ -95,9 +95,8 @@ subroutine insert_rough_fault(xcoor, ycoor, zcoor, ycoort, pfx, pfz)
     use globalvar
     implicit none
     real (kind = dp) :: xcoor, ycoor, zcoor, peak, ycoort, pfx, pfz
-    real (kind = dp) :: fx1, fx2, fz1, tol
+    real (kind = dp) :: fx1, fx2, fz1
     integer (kind = 4) :: ixx, izz
-    tol = dx/1.0d3
     
     fx1 = rough_fx_min
     fx2 = rough_fx_max
