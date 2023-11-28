@@ -26,18 +26,11 @@ subroutine faulting
             
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
 
-            if (friclaw==1 .or. friclaw==2)then!Differ 1&2 and 3&4    
-                call friction(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
-                if(fnft(i,ift)>600) then    !fnft should be initialized by >10000
-                    if(nsdSliprateVector(4) >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
-                        fnft(i,ift) = time    !rupture time for the node
-                    elseif (nsdSliprateVector(4) >=0.05d0 .and. mode==2) then
-                        fnft(i,ift) = time
-                    endif
-                endif    
-            elseif (friclaw>=3)then
-                call rsfSolve(ift, i, friclaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
-            endif
+            if (friclaw<=2) call solveSWTW(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
+            if (friclaw>=3) call solveRSF(ift, i, friclaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
+            
+            call storeRuptureTime(ift, i, nsdSliprateVector)
+            
 
             if(n4onf>0.and.lstr) then    
                 do j=1,n4onf
@@ -256,7 +249,7 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     
 end subroutine getNsdSlipSliprateTraction
 
-subroutine friction(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTractionVector, nsdInitTractionVector)
+subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTractionVector, nsdInitTractionVector)
                 ! Tell it what friction law to use, and modify right-hand vector brhs accordingly.
                 
     use globalvar
@@ -313,9 +306,9 @@ subroutine friction(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTraction
         brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) = brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) - xyzTractionVector(j) + xyzInitTractionVector(j)*C_elastic
     enddo
     
-end subroutine friction
+end subroutine solveSWTW
 
-subroutine rsfSolve(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
+subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
     use globalvar
     implicit none
     integer(kind = 4) :: iFault, iFaultNodePair, iFrictionLaw
@@ -498,4 +491,20 @@ subroutine rsfSolve(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
         fric(34+j-1,iFaultNodePair,iFault) = v(j,nsmp(1,iFaultNodePair,iFault)) + (-xyzAccVec(j)+xyzR(j)/massMaster)*dt !Velocity.Slave.x/y/z
     enddo
     
-end subroutine rsfSolve
+end subroutine solveRSF
+
+subroutine storeRuptureTime(iFault, iFaultNodePair, nsdSliprateVector)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: iFault, iFaultNodePair
+    real (kind = dp) :: nsdSliprateVector(4)
+    
+    if(fnft(iFaultNodePair,iFault)>5000.0d0) then    !fnft should be initialized by >10000
+        if(nsdSliprateVector(4) >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
+            fnft(iFaultNodePair,iFault) = time    !rupture time for the node
+        elseif (nsdSliprateVector(4) >=0.05d0 .and. mode==2) then
+            fnft(iFaultNodePair,iFault) = time
+        endif
+    endif  
+
+end subroutine storeRuptureTime

@@ -33,6 +33,7 @@ MODULE globalvar
         ! kapa_hg: Coefficient for viscous HG.
         ! Typical valus varies from 0.05~0.15. Goudreau& Hallquist(1982).
         kapa_hg = 0.1d0,    &
+        tol     = 1.0d-5,   &
         rhow=1000.d0,           b11=0.926793,           b33=1.073206, &
         b13=-0.169029,          critt0=0.2d0,           srcrad0=2500.d0,&
         vrupt0=1500.d0,         critd0,     cohes,      brangle, &

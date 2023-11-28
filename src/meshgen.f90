@@ -23,7 +23,7 @@ subroutine meshgen
     integer(kind=4),dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
     integer(kind=4),allocatable :: fltrc(:,:,:,:)
 
-    real(kind = dp) :: tol,xcoor,ycoor,zcoor, &
+    real(kind = dp) :: xcoor,ycoor,zcoor, &
                        xstep,ystep,zstep,tmp1,tmp2,tmp3,&
                        a,b,area,aa1,bb1,cc1,dd1,p1,q1
     real(kind = dp),allocatable,dimension(:) :: xlinet,ylinet,zlinet, &
@@ -44,7 +44,7 @@ subroutine meshgen
     n4yn=0
     dy=dx
     dz=dx
-    tol=dx/100.0d0
+    
 
     call calcXyzMPIId(mex, mey, mez)
     
@@ -157,83 +157,85 @@ subroutine meshgen
                         endif
                     endif
                 enddo ! enddo i1=1,ndof
-                !...identify output nodes (off-fault)
-                !Part1. Stations inside the region.
-                if(ix>1.and.ix<nx .and. iy>1.and.iy<ny) then  !at surface only
-                    do i=1,n4nds
-                        if(n4yn(i)==0) then
-                            if (abs(zcoor-x4nds(3,i))<tol) then
-                                if(abs(xcoor-x4nds(1,i))<tol .or.&
-                                (x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
-                                (xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
-                                (x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
-                                (x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
-                                    if(abs(ycoor-x4nds(2,i))<tol .or. &
-                                    (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
-                                    (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-                                    (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
-                                    (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
-                                        n4yn(i) = 1
-                                        n4out = n4out + 1
-                                        an4nds(1,n4out) = i
-                                        an4nds(2,n4out) = nnode
-                                        exit     !if node found, jump out the loop
-                                    endif
-                                endif
-                            endif
-                        endif
-                    enddo
-                endif
-                !...identify output nodes (off-fault)
-                !Part2. Stations along ix==1
-                !Big Bug!!!iz==nz is no valid for 3D MPI.
-                if(ix==1.and. iy>1.and.iy<ny) then  !at surface only
-                    do i=1,n4nds
-                        if(n4yn(i)==0) then
-                            if (abs(zcoor-x4nds(3,i))<tol) then
-                                if(abs(xcoor-x4nds(1,i))<tol .or. &
-                                (x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
-                                (x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
-                                    if(abs(ycoor-x4nds(2,i))<tol .or. &
-                                    (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
-                                    (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-                                    (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
-                                    (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
-                                        n4yn(i) = 1
-                                        n4out = n4out + 1
-                                        an4nds(1,n4out) = i
-                                        an4nds(2,n4out) = nnode
-                                        exit     !if node found, jump out the loop
-                                    endif
-                                endif
-                            endif
-                        endif
-                    enddo
-                endif
-                !...identify output nodes (off-fault)
-                !Part3. Stations along ix==nx
-                if(ix==nx .and. iy>1.and.iy<ny) then  !at surface only
-                    do i=1,n4nds
-                        if(n4yn(i)==0) then
-                            if (abs(zcoor-x4nds(3,i))<tol) then
-                                if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
-                                (xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) then
-                                    if(abs(ycoor-x4nds(2,i))<tol .or. &
-                                    (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
-                                    (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-                                    (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
-                                    (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
-                                        n4yn(i) = 1
-                                        n4out = n4out + 1
-                                        an4nds(1,n4out) = i
-                                        an4nds(2,n4out) = nnode
-                                        exit     !if node found, jump out the loop
-                                    endif
-                                endif
-                            endif
-                        endif
-                    enddo
-                endif    
+                
+                call setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, nnode)
+                
+                ! !Part1. Stations inside the region.
+                ! if(ix>1.and.ix<nx .and. iy>1.and.iy<ny) then  !at surface only
+                    ! do i=1,n4nds
+                        ! if(n4yn(i)==0) then
+                            ! if (abs(zcoor-x4nds(3,i))<tol) then
+                                ! if(abs(xcoor-x4nds(1,i))<tol .or.&
+                                ! (x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
+                                ! (xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
+                                ! (x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
+                                ! (x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
+                                    ! if(abs(ycoor-x4nds(2,i))<tol .or. &
+                                    ! (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
+                                    ! (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+                                    ! (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
+                                    ! (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+                                        ! n4yn(i) = 1
+                                        ! n4out = n4out + 1
+                                        ! an4nds(1,n4out) = i
+                                        ! an4nds(2,n4out) = nnode
+                                        ! exit     !if node found, jump out the loop
+                                    ! endif
+                                ! endif
+                            ! endif
+                        ! endif
+                    ! enddo
+                ! endif
+                ! !...identify output nodes (off-fault)
+                ! !Part2. Stations along ix==1
+                ! !Big Bug!!!iz==nz is no valid for 3D MPI.
+                ! if(ix==1.and. iy>1.and.iy<ny) then  !at surface only
+                    ! do i=1,n4nds
+                        ! if(n4yn(i)==0) then
+                            ! if (abs(zcoor-x4nds(3,i))<tol) then
+                                ! if(abs(xcoor-x4nds(1,i))<tol .or. &
+                                ! (x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
+                                ! (x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
+                                    ! if(abs(ycoor-x4nds(2,i))<tol .or. &
+                                    ! (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
+                                    ! (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+                                    ! (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
+                                    ! (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+                                        ! n4yn(i) = 1
+                                        ! n4out = n4out + 1
+                                        ! an4nds(1,n4out) = i
+                                        ! an4nds(2,n4out) = nnode
+                                        ! exit     !if node found, jump out the loop
+                                    ! endif
+                                ! endif
+                            ! endif
+                        ! endif
+                    ! enddo
+                ! endif
+                ! !...identify output nodes (off-fault)
+                ! !Part3. Stations along ix==nx
+                ! if(ix==nx .and. iy>1.and.iy<ny) then  !at surface only
+                    ! do i=1,n4nds
+                        ! if(n4yn(i)==0) then
+                            ! if (abs(zcoor-x4nds(3,i))<tol) then
+                                ! if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
+                                ! (xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) then
+                                    ! if(abs(ycoor-x4nds(2,i))<tol .or. &
+                                    ! (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
+                                    ! (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+                                    ! (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
+                                    ! (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+                                        ! n4yn(i) = 1
+                                        ! n4out = n4out + 1
+                                        ! an4nds(1,n4out) = i
+                                        ! an4nds(2,n4out) = nnode
+                                        ! exit     !if node found, jump out the loop
+                                    ! endif
+                                ! endif
+                            ! endif
+                        ! endif
+                    ! enddo
+                ! endif    
 
                 do ift=1,ntotft 
                     ynft(ift) = .false.
@@ -1123,3 +1125,87 @@ subroutine setNumDof(xcoor,ycoor,zcoor,zz)
         zz = 12 ! Modify if inside PML
     endif   
 end subroutine setNumDof
+
+subroutine setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, nnode)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: ix, iy, nx, ny, nnode, i
+    real (kind = dp) :: xcoor, ycoor, zcoor, xline(nx), yline(ny)
+    
+    !Part1. Stations inside the region.
+    if(ix>1.and.ix<nx .and. iy>1.and.iy<ny) then  !at surface only
+        do i=1,n4nds
+            if(n4yn(i)==0) then
+                if (abs(zcoor-x4nds(3,i))<tol) then
+                    if(abs(xcoor-x4nds(1,i))<tol .or.&
+                    (x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
+                    (xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
+                    (x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
+                    (x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
+                        if(abs(ycoor-x4nds(2,i))<tol .or. &
+                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
+                        (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+                        (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
+                        (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+                            n4yn(i) = 1
+                            n4out = n4out + 1
+                            an4nds(1,n4out) = i
+                            an4nds(2,n4out) = nnode
+                            exit     !if node found, jump out the loop
+                        endif
+                    endif
+                endif
+            endif
+        enddo
+    endif
+    !...identify output nodes (off-fault)
+    !Part2. Stations along ix==1
+    !Big Bug!!!iz==nz is no valid for 3D MPI.
+    if(ix==1.and. iy>1.and.iy<ny) then  !at surface only
+        do i=1,n4nds
+            if(n4yn(i)==0) then
+                if (abs(zcoor-x4nds(3,i))<tol) then
+                    if(abs(xcoor-x4nds(1,i))<tol .or. &
+                    (x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
+                    (x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
+                        if(abs(ycoor-x4nds(2,i))<tol .or. &
+                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
+                        (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+                        (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
+                        (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+                            n4yn(i) = 1
+                            n4out = n4out + 1
+                            an4nds(1,n4out) = i
+                            an4nds(2,n4out) = nnode
+                            exit     !if node found, jump out the loop
+                        endif
+                    endif
+                endif
+            endif
+        enddo
+    endif
+    !...identify output nodes (off-fault)
+    !Part3. Stations along ix==nx
+    if(ix==nx .and. iy>1.and.iy<ny) then  !at surface only
+        do i=1,n4nds
+            if(n4yn(i)==0) then
+                if (abs(zcoor-x4nds(3,i))<tol) then
+                    if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
+                    (xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) then
+                        if(abs(ycoor-x4nds(2,i))<tol .or. &
+                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
+                        (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+                        (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
+                        (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+                            n4yn(i) = 1
+                            n4out = n4out + 1
+                            an4nds(1,n4out) = i
+                            an4nds(2,n4out) = nnode
+                            exit     !if node found, jump out the loop
+                        endif
+                    endif
+                endif
+            endif
+        enddo
+    endif    
+end subroutine setSurfaceStation
