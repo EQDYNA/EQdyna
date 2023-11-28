@@ -48,6 +48,7 @@ subroutine meshgen
 
     call calcXyzMPIId(mex, mey, mez)
     
+    ! get xline, yline, zline
     call getSize1DCoorX(nxt, nxuni, edgex1)
         allocate(xlinet(nxt))
     call get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
@@ -60,90 +61,48 @@ subroutine meshgen
         allocate(yline(ny))
     call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
     
-    !
-    !...determine num of nodes along z
-    zstep = dz
-    zcoor = fltxyz(1,3,1)
-    do iz=1,np
-        zstep = zstep * rat
-        zcoor = zcoor - zstep
-        if(zcoor <= zmin) exit
-    enddo
-    edgezn = iz + nPML
-    nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dx + 1 
-    nzt = edgezn + nzuni
+    call getSize1DCoorZ(nzt, nzuni, edgezn)
+        allocate(zlinet(nzt))
+    call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
+        allocate(zline(nz))
+    call get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
 
-    !...predetermine z-coor
-    allocate(zlinet(nzt))
-
-    zlinet(nzt) = zmax
-    do iz = nzt-1,nzt-nzuni+1,-1
-        zlinet(iz) = zlinet(iz+1) - dz
-    enddo
-    zstep = dz
-    do iz = nzt-nzuni,1,-1
-        zstep = zstep * rat
-        zlinet(iz) = zlinet(iz+1) -zstep
-    enddo
-    zmin = zlinet(1) !these needed for fixed boundaryies
-    !***********MPI***************  
-    !...MPI partitioning based on iz and zlinet.
-    !...need overlap between adjacent procs.
-    !...more evenly distributed. 
-    !...due to overlap, total line num should be: nzt+npz-1
-    !Search Tag: 3DMPI
-    j1 = nzt + npz - 1
-    rlp = j1/npz
-    rr = j1 - rlp*npz
-    if(mez<(npz-rr)) then
-        nz = rlp
-    else
-        nz = rlp + 1    !evenly distributed to last rr
-    endif
-
-    allocate(zline(nz))
-
-    if(mez<=npz-rr) then
-        do iz=1,nz
-            zline(iz) = zlinet(rlp*mez-mez+iz)
-        enddo
-    else
-        do iz=1,nz
-            k1 = mez - (npz - rr)
-            zline(iz) = zlinet(rlp*mez-mez+k1+iz)
-        enddo
-    endif
-
-    !...prepare for digitizing
+    ! Move adjacent plane1 and plane2 to create hexahedral meshes
     allocate(plane1(ny+ntotft,nz),plane2(ny+ntotft,nz),fltrc(2,nxuni,nzuni,ntotft))
-    nnode=0
-    !3DMPI
-    msnode=nx*ny*nz
-    numcount=0
-    numcount(1)=nx
-    numcount(2)=ny
-    numcount(3)=nz
-    nelement = 0
-    n4onf = 0
-    n4out = 0
     plane1 = 0
     plane2 = 0
-    neq0 = 0
-    nftnd0 = 0
-    an4nds = 0
-    x = 0.0
-    ien = 0
+    
+    numcount    = 0
+    numcount(1) = nx
+    numcount(2) = ny
+    numcount(3) = nz
+    
+    ! Initialize scalars
+
+    msnode   = nx*ny*nz
+    n4onf    = 0
+    n4out    = 0
+    an4nds   = 0
+    ! Initialize arrays
+    nftnd0   = 0
+    x        = 0.0d0
+    ien      = 0
+    id1      = 0
+    ids      = 0
+    locid    = 0
+    dof1     = 0
+    et       = 0
+    
     ixfi = 0
     izfi = 0
-    id1= 0
-    ids= 0
-    locid=0
-    dof1=0
-    et=0
-    ntag = 0
-    ntags = 0
-    !  
-    !...digitize along constant x plane (normal to fault strike for MPI)
+    ! increments
+    nnode    = 0
+    nelement = 0
+    neq0     = 0
+    ntag     = 0
+    ntags    = 0
+    
+    ! Loop over x,y,z grids to create nodes and elements
     do ix = 1, nx
         do iz = 1, nz
             do iy = 1, ny
@@ -1090,3 +1049,69 @@ subroutine get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
         enddo
     endif
 end subroutine get1DCoorYLocal
+
+subroutine getSize1DCoorZ(nzt, nzuni, edgezn)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nzt, nzuni, edgezn, iz
+    real (kind = dp) :: zstep, zcoor
+    
+    zstep = dz
+    zcoor = fltxyz(1,3,1)
+    do iz=1,np
+        zstep = zstep * rat
+        zcoor = zcoor - zstep
+        if(zcoor <= zmin) exit
+    enddo
+    edgezn = iz + nPML
+    nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dx + 1 
+    nzt = edgezn + nzuni
+end subroutine getSize1DCoorZ
+    
+subroutine get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nzuni, nzt, edgezn, nz, j1, rlp, rr, mez, iz
+    real (kind = dp) :: zlinet(nzt), zstep
+
+    zlinet(nzt) = zmax
+    do iz = nzt-1,nzt-nzuni+1,-1
+        zlinet(iz) = zlinet(iz+1) - dz
+    enddo
+    zstep = dz
+    do iz = nzt-nzuni,1,-1
+        zstep = zstep * rat
+        zlinet(iz) = zlinet(iz+1) -zstep
+    enddo
+    zmin = zlinet(1) 
+    
+    j1 = nzt + npz - 1
+    rlp = j1/npz
+    rr = j1 - rlp*npz
+    if(mez<(npz-rr)) then
+        nz = rlp
+    else
+        nz = rlp + 1   
+    endif
+end subroutine get1DCoorZ
+
+subroutine get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: mez, j1, rlp, rr, nzt, nz, k1, iz
+    real (kind = dp) :: zline(nz), zlinet(nzt)
+    
+    j1  = nzt + npz - 1
+    rlp = j1/npz
+    rr  = j1 - rlp*npz
+    if(mez<=npz-rr) then
+        do iz=1,nz
+            zline(iz) = zlinet(rlp*mez-mez+iz)
+        enddo
+    else
+        do iz=1,nz
+            k1 = mez - (npz - rr)
+            zline(iz) = zlinet(rlp*mez-mez+k1+iz)
+        enddo
+    endif
+end subroutine get1DCoorZLocal
