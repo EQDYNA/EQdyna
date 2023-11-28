@@ -72,64 +72,7 @@ subroutine faulting
                     elseif (sliprate >=0.05d0 .and. mode==2) then
                         fnft(i,ift) = time
                     endif
-                endif
-                ! if(friclaw == 1) then
-                    ! call slip_weak(fric(77,i,ift),fric(1,i,ift),xmu)
-                ! elseif(friclaw == 2) then
-                    ! trupt =  time - fnft(i,ift)
-                    ! call time_weak(trupt,fric(1,i,ift),xmu)
-                ! endif
-                
-                ! ! Artificial nucleation 
-                ! if (TPV == 201 .or. TPV == 202) then 
-                    ! if (C_nuclea == 1 .and.ift == nucfault) then
-                        ! call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
-                                    ! x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
-                                    ! fric(2,i,ift))
-                    ! endif
-                ! endif 
-
-                ! if((tnrm+fric(6,i,ift))>0) then
-                    ! tnrm0 = 0.0d0
-                ! else
-                    ! tnrm0 = tnrm+fric(6,i,ift)
-                ! endif
-                ! taoc = fric(4,i,ift) - xmu *tnrm0
-
-                ! if(ttao > taoc) then
-                    ! tstk = tstk * taoc / ttao
-                    ! tdip = tdip * taoc / ttao
-                    ! if(fnft(i,ift)>600) then    !fnft should be initialized by >10000
-                        ! if(sliprate >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
-                            ! fnft(i,ift) = time    !rupture time for the node
-                        ! elseif (sliprate >=0.05d0 .and. mode==2) then
-                            ! fnft(i,ift) = time
-                        ! endif
-                    ! endif
-                ! endif
-
-                ! taox = (tnrm*un(1,i,ift) + tstk*us(1,i,ift) + tdip*ud(1,i,ift))*arn(i,ift)
-                ! taoy = (tnrm*un(2,i,ift) + tstk*us(2,i,ift) + tdip*ud(2,i,ift))*arn(i,ift)
-                ! taoz = (tnrm*un(3,i,ift) + tstk*us(3,i,ift) + tdip*ud(3,i,ift))*arn(i,ift)
-
-                ! if (C_elastic==0) then!Plastic    
-                    ! brhs(id1(locid(isn)+1)) = brhs(id1(locid(isn)+1)) + taox !brhs(id1(loci(1,imn)+1))
-                    ! brhs(id1(locid(isn)+2)) = brhs(id1(locid(isn)+2)) + taoy
-                    ! brhs(id1(locid(isn)+3)) = brhs(id1(locid(isn)+3)) + taoz
-                    ! brhs(id1(locid(imn)+1)) = brhs(id1(locid(imn)+1)) - taox
-                    ! brhs(id1(locid(imn)+2)) = brhs(id1(locid(imn)+2)) - taoy
-                    ! brhs(id1(locid(imn)+3)) = brhs(id1(locid(imn)+3)) - taoz
-                ! else!Elastic
-                    ! ftix = (fnfault*un(1,i,ift) + fsfault*us(1,i,ift) + fdfault*ud(1,i,ift))*arn(i,ift)
-                    ! ftiy = (fnfault*un(2,i,ift) + fsfault*us(2,i,ift) + fdfault*ud(2,i,ift))*arn(i,ift)
-                    ! ftiz = (fnfault*un(3,i,ift) + fsfault*us(3,i,ift) + fdfault*ud(3,i,ift))*arn(i,ift)  
-                    ! brhs(id1(locid(isn)+1)) = brhs(id1(locid(isn)+1)) + taox - ftix
-                    ! brhs(id1(locid(isn)+2)) = brhs(id1(locid(isn)+2)) + taoy - ftiy
-                    ! brhs(id1(locid(isn)+3)) = brhs(id1(locid(isn)+3)) + taoz - ftiz
-                    ! brhs(id1(locid(imn)+1)) = brhs(id1(locid(imn)+1)) - taox + ftix
-                    ! brhs(id1(locid(imn)+2)) = brhs(id1(locid(imn)+2)) - taoy + ftiy
-                    ! brhs(id1(locid(imn)+3)) = brhs(id1(locid(imn)+3)) - taoz + ftiz
-                ! endif    
+                endif    
             elseif (friclaw>=3)then
                 
                 ! modify normal stress to effective normal stress.
