@@ -4,23 +4,12 @@
 ! * attached before you copy, download, install or use EQdyna./
 
 subroutine faulting
-
     use globalvar
     implicit none
 
     character(len=30) :: foutmov
-    integer (kind = 4) :: i,i1,j,k,n,isn,imn,itmp,ifout,ift
-    real (kind = dp) :: slipn,slips,slipd,slip,slipraten,sliprates,sliprated,&
-                        sliprate,xmu,mmast,mslav,mtotl,fnfault,fsfault,fdfault,tnrm,tstk, &
-                        tdip,taox,taoy,taoz,ttao,taoc,ftix,ftiy,ftiz,trupt,tr,&
-                        tmp1,tmp2,tmp3,tmp4,tnrm0,rcc,fa,fb
-    real (kind = dp) :: fvd(6,2,3)
-    real (kind = dp) :: dtau0,dtau
-    real (kind = dp) :: statetmp, v_trial, T_coeff!RSF
-    integer (kind=4) :: iv,ivmax  !RSF
-    real (kind = dp) :: tstk0, tdip0, tstk1, tdip1, ttao1, taoc_old, taoc_new !RSF
-    real (kind = dp) :: dxmudv, rsfeq, drsfeqdv, vtmp, theta_pc_tmp !RSF
-    real (kind = dp) :: accn,accs,accd, accx, accy, accz, Rx, Ry, Rz, mr, theta_pc, theta_pc_dot
+    integer (kind = 4) :: i, j, ift
+    real (kind = dp) :: dtau, xmu
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
     real (kind = dp) :: nsdInitTractionVector(3)
     !===================================================================!
@@ -40,9 +29,9 @@ subroutine faulting
             if (friclaw==1 .or. friclaw==2)then!Differ 1&2 and 3&4    
                 call friction(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
                 if(fnft(i,ift)>600) then    !fnft should be initialized by >10000
-                    if(sliprate >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
+                    if(nsdSliprateVector(4) >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
                         fnft(i,ift) = time    !rupture time for the node
-                    elseif (sliprate >=0.05d0 .and. mode==2) then
+                    elseif (nsdSliprateVector(4) >=0.05d0 .and. mode==2) then
                         fnft(i,ift) = time
                     endif
                 endif    
