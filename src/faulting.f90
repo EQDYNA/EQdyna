@@ -62,10 +62,8 @@ subroutine faulting
             mtotl = mslav + mmast
             mtotl = mtotl * arn(i,ift)
             
-            call friction(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
-            
-            
             if (friclaw==1 .or. friclaw==2)then!Differ 1&2 and 3&4    
+                call friction(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
                 if(fnft(i,ift)>600) then    !fnft should be initialized by >10000
                     if(sliprate >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
                         fnft(i,ift) = time    !rupture time for the node
@@ -74,193 +72,7 @@ subroutine faulting
                     endif
                 endif    
             elseif (friclaw>=3)then
-                
-                ! modify normal stress to effective normal stress.
-                if (friclaw == 5) then 
-                    ! for friclaw==5, where thermopressurization is applied, 
-                    ! needs to add presure from fric(51).
-                    tnrm = tnrm + fric(51,i,ift) ! consider termopressurization.
-                else
-                    ! otherwise, update normal stress with assigned pore pressure fric(6).
-                    tnrm = tnrm + fric(6,i,ift)
-                endif 
-                
-                ! If non-planar fault geometry and elastic material, enforce normal stress caps.
-                if (rough_fault == 1 .and. C_elastic == 1) then
-                    !tnrm = min(min_norm, tnrm) ! Maintain a minimum normal stress level.
-                    max_norm      = -40.0d6
-                    min_norm      = -10.0d6
-                
-                    if (tnrm>=min_norm) then 
-                        tnrm = min_norm
-                    elseif (tnrm<=max_norm) then
-                        tnrm = max_norm
-                    endif
-                endif 
-                
-                ! avoid positive effective normal stress.
-                if (tnrm > 0.0d0) tnrm = 0.0d0
-                
-                ! Add the background slip rate on top. 
-                slipn = slipn + fric(25,i,ift) * time 
-                slips = slips + fric(26,i,ift) * time
-                slipd = slipd + fric(27,i,ift) * time
-                slip = sqrt(slips**2 + slipd**2) !slip mag
-                slipraten =  slipraten + fric(25,i,ift) 
-                sliprates =  sliprates + fric(26,i,ift)
-                sliprated =  sliprated + fric(27,i,ift)
-                sliprate = sqrt(sliprates**2+sliprated**2)
-                
-                    
-                if(fnft(i,ift)>600.0d0) then    !fnft should be initialized by >10000
-                    if(sliprate >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
-                        fnft(i,ift) = time    !rupture time for the node
-                    elseif (sliprate>=0.05d0 .and. mode==2) then
-                        fnft(i,ift) = time
-                    endif
-                endif
-                v_trial = sliprate
-                
-                ! retrieve the state variable for normal stress theta_pc_tmp from fric(23).
-                ! this accounts for normal stress change. 
-                theta_pc_tmp = fric(23,i,ift)
-                ! get updated trial state variable for normal stress [fric(23)] and its rate [fric(24)].
-                call rate_state_normal_stress(v_trial, fric(23,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))    
-                fric(24,i,ift) = theta_pc_dot
-                
-                
-                mr       = mmast * mslav / (mmast+mslav) !reduced mass   
-                T_coeff  = arn(i,ift)* dt / mr
-                
-                ! retrieve the RSF state variable and assign it to a tempraroy statetmp. 
-                statetmp = fric(20,i,ift)  
-                ! get updated trial RSF state variable [fric(20)],
-                !   and trial friction coefficient, xmu,
-                !   and trial derivative d(xmu)/dt, dxmudv,
-                !   for friclaw=3,4,5.
-                if(friclaw == 3) then
-                    call rate_state_ageing_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
-                elseif (friclaw == 4 .or. friclaw==5) then
-                    call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv) !RSF
-                endif            
-                
-                
-                ! compute trial traction.
-                ! for cases with large fluctuations of effective normal stress, 
-                !   use the state variable for effective normal stress, theta_pc_tmp, 
-                !   rather than tnrm, when friclaw==5/rough_fault==1.
-                ! [NOTE]: friclaw=5 doesn't support normal stress evolution yet. See TPV1053D.
-                if (friclaw==5) then 
-                    taoc_old = fric(4,i,ift) - xmu * tnrm
-                else
-                    taoc_old = xmu * theta_pc_tmp
-                endif
-                
-                tstk0    = tstk
-                tdip0    = tdip
-                ! get shear tractions, tstk1 and tdip1, and total shear traction, ttao1, updated.
-                tstk1    = tstk0 - taoc_old*0.5d0 * (sliprates / sliprate) + fric(26,i,ift)/T_coeff
-                tdip1    = tdip0 - taoc_old*0.5d0 * (sliprated / sliprate) + fric(27,i,ift)/T_coeff
-                ttao1    = sqrt(tstk1*tstk1 + tdip1*tdip1)
-              
-                ! Netwon solver for slip rate, v_trial, for the next time step.
-                ivmax    = 20  ! Maximum iterations.
-                do iv = 1,ivmax
-                    ! in each iteration, reupdate the new state variable [fric(20)] given the new 
-                    !   slip rate, v_trial.
-                    fric(20,i,ift)  = statetmp
-                    if(friclaw == 3) then
-                        call rate_state_ageing_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv)
-                    else
-                        call rate_state_slip_law(v_trial,fric(20,i,ift),fric(1,i,ift),xmu,dxmudv)
-                    endif 
-                    
-                    ! [NOTE]: the code doesn't support normal stress evolution under thermo pressurization.
-                    if (friclaw < 5) then
-                        fric(23,i,ift)  = theta_pc_tmp 
-                        call rate_state_normal_stress(v_trial, fric(23,i,ift), theta_pc_dot, tnrm, fric(1,i,ift))    
-                        taoc_new        = xmu*theta_pc_tmp
-                        rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - ttao1)
-                        drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * theta_pc_tmp)*0.5d0  
-                    else
-                        taoc_new        = fric(4,i,ift) - xmu * MIN(tnrm, 0.0d0)
-                        rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - ttao1)
-                        drsfeqdv        = 1.0d0 + T_coeff * (-dxmudv * MIN(tnrm,0.0d0))*0.5d0  
-                    endif
-                    
-                    ! exiting criteria:
-                    !   1. relative residual, rsfeq/drsfeqdv, is smaller than 1e-14*v_trial
-                    !   2. residual, rsfeq, is smaller than 1e-6*v_trial
-                    if(abs(rsfeq/drsfeqdv) < 1.d-14 * abs(v_trial) .and. abs(rsfeq) < 1.d-6 * abs(v_trial)) exit 
-                    !if(abs(rsfeq) < 1.d-5 * abs(v_trial)) exit 
-                        vtmp = v_trial - rsfeq / drsfeqdv
-                    
-                    ! additional constraints for solving trial slip rate, v_trial
-                    !   if vtmp smaller than zero, reset it to half of v_trial in the last try. 
-                    if(vtmp <= 0.0d0) then
-                        v_trial = v_trial/2.0d0
-                    else
-                        v_trial = vtmp
-                    endif  
-                    
-                enddo !iv
-                
-                ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
-                ! Also reset taoc_new to 2 X ttao1.
-                ! Without this, TPV1053D blew up at the surface station (-4.2,0)
-                if(v_trial < fric(46,i,ift)) then
-                    v_trial  = fric(46,i,ift)
-                    taoc_new = ttao1*2.0d0
-                endif
-                
-                tstk = taoc_old*0.5d0 * (sliprates / sliprate) + taoc_new*0.5d0 * (tstk1 / ttao1) 
-                tdip = taoc_old*0.5d0 * (sliprated / sliprate) + taoc_new*0.5d0 * (tdip1 / ttao1) 
-                
-                ! store tnrm, tstk, tdip ... 
-                ! [effective normal stress, shear_strike, and shear_dip]
-                fric(78,i,ift) = tnrm 
-                fric(79,i,ift) = tstk
-                fric(80,i,ift) = tdip
-                
-                ! store final slip rate and final total traction ...
-                fric(47,i,ift) = v_trial
-                fric(48,i,ift) = (tstk**2 + tdip**2)**0.5 
-                
-                frichis(1,i,nt,ift) = fric(47,i,ift)
-                frichis(2,i,nt,ift) = fric(48,i,ift)
-                
-                ! 3 components of relative acceleration bewteen m-s nodes in the fault plane coordinate sys. 
-                accn = -slipraten/dt - slipn/dt/dt
-                accs = (v_trial * (tstk1 / ttao1) - sliprates)/dt
-                accd = (v_trial * (tdip1 / ttao1) - sliprated)/dt
-                
-                ! 3 components of relative acceleration bewteen m-s nodes in the FEM xyz coordinate sys. 
-                accx = accn*un(1,i,ift) + accs*us(1,i,ift) + accd*ud(1,i,ift)
-                accy = accn*un(2,i,ift) + accs*us(2,i,ift) + accd*ud(2,i,ift)
-                accz = accn*un(3,i,ift) + accs*us(3,i,ift) + accd*ud(3,i,ift)
-                
-                ! determine total forces acting on the node pair ...
-                Rx = brhs(id1(locid(isn)+1)) + brhs(id1(locid(imn)+1))
-                Ry = brhs(id1(locid(isn)+2)) + brhs(id1(locid(imn)+2))
-                Rz = brhs(id1(locid(isn)+3)) + brhs(id1(locid(imn)+3))
-                
-                ! calculate xyz components of nodal forces that can generate 
-                !  the above calculated accelerations for the m-s node pair. 
-                brhs(id1(locid(isn)+1)) = (-accx + Rx/mmast) * mr ! asx
-                brhs(id1(locid(isn)+2)) = (-accy + Ry/mmast) * mr ! asy
-                brhs(id1(locid(isn)+3)) = (-accz + Rz/mmast) * mr ! asz
-                brhs(id1(locid(imn)+1)) = (accx  + Rx/mslav) * mr ! amx
-                brhs(id1(locid(imn)+2)) = (accy  + Ry/mslav) * mr ! amy
-                brhs(id1(locid(imn)+3)) = (accz  + Rz/mslav) * mr ! amz
-                
-                ! store normal velocities for master-slave node pair ...
-                ! v(k,nsmp(j,i,ift)) - k:xyz, j:slave1,master2
-                fric(31,i,ift) = v(1,nsmp(2,i,ift)) + (accx+Rx/mslav)*dt  !vmx 
-                fric(32,i,ift) = v(2,nsmp(2,i,ift)) + (accy+Ry/mslav)*dt  !vmy 
-                fric(33,i,ift) = v(3,nsmp(2,i,ift)) + (accz+Rz/mslav)*dt  !vmz 
-                fric(34,i,ift) = v(1,nsmp(1,i,ift)) + (-accx+Rx/mmast)*dt !vsx 
-                fric(35,i,ift) = v(2,nsmp(1,i,ift)) + (-accy+Ry/mmast)*dt !vsy 
-                fric(36,i,ift) = v(3,nsmp(1,i,ift)) + (-accz+Rz/mmast)*dt !vsz 
+                call rsfSolve(ift, i, friclaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
             endif
 
             if(n4onf>0.and.lstr) then    
@@ -408,19 +220,19 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     
     real(kind = dp) :: dtau
     
-    initNormal      = fric(7, iFaultNodePair, iFault)
-    initStrikeShear = fric(8, iFaultNodePair, iFault)+dtau
-    initDipShear    = fric(49, iFaultNodePair, iFault)
+    initNormal      = fric(7,iFaultNodePair,iFault)
+    initStrikeShear = fric(8,iFaultNodePair,iFault)+dtau
+    initDipShear    = fric(49,iFaultNodePair,iFault)
     
-    nsdInitTractionVector(1) = fric(7, iFaultNodePair, iFault) !normal
-    nsdInitTractionVector(2) = fric(8, iFaultNodePair, iFault)+dtau !strike
-    nsdInitTractionVector(3) = fric(49, iFaultNodePair, iFault) !dip
+    nsdInitTractionVector(1) = fric(7,iFaultNodePair,iFault) !normal
+    nsdInitTractionVector(2) = fric(8,iFaultNodePair,iFault)+dtau !strike
+    nsdInitTractionVector(3) = fric(49,iFaultNodePair,iFault) !dip
     
-    iSlaveNodeID  = nsmp(1, iFaultNodePair, iFault)
-    iMasterNodeID = nsmp(2, iFaultNodePair, iFault)
+    iSlaveNodeID  = nsmp(1,iFaultNodePair,iFault)
+    iMasterNodeID = nsmp(2,iFaultNodePair,iFault)
     massSlave     = fnms(iSlaveNodeID)        
     massMaster    = fnms(iMasterNodeID)
-    totalMass     = (massSlave + massMaster)*arn(iFaultNodePair, iFault)
+    totalMass     = (massSlave + massMaster)*arn(iFaultNodePair,iFault)
     
     do j=1,2  ! slave, master
         do k=1,3  ! x,y,z
@@ -432,15 +244,15 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     
     do j=1,3    !1-force,2-vel,3-disp
         do k=1,2  !1-slave,2-master
-            nsdNodalQuant(1,k,j) = xyzNodalQuant(1,k,j)*un(1,iFaultNodePair, iFault) &
-                                    + xyzNodalQuant(2,k,j)*un(2,iFaultNodePair, iFault) &
-                                    + xyzNodalQuant(3,k,j)*un(3,iFaultNodePair, iFault)  !norm
-            nsdNodalQuant(2,k,j) = xyzNodalQuant(1,k,j)*us(1,iFaultNodePair, iFault) &
-                                    + xyzNodalQuant(2,k,j)*us(2,iFaultNodePair, iFault) &
-                                    + xyzNodalQuant(3,k,j)*us(3,iFaultNodePair, iFault)  !strike
-            nsdNodalQuant(3,k,j) = xyzNodalQuant(1,k,j)*ud(1,iFaultNodePair, iFault) &
-                                    + xyzNodalQuant(2,k,j)*ud(2,iFaultNodePair, iFault) &
-                                    + xyzNodalQuant(3,k,j)*ud(3,iFaultNodePair, iFault)  !dip
+            nsdNodalQuant(1,k,j) = xyzNodalQuant(1,k,j)*un(1,iFaultNodePair,iFault) &
+                                    + xyzNodalQuant(2,k,j)*un(2,iFaultNodePair,iFault) &
+                                    + xyzNodalQuant(3,k,j)*un(3,iFaultNodePair,iFault)  !norm
+            nsdNodalQuant(2,k,j) = xyzNodalQuant(1,k,j)*us(1,iFaultNodePair,iFault) &
+                                    + xyzNodalQuant(2,k,j)*us(2,iFaultNodePair,iFault) &
+                                    + xyzNodalQuant(3,k,j)*us(3,iFaultNodePair,iFault)  !strike
+            nsdNodalQuant(3,k,j) = xyzNodalQuant(1,k,j)*ud(1,iFaultNodePair,iFault) &
+                                    + xyzNodalQuant(2,k,j)*ud(2,iFaultNodePair,iFault) &
+                                    + xyzNodalQuant(3,k,j)*ud(3,iFaultNodePair,iFault)  !dip
         enddo
     enddo
     
@@ -455,13 +267,13 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     nsdSliprateVector(4) = sqrt(nsdSliprateVector(1)**2 + nsdSliprateVector(2)**2 + nsdSliprateVector(3)**2)
     
     ! keep records
-    fric(71, iFaultNodePair, iFault) = nsdSlipVector(2) !s
-    fric(72, iFaultNodePair, iFault) = nsdSlipVector(3) !d
-    fric(73, iFaultNodePair, iFault) = nsdSlipVector(1) !n
-    fric(74, iFaultNodePair, iFault) = nsdSliprateVector(2) !s
-    fric(75, iFaultNodePair, iFault) = nsdSliprateVector(3) !d
-    if (nsdSliprateVector(4)>fric(76, iFaultNodePair, iFault)) fric(76, iFaultNodePair, iFault) = nsdSliprateVector(4) !mag
-    fric(77, iFaultNodePair, iFault) = fric(77, iFaultNodePair, iFault) + nsdSliprateVector(4)*dt ! cummulated slip
+    fric(71,iFaultNodePair,iFault) = nsdSlipVector(2) !s
+    fric(72,iFaultNodePair,iFault) = nsdSlipVector(3) !d
+    fric(73,iFaultNodePair,iFault) = nsdSlipVector(1) !n
+    fric(74,iFaultNodePair,iFault) = nsdSliprateVector(2) !s
+    fric(75,iFaultNodePair,iFault) = nsdSliprateVector(3) !d
+    if (nsdSliprateVector(4)>fric(76,iFaultNodePair,iFault)) fric(76,iFaultNodePair,iFault) = nsdSliprateVector(4) !mag
+    fric(77,iFaultNodePair,iFault) = fric(77,iFaultNodePair,iFault) + nsdSliprateVector(4)*dt ! cummulated slip
     
     ! n
     nsdTractionVector(1) = (massSlave*massMaster*((nsdNodalQuant(1,2,2)-nsdNodalQuant(1,1,2))+(nsdNodalQuant(1,2,3)-nsdNodalQuant(1,1,3))/dt)/dt &
@@ -494,27 +306,27 @@ subroutine friction(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTraction
     
     
     if (iFrictionLaw == 1) then
-        call slip_weak(fric(77,iFaultNodePair, iFault),fric(1,iFaultNodePair, iFault),fricCoeff)
+        call slip_weak(fric(77,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),fricCoeff)
     elseif(iFrictionLaw == 2) then
-        trupt =  time - fnft(iFaultNodePair, iFault)
-        call time_weak(trupt,fric(1,iFaultNodePair, iFault),fricCoeff)
+        trupt =  time - fnft(iFaultNodePair,iFault)
+        call time_weak(trupt,fric(1,iFaultNodePair,iFault),fricCoeff)
     endif
     
     ! Artificial nucleation 
     if (TPV == 201 .or. TPV == 202) then 
         if (C_nuclea == 1 .and.iFault == nucfault) then
-            call nucleation(dtau, fricCoeff, x(1,nsmp(1,iFaultNodePair, iFault)), x(2,nsmp(1,iFaultNodePair, iFault)), & 
-                        x(3,nsmp(1,iFaultNodePair, iFault)), fric(5,iFaultNodePair, iFault), fric(1,iFaultNodePair, iFault), &
-                        fric(2,iFaultNodePair, iFault))
+            call nucleation(dtau, fricCoeff, x(1,nsmp(1,iFaultNodePair,iFault)), x(2,nsmp(1,iFaultNodePair,iFault)), & 
+                        x(3,nsmp(1,iFaultNodePair,iFault)), fric(5,iFaultNodePair,iFault), fric(1,iFaultNodePair,iFault), &
+                        fric(2,iFaultNodePair,iFault))
         endif
     endif 
 
-    if((nsdTractionVector(1)+fric(6,iFaultNodePair, iFault))>0) then
+    if((nsdTractionVector(1)+fric(6,iFaultNodePair,iFault))>0) then
         effectiveNormalStress = 0.0d0
     else
-        effectiveNormalStress = nsdTractionVector(1)+fric(6,iFaultNodePair, iFault)
+        effectiveNormalStress = nsdTractionVector(1)+fric(6,iFaultNodePair,iFault)
     endif
-    trialShearTraction = fric(4,iFaultNodePair, iFault) - fricCoeff*effectiveNormalStress
+    trialShearTraction = fric(4,iFaultNodePair,iFault) - fricCoeff*effectiveNormalStress
 
     if(nsdTractionVector(4) > trialShearTraction) then
         ! adjust strike shear traction 
@@ -524,12 +336,12 @@ subroutine friction(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTraction
     endif
     
     do j=1,3 !x,y,z
-        xyzTractionVector(j) = (nsdTractionVector(1)*un(j,iFaultNodePair, iFault) &
-                                + nsdTractionVector(2)*us(j,iFaultNodePair, iFault) &
-                                + nsdTractionVector(3)*ud(j,iFaultNodePair, iFault)) * arn(iFaultNodePair, iFault)
-        xyzInitTractionVector(j) = (nsdInitTractionVector(1)*un(1,iFaultNodePair, iFault) &
-                                + nsdInitTractionVector(2)*us(1,iFaultNodePair, iFault) &
-                                + nsdInitTractionVector(3)*ud(1,iFaultNodePair, iFault)) * arn(iFaultNodePair, iFault)
+        xyzTractionVector(j) = (nsdTractionVector(1)*un(j,iFaultNodePair,iFault) &
+                                + nsdTractionVector(2)*us(j,iFaultNodePair,iFault) &
+                                + nsdTractionVector(3)*ud(j,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault)
+        xyzInitTractionVector(j) = (nsdInitTractionVector(1)*un(1,iFaultNodePair,iFault) &
+                                + nsdInitTractionVector(2)*us(1,iFaultNodePair,iFault) &
+                                + nsdInitTractionVector(3)*ud(1,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault)
     enddo
     
     do j=1,3 !x,y,z
@@ -538,3 +350,188 @@ subroutine friction(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTraction
     enddo
     
 end subroutine friction
+
+subroutine rsfSolve(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
+    use globalvar
+    implicit none
+    integer(kind = 4) :: iFault, iFaultNodePair, iFrictionLaw
+    integer(kind = 4) :: j, iv, ivmax
+    real(kind = dp) :: effectiveNormalStress, trialSliprate, v_trial, taoc_new, taoc_old, rsfeq, drsfeqdv, xmu, dxmudv, vtmp, massMaster, massSlave, T_coeff, mr, theta_pc_dot, theta_pc_tmp, statetmp
+    real(kind = dp) :: nsdTractionVector(4), trialTractVec(4)
+    real(kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4)
+    real(kind = dp) :: nsdAccVec(3), xyzAccVec(3), xyzR(3)
+    
+    
+    ! adjust normal stress 
+    if (iFrictionLaw==5) then
+        nsdTractionVector(1) = nsdTractionVector(1) + fric(51,iFaultNodePair,iFault)
+    else
+        nsdTractionVector(1) = nsdTractionVector(1) + fric(6,iFaultNodePair,iFault)
+    endif 
+
+    ! If non-planar fault geometry and elastic material, enforce normal stress caps.
+    if (rough_fault == 1 .and. C_elastic == 1) then
+        !tnrm = min(min_norm, tnrm) ! Maintain a minimum normal stress level.
+        max_norm      = -40.0d6
+        min_norm      = -10.0d6
+    
+        if (nsdTractionVector(1)>=min_norm) then 
+            nsdTractionVector(1) = min_norm
+        elseif (nsdTractionVector(1)<=max_norm) then
+            nsdTractionVector(1) = max_norm
+        endif
+    endif 
+
+    ! avoid positive effective normal stress.
+    if (nsdTractionVector(1) > 0.0d0) nsdTractionVector(1) = 0.0d0
+
+    !-----------------
+    ! Add the background slip rate on top. 
+    do j=1,3 !n,s,d
+        nsdSlipVector(j) = nsdSlipVector(j) + fric(25+j-1,iFaultNodePair,iFault)*time
+        nsdSliprateVector(j) = nsdSliprateVector(j) + fric(25+j-1,iFaultNodePair,iFault)
+    enddo
+    nsdSlipVector(4) = sqrt(nsdSlipVector(2)**2+nsdSlipVector(3)**2)
+    nsdSliprateVector(4) = sqrt(nsdSliprateVector(2)**2+nsdSliprateVector(3)**2)
+        
+    if(fnft(iFaultNodePair,iFault)>600.0d0) then    !fnft should be initialized by >10000
+        if(nsdSliprateVector(4) >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
+            fnft(iFaultNodePair,iFault) = time    !rupture time for the node
+        elseif (nsdSliprateVector(4)>=0.05d0 .and. mode==2) then
+            fnft(iFaultNodePair,iFault) = time
+        endif
+    endif
+    
+    ! Given tractions, state variables, find the sliprate for next time step. 
+    v_trial = nsdSliprateVector(4)
+    
+    ! retrieve the state variable for normal stress theta_pc_tmp from fric(23).
+    ! this accounts for normal stress change. 
+    theta_pc_tmp = fric(23,iFaultNodePair,iFault)
+    ! get updated trial state variable for normal stress [fric(23)] and its rate [fric(24)].
+    call rate_state_normal_stress(v_trial, fric(23,iFaultNodePair,iFault), theta_pc_dot, nsdTractionVector(1), fric(1,iFaultNodePair,iFault))    
+    fric(24,iFaultNodePair,iFault) = theta_pc_dot
+    ! retrieve the RSF state variable and assign it to a tempraroy statetmp. 
+    statetmp = fric(20,iFaultNodePair,iFault) 
+    
+    ! get updated trial RSF state variable [fric(20)],
+    !   and trial friction coefficient, xmu,
+    !   and trial derivative d(xmu)/dt, dxmudv,
+    !   for friclaw=3,4,5.
+    if(friclaw == 3) then
+        call rate_state_ageing_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv) !RSF
+    elseif (friclaw == 4 .or. friclaw==5) then
+        call rate_state_slip_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv) !RSF
+    endif            
+    ! compute trial traction.
+    ! for cases with large fluctuations of effective normal stress, 
+    !   use the state variable for effective normal stress, theta_pc_tmp, 
+    !   rather than tnrm, when friclaw==5/rough_fault==1.
+    ! [NOTE]: friclaw=5 doesn't support normal stress evolution yet. See TPV1053D.
+    if (friclaw==5) then 
+        taoc_old = fric(4,iFaultNodePair,iFault) - xmu * nsdTractionVector(1)
+    else
+        taoc_old = xmu * theta_pc_tmp
+    endif
+    massSlave  = fnms(nsmp(1,iFaultNodePair,iFault))
+    massMaster = fnms(nsmp(2,iFaultNodePair,iFault))
+    mr = massMaster*massSlave/(massMaster+massSlave) !reduced mass
+    T_coeff = arn(iFaultNodePair,iFault)*dt/mr
+   
+    ! get shear tractions, tstk1 and tdip1, and total shear traction, ttao1, updated.
+    do j=2,3 ! s,d/ tstk1, tdip1
+        trialTractVec(j) = nsdTractionVector(j) - taoc_old*0.5d0*(nsdSliprateVector(j)/nsdSliprateVector(4)) + fric(25+j-1,iFaultNodePair,iFault)/T_coeff
+    enddo
+    trialTractVec(4) = sqrt(trialTractVec(2)**2 + trialTractVec(3)**2) !ttao1
+    
+
+    ! Netwon solver for slip rate, v_trial, for the next time step.
+    ivmax    = 20  ! Maximum iterations.
+    do iv = 1,ivmax
+        ! in each iteration, reupdate the new state variable [fric(20)] given the new 
+        !   slip rate, v_trial.
+        fric(20,iFaultNodePair,iFault)  = statetmp
+        if(friclaw == 3) then
+            call rate_state_ageing_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv)
+        else
+            call rate_state_slip_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv)
+        endif 
+        
+        ! [NOTE]: the code doesn't support normal stress evolution under thermo pressurization.
+        if (friclaw < 5) then
+            fric(23,iFaultNodePair,iFault)  = theta_pc_tmp 
+            call rate_state_normal_stress(v_trial, fric(23,iFaultNodePair,iFault), theta_pc_dot, nsdTractionVector(1), fric(1,iFaultNodePair,iFault))    
+            taoc_new        = xmu*theta_pc_tmp
+            rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
+            drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * theta_pc_tmp)*0.5d0  
+        else
+            taoc_new        = fric(4,iFaultNodePair,iFault) - xmu * MIN(nsdTractionVector(1), 0.0d0)
+            rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
+            drsfeqdv        = 1.0d0 + T_coeff * (-dxmudv * MIN(nsdTractionVector(1),0.0d0))*0.5d0  
+        endif
+        
+        ! exiting criteria:
+        !   1. relative residual, rsfeq/drsfeqdv, is smaller than 1e-14*v_trial
+        !   2. residual, rsfeq, is smaller than 1e-6*v_trial
+        if(abs(rsfeq/drsfeqdv) < 1.d-14 * abs(v_trial) .and. abs(rsfeq) < 1.d-6 * abs(v_trial)) exit 
+        !if(abs(rsfeq) < 1.d-5 * abs(v_trial)) exit 
+            vtmp = v_trial - rsfeq / drsfeqdv
+        
+        ! additional constraints for solving trial slip rate, v_trial
+        !   if vtmp smaller than zero, reset it to half of v_trial in the last try. 
+        if(vtmp <= 0.0d0) then
+            v_trial = v_trial/2.0d0
+        else
+            v_trial = vtmp
+        endif  
+        
+    enddo !iv
+        
+    ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
+    ! Also reset taoc_new to 2 X ttao1.
+    ! Without this, TPV1053D blew up at the surface station (-4.2,0)
+    if(v_trial < fric(46,iFaultNodePair,iFault)) then
+        v_trial  = fric(46,iFaultNodePair,iFault)
+        taoc_new = trialTractVec(4)*2.0d0
+    endif
+    
+    do j=2,3 !s,d
+        nsdTractionVector(j) = taoc_old*0.5d0*(nsdSliprateVector(j)/nsdSliprateVector(4)) + taoc_new*0.5d0*(trialTractVec(j)/trialTractVec(4))
+    enddo
+        
+    ! store tnrm, tstk, tdip ... 
+    ! [effective normal stress, shear_strike, and shear_dip]
+    do j=1,3 !n,s,d
+        fric(78+j-1,iFaultNodePair,iFault) = nsdTractionVector(j)
+    enddo
+    ! store final slip rate and final total traction ...
+    fric(47,iFaultNodePair,iFault) = v_trial
+    fric(48,iFaultNodePair,iFault) = sqrt(nsdTractionVector(2)**2 + nsdTractionVector(3)**2) 
+    
+    frichis(1,iFaultNodePair,nt,iFault) = fric(47,iFaultNodePair,iFault)
+    frichis(2,iFaultNodePair,nt,iFault) = fric(48,iFaultNodePair,iFault)
+    
+    ! 3 components of relative acceleration bewteen m-s nodes in the fault plane coordinate sys. 
+    nsdAccVec(1) = -nsdSliprateVector(1)/dt - nsdSlipVector(1)/dt/dt
+    nsdAccVec(2) = (v_trial * (trialTractVec(2)/trialTractVec(4)) - nsdSliprateVector(2))/dt
+    nsdAccVec(3) = (v_trial * (trialTractVec(3)/trialTractVec(4)) - nsdSliprateVector(3))/dt
+    
+    ! 3 components of relative acceleration bewteen m-s nodes in the FEM xyz coordinate sys. 
+    do j=1,3 !x,y,z
+        xyzAccVec(j) = nsdAccVec(1)*un(j,iFaultNodePair,iFault) + nsdAccVec(2)*us(j,iFaultNodePair,iFault) + nsdAccVec(3)*ud(j,iFaultNodePair,iFault)
+        ! determine total forces acting on the node pair ...
+        xyzR(j) = brhs(id1(locid(nsmp(1,iFaultNodePair,iFault))+j)) + brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j))
+    enddo 
+    
+    do j=1,3 !x,y,z
+        ! calculate xyz components of nodal forces that can generate 
+        !  the above calculated accelerations for the m-s node pair. 
+        brhs(id1(locid(nsmp(1,iFaultNodePair,iFault))+j)) = (-xyzAccVec(j) + xyzR(j)/massMaster)*mr ! Acc.Slave.x/y/z
+        brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) = (xyzAccVec(j)  + xyzR(j)/massSlave)*mr ! Acc.Master.x/y/z
+        ! store normal velocities for master-slave node pair ...
+        ! v(k,nsmp(j,iFaultNodePair,iFault)) - k:xyz, j:slave1,master2
+        fric(31+j-1,iFaultNodePair,iFault) = v(j,nsmp(2,iFaultNodePair,iFault)) + (xyzAccVec(j)+xyzR(j)/massSlave)*dt !Velocity.Master.x/y/z
+        fric(34+j-1,iFaultNodePair,iFault) = v(j,nsmp(1,iFaultNodePair,iFault)) + (-xyzAccVec(j)+xyzR(j)/massMaster)*dt !Velocity.Slave.x/y/z
+    enddo
+    
+end subroutine rsfSolve
