@@ -1,0 +1,159 @@
+#! /usr/bin/env python3
+"""
+Script to plot on fault variables.
+"""
+
+import xarray as xr
+import matplotlib.pyplot as plt
+import numpy as np
+import os, glob, re, imageio
+from pdf2image import convert_from_path
+from user_defined_params import *
+
+#
+SMALL_SIZE = 6
+r = 10e6 # half range to show stresses in Pa.
+mn = init_norm # initial normal stress
+ms = -mn*fric_rsf_r0 # initial mean shear stress for plotting.
+md = 0 # initial mean shear dip stress
+# Read in file name from terminal.
+# fname = input("Enter the file name : ")
+
+
+def plot_fault(fname):
+  a = xr.open_dataset(fname)
+  #print (a)
+  shear_strike = a.shear_strike
+  shear_dip    = a.shear_dip
+  norm         = a.effective_normal
+  slip_rate    = a.slip_rate + 1e-30
+  state        = a.state_variable 
+  state2       = a.state_normal
+
+  fig1 = plt.figure(figsize=(18,6))
+  plt.rc('font', size=SMALL_SIZE)
+
+  ax11 = fig1.add_subplot(2,3,1)
+  shear_strike.plot(vmin=ms-r, vmax=ms+r, extend = 'both')
+  ax11.set_xlabel('')
+  #ax11.set_ylabel('')
+
+  ax12 = fig1.add_subplot(2,3,2)
+  shear_dip.plot(vmin=md-r, vmax=md+r, extend = 'both')
+  ax12.set_xlabel('')
+  ax12.set_ylabel('')
+
+  ax13 = fig1.add_subplot(2,3,3)
+  norm.plot(vmin=mn-r, vmax = mn+r, extend = 'both')
+  #ax21.set_ylabel('')
+
+  ax21 = fig1.add_subplot(2,3,4)
+  log10_slip_rate = np.log10(slip_rate)
+  #log10_slip_rate.rename(name_dict = {"slip_rate":"log10(slip_rate)"})
+  log10_slip_rate.plot(vmin=-20, vmax=2, extend = 'both')
+  #ax21.set_ylabel('')
+
+  ax22 = fig1.add_subplot(2,3,5)
+  state2.plot(vmin=-mn-r, vmax=-mn+r, extend = 'both' )
+  ax22.set_ylabel('')
+
+  ax23 = fig1.add_subplot(2,3,6)
+  state.plot()
+  ax23.set_ylabel('')
+
+  plt.savefig(fname + ".png", dpi = 600)
+  plt.close()
+
+  return (fig1,)
+
+def plot_roughness(fname):
+  a = xr.open_dataset(fname)
+  #print (a)
+
+  b1 = a.peak
+  b2 = a.pypx
+  b3 = a.pypz
+
+  fig1 = plt.figure()
+  plt.rc('font', size=SMALL_SIZE)
+
+  ax11 = fig1.add_subplot(2,2,1)
+  b1.plot()
+  ax11.set_xlabel('')
+  #ax11.set_ylabel('')
+
+  ax12 = fig1.add_subplot(2,2,2)
+  b2.plot()
+  ax12.set_xlabel('')
+  ax12.set_ylabel('')
+
+  ax21 = fig1.add_subplot(2,2,3)
+  b3.plot()
+  #ax21.set_ylabel('')
+
+  plt.savefig(fname + ".png", dpi = 600)
+  plt.close()
+
+  return (fig1,)
+
+def tryint(s):
+    try:
+        return int(s)
+    except:
+        return s
+
+def alphanum_key(s):
+    return [tryint(c) for c in re.split('([0-9]+)', s)]
+
+def sort_nicely(l):
+    l.sort(key=alphanum_key, reverse=False)
+    return l
+
+def generate_gif():
+  #images = []
+  #dirFiles = []
+  #for fname in os.listdir(os.getcwd()):
+  #  name, file_extension = os.path.splitext(fname)
+  #  if '.png' in file_extension:
+  #    dirFiles += fname
+  #print(dirFiles)
+  #for fname in sorted(dirFiles):
+  #  print(fname)
+  #  images.append(imageio.imread(fname))
+  #imageio.mimsave('on_fault_vars.gif',images)
+  filenames = glob.glob('.//*.png')
+  filenames = sort_nicely(filenames)
+  with imageio.get_writer('./on_fault_vars.gif', mode='I') as writer:
+      for filename in filenames:
+          image = imageio.v2.imread(filename)
+          #img = convert_from_path(filename)[0]
+          #image = np.array(img.getdata(), np.uint8).reshape(img.size[1], img.size[0], 3)
+          writer.append_data(image)
+
+def seek_numbers_filename(x):
+    return (x[6:10])
+
+#dirFiles = os.listdir(os.getcwd())
+def _main_func(description):
+    dirFiles = list()
+    for fname in os.listdir(os.getcwd()):
+        name, file_extension = os.path.splitext(fname)
+        if 'fault.' in name and '.nc' in file_extension:
+            dirFiles += fname
+            if os.path.exists(fname + '.png') == False: plot_fault(str(fname))
+        if 'roughness' in name and '.nc' in file_extension:
+            dirFiles += fname
+            plot_roughness(str(fname))
+    generate_gif()
+
+if __name__ == "__main__":
+    _main_func(__doc__)
+
+#print(*dirFiles)
+#sorted_file_list = sorted(dirFiles, key=seek_numbers_filename)
+#print(sorted_file_list)
+
+#fig = plt.figure()
+#anim = animation.FuncAnimation(fig, plot_fault, frames = 1, interval = 1, blit=False)
+
+
