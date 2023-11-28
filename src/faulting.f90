@@ -22,6 +22,7 @@ subroutine faulting
     real (kind = dp) :: dxmudv, rsfeq, drsfeqdv, vtmp, theta_pc_tmp !RSF
     real (kind = dp) :: accn,accs,accd, accx, accy, accz, Rx, Ry, Rz, mr, theta_pc, theta_pc_dot
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
+    real (kind = dp) :: nsdInitTractionVector(3)
     !===================================================================!
     do ift = 1, ntotft
 
@@ -35,7 +36,7 @@ subroutine faulting
                 endif
             endif 
             
-            call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, dtau)
+            call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
             slipn = nsdSlipVector(1)
             slips = nsdSlipVector(2)
             slipd = nsdSlipVector(3)
@@ -60,65 +61,75 @@ subroutine faulting
             mmast = fnms(imn)
             mtotl = mslav + mmast
             mtotl = mtotl * arn(i,ift)
-        
+            
+            call friction(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
+            
+            
             if (friclaw==1 .or. friclaw==2)then!Differ 1&2 and 3&4    
-                if(friclaw == 1) then
-                    call slip_weak(fric(77,i,ift),fric(1,i,ift),xmu)
-                elseif(friclaw == 2) then
-                    trupt =  time - fnft(i,ift)
-                    call time_weak(trupt,fric(1,i,ift),xmu)
+                if(fnft(i,ift)>600) then    !fnft should be initialized by >10000
+                    if(sliprate >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
+                        fnft(i,ift) = time    !rupture time for the node
+                    elseif (sliprate >=0.05d0 .and. mode==2) then
+                        fnft(i,ift) = time
+                    endif
                 endif
+                ! if(friclaw == 1) then
+                    ! call slip_weak(fric(77,i,ift),fric(1,i,ift),xmu)
+                ! elseif(friclaw == 2) then
+                    ! trupt =  time - fnft(i,ift)
+                    ! call time_weak(trupt,fric(1,i,ift),xmu)
+                ! endif
                 
-                ! Artificial nucleation 
-                if (TPV == 201 .or. TPV == 202) then 
-                    if (C_nuclea == 1 .and.ift == nucfault) then
-                        call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
-                                    x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
-                                    fric(2,i,ift))
-                    endif
-                endif 
+                ! ! Artificial nucleation 
+                ! if (TPV == 201 .or. TPV == 202) then 
+                    ! if (C_nuclea == 1 .and.ift == nucfault) then
+                        ! call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
+                                    ! x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
+                                    ! fric(2,i,ift))
+                    ! endif
+                ! endif 
 
-                if((tnrm+fric(6,i,ift))>0) then
-                    tnrm0 = 0.0d0
-                else
-                    tnrm0 = tnrm+fric(6,i,ift)
-                endif
-                taoc = fric(4,i,ift) - xmu *tnrm0
+                ! if((tnrm+fric(6,i,ift))>0) then
+                    ! tnrm0 = 0.0d0
+                ! else
+                    ! tnrm0 = tnrm+fric(6,i,ift)
+                ! endif
+                ! taoc = fric(4,i,ift) - xmu *tnrm0
 
-                if(ttao > taoc) then
-                    tstk = tstk * taoc / ttao
-                    tdip = tdip * taoc / ttao
-                    if(fnft(i,ift)>600) then    !fnft should be initialized by >10000
-                        if(sliprate >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
-                            fnft(i,ift) = time    !rupture time for the node
-                        elseif (sliprate >=0.05d0 .and. mode==2) then
-                            fnft(i,ift) = time
-                        endif
-                    endif
-                endif
+                ! if(ttao > taoc) then
+                    ! tstk = tstk * taoc / ttao
+                    ! tdip = tdip * taoc / ttao
+                    ! if(fnft(i,ift)>600) then    !fnft should be initialized by >10000
+                        ! if(sliprate >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
+                            ! fnft(i,ift) = time    !rupture time for the node
+                        ! elseif (sliprate >=0.05d0 .and. mode==2) then
+                            ! fnft(i,ift) = time
+                        ! endif
+                    ! endif
+                ! endif
 
-                taox = (tnrm*un(1,i,ift) + tstk*us(1,i,ift) + tdip*ud(1,i,ift))*arn(i,ift)
-                taoy = (tnrm*un(2,i,ift) + tstk*us(2,i,ift) + tdip*ud(2,i,ift))*arn(i,ift)
-                taoz = (tnrm*un(3,i,ift) + tstk*us(3,i,ift) + tdip*ud(3,i,ift))*arn(i,ift)
+                ! taox = (tnrm*un(1,i,ift) + tstk*us(1,i,ift) + tdip*ud(1,i,ift))*arn(i,ift)
+                ! taoy = (tnrm*un(2,i,ift) + tstk*us(2,i,ift) + tdip*ud(2,i,ift))*arn(i,ift)
+                ! taoz = (tnrm*un(3,i,ift) + tstk*us(3,i,ift) + tdip*ud(3,i,ift))*arn(i,ift)
 
-                if (C_elastic==0) then!Plastic    
-                    brhs(id1(locid(isn)+1)) = brhs(id1(locid(isn)+1)) + taox !brhs(id1(loci(1,imn)+1))
-                    brhs(id1(locid(isn)+2)) = brhs(id1(locid(isn)+2)) + taoy
-                    brhs(id1(locid(isn)+3)) = brhs(id1(locid(isn)+3)) + taoz
-                    brhs(id1(locid(imn)+1)) = brhs(id1(locid(imn)+1)) - taox
-                    brhs(id1(locid(imn)+2)) = brhs(id1(locid(imn)+2)) - taoy
-                    brhs(id1(locid(imn)+3)) = brhs(id1(locid(imn)+3)) - taoz
-                else!Elastic
-                    ftix = (fnfault*un(1,i,ift) + fsfault*us(1,i,ift) + fdfault*ud(1,i,ift))*arn(i,ift)
-                    ftiy = (fnfault*un(2,i,ift) + fsfault*us(2,i,ift) + fdfault*ud(2,i,ift))*arn(i,ift)
-                    ftiz = (fnfault*un(3,i,ift) + fsfault*us(3,i,ift) + fdfault*ud(3,i,ift))*arn(i,ift)  
-                    brhs(id1(locid(isn)+1)) = brhs(id1(locid(isn)+1)) + taox - ftix
-                    brhs(id1(locid(isn)+2)) = brhs(id1(locid(isn)+2)) + taoy - ftiy
-                    brhs(id1(locid(isn)+3)) = brhs(id1(locid(isn)+3)) + taoz - ftiz
-                    brhs(id1(locid(imn)+1)) = brhs(id1(locid(imn)+1)) - taox + ftix
-                    brhs(id1(locid(imn)+2)) = brhs(id1(locid(imn)+2)) - taoy + ftiy
-                    brhs(id1(locid(imn)+3)) = brhs(id1(locid(imn)+3)) - taoz + ftiz
-                endif    
+                ! if (C_elastic==0) then!Plastic    
+                    ! brhs(id1(locid(isn)+1)) = brhs(id1(locid(isn)+1)) + taox !brhs(id1(loci(1,imn)+1))
+                    ! brhs(id1(locid(isn)+2)) = brhs(id1(locid(isn)+2)) + taoy
+                    ! brhs(id1(locid(isn)+3)) = brhs(id1(locid(isn)+3)) + taoz
+                    ! brhs(id1(locid(imn)+1)) = brhs(id1(locid(imn)+1)) - taox
+                    ! brhs(id1(locid(imn)+2)) = brhs(id1(locid(imn)+2)) - taoy
+                    ! brhs(id1(locid(imn)+3)) = brhs(id1(locid(imn)+3)) - taoz
+                ! else!Elastic
+                    ! ftix = (fnfault*un(1,i,ift) + fsfault*us(1,i,ift) + fdfault*ud(1,i,ift))*arn(i,ift)
+                    ! ftiy = (fnfault*un(2,i,ift) + fsfault*us(2,i,ift) + fdfault*ud(2,i,ift))*arn(i,ift)
+                    ! ftiz = (fnfault*un(3,i,ift) + fsfault*us(3,i,ift) + fdfault*ud(3,i,ift))*arn(i,ift)  
+                    ! brhs(id1(locid(isn)+1)) = brhs(id1(locid(isn)+1)) + taox - ftix
+                    ! brhs(id1(locid(isn)+2)) = brhs(id1(locid(isn)+2)) + taoy - ftiy
+                    ! brhs(id1(locid(isn)+3)) = brhs(id1(locid(isn)+3)) + taoz - ftiz
+                    ! brhs(id1(locid(imn)+1)) = brhs(id1(locid(imn)+1)) - taox + ftix
+                    ! brhs(id1(locid(imn)+2)) = brhs(id1(locid(imn)+2)) - taoy + ftiy
+                    ! brhs(id1(locid(imn)+3)) = brhs(id1(locid(imn)+3)) - taoz + ftiz
+                ! endif    
             elseif (friclaw>=3)then
                 
                 ! modify normal stress to effective normal stress.
@@ -440,7 +451,7 @@ subroutine nucleation(dtau, xmu, xx, yy, zz, twt0, fs, fd)
     endif 
 end subroutine nucleation
 
-subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsdSliprateVector, nsdTractionVector, dtau)
+subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
 ! get slip, sliprate, and traction vectors on one pair of fault split-nodes
     use globalvar
     implicit none
@@ -449,6 +460,7 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     real(kind = dp) :: initNormal, initStrikeShear, initDipShear
     real(kind = dp) :: xyzNodalQuant(3,2,3), nsdNodalQuant(3,2,3)
     real(kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
+    real(kind = dp) :: nsdInitTractionVector(3)
     real(kind = dp) :: massSlave, massMaster, totalMass
     
     real(kind = dp) :: dtau
@@ -456,6 +468,10 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     initNormal      = fric(7, iFaultNodePair, iFault)
     initStrikeShear = fric(8, iFaultNodePair, iFault)+dtau
     initDipShear    = fric(49, iFaultNodePair, iFault)
+    
+    nsdInitTractionVector(1) = fric(7, iFaultNodePair, iFault) !normal
+    nsdInitTractionVector(2) = fric(8, iFaultNodePair, iFault)+dtau !strike
+    nsdInitTractionVector(3) = fric(49, iFaultNodePair, iFault) !dip
     
     iSlaveNodeID  = nsmp(1, iFaultNodePair, iFault)
     iMasterNodeID = nsmp(2, iFaultNodePair, iFault)
@@ -519,68 +535,63 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     ! shear traction magnitude
     nsdTractionVector(4) = sqrt(nsdTractionVector(1)**2+nsdTractionVector(2)**2)
     
-     !-------------------------------------------------------------------!    
-            ! fnfault = fric(7,i,ift) !initial forces on the fault node
-            ! fsfault = fric(8,i,ift) + dtau !norm, strike, dip components directly
-            ! fdfault = fric(49,i,ift)
-            ! isn = nsmp(1,i,ift)
-            ! imn = nsmp(2,i,ift)
-            ! do j=1,2  !1-slave, 2-master
-                ! do k=1,3  !1-x comp, 2-y comp, 3-z comp
-                ! !          fvd(k,j,1) = brhs(id(k,nsmp(j,i)))  !1-force
-                    ! fvd(k,j,1) = brhs(id1(locid(nsmp(j,i,ift))+k))  !1-force !DL 
-                    ! fvd(k,j,2) = v(k,nsmp(j,i,ift)) !2-vel
-                    ! fvd(k,j,3) = d(k,nsmp(j,i,ift)) !3-di,iftsp
-                    ! !fvd(k,j,3) = d(k,nsmp(j,i,ift)) + rdampk(1)*fvd(k,j,2) !3-di,iftsp
-                ! enddo
-            ! enddo
-            ! !...resolve x,y,z components onto normal, strike and dip components.
-            ! !   B.D. 1/26/07
-            ! do j=1,3    !1-force,2-vel,3-disp
-                ! do k=1,2  !1-slave,2-master
-                    ! fvd(4,k,j) = fvd(1,k,j)*un(1,i,ift) + fvd(2,k,j)*un(2,i,ift) + fvd(3,k,j)*un(3,i,ift)  !4-norm
-                    ! fvd(5,k,j) = fvd(1,k,j)*us(1,i,ift) + fvd(2,k,j)*us(2,i,ift) + fvd(3,k,j)*us(3,i,ift)  !5-strike
-                    ! fvd(6,k,j) = fvd(1,k,j)*ud(1,i,ift) + fvd(2,k,j)*ud(2,i,ift) + fvd(3,k,j)*ud(3,i,ift)  !6-dip
-                ! enddo
-            ! enddo
-            ! slipn = fvd(4,2,3) - fvd(4,1,3)
-            ! slips = fvd(5,2,3) - fvd(5,1,3)
-            ! slipd = fvd(6,2,3) - fvd(6,1,3)
-            ! slip = sqrt(slipn**2 + slips**2 + slipd**2) !slip mag
-            ! fric(71,i,ift) = slips  
-            ! fric(72,i,ift) = slipd
-            ! fric(73,i,ift) = slipn  
-            ! slipraten = fvd(4,2,2) - fvd(4,1,2)
-            ! sliprates = fvd(5,2,2) - fvd(5,1,2)
-            ! sliprated = fvd(6,2,2) - fvd(6,1,2)
-            ! fric(74,i,ift) = sliprates  
-            ! fric(75,i,ift) = sliprated
-            ! sliprate = sqrt(slipraten**2+sliprates**2+sliprated**2)
-            ! if (sliprate>fric(76,i,ift)) then 
-                ! fric(76,i,ift)=sliprate
-            ! endif
-            ! fric(77,i,ift) = fric(77,i,ift) + sliprate * dt
-        
-            ! mslav = fnms(isn)        
-            ! mmast = fnms(imn)
-            ! mtotl = mslav + mmast
-            ! mtotl = mtotl * arn(i,ift)
-            
-
-            ! if (C_elastic==0) then!Plastic     
-                ! tnrm = (mslav*mmast*((fvd(4,2,2)-fvd(4,1,2))+(fvd(4,2,3)-fvd(4,1,3))/dt)/dt &
-                    ! + mslav*fvd(4,2,1) - mmast*fvd(4,1,1)) / mtotl          
-                ! tstk = (mslav*mmast*(fvd(5,2,2)-fvd(5,1,2))/dt + mslav*fvd(5,2,1) &
-                    ! - mmast*fvd(5,1,1)) / mtotl
-                ! tdip = (mslav*mmast*(fvd(6,2,2)-fvd(6,1,2))/dt + mslav*fvd(6,2,1) &
-                    ! - mmast*fvd(6,1,1)) / mtotl
-            ! else!Elastic
-                ! tnrm = (mslav*mmast*((fvd(4,2,2)-fvd(4,1,2))+(fvd(4,2,3)-fvd(4,1,3))/dt)/dt &
-                    ! + mslav*fvd(4,2,1) - mmast*fvd(4,1,1)) / mtotl + fnfault         
-                ! tstk = (mslav*mmast*(fvd(5,2,2)-fvd(5,1,2))/dt + mslav*fvd(5,2,1) &
-                    ! - mmast*fvd(5,1,1)) / mtotl + fsfault
-                ! tdip = (mslav*mmast*(fvd(6,2,2)-fvd(6,1,2))/dt + mslav*fvd(6,2,1) &
-                    ! - mmast*fvd(6,1,1)) / mtotl + fdfault
-            ! endif        
-            ! ttao = sqrt(tstk*tstk + tdip*tdip)   
 end subroutine getNsdSlipSliprateTraction
+
+subroutine friction(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTractionVector, nsdInitTractionVector)
+                ! Tell it what friction law to use, and modify right-hand vector brhs accordingly.
+                
+    use globalvar
+    implicit none
+    
+    integer(kind = 4) :: iFault, iFaultNodePair, iFrictionLaw
+    integer(kind = 4) :: j
+    real(kind = dp) :: fricCoeff, trupt, dtau, effectiveNormalStress, trialShearTraction
+    real(kind = dp) :: nsdTractionVector(4), nsdInitTractionVector(3)
+    real(kind = dp) :: xyzTractionVector(3), xyzInitTractionVector(3)
+    
+    
+    if (iFrictionLaw == 1) then
+        call slip_weak(fric(77,iFaultNodePair, iFault),fric(1,iFaultNodePair, iFault),fricCoeff)
+    elseif(iFrictionLaw == 2) then
+        trupt =  time - fnft(iFaultNodePair, iFault)
+        call time_weak(trupt,fric(1,iFaultNodePair, iFault),fricCoeff)
+    endif
+    
+    ! Artificial nucleation 
+    if (TPV == 201 .or. TPV == 202) then 
+        if (C_nuclea == 1 .and.iFault == nucfault) then
+            call nucleation(dtau, fricCoeff, x(1,nsmp(1,iFaultNodePair, iFault)), x(2,nsmp(1,iFaultNodePair, iFault)), & 
+                        x(3,nsmp(1,iFaultNodePair, iFault)), fric(5,iFaultNodePair, iFault), fric(1,iFaultNodePair, iFault), &
+                        fric(2,iFaultNodePair, iFault))
+        endif
+    endif 
+
+    if((nsdTractionVector(1)+fric(6,iFaultNodePair, iFault))>0) then
+        effectiveNormalStress = 0.0d0
+    else
+        effectiveNormalStress = nsdTractionVector(1)+fric(6,iFaultNodePair, iFault)
+    endif
+    trialShearTraction = fric(4,iFaultNodePair, iFault) - fricCoeff*effectiveNormalStress
+
+    if(nsdTractionVector(4) > trialShearTraction) then
+        ! adjust strike shear traction 
+        nsdTractionVector(2) = nsdTractionVector(2)*trialShearTraction/nsdTractionVector(4)
+        ! adjust dip shear traction
+        nsdTractionVector(3) = nsdTractionVector(3)*trialShearTraction/nsdTractionVector(4)
+    endif
+    
+    do j=1,3 !x,y,z
+        xyzTractionVector(j) = (nsdTractionVector(1)*un(j,iFaultNodePair, iFault) &
+                                + nsdTractionVector(2)*us(j,iFaultNodePair, iFault) &
+                                + nsdTractionVector(3)*ud(j,iFaultNodePair, iFault)) * arn(iFaultNodePair, iFault)
+        xyzInitTractionVector(j) = (nsdInitTractionVector(1)*un(1,iFaultNodePair, iFault) &
+                                + nsdInitTractionVector(2)*us(1,iFaultNodePair, iFault) &
+                                + nsdInitTractionVector(3)*ud(1,iFaultNodePair, iFault)) * arn(iFaultNodePair, iFault)
+    enddo
+    
+    do j=1,3 !x,y,z
+        brhs(id1(locid(nsmp(1,iFaultNodePair,iFault))+j)) = brhs(id1(locid(nsmp(1,iFaultNodePair,iFault))+j)) + xyzTractionVector(j) - xyzInitTractionVector(j)*C_elastic
+        brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) = brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) - xyzTractionVector(j) + xyzInitTractionVector(j)*C_elastic
+    enddo
+    
+end subroutine friction
