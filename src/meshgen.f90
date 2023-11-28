@@ -49,59 +49,17 @@ subroutine meshgen
     call calcXyzMPIId(mex, mey, mez)
     
     call getSize1DCoorX(nxt, nxuni, edgex1)
-    allocate(xlinet(nxt))
+        allocate(xlinet(nxt))
     call get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
-    allocate(xline(nx))
+        allocate(xline(nx))
     call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     
     call getSize1DCoorY(nyt, nyuni, edgey1)
-    allocate(ylinet(nyt))
+        allocate(ylinet(nyt))
+    call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
+        allocate(yline(ny))
+    call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
     
-    !call get1DCoorY
-   
-    ylinet(edgey1+1) = -dy*(dis4uniF)
-    ystep = dy
-    do iy = edgey1, 1, -1
-        ystep = ystep * rat    
-        ylinet(iy) = ylinet(iy+1) - ystep
-    enddo
-    ymin = ylinet(1)
-    do iy = edgey1+2,edgey1+nyuni
-        ylinet(iy) = ylinet(iy-1) + dy
-    enddo
-    ystep = dy
-    do iy = edgey1+nyuni+1,nyt
-        ystep = ystep * rat
-        ylinet(iy) = ylinet(iy-1) + ystep
-    enddo
-    ymax = ylinet(nyt)
-    !***********MPI***************  
-    !...MPI partitioning based on iy and ylinet.
-    !...need overlap between adjacent procs.
-    !...more evenly distributed. 
-    !...due to overlap, total line num should be: nyt+npy-1
-    !Search Tag: 3DMPI
-    !2/5/2016/L.Bin
-    !Modified by D.Liu
-      j1 = nyt + npy - 1
-      rlp = j1/npy
-      rr = j1 - rlp*npy
-      if(mey<(npy-rr)) then
-        ny = rlp
-      else
-        ny = rlp + 1    !evenly distributed to last rr
-      endif
-      allocate(yline(ny))
-      if(mey<=npy-rr) then
-        do iy=1,ny
-          yline(iy) = ylinet(rlp*mey-mey+iy)
-        enddo
-      else
-        do iy=1,ny
-          k1 = mey - (npy - rr)
-          yline(iy) = ylinet(rlp*mey-mey+k1+iy)
-        enddo
-      endif
     !
     !...determine num of nodes along z
     zstep = dz
@@ -1078,3 +1036,57 @@ subroutine getSize1DCoorY(nyt, nyuni, edgey1)
     nyt = nyuni + edgey1 + iy + nPML
     
 end subroutine getSize1DCoorY
+
+subroutine get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nyuni, nyt, edgey1, ny, j1, rlp, rr, mey, iy
+    real (kind = dp) :: ylinet(nyt), ystep
+
+    ylinet(edgey1+1) = -dy*(dis4uniF)
+    ystep = dy
+    do iy = edgey1, 1, -1
+        ystep = ystep * rat    
+        ylinet(iy) = ylinet(iy+1) - ystep
+    enddo
+    ymin = ylinet(1)
+    do iy = edgey1+2,edgey1+nyuni
+        ylinet(iy) = ylinet(iy-1) + dy
+    enddo
+    ystep = dy
+    do iy = edgey1+nyuni+1,nyt
+        ystep = ystep * rat
+        ylinet(iy) = ylinet(iy-1) + ystep
+    enddo
+    ymax = ylinet(nyt)
+
+    j1 = nyt + npy - 1
+    rlp = j1/npy
+    rr = j1 - rlp*npy
+    if(mey<(npy-rr)) then
+        ny = rlp
+    else
+        ny = rlp + 1    
+    endif
+end subroutine get1DCoorY
+
+subroutine get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: mey, j1, rlp, rr, nyt, ny, k1, iy
+    real (kind = dp) :: yline(ny), ylinet(nyt)
+    
+    j1  = nyt + npy - 1
+    rlp = j1/npy
+    rr  = j1 - rlp*npy
+    if(mey<=npy-rr) then
+        do iy=1,ny
+            yline(iy) = ylinet(rlp*mey-mey+iy)
+        enddo
+    else
+        do iy=1,ny
+            k1 = mey - (npy - rr)
+            yline(iy) = ylinet(rlp*mey-mey+k1+iy)
+        enddo
+    endif
+end subroutine get1DCoorYLocal
