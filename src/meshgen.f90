@@ -54,28 +54,11 @@ subroutine meshgen
     allocate(xline(nx))
     call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     
-   
-    nyuni = dis4uniF + dis4uniB + 1
-    ystep = dy
-    !ycoor = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
-    ycoor = -dy*(dis4uniF)
-    do iy = 1, np
-        ystep = ystep * rat
-        ycoor = ycoor - ystep
-        if(ycoor <= ymin) exit
-    enddo
-    edgey1 = iy + nPML
-    ystep = dy
-    ycoor = dy*(dis4uniB)
-    do iy = 1, np
-        ystep = ystep * rat
-        ycoor = ycoor + ystep
-        if(ycoor >= ymax) exit
-    enddo
-    nyt = nyuni + edgey1 + iy + nPML!3DMPI
-    !...pre-determine y-coor
+    call getSize1DCoorY(nyt, nyuni, edgey1)
     allocate(ylinet(nyt))
-    !...predetermine y-coor
+    
+    !call get1DCoorY
+   
     ylinet(edgey1+1) = -dy*(dis4uniF)
     ystep = dy
     do iy = edgey1, 1, -1
@@ -991,7 +974,7 @@ end subroutine calcXyzMPIId
 subroutine getSize1DCoorX(nxt, nxuni, edgex1)
     use globalvar
     implicit none
-    integer (kind = 4) :: nxuni, ix, edgex1, nxt, j1, rlp, rr, k1, nx
+    integer (kind = 4) :: nxuni, ix, edgex1, nxt
     real (kind = dp) :: xstep, xcoor
     
     
@@ -1069,3 +1052,29 @@ subroutine get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
         enddo
     endif    
 end subroutine get1DCoorXLocal
+
+subroutine getSize1DCoorY(nyt, nyuni, edgey1)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nyuni, iy, edgey1, nyt
+    real (kind = dp) :: ystep, ycoor
+    nyuni = dis4uniF + dis4uniB + 1
+    ystep = dy
+    !ycoor = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
+    ycoor = -dy*(dis4uniF)
+    do iy = 1, np
+        ystep = ystep * rat
+        ycoor = ycoor - ystep
+        if(ycoor <= ymin) exit
+    enddo
+    edgey1 = iy + nPML
+    ystep = dy
+    ycoor = dy*(dis4uniB)
+    do iy = 1, np
+        ystep = ystep * rat
+        ycoor = ycoor + ystep
+        if(ycoor >= ymax) exit
+    enddo
+    nyt = nyuni + edgey1 + iy + nPML
+    
+end subroutine getSize1DCoorY
