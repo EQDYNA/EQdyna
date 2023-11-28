@@ -25,8 +25,7 @@ subroutine faulting
     real (kind = dp) :: nsdInitTractionVector(3)
     !===================================================================!
     do ift = 1, ntotft
-
-        do i=1,nftnd(ift)    !just fault nodes
+        do i = 1, nftnd(ift)    !just fault nodes
         !-------------------------------------------------------------------!
             if (TPV == 104 .or. TPV == 105) then
                 if (C_nuclea == 1 .and.ift == nucfault) then
@@ -37,31 +36,7 @@ subroutine faulting
             endif 
             
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
-            slipn = nsdSlipVector(1)
-            slips = nsdSlipVector(2)
-            slipd = nsdSlipVector(3)
-            slip = nsdSlipVector(4)
-            
-            slipraten = nsdSliprateVector(1)
-            sliprates = nsdSliprateVector(2)
-            sliprated = nsdSliprateVector(3)
-            sliprate = nsdSliprateVector(4)
-            
-            tnrm = nsdTractionVector(1)
-            tstk = nsdTractionVector(2)
-            tdip = nsdTractionVector(3)
-            ttao = nsdTractionVector(4)
-          
-            fnfault = fric(7,i,ift) !initial forces on the fault node
-            fsfault = fric(8,i,ift) + dtau !norm, strike, dip components directly
-            fdfault = fric(49,i,ift)
-            isn = nsmp(1,i,ift)
-            imn = nsmp(2,i,ift)
-            mslav = fnms(isn)        
-            mmast = fnms(imn)
-            mtotl = mslav + mmast
-            mtotl = mtotl * arn(i,ift)
-            
+
             if (friclaw==1 .or. friclaw==2)then!Differ 1&2 and 3&4    
                 call friction(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
                 if(fnft(i,ift)>600) then    !fnft should be initialized by >10000
@@ -79,15 +54,15 @@ subroutine faulting
                 do j=1,n4onf
                     if(anonfs(1,j)==i.and.anonfs(3,j)==ift) then !only selected stations. B.D. 10/25/09    
                         fltsta(1,locplt-1,j)  = time
-                        fltsta(2,locplt-1,j)  = sliprates
-                        fltsta(3,locplt-1,j)  = sliprated
+                        fltsta(2,locplt-1,j)  = nsdSliprateVector(2)
+                        fltsta(3,locplt-1,j)  = nsdSliprateVector(3)
                         fltsta(4,locplt-1,j)  = fric(20,i,ift)
-                        fltsta(5,locplt-1,j)  = slips
-                        fltsta(6,locplt-1,j)  = slipd
-                        fltsta(7,locplt-1,j)  = slipn
-                        fltsta(8,locplt-1,j)  = tstk
-                        fltsta(9,locplt-1,j)  = tdip
-                        fltsta(10,locplt-1,j) = tnrm
+                        fltsta(5,locplt-1,j)  = nsdSlipVector(2)
+                        fltsta(6,locplt-1,j)  = nsdSlipVector(3)
+                        fltsta(7,locplt-1,j)  = nsdSlipVector(1)
+                        fltsta(8,locplt-1,j)  = nsdTractionVector(2) !tstk
+                        fltsta(9,locplt-1,j)  = nsdTractionVector(3) !tdip
+                        fltsta(10,locplt-1,j) = nsdTractionVector(1) !tnrm
                         fltsta(11,locplt-1,j) = fric(51,i,ift) + fric(42,i,ift) ! + fric_tp_pini
                         fltsta(12,locplt-1,j) = fric(52,i,ift) 
                     endif
