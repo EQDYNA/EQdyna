@@ -91,11 +91,7 @@ subroutine output_offfault_st
 			write(bodytmp,'(i4.3)') int(x4nds(2,an4nds(1,i))/100.d0) 
 			write(sttmp,'(i4.3)') int(x4nds(1,an4nds(1,i))/100.d0) 
 			write(dptmp,'(i4.3)') int(abs(x4nds(3,an4nds(1,i)))/100.d0) 
-			
-			write(*,*) '=       xcoor',bodytmp,sttmp,dptmp,'                                ='
-			write(*,*) '=                                                                   ='
-			write(*,*) '====================================================================='		
-			
+
 			open(51,file='body'//trim(adjustl(bodytmp))//'st'//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
 
 			bodytmp = '      '
