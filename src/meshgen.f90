@@ -35,15 +35,7 @@ subroutine meshgen
     character (len=30)  ::meshfile
     character (len=100) ::fname
     real (kind = dp) :: ycoort, pfx = 0.0d0, pfz = 0.0d0
-    !-------------------------------------------------------------------!
-    !------------Early Oct.2015/ D.Liu----------------------------------!
-    !------------Input of initial stress for TSN------------------------!
-    ! open(3001,file='0InputFEM.txt',form='formatted',status='old')
-    ! do i=1,91001
-    ! read(3001,*) (initialinput(j,i),j=1,3)
-    ! enddo
-    ! close(3001)
-    !-------------------------------------------------------------------!
+    
     allocate(n4yn(n4nds))
     write(mm,'(i6)') me
     mm = trim(adjustl(mm))
@@ -53,13 +45,8 @@ subroutine meshgen
     dz=dx
     tol=dx/100.0d0
 
-    !Prepare for 3D MPI partitioning
-    !Search Tag: 3DMPI
-    !2/5/2016/L.Bin
-    !Modified by D.Liu
-    mex=int(me/(npy*npz))
-    mey=int((me-mex*npy*npz)/npz)
-    mez=int(me-mex*npy*npz-mey*npz)
+    call calcXyzMPIId(mex, mey, mez)
+
     !...determine num of nodes along x
     nxuni = (fltxyz(2,1,1) - fltxyz(1,1,1)) / dx + 1
     xstep = dx
@@ -530,71 +517,8 @@ subroutine meshgen
                             fltrc(1,ifs(ift),ifd(ift),ift) = msnode    !master node
                             fltrc(2,ifs(ift),ifd(ift),ift) = nftnd0(ift) !fault node num in sequence
 
-                            ! fric(1,nftnd0(ift),ift) = fric_sw_fs
-                            ! fric(2,nftnd0(ift),ift) = fric_sw_fd        
-                            ! fric(3,nftnd0(ift),ift) = fric_sw_D0 !D0
-                            ! fric(4,nftnd0(ift),ift) = 0.0          !cohesion
-                            ! fric(5,nftnd0(ift),ift) = 0.03      !Viscoplastic relaxation time
-                            
-                            !if (C_elastic == 0) then 
-                            !    fric(6,nftnd0(ift),ift) = 0.0d0!rhow*grav*abs(zcoor)*gama        !pore pressure
-                            !    !if (TPV==2802) fric(6,nftnd0(ift),ift) = rhow*grav*min(abs(zcoor),5.0d3)
-                            !elseif (C_elastic == 1) then 
-                            !    fric(6,nftnd0(ift),ift) = 0.0d0
-                            !endif 
-                            
-                            !if (C_elastic==1) then
-                                ! fric(7,nftnd0(ift),ift) = -120.0d6  
-                                ! fric(8,nftnd0(ift),ift) = 40.0d6 
-                                ! fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
-                                ! if (TPV==104) then 
-                                    ! fric(7,nftnd0(ift),ift) = -120.0d6  
-                                    ! fric(8,nftnd0(ift),ift) = 40.0d6 
-                                    ! fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
-                                ! endif
-                                !if (TPV==105) then 
-                                !    fric(7,nftnd0(ift),ift) = -max(min(grav*1670.0d0*abs(zcoor),45.0d6),grav*1670.0d0*dx/2.0d0) 
-                                !    fric(8,nftnd0(ift),ift) = -fric(7,nftnd0(ift),ift)*0.41d0
-                                !    fric(50,nftnd0(ift),ift) = fric(8,nftnd0(ift),ift)
-                                !endif
-                            !endif
-
                             if (friclaw >= 3)then 
-                                !if (TPV==105) then
-                                !    call fb1(xcoor,fric_ww,fric_w, tmp1)
-                                !    call fb2(-zcoor,fric_ww,fric_w, tmp2)
-                                !endif
-                                ! if (TPV == 104) then 
-                                    ! if (abs(xcoor)<=15e3) then 
-                                        ! tmp1=1.0
-                                    ! elseif ((abs(xcoor)<18e3).and.(abs(xcoor)>15e3)) then 
-                                        ! tmp1=0.5*(1+dtanh(3e3/(abs(xcoor)-18e3)+3e3/(abs(xcoor)-15e3)))
-                                    ! else
-                                        ! tmp1=0.0
-                                    ! endif
-                                    ! if (abs(zcoor--7.5e3)<=7.5e3) then 
-                                        ! tmp2=1.0
-                                    ! elseif ((abs(zcoor--7.5e3)<10.5e3).and.(abs(zcoor--7.5e3)>7.5e3)) then 
-                                        ! tmp2=0.5*(1+dtanh(3e3/(abs(zcoor--7.5e3)-10.5e3)+3e3/(abs(zcoor--7.5e3)-7.5e3)))
-                                    ! else
-                                        ! tmp2=0.0
-                                    ! endif                
-                                ! endif
-                                if (TPV == 2800 .or. TPV == 2801 .or. TPV == 2802) then 
-                                    ! if (abs(xcoor)<=15.0d3) then 
-                                        ! tmp1=1.0d0
-                                    ! elseif ((abs(xcoor)<18.0d3).and.(abs(xcoor)>15.0d3)) then 
-                                        ! tmp1=0.5d0*(1.0d0+dtanh(3.0d3/(abs(xcoor)-18.0d3)+3.0d3/(abs(xcoor)-15.0d3)))
-                                    ! else
-                                        ! tmp1=0.0d0
-                                    ! endif
-                                    ! if (abs(zcoor--7.5d3)<=7.5d3) then 
-                                        ! tmp2=1.0d0
-                                    ! elseif ((abs(zcoor--7.5d3)<10.5d3).and.(abs(zcoor--7.5d3)>7.5d3)) then 
-                                        ! tmp2=0.5d0*(1+dtanh(3.0d3/(abs(zcoor--7.5d3)-10.5d3)+3.0d3/(abs(zcoor--7.5d3)-7.5d3)))
-                                    ! else
-                                        ! tmp2=0.0d0
-                                    ! endif                                
+                                if (TPV == 2800 .or. TPV == 2801 .or. TPV == 2802) then                               
                                     if (abs(xcoor)<=20.0d3) then 
                                         tmp1 = 1.0d0
                                     elseif ((abs(xcoor)>20.0d3).and.(abs(xcoor)<22.0d3)) then 
@@ -616,48 +540,6 @@ subroutine meshgen
                                         tmp3 = 2.0d0*fric_rsf_deltaa0
                                     endif 
                                 endif                                
-                                ! fric(9,nftnd0(ift),ift) = fric_rsf_a + tmp3*(1.0d0-tmp1*tmp2)
-                                ! fric(10,nftnd0(ift),ift) = fric_rsf_b!b 
-                                ! fric(11,nftnd0(ift),ift) = fric_rsf_Dc!RSF critical distance.
-                                ! fric(12,nftnd0(ift),ift) = fric_rsf_v0!RSF:V0
-                                ! fric(13,nftnd0(ift),ift) = fric_rsf_r0!RSF:miu0
-                                ! fric(14,nftnd0(ift),ift) = fric_rsf_fw !RSF: fw for strong rate weakenging
-                                ! !call fb1(xcoor,fric_ww,fric_w, tmp1)
-                                ! !call fb2(-zcoor,fric_ww,fric_w, tmp2)
-                                ! fric(15,nftnd0(ift),ift) = fric_rsf_vw +fric_rsf_deltavw0*(1.0d0-tmp1*tmp2) !RSF: Vw for strong rate weakening
-                                ! call fb1(xcoor,fric_ww,fric_w, tmp1)
-                                ! call fb3(-zcoor,fric_ww,fric_w, tmp2)
-                                ! fric(20,nftnd0(ift),ift) = fric_tp_a_hy + fric_tp_deltaa_hy0*(1.0d0-tmp1*tmp2)
-                                ! fric(16,nftnd0(ift),ift)=0.0d0 !RSF: initial normal slip rate 
-                                ! fric(17,nftnd0(ift),ift)=fric_rsf_vinix!RSF:s 
-                                ! fric(18,nftnd0(ift),ift)=fric_rsf_viniz!RSF:d
-                                ! fric_ini_sliprate = sqrt(fric_rsf_vinix**2 + fric_rsf_viniz**2)
-                                ! fric(19,nftnd0(ift),ift)=fric_ini_sliprate!RSF:mag    
-                                ! fric(49,nftnd0(ift),ift)=fric_ini_sliprate!RSF:mag    
-                                ! if(friclaw == 3) then 
-                                    ! !Theta=d0/v0*dexp(a*dlog(2*dsinh()))
-                                    ! fric(21,nftnd0(ift),ift) = fric(11,nftnd0(ift),ift)/fric(12,nftnd0(ift),ift)*dexp((fric(9,nftnd0(ift),ift)*dlog(2.0d0*dsinh &
-                                                                ! (sqrt(fric(8,nftnd0(ift),ift)**2+0.0d0**2)/abs(fric(7,nftnd0(ift),ift))/fric(9,nftnd0(ift),ift))) &
-                                                                ! -fric(13,nftnd0(ift),ift)- fric(9,nftnd0(ift),ift)*dlog(sqrt((fric(16,nftnd0(ift),ift))**2+(fric(17,nftnd0(ift),ift))**2+(fric(18,nftnd0(ift),ift))**2)/fric(12,nftnd0(ift),ift)))/fric(10,nftnd0(ift),ift))
-                                ! elseif(friclaw == 4 .or. friclaw == 5) then
-                                    ! !Theta0=a*log(2V0/Vini*sinh(TAOini/a/SigmaNini))
-                                    ! fric(21,nftnd0(ift),ift)=fric(9,nftnd0(ift),ift)*dlog(2.0d0*fric(12,nftnd0(ift),ift)/sqrt((fric(16,nftnd0(ift),ift))**2+(fric(17,nftnd0(ift),ift))**2+(fric(18,nftnd0(ift),ift))**2) &
-                                                            ! *dsinh(sqrt(fric(8,nftnd0(ift),ift)**2+0.0d0**2)/abs(fric(7,nftnd0(ift),ift))/fric(9,nftnd0(ift),ift)))
-                                ! endif                                
-                                ! if (xcoor==xsource.and.zcoor==zsource) then
-                                    ! write(*,*) 'fric,9,a',fric(9,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,10,b',fric(10,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,11,Dc',fric(11,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,12,v0',fric(12,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,13,r0',fric(13,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,14,fw',fric(14,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,15,rsf_vw',fric(15,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,20,a_hy',fric(20,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,17,inisliprate',fric(17,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,7,norm',fric(7,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,8,tstk',fric(8,nftnd0(ift),ift)
-                                    ! write(*,*) 'fric,50,tstk',fric(50,nftnd0(ift),ift)
-                                ! endif
                             endif
     !-----------------------------END ZONE IV---------------------------!                        
                             !special values below.                        
@@ -783,38 +665,10 @@ subroutine meshgen
         plane1 = plane2
     enddo!ix
     maxs=ntags
-    !-------------------------------------------------------------------!
-    !-----------------Checking between mesh4 and meshgen----------------!
-    !------------Updated by Oct.5.2015/ D. Liu--------------------------!
-    if (maxs>=(5*maxm)) then
-        write(*,*) '5*maxm',maxm,'is not enough for maxs',maxs
-        stop 2002
-    endif
-    if(nnode/=nx*ny*nz.or.msnode/=numnp.or.nelement/=numel.or.neq0/=neq) then
-        write(*,*) 'Inconsistency in node/element/equation/between meshgen and mesh4num: stop!',me
-        write(*,*) 'nnode&numnp=',nnode,numnp
-        write(*,*) 'nelement,numel=',nelement,numel
-        write(*,*) 'neq0,neq=',neq0,neq
-        write(*,*) 'nnode,nx,ny,nz',nnode,nx,ny,nz
-        write(*,*) 'msnode,numnp',msnode,numnp
-        stop 2003
-    endif
-    if(ntag/=maxm) then
-        write(*,*) 'Inconsistency in ntag and maxm: stop!',me
-        write(*,*) ntag,maxm
-        stop 2004
-    endif
-    do i=1,ntotft
-        if(nftnd0(i)/=nftnd(i)) then
-            write(*,*) 'Inconsistency in fault between meshgen and mesh4num: stop!',me,i
-            stop 2005
-        endif
-    enddo
-    !-------------------------------------------------------------------!
-    !...calculate area associated with each fault node pair and distance from source. 
-    !B.D. 4/19/09
-    !but only needed for nftnd>0. B.D. 10/16/09
-    !for multiple faults. B.D. 1/7/12
+    
+    call meshGenError(nx, ny, nz, nnode, msnode, nelement, neq0, ntag, nftnd0)
+    
+    ! compute on-fault area associated with each fault node pair and distance from source
     do ift=1,ntotft
         if(nftnd0(ift)>0) then
         !...distance from the source point
@@ -867,214 +721,9 @@ subroutine meshgen
         endif!end if nftnd0=0/ not
         !
         time1 = MPI_WTIME()
-        !3DMPI: Prepare for MPI partitioning
-        fltMPI=.false.
-
-        if(fltnum(1) /= 0) allocate(fltl(fltnum(1)))
-        if(fltnum(2) /= 0) allocate(fltr(fltnum(2)))
-        if(fltnum(3) /= 0) allocate(fltf(fltnum(3)))
-        if(fltnum(4) /= 0) allocate(fltb(fltnum(4)))
-        if(fltnum(5) /= 0) allocate(fltd(fltnum(5)))
-        if(fltnum(6) /= 0) allocate(fltu(fltnum(6)))
-        fltnum = 0
-        do i = 1, nftnd0(ift)
-            if(mod(fltgm(i),10)==1 ) then 
-                fltnum(1) = fltnum(1) + 1
-                fltl(fltnum(1)) = i
-            endif
-            if(mod(fltgm(i),10)==2 ) then 
-                fltnum(2) = fltnum(2) + 1
-                fltr(fltnum(2)) = i
-            endif
-            if(mod(fltgm(i),100)-mod(fltgm(i),10)==10 ) then
-                fltnum(3) = fltnum(3) + 1
-                fltf(fltnum(3)) = i
-            endif
-            if(mod(fltgm(i),100)-mod(fltgm(i),10)==20 ) then
-                fltnum(4) = fltnum(4) + 1
-                fltb(fltnum(4)) = i
-            endif
-            if(fltgm(i)-mod(fltgm(i),100)==100 ) then
-                fltnum(5) = fltnum(5) + 1
-                fltd(fltnum(5)) = i
-            endif
-            if(fltgm(i)-mod(fltgm(i),100)==200 ) then
-                fltnum(6) = fltnum(6) + 1
-                fltu(fltnum(6)) = i
-            endif
-        enddo
-        if (npx > 1) then
-            bndl=1  !left boundary
-            bndr=nx ! right boundary
-            if (mex == master) then
-                bndl=0
-            elseif (mex == npx-1) then
-                bndr=0
-            endif
-     
-            if (bndl/=0) then
-                call mpi_sendrecv(fltnum(1), 1, MPI_INTEGER, me-npy*npz, 1000+me, &
-                    itmp1, 1, MPI_INTEGER, me-npy*npz, 1000+me-npy*npz, &
-                    MPI_COMM_WORLD, istatus, ierr)
-                !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-                if(fltnum(1)>0 .and. itmp1>0 ) then  
-                    if(fltnum(1) /= itmp1) stop 'error in fltnum(1)'
-                    fltMPI(1)=.true.
-                    allocate(btmp(fltnum(1)),btmp1(fltnum(1)))
-                    btmp = 0.
-                    btmp1 = 0.
-                    do i = 1, fltnum(1)
-                        btmp(i)=arn(fltl(i),ift)
-                    enddo
-                    call mpi_sendrecv(btmp, fltnum(1), MPI_DOUBLE_PRECISION, me-npy*npz, 1000+me, &
-                        btmp1, fltnum(1), MPI_DOUBLE_PRECISION, me-npy*npz, 1000+me-npy*npz, &
-                        MPI_COMM_WORLD, istatus, ierr)
-                    do i = 1, fltnum(1)
-                        arn(fltl(i),ift) = arn(fltl(i),ift) + btmp1(i)
-                    enddo
-                    deallocate(btmp,btmp1)       
-                endif
-            endif !if bhdl/=0
-
-            if (bndr/=0) then
-                call mpi_sendrecv(fltnum(2), 1, MPI_INTEGER, me+npy*npz, 1000+me, &
-                    itmp1, 1, MPI_INTEGER, me+npy*npz, 1000+me+npy*npz, &
-                    MPI_COMM_WORLD, istatus, ierr)
-                !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-                if(fltnum(2)>0 .and. itmp1>0 ) then  
-                    if(fltnum(2) /= itmp1) stop 'error in fltnum(2)'
-                    fltMPI(2)=.true.
-                    allocate(btmp(fltnum(2)),btmp1(fltnum(2)))
-                    btmp  = 0.
-                    btmp1 = 0.
-                    do i = 1, fltnum(2)
-                        btmp(i)=arn(fltr(i),ift)
-                    enddo
-                    call mpi_sendrecv(btmp, fltnum(2), MPI_DOUBLE_PRECISION, me+npy*npz, 1000+me, &
-                        btmp1, fltnum(2), MPI_DOUBLE_PRECISION, me+npy*npz, 1000+me+npy*npz, &
-                        MPI_COMM_WORLD, istatus, ierr)
-                    do i = 1, fltnum(2)
-                        arn(fltr(i),ift) = arn(fltr(i),ift) + btmp1(i)
-                    enddo
-                    deallocate(btmp,btmp1)       
-                endif
-            endif !bndr/=0
-        endif !npx>1
-    !*****************************************************************************************
-        if (npy > 1) then   !MPI:no fault message passing along y due to the x-z vertical fault.
-            bndf=1  !front boundary
-            bndb=ny ! back boundary
-            if (mey == master) then
-                bndf=0
-            elseif (mey == npy-1) then
-                bndb=0
-            endif
-
-            if (bndf/=0) then
-                call mpi_sendrecv(fltnum(3), 1, MPI_INTEGER, me-npz, 2000+me, &
-                    itmp1, 1, MPI_INTEGER, me-npz, 2000+me-npz, &
-                    MPI_COMM_WORLD, istatus, ierr)
-                !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-                if(fltnum(3)>0 .and. itmp1>0) then
-                    if(fltnum(3) /= itmp1) stop 'error in fltnum(3)'
-                    fltMPI(3)=.true.
-                    allocate(btmp(fltnum(3)),btmp1(fltnum(3)))
-                    btmp = 0.
-                    btmp1 = 0.
-                    do i = 1, fltnum(3)
-                        btmp(i)=arn(fltf(i),ift)
-                    enddo
-                    call mpi_sendrecv(btmp, fltnum(3), MPI_DOUBLE_PRECISION, me-npz, 2000+me, &
-                        btmp1, fltnum(3), MPI_DOUBLE_PRECISION, me-npz, 2000+me-npz, &
-                        MPI_COMM_WORLD, istatus, ierr)
-                    do i = 1, fltnum(3)
-                        arn(fltf(i),ift) = arn(fltf(i),ift) + btmp1(i)
-                    enddo
-                    deallocate(btmp,btmp1)       
-                endif
-            endif !bhdf/=0
-
-            if (bndb/=0) then
-                call mpi_sendrecv(fltnum(4), 1, MPI_INTEGER, me+npz, 2000+me, &
-                    itmp1, 1, MPI_INTEGER, me+npz, 2000+me+npz, &
-                    MPI_COMM_WORLD, istatus, ierr)
-                !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-                if(fltnum(4)>0 .and. itmp1>0) then  
-                    if(fltnum(4) /= itmp1) stop 'error in fltnum(4)'
-                    fltMPI(4)=.true.
-                    allocate(btmp(fltnum(4)),btmp1(fltnum(4)))
-                    btmp  = 0.
-                    btmp1 = 0.
-                    do i = 1, fltnum(4)
-                        btmp(i)=arn(fltb(i),ift)
-                    enddo
-                    call mpi_sendrecv(btmp, fltnum(4), MPI_DOUBLE_PRECISION, me+npz, 2000+me, &
-                        btmp1, fltnum(4), MPI_DOUBLE_PRECISION, me+npz, 2000+me+npz, &
-                        MPI_COMM_WORLD, istatus, ierr)
-                    do i = 1, fltnum(4)
-                        arn(fltb(i),ift) = arn(fltb(i),ift) + btmp1(i)
-                    enddo
-                    deallocate(btmp,btmp1)       
-                endif
-            endif !bndb/=0
-         endif !npy>1
-    !*****************************************************************************************
-        if (npz > 1) then
-            bndd=1  !lower(down) boundary
-            bndu=nz ! upper boundary
-            if (mez == master) then
-                bndd=0
-            elseif (mez == npz-1) then
-                bndu=0
-            endif
-            if (bndd/=0) then
-                call mpi_sendrecv(fltnum(5), 1, MPI_INTEGER, me-1, 3000+me, &
-                    itmp1, 1, MPI_INTEGER, me-1, 3000+me-1, &
-                    MPI_COMM_WORLD, istatus, ierr)
-                !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-                if(fltnum(5)>0 .and. itmp1>0) then
-                    if(fltnum(5) /= itmp1) stop 'error in fltnum(5)'
-                    fltMPI(5)=.true.
-                    allocate(btmp(fltnum(5)),btmp1(fltnum(5)))
-                    btmp = 0.
-                    btmp1 = 0.
-                    do i = 1, fltnum(5)
-                        btmp(i)=arn(fltd(i),ift)
-                    enddo
-                    call mpi_sendrecv(btmp, fltnum(5), MPI_DOUBLE_PRECISION, me-1, 3000+me, &
-                        btmp1, fltnum(5), MPI_DOUBLE_PRECISION, me-1, 3000+me-1, &
-                        MPI_COMM_WORLD, istatus, ierr)
-                    do i = 1, fltnum(5)
-                        arn(fltd(i),ift) = arn(fltd(i),ift) + btmp1(i)
-                    enddo
-                    deallocate(btmp,btmp1)       
-                endif
-            endif !bhdd/=0
-            
-            if (bndu/=0) then
-                call mpi_sendrecv(fltnum(6), 1, MPI_INTEGER, me+1, 3000+me, &
-                    itmp1, 1, MPI_INTEGER, me+1, 3000+me+1, &
-                    MPI_COMM_WORLD, istatus, ierr)
-                    !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-                    if(fltnum(6)>0 .and. itmp1>0) then  
-                        if(fltnum(6) /= itmp1) stop 'error in fltnum(6)'
-                        fltMPI(6)=.true.
-                        allocate(btmp(fltnum(6)),btmp1(fltnum(6)))
-                        btmp  = 0.
-                        btmp1 = 0.
-                        do i = 1, fltnum(6)
-                            btmp(i)=arn(fltu(i),ift)
-                        enddo
-                        call mpi_sendrecv(btmp, fltnum(6), MPI_DOUBLE_PRECISION, me+1, 3000+me, &
-                            btmp1, fltnum(6), MPI_DOUBLE_PRECISION, me+1, 3000+me+1, &
-                            MPI_COMM_WORLD, istatus, ierr)
-                        do i = 1, fltnum(6)
-                        arn(fltu(i),ift) = arn(fltu(i),ift) + btmp1(i)
-                        enddo
-                        deallocate(btmp,btmp1)       
-                    endif
-            endif !bndu/=0
-        endif !npz>1
+        
+        call MPI4arn(nx, ny, nz, mex, mey, mez, nftnd0(ift), ift)
+       
     enddo !ift=i:nft 
     !
     time2 = MPI_WTIME()
@@ -1131,3 +780,265 @@ subroutine velocityStructure(nelement, xc)
     mat(nelement,4)  = mat(nelement,1)**2*mat(nelement,3)-2.0d0*mat(nelement,5)
 
 end subroutine velocityStructure
+
+subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
+! Add up arn from neighbor MPI blocks.
+    use globalvar
+    implicit none 
+    include 'mpif.h'
+    
+    integer (kind = 4) :: bndl,bndr,bndf,bndb,bndd,bndu, nx, ny, nz, itmp1, mex, mey, mez
+    integer (kind = 4) :: istatus(MPI_STATUS_SIZE), ierr, totalNumFaultNode, iFault, i
+    real(kind = dp),allocatable,dimension(:) :: btmp, btmp1
+    ! Initialize fltMPI(6) to .false.
+    fltMPI=.false.
+    
+    if(fltnum(1) /= 0) allocate(fltl(fltnum(1)))
+    if(fltnum(2) /= 0) allocate(fltr(fltnum(2)))
+    if(fltnum(3) /= 0) allocate(fltf(fltnum(3)))
+    if(fltnum(4) /= 0) allocate(fltb(fltnum(4)))
+    if(fltnum(5) /= 0) allocate(fltd(fltnum(5)))
+    if(fltnum(6) /= 0) allocate(fltu(fltnum(6)))
+    
+    fltnum = 0
+    do i = 1, totalNumFaultNode
+        if(mod(fltgm(i),10)==1 ) then 
+            fltnum(1) = fltnum(1) + 1
+            fltl(fltnum(1)) = i
+        endif
+        if(mod(fltgm(i),10)==2 ) then 
+            fltnum(2) = fltnum(2) + 1
+            fltr(fltnum(2)) = i
+        endif
+        if(mod(fltgm(i),100)-mod(fltgm(i),10)==10 ) then
+            fltnum(3) = fltnum(3) + 1
+            fltf(fltnum(3)) = i
+        endif
+        if(mod(fltgm(i),100)-mod(fltgm(i),10)==20 ) then
+            fltnum(4) = fltnum(4) + 1
+            fltb(fltnum(4)) = i
+        endif
+        if(fltgm(i)-mod(fltgm(i),100)==100 ) then
+            fltnum(5) = fltnum(5) + 1
+            fltd(fltnum(5)) = i
+        endif
+        if(fltgm(i)-mod(fltgm(i),100)==200 ) then
+            fltnum(6) = fltnum(6) + 1
+            fltu(fltnum(6)) = i
+        endif
+    enddo
+    if (npx > 1) then
+        bndl=1  !left boundary
+        bndr=nx ! right boundary
+        if (mex == master) then
+            bndl=0
+        elseif (mex == npx-1) then
+            bndr=0
+        endif
+ 
+        if (bndl/=0) then
+            call mpi_sendrecv(fltnum(1), 1, MPI_INTEGER, me-npy*npz, 1000+me, &
+                itmp1, 1, MPI_INTEGER, me-npy*npz, 1000+me-npy*npz, &
+                MPI_COMM_WORLD, istatus, ierr)
+            !write(*,*) 'me= ',me, 'itmp1=',itmp1                
+            if(fltnum(1)>0 .and. itmp1>0 ) then  
+                if(fltnum(1) /= itmp1) stop 'error in fltnum(1)'
+                fltMPI(1)=.true.
+                allocate(btmp(fltnum(1)),btmp1(fltnum(1)))
+                btmp = 0.
+                btmp1 = 0.
+                do i = 1, fltnum(1)
+                    btmp(i)=arn(fltl(i),iFault)
+                enddo
+                call mpi_sendrecv(btmp, fltnum(1), MPI_DOUBLE_PRECISION, me-npy*npz, 1000+me, &
+                    btmp1, fltnum(1), MPI_DOUBLE_PRECISION, me-npy*npz, 1000+me-npy*npz, &
+                    MPI_COMM_WORLD, istatus, ierr)
+                do i = 1, fltnum(1)
+                    arn(fltl(i),iFault) = arn(fltl(i),iFault) + btmp1(i)
+                enddo
+                deallocate(btmp,btmp1)       
+            endif
+        endif !if bhdl/=0
+
+        if (bndr/=0) then
+            call mpi_sendrecv(fltnum(2), 1, MPI_INTEGER, me+npy*npz, 1000+me, &
+                itmp1, 1, MPI_INTEGER, me+npy*npz, 1000+me+npy*npz, &
+                MPI_COMM_WORLD, istatus, ierr)
+            !write(*,*) 'me= ',me, 'itmp1=',itmp1                
+            if(fltnum(2)>0 .and. itmp1>0 ) then  
+                if(fltnum(2) /= itmp1) stop 'error in fltnum(2)'
+                fltMPI(2)=.true.
+                allocate(btmp(fltnum(2)),btmp1(fltnum(2)))
+                btmp  = 0.
+                btmp1 = 0.
+                do i = 1, fltnum(2)
+                    btmp(i)=arn(fltr(i),iFault)
+                enddo
+                call mpi_sendrecv(btmp, fltnum(2), MPI_DOUBLE_PRECISION, me+npy*npz, 1000+me, &
+                    btmp1, fltnum(2), MPI_DOUBLE_PRECISION, me+npy*npz, 1000+me+npy*npz, &
+                    MPI_COMM_WORLD, istatus, ierr)
+                do i = 1, fltnum(2)
+                    arn(fltr(i),iFault) = arn(fltr(i),iFault) + btmp1(i)
+                enddo
+                deallocate(btmp,btmp1)       
+            endif
+        endif !bndr/=0
+    endif !npx>1
+!*****************************************************************************************
+    if (npy > 1) then   !MPI:no fault message passing along y due to the x-z vertical fault.
+        bndf=1  !front boundary
+        bndb=ny ! back boundary
+        if (mey == master) then
+            bndf=0
+        elseif (mey == npy-1) then
+            bndb=0
+        endif
+
+        if (bndf/=0) then
+            call mpi_sendrecv(fltnum(3), 1, MPI_INTEGER, me-npz, 2000+me, &
+                itmp1, 1, MPI_INTEGER, me-npz, 2000+me-npz, &
+                MPI_COMM_WORLD, istatus, ierr)
+            !write(*,*) 'me= ',me, 'itmp1=',itmp1                
+            if(fltnum(3)>0 .and. itmp1>0) then
+                if(fltnum(3) /= itmp1) stop 'error in fltnum(3)'
+                fltMPI(3)=.true.
+                allocate(btmp(fltnum(3)),btmp1(fltnum(3)))
+                btmp = 0.
+                btmp1 = 0.
+                do i = 1, fltnum(3)
+                    btmp(i)=arn(fltf(i),iFault)
+                enddo
+                call mpi_sendrecv(btmp, fltnum(3), MPI_DOUBLE_PRECISION, me-npz, 2000+me, &
+                    btmp1, fltnum(3), MPI_DOUBLE_PRECISION, me-npz, 2000+me-npz, &
+                    MPI_COMM_WORLD, istatus, ierr)
+                do i = 1, fltnum(3)
+                    arn(fltf(i),iFault) = arn(fltf(i),iFault) + btmp1(i)
+                enddo
+                deallocate(btmp,btmp1)       
+            endif
+        endif !bhdf/=0
+
+        if (bndb/=0) then
+            call mpi_sendrecv(fltnum(4), 1, MPI_INTEGER, me+npz, 2000+me, &
+                itmp1, 1, MPI_INTEGER, me+npz, 2000+me+npz, &
+                MPI_COMM_WORLD, istatus, ierr)
+            !write(*,*) 'me= ',me, 'itmp1=',itmp1                
+            if(fltnum(4)>0 .and. itmp1>0) then  
+                if(fltnum(4) /= itmp1) stop 'error in fltnum(4)'
+                fltMPI(4)=.true.
+                allocate(btmp(fltnum(4)),btmp1(fltnum(4)))
+                btmp  = 0.
+                btmp1 = 0.
+                do i = 1, fltnum(4)
+                    btmp(i)=arn(fltb(i),iFault)
+                enddo
+                call mpi_sendrecv(btmp, fltnum(4), MPI_DOUBLE_PRECISION, me+npz, 2000+me, &
+                    btmp1, fltnum(4), MPI_DOUBLE_PRECISION, me+npz, 2000+me+npz, &
+                    MPI_COMM_WORLD, istatus, ierr)
+                do i = 1, fltnum(4)
+                    arn(fltb(i),iFault) = arn(fltb(i),iFault) + btmp1(i)
+                enddo
+                deallocate(btmp,btmp1)       
+            endif
+        endif !bndb/=0
+     endif !npy>1
+!*****************************************************************************************
+    if (npz > 1) then
+        bndd=1  !lower(down) boundary
+        bndu=nz ! upper boundary
+        if (mez == master) then
+            bndd=0
+        elseif (mez == npz-1) then
+            bndu=0
+        endif
+        if (bndd/=0) then
+            call mpi_sendrecv(fltnum(5), 1, MPI_INTEGER, me-1, 3000+me, &
+                itmp1, 1, MPI_INTEGER, me-1, 3000+me-1, &
+                MPI_COMM_WORLD, istatus, ierr)
+            !write(*,*) 'me= ',me, 'itmp1=',itmp1                
+            if(fltnum(5)>0 .and. itmp1>0) then
+                if(fltnum(5) /= itmp1) stop 'error in fltnum(5)'
+                fltMPI(5)=.true.
+                allocate(btmp(fltnum(5)),btmp1(fltnum(5)))
+                btmp = 0.
+                btmp1 = 0.
+                do i = 1, fltnum(5)
+                    btmp(i)=arn(fltd(i),iFault)
+                enddo
+                call mpi_sendrecv(btmp, fltnum(5), MPI_DOUBLE_PRECISION, me-1, 3000+me, &
+                    btmp1, fltnum(5), MPI_DOUBLE_PRECISION, me-1, 3000+me-1, &
+                    MPI_COMM_WORLD, istatus, ierr)
+                do i = 1, fltnum(5)
+                    arn(fltd(i),iFault) = arn(fltd(i),iFault) + btmp1(i)
+                enddo
+                deallocate(btmp,btmp1)       
+            endif
+        endif !bhdd/=0
+        
+        if (bndu/=0) then
+            call mpi_sendrecv(fltnum(6), 1, MPI_INTEGER, me+1, 3000+me, &
+                itmp1, 1, MPI_INTEGER, me+1, 3000+me+1, &
+                MPI_COMM_WORLD, istatus, ierr)
+                !write(*,*) 'me= ',me, 'itmp1=',itmp1                
+                if(fltnum(6)>0 .and. itmp1>0) then  
+                    if(fltnum(6) /= itmp1) stop 'error in fltnum(6)'
+                    fltMPI(6)=.true.
+                    allocate(btmp(fltnum(6)),btmp1(fltnum(6)))
+                    btmp  = 0.
+                    btmp1 = 0.
+                    do i = 1, fltnum(6)
+                        btmp(i)=arn(fltu(i),iFault)
+                    enddo
+                    call mpi_sendrecv(btmp, fltnum(6), MPI_DOUBLE_PRECISION, me+1, 3000+me, &
+                        btmp1, fltnum(6), MPI_DOUBLE_PRECISION, me+1, 3000+me+1, &
+                        MPI_COMM_WORLD, istatus, ierr)
+                    do i = 1, fltnum(6)
+                    arn(fltu(i),iFault) = arn(fltu(i),iFault) + btmp1(i)
+                    enddo
+                    deallocate(btmp,btmp1)       
+                endif
+        endif !bndu/=0
+    endif !npz>1
+end subroutine MPI4arn 
+
+subroutine meshGenError(nx, ny, nz, nnode, msnode, nelement, neq0, ntag, nftnd0)
+! Check consistency between mesh4 and meshgen
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nx, ny, nz, nnode, msnode, nelement, neq0, nftnd0(ntotft), ntag
+    integer (kind = 4) :: i
+    if (maxs>=(5*maxm)) then
+        write(*,*) '5*maxm',maxm,'is not enough for maxs',maxs
+        stop 2002
+    endif
+    if(nnode/=nx*ny*nz.or.msnode/=numnp.or.nelement/=numel.or.neq0/=neq) then
+        write(*,*) 'Inconsistency in node/element/equation/between meshgen and mesh4num: stop!',me
+        write(*,*) 'nnode&numnp=',nnode,numnp
+        write(*,*) 'nelement,numel=',nelement,numel
+        write(*,*) 'neq0,neq=',neq0,neq
+        write(*,*) 'nnode,nx,ny,nz',nnode,nx,ny,nz
+        write(*,*) 'msnode,numnp',msnode,numnp
+        stop 2003
+    endif
+    if(ntag/=maxm) then
+        write(*,*) 'Inconsistency in ntag and maxm: stop!',me
+        write(*,*) ntag,maxm
+        stop 2004
+    endif
+    do i=1,ntotft
+        if(nftnd0(i)/=nftnd(i)) then
+            write(*,*) 'Inconsistency in fault between meshgen and mesh4num: stop!',me,i
+            stop 2005
+        endif
+    enddo
+end subroutine meshGenError
+
+subroutine calcXyzMPIId(mex, mey, mez)
+    use globalvar 
+    implicit none
+    integer (kind = 4) :: mex, mey, mez
+     
+    mex=int(me/(npy*npz))
+    mey=int((me-mex*npy*npz)/npz)
+    mez=int(me-mex*npy*npz-mey*npz)
+end subroutine calcXyzMPIId
