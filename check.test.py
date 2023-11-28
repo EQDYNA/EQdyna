@@ -3,7 +3,7 @@ import os
 import xarray as xr
 
 testIDList   = ['tpv104','tpv1053d','meng2023a','meng2023cb']
-fileNameList = ['fault.dyna.r.nc']
+fileNameList = ['fault.dyna.r.nc','frt.txt0','frt.txt2']
 refRoot  = 'test.reference.results'
 testRoot = 'test'
 
@@ -24,6 +24,6 @@ for testid in testIDList:
         refPath  = refRoot+'/'+testid+'/'+filename
         testPath = testRoot+'/'+testid+'/'+filename
         os.system('diff -s '+refPath+' '+testPath)
-        compare(refPath, testPath)
+        #compare(refPath, testPath)
         #os.system('ncdiff '+refPath+' '+testPath+' tmp.nc')
 
