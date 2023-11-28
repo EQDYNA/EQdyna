@@ -42,5 +42,5 @@ cd ..
 
 cd ..
 
-
+python check.test.py
 
