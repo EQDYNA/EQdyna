@@ -125,42 +125,10 @@ subroutine meshgen
                 
                 call setNumDof(xcoor, ycoor, zcoor, zz)
 
-                locid(nnode)=ntag
-                dof1(nnode)=zz
-                !...establish equation numbers for this node
-                do i1=1,zz
-                !...elastoplastic off-fault, stress assigned in entire model,
-                ! need to fix model boundaries (except free surface).
-                    if(abs(xcoor-xmin)<tol.or.abs(xcoor-xmax)<tol.or.abs(ycoor-ymin)<tol &
-                    .or.abs(ycoor-ymax)<tol.or.abs(zcoor-zmin)<tol) then
-                        ntag=ntag+1
-                        id1(ntag)=-1!-1 for fixed boundary nodes
-                    else
-                        neq0 = neq0 + 1
-                        ntag=ntag+1
-                        id1(ntag)=neq0
-                        !Count numbers of d.o.f on interfaces between MPIs
-                        if (ix==1) then !Left
-                            numcount(4)=numcount(4)+1
-                        endif
-                        if (ix==nx) then !Right
-                            numcount(5)=numcount(5)+1
-                        endif
-                        if (iy==1) then !Front
-                            numcount(6)=numcount(6)+1
-                        endif
-                        if (iy==ny) then !Back
-                            numcount(7)=numcount(7)+1
-                        endif
-                        if (iz==1) then !Down
-                            numcount(8)=numcount(8)+1
-                        endif
-                        if (iz==nz) then !Up
-                            numcount(9)=numcount(9)+1
-                        endif
-                    endif
-                enddo ! enddo i1=1,ndof
+                locid(nnode) = ntag
+                dof1(nnode)  = zz
                 
+                call setEquationNumber(ix, iy, iz, nx, ny, nz, xcoor, ycoor, zcoor, ntag, neq0, zz)
                 call setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, nnode)
 
                 do ift=1,ntotft 
@@ -327,48 +295,9 @@ subroutine meshgen
                 enddo  !do ift 
                 !...create elements
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
-                    nelement = nelement + 1
-                    if(nelement>numel) then
-                        write(*,*) 'more elements in meshgen than in mesh4num'
-                        write(*,*) 'x,y,z',xcoor,ycoor,zcoor
-                        stop
-                    endif
-                    
-                    ! creating hexahedral elements, which et=1.
-                    et(nelement)    = 1 
-                    ien(1,nelement) = plane1(iy-1,iz-1)
-                    ien(2,nelement) = plane2(iy-1,iz-1)
-                    ien(3,nelement) = plane2(iy,iz-1)
-                    ien(4,nelement) = plane1(iy,iz-1)
-                    ien(5,nelement) = plane1(iy-1,iz)
-                    ien(6,nelement) = plane2(iy-1,iz)
-                    ien(7,nelement) = plane2(iy,iz)
-                    ien(8,nelement) = plane1(iy,iz)
-
-                    ! using element center coords to determine PML elements, et = 2.
-                    xc=0.0d0 
-                    ids(nelement)=ntags
-                    do i=1,nen
-                        do j=1,3
-                            xc(j)=xc(j)+x(j,ien(i,nelement))
-                        enddo
-                    enddo
-                    xc=xc/8.0d0
-                    
-                    if (xc(1)>PMLb(1).or.xc(1)<PMLb(2) &
-                        .or.xc(2)>PMLb(3).or.xc(2)<PMLb(4) &
-                        .or.xc(3)<PMLb(5)) then
-                        
-                        et(nelement) = 2
-                        ntags        = ntags+15+6
-                    else
-                        ntags        = ntags+12
-                    endif
-                    
-                    ! velocityStructure will assign Vp, Vs and rho
-                    !   to the elem id nelement given its location xc.
-
-                    call velocityStructure(nelement, xc)
+                
+                    call createElement(nelement, ntags, iy, iz, xc)
+                    call setElementMaterial(nelement, xc)
                     
                     if (C_degen == 1) then 
                         call wedge(xc(1), xc(2), xc(3), nelement, ntags, iy, iz, nftnd0(1))
@@ -376,16 +305,9 @@ subroutine meshgen
                         call tetra(xc(1), xc(2), xc(3), nelement, ntags, iy, iz, nftnd0(1))
                     endif         
                     
-                    if(et(nelement) == 1 .and. (xcoor>(fltxyz(1,1,1)-tol).and.xcoor<(fltxyz(2,1,1)+dx+tol).and. &
-                        zcoor>(fltxyz(1,3,1)-tol).and.ycoor>0.and.abs(ycoor-dy)<tol)) then
-                        do i=1,nftnd0(1)
-                            do k=1,nen
-                                if(ien(k,nelement)==nsmp(1,i,1)) then
-                                    ien(k,nelement) = nsmp(2,i,1)  !use master node for the node!
-                                endif
-                            enddo
-                        enddo
-                    endif                
+                    call setMasterNode(xcoor, ycoor, zcoor, nelement, nftnd0) 
+                   
+                              
 
                     if (C_elastic==0 .and. TPV==2800) then                
                         tmp1 = -0.5d0*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
@@ -502,7 +424,7 @@ subroutine meshgen
     
 end subroutine meshgen
 
-subroutine velocityStructure(nelement, xc)
+subroutine setElementMaterial(nelement, xc)
 ! Subroutine velocityStructure will asign Vp, Vs and rho 
 !   based on input from bMaterial.txt, which is created by 
 !   case input file user_defined_param.py.
@@ -548,7 +470,7 @@ subroutine velocityStructure(nelement, xc)
     ! lambda = Vp**2*rho-2*mu
     mat(nelement,4)  = mat(nelement,1)**2*mat(nelement,3)-2.0d0*mat(nelement,5)
 
-end subroutine velocityStructure
+end subroutine setElementMaterial
 
 subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
 ! Add up arn from neighbor MPI blocks.
@@ -1135,3 +1057,112 @@ subroutine setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, 
         enddo
     endif    
 end subroutine setSurfaceStation
+
+subroutine setEquationNumber(ix, iy, iz, nx, ny, nz, xcoor, ycoor, zcoor, ntag, neq0, zz)
+    use globalvar 
+    implicit none
+    integer (kind = 4) :: ix, iy, iz, nx, ny, nz, iDof, zz
+    integer (kind = 4) :: ntag, neq0
+    real (kind = dp) :: xcoor, ycoor, zcoor
+    
+    do iDof = 1,zz
+        if(abs(xcoor-xmin)<tol.or.abs(xcoor-xmax)<tol.or.abs(ycoor-ymin)<tol &
+        .or.abs(ycoor-ymax)<tol.or.abs(zcoor-zmin)<tol) then
+            ntag      = ntag+1
+            id1(ntag) = -1 
+            ! Dof = -1 for fixed boundary nodes, no eq #. 
+        else
+            neq0      = neq0 + 1
+            ntag      = ntag+1
+            id1(ntag) = neq0
+            
+            !Count # of DOF on MPI boundaries
+            if (ix==1) then !Left
+                numcount(4)=numcount(4)+1
+            endif
+            if (ix==nx) then !Right
+                numcount(5)=numcount(5)+1
+            endif
+            if (iy==1) then !Front
+                numcount(6)=numcount(6)+1
+            endif
+            if (iy==ny) then !Back
+                numcount(7)=numcount(7)+1
+            endif
+            if (iz==1) then !Down
+                numcount(8)=numcount(8)+1
+            endif
+            if (iz==nz) then !Up
+                numcount(9)=numcount(9)+1
+            endif
+        endif
+    enddo
+    
+end subroutine setEquationNumber
+
+
+subroutine createElement(nelement, ntags, iy, iz, xc)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nelement, ntags, iy, iz, i, j 
+    real (kind = dp) :: xc(3)
+    
+    xc = 0.0d0 
+    
+    nelement        = nelement + 1
+    et(nelement)    = 1 
+    ien(1,nelement) = plane1(iy-1,iz-1)
+    ien(2,nelement) = plane2(iy-1,iz-1)
+    ien(3,nelement) = plane2(iy,iz-1)
+    ien(4,nelement) = plane1(iy,iz-1)
+    ien(5,nelement) = plane1(iy-1,iz)
+    ien(6,nelement) = plane2(iy-1,iz)
+    ien(7,nelement) = plane2(iy,iz)
+    ien(8,nelement) = plane1(iy,iz)
+    ids(nelement)   = ntags
+    
+    do i=1,nen
+        do j=1,3
+            xc(j)=xc(j)+x(j,ien(i,nelement))
+        enddo
+    enddo
+    xc = xc/8.0d0
+    
+    if (xc(1)>PMLb(1).or.xc(1)<PMLb(2) &
+    .or.xc(2)>PMLb(3).or.xc(2)<PMLb(4) &
+    .or.xc(3)<PMLb(5)) then
+        et(nelement) = 2
+        ntags        = ntags+15+6
+    else
+        ntags        = ntags+12
+    endif
+    
+    ! assign ien(nelement), ids(nelement), et(nelement)
+    ! return xc, 
+    ! update nelement, ntags
+end subroutine createElement
+
+ subroutine setMasterNode(xcoor, ycoor, zcoor, nelement, nftnd0)
+    use globalvar 
+    implicit none
+    integer (kind = 4) :: nelement, iFault, iFaultNodePair, nftnd0(ntotft), k
+    real (kind = dp) :: xcoor, ycoor, zcoor
+    ! The default grids only contain slave nodes. 
+    ! This subroutine will replace slave nodes with corresponding master nodes.
+    
+    ! Currently only work for vertical fault on xz plane. 
+    if(et(nelement) == 1 .and. &
+        (xcoor>(fltxyz(1,1,1)-tol) .and. xcoor<(fltxyz(2,1,1)+dx+tol) .and. &
+         zcoor>(fltxyz(1,3,1)-tol) .and. ycoor>0.0d0 .and. abs(ycoor-dy)<tol)) then
+        do iFault = 1, ntotft
+            do iFaultNodePair = 1, nftnd0(iFault)
+                do k = 1,nen
+                    if(ien(k,nelement)==nsmp(1,iFaultNodePair,iFault)) then
+                        ien(k,nelement) = nsmp(2,iFaultNodePair,iFault)  !use master node for the node!
+                    endif
+                enddo
+            enddo
+        enddo
+    endif      
+    
+end subroutine setMasterNode
