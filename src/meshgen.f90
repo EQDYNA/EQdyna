@@ -13,12 +13,12 @@ subroutine meshgen
     include 'mpif.h'
     ! incremental variables 
     integer (kind = 4) :: nnode, nelement, neq0, ntag, ntags
-    integer(kind=4) :: nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
+    integer (kind = 4) :: nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
                        edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,edgezn, &
                        nxuni,nyuni,nzuni,ift, &
                        n1,n2,n3,n4,m1,m2,m3,m4,&
                        mex,mey,mez,itmp1,&
-                       nodeDofNum, msnode
+                       nodeDofNum, msnode, nodeXyzIndex(10)
     integer (kind = 4), dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
     integer (kind = 4), allocatable :: fltrc(:,:,:,:)
     ! Temporary real variables
@@ -96,7 +96,8 @@ subroutine meshgen
     do ix = 1, nx
         do iz = 1, nz
             do iy = 1, ny
-                call createNode(nodeCoor, xline(ix), yline(iy), zline(iz), nnode, iy, iz)
+                call initializeNodeXyzIndex(ix, iy, iz, nx, ny, nz, nodeXyzIndex)
+                call createNode(nodeCoor, xline(ix), yline(iy), zline(iz), nnode, nodeXyzIndex)
                 if (rough_fault == 1) then 
                     call insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
                     x(2,nnode) = ycoort
@@ -1072,11 +1073,13 @@ enddo
 
 end subroutine createMasterNode
 
-subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nnode, iy, iz)
+subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nnode, nodeXyzIndex)
     use globalvar
     implicit none
-    integer (kind = 4) :: nnode, iy, iz
+    integer (kind = 4) :: nnode, nodeXyzIndex(10), iy, iz
     real (kind = dp) :: nodeCoor(10), xcoor, ycoor, zcoor
+    iy = nodeXyzIndex(2)
+    iz = nodeXyzIndex(3)
     nodeCoor(1)   = xcoor
     nodeCoor(2)   = ycoor
     nodeCoor(3)   = zcoor
@@ -1130,3 +1133,15 @@ subroutine insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
     endif 
     
 end subroutine insertFaultInterface
+
+subroutine initializeNodeXyzIndex(ix, iy, iz, nx, ny, nz, nodeXyzIndex)
+    use globalvar 
+    implicit none 
+    integer (kind = 4) :: ix, iy, iz, nx, ny, nz, nodeXyzIndex(10)
+    nodeXyzIndex(1) = ix
+    nodeXyzIndex(2) = iy
+    nodeXyzIndex(3) = iz
+    nodeXyzIndex(4) = nx
+    nodeXyzIndex(5) = ny
+    nodeXyzIndex(6) = nz
+end subroutine initializeNodeXyzIndex
