@@ -109,7 +109,7 @@ subroutine meshgen
                 dof1(nnode)  = nodeDofNum
                 
                 call setEquationNumber(nodeXyzIndex, nodeCoor, ntag, neq0, nodeDofNum)
-                call setSurfaceStation(ix, iy, nodeCoor, nx, ny, xline, yline, nnode)
+                call setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
                 call createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag, &
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
                 
@@ -752,12 +752,16 @@ subroutine setNumDof(nodeCoor, nodeDofNum)
     endif   
 end subroutine setNumDof
 
-subroutine setSurfaceStation(ix, iy, nodeCoor, nx, ny, xline, yline, nnode)
+subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
     use globalvar
     implicit none
-    integer (kind = 4) :: ix, iy, nx, ny, nnode, i
+    integer (kind = 4) :: nodeXyzIndex(10), ix, iy, nx, ny, nnode, i
     real (kind = dp) :: nodeCoor(10), xline(nx), yline(ny)
     
+    ix = nodeXyzIndex(1)
+    iy = nodeXyzIndex(2)
+    nx = nodeXyzIndex(4)
+    ny = nodeXyzIndex(5)
     !Part1. Stations inside the region.
     if(ix>1.and.ix<nx .and. iy>1.and.iy<ny) then  !at surface only
         do i=1,n4nds
