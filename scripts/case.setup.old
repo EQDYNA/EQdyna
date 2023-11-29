@@ -2,76 +2,75 @@
 """
 Script to setup the case via user_defined_params.py.
 """
-from user_defined_params import par
+from user_defined_params import *
 import netCDF4 as nc
-import numpy as np
 
 def create_model_input_file():
     # Function to create bGlobal.txt, bModelGeometry.txt, b.FaultGeometry.txt,
     #  bMaterial.txt, bStations.txt used by EQdyna.
     with open('bGlobal.txt', 'w') as f:
-        f.write(str(par.mode)        + "\n")
-        f.write(str(par.C_elastic)   + "\n")
-        f.write(str(par.C_nuclea)    + "\n")
-        f.write(str(par.C_degen)     + "\n")
-        f.write(str(par.rough_fault) + "\n")
-        f.write(str(par.friclaw)  + "\n")
-        f.write(str(par.ntotft)   + "\n")
-        f.write(str(par.nucfault) + "\n")
-        f.write(str(par.tpv)      + "\n")
-        f.write(str(par.output_plastic) + "\n")
-        f.write(str(par.outputGroundMotion) + "\n")
+        f.write(str(mode)        + "\n")
+        f.write(str(C_elastic)   + "\n")
+        f.write(str(C_nuclea)    + "\n")
+        f.write(str(C_degen)     + "\n")
+        f.write(str(rough_fault) + "\n")
+        f.write(str(friclaw)  + "\n")
+        f.write(str(ntotft)   + "\n")
+        f.write(str(nucfault) + "\n")
+        f.write(str(tpv)      + "\n")
+        f.write(str(output_plastic) + "\n")
+        f.write(str(outputGroundMotion) + "\n")
         f.write(" "           + "\n")
-        f.write(str(par.nx) + " " + str(par.ny) + " " + str(par.nz) + "\n")
+        f.write(str(nx) + " " + str(ny) + " " + str(nz) + "\n")
         f.write(" "     + "\n")
-        f.write(str(par.term) + "\n")
-        f.write(str(par.dt)   + "\n")
+        f.write(str(term) + "\n")
+        f.write(str(dt)   + "\n")
         f.write(" "       + "\n")
-        f.write(str(par.nmat)  + " " + str(par.n2mat) + "\n")
+        f.write(str(nmat)  + " " + str(n2mat) + "\n")
         f.write(" "     + "\n")
-        f.write(str(par.xsource) + " " + str(par.ysource) + " " + str(par.zsource) + "\n")
-        f.write(str(par.nucR) + " " + str(par.nucRuptVel) + " " + str(par.nucdtau0) + "\n")
+        f.write(str(xsource) + " " + str(ysource) + " " + str(zsource) + "\n")
+        f.write(str(nucR) + " " + str(nucRuptVel) + " " + str(nucdtau0) + "\n")
         
     with open('bModelGeometry.txt', "w") as f:
-        f.write(str(par.xmin) + "  " + str(par.xmax) + "\n")
-        f.write(str(par.ymin) + "  " + str(par.ymax) + "\n")
-        f.write(str(par.zmin) + "  " + str(par.zmax) + "\n")
+        f.write(str(xmin) + "  " + str(xmax) + "\n")
+        f.write(str(ymin) + "  " + str(ymax) + "\n")
+        f.write(str(zmin) + "  " + str(zmax) + "\n")
         f.write(" " + "\n")
-        f.write(str(par.nuni_y_plus) + " " + str(par.nuni_y_minus) + "\n")
-        f.write(str(par.enlarging_ratio) + "\n")
-        f.write(str(par.dx))
+        f.write(str(nuni_y_plus) + " " + str(nuni_y_minus) + "\n")
+        f.write(str(enlarging_ratio) + "\n")
+        f.write(str(dx))
         
     with open('bFaultGeometry.txt', "w") as f:
-        for i in range(par.ntotft):
+        for i in range(ntotft):
             f.write("For fault No. " + str(i+1) + "\n")
-            f.write(str(par.fxmin) + "  " + str(par.fxmax) + "\n")
-            f.write(str(par.fymin) + "  " + str(par.fymax) + "\n")
-            f.write(str(par.fzmin) + "  " + str(par.fzmax) + "\n")
+            f.write(str(fxmin) + "  " + str(fxmax) + "\n")
+            f.write(str(fymin) + "  " + str(fymax) + "\n")
+            f.write(str(fzmin) + "  " + str(fzmax) + "\n")
             
     with open('bMaterial.txt', "w") as f:
-        if par.nmat == 1:
-            f.write(str(par.vp) + " " + str(par.vs) + " " + str(par.rou) + "\n")
-        elif par.nmat > 1: 
-            for i in range(par.nmat):
-                f.write(str(par.mat[i,0]) + " " + str(par.mat[i,1]) + " " + str(par.mat[i,2]) + " " + str(par.mat[i,3]) + "\n")
+        if nmat == 1:
+            f.write(str(vp) + " " + str(vs) + " " + str(rou) + "\n")
+        elif nmat > 1: 
+            for i in range(nmat):
+                f.write(str(mat[i,0]) + " " + str(mat[i,1]) + " " + str(mat[i,2]) + " " + str(mat[i,3]) + "\n")
 
 def create_station_input_file():
     # Function to create model.txt used by EQquasi.
     with open('bStations.txt', 'w') as f:
-        f.write(str(par.n_off_fault) + "\n")
-        f.write(str(par.n_on_fault) + "\n")
+        f.write(str(n_off_fault) + "\n")
+        f.write(str(n_on_fault) + "\n")
         f.write(str(" ") + "\n")
-        for i in range(len(par.st_coor_on_fault)):
-            f.write(str(par.st_coor_on_fault[i][0]) + " " + str(par.st_coor_on_fault[i][1]) + "\n")
+        for i in range(len(st_coor_on_fault)):
+            f.write(str(st_coor_on_fault[i][0]) + " " + str(st_coor_on_fault[i][1]) + "\n")
         f.write(str(" ") + "\n")
-        for i in range(len(par.st_coor_off_fault)):
-            f.write(str(par.st_coor_off_fault[i][0]) + " " + str(par.st_coor_off_fault[i][1]) + " " + str(par.st_coor_off_fault[i][2]) + "\n")
+        for i in range(len(st_coor_off_fault)):
+            f.write(str(st_coor_off_fault[i][0]) + " " + str(st_coor_off_fault[i][1]) + " " + str(st_coor_off_fault[i][2]) + "\n")
 
 def netcdf_write_on_fault_vars():
   # Function to on_fault_vars input used by EQquasi.
   ds         = nc.Dataset("on_fault_vars_input.nc", "w", format="NETCDF4")
-  dip        = ds.createDimension('dip', par.nfz)
-  strike     = ds.createDimension('strike', par.nfx)
+  dip        = ds.createDimension('dip', nfz)
+  strike     = ds.createDimension('strike', nfx)
   dip_var    = ds.createVariable('dip', np.float64, ('dip',))
   strike_var = ds.createVariable('strike', np.float64, ('strike',))
   
@@ -137,36 +136,36 @@ def netcdf_write_on_fault_vars():
   
   var21.units = 's'
   
-  strike_var[:] = par.fx[:]
-  dip_var[:]    = par.fz[:]
+  strike_var[:] = fx[:]
+  dip_var[:]    = fz[:]
   
-  var0[:,:] = par.on_fault_vars[:,:,1]   # sw_fs
-  var1[:,:] = par.on_fault_vars[:,:,2]   # sw_fd
-  var2[:,:] = par.on_fault_vars[:,:,3]   # sw_D0 
+  var0[:,:] = on_fault_vars[:,:,1]   # sw_fs
+  var1[:,:] = on_fault_vars[:,:,2]   # sw_fd
+  var2[:,:] = on_fault_vars[:,:,3]   # sw_D0 
   
-  var3[:,:] = par.on_fault_vars[:,:,9]   # rsf_a
-  var4[:,:] = par.on_fault_vars[:,:,10]  # rsf_b 
-  var5[:,:] = par.on_fault_vars[:,:,11]  # rsf_Dc 
-  var6[:,:] = par.on_fault_vars[:,:,12]  # rsf_v0
-  var7[:,:] = par.on_fault_vars[:,:,13]  # rsf_r0 
+  var3[:,:] = on_fault_vars[:,:,9]   # rsf_a
+  var4[:,:] = on_fault_vars[:,:,10]  # rsf_b 
+  var5[:,:] = on_fault_vars[:,:,11]  # rsf_Dc 
+  var6[:,:] = on_fault_vars[:,:,12]  # rsf_v0
+  var7[:,:] = on_fault_vars[:,:,13]  # rsf_r0 
   
-  var8[:,:] = par.on_fault_vars[:,:,14]  # rsf_fw  
-  var9[:,:] = par.on_fault_vars[:,:,15]  # rsf_vw 
+  var8[:,:] = on_fault_vars[:,:,14]  # rsf_fw  
+  var9[:,:] = on_fault_vars[:,:,15]  # rsf_vw 
   
-  var10[:,:] = par.on_fault_vars[:,:,16] # tp_a_hy
-  var11[:,:] = par.on_fault_vars[:,:,17] # tp_a_th
-  var12[:,:] = par.on_fault_vars[:,:,18] # tp_rouc
-  var13[:,:] = par.on_fault_vars[:,:,19] # tp_lambda
-  var14[:,:] = par.on_fault_vars[:,:,40] # tp_h
-  var15[:,:] = par.on_fault_vars[:,:,41] # tp_Tini
-  var16[:,:] = par.on_fault_vars[:,:,42] # tp_pini
+  var10[:,:] = on_fault_vars[:,:,16] # tp_a_hy
+  var11[:,:] = on_fault_vars[:,:,17] # tp_a_th
+  var12[:,:] = on_fault_vars[:,:,18] # tp_rouc
+  var13[:,:] = on_fault_vars[:,:,19] # tp_lambda
+  var14[:,:] = on_fault_vars[:,:,40] # tp_h
+  var15[:,:] = on_fault_vars[:,:,41] # tp_Tini
+  var16[:,:] = on_fault_vars[:,:,42] # tp_pini
   
-  var17[:,:] = par.on_fault_vars[:,:,46]  # init_slip_rate  
-  var18[:,:] = par.on_fault_vars[:,:,8]  # init_shear_stress
-  var19[:,:] = par.on_fault_vars[:,:,7]  # init_normal_stress
-  var20[:,:] = par.on_fault_vars[:,:,20]  # init_state
+  var17[:,:] = on_fault_vars[:,:,46]  # init_slip_rate  
+  var18[:,:] = on_fault_vars[:,:,8]  # init_shear_stress
+  var19[:,:] = on_fault_vars[:,:,7]  # init_normal_stress
+  var20[:,:] = on_fault_vars[:,:,20]  # init_state
   
-  var21[:,:] = par.on_fault_vars[:,:,5]  # tw_t0
+  var21[:,:] = on_fault_vars[:,:,5]  # tw_t0
   
   ds.close()
   
@@ -174,14 +173,14 @@ def create_batch_script():
     # Function to create batch script used by HPC system.
     with open("batch.hpc", "w") as f:
         f.write("#! /bin/bash" + "\n")
-        f.write("#SBATCH -J " + str(par.casename) + "\n")
+        f.write("#SBATCH -J " + str(casename) + "\n")
         f.write("#SBATCH -o a.eqdyna.log%j" + "\n")
-        f.write("#SBATCH -N " + str(par.HPC_nnode) + "\n")
-        f.write("#SBATCH -n " + str(par.HPC_ncpu) + "\n")
-        f.write("#SBATCH -p " + str(par.HPC_queue) + "\n")
-        f.write("#SBATCH -t " + str(par.HPC_time) + "\n")
-        f.write("#SBATCH -A " + str(par.HPC_account) + "\n")
-        f.write("#SBATCH --mail-user=" + str(par.HPC_email) + "\n")
+        f.write("#SBATCH -N " + str(HPC_nnode) + "\n")
+        f.write("#SBATCH -n " + str(HPC_ncpu) + "\n")
+        f.write("#SBATCH -p " + str(HPC_queue) + "\n")
+        f.write("#SBATCH -t " + str(HPC_time) + "\n")
+        f.write("#SBATCH -A " + str(HPC_account) + "\n")
+        f.write("#SBATCH --mail-user=" + str(HPC_email) + "\n")
         f.write("#SBATCH --mail-type=begin" + "\n")
         f.write("#SBATCH --mail-type=end" + "\n")
         # Executable part.
@@ -202,14 +201,14 @@ def create_batch_script_cycle_old():
     # made obsolete on 20230228 but kept.
     with open("batch.cycle.hpc", "w") as f:
         f.write("#! /bin/bash" + "\n")
-        f.write("#SBATCH -J " + str(par.casename) + "\n")
+        f.write("#SBATCH -J " + str(casename) + "\n")
         f.write("#SBATCH -o a.eqdyna.log%j" + "\n")
-        f.write("#SBATCH -N " + str(par.HPC_nnode) + "\n")
-        f.write("#SBATCH -n " + str(par.HPC_ncpu) + "\n")
-        f.write("#SBATCH -p " + str(par.HPC_queue) + "\n")
-        f.write("#SBATCH -t " + str(par.HPC_time) + "\n")
-        f.write("#SBATCH -A " + str(par.HPC_account) + "\n")
-        f.write("#SBATCH --mail-user=" + str(par.HPC_email) + "\n")
+        f.write("#SBATCH -N " + str(HPC_nnode) + "\n")
+        f.write("#SBATCH -n " + str(HPC_ncpu) + "\n")
+        f.write("#SBATCH -p " + str(HPC_queue) + "\n")
+        f.write("#SBATCH -t " + str(HPC_time) + "\n")
+        f.write("#SBATCH -A " + str(HPC_account) + "\n")
+        f.write("#SBATCH --mail-user=" + str(HPC_email) + "\n")
         f.write("#SBATCH --mail-type=begin" + "\n")
         f.write("#SBATCH --mail-type=end" + "\n")
         # Executable part.
@@ -229,14 +228,14 @@ def create_batch_script_cycle():
     # Function to create batch script used by HPC system.
     with open("batch.cycle.eqdyna.hpc", "w") as f:
         f.write("#! /bin/bash" + "\n")
-        f.write("#SBATCH -J " + str(par.casename)       + "\n")
+        f.write("#SBATCH -J " + str(casename)       + "\n")
         f.write("#SBATCH -o a.eqdyna.log%j"         + "\n")
-        f.write("#SBATCH -N " + str(par.HPC_nnode)      + "\n")
-        f.write("#SBATCH -n " + str(par.HPC_ncpu)       + "\n")
-        f.write("#SBATCH -p " + str(par.HPC_queue)      + "\n")
-        f.write("#SBATCH -t " + str(par.HPC_time)       + "\n")
-        f.write("#SBATCH -A " + str(par.HPC_account)    + "\n")
-        f.write("#SBATCH --mail-user=" + str(par.HPC_email) + "\n")
+        f.write("#SBATCH -N " + str(HPC_nnode)      + "\n")
+        f.write("#SBATCH -n " + str(HPC_ncpu)       + "\n")
+        f.write("#SBATCH -p " + str(HPC_queue)      + "\n")
+        f.write("#SBATCH -t " + str(HPC_time)       + "\n")
+        f.write("#SBATCH -A " + str(HPC_account)    + "\n")
+        f.write("#SBATCH --mail-user=" + str(HPC_email) + "\n")
         f.write("#SBATCH --mail-type=begin"         + "\n")
         f.write("#SBATCH --mail-type=end"           + "\n")
         # Executable part.
@@ -282,9 +281,9 @@ def create_batch_script_cycle():
         # End excutable part.
         
 def estimate_HPC_resource():
-    nx = int((par.xmax-par.xmin)/par.dx)
-    nz = int((par.zmax-par.zmin)/par.dx)
-    ncell = nx*nz*(par.nuni_y_plus + par.nuni_y_minus)*2
+    nx = int((xmax-xmin)/dx)
+    nz = int((zmax-zmin)/dx)
+    ncell = nx*nz*(nuni_y_plus + nuni_y_minus)*2
     estimate_ncpu = int(ncell/10000)
     estimate_nnode = int(estimate_ncpu/128) + 1
     print("Estimated total cells in the model is " + str(ncell))

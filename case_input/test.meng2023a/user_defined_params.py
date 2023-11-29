@@ -54,7 +54,7 @@ elif nmat > 1:
 init_norm = -100.0e6 # initial normal stress in Pa. Negative compressive.
 
 # total simulation time and dt
-term        = 1.
+term        = 5.
 dt          = 0.01*dx/100.
 
 # Controlling switches for EQquasi system
