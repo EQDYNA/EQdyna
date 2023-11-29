@@ -2,7 +2,7 @@
 import os
 import xarray as xr
 
-testIDList   = ['tpv104','tpv1053d','meng2023a','meng2023cb']
+testIDList   = ['tpv104','tpv1053d','tpv1053d.6c','meng2023a','meng2023cb']
 fileNameList = ['fault.dyna.r.nc','frt.txt0','frt.txt2']
 refRoot  = 'test.reference.results'
 testRoot = 'test'

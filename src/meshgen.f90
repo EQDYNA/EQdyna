@@ -110,7 +110,7 @@ subroutine meshgen
                 
                 call setEquationNumber(nodeXyzIndex, nodeCoor, ntag, neq0, nodeDofNum)
                 call setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
-                call createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag, &
+                call createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag, &
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
                 
                 ! Create element
@@ -755,15 +755,13 @@ end subroutine setNumDof
 subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
     use globalvar
     implicit none
-    integer (kind = 4) :: nodeXyzIndex(10), ix, iy, nx, ny, nnode, i
-    real (kind = dp) :: nodeCoor(10), xline(nx), yline(ny)
+    integer (kind = 4) :: nodeXyzIndex(10), ix, iy, nnode, i
+    real (kind = dp) :: nodeCoor(10), xline(nodeXyzIndex(4)), yline(nodeXyzIndex(5))
     
     ix = nodeXyzIndex(1)
     iy = nodeXyzIndex(2)
-    nx = nodeXyzIndex(4)
-    ny = nodeXyzIndex(5)
     !Part1. Stations inside the region.
-    if(ix>1.and.ix<nx .and. iy>1.and.iy<ny) then  !at surface only
+    if(ix>1.and.ix<nodeXyzIndex(4) .and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
         do i=1,n4nds
             if(n4yn(i)==0) then
                 if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
@@ -791,7 +789,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
     !...identify output nodes (off-fault)
     !Part2. Stations along ix==1
     !Big Bug!!!iz==nz is no valid for 3D MPI.
-    if(ix==1.and. iy>1.and.iy<ny) then  !at surface only
+    if(ix==1.and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
         do i=1,n4nds
             if(n4yn(i)==0) then
                 if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
@@ -816,7 +814,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
     endif
     !...identify output nodes (off-fault)
     !Part3. Stations along ix==nx
-    if(ix==nx .and. iy>1.and.iy<ny) then  !at surface only
+    if(ix==nodeXyzIndex(4) .and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
         do i=1,n4nds
             if(n4yn(i)==0) then
                 if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
@@ -961,12 +959,12 @@ subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
     endif 
 end subroutine checkIsOnFault
 
-subroutine createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag,&
+subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag,&
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
 use globalvar 
 implicit none
-integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nnode, msnode, nftnd0(ntotft), neq0, ix, iy, iz, nx, ny, nz, i, nxuni, nzuni, ntag
-integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft)
+integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nnode, msnode, nftnd0(ntotft), neq0, i, nxuni, nzuni, ntag
+integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft), nodeXyzIndex(10)
 real (kind = dp) :: nodeCoor(10), ycoort, pfx, pfz
 
 do iFault = 1, ntotft
@@ -977,13 +975,13 @@ do iFault = 1, ntotft
     if (isOnFault == 1) then
         nftnd0(iFault)                = nftnd0(iFault) + 1 ! # of split-node pairs + 1
         nsmp(1,nftnd0(iFault),iFault) = nnode              ! set Slave node nodeID to nsmp  
-        msnode                        = nx*ny*nz + nftnd0(iFault) ! create Master node at the end of regular grids
+        msnode                        = nodeXyzIndex(4)*nodeXyzIndex(5)*nodeXyzIndex(6) + nftnd0(iFault) ! create Master node at the end of regular grids
         if (iFault>1) stop 'msnode cannot handle iFault>1'
         
         locid(msnode)                 = ntag
         dof1(msnode)                  = 3         
         nsmp(2,nftnd0(iFault),iFault) = msnode !set Master node nodeID to nsmp
-        plane2(ny+iFault,iz)          = msnode
+        plane2(nodeXyzIndex(5)+iFault,nodeXyzIndex(3)) = msnode
         
         x(1,msnode) = nodeCoor(1)
         x(2,msnode) = nodeCoor(2)
@@ -1001,27 +999,27 @@ do iFault = 1, ntotft
         
         ! Count split-node pair # for MPI
         ! fltgm, fltnum are global vars.
-        if(ix == 1) then
+        if(nodeXyzIndex(1) == 1) then
             fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 1
             fltnum(1) = fltnum(1) + 1
         endif
-        if(ix == nx) then
+        if(nodeXyzIndex(1) == nodeXyzIndex(4)) then
             fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 2
             fltnum(2) = fltnum(2) + 1
         endif
-        if(iy == 1) then
+        if(nodeXyzIndex(2) == 1) then
             fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 10
             fltnum(3) = fltnum(3) + 1
         endif
-        if(iy == ny) then
+        if(nodeXyzIndex(2) == nodeXyzIndex(5)) then
             fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 20
             fltnum(4) = fltnum(4) + 1
         endif
-        if(iz == 1) then
+        if(nodeXyzIndex(3) == 1) then
             fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 100
             fltnum(5) = fltnum(5) + 1
         endif
-        if(iz == nz) then
+        if(nodeXyzIndex(3) == nodeXyzIndex(6)) then
             fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 200
             fltnum(6) = fltnum(6) + 1
         endif             
@@ -1065,10 +1063,10 @@ do iFault = 1, ntotft
         endif                             
         
         !...prepare for area calculation
-        if(ixfi(iFault)==0) ixfi(iFault)=ix
-        if(izfi(iFault)==0) izfi(iFault)=iz
-        ifs(iFault)=ix-ixfi(iFault)+1
-        ifd(iFault)=iz-izfi(iFault)+1
+        if(ixfi(iFault)==0) ixfi(iFault)=nodeXyzIndex(1)
+        if(izfi(iFault)==0) izfi(iFault)=nodeXyzIndex(3)
+        ifs(iFault)=nodeXyzIndex(1)-ixfi(iFault)+1
+        ifd(iFault)=nodeXyzIndex(3)-izfi(iFault)+1
         fltrc(1,ifs(iFault),ifd(iFault),iFault) = msnode    !master node
         fltrc(2,ifs(iFault),ifd(iFault),iFault) = nftnd0(iFault) !fault node num in sequence
     endif 

@@ -4,7 +4,7 @@ Script to plot on fault rupture dynamics.
 """
 import numpy as np
 from math    import *
-from user_defined_params import *
+from user_defined_params import par
 from os.path import exists
 import matplotlib.pyplot as plt
 from matplotlib import animation, rc
@@ -13,14 +13,14 @@ import netCDF4 as nc
 SMALL_SIZE = 12
 
 def ruptureDynamics():
-    nprocs = nx*ny*nz
-    na     = int((fxmax-fxmin)/dx+1)
-    ma     = int((fzmax-fzmin)/dx+1)
+    nprocs = par.nx*par.ny*par.nz
+    na     = int((par.fxmax-par.fxmin)/par.dx+1)
+    ma     = int((par.fzmax-par.fzmin)/par.dx+1)
     rupt   = np.zeros((na*ma,3))
     rupt2d = np.zeros((ma,na,100))
     fVarArr= np.zeros((ma,na,100))
  
-    [xx,zz] = np.meshgrid(fx,fz)
+    [xx,zz] = np.meshgrid(par.fx,par.fz)
     xx = xx/1.e3
     zz = zz/1.e3
 
@@ -33,8 +33,8 @@ def ruptureDynamics():
         n, m = a.shape
         print(n,m)
         for i in range(n):
-            ii = int((a[i,0] - fxmin)/dx)
-            jj = int((a[i,2] - fzmin)/dx)
+            ii = int((a[i,0] - par.fxmin)/par.dx)
+            jj = int((a[i,2] - par.fzmin)/par.dx)
             # frt.txt* file structure:
             # Starting from 1, 1-3: coorx,y,z
             # 4, rupture time
@@ -128,8 +128,8 @@ def generateNcRestart(faultVarArr):
 
     ds         = nc.Dataset("fault.dyna.r.nc", "w", format="NETCDF4")
 
-    dip        = ds.createDimension('dip',    nfz)
-    strike     = ds.createDimension('strike', nfx)
+    dip        = ds.createDimension('dip',    par.nfz)
+    strike     = ds.createDimension('strike', par.nfx)
     dip_var    = ds.createVariable('dip', np.float64, ('dip',))
     strike_var = ds.createVariable('strike', np.float64, ('strike',))
 
@@ -158,8 +158,8 @@ def generateNcRestart(faultVarArr):
     var10.units = 'm/s'
     var11.units = 'm/s'
 
-    strike_var[:] = fx[:]
-    dip_var[:]    = fz[:]
+    strike_var[:] = par.fx[:]
+    dip_var[:]    = par.fz[:]
     var0[:,:]     = faultVarArr[:,:,0]
     var1[:,:]     = faultVarArr[:,:,1]
     var2[:,:]     = faultVarArr[:,:,2]
