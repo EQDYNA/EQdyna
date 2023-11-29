@@ -88,50 +88,6 @@ subroutine vlm(xl,volume)
     volume = volume/12.0
     !  
 end subroutine vlm
-  
-subroutine insert_rough_fault(xcoor, ycoor, zcoor, ycoort, pfx, pfz)
-    ! This subroutine is to modify ycoor if a rough_fault interface is inserted.
-    
-    use globalvar
-    implicit none
-    real (kind = dp) :: xcoor, ycoor, zcoor, peak, ycoort, pfx, pfz
-    real (kind = dp) :: fx1, fx2, fz1
-    integer (kind = 4) :: ixx, izz
-    
-    fx1 = rough_fx_min
-    fx2 = rough_fx_max
-    fz1 = rough_fz_min
-    if ((xcoor < fx2 + tol) .and. (xcoor > fx1 - tol) .and. (zcoor > fz1 - tol)) then 
-        ixx = (xcoor - fx1)/dx + 1
-        izz = (zcoor - fz1)/dx + 1
-    elseif ((xcoor < fx1 - tol) .and. (zcoor > fz1 - tol) ) then
-        ixx = 1
-        izz = (zcoor - fz1)/dx + 1
-    elseif ((xcoor > fx2 + tol) .and. (zcoor > fz1 - tol)) then 
-        ixx = nnx
-        izz = (zcoor - fz1)/dx + 1
-    elseif ((xcoor < fx2 + tol) .and. (xcoor > fx1 - tol) .and. (zcoor < fz1 - tol)) then 
-        ixx = (xcoor - fx1)/dx + 1
-        izz = 1
-    elseif ((xcoor < fx1 - tol) .and. (zcoor < fz1 - tol)) then 
-        ixx = 1
-        izz = 1 
-    elseif ((xcoor > fx2 + tol) .and. (zcoor < fz1 - tol)) then 
-        ixx = nnx
-        izz = 1
-    endif 
-    
-    peak = rough_geo(1,nnz*(ixx-1)+izz)
-    pfx = rough_geo(2,nnz*(ixx-1)+izz)
-    pfz = rough_geo(3,nnz*(ixx-1)+izz)    
-    
-    if (ycoor > -tol) then
-        ycoort = ycoor*(ymax - peak)/ymax + peak
-    elseif (ycoor < -tol) then 
-        ycoort = ycoor*(peak - ymin)/(-ymin) + peak 
-    endif 
-    
-end subroutine insert_rough_fault
 
 subroutine memory_estimate
     use globalvar

@@ -23,7 +23,7 @@ subroutine meshgen
     integer (kind = 4), allocatable :: fltrc(:,:,:,:)
     ! Temporary real variables
     real (kind = dp) :: nodeCoor(10), elementCenterCoor(3), &
-                       a,b,area,aa1,bb1,cc1,dd1,p1,q1, xc(3),ycoort, pfx = 0.0d0, pfz = 0.0d0
+                       a,b,area,aa1,bb1,cc1,dd1,p1,q1, ycoort, pfx = 0.0d0, pfz = 0.0d0
     real (kind = dp), allocatable :: xlinet(:), ylinet(:), zlinet(:), &
                                      xline(:),  yline(:) , zline(:)
 
@@ -96,16 +96,9 @@ subroutine meshgen
     do ix = 1, nx
         do iz = 1, nz
             do iy = 1, ny
-                nodeCoor(1) = xline(ix)
-                nodeCoor(2) = yline(iy)
-                nodeCoor(3) = zline(iz)
-                nnode = nnode + 1        
-                plane2(iy,iz) = nnode
-                x(1,nnode) = nodeCoor(1)
-                x(2,nnode) = nodeCoor(2)
-                x(3,nnode) = nodeCoor(3)
+                call createNode(nodeCoor, xline(ix), yline(iy), zline(iz), nnode, iy, iz)
                 if (rough_fault == 1) then 
-                    call insert_rough_fault(nodeCoor, ycoort, pfx, pfz)
+                    call insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
                     x(2,nnode) = ycoort
                 endif 
                 
@@ -1078,3 +1071,62 @@ do iFault = 1, ntotft
 enddo 
 
 end subroutine createMasterNode
+
+subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nnode, iy, iz)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: nnode, iy, iz
+    real (kind = dp) :: nodeCoor(10), xcoor, ycoor, zcoor
+    nodeCoor(1)   = xcoor
+    nodeCoor(2)   = ycoor
+    nodeCoor(3)   = zcoor
+    nnode         = nnode + 1        
+    plane2(iy,iz) = nnode
+    x(1,nnode)    = nodeCoor(1)
+    x(2,nnode)    = nodeCoor(2)
+    x(3,nnode)    = nodeCoor(3) 
+end subroutine createNode
+
+subroutine insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
+    ! This subroutine is to modify ycoor if a rough_fault interface is inserted.
+    
+    use globalvar
+    implicit none
+    real (kind = dp) :: nodeCoor(10), peak, ycoort, pfx, pfz
+    real (kind = dp) :: fx1, fx2, fz1
+    integer (kind = 4) :: ixx, izz
+    
+    fx1 = rough_fx_min
+    fx2 = rough_fx_max
+    fz1 = rough_fz_min
+    if ((nodeCoor(1) < fx2 + tol) .and. (nodeCoor(1) > fx1 - tol) .and. (nodeCoor(3) > fz1 - tol)) then 
+        ixx = (nodeCoor(1) - fx1)/dx + 1
+        izz = (nodeCoor(3) - fz1)/dx + 1
+    elseif ((nodeCoor(1) < fx1 - tol) .and. (nodeCoor(3) > fz1 - tol) ) then
+        ixx = 1
+        izz = (nodeCoor(3) - fz1)/dx + 1
+    elseif ((nodeCoor(1) > fx2 + tol) .and. (nodeCoor(3) > fz1 - tol)) then 
+        ixx = nnx
+        izz = (nodeCoor(3) - fz1)/dx + 1
+    elseif ((nodeCoor(1) < fx2 + tol) .and. (nodeCoor(1) > fx1 - tol) .and. (nodeCoor(3) < fz1 - tol)) then 
+        ixx = (nodeCoor(1) - fx1)/dx + 1
+        izz = 1
+    elseif ((nodeCoor(1) < fx1 - tol) .and. (nodeCoor(3) < fz1 - tol)) then 
+        ixx = 1
+        izz = 1 
+    elseif ((nodeCoor(1) > fx2 + tol) .and. (nodeCoor(3) < fz1 - tol)) then 
+        ixx = nnx
+        izz = 1
+    endif 
+    
+    peak = rough_geo(1,nnz*(ixx-1)+izz)
+    pfx = rough_geo(2,nnz*(ixx-1)+izz)
+    pfz = rough_geo(3,nnz*(ixx-1)+izz)    
+    
+    if (nodeCoor(2) > -tol) then
+        ycoort = nodeCoor(2)*(ymax - peak)/ymax + peak
+    elseif (nodeCoor(2) < -tol) then 
+        ycoort = nodeCoor(2)*(peak - ymin)/(-ymin) + peak 
+    endif 
+    
+end subroutine insertFaultInterface
