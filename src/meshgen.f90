@@ -108,7 +108,7 @@ subroutine meshgen
                 locid(nnode) = ntag
                 dof1(nnode)  = nodeDofNum
                 
-                call setEquationNumber(ix, iy, iz, nx, ny, nz, nodeCoor, ntag, neq0, nodeDofNum)
+                call setEquationNumber(nodeXyzIndex, nodeCoor, ntag, neq0, nodeDofNum)
                 call setSurfaceStation(ix, iy, nodeCoor, nx, ny, xline, yline, nnode)
                 call createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag, &
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
@@ -836,11 +836,10 @@ subroutine setSurfaceStation(ix, iy, nodeCoor, nx, ny, xline, yline, nnode)
     endif    
 end subroutine setSurfaceStation
 
-subroutine setEquationNumber(ix, iy, iz, nx, ny, nz, nodeCoor, ntag, neq0, nodeDofNum)
+subroutine setEquationNumber(nodeXyzIndex, nodeCoor, ntag, neq0, nodeDofNum)
     use globalvar 
     implicit none
-    integer (kind = 4) :: ix, iy, iz, nx, ny, nz, iDof, nodeDofNum
-    integer (kind = 4) :: ntag, neq0
+    integer (kind = 4) :: iDof, nodeDofNum, ntag, neq0, nodeXyzIndex(10)
     real (kind = dp) :: nodeCoor(10)
     
     do iDof = 1,nodeDofNum
@@ -855,22 +854,22 @@ subroutine setEquationNumber(ix, iy, iz, nx, ny, nz, nodeCoor, ntag, neq0, nodeD
             id1(ntag) = neq0
             
             !Count # of DOF on MPI boundaries
-            if (ix==1) then !Left
+            if (nodeXyzIndex(1)==1) then !Left
                 numcount(4)=numcount(4)+1
             endif
-            if (ix==nx) then !Right
+            if (nodeXyzIndex(1)==nodeXyzIndex(4)) then !Right
                 numcount(5)=numcount(5)+1
             endif
-            if (iy==1) then !Front
+            if (nodeXyzIndex(2)==1) then !Front
                 numcount(6)=numcount(6)+1
             endif
-            if (iy==ny) then !Back
+            if (nodeXyzIndex(2)==nodeXyzIndex(5)) then !Back
                 numcount(7)=numcount(7)+1
             endif
-            if (iz==1) then !Down
+            if (nodeXyzIndex(3)==1) then !Down
                 numcount(8)=numcount(8)+1
             endif
-            if (iz==nz) then !Up
+            if (nodeXyzIndex(3)==nodeXyzIndex(6)) then !Up
                 numcount(9)=numcount(9)+1
             endif
         endif
