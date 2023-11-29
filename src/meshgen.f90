@@ -131,7 +131,7 @@ subroutine meshgen
                         call tetra(xc(1), xc(2), xc(3), nelement, ntags, iy, iz, nftnd0(1))
                     endif         
                     
-                    call setMasterNode(xcoor, ycoor, zcoor, nelement, nftnd0) 
+                    call replaceSlaveWithMasterNode(xcoor, ycoor, zcoor, nelement, nftnd0) 
                     if (C_elastic==0 .and. TPV==2802) call plastic_set_mat_stress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, nelement)          
                 endif!if element
             enddo!iy
@@ -927,7 +927,7 @@ subroutine createElement(nelement, ntags, iy, iz, xc)
     ! update nelement, ntags
 end subroutine createElement
 
- subroutine setMasterNode(xcoor, ycoor, zcoor, nelement, nftnd0)
+ subroutine replaceSlaveWithMasterNode(xcoor, ycoor, zcoor, nelement, nftnd0)
     use globalvar 
     implicit none
     integer (kind = 4) :: nelement, iFault, iFaultNodePair, nftnd0(ntotft), k
@@ -950,7 +950,7 @@ end subroutine createElement
         enddo
     endif      
     
-end subroutine setMasterNode
+end subroutine replaceSlaveWithMasterNode
 
 subroutine checkIsOnFault(xcoor, ycoor, zcoor, iFault, isOnFault)
     use globalvar
