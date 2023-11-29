@@ -22,8 +22,7 @@ subroutine meshgen
     integer (kind = 4), dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
     integer (kind = 4), allocatable :: fltrc(:,:,:,:)
     ! Temporary real variables
-    real (kind = dp) :: xcoor,ycoor,zcoor,&
-                       tmp1,tmp2,tmp3,&
+    real (kind = dp) :: nodeCoor(10), &
                        a,b,area,aa1,bb1,cc1,dd1,p1,q1, xc(3),ycoort, pfx = 0.0d0, pfz = 0.0d0
     real (kind = dp), allocatable :: xlinet(:), ylinet(:), zlinet(:), &
                                      xline(:),  yline(:) , zline(:)
@@ -97,27 +96,27 @@ subroutine meshgen
     do ix = 1, nx
         do iz = 1, nz
             do iy = 1, ny
-                xcoor = xline(ix)
-                ycoor = yline(iy)
-                zcoor = zline(iz)
+                nodeCoor(1) = xline(ix)
+                nodeCoor(2) = yline(iy)
+                nodeCoor(3) = zline(iz)
                 nnode = nnode + 1        
                 plane2(iy,iz) = nnode
-                x(1,nnode) = xcoor
-                x(2,nnode) = ycoor
-                x(3,nnode) = zcoor
+                x(1,nnode) = nodeCoor(1)
+                x(2,nnode) = nodeCoor(2)
+                x(3,nnode) = nodeCoor(3)
                 if (rough_fault == 1) then 
-                    call insert_rough_fault(xcoor, ycoor, zcoor, ycoort, pfx, pfz)
+                    call insert_rough_fault(nodeCoor, ycoort, pfx, pfz)
                     x(2,nnode) = ycoort
                 endif 
                 
-                call setNumDof(xcoor, ycoor, zcoor, nodeDofNum)
+                call setNumDof(nodeCoor, nodeDofNum)
 
                 locid(nnode) = ntag
                 dof1(nnode)  = nodeDofNum
                 
-                call setEquationNumber(ix, iy, iz, nx, ny, nz, xcoor, ycoor, zcoor, ntag, neq0, nodeDofNum)
-                call setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, nnode)
-                call createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, xcoor, ycoor, zcoor, ycoort, nnode, msnode, nftnd0, neq0, ntag, &
+                call setEquationNumber(ix, iy, iz, nx, ny, nz, nodeCoor, ntag, neq0, nodeDofNum)
+                call setSurfaceStation(ix, iy, nodeCoor, nx, ny, xline, yline, nnode)
+                call createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag, &
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
                 
                 ! Create element
@@ -131,7 +130,7 @@ subroutine meshgen
                         call tetra(xc(1), xc(2), xc(3), nelement, ntags, iy, iz, nftnd0(1))
                     endif         
                     
-                    call replaceSlaveWithMasterNode(xcoor, ycoor, zcoor, nelement, nftnd0) 
+                    call replaceSlaveWithMasterNode(nodeCoor, nelement, nftnd0) 
                     if (C_elastic==0 .and. TPV==2802) call plastic_set_mat_stress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, nelement)          
                 endif!if element
             enddo!iy
@@ -747,39 +746,39 @@ subroutine get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
     endif
 end subroutine get1DCoorZLocal
 
-subroutine setNumDof(xcoor,ycoor,zcoor,nodeDofNum)
+subroutine setNumDof(nodeCoor, nodeDofNum)
     use globalvar
     implicit none
     integer (kind = 4) :: nodeDofNum
-    real (kind = dp) :: xcoor, ycoor, zcoor
+    real (kind = dp) :: nodeCoor(10)
     nodeDofNum = ndof !Default
-    if (xcoor>PMLb(1) .or. xcoor<PMLb(2) .or. ycoor>PMLb(3) &
-        .or. ycoor<PMLb(4) .or. zcoor<PMLb(5)) then
+    if (nodeCoor(1)>PMLb(1) .or. nodeCoor(1)<PMLb(2) .or. nodeCoor(2)>PMLb(3) &
+        .or. nodeCoor(2)<PMLb(4) .or. nodeCoor(3)<PMLb(5)) then
         nodeDofNum = 12 ! Modify if inside PML
     endif   
 end subroutine setNumDof
 
-subroutine setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, nnode)
+subroutine setSurfaceStation(ix, iy, nodeCoor, nx, ny, xline, yline, nnode)
     use globalvar
     implicit none
     integer (kind = 4) :: ix, iy, nx, ny, nnode, i
-    real (kind = dp) :: xcoor, ycoor, zcoor, xline(nx), yline(ny)
+    real (kind = dp) :: nodeCoor(10), xline(nx), yline(ny)
     
     !Part1. Stations inside the region.
     if(ix>1.and.ix<nx .and. iy>1.and.iy<ny) then  !at surface only
         do i=1,n4nds
             if(n4yn(i)==0) then
-                if (abs(zcoor-x4nds(3,i))<tol) then
-                    if(abs(xcoor-x4nds(1,i))<tol .or.&
-                    (x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
-                    (xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
-                    (x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
-                    (x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
-                        if(abs(ycoor-x4nds(2,i))<tol .or. &
-                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
-                        (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-                        (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
-                        (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+                if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
+                    if(abs(nodeCoor(1)-x4nds(1,i))<tol .or.&
+                    (x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<nodeCoor(1).and. &
+                    (nodeCoor(1)-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
+                    (x4nds(1,i)>nodeCoor(1).and.x4nds(1,i)<xline(ix+1).and. &
+                    (x4nds(1,i)-nodeCoor(1))<(xline(ix+1)-x4nds(1,i)))) then
+                        if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
+                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<nodeCoor(2).and. &
+                        (nodeCoor(2)-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+                        (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
+                        (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) then
                             n4yn(i) = 1
                             n4out = n4out + 1
                             an4nds(1,n4out) = i
@@ -797,15 +796,15 @@ subroutine setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, 
     if(ix==1.and. iy>1.and.iy<ny) then  !at surface only
         do i=1,n4nds
             if(n4yn(i)==0) then
-                if (abs(zcoor-x4nds(3,i))<tol) then
-                    if(abs(xcoor-x4nds(1,i))<tol .or. &
-                    (x4nds(1,i)>xcoor.and.x4nds(1,i)<xline(ix+1).and. &
-                    (x4nds(1,i)-xcoor)<(xline(ix+1)-x4nds(1,i)))) then
-                        if(abs(ycoor-x4nds(2,i))<tol .or. &
-                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
-                        (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-                        (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
-                        (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+                if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
+                    if(abs(nodeCoor(1)-x4nds(1,i))<tol .or. &
+                    (x4nds(1,i)>nodeCoor(1).and.x4nds(1,i)<xline(ix+1).and. &
+                    (x4nds(1,i)-nodeCoor(1))<(xline(ix+1)-x4nds(1,i)))) then
+                        if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
+                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<nodeCoor(2).and. &
+                        (nodeCoor(2)-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+                        (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
+                        (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) then
                             n4yn(i) = 1
                             n4out = n4out + 1
                             an4nds(1,n4out) = i
@@ -822,14 +821,14 @@ subroutine setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, 
     if(ix==nx .and. iy>1.and.iy<ny) then  !at surface only
         do i=1,n4nds
             if(n4yn(i)==0) then
-                if (abs(zcoor-x4nds(3,i))<tol) then
-                    if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<xcoor.and. &
-                    (xcoor-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) then
-                        if(abs(ycoor-x4nds(2,i))<tol .or. &
-                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<ycoor.and. &
-                        (ycoor-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-                        (x4nds(2,i)>ycoor.and.x4nds(2,i)<yline(iy+1).and. &
-                        (x4nds(2,i)-ycoor)<(yline(iy+1)-x4nds(2,i)))) then
+                if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
+                    if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<nodeCoor(1).and. &
+                    (nodeCoor(1)-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) then
+                        if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
+                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<nodeCoor(2).and. &
+                        (nodeCoor(2)-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+                        (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
+                        (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) then
                             n4yn(i) = 1
                             n4out = n4out + 1
                             an4nds(1,n4out) = i
@@ -843,16 +842,16 @@ subroutine setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, 
     endif    
 end subroutine setSurfaceStation
 
-subroutine setEquationNumber(ix, iy, iz, nx, ny, nz, xcoor, ycoor, zcoor, ntag, neq0, nodeDofNum)
+subroutine setEquationNumber(ix, iy, iz, nx, ny, nz, nodeCoor, ntag, neq0, nodeDofNum)
     use globalvar 
     implicit none
     integer (kind = 4) :: ix, iy, iz, nx, ny, nz, iDof, nodeDofNum
     integer (kind = 4) :: ntag, neq0
-    real (kind = dp) :: xcoor, ycoor, zcoor
+    real (kind = dp) :: nodeCoor(10)
     
     do iDof = 1,nodeDofNum
-        if(abs(xcoor-xmin)<tol.or.abs(xcoor-xmax)<tol.or.abs(ycoor-ymin)<tol &
-        .or.abs(ycoor-ymax)<tol.or.abs(zcoor-zmin)<tol) then
+        if(abs(nodeCoor(1)-xmin)<tol.or.abs(nodeCoor(1)-xmax)<tol.or.abs(nodeCoor(2)-ymin)<tol &
+        .or.abs(nodeCoor(2)-ymax)<tol.or.abs(nodeCoor(3)-zmin)<tol) then
             ntag      = ntag+1
             id1(ntag) = -1 
             ! Dof = -1 for fixed boundary nodes, no eq #. 
@@ -927,18 +926,18 @@ subroutine createElement(nelement, ntags, iy, iz, xc)
     ! update nelement, ntags
 end subroutine createElement
 
- subroutine replaceSlaveWithMasterNode(xcoor, ycoor, zcoor, nelement, nftnd0)
+ subroutine replaceSlaveWithMasterNode(nodeCoor, nelement, nftnd0)
     use globalvar 
     implicit none
     integer (kind = 4) :: nelement, iFault, iFaultNodePair, nftnd0(ntotft), k
-    real (kind = dp) :: xcoor, ycoor, zcoor
+    real (kind = dp) :: nodeCoor(10)
     ! The default grids only contain slave nodes. 
     ! This subroutine will replace slave nodes with corresponding master nodes.
     
     ! Currently only work for vertical fault on xz plane. 
     if(et(nelement) == 1 .and. &
-        (xcoor>(fltxyz(1,1,1)-tol) .and. xcoor<(fltxyz(2,1,1)+dx+tol) .and. &
-         zcoor>(fltxyz(1,3,1)-tol) .and. ycoor>0.0d0 .and. abs(ycoor-dy)<tol)) then
+        (nodeCoor(1)>(fltxyz(1,1,1)-tol) .and. nodeCoor(1)<(fltxyz(2,1,1)+dx+tol) .and. &
+         nodeCoor(3)>(fltxyz(1,3,1)-tol) .and. nodeCoor(2)>0.0d0 .and. abs(nodeCoor(2)-dy)<tol)) then
         do iFault = 1, ntotft
             do iFaultNodePair = 1, nftnd0(iFault)
                 do k = 1,nen
@@ -952,31 +951,31 @@ end subroutine createElement
     
 end subroutine replaceSlaveWithMasterNode
 
-subroutine checkIsOnFault(xcoor, ycoor, zcoor, iFault, isOnFault)
+subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
     use globalvar
     implicit none
     integer (kind = 4) :: isOnFault, iFault
-    real (kind = dp) :: xcoor, ycoor, zcoor
+    real (kind = dp) :: nodeCoor(10)
     isOnFault = 0
-    if(xcoor>=(fltxyz(1,1,iFault)-tol).and.xcoor<=(fltxyz(2,1,iFault)+tol).and. &
-        ycoor>=(fltxyz(1,2,iFault)-tol).and.ycoor<=(fltxyz(2,2,iFault)+tol).and. &
-        zcoor>=(fltxyz(1,3,iFault)-tol) .and. zcoor<=(fltxyz(2,3,iFault)+tol)) then
+    if(nodeCoor(1)>=(fltxyz(1,1,iFault)-tol).and.nodeCoor(1)<=(fltxyz(2,1,iFault)+tol).and. &
+        nodeCoor(2)>=(fltxyz(1,2,iFault)-tol).and.nodeCoor(2)<=(fltxyz(2,2,iFault)+tol).and. &
+        nodeCoor(3)>=(fltxyz(1,3,iFault)-tol) .and. nodeCoor(3)<=(fltxyz(2,3,iFault)+tol)) then
         isOnFault = 1
     endif 
 end subroutine checkIsOnFault
 
-subroutine createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, xcoor, ycoor, zcoor, ycoort, nnode, msnode, nftnd0, neq0, ntag,&
+subroutine createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag,&
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
 use globalvar 
 implicit none
 integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nnode, msnode, nftnd0(ntotft), neq0, ix, iy, iz, nx, ny, nz, i, nxuni, nzuni, ntag
 integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft)
-real (kind = dp) :: xcoor, ycoor, zcoor, ycoort, pfx, pfz
+real (kind = dp) :: nodeCoor(10), ycoort, pfx, pfz
 
 do iFault = 1, ntotft
 
     isOnFault = 0 
-    call checkIsOnFault(xcoor, ycoor, zcoor, iFault, isOnFault)
+    call checkIsOnFault(nodeCoor, iFault, isOnFault)
 
     if (isOnFault == 1) then
         nftnd0(iFault)                = nftnd0(iFault) + 1 ! # of split-node pairs + 1
@@ -989,9 +988,9 @@ do iFault = 1, ntotft
         nsmp(2,nftnd0(iFault),iFault) = msnode !set Master node nodeID to nsmp
         plane2(ny+iFault,iz)          = msnode
         
-        x(1,msnode) = xcoor
-        x(2,msnode) = ycoor
-        x(3,msnode) = zcoor
+        x(1,msnode) = nodeCoor(1)
+        x(2,msnode) = nodeCoor(2)
+        x(3,msnode) = nodeCoor(3)
         if (rough_fault == 1) then 
             x(2,msnode) = ycoort
         endif
@@ -1032,8 +1031,8 @@ do iFault = 1, ntotft
 
         ! setOnFaultStation
         do i = 1, nonfs(iFault)
-            if(abs(xcoor-xonfs(1,i,iFault))<tol .and. &
-                abs(zcoor-xonfs(2,i,iFault))<tol) then
+            if(abs(nodeCoor(1)-xonfs(1,i,iFault))<tol .and. &
+                abs(nodeCoor(3)-xonfs(2,i,iFault))<tol) then
                 n4onf = n4onf + 1
                 anonfs(1,n4onf) = nftnd0(iFault)
                 anonfs(2,n4onf) = i
