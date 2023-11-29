@@ -3,7 +3,11 @@
 ! * This code is part of software EQdyna, please see EQdyna License Agreement
 ! * attached before you copy, download, install or use EQdyna./
 subroutine meshgen
-
+    ! Create regular node grids and hexahedral elements for this MPI process.
+    ! Create split nodes.
+    ! Distort the regular mesh for complex fault geometries.
+    ! Set material propertiesa, initial stress, and other element-wise properties. 
+    
     use globalvar
     implicit none
     include 'mpif.h'
@@ -13,38 +17,26 @@ subroutine meshgen
                        edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,edgezn, &
                        nxuni,nyuni,nzuni,ift, &
                        n1,n2,n3,n4,m1,m2,m3,m4,alloc_err,&
-                       istatus(MPI_STATUS_SIZE), &
-                       bndl,bndr,bndf,bndb,bndd,bndu, &
                        mex,mey,mez,rlp,rr,ierr,jj,itmp1,&
                        ntag,ntags,zz,ivp1,ivp2,ixe,iye,ize, &
                        itemp,iye1,nxe,nye,nze,&
-                       nsx,nsy,nfx,nfz,msnode,&
-                       nxline
-    integer(kind=4),dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
-    integer(kind=4),allocatable :: fltrc(:,:,:,:)
-
-    real(kind = dp) :: xcoor,ycoor,zcoor, &
-                       xstep,ystep,zstep,tmp1,tmp2,tmp3,&
-                       a,b,area,aa1,bb1,cc1,dd1,p1,q1
-    real(kind = dp),allocatable,dimension(:) :: xlinet,ylinet,zlinet, &
-                       xline,yline,zline,btmp,btmp1,btmp2,btmp3
-    real(kind = dp),allocatable::vpstruct(:,:)
-    !Heteogeneous stress setup
-    real(kind = dp)::initialinput(3,91001),xc(3)
-    real (kind = dp)::omega
+                       nsx,nsy,nfx,nfz,msnode
+    integer (kind = 4), dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
+    integer (kind = 4), allocatable :: fltrc(:,:,:,:)
+    ! Temporary real variables
+    real (kind = dp) :: xcoor,ycoor,zcoor,&
+                       tmp1,tmp2,tmp3,&
+                       a,b,area,aa1,bb1,cc1,dd1,p1,q1, xc(3)
+    real (kind = dp), allocatable :: xlinet(:), ylinet(:), zlinet(:), &
+                                     xline(:),  yline(:) , zline(:) , &
+                                     btmp(:),   btmp1(:)
     logical,dimension(ntotft) :: ynft
-    character (len=30)  ::meshfile
-    character (len=100) ::fname
     real (kind = dp) :: ycoort, pfx = 0.0d0, pfz = 0.0d0
-    
-    
+
     write(mm,'(i6)') me
     mm = trim(adjustl(mm))
-
-    
     dy=dx
     dz=dx
-    
 
     call calcXyzMPIId(mex, mey, mez)
     
@@ -254,41 +246,31 @@ subroutine meshgen
                             fltrc(1,ifs(ift),ifd(ift),ift) = msnode    !master node
                             fltrc(2,ifs(ift),ifd(ift),ift) = nftnd0(ift) !fault node num in sequence
 
-                            if (friclaw >= 3)then 
-                                if (TPV == 2800 .or. TPV == 2801 .or. TPV == 2802) then                               
-                                    if (abs(xcoor)<=20.0d3) then 
-                                        tmp1 = 1.0d0
-                                    elseif ((abs(xcoor)>20.0d3).and.(abs(xcoor)<22.0d3)) then 
-                                        tmp1 = 1.0d0 - (abs(xcoor)-20.0d3)/2.0d3
-                                    elseif (abs(xcoor)>=22.0d3) then 
-                                        tmp1 = 0.0d0
-                                    endif
-                                    if (abs(zcoor)>=2.0d3 .and. abs(zcoor)<=14.0d3) then 
-                                        tmp2 = 1.0d0
-                                    elseif (abs(zcoor)<2.0d3) then 
-                                        tmp2 = 1.0d0 - (2.0d3 - abs(zcoor))/2.0d3
-                                    elseif ((abs(zcoor)>14.0d3) .and. (abs(zcoor)<15.0d3)) then
-                                        tmp2 = 1.0d0 - (abs(zcoor)-14.0d3)/1.0d3
-                                    elseif (abs(zcoor)>=15.0d3) then 
-                                        tmp2 = 0.0d0
-                                    endif                
-                                    tmp3 = fric_rsf_deltaa0
-                                    if (abs(zcoor)>15.0d3) then 
-                                        tmp3 = 2.0d0*fric_rsf_deltaa0
-                                    endif 
-                                endif                                
-                            endif
-    !-----------------------------END ZONE IV---------------------------!                        
-                            !special values below.                        
-                            if(abs(xcoor-fltxyz(1,1,ift))<tol .or. abs(xcoor-fltxyz(2,1,ift))<tol &
-                            .or. abs(zcoor-fltxyz(1,3,ift))<tol) then !-x,+x,-z for 1, +x,-z for 2
-                                fric(1,nftnd0(ift),ift) = 10000.    !fault edge, pinned
-                            endif
-                            !if(abs(zcoor)<tol) fric(6,nftnd0(ift),ift) = 0.5 * dz  !surface pore pressure
-                            !if(ift==2)  then !branch, fault 2, only 12 km strike rupturable
-                            !  tmp1=sqrt(xcoor**2+ycoor**2)
-                            !  if(tmp1>12000) fric(1,nftnd0(ift),ift) = 10000.
-                            !endif               
+                            ! if (friclaw >= 3)then 
+                                ! if (TPV == 2800 .or. TPV == 2801 .or. TPV == 2802) then                               
+                                    ! if (abs(xcoor)<=20.0d3) then 
+                                        ! tmp1 = 1.0d0
+                                    ! elseif ((abs(xcoor)>20.0d3).and.(abs(xcoor)<22.0d3)) then 
+                                        ! tmp1 = 1.0d0 - (abs(xcoor)-20.0d3)/2.0d3
+                                    ! elseif (abs(xcoor)>=22.0d3) then 
+                                        ! tmp1 = 0.0d0
+                                    ! endif
+                                    ! if (abs(zcoor)>=2.0d3 .and. abs(zcoor)<=14.0d3) then 
+                                        ! tmp2 = 1.0d0
+                                    ! elseif (abs(zcoor)<2.0d3) then 
+                                        ! tmp2 = 1.0d0 - (2.0d3 - abs(zcoor))/2.0d3
+                                    ! elseif ((abs(zcoor)>14.0d3) .and. (abs(zcoor)<15.0d3)) then
+                                        ! tmp2 = 1.0d0 - (abs(zcoor)-14.0d3)/1.0d3
+                                    ! elseif (abs(zcoor)>=15.0d3) then 
+                                        ! tmp2 = 0.0d0
+                                    ! endif                
+                                    ! tmp3 = fric_rsf_deltaa0
+                                    ! if (abs(zcoor)>15.0d3) then 
+                                        ! tmp3 = 2.0d0*fric_rsf_deltaa0
+                                    ! endif 
+                                ! endif                                
+                            ! endif
+             
                             exit !can only be on 1 fault, thus if ynft(ift), exit do loop       
                         endif  !if ynft(ift)
                     endif  !if flt range
@@ -423,6 +405,9 @@ subroutine meshgen
     !deallocate(xlinet,xline,yline,zline,fltrc)
     
 end subroutine meshgen
+!==================================================================================================
+!**************************************************************************************************
+!==================================================================================================
 
 subroutine setElementMaterial(nelement, xc)
 ! Subroutine velocityStructure will asign Vp, Vs and rho 
