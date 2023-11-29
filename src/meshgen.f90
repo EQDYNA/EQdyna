@@ -123,128 +123,132 @@ subroutine meshgen
                 call setEquationNumber(ix, iy, iz, nx, ny, nz, xcoor, ycoor, zcoor, ntag, neq0, zz)
                 call setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, nnode)
 
-                do ift=1,ntotft 
-                    ynft(ift) = .false.
-                    if(xcoor>=(fltxyz(1,1,ift)-tol).and.xcoor<=(fltxyz(2,1,ift)+tol).and. &
-                    ycoor>=(fltxyz(1,2,ift)-tol).and.ycoor<=(fltxyz(2,2,ift)+tol).and. &
-                    zcoor>=(fltxyz(1,3,ift)-tol) .and. zcoor<=(fltxyz(2,3,ift)+tol)) then
-                        if(ift==1) then
-                            ynft(ift) = .true.
-                        endif
-                        if(ynft(ift)) then
-                            nftnd0(ift) = nftnd0(ift) + 1
-                            if(nftnd(ift)==0) then
-                            write(*,*) 'inconsistency between mesh4num and meshgen for nftnd0',me
-                            write(*,*) 'current node x,y,z:',xcoor,ycoor,zcoor
-                            stop 2001
-                            endif
-                            nsmp(1,nftnd0(ift),ift) = nnode !slave node
-                            msnode=nx*ny*nz+nftnd0(ift)                                 
-                            locid(msnode)=ntag
-                            dof1(msnode)=3         
-                            nsmp(2,nftnd0(ift),ift) = msnode !master node
-                            plane2(ny+ift,iz) = msnode
-                            x(1,msnode) = xcoor
-                            x(2,msnode) = ycoor
-                            x(3,msnode) = zcoor
+                call createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, xcoor, ycoor, zcoor, ycoort, nnode, msnode, nftnd0, neq0, ntag, &
+                            pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
+                
+                
+                ! do ift=1,ntotft 
+                    ! ynft(ift) = .false.
+                    ! if(xcoor>=(fltxyz(1,1,ift)-tol).and.xcoor<=(fltxyz(2,1,ift)+tol).and. &
+                    ! ycoor>=(fltxyz(1,2,ift)-tol).and.ycoor<=(fltxyz(2,2,ift)+tol).and. &
+                    ! zcoor>=(fltxyz(1,3,ift)-tol) .and. zcoor<=(fltxyz(2,3,ift)+tol)) then
+                        ! if(ift==1) then
+                            ! ynft(ift) = .true.
+                        ! endif
+                        ! if(ynft(ift)) then
+                            ! nftnd0(ift) = nftnd0(ift) + 1
+                            ! if(nftnd(ift)==0) then
+                            ! write(*,*) 'inconsistency between mesh4num and meshgen for nftnd0',me
+                            ! write(*,*) 'current node x,y,z:',xcoor,ycoor,zcoor
+                            ! stop 2001
+                            ! endif
+                            ! nsmp(1,nftnd0(ift),ift) = nnode !slave node
+                            ! msnode=nx*ny*nz+nftnd0(ift)                                 
+                            ! locid(msnode)=ntag
+                            ! dof1(msnode)=3         
+                            ! nsmp(2,nftnd0(ift),ift) = msnode !master node
+                            ! plane2(ny+ift,iz) = msnode
+                            ! x(1,msnode) = xcoor
+                            ! x(2,msnode) = ycoor
+                            ! x(3,msnode) = zcoor
                             
-                            if (rough_fault == 1) then 
-                                x(2,msnode) = ycoort
-                            endif
+                            ! if (rough_fault == 1) then 
+                                ! x(2,msnode) = ycoort
+                            ! endif
                             
-                            !3DMPI
-                            if(ix == 1) then
-                                fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 1
-                                fltnum(1) = fltnum(1) + 1
-                            endif
-                            if(ix == nx) then
-                                fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 2
-                                fltnum(2) = fltnum(2) + 1
-                            endif
-                            if(iy == 1) then
-                                fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 10
-                                fltnum(3) = fltnum(3) + 1
-                            endif
-                            if(iy == ny) then
-                                fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 20
-                                fltnum(4) = fltnum(4) + 1
-                            endif
-                            if(iz == 1) then
-                                fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 100
-                                fltnum(5) = fltnum(5) + 1
-                            endif
-                            if(iz == nz) then
-                                fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 200
-                                fltnum(6) = fltnum(6) + 1
-                            endif             
+                            ! !3DMPI
+                            ! if(ix == 1) then
+                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 1
+                                ! fltnum(1) = fltnum(1) + 1
+                            ! endif
+                            ! if(ix == nx) then
+                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 2
+                                ! fltnum(2) = fltnum(2) + 1
+                            ! endif
+                            ! if(iy == 1) then
+                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 10
+                                ! fltnum(3) = fltnum(3) + 1
+                            ! endif
+                            ! if(iy == ny) then
+                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 20
+                                ! fltnum(4) = fltnum(4) + 1
+                            ! endif
+                            ! if(iz == 1) then
+                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 100
+                                ! fltnum(5) = fltnum(5) + 1
+                            ! endif
+                            ! if(iz == nz) then
+                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 200
+                                ! fltnum(6) = fltnum(6) + 1
+                            ! endif             
 
-                            if(ift==1) then
-                                tmp1 = xcoor
-                            elseif(ift==2) then
-                                tmp1 = sqrt(xcoor*xcoor+ycoor*ycoor)
-                            endif
-                            do i1=1,nonfs(ift)
-                                if(abs(tmp1-xonfs(1,i1,ift))<tol .and. &
-                                abs(zcoor-xonfs(2,i1,ift))<tol) then
-                                    n4onf = n4onf + 1
-                                    anonfs(1,n4onf) = nftnd0(ift)
-                                    anonfs(2,n4onf) = i1
-                                    anonfs(3,n4onf) = ift
-                                    exit
-                                elseif(abs(zcoor-xonfs(2,i1,ift))<tol .and. &
-                                abs(tmp1-xonfs(1,i1,ift))<dx/2) then
-                                    n4onf = n4onf + 1
-                                    anonfs(1,n4onf) = nftnd0(ift)
-                                    anonfs(2,n4onf) = i1
-                                    anonfs(3,n4onf) = ift
-                                    tmp2=xonfs(1,i1,ift)*dcos(brangle)
-                                    tmp3=-xonfs(1,i1,ift)*dsin(brangle)
-                                    x(1,nnode)=tmp2 !move mesh to stations!
-                                    x(1,nnode-1)=tmp2
-                                    x(2,nnode)=tmp3
-                                    x(2,nnode-1)=tmp3
-                                    exit          
-                                endif
-                            enddo  
-                            !...establish equation numbers for this master node
-                            do i1=1,ndof
-                                neq0 = neq0 + 1
-                                ntag=ntag+1
-                                id1(ntag)=neq0!assume no explicit boundary nodes
-                            enddo
-                            !...assign unit vectors to the split node pair    
-                            un(1,nftnd0(ift),ift) = dcos(fltxyz(1,4,ift))*dsin(fltxyz(2,4,ift))
-                            un(2,nftnd0(ift),ift) = -dsin(fltxyz(1,4,ift))*dsin(fltxyz(2,4,ift))
-                            un(3,nftnd0(ift),ift) = dcos(fltxyz(2,4,ift))        
-                            us(1,nftnd0(ift),ift) = -dsin(fltxyz(1,4,ift))
-                            us(2,nftnd0(ift),ift) = -dcos(fltxyz(1,4,ift))
-                            us(3,nftnd0(ift),ift) = 0.0d0
-                            ud(1,nftnd0(ift),ift) = dcos(fltxyz(1,4,ift))*dcos(fltxyz(2,4,ift))
-                            ud(2,nftnd0(ift),ift) = dsin(fltxyz(1,4,ift))*dcos(fltxyz(2,4,ift))
-                            ud(3,nftnd0(ift),ift) = dsin(fltxyz(2,4,ift))
+                            ! if(ift==1) then
+                                ! tmp1 = xcoor
+                            ! elseif(ift==2) then
+                                ! tmp1 = sqrt(xcoor*xcoor+ycoor*ycoor)
+                            ! endif
+                            ! do i1=1,nonfs(ift)
+                                ! if(abs(tmp1-xonfs(1,i1,ift))<tol .and. &
+                                ! abs(zcoor-xonfs(2,i1,ift))<tol) then
+                                    ! n4onf = n4onf + 1
+                                    ! anonfs(1,n4onf) = nftnd0(ift)
+                                    ! anonfs(2,n4onf) = i1
+                                    ! anonfs(3,n4onf) = ift
+                                    ! exit
+                                ! elseif(abs(zcoor-xonfs(2,i1,ift))<tol .and. &
+                                ! abs(tmp1-xonfs(1,i1,ift))<dx/2) then
+                                    ! n4onf = n4onf + 1
+                                    ! anonfs(1,n4onf) = nftnd0(ift)
+                                    ! anonfs(2,n4onf) = i1
+                                    ! anonfs(3,n4onf) = ift
+                                    ! tmp2=xonfs(1,i1,ift)*dcos(brangle)
+                                    ! tmp3=-xonfs(1,i1,ift)*dsin(brangle)
+                                    ! x(1,nnode)=tmp2 !move mesh to stations!
+                                    ! x(1,nnode-1)=tmp2
+                                    ! x(2,nnode)=tmp3
+                                    ! x(2,nnode-1)=tmp3
+                                    ! exit          
+                                ! endif
+                            ! enddo  
+                            ! !...establish equation numbers for this master node
+                            ! do i1=1,ndof
+                                ! neq0 = neq0 + 1
+                                ! ntag=ntag+1
+                                ! id1(ntag)=neq0!assume no explicit boundary nodes
+                            ! enddo
+                            ! !...assign unit vectors to the split node pair    
+                            ! un(1,nftnd0(ift),ift) = dcos(fltxyz(1,4,ift))*dsin(fltxyz(2,4,ift))
+                            ! un(2,nftnd0(ift),ift) = -dsin(fltxyz(1,4,ift))*dsin(fltxyz(2,4,ift))
+                            ! un(3,nftnd0(ift),ift) = dcos(fltxyz(2,4,ift))        
+                            ! us(1,nftnd0(ift),ift) = -dsin(fltxyz(1,4,ift))
+                            ! us(2,nftnd0(ift),ift) = -dcos(fltxyz(1,4,ift))
+                            ! us(3,nftnd0(ift),ift) = 0.0d0
+                            ! ud(1,nftnd0(ift),ift) = dcos(fltxyz(1,4,ift))*dcos(fltxyz(2,4,ift))
+                            ! ud(2,nftnd0(ift),ift) = dsin(fltxyz(1,4,ift))*dcos(fltxyz(2,4,ift))
+                            ! ud(3,nftnd0(ift),ift) = dsin(fltxyz(2,4,ift))
                             
-                            if (rough_fault == 1) then
-                                un(1,nftnd0(ift),ift) = -pfx/(pfx**2 + 1.0d0 + pfz**2)**0.5
-                                un(2,nftnd0(ift),ift) = 1.0d0/(pfx**2 + 1.0d0 + pfz**2)**0.5
-                                un(3,nftnd0(ift),ift) = -pfz/(pfx**2 + 1.0d0 + pfz**2)**0.5    
-                                us(1,nftnd0(ift),ift) = 1.0d0/(1.0d0 + pfx**2)**0.5
-                                us(2,nftnd0(ift),ift) = pfx/(1.0d0 + pfx**2)**0.5
-                                us(3,nftnd0(ift),ift) = 0.0d0
-                                ud(1,nftnd0(ift),ift) = us(2,nftnd0(ift),ift)*un(3,nftnd0(ift),ift) &
-                                    - us(3,nftnd0(ift),ift)*un(2,nftnd0(ift),ift)
-                                ud(2,nftnd0(ift),ift) = us(3,nftnd0(ift),ift)*un(1,nftnd0(ift),ift) &
-                                    - us(1,nftnd0(ift),ift)*un(3,nftnd0(ift),ift)
-                                ud(3,nftnd0(ift),ift) = us(1,nftnd0(ift),ift)*un(2,nftnd0(ift),ift) &
-                                    - us(2,nftnd0(ift),ift)*un(1,nftnd0(ift),ift)
-                            endif                             
+                            ! if (rough_fault == 1) then
+                                ! un(1,nftnd0(ift),ift) = -pfx/(pfx**2 + 1.0d0 + pfz**2)**0.5
+                                ! un(2,nftnd0(ift),ift) = 1.0d0/(pfx**2 + 1.0d0 + pfz**2)**0.5
+                                ! un(3,nftnd0(ift),ift) = -pfz/(pfx**2 + 1.0d0 + pfz**2)**0.5    
+                                ! us(1,nftnd0(ift),ift) = 1.0d0/(1.0d0 + pfx**2)**0.5
+                                ! us(2,nftnd0(ift),ift) = pfx/(1.0d0 + pfx**2)**0.5
+                                ! us(3,nftnd0(ift),ift) = 0.0d0
+                                ! ud(1,nftnd0(ift),ift) = us(2,nftnd0(ift),ift)*un(3,nftnd0(ift),ift) &
+                                    ! - us(3,nftnd0(ift),ift)*un(2,nftnd0(ift),ift)
+                                ! ud(2,nftnd0(ift),ift) = us(3,nftnd0(ift),ift)*un(1,nftnd0(ift),ift) &
+                                    ! - us(1,nftnd0(ift),ift)*un(3,nftnd0(ift),ift)
+                                ! ud(3,nftnd0(ift),ift) = us(1,nftnd0(ift),ift)*un(2,nftnd0(ift),ift) &
+                                    ! - us(2,nftnd0(ift),ift)*un(1,nftnd0(ift),ift)
+                            ! endif                             
                             
-                            !...prepare for area calculation
-                            if(ixfi(ift)==0) ixfi(ift)=ix
-                            if(izfi(ift)==0) izfi(ift)=iz
-                            ifs(ift)=ix-ixfi(ift)+1
-                            ifd(ift)=iz-izfi(ift)+1
-                            fltrc(1,ifs(ift),ifd(ift),ift) = msnode    !master node
-                            fltrc(2,ifs(ift),ifd(ift),ift) = nftnd0(ift) !fault node num in sequence
+                            ! !...prepare for area calculation
+                            ! if(ixfi(ift)==0) ixfi(ift)=ix
+                            ! if(izfi(ift)==0) izfi(ift)=iz
+                            ! ifs(ift)=ix-ixfi(ift)+1
+                            ! ifd(ift)=iz-izfi(ift)+1
+                            ! fltrc(1,ifs(ift),ifd(ift),ift) = msnode    !master node
+                            ! fltrc(2,ifs(ift),ifd(ift),ift) = nftnd0(ift) !fault node num in sequence
 
                             ! if (friclaw >= 3)then 
                                 ! if (TPV == 2800 .or. TPV == 2801 .or. TPV == 2802) then                               
@@ -271,10 +275,10 @@ subroutine meshgen
                                 ! endif                                
                             ! endif
              
-                            exit !can only be on 1 fault, thus if ynft(ift), exit do loop       
-                        endif  !if ynft(ift)
-                    endif  !if flt range
-                enddo  !do ift 
+                            ! exit !can only be on 1 fault, thus if ynft(ift), exit do loop       
+                        ! endif  !if ynft(ift)
+                    ! endif  !if flt range
+                ! enddo  !do ift 
                 !...create elements
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
                 
@@ -1151,3 +1155,131 @@ end subroutine createElement
     endif      
     
 end subroutine setMasterNode
+
+subroutine checkIsOnFault(xcoor, ycoor, zcoor, iFault, isOnFault)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: isOnFault, iFault
+    real (kind = dp) :: xcoor, ycoor, zcoor
+    isOnFault = 0
+    if(xcoor>=(fltxyz(1,1,iFault)-tol).and.xcoor<=(fltxyz(2,1,iFault)+tol).and. &
+        ycoor>=(fltxyz(1,2,iFault)-tol).and.ycoor<=(fltxyz(2,2,iFault)+tol).and. &
+        zcoor>=(fltxyz(1,3,iFault)-tol) .and. zcoor<=(fltxyz(2,3,iFault)+tol)) then
+        isOnFault = 1
+    endif 
+end subroutine checkIsOnFault
+
+subroutine createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, xcoor, ycoor, zcoor, ycoort, nnode, msnode, nftnd0, neq0, ntag,&
+                            pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
+use globalvar 
+implicit none
+integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nnode, msnode, nftnd0(ntotft), neq0, ix, iy, iz, nx, ny, nz, i, nxuni, nzuni, ntag
+integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft)
+real (kind = dp) :: xcoor, ycoor, zcoor, ycoort, pfx, pfz
+
+do iFault = 1, ntotft
+
+    isOnFault = 0 
+    call checkIsOnFault(xcoor, ycoor, zcoor, iFault, isOnFault)
+
+    if (isOnFault == 1) then
+        nftnd0(iFault)                = nftnd0(iFault) + 1 ! # of split-node pairs + 1
+        nsmp(1,nftnd0(iFault),iFault) = nnode              ! set Slave node nodeID to nsmp  
+        msnode                        = nx*ny*nz + nftnd0(iFault) ! create Master node at the end of regular grids
+        if (iFault>1) stop 'msnode cannot handle iFault>1'
+        
+        locid(msnode)                 = ntag
+        dof1(msnode)                  = 3         
+        nsmp(2,nftnd0(iFault),iFault) = msnode !set Master node nodeID to nsmp
+        plane2(ny+iFault,iz)          = msnode
+        
+        x(1,msnode) = xcoor
+        x(2,msnode) = ycoor
+        x(3,msnode) = zcoor
+        if (rough_fault == 1) then 
+            x(2,msnode) = ycoort
+        endif
+        
+        !set Equation Numbers for the newly created Master Node.
+        do i = 1, ndof
+            neq0      = neq0 + 1
+            ntag      = ntag + 1
+            id1(ntag) = neq0
+        enddo
+        
+        ! Count split-node pair # for MPI
+        ! fltgm, fltnum are global vars.
+        if(ix == 1) then
+            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 1
+            fltnum(1) = fltnum(1) + 1
+        endif
+        if(ix == nx) then
+            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 2
+            fltnum(2) = fltnum(2) + 1
+        endif
+        if(iy == 1) then
+            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 10
+            fltnum(3) = fltnum(3) + 1
+        endif
+        if(iy == ny) then
+            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 20
+            fltnum(4) = fltnum(4) + 1
+        endif
+        if(iz == 1) then
+            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 100
+            fltnum(5) = fltnum(5) + 1
+        endif
+        if(iz == nz) then
+            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 200
+            fltnum(6) = fltnum(6) + 1
+        endif             
+
+        ! setOnFaultStation
+        do i = 1, nonfs(iFault)
+            if(abs(xcoor-xonfs(1,i,iFault))<tol .and. &
+                abs(zcoor-xonfs(2,i,iFault))<tol) then
+                n4onf = n4onf + 1
+                anonfs(1,n4onf) = nftnd0(iFault)
+                anonfs(2,n4onf) = i
+                anonfs(3,n4onf) = iFault
+                exit
+            endif
+        enddo  
+
+        ! set unit vectors to split-node pair    
+        un(1,nftnd0(iFault),iFault) = dcos(fltxyz(1,4,iFault))*dsin(fltxyz(2,4,iFault))
+        un(2,nftnd0(iFault),iFault) = -dsin(fltxyz(1,4,iFault))*dsin(fltxyz(2,4,iFault))
+        un(3,nftnd0(iFault),iFault) = dcos(fltxyz(2,4,iFault))        
+        us(1,nftnd0(iFault),iFault) = -dsin(fltxyz(1,4,iFault))
+        us(2,nftnd0(iFault),iFault) = -dcos(fltxyz(1,4,iFault))
+        us(3,nftnd0(iFault),iFault) = 0.0d0
+        ud(1,nftnd0(iFault),iFault) = dcos(fltxyz(1,4,iFault))*dcos(fltxyz(2,4,iFault))
+        ud(2,nftnd0(iFault),iFault) = dsin(fltxyz(1,4,iFault))*dcos(fltxyz(2,4,iFault))
+        ud(3,nftnd0(iFault),iFault) = dsin(fltxyz(2,4,iFault))
+        
+        if (rough_fault == 1) then
+            un(1,nftnd0(iFault),iFault) = -pfx/(pfx**2 + 1.0d0 + pfz**2)**0.5
+            un(2,nftnd0(iFault),iFault) = 1.0d0/(pfx**2 + 1.0d0 + pfz**2)**0.5
+            un(3,nftnd0(iFault),iFault) = -pfz/(pfx**2 + 1.0d0 + pfz**2)**0.5    
+            us(1,nftnd0(iFault),iFault) = 1.0d0/(1.0d0 + pfx**2)**0.5
+            us(2,nftnd0(iFault),iFault) = pfx/(1.0d0 + pfx**2)**0.5
+            us(3,nftnd0(iFault),iFault) = 0.0d0
+            ud(1,nftnd0(iFault),iFault) = us(2,nftnd0(iFault),iFault)*un(3,nftnd0(iFault),iFault) &
+                - us(3,nftnd0(iFault),iFault)*un(2,nftnd0(iFault),iFault)
+            ud(2,nftnd0(iFault),iFault) = us(3,nftnd0(iFault),iFault)*un(1,nftnd0(iFault),iFault) &
+                - us(1,nftnd0(iFault),iFault)*un(3,nftnd0(iFault),iFault)
+            ud(3,nftnd0(iFault),iFault) = us(1,nftnd0(iFault),iFault)*un(2,nftnd0(iFault),iFault) &
+                - us(2,nftnd0(iFault),iFault)*un(1,nftnd0(iFault),iFault)
+        endif                             
+        
+        !...prepare for area calculation
+        if(ixfi(iFault)==0) ixfi(iFault)=ix
+        if(izfi(iFault)==0) izfi(iFault)=iz
+        ifs(iFault)=ix-ixfi(iFault)+1
+        ifd(iFault)=iz-izfi(iFault)+1
+        fltrc(1,ifs(iFault),ifd(iFault),iFault) = msnode    !master node
+        fltrc(2,ifs(iFault),ifd(iFault),iFault) = nftnd0(iFault) !fault node num in sequence
+    endif 
+enddo 
+
+end subroutine createMasterNode
