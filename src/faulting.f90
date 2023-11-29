@@ -14,8 +14,10 @@ subroutine faulting
     real (kind = dp) :: nsdInitTractionVector(3)
     !===================================================================!
     do ift = 1, ntotft
-        do i = 1, nftnd(ift)    !just fault nodes
-        !-------------------------------------------------------------------!
+        do i = 1, nftnd(ift)   
+            
+            dtau = 0.0d0
+            
             if (TPV == 104 .or. TPV == 105) then
                 if (C_nuclea == 1 .and.ift == nucfault) then
                     call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
@@ -245,7 +247,7 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
                             + massSlave*nsdNodalQuant(3,2,1) - massMaster*nsdNodalQuant(3,1,1)) /totalMass &
                             + initDipShear*C_elastic
     ! shear traction magnitude
-    nsdTractionVector(4) = sqrt(nsdTractionVector(1)**2+nsdTractionVector(2)**2)
+    nsdTractionVector(4) = sqrt(nsdTractionVector(2)**2+nsdTractionVector(3)**2)
     
 end subroutine getNsdSlipSliprateTraction
 
@@ -296,9 +298,9 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTractio
         xyzTractionVector(j) = (nsdTractionVector(1)*un(j,iFaultNodePair,iFault) &
                                 + nsdTractionVector(2)*us(j,iFaultNodePair,iFault) &
                                 + nsdTractionVector(3)*ud(j,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault)
-        xyzInitTractionVector(j) = (nsdInitTractionVector(1)*un(1,iFaultNodePair,iFault) &
-                                + nsdInitTractionVector(2)*us(1,iFaultNodePair,iFault) &
-                                + nsdInitTractionVector(3)*ud(1,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault)
+        xyzInitTractionVector(j) = (nsdInitTractionVector(1)*un(j,iFaultNodePair,iFault) &
+                                + nsdInitTractionVector(2)*us(j,iFaultNodePair,iFault) &
+                                + nsdInitTractionVector(3)*ud(j,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault)
     enddo
     
     do j=1,3 !x,y,z
@@ -306,6 +308,9 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTractio
         brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) = brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) - xyzTractionVector(j) + xyzInitTractionVector(j)*C_elastic
     enddo
     
+    do j=1,3 !n,s,d
+        fric(78+j-1,iFaultNodePair,iFault) = nsdTractionVector(j)
+    enddo
 end subroutine solveSWTW
 
 subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
