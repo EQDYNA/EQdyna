@@ -7,40 +7,27 @@ import numpy as np
 
 par = parameters()
 
-par.xmin, par.xmax = -30.0e3, 30.0e3
-par.ymin, par.ymax = -28.0e3, 32.0e3
-par.zmin, par.zmax = -34.0e3, 0.0e3
+par.xmin, par.xmax = -22.0e3, 22.0e3
+par.ymin, par.ymax = -10.0e3, 12.0e3
+par.zmin, par.zmax = -22.0e3, 0.0e3
 
-par.fxmin, par.fxmax = -6.0e3, 6.0e3
+par.fxmin, par.fxmax = -15.0e3, 15.0e3
 par.fymin, par.fymax = 0.0, 0.0
-par.fzmin, par.fzmax = -8.0e3, 0.0e3
+par.fzmin, par.fzmax = -15.0e3, 0.0e3
 
-par.xsource, par.ysource, par.zsource = 0.0, 0.0, -3.4e3
+par.xsource, par.ysource, par.zsource = 0.0, 0.0, -12.0e3
 
 par.dx = 400.
-par.nuni_y_plus=10
-par.nuni_y_minus=10
-par.enlarging_ratio = 1.025
-par.nmat = 5
-par.n2mat = 4
-par.mat = np.zeros((par.nmat, par.n2mat))
-# example here 1D velocity structure for the Cushing earthquake.
-par.mat[0,:] = [1.19e3,  2.74e3, 1.45e3, 2.1e3] # top layer
-par.mat[1,:] = [2.01e3,  5.75e3, 3.06e3, 2.4e3] # 2nd layer going downwards into the earth.
-par.mat[2,:] = [4.94e3,  5.72e3, 3.4e3,  2.6e3] # 3rd
-par.mat[3,:] = [10.94e3, 6.18e3, 3.62e3, 2.8e3] # 4th
-par.mat[4,:] = [1.e6,    6.32e3, 3.67e3, 2.8e3] # rest
+par.nmat = 1
+par.vp, par.vs, par.rou = 5716, 3300, 2700
 
+par.term = 10.
 
+par.dt = 0.5*par.dx/par.vp
+par.friclaw = 1
+par.tpv = 8
 
-par.term = 5.
-par.dt = 0.5*par.dx/6.32e3
-par.friclaw = 2
-par.tpv = 201
-
-par.nucR = 25.e3
-par.nucRuptVel = 1.5e3
-par.nucdtau0 = -9999.
+par.nucR = 1.5e3
             
 # Creating the fault interface
 par.nfx = int((par.fxmax - par.fxmin)/par.dx + 1)
@@ -56,41 +43,23 @@ par.on_fault_vars = np.zeros((par.nfz,par.nfx,100))
 # - state_steady_state
 # - B1, defined in TPV104 and TPV105
 # - B2 and B3, defined in TPV105
-par.fric_sw_fs = 0.4
-par.fric_sw_sd = 0.3
-par.fric_sw_D0 = 0.3
-par.fric_tw_t0 = 0.2
+par.fric_sw_fs = 0.76
+par.fric_sw_sd = 0.448
+par.fric_sw_D0 = 0.5
 par.grav = 9.8
 
 for ix, xcoor in enumerate(par.fx):
   for iz, zcoor in enumerate(par.fz):
   # assign a in RSF. a is a 2D distribution.
-    par.on_fault_vars[iz,ix,1]   = 0.4
-    par.on_fault_vars[iz,ix,2]   = 0.8
-    
-    if abs(xcoor)<3.e3 and zcoor>-6.4e3 and zcoor<-0.4e3:
-        tmp1 = 1.
-        tmp2 = 1.
-        if abs(xcoor-2.0e3)<1.0e3 and abs(zcoor--3.4e3)<1.0e3:
-            tmp1 = 1.
-            tmp2 = -4.
-        if abs(xcoor--2.0e3)<1.0e3 and abs(zcoor--3.4e3)<1.0e3:
-            tmp1 = 1.
-            tmp2 = -4.
-        if abs(xcoor)<1.0e3 and abs(zcoor--1.4e3)<1.0e3:
-            tmp1 = 1.
-            tmp2 = -4.
-        if abs(xcoor)<1.0e3 and abs(zcoor--5.4e3)<1.0e3:
-            tmp1 = 1.
-            tmp2 = -4.
-
-        par.on_fault_vars[iz,ix,1] = par.fric_sw_fs
-        par.on_fault_vars[iz,ix,2] = par.fric_sw_fs - 0.1*tmp1*tmp2
+    par.on_fault_vars[iz,ix,1]   = par.fric_sw_fs
+    if (abs(xcoor) - par.fxmax)<0.01 or abs(zcoor-fzmin)<0.01:
+        par.on_fault_vars[iz,ix,1] = 1000.
+    par.on_fault_vars[iz,ix,2]   = par.fric_sw_fd
     par.on_fault_vars[iz,ix,3]   = par.fric_sw_D0
-    par.on_fault_vars[iz,ix,5]   = par.fric_tw_t0
-    par.on_fault_vars[iz,ix,7]   = -100.0e6     # initial normal stress. Negative compressive.
-    par.on_fault_vars[iz,ix,8]   = 35.0e6       # initial shear stress.
-   
+    par.on_fault_vars[iz,ix,7]   = 7378.*zcoor     # initial normal stress. Negative compressive.
+    par.on_fault_vars[iz,ix,8]   = 0.55*par.on_fault_vars[iz,ix,7]       # initial shear stress.
+    if abs(xcoor-par.xsource)<=1.5e3 and abs(zcoor-par.zsource)<=1.5e3:
+        par.on_fault_vars[iz,ix,8] = 1.005*0.76*par.on_fault_vars[iz,ix,7]
     # tmp1  = B1(xcoor, 15.e3, 3.e3)
     # tmp2  = B1(-zcoor-7.5e3, 15.e3/2., 3.e3)
     # par.on_fault_vars[iz,ix,9]  = par.fric_rsf_a + (1. - tmp1*tmp2)*par.fric_rsf_deltaa
