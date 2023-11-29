@@ -22,7 +22,7 @@ subroutine meshgen
     integer (kind = 4), dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
     integer (kind = 4), allocatable :: fltrc(:,:,:,:)
     ! Temporary real variables
-    real (kind = dp) :: nodeCoor(10), &
+    real (kind = dp) :: nodeCoor(10), elementCenterCoor(3), &
                        a,b,area,aa1,bb1,cc1,dd1,p1,q1, xc(3),ycoort, pfx = 0.0d0, pfz = 0.0d0
     real (kind = dp), allocatable :: xlinet(:), ylinet(:), zlinet(:), &
                                      xline(:),  yline(:) , zline(:)
@@ -121,13 +121,13 @@ subroutine meshgen
                 
                 ! Create element
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
-                    call createElement(nelement, ntags, iy, iz, xc)
-                    call setElementMaterial(nelement, xc)
+                    call createElement(nelement, ntags, iy, iz, elementCenterCoor)
+                    call setElementMaterial(nelement, elementCenterCoor)
                     
                     if (C_degen == 1) then 
-                        call wedge(xc(1), xc(2), xc(3), nelement, ntags, iy, iz, nftnd0(1))
+                        call wedge(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), nelement, ntags, iy, iz, nftnd0(1))
                     elseif (C_degen == 2) then 
-                        call tetra(xc(1), xc(2), xc(3), nelement, ntags, iy, iz, nftnd0(1))
+                        call tetra(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), nelement, ntags, iy, iz, nftnd0(1))
                     endif         
                     
                     call replaceSlaveWithMasterNode(nodeCoor, nelement, nftnd0) 
@@ -208,7 +208,7 @@ end subroutine meshgen
 !**************************************************************************************************
 !==================================================================================================
 
-subroutine setElementMaterial(nelement, xc)
+subroutine setElementMaterial(nelement, elementCenterCoor)
 ! Subroutine velocityStructure will asign Vp, Vs and rho 
 !   based on input from bMaterial.txt, which is created by 
 !   case input file user_defined_param.py.
@@ -216,7 +216,7 @@ subroutine setElementMaterial(nelement, xc)
     use globalvar
     implicit none
     integer (kind = 4) :: nelement, i
-    real (kind = dp) :: xc(3)
+    real (kind = dp) :: elementCenterCoor(3)
     
     if (nmat==1 .and. n2mat == 3) then
     ! homogenous material
@@ -231,14 +231,14 @@ subroutine setElementMaterial(nelement, xc)
         !   2: Vp, m/s
         !   3: Vs, m/s
         !   4: rho, kg/m3
-        if (abs(xc(3)) < material(1,1)) then
+        if (abs(elementCenterCoor(3)) < material(1,1)) then
             mat(nelement,1)  = material(1,2)
             mat(nelement,2)  = material(1,3)
             mat(nelement,3)  = material(1,4)
         else
             do i = 2, nmat
-                if (abs(xc(3)) < material(i,1) &
-                    .and. abs(xc(3)) >= material(i-1,1)) then
+                if (abs(elementCenterCoor(3)) < material(i,1) &
+                    .and. abs(elementCenterCoor(3)) >= material(i-1,1)) then
                     
                     mat(nelement,1)  = material(i,2)
                     mat(nelement,2)  = material(i,3)
@@ -885,13 +885,13 @@ subroutine setEquationNumber(ix, iy, iz, nx, ny, nz, nodeCoor, ntag, neq0, nodeD
 end subroutine setEquationNumber
 
 
-subroutine createElement(nelement, ntags, iy, iz, xc)
+subroutine createElement(nelement, ntags, iy, iz, elementCenterCoor)
     use globalvar
     implicit none
     integer (kind = 4) :: nelement, ntags, iy, iz, i, j 
-    real (kind = dp) :: xc(3)
+    real (kind = dp) :: elementCenterCoor(3)
     
-    xc = 0.0d0 
+    elementCenterCoor = 0.0d0 
     
     nelement        = nelement + 1
     et(nelement)    = 1 
@@ -907,14 +907,14 @@ subroutine createElement(nelement, ntags, iy, iz, xc)
     
     do i=1,nen
         do j=1,3
-            xc(j)=xc(j)+x(j,ien(i,nelement))
+            elementCenterCoor(j)=elementCenterCoor(j)+x(j,ien(i,nelement))
         enddo
     enddo
-    xc = xc/8.0d0
+    elementCenterCoor = elementCenterCoor/8.0d0
     
-    if (xc(1)>PMLb(1).or.xc(1)<PMLb(2) &
-    .or.xc(2)>PMLb(3).or.xc(2)<PMLb(4) &
-    .or.xc(3)<PMLb(5)) then
+    if (elementCenterCoor(1)>PMLb(1).or.elementCenterCoor(1)<PMLb(2) &
+    .or.elementCenterCoor(2)>PMLb(3).or.elementCenterCoor(2)<PMLb(4) &
+    .or.elementCenterCoor(3)<PMLb(5)) then
         et(nelement) = 2
         ntags        = ntags+15+6
     else
@@ -922,7 +922,7 @@ subroutine createElement(nelement, ntags, iy, iz, xc)
     endif
     
     ! assign ien(nelement), ids(nelement), et(nelement)
-    ! return xc, 
+    ! return elementCenterCoor, 
     ! update nelement, ntags
 end subroutine createElement
 
