@@ -11,27 +11,22 @@ subroutine meshgen
     use globalvar
     implicit none
     include 'mpif.h'
-
-    integer(kind=4) :: nnode, nelement, neq0, &
-                       nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
+    ! incremental variables 
+    integer (kind = 4) :: nnode, nelement, neq0, ntag, ntags
+    integer(kind=4) :: nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
                        edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,edgezn, &
                        nxuni,nyuni,nzuni,ift, &
-                       n1,n2,n3,n4,m1,m2,m3,m4,alloc_err,&
-                       mex,mey,mez,rlp,rr,ierr,jj,itmp1,&
-                       ntag,ntags,zz,ivp1,ivp2,ixe,iye,ize, &
-                       itemp,iye1,nxe,nye,nze,&
-                       nsx,nsy,nfx,nfz,msnode
+                       n1,n2,n3,n4,m1,m2,m3,m4,&
+                       mex,mey,mez,itmp1,&
+                       nodeDofNum, msnode
     integer (kind = 4), dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
     integer (kind = 4), allocatable :: fltrc(:,:,:,:)
     ! Temporary real variables
     real (kind = dp) :: xcoor,ycoor,zcoor,&
                        tmp1,tmp2,tmp3,&
-                       a,b,area,aa1,bb1,cc1,dd1,p1,q1, xc(3)
+                       a,b,area,aa1,bb1,cc1,dd1,p1,q1, xc(3),ycoort, pfx = 0.0d0, pfz = 0.0d0
     real (kind = dp), allocatable :: xlinet(:), ylinet(:), zlinet(:), &
-                                     xline(:),  yline(:) , zline(:) , &
-                                     btmp(:),   btmp1(:)
-    logical,dimension(ntotft) :: ynft
-    real (kind = dp) :: ycoort, pfx = 0.0d0, pfz = 0.0d0
+                                     xline(:),  yline(:) , zline(:)
 
     write(mm,'(i6)') me
     mm = trim(adjustl(mm))
@@ -98,13 +93,13 @@ subroutine meshgen
     n4yn = 0
     
     ! Loop over x,y,z grids to create nodes and elements
+    ! Create node
     do ix = 1, nx
         do iz = 1, nz
             do iy = 1, ny
                 xcoor = xline(ix)
                 ycoor = yline(iy)
                 zcoor = zline(iz)
-                !...create nodes
                 nnode = nnode + 1        
                 plane2(iy,iz) = nnode
                 x(1,nnode) = xcoor
@@ -115,173 +110,18 @@ subroutine meshgen
                     x(2,nnode) = ycoort
                 endif 
                 
-                call setNumDof(xcoor, ycoor, zcoor, zz)
+                call setNumDof(xcoor, ycoor, zcoor, nodeDofNum)
 
                 locid(nnode) = ntag
-                dof1(nnode)  = zz
+                dof1(nnode)  = nodeDofNum
                 
-                call setEquationNumber(ix, iy, iz, nx, ny, nz, xcoor, ycoor, zcoor, ntag, neq0, zz)
+                call setEquationNumber(ix, iy, iz, nx, ny, nz, xcoor, ycoor, zcoor, ntag, neq0, nodeDofNum)
                 call setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, nnode)
-
                 call createMasterNode(ix, iy, iz, nx, ny, nz, nxuni, nzuni, xcoor, ycoor, zcoor, ycoort, nnode, msnode, nftnd0, neq0, ntag, &
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
                 
-                
-                ! do ift=1,ntotft 
-                    ! ynft(ift) = .false.
-                    ! if(xcoor>=(fltxyz(1,1,ift)-tol).and.xcoor<=(fltxyz(2,1,ift)+tol).and. &
-                    ! ycoor>=(fltxyz(1,2,ift)-tol).and.ycoor<=(fltxyz(2,2,ift)+tol).and. &
-                    ! zcoor>=(fltxyz(1,3,ift)-tol) .and. zcoor<=(fltxyz(2,3,ift)+tol)) then
-                        ! if(ift==1) then
-                            ! ynft(ift) = .true.
-                        ! endif
-                        ! if(ynft(ift)) then
-                            ! nftnd0(ift) = nftnd0(ift) + 1
-                            ! if(nftnd(ift)==0) then
-                            ! write(*,*) 'inconsistency between mesh4num and meshgen for nftnd0',me
-                            ! write(*,*) 'current node x,y,z:',xcoor,ycoor,zcoor
-                            ! stop 2001
-                            ! endif
-                            ! nsmp(1,nftnd0(ift),ift) = nnode !slave node
-                            ! msnode=nx*ny*nz+nftnd0(ift)                                 
-                            ! locid(msnode)=ntag
-                            ! dof1(msnode)=3         
-                            ! nsmp(2,nftnd0(ift),ift) = msnode !master node
-                            ! plane2(ny+ift,iz) = msnode
-                            ! x(1,msnode) = xcoor
-                            ! x(2,msnode) = ycoor
-                            ! x(3,msnode) = zcoor
-                            
-                            ! if (rough_fault == 1) then 
-                                ! x(2,msnode) = ycoort
-                            ! endif
-                            
-                            ! !3DMPI
-                            ! if(ix == 1) then
-                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 1
-                                ! fltnum(1) = fltnum(1) + 1
-                            ! endif
-                            ! if(ix == nx) then
-                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 2
-                                ! fltnum(2) = fltnum(2) + 1
-                            ! endif
-                            ! if(iy == 1) then
-                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 10
-                                ! fltnum(3) = fltnum(3) + 1
-                            ! endif
-                            ! if(iy == ny) then
-                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 20
-                                ! fltnum(4) = fltnum(4) + 1
-                            ! endif
-                            ! if(iz == 1) then
-                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 100
-                                ! fltnum(5) = fltnum(5) + 1
-                            ! endif
-                            ! if(iz == nz) then
-                                ! fltgm(nftnd0(ift)) = fltgm(nftnd0(ift)) + 200
-                                ! fltnum(6) = fltnum(6) + 1
-                            ! endif             
-
-                            ! if(ift==1) then
-                                ! tmp1 = xcoor
-                            ! elseif(ift==2) then
-                                ! tmp1 = sqrt(xcoor*xcoor+ycoor*ycoor)
-                            ! endif
-                            ! do i1=1,nonfs(ift)
-                                ! if(abs(tmp1-xonfs(1,i1,ift))<tol .and. &
-                                ! abs(zcoor-xonfs(2,i1,ift))<tol) then
-                                    ! n4onf = n4onf + 1
-                                    ! anonfs(1,n4onf) = nftnd0(ift)
-                                    ! anonfs(2,n4onf) = i1
-                                    ! anonfs(3,n4onf) = ift
-                                    ! exit
-                                ! elseif(abs(zcoor-xonfs(2,i1,ift))<tol .and. &
-                                ! abs(tmp1-xonfs(1,i1,ift))<dx/2) then
-                                    ! n4onf = n4onf + 1
-                                    ! anonfs(1,n4onf) = nftnd0(ift)
-                                    ! anonfs(2,n4onf) = i1
-                                    ! anonfs(3,n4onf) = ift
-                                    ! tmp2=xonfs(1,i1,ift)*dcos(brangle)
-                                    ! tmp3=-xonfs(1,i1,ift)*dsin(brangle)
-                                    ! x(1,nnode)=tmp2 !move mesh to stations!
-                                    ! x(1,nnode-1)=tmp2
-                                    ! x(2,nnode)=tmp3
-                                    ! x(2,nnode-1)=tmp3
-                                    ! exit          
-                                ! endif
-                            ! enddo  
-                            ! !...establish equation numbers for this master node
-                            ! do i1=1,ndof
-                                ! neq0 = neq0 + 1
-                                ! ntag=ntag+1
-                                ! id1(ntag)=neq0!assume no explicit boundary nodes
-                            ! enddo
-                            ! !...assign unit vectors to the split node pair    
-                            ! un(1,nftnd0(ift),ift) = dcos(fltxyz(1,4,ift))*dsin(fltxyz(2,4,ift))
-                            ! un(2,nftnd0(ift),ift) = -dsin(fltxyz(1,4,ift))*dsin(fltxyz(2,4,ift))
-                            ! un(3,nftnd0(ift),ift) = dcos(fltxyz(2,4,ift))        
-                            ! us(1,nftnd0(ift),ift) = -dsin(fltxyz(1,4,ift))
-                            ! us(2,nftnd0(ift),ift) = -dcos(fltxyz(1,4,ift))
-                            ! us(3,nftnd0(ift),ift) = 0.0d0
-                            ! ud(1,nftnd0(ift),ift) = dcos(fltxyz(1,4,ift))*dcos(fltxyz(2,4,ift))
-                            ! ud(2,nftnd0(ift),ift) = dsin(fltxyz(1,4,ift))*dcos(fltxyz(2,4,ift))
-                            ! ud(3,nftnd0(ift),ift) = dsin(fltxyz(2,4,ift))
-                            
-                            ! if (rough_fault == 1) then
-                                ! un(1,nftnd0(ift),ift) = -pfx/(pfx**2 + 1.0d0 + pfz**2)**0.5
-                                ! un(2,nftnd0(ift),ift) = 1.0d0/(pfx**2 + 1.0d0 + pfz**2)**0.5
-                                ! un(3,nftnd0(ift),ift) = -pfz/(pfx**2 + 1.0d0 + pfz**2)**0.5    
-                                ! us(1,nftnd0(ift),ift) = 1.0d0/(1.0d0 + pfx**2)**0.5
-                                ! us(2,nftnd0(ift),ift) = pfx/(1.0d0 + pfx**2)**0.5
-                                ! us(3,nftnd0(ift),ift) = 0.0d0
-                                ! ud(1,nftnd0(ift),ift) = us(2,nftnd0(ift),ift)*un(3,nftnd0(ift),ift) &
-                                    ! - us(3,nftnd0(ift),ift)*un(2,nftnd0(ift),ift)
-                                ! ud(2,nftnd0(ift),ift) = us(3,nftnd0(ift),ift)*un(1,nftnd0(ift),ift) &
-                                    ! - us(1,nftnd0(ift),ift)*un(3,nftnd0(ift),ift)
-                                ! ud(3,nftnd0(ift),ift) = us(1,nftnd0(ift),ift)*un(2,nftnd0(ift),ift) &
-                                    ! - us(2,nftnd0(ift),ift)*un(1,nftnd0(ift),ift)
-                            ! endif                             
-                            
-                            ! !...prepare for area calculation
-                            ! if(ixfi(ift)==0) ixfi(ift)=ix
-                            ! if(izfi(ift)==0) izfi(ift)=iz
-                            ! ifs(ift)=ix-ixfi(ift)+1
-                            ! ifd(ift)=iz-izfi(ift)+1
-                            ! fltrc(1,ifs(ift),ifd(ift),ift) = msnode    !master node
-                            ! fltrc(2,ifs(ift),ifd(ift),ift) = nftnd0(ift) !fault node num in sequence
-
-                            ! if (friclaw >= 3)then 
-                                ! if (TPV == 2800 .or. TPV == 2801 .or. TPV == 2802) then                               
-                                    ! if (abs(xcoor)<=20.0d3) then 
-                                        ! tmp1 = 1.0d0
-                                    ! elseif ((abs(xcoor)>20.0d3).and.(abs(xcoor)<22.0d3)) then 
-                                        ! tmp1 = 1.0d0 - (abs(xcoor)-20.0d3)/2.0d3
-                                    ! elseif (abs(xcoor)>=22.0d3) then 
-                                        ! tmp1 = 0.0d0
-                                    ! endif
-                                    ! if (abs(zcoor)>=2.0d3 .and. abs(zcoor)<=14.0d3) then 
-                                        ! tmp2 = 1.0d0
-                                    ! elseif (abs(zcoor)<2.0d3) then 
-                                        ! tmp2 = 1.0d0 - (2.0d3 - abs(zcoor))/2.0d3
-                                    ! elseif ((abs(zcoor)>14.0d3) .and. (abs(zcoor)<15.0d3)) then
-                                        ! tmp2 = 1.0d0 - (abs(zcoor)-14.0d3)/1.0d3
-                                    ! elseif (abs(zcoor)>=15.0d3) then 
-                                        ! tmp2 = 0.0d0
-                                    ! endif                
-                                    ! tmp3 = fric_rsf_deltaa0
-                                    ! if (abs(zcoor)>15.0d3) then 
-                                        ! tmp3 = 2.0d0*fric_rsf_deltaa0
-                                    ! endif 
-                                ! endif                                
-                            ! endif
-             
-                            ! exit !can only be on 1 fault, thus if ynft(ift), exit do loop       
-                        ! endif  !if ynft(ift)
-                    ! endif  !if flt range
-                ! enddo  !do ift 
-                !...create elements
+                ! Create element
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
-                
                     call createElement(nelement, ntags, iy, iz, xc)
                     call setElementMaterial(nelement, xc)
                     
@@ -292,55 +132,13 @@ subroutine meshgen
                     endif         
                     
                     call setMasterNode(xcoor, ycoor, zcoor, nelement, nftnd0) 
-                   
-                              
-
-                    if (C_elastic==0 .and. TPV==2800) then                
-                        tmp1 = -0.5d0*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
-                        tmp2 = tmp1 * grav
-                        if(et(nelement)==1)then
-                            eleporep(nelement)= rhow*tmp2  !pore pressure>0
-                            s1(ids(nelement)+3)=-mat(nelement,3)*tmp2  !vertical, comp<0
-                            s1(ids(nelement)+1)=-mat(nelement,3)*tmp2 
-                            s1(ids(nelement)+2)=-mat(nelement,3)*tmp2 
-                            s1(ids(nelement)+6)= (mat(nelement,3)-rhow)*tmp2 /3.0d0
-                        elseif(et(nelement)==2)then
-                            eleporep(nelement)= rhow*tmp2  !pore pressure>0
-                            s1(ids(nelement)+3+15)=-mat(nelement,3)*tmp2  !vertical, comp<0
-                            s1(ids(nelement)+1+15)=-mat(nelement,3)*tmp2
-                            s1(ids(nelement)+2+15)=-mat(nelement,3)*tmp2 
-                            s1(ids(nelement)+6+15)=(mat(nelement,3)-rhow)*tmp2 /3.0d0                        
-                        endif                        
-                    endif
-                    if (C_elastic==0 .and. TPV==2801) then                
-                        tmp1 = -0.5d0*(zline(iz)+zline(iz-1))  !z<0, thus tmp1>0
-                        tmp2 = tmp1 * grav
-                        if(et(nelement)==1)then
-                            eleporep(nelement)= rhow*tmp2  !pore pressure>0
-                            s1(ids(nelement)+3)=-mat(nelement,3)*tmp2  !vertical, comp<0
-                            if (-s1(ids(nelement)+3)>100.0d6) s1(ids(nelement)+3) = -100.0d6
-                            s1(ids(nelement)+1)=s1(ids(nelement)+3)
-                            s1(ids(nelement)+2)=s1(ids(nelement)+3) 
-                            s1(ids(nelement)+6)=(mat(nelement,3) -rhow)*0.4d0*tmp2
-                        elseif(et(nelement)==2)then
-                            eleporep(nelement)= rhow*tmp2  !pore pressure>0
-                            s1(ids(nelement)+3+15)=-mat(nelement,3)*tmp2  !vertical, comp<0
-                            if (-s1(ids(nelement)+3+15)>100.0d6) s1(ids(nelement)+3+15) = -100.0d6
-                            s1(ids(nelement)+1+15)=s1(ids(nelement)+3+15)
-                            s1(ids(nelement)+2+15)=s1(ids(nelement)+3+15) 
-                            s1(ids(nelement)+6+15)=(mat(nelement,3) -rhow)*0.4d0*tmp2                        
-                        endif                        
-                    endif    
-                    if (C_elastic==0 .and. TPV==2802) then 
-                        tmp1 = -0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0  !z<0, thus tmp1>0
-                        call plastic_set_mat_stress(tmp1, nelement)
-                    endif 
-    !--------------------------END ZONE III-----------------------------!                
+                    if (C_elastic==0 .and. TPV==2802) call plastic_set_mat_stress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, nelement)          
                 endif!if element
             enddo!iy
         enddo!iz
         plane1 = plane2
     enddo!ix
+    
     maxs=ntags
     
     call meshGenError(nx, ny, nz, nnode, msnode, nelement, neq0, ntag, nftnd0)
@@ -402,11 +200,9 @@ subroutine meshgen
         call MPI4arn(nx, ny, nz, mex, mey, mez, nftnd0(ift), ift)
        
     enddo !ift=i:nft 
-    !
+
     time2 = MPI_WTIME()
     btime = btime + (time2 - time1) 
-
-    !deallocate(xlinet,xline,yline,zline,fltrc)
     
 end subroutine meshgen
 !==================================================================================================
@@ -951,15 +747,15 @@ subroutine get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
     endif
 end subroutine get1DCoorZLocal
 
-subroutine setNumDof(xcoor,ycoor,zcoor,zz)
+subroutine setNumDof(xcoor,ycoor,zcoor,nodeDofNum)
     use globalvar
     implicit none
-    integer (kind = 4) :: zz
+    integer (kind = 4) :: nodeDofNum
     real (kind = dp) :: xcoor, ycoor, zcoor
-    zz = ndof !Default
+    nodeDofNum = ndof !Default
     if (xcoor>PMLb(1) .or. xcoor<PMLb(2) .or. ycoor>PMLb(3) &
         .or. ycoor<PMLb(4) .or. zcoor<PMLb(5)) then
-        zz = 12 ! Modify if inside PML
+        nodeDofNum = 12 ! Modify if inside PML
     endif   
 end subroutine setNumDof
 
@@ -1047,14 +843,14 @@ subroutine setSurfaceStation(ix, iy, xcoor, ycoor, zcoor, nx, ny, xline, yline, 
     endif    
 end subroutine setSurfaceStation
 
-subroutine setEquationNumber(ix, iy, iz, nx, ny, nz, xcoor, ycoor, zcoor, ntag, neq0, zz)
+subroutine setEquationNumber(ix, iy, iz, nx, ny, nz, xcoor, ycoor, zcoor, ntag, neq0, nodeDofNum)
     use globalvar 
     implicit none
-    integer (kind = 4) :: ix, iy, iz, nx, ny, nz, iDof, zz
+    integer (kind = 4) :: ix, iy, iz, nx, ny, nz, iDof, nodeDofNum
     integer (kind = 4) :: ntag, neq0
     real (kind = dp) :: xcoor, ycoor, zcoor
     
-    do iDof = 1,zz
+    do iDof = 1,nodeDofNum
         if(abs(xcoor-xmin)<tol.or.abs(xcoor-xmax)<tol.or.abs(ycoor-ymin)<tol &
         .or.abs(ycoor-ymax)<tol.or.abs(zcoor-zmin)<tol) then
             ntag      = ntag+1
