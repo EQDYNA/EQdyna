@@ -44,7 +44,7 @@ par.on_fault_vars = np.zeros((par.nfz,par.nfx,100))
 # - B1, defined in TPV104 and TPV105
 # - B2 and B3, defined in TPV105
 par.fric_sw_fs = 0.76
-par.fric_sw_sd = 0.448
+par.fric_sw_fd = 0.448
 par.fric_sw_D0 = 0.5
 par.grav = 9.8
 
@@ -52,14 +52,14 @@ for ix, xcoor in enumerate(par.fx):
   for iz, zcoor in enumerate(par.fz):
   # assign a in RSF. a is a 2D distribution.
     par.on_fault_vars[iz,ix,1]   = par.fric_sw_fs
-    if (abs(xcoor) - par.fxmax)<0.01 or abs(zcoor-fzmin)<0.01:
+    if abs(abs(xcoor) - par.fxmax)<0.01 or abs(zcoor-par.fzmin)<0.01:
         par.on_fault_vars[iz,ix,1] = 1000.
     par.on_fault_vars[iz,ix,2]   = par.fric_sw_fd
     par.on_fault_vars[iz,ix,3]   = par.fric_sw_D0
     par.on_fault_vars[iz,ix,7]   = 7378.*zcoor     # initial normal stress. Negative compressive.
-    par.on_fault_vars[iz,ix,8]   = 0.55*par.on_fault_vars[iz,ix,7]       # initial shear stress.
+    par.on_fault_vars[iz,ix,8]   = abs(0.55*par.on_fault_vars[iz,ix,7])       # initial shear stress.
     if abs(xcoor-par.xsource)<=1.5e3 and abs(zcoor-par.zsource)<=1.5e3:
-        par.on_fault_vars[iz,ix,8] = 1.005*0.76*par.on_fault_vars[iz,ix,7]
+        par.on_fault_vars[iz,ix,8] = 1e6+abs(1.005*0.76*par.on_fault_vars[iz,ix,7])
     # tmp1  = B1(xcoor, 15.e3, 3.e3)
     # tmp2  = B1(-zcoor-7.5e3, 15.e3/2., 3.e3)
     # par.on_fault_vars[iz,ix,9]  = par.fric_rsf_a + (1. - tmp1*tmp2)*par.fric_rsf_deltaa
