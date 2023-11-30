@@ -27,6 +27,7 @@ subroutine faulting
             endif 
             
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
+            !call showSourceDynamics(ift,i)
 
             if (friclaw<=2) call solveSWTW(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
             if (friclaw>=3) call solveRSF(ift, i, friclaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
@@ -504,7 +505,7 @@ subroutine storeRuptureTime(iFault, iFaultNodePair, nsdSliprateVector)
     integer (kind = 4) :: iFault, iFaultNodePair
     real (kind = dp) :: nsdSliprateVector(4)
     
-    if(fnft(iFaultNodePair,iFault)>5000.0d0) then    !fnft should be initialized by >10000
+    if(fnft(iFaultNodePair,iFault)>5000.0d0) then    !fnft is initialized to be 99999
         if(nsdSliprateVector(4) >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
             fnft(iFaultNodePair,iFault) = time    !rupture time for the node
         elseif (nsdSliprateVector(4) >=0.05d0 .and. mode==2) then
@@ -513,3 +514,21 @@ subroutine storeRuptureTime(iFault, iFaultNodePair, nsdSliprateVector)
     endif  
 
 end subroutine storeRuptureTime
+
+subroutine showSourceDynamics(iFault,iFaultNodePair)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: iFault, iFaultNodePair
+    
+    if (x(1,nsmp(1,iFaultNodePair,iFault))==200. .and. &
+        x(3,nsmp(1,iFaultNodePair,iFault))==zsource) then
+        write(*,*) 'Time ', time, ' s'
+        write(*,*) 'n,s,d tractions (MPa) ', fric(78,iFaultNodePair,iFault), fric(79,iFaultNodePair,iFault), fric(80,iFaultNodePair,iFault)
+        write(*,*) 'n,s,d slip (m) ', fric(73,iFaultNodePair,iFault), fric(71,iFaultNodePair,iFault), fric(72,iFaultNodePair,iFault)
+        write(*,*) 's,d, peak sliprate (m/s) ', fric(74,iFaultNodePair,iFault), fric(75,iFaultNodePair,iFault), fric(76,iFaultNodePair,iFault)
+        write(*,*) 'cummulative slip (m) ', fric(77,iFaultNodePair,iFault)
+        write(*,*) 'sw_fs, sw_fd, sw_D0 ', fric(1,iFaultNodePair,iFault), fric(2,iFaultNodePair,iFault), fric(3,iFaultNodePair,iFault)
+        write(*,*) 'rsf_a, rsf_b ', fric(9,iFaultNodePair,iFault), fric(10,iFaultNodePair,iFault)
+    endif 
+    
+end subroutine showSourceDynamics
