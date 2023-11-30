@@ -98,7 +98,7 @@ PROGRAM EQdyna_3D
     !INITIATION     
     fltgm   = 0  
     nsmp    = 0    
-    fnft    = 1000.0d0 
+    fnft    = 99999.0d0 
     fric    = 0.0d0
     un      = 0.0d0
     us      = 1000.0d0
