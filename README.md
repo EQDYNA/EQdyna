@@ -1,13 +1,9 @@
 # News in 2023
-* 20230327 
-  * *```EQdyna```* works on Ubuntu now. 
-  * install-eqdyna.sh can support multiple systems. 
-  * test-all.sh will create and run four pre-defined cases with 4 CPUs with a few minutes. 
-* 20230321 *```eqdyna.docker```* is published via [dunyuliu/eqdyna.docker](https://hub.docker.com/repository/docker/dunyuliu/eqdyna.docker/general) 
-
-# News in 2022
-* A set of python utlities that make *```EQdyna```* much easier to use.
-* Thermal pressurization implemented and benchmarked against TPV105-3D.
+* 20231130 v5.3.0 release notes
+  * refactor faulting.f90 and meshgen.f90;
+  * introduce a system for quick testing by running testAll.py; 
+  * test system now supports tpv8, tpv104, tpv1053d, tpv1053d.6c, meng2023a, meng2023cb;
+  * update input parameter system with a single defaultParameters.py and customized user_defined_params.py;
 
 # Introduction to *```EQdyna```*
 
@@ -107,3 +103,14 @@ We welcome developers and users. If you are interested in developing and collabo
 * Duan, B. (2012). Dynamic rupture of the 2011 Mw 9.0 Tohoku-Oki earthquake: Roles of a possible subducting seamount, J. Geophys. Res. 117
 * Duan, B., D. Liu, and A. Yin (2017). Seismic shaking in the North China Basin expected from ruptures of a possible seismic gap, Geophys. Res. Lett. 44 4855-4862.
 * Liu, D. and B. Duan (2018). "Scenario Earthquake and Ground‐Motion Simulations in North China: Effects of Heterogeneous Fault Stress and 3D Basin Structure." BSSA.
+
+# Past release notes
+* 20230327 
+  * *```EQdyna```* works on Ubuntu now. 
+  * install-eqdyna.sh can support multiple systems. 
+  * test-all.sh will create and run four pre-defined cases with 4 CPUs with a few minutes. 
+* 20230321 *```eqdyna.docker```* is published via [dunyuliu/eqdyna.docker](https://hub.docker.com/repository/docker/dunyuliu/eqdyna.docker/general) 
+
+# News in 2022
+* A set of python utlities that make *```EQdyna```* much easier to use.
+* Thermal pressurization implemented and benchmarked against TPV105-3D.
