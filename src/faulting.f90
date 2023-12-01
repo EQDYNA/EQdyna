@@ -9,23 +9,21 @@ subroutine faulting
 
     character(len=30) :: foutmov
     integer (kind = 4) :: i, j, ift
-    real (kind = dp) :: dtau, xmu
+    real (kind = dp) :: dtau=0.0d0, xmu
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
     real (kind = dp) :: nsdInitTractionVector(3)
     !===================================================================!
     do ift = 1, ntotft
         do i = 1, nftnd(ift)   
-            
-            dtau = 0.0d0
-            
-            if (TPV == 104 .or. TPV == 105) then
-                if (C_nuclea == 1 .and.ift == nucfault) then
-                    call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
-                                x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
-                                fric(2,i,ift))
-                endif
-            endif 
-            
+            ! if (TPV == 104 .or. TPV == 105) then
+                ! if (C_nuclea == 1 .and.ift == nucfault) then
+                    ! call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
+                                ! x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
+                                ! fric(2,i,ift))
+                ! endif
+            ! endif 
+            if (friclaw>=3 .and. C_nuclea==1 .and. ift==nucfault) call rsfNucleation(ift, i, dtau)
+
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
             !call showSourceDynamics(ift,i)
 
@@ -170,9 +168,8 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
 ! get slip, sliprate, and traction vectors on one pair of fault split-nodes
     use globalvar
     implicit none
-    integer(kind = 4) :: iFault, iFaultNodePair, iSlaveNodeID, iMasterNodeID
+    integer(kind = 4) :: iFault, iFaultNodePair
     integer(kind = 4) :: j, k
-    real(kind = dp) :: initNormal, initStrikeShear, initDipShear
     real(kind = dp) :: xyzNodalQuant(3,2,3), nsdNodalQuant(3,2,3)
     real(kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
     real(kind = dp) :: nsdInitTractionVector(3)
@@ -180,18 +177,12 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     
     real(kind = dp) :: dtau
     
-    initNormal      = fric(7,iFaultNodePair,iFault)
-    initStrikeShear = fric(8,iFaultNodePair,iFault)+dtau
-    initDipShear    = fric(49,iFaultNodePair,iFault)
-    
     nsdInitTractionVector(1) = fric(7,iFaultNodePair,iFault) !normal
     nsdInitTractionVector(2) = fric(8,iFaultNodePair,iFault)+dtau !strike
     nsdInitTractionVector(3) = fric(49,iFaultNodePair,iFault) !dip
     
-    iSlaveNodeID  = nsmp(1,iFaultNodePair,iFault)
-    iMasterNodeID = nsmp(2,iFaultNodePair,iFault)
-    massSlave     = fnms(iSlaveNodeID)        
-    massMaster    = fnms(iMasterNodeID)
+    massSlave     = fnms(nsmp(1,iFaultNodePair,iFault))        
+    massMaster    = fnms(nsmp(2,iFaultNodePair,iFault))
     totalMass     = (massSlave + massMaster)*arn(iFaultNodePair,iFault)
     
     do j=1,2  ! slave, master
@@ -238,22 +229,21 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     ! n
     nsdTractionVector(1) = (massSlave*massMaster*((nsdNodalQuant(1,2,2)-nsdNodalQuant(1,1,2))+(nsdNodalQuant(1,2,3)-nsdNodalQuant(1,1,3))/dt)/dt &
                             + massSlave*nsdNodalQuant(1,2,1) - massMaster*nsdNodalQuant(1,1,1))/totalMass &
-                            + initNormal*C_elastic         
+                            + nsdInitTractionVector(1)*C_elastic         
     ! s
     nsdTractionVector(2) = (massSlave*massMaster*(nsdNodalQuant(2,2,2)-nsdNodalQuant(2,1,2))/dt &
                             + massSlave*nsdNodalQuant(2,2,1) - massMaster*nsdNodalQuant(2,1,1))/totalMass &
-                            + initStrikeShear*C_elastic
+                            + nsdInitTractionVector(2)*C_elastic
     ! d
     nsdTractionVector(3) = (massSlave*massMaster*(nsdNodalQuant(3,2,2)-nsdNodalQuant(3,1,2))/dt &
                             + massSlave*nsdNodalQuant(3,2,1) - massMaster*nsdNodalQuant(3,1,1)) /totalMass &
-                            + initDipShear*C_elastic
+                            + nsdInitTractionVector(3)*C_elastic
     ! shear traction magnitude
     nsdTractionVector(4) = sqrt(nsdTractionVector(2)**2+nsdTractionVector(3)**2)
     
 end subroutine getNsdSlipSliprateTraction
 
 subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTractionVector, nsdInitTractionVector)
-                ! Tell it what friction law to use, and modify right-hand vector brhs accordingly.
                 
     use globalvar
     implicit none
@@ -532,3 +522,30 @@ subroutine showSourceDynamics(iFault,iFaultNodePair)
     endif 
     
 end subroutine showSourceDynamics
+
+subroutine rsfNucleation(iFault, iFaultNodePair, dtau)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: iFault, iFaultNodePair
+    real (kind = dp) :: dtau, radius, T, F, G
+    
+    dtau = 0.0d0 
+    radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
+                  (x(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
+                  (x(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
+                  
+    if (TPV == 105 .or. TPV == 104) then
+        T  = 1.0d0
+        F  = 0.0d0
+        G  = 1.0d0
+        if (radius < nucR) then 
+            F = dexp(radius**2/(radius**2-nucR**2))
+        endif 
+
+        if (time<=T)  then 
+            G = dexp((time-T)**2/(time*(time-2.0d0*T)))
+        endif 
+
+        dtau = nucdtau0*F*G
+    endif
+end subroutine rsfNucleation
