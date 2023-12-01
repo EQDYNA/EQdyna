@@ -22,11 +22,11 @@ subroutine faulting
                                 ! fric(2,i,ift))
                 ! endif
             ! endif 
-            if (friclaw>=3 .and. C_nuclea==1 .and. ift==nucfault) call rsfNucleation(ift, i, dtau)
+            !if (friclaw>=3 .and. C_nuclea==1 .and. ift==nucfault) call rsfNucleation(ift, i, dtau)
 
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
             !call showSourceDynamics(ift,i)
-
+            
             if (friclaw<=2) call solveSWTW(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
             if (friclaw>=3) call solveRSF(ift, i, friclaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
             
@@ -238,6 +238,9 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     nsdTractionVector(3) = (massSlave*massMaster*(nsdNodalQuant(3,2,2)-nsdNodalQuant(3,1,2))/dt &
                             + massSlave*nsdNodalQuant(3,2,1) - massMaster*nsdNodalQuant(3,1,1)) /totalMass &
                             + nsdInitTractionVector(3)*C_elastic
+                            
+    if (friclaw>=3 .and. C_nuclea==1 .and. iFault==nucfault) call rsfNucleation(iFault, iFaultNodePair, nsdTractionVector)
+    
     ! shear traction magnitude
     nsdTractionVector(4) = sqrt(nsdTractionVector(2)**2+nsdTractionVector(3)**2)
     
@@ -523,11 +526,11 @@ subroutine showSourceDynamics(iFault,iFaultNodePair)
     
 end subroutine showSourceDynamics
 
-subroutine rsfNucleation(iFault, iFaultNodePair, dtau)
+subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector)
     use globalvar
     implicit none
     integer (kind = 4) :: iFault, iFaultNodePair
-    real (kind = dp) :: dtau, radius, T, F, G
+    real (kind = dp) :: dtau, radius, T, F, G, nsdTractionVector(4)
     
     dtau = 0.0d0 
     radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
@@ -548,4 +551,7 @@ subroutine rsfNucleation(iFault, iFaultNodePair, dtau)
 
         dtau = nucdtau0*F*G
     endif
+    
+    nsdTractionVector(2) = nsdTractionVector(2) + dtau
+    
 end subroutine rsfNucleation
