@@ -223,7 +223,7 @@ subroutine checkMeshMaterial
     implicit none
     integer (kind = 4) :: i
     do i = 1, numel
-        if (mat(i,1) == 0. .or. mat(i,2) == 0. .or. mat(i,3) == 0.) then
+        if (mat(i,1) == 0.0d3 .or. mat(i,2) == 0.0d3 .or. mat(i,3) == 0.0d3) then
             write(*,*) 'Element ', i, ' is not assigned material property. Exiting ... ...'
             stop 
         endif 
