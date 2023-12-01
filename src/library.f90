@@ -81,7 +81,7 @@ subroutine vlm(xl,volume)
             -xl(3,it(2,i))) + xl(2,it(8,i))*(xl(3,it(4,i))-xl(3,it(5,i)))
     enddo
     !
-    volume = 0.0
+    volume = 0.0d0
     do i=1,nen
         volume = volume + xl(1,i) * bb(i)
     enddo

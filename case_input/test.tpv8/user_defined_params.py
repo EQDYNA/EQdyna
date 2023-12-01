@@ -21,7 +21,7 @@ par.dx = 400.
 par.nmat = 1
 par.vp, par.vs, par.rou = 5716, 3300, 2700
 
-par.term = 10.
+par.term = 5.
 
 par.dt = 0.5*par.dx/par.vp
 par.friclaw = 1
