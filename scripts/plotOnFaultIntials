@@ -2,7 +2,7 @@
 """
 Script to plot on fault initials like friction and stresses.
 """
-from user_defined_params import *
+from user_defined_params import par
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -16,52 +16,52 @@ SMALL_SIZE = 6
 
 
 def plot_initials():
-  fig = plt.figure()
+  fig = plt.figure(figsize=(16,16), dpi=300, facecolor='w', edgecolor='w')
   plt.rc('font', size=SMALL_SIZE)
   
   ax11 = fig.add_subplot(321)
-  plt.contourf(on_fault_vars[:,:,9])
+  plt.contourf(par.on_fault_vars[:,:,9])
   ax = plt.gca()
   ax.set_aspect('equal')
-  plt.colorbar
+  plt.colorbar()
   plt.title("RSF_a")
 
   ax11 = fig.add_subplot(322)
-  plt.contourf(on_fault_vars[:,:,10])
+  plt.contourf(par.on_fault_vars[:,:,10])
   ax = plt.gca()
   ax.set_aspect('equal')
-  plt.colorbar
+  plt.colorbar()
   plt.title("RSF_b")
   
   ax11 = fig.add_subplot(323)
-  plt.contourf(on_fault_vars[:,:,11])
+  plt.contourf(par.on_fault_vars[:,:,11])
   ax = plt.gca()
   ax.set_aspect('equal')
-  plt.colorbar
+  plt.colorbar()
   plt.title("RSF_Dc")
 
   ax11 = fig.add_subplot(324)
-  plt.contourf(on_fault_vars[:,:,46])  
+  plt.contourf(par.on_fault_vars[:,:,46])  
   ax = plt.gca()
   ax.set_aspect('equal')
-  plt.colorbar
+  plt.colorbar()
   plt.title("Initial slip rate")
 
   ax11 = fig.add_subplot(325)
-  plt.contourf(on_fault_vars[:,:,7])  
+  plt.contourf(par.on_fault_vars[:,:,7])  
   ax = plt.gca()
   ax.set_aspect('equal')
-  plt.colorbar
+  plt.colorbar()
   plt.title("Initial normal")
   
   ax11 = fig.add_subplot(326)
-  plt.contourf(on_fault_vars[:,:,8])  
+  plt.contourf(par.on_fault_vars[:,:,8])  
   ax = plt.gca()
   ax.set_aspect('equal')
-  plt.colorbar
+  plt.colorbar()
   plt.title("Initial shear")
   
-  plt.savefig("Initials.png", dpi = 600)
+  plt.savefig("cInitials.png", dpi = 600)
   plt.close()
   
   return (fig,)
