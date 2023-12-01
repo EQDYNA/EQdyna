@@ -1,8 +1,8 @@
 
-import os
+import os, time
 import xarray as xr
-
-testIDList   = ['tpv104','tpv1053d','tpv1053d.6c','meng2023a','meng2023cb']
+from testNameList import nameList
+#testIDList   = ['tpv8', 'tpv104','tpv1053d','tpv1053d.6c','meng2023a','meng2023cb']
 fileNameList = ['fault.dyna.r.nc','frt.txt0','frt.txt2']
 refRoot  = 'test.reference.results'
 testRoot = 'test'
@@ -18,8 +18,7 @@ def compare(fn1,fn2):
     else:
         print('FAIL')
 
-
-for testid in testIDList:
+for testid in nameList:
     for filename in fileNameList:
         refPath  = refRoot+'/'+testid+'/'+filename
         testPath = testRoot+'/'+testid+'/'+filename
