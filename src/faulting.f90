@@ -15,15 +15,7 @@ subroutine faulting
     !===================================================================!
     do ift = 1, ntotft
         do i = 1, nftnd(ift)   
-            ! if (TPV == 104 .or. TPV == 105) then
-                ! if (C_nuclea == 1 .and.ift == nucfault) then
-                    ! call nucleation(dtau, xmu, x(1,nsmp(1,i,ift)), x(2,nsmp(1,i,ift)), & 
-                                ! x(3,nsmp(1,i,ift)), fric(5,i,ift), fric(1,i,ift), &
-                                ! fric(2,i,ift))
-                ! endif
-            ! endif 
-            !if (friclaw>=3 .and. C_nuclea==1 .and. ift==nucfault) call rsfNucleation(ift, i, dtau)
-
+        
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
             !call showSourceDynamics(ift,i)
             
@@ -265,14 +257,15 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTractio
         call time_weak(trupt,fric(1,iFaultNodePair,iFault),fricCoeff)
     endif
     
-    ! Artificial nucleation 
-    if (TPV == 201 .or. TPV == 202) then 
-        if (C_nuclea == 1 .and.iFault == nucfault) then
-            call nucleation(dtau, fricCoeff, x(1,nsmp(1,iFaultNodePair,iFault)), x(2,nsmp(1,iFaultNodePair,iFault)), & 
-                        x(3,nsmp(1,iFaultNodePair,iFault)), fric(5,iFaultNodePair,iFault), fric(1,iFaultNodePair,iFault), &
-                        fric(2,iFaultNodePair,iFault))
-        endif
-    endif 
+    if (C_nuclea==1 .and. iFault==nucFault) call swtwNucleation(iFault, iFaultNodePair, fricCoeff)
+    ! ! Artificial nucleation 
+    ! if (TPV == 201 .or. TPV == 202) then 
+        ! if (C_nuclea == 1 .and.iFault == nucfault) then
+            ! call nucleation(dtau, fricCoeff, x(1,nsmp(1,iFaultNodePair,iFault)), x(2,nsmp(1,iFaultNodePair,iFault)), & 
+                        ! x(3,nsmp(1,iFaultNodePair,iFault)), fric(5,iFaultNodePair,iFault), fric(1,iFaultNodePair,iFault), &
+                        ! fric(2,iFaultNodePair,iFault))
+        ! endif
+    ! endif 
 
     if((nsdTractionVector(1)+fric(6,iFaultNodePair,iFault))>0) then
         effectiveNormalStress = 0.0d0
@@ -536,22 +529,53 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector)
     radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
                   (x(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
                   (x(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
-                  
+    T    = 1.0d0
+    F    = 0.0d0
+    G    = 1.0d0
+    if (radius < nucR) then 
+        F = dexp(radius**2/(radius**2-nucR**2))
+    endif 
+    if (time<=T)  then 
+        G = dexp((time-T)**2/(time*(time-2.0d0*T)))
+    endif
+    
     if (TPV == 105 .or. TPV == 104) then
-        T  = 1.0d0
-        F  = 0.0d0
-        G  = 1.0d0
-        if (radius < nucR) then 
-            F = dexp(radius**2/(radius**2-nucR**2))
-        endif 
-
-        if (time<=T)  then 
-            G = dexp((time-T)**2/(time*(time-2.0d0*T)))
-        endif 
-
         dtau = nucdtau0*F*G
+    elseif (TPV == 2802) then
+        !tpv2802 is drv.a6, plastic.
+        if (nt == 1) fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)
+        dtau = fric(81,iFaultNodePair,iFault)*0.7d0
     endif
     
     nsdTractionVector(2) = nsdTractionVector(2) + dtau
     
 end subroutine rsfNucleation
+
+subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: iFault, iFaultNodePair
+    real (kind = dp) :: radius, tr, tc, fricCoeff
+    
+    radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
+              (x(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
+              (x(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
+    
+    tr = 1.0d9 
+    if(radius <= nucR) then 
+        if (TPV == 201) tr = (radius+0.081d0*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(0.7d0*3464.d0)
+        if (TPV == 202) tr = radius/nucRuptVel
+    endif
+    
+    tc = 1.0d0 
+    if(time<tr) then 
+        tc = 0.0d0
+    elseif ((time<(tr+fric(5,iFaultNodePair,iFault))).and.(time>=tr)) then 
+        tc = (time-tr)/fric(5,iFaultNodePair,iFault)
+    endif
+
+    fricCoeff = min(fric(1,iFaultNodePair,iFault)+(fric(2,iFaultNodePair,iFault)-fric(1,iFaultNodePair,iFault))*tc, fricCoeff)
+    ! tmp1 = fs+(fd-fs)*tc 
+    ! tmp2 = xmu
+    ! xmu  = min(tmp1,tmp2)  
+end subroutine
