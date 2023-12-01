@@ -118,7 +118,8 @@ PROGRAM EQdyna_3D
     call memory_estimate
     
     call meshgen
-    
+    call checkMeshMaterial
+
     call netcdf_read_on_fault_eqdyna
     if (mode==2) call netcdf_read_on_fault_eqdyna_restart
     
@@ -216,3 +217,15 @@ PROGRAM EQdyna_3D
     stop
     
 end PROGRAM EQdyna_3D
+
+subroutine checkMeshMaterial
+    use globalvar
+    implicit none
+    integer (kind = 4) :: i
+    do i = 1, numel
+        if (mat(i,1) == 0. .or. mat(i,2) == 0. .or. mat(i,3) == 0.) then
+            write(*,*) 'Element ', i, ' is not assigned material property. Exiting ... ...'
+            stop 
+        endif 
+    enddo 
+end subroutine checkMeshMaterial
