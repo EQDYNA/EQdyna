@@ -16,7 +16,7 @@ SMALL_SIZE = 6
 
 
 def plot_initials():
-  fig = plt.figure(figsize=(16,16), dpi=300, facecolor='w', edgecolor='w')
+  fig = plt.figure(figsize=(30,16), dpi=300, facecolor='w', edgecolor='w')
   plt.rc('font', size=SMALL_SIZE)
   
   ax11 = fig.add_subplot(321)

@@ -5,6 +5,7 @@ Script to setup the case via user_defined_params.py.
 from user_defined_params import par
 import netCDF4 as nc
 import numpy as np
+import os
 
 def create_model_input_file():
     # Function to create bGlobal.txt, bModelGeometry.txt, b.FaultGeometry.txt,
@@ -292,12 +293,13 @@ def estimate_HPC_resource():
     print("Estimated number of CPUs to be requested is " + str(estimate_ncpu))
 
 def _main_func(description):
-  create_model_input_file()
-  create_batch_script()
-  create_batch_script_cycle()
-  create_station_input_file()
-  estimate_HPC_resource()
-  netcdf_write_on_fault_vars()
-
+    create_model_input_file()
+    create_batch_script()
+    create_batch_script_cycle()
+    create_station_input_file()
+    estimate_HPC_resource()
+    netcdf_write_on_fault_vars()
+    if par.rough_fault==1:
+        os.system('python3 genFractalSurface.py')
 if __name__ == "__main__":
     _main_func(__doc__)
