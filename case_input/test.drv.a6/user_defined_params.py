@@ -10,7 +10,7 @@ import numpy as np
 par = parameters()
 
 par.xmin, par.xmax = -40.0e3, 40.0e3
-par.ymin, par.ymax = -30.0e3, 31.0e3
+par.ymin, par.ymax = -31.0e3, 30.0e3
 par.zmin, par.zmax = -40.0e3, 0.0e3
 
 par.fxmin, par.fxmax = -25.0e3, 25.0e3
@@ -23,7 +23,7 @@ par.C_elastic = 0
 #par.C_nuclea  = 1
 #par.C_degen   = 0
 par.friclaw   = 4
-par.rough_fault = 0
+par.rough_fault = 1
 par.tpv       = 2802
 par.enlarging_ratio = 1.
 par.outputGroundMotion = 0
@@ -32,7 +32,7 @@ par.output_plastic     = 1
 par.nmat, par.n2mat = 1,3
 par.vp, par.vs, par.rou = 6.e3, 3.464e3, 2.67e3
 
-par.term    = 5.
+par.term    = 10.
 par.dx      = 500.
 par.dt      = 0.5*par.dx/par.vp
 
@@ -81,7 +81,7 @@ def getScaleCoeff(coorX,coorZ,wwx,wx,wwz1,wz1,wwz2,wz2):
     elif abs(coorX)>=(wwx+wx):
         scaleCoeffX = 0.
     
-    if abs(coorZ)<=(wwz1-wz1) or abs(coorZ)>=(wwz2+wx2):
+    if abs(coorZ)<=(wwz1-wz1) or abs(coorZ)>=(wwz2+wz2):
         scaleCoeffZ = 0.
     elif abs(coorZ)<=wwz1 and abs(coorZ)>=(wwz1-wz1):
         scaleCoeffZ = 1. - (wwz1 - abs(coorZ))/wz1

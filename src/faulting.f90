@@ -522,7 +522,7 @@ end subroutine showSourceDynamics
 subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateVector)
     use globalvar
     implicit none
-    integer (kind = 4) :: iFault, iFaultNodePair
+    integer (kind = 4) :: iFault, iFaultNodePair,j
     real (kind = dp) :: dtau, radius, T, F, G, nsdTractionVector(4), nsdSliprateVector(4), ttao
     
     dtau = 0.0d0 
@@ -544,12 +544,17 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
     elseif (TPV == 2802) then
         !tpv2802 is drv.a6, plastic.
         if (nt == 1) then  
-            fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)
-            ttao = ((nsdTractionVector(2)+dtau)**2 + nsdTractionVector(3)**2)**0.5
-            fric(21,iFaultNodePair,iFault) = fric(9,iFaultNodePair,iFault)*dlog(2.0d0*fric(12,iFaultNodePair,iFault)/nsdSliprateVector(4) &
+            fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)*0.7d0
+            ttao = ((nsdTractionVector(2)+fric(81,iFaultNodePair,iFault))**2 + nsdTractionVector(3)**2)**0.5
+            ! Add the background slip rate on top. 
+        do j=1,3 !n,s,d
+            nsdSliprateVector(j) = nsdSliprateVector(j) + fric(25+j-1,iFaultNodePair,iFault)
+        enddo
+        nsdSliprateVector(4) = sqrt(nsdSliprateVector(2)**2+nsdSliprateVector(3)**2)
+            fric(20,iFaultNodePair,iFault) = fric(9,iFaultNodePair,iFault)*dlog(2.0d0*fric(12,iFaultNodePair,iFault)/nsdSliprateVector(4) &
                                         *dsinh(ttao/abs(nsdTractionVector(1))/fric(9,iFaultNodePair,iFault)))
         endif 
-        dtau = fric(81,iFaultNodePair,iFault)*0.7d0*F*G
+        dtau = fric(81,iFaultNodePair,iFault)*F*G
     endif
     
     nsdTractionVector(2) = nsdTractionVector(2) + dtau
