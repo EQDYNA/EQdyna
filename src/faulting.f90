@@ -231,7 +231,7 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
                             + massSlave*nsdNodalQuant(3,2,1) - massMaster*nsdNodalQuant(3,1,1)) /totalMass &
                             + nsdInitTractionVector(3)*C_elastic
                             
-    if (friclaw>=3 .and. C_nuclea==1 .and. iFault==nucfault) call rsfNucleation(iFault, iFaultNodePair, nsdTractionVector)
+    if (friclaw>=3 .and. C_nuclea==1 .and. iFault==nucfault) call rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateVector)
     
     ! shear traction magnitude
     nsdTractionVector(4) = sqrt(nsdTractionVector(2)**2+nsdTractionVector(3)**2)
@@ -519,11 +519,11 @@ subroutine showSourceDynamics(iFault,iFaultNodePair)
     
 end subroutine showSourceDynamics
 
-subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector)
+subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateVector)
     use globalvar
     implicit none
     integer (kind = 4) :: iFault, iFaultNodePair
-    real (kind = dp) :: dtau, radius, T, F, G, nsdTractionVector(4)
+    real (kind = dp) :: dtau, radius, T, F, G, nsdTractionVector(4), nsdSliprateVector(4), ttao
     
     dtau = 0.0d0 
     radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
@@ -543,8 +543,13 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector)
         dtau = nucdtau0*F*G
     elseif (TPV == 2802) then
         !tpv2802 is drv.a6, plastic.
-        if (nt == 1) fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)
-        dtau = fric(81,iFaultNodePair,iFault)*0.7d0
+        if (nt == 1) then  
+            fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)
+            ttao = ((nsdTractionVector(2)+dtau)**2 + nsdTractionVector(3)**2)**0.5
+            fric(21,iFaultNodePair,iFault) = fric(9,iFaultNodePair,iFault)*dlog(2.0d0*fric(12,iFaultNodePair,iFault)/nsdSliprateVector(4) &
+                                        *dsinh(ttao/abs(nsdTractionVector(1))/fric(9,iFaultNodePair,iFault)))
+        endif 
+        dtau = fric(81,iFaultNodePair,iFault)*0.7d0*F*G
     endif
     
     nsdTractionVector(2) = nsdTractionVector(2) + dtau
