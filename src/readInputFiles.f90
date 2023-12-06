@@ -255,6 +255,7 @@ subroutine read_fault_rough_geometry
 ! This subroutine is read information from bFault_Rough_Geometry.txt
     use globalvar
     implicit none
+    real (kind = dp) :: nnxTmp, nnzTmp
     include 'mpif.h'
 
     logical::file_exists
@@ -277,9 +278,11 @@ subroutine read_fault_rough_geometry
     endif     
     
     open(unit = 1008, file = 'bFault_Rough_Geometry.txt', form = 'formatted', status = 'old')
-        read(1008,*) nnx, nnz
+        read(1008,*) nnxTmp, nnzTmp
         read(1008,*) dxtmp, rough_fx_min, rough_fz_min 
     close(1008)
+    nnx = int(nnxTmp)
+    nnz = int(nnzTmp)
     rough_fx_max = (nnx - 1)*dxtmp + rough_fx_min
     
     allocate(rough_geo(3,nnx*nnz))

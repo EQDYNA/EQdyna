@@ -17,11 +17,12 @@ subroutine faulting
         do i = 1, nftnd(ift)   
         
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
-            !call showSourceDynamics(ift,i)
+            
             
             if (friclaw<=2) call solveSWTW(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
             if (friclaw>=3) call solveRSF(ift, i, friclaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
             
+            call showSourceDynamics(ift,i)
             call storeRuptureTime(ift, i, nsdSliprateVector)
             
 
@@ -433,15 +434,15 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
         else
             v_trial = vtmp
         endif  
-        
+        !call showNewton(iFault,iFaultNodePair,iv,v_trial,nsdTractionVector)
     enddo !iv
-        
+
     ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
     ! Also reset taoc_new to 2 X ttao1.
     ! Without this, TPV1053D blew up at the surface station (-4.2,0)
     if(v_trial < fric(46,iFaultNodePair,iFault)) then
-        v_trial  = fric(46,iFaultNodePair,iFault)
-        taoc_new = trialTractVec(4)*2.0d0
+       v_trial  = fric(46,iFaultNodePair,iFault)
+       taoc_new = trialTractVec(4)*2.0d0
     endif
     
     do j=2,3 !s,d
@@ -506,24 +507,28 @@ subroutine showSourceDynamics(iFault,iFaultNodePair)
     implicit none
     integer (kind = 4) :: iFault, iFaultNodePair
     
-    if (x(1,nsmp(1,iFaultNodePair,iFault))==200. .and. &
+    if (x(1,nsmp(1,iFaultNodePair,iFault))==xsource .and. &
         x(3,nsmp(1,iFaultNodePair,iFault))==zsource) then
         write(*,*) 'Time ', time, ' s'
-        write(*,*) 'n,s,d tractions (MPa) ', fric(78,iFaultNodePair,iFault), fric(79,iFaultNodePair,iFault), fric(80,iFaultNodePair,iFault)
+        write(*,*) 'n,s,d tractions (MPa) ', fric(78,iFaultNodePair,iFault)/1.d6, fric(79,iFaultNodePair,iFault)/1.d6, fric(80,iFaultNodePair,iFault)/1.d6
+        write(*,*) 'state_normal (MPa)', fric(23,iFaultNodePair,iFault)/1.d6
         write(*,*) 'n,s,d slip (m) ', fric(73,iFaultNodePair,iFault), fric(71,iFaultNodePair,iFault), fric(72,iFaultNodePair,iFault)
         write(*,*) 's,d, peak sliprate (m/s) ', fric(74,iFaultNodePair,iFault), fric(75,iFaultNodePair,iFault), fric(76,iFaultNodePair,iFault)
         write(*,*) 'cummulative slip (m) ', fric(77,iFaultNodePair,iFault)
         write(*,*) 'sw_fs, sw_fd, sw_D0 ', fric(1,iFaultNodePair,iFault), fric(2,iFaultNodePair,iFault), fric(3,iFaultNodePair,iFault)
         write(*,*) 'rsf_a, rsf_b ', fric(9,iFaultNodePair,iFault), fric(10,iFaultNodePair,iFault)
+        write(*,*) 'rsf_state', fric(20,iFaultNodePair,iFault)
     endif 
     
 end subroutine showSourceDynamics
 
+
+
 subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateVector)
     use globalvar
     implicit none
-    integer (kind = 4) :: iFault, iFaultNodePair,j
-    real (kind = dp) :: dtau, radius, T, F, G, nsdTractionVector(4), nsdSliprateVector(4), ttao
+    integer (kind = 4) :: iFault, iFaultNodePair, j
+    real (kind = dp) :: dtau, radius, T, F, G, nsdTractionVector(4), nsdSliprateVector(4), ttao, backSliprate
     
     dtau = 0.0d0 
     radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
@@ -545,14 +550,12 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
         !tpv2802 is drv.a6, plastic.
         if (nt == 1) then  
             fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)*0.7d0
-            ttao = ((nsdTractionVector(2)+fric(81,iFaultNodePair,iFault))**2 + nsdTractionVector(3)**2)**0.5
-            ! Add the background slip rate on top. 
-        do j=1,3 !n,s,d
-            nsdSliprateVector(j) = nsdSliprateVector(j) + fric(25+j-1,iFaultNodePair,iFault)
-        enddo
-        nsdSliprateVector(4) = sqrt(nsdSliprateVector(2)**2+nsdSliprateVector(3)**2)
-            fric(20,iFaultNodePair,iFault) = fric(9,iFaultNodePair,iFault)*dlog(2.0d0*fric(12,iFaultNodePair,iFault)/nsdSliprateVector(4) &
+            ttao = sqrt((nsdTractionVector(2)+fric(81,iFaultNodePair,iFault))**2 + nsdTractionVector(3)**2)
+            backSliprate = sqrt((nsdSliprateVector(2)+fric(26,iFaultNodePair,iFault))**2 + &
+                            (nsdSliprateVector(3)+fric(27,iFaultNodePair,iFault))**2)
+            fric(20,iFaultNodePair,iFault) = fric(9,iFaultNodePair,iFault)*dlog(2.0d0*fric(12,iFaultNodePair,iFault)/backSliprate &
                                         *dsinh(ttao/abs(nsdTractionVector(1))/fric(9,iFaultNodePair,iFault)))
+            fric(23,iFaultNodePair,iFault) = abs(nsdTractionVector(1))
         endif 
         dtau = fric(81,iFaultNodePair,iFault)*F*G
     endif
@@ -589,3 +592,17 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
     ! tmp2 = xmu
     ! xmu  = min(tmp1,tmp2)  
 end subroutine
+
+subroutine showNewton(iFault,iFaultNodePair,iv,v_trial,nsdTractionVector)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: iFault,iFaultNodePair,iv
+    real (kind = dp) :: v_trial, nsdTractionVector(4)
+    if (x(1,nsmp(1,iFaultNodePair,iFault))==-22500.d0 .and. &
+        x(3,nsmp(1,iFaultNodePair,iFault))==-21500.d0) then
+        write(*,*) 'Newton: iteration step iv = ', iv
+        write(*,*) 'Newton: trial slip rate is ', v_trial
+        write(*,*) 'Newton: nsdTractionVector', nsdTractionVector(1)/1.0d6, nsdTractionVector(2)/1.0d6, nsdTractionVector(3)/1.0d6, nsdTractionVector(4)/1.0d6 
+        write(*,*) 'Newton: state variable is ', fric(20,iFaultNodePair,iFault)
+    endif
+end subroutine showNewton
