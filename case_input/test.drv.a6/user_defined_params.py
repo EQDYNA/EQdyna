@@ -36,8 +36,8 @@ par.term    = 10.
 par.dx      = 500.
 par.dt      = 0.5*par.dx/par.vp
 
-par.nucR = 3.0e3
-par.nucdtau0 = 45.0e6
+par.nucR = 4.0e3
+par.nucdtau0 = 50.0e6
 
 par.nx, par.ny, par.nz = 2, 2, 1
 
