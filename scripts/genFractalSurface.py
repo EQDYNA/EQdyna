@@ -54,8 +54,8 @@ def generateFractalSurface(lx, hurst_exponent, seed=None):
 
     return w
 
-hurst_exponent = 0.7
-seedId = 48
+hurst_exponent = 1.
+seedId = 1
 alpha0 = 0.005
 
 
@@ -64,11 +64,15 @@ mean_w = np.mean(w)
 std_w  = np.std(w)
 print(mean_w, std_w)
 fractalSurface     = w*alpha0/(std_w/par.nfx/par.dx)
-dxFractalSurface, dyFractalSurface = np.gradient(fractalSurface/par.dx, axis=(0,1))
+dxFractalSurface, dyFractalSurface = np.gradient(fractalSurface/par.dx, axis=(1,0))
 
-subSurface = fractalSurface[:par.nfx, :par.nfz]
-subDx      = dxFractalSurface[:par.nfx, :par.nfz]
-subDy      = dyFractalSurface[:par.nfx, :par.nfz]
+subSurface = fractalSurface[:par.nfz, :par.nfx]
+subDx      = dxFractalSurface[:par.nfz, :par.nfx]
+subDy      = dyFractalSurface[:par.nfz, :par.nfx]
+
+if subDx.max()>0.2 or subDy.max()>0.2:
+    print('The fractal surface may be too rough that Dx/Dy is over 0.2')
+    print('Maximum subDx and subDy are ', subDx.max(), subDy.max())
 
 result = np.zeros((par.nfx*par.nfz+2,3))
 
@@ -80,9 +84,9 @@ result[1,2] = par.fzmin
 ntmp = 2 # skipping the first two lines
 for i in range(par.nfx):
     for j in range(par.nfz):
-        result[ntmp,0] = subSurface[i,j]
-        result[ntmp,1] = subDx[i,j]
-        result[ntmp,2] = subDy[i,j]
+        result[ntmp,0] = subSurface[j,i]
+        result[ntmp,1] = subDx[j,i]
+        result[ntmp,2] = subDy[j,i]
         ntmp = ntmp + 1
 
 np.savetxt('bFault_Rough_Geometry.txt', result, fmt='%f', delimiter='\t')
