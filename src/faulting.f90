@@ -6,67 +6,20 @@
 subroutine faulting
     use globalvar
     implicit none
-
-    character(len=30) :: foutmov
     integer (kind = 4) :: i, j, ift
-    real (kind = dp) :: dtau=0.0d0, xmu
+    real (kind = dp) :: dtau=0.0d0
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
     real (kind = dp) :: nsdInitTractionVector(3)
-    !===================================================================!
     do ift = 1, ntotft
         do i = 1, nftnd(ift)   
-        
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
-            
-            
-            if (friclaw<=2) call solveSWTW(ift, i, friclaw, xmu, nsdTractionVector, nsdInitTractionVector)
+            if (friclaw<=2) call solveSWTW(ift, i, friclaw, nsdTractionVector, nsdInitTractionVector)
             if (friclaw>=3) call solveRSF(ift, i, friclaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
-            
             call showSourceDynamics(ift,i)
+            call storeOnFaultStationQuantSCEC(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
             call storeRuptureTime(ift, i, nsdSliprateVector)
-            
-
-            if(n4onf>0.and.lstr) then    
-                do j=1,n4onf
-                    if(anonfs(1,j)==i.and.anonfs(3,j)==ift) then !only selected stations. B.D. 10/25/09    
-                        fltsta(1,locplt-1,j)  = time
-                        fltsta(2,locplt-1,j)  = nsdSliprateVector(2)
-                        fltsta(3,locplt-1,j)  = nsdSliprateVector(3)
-                        fltsta(4,locplt-1,j)  = fric(20,i,ift)
-                        fltsta(5,locplt-1,j)  = nsdSlipVector(2)
-                        fltsta(6,locplt-1,j)  = nsdSlipVector(3)
-                        fltsta(7,locplt-1,j)  = nsdSlipVector(1)
-                        fltsta(8,locplt-1,j)  = nsdTractionVector(2) !tstk
-                        fltsta(9,locplt-1,j)  = nsdTractionVector(3) !tdip
-                        fltsta(10,locplt-1,j) = nsdTractionVector(1) !tnrm
-                        fltsta(11,locplt-1,j) = fric(51,i,ift) + fric(42,i,ift) ! + fric_tp_pini
-                        fltsta(12,locplt-1,j) = fric(52,i,ift) 
-                    endif
-                enddo 
-            endif   
-            
-        enddo    !ending i
-    enddo !ift
-    !-------------------------------------------------------------------!
-    !-------------Late Sep.2015/ D.Liu----------------------------------!
-    !-----------Writing out results on fault for evert nstep------------!
-    !if(mod(nt,315)==1.and.nt<5000) then 
-    !    write(mm,'(i6)') me
-    !    mm = trim(adjustl(mm))
-    !    foutmov='fslipout_'//mm
-    !    open(9002+me,file=foutmov,form='formatted',status='unknown',position='append')
-    !        write(9002+me,'(1x,4f10.3)') ((fltslp(j,ifout),j=1,3),fltslr(1,ifout),ifout=1,nftnd)
-    !endif
-    !----nftnd for each me for plotting---------------------------------!
-    !if (nt==1) then
-    !    write(mm,'(i6)') me    
-    !    mm = trim(adjustl(mm))            
-    !    foutmov='fnode.txt'//mm
-    !    open(unit=9800,file=foutmov,form='formatted',status='unknown')
-    !        write(9800,'(2I7)') me,nftnd 
-    !    close(9800)            
-    !endif     
-    !-------------------------------------------------------------------!    
+        enddo 
+    enddo
 end subroutine faulting     
 
 ! Subroutine rate_state_normal_stress calculates the effect of normal stress change
@@ -239,7 +192,7 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     
 end subroutine getNsdSlipSliprateTraction
 
-subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTractionVector, nsdInitTractionVector)
+subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, nsdInitTractionVector)
                 
     use globalvar
     implicit none
@@ -259,14 +212,6 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, fricCoeff, nsdTractio
     endif
     
     if (C_nuclea==1 .and. iFault==nucFault) call swtwNucleation(iFault, iFaultNodePair, fricCoeff)
-    ! ! Artificial nucleation 
-    ! if (TPV == 201 .or. TPV == 202) then 
-        ! if (C_nuclea == 1 .and.iFault == nucfault) then
-            ! call nucleation(dtau, fricCoeff, x(1,nsmp(1,iFaultNodePair,iFault)), x(2,nsmp(1,iFaultNodePair,iFault)), & 
-                        ! x(3,nsmp(1,iFaultNodePair,iFault)), fric(5,iFaultNodePair,iFault), fric(1,iFaultNodePair,iFault), &
-                        ! fric(2,iFaultNodePair,iFault))
-        ! endif
-    ! endif 
 
     if((nsdTractionVector(1)+fric(6,iFaultNodePair,iFault))>0) then
         effectiveNormalStress = 0.0d0
@@ -394,60 +339,10 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     enddo
     trialTractVec(4) = sqrt(trialTractVec(2)**2 + trialTractVec(3)**2) !ttao1
     
+    ! solve sliprate with Newton-Raphson method
     call NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, statetmp, theta_pc_tmp, theta_pc_dot, nsdTractionVector, trialTractVec, T_coeff)
     fric(20,iFaultNodePair,iFault) = statetmp
     fric(23,iFaultNodePair,iFault) = theta_pc_tmp
-    
-    ! ! Netwon solver for slip rate, v_trial, for the next time step.
-    ! ivmax    = 20  ! Maximum iterations.
-    ! do iv = 1,ivmax
-        ! ! in each iteration, reupdate the new state variable [fric(20)] given the new 
-        ! !   slip rate, v_trial.
-        ! fric(20,iFaultNodePair,iFault)  = statetmp
-        ! if(friclaw == 3) then
-            ! call rate_state_ageing_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv)
-        ! else
-            ! call rate_state_slip_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv)
-        ! endif 
-        
-        ! ! [NOTE]: the code doesn't support normal stress evolution under thermo pressurization.
-        ! if (friclaw < 5) then
-            ! fric(23,iFaultNodePair,iFault)  = thetaPcTmp 
-            ! call rate_state_normal_stress(v_trial, fric(23,iFaultNodePair,iFault), theta_pc_dot, nsdTractionVector(1), fric(1,iFaultNodePair,iFault))    
-            ! taoc_new        = xmu*thetaPcTmp
-            ! rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
-            ! drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * thetaPcTmp)*0.5d0  
-        ! else
-            ! taoc_new        = fric(4,iFaultNodePair,iFault) - xmu * MIN(nsdTractionVector(1), 0.0d0)
-            ! rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
-            ! drsfeqdv        = 1.0d0 + T_coeff * (-dxmudv * MIN(nsdTractionVector(1),0.0d0))*0.5d0  
-        ! endif
-        
-        ! ! exiting criteria:
-        ! !   1. relative residual, rsfeq/drsfeqdv, is smaller than 1e-14*v_trial
-        ! !   2. residual, rsfeq, is smaller than 1e-6*v_trial
-        ! if(abs(rsfeq/drsfeqdv) < 1.d-14 * abs(v_trial) .and. abs(rsfeq) < 1.d-6 * abs(v_trial)) exit 
-        ! !if(abs(rsfeq) < 1.d-5 * abs(v_trial)) exit 
-            ! vtmp = v_trial - rsfeq / drsfeqdv
-        
-        ! ! additional constraints for solving trial slip rate, v_trial
-        ! !   if vtmp smaller than zero, reset it to half of v_trial in the last try. 
-        ! if(vtmp <= 0.0d0) then
-        ! !    v_trial = v_trial/2.0d0
-        ! else
-            ! v_trial = vtmp
-        ! endif  
-        ! !call showNewton(iFault,iFaultNodePair,iv,v_trial,nsdTractionVector)
-    ! enddo !iv
-
-    ! ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
-    ! ! Also reset taoc_new to 2 X ttao1.
-    ! ! Without this, TPV1053D blew up at the surface station (-4.2,0)
-    ! if(v_trial < fric(46,iFaultNodePair,iFault)) then
-       ! v_trial  = fric(46,iFaultNodePair,iFault)
-       ! taoc_new = trialTractVec(4)*2.0d0
-    ! endif
-    
     do j=2,3 !s,d
         nsdTractionVector(j) = taoc_old*0.5d0*(nsdSliprateVector(j)/nsdSliprateVector(4)) + taoc_new*0.5d0*(trialTractVec(j)/trialTractVec(4))
     enddo
@@ -552,7 +447,7 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
     elseif (TPV == 2802) then
         !tpv2802 is drv.a6, plastic.
         if (nt == 1) then  
-            fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)*1.3d0
+            fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)*1.0d0
             ttao = sqrt((nsdTractionVector(2)+fric(81,iFaultNodePair,iFault))**2 + nsdTractionVector(3)**2)
             backSliprate = sqrt((nsdSliprateVector(2)+fric(26,iFaultNodePair,iFault))**2 + &
                             (nsdSliprateVector(3)+fric(27,iFaultNodePair,iFault))**2)
@@ -671,3 +566,49 @@ subroutine NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, state0, thet
     thetaPc0 = thetaPcTmp
     
 end subroutine 
+
+subroutine storeOnFaultStationQuantSCEC(iFault, iFaultNodePair, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: iFault, iFaultNodePair, j
+    real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
+    if(n4onf>0 .and. lstr) then    
+        do j = 1, n4onf
+            if(anonfs(1,j)==iFaultNodePair .and. anonfs(3,j)==iFault) then 
+                fltsta(1,locplt-1,j)  = time
+                fltsta(2,locplt-1,j)  = nsdSliprateVector(2)
+                fltsta(3,locplt-1,j)  = nsdSliprateVector(3)
+                fltsta(4,locplt-1,j)  = fric(20,iFaultNodePair,iFault)
+                fltsta(5,locplt-1,j)  = nsdSlipVector(2)
+                fltsta(6,locplt-1,j)  = nsdSlipVector(3)
+                fltsta(7,locplt-1,j)  = nsdSlipVector(1)
+                fltsta(8,locplt-1,j)  = nsdTractionVector(2) !tstk
+                fltsta(9,locplt-1,j)  = nsdTractionVector(3) !tdip
+                fltsta(10,locplt-1,j) = nsdTractionVector(1) !tnrm
+                fltsta(11,locplt-1,j) = fric(51,iFaultNodePair,iFault) + fric(42,iFaultNodePair,iFault) ! + fric_tp_pini
+                fltsta(12,locplt-1,j) = fric(52,iFaultNodePair,iFault) 
+            endif
+        enddo 
+    endif   
+    
+    !-------------------------------------------------------------------!
+    !-------------Late Sep.2015/ D.Liu----------------------------------!
+    !-----------Writing out results on fault for evert nstep------------!
+    !if(mod(nt,315)==1.and.nt<5000) then 
+    !    write(mm,'(i6)') me
+    !    mm = trim(adjustl(mm))
+    !    foutmov='fslipout_'//mm
+    !    open(9002+me,file=foutmov,form='formatted',status='unknown',position='append')
+    !        write(9002+me,'(1x,4f10.3)') ((fltslp(j,ifout),j=1,3),fltslr(1,ifout),ifout=1,nftnd)
+    !endif
+    !----nftnd for each me for plotting---------------------------------!
+    !if (nt==1) then
+    !    write(mm,'(i6)') me    
+    !    mm = trim(adjustl(mm))            
+    !    foutmov='fnode.txt'//mm
+    !    open(unit=9800,file=foutmov,form='formatted',status='unknown')
+    !        write(9800,'(2I7)') me,nftnd 
+    !    close(9800)            
+    !endif     
+    !-------------------------------------------------------------------!   
+end subroutine storeOnFaultStationQuantSCEC
