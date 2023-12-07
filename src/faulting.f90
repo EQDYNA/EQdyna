@@ -447,8 +447,8 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
     elseif (TPV == 2802) then
         !tpv2802 is drv.a6, plastic.
         if (nt == 1) then  
-            fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)*1.0d0
-            ttao = sqrt((nsdTractionVector(2)+fric(81,iFaultNodePair,iFault))**2 + nsdTractionVector(3)**2)
+            fric(81,iFaultNodePair,iFault) = nucdtau0 !nsdTractionVector(2)*perturb
+            ttao = sqrt(nsdTractionVector(2)**2 + nsdTractionVector(3)**2)
             backSliprate = sqrt((nsdSliprateVector(2)+fric(26,iFaultNodePair,iFault))**2 + &
                             (nsdSliprateVector(3)+fric(27,iFaultNodePair,iFault))**2)
             fric(20,iFaultNodePair,iFault) = fric(9,iFaultNodePair,iFault)*dlog(2.0d0*fric(12,iFaultNodePair,iFault)/backSliprate &
@@ -557,10 +557,7 @@ subroutine NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, state0, thet
     ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
     ! Also reset taoc_new to 2 X ttao1.
     ! Without this, TPV1053D blew up at the surface station (-4.2,0)
-    if(v_trial < fric(46,iFaultNodePair,iFault)) then
-       v_trial  = fric(46,iFaultNodePair,iFault)
-       taoc_new = trialTractVec(4)*2.0d0
-    endif
+    if(TPV==105 .and. v_trial < fric(46,iFaultNodePair,iFault)) v_trial = fric(46,iFaultNodePair,iFault) ! necessary for tpv1053d
     
     state0   = stateTmp
     thetaPc0 = thetaPcTmp
