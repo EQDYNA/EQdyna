@@ -355,7 +355,7 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     ! Given tractions, state variables, find the sliprate for next time step. 
     v_trial = nsdSliprateVector(4)
     
-    ! retrieve the state variable for normal stress theta_pc_tmp from fric(23).
+    ! retrieve the state variable for normal stress thetaPcTmp from fric(23).
     ! this accounts for normal stress change. 
     theta_pc_tmp = fric(23,iFaultNodePair,iFault)
     ! get updated trial state variable for normal stress [fric(23)] and its rate [fric(24)].
@@ -375,7 +375,7 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     endif            
     ! compute trial traction.
     ! for cases with large fluctuations of effective normal stress, 
-    !   use the state variable for effective normal stress, theta_pc_tmp, 
+    !   use the state variable for effective normal stress, thetaPcTmp, 
     !   rather than tnrm, when friclaw==5/rough_fault==1.
     ! [NOTE]: friclaw=5 doesn't support normal stress evolution yet. See TPV1053D.
     if (friclaw==5) then 
@@ -394,56 +394,59 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     enddo
     trialTractVec(4) = sqrt(trialTractVec(2)**2 + trialTractVec(3)**2) !ttao1
     
+    call NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, statetmp, theta_pc_tmp, theta_pc_dot, nsdTractionVector, trialTractVec, T_coeff)
+    fric(20,iFaultNodePair,iFault) = statetmp
+    fric(23,iFaultNodePair,iFault) = theta_pc_tmp
+    
+    ! ! Netwon solver for slip rate, v_trial, for the next time step.
+    ! ivmax    = 20  ! Maximum iterations.
+    ! do iv = 1,ivmax
+        ! ! in each iteration, reupdate the new state variable [fric(20)] given the new 
+        ! !   slip rate, v_trial.
+        ! fric(20,iFaultNodePair,iFault)  = statetmp
+        ! if(friclaw == 3) then
+            ! call rate_state_ageing_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv)
+        ! else
+            ! call rate_state_slip_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv)
+        ! endif 
+        
+        ! ! [NOTE]: the code doesn't support normal stress evolution under thermo pressurization.
+        ! if (friclaw < 5) then
+            ! fric(23,iFaultNodePair,iFault)  = thetaPcTmp 
+            ! call rate_state_normal_stress(v_trial, fric(23,iFaultNodePair,iFault), theta_pc_dot, nsdTractionVector(1), fric(1,iFaultNodePair,iFault))    
+            ! taoc_new        = xmu*thetaPcTmp
+            ! rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
+            ! drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * thetaPcTmp)*0.5d0  
+        ! else
+            ! taoc_new        = fric(4,iFaultNodePair,iFault) - xmu * MIN(nsdTractionVector(1), 0.0d0)
+            ! rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
+            ! drsfeqdv        = 1.0d0 + T_coeff * (-dxmudv * MIN(nsdTractionVector(1),0.0d0))*0.5d0  
+        ! endif
+        
+        ! ! exiting criteria:
+        ! !   1. relative residual, rsfeq/drsfeqdv, is smaller than 1e-14*v_trial
+        ! !   2. residual, rsfeq, is smaller than 1e-6*v_trial
+        ! if(abs(rsfeq/drsfeqdv) < 1.d-14 * abs(v_trial) .and. abs(rsfeq) < 1.d-6 * abs(v_trial)) exit 
+        ! !if(abs(rsfeq) < 1.d-5 * abs(v_trial)) exit 
+            ! vtmp = v_trial - rsfeq / drsfeqdv
+        
+        ! ! additional constraints for solving trial slip rate, v_trial
+        ! !   if vtmp smaller than zero, reset it to half of v_trial in the last try. 
+        ! if(vtmp <= 0.0d0) then
+        ! !    v_trial = v_trial/2.0d0
+        ! else
+            ! v_trial = vtmp
+        ! endif  
+        ! !call showNewton(iFault,iFaultNodePair,iv,v_trial,nsdTractionVector)
+    ! enddo !iv
 
-    ! Netwon solver for slip rate, v_trial, for the next time step.
-    ivmax    = 20  ! Maximum iterations.
-    do iv = 1,ivmax
-        ! in each iteration, reupdate the new state variable [fric(20)] given the new 
-        !   slip rate, v_trial.
-        fric(20,iFaultNodePair,iFault)  = statetmp
-        if(friclaw == 3) then
-            call rate_state_ageing_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv)
-        else
-            call rate_state_slip_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv)
-        endif 
-        
-        ! [NOTE]: the code doesn't support normal stress evolution under thermo pressurization.
-        if (friclaw < 5) then
-            fric(23,iFaultNodePair,iFault)  = theta_pc_tmp 
-            call rate_state_normal_stress(v_trial, fric(23,iFaultNodePair,iFault), theta_pc_dot, nsdTractionVector(1), fric(1,iFaultNodePair,iFault))    
-            taoc_new        = xmu*theta_pc_tmp
-            rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
-            drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * theta_pc_tmp)*0.5d0  
-        else
-            taoc_new        = fric(4,iFaultNodePair,iFault) - xmu * MIN(nsdTractionVector(1), 0.0d0)
-            rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
-            drsfeqdv        = 1.0d0 + T_coeff * (-dxmudv * MIN(nsdTractionVector(1),0.0d0))*0.5d0  
-        endif
-        
-        ! exiting criteria:
-        !   1. relative residual, rsfeq/drsfeqdv, is smaller than 1e-14*v_trial
-        !   2. residual, rsfeq, is smaller than 1e-6*v_trial
-        if(abs(rsfeq/drsfeqdv) < 1.d-14 * abs(v_trial) .and. abs(rsfeq) < 1.d-6 * abs(v_trial)) exit 
-        !if(abs(rsfeq) < 1.d-5 * abs(v_trial)) exit 
-            vtmp = v_trial - rsfeq / drsfeqdv
-        
-        ! additional constraints for solving trial slip rate, v_trial
-        !   if vtmp smaller than zero, reset it to half of v_trial in the last try. 
-        if(vtmp <= 0.0d0) then
-            v_trial = v_trial/2.0d0
-        else
-            v_trial = vtmp
-        endif  
-        !call showNewton(iFault,iFaultNodePair,iv,v_trial,nsdTractionVector)
-    enddo !iv
-
-    ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
-    ! Also reset taoc_new to 2 X ttao1.
-    ! Without this, TPV1053D blew up at the surface station (-4.2,0)
-    if(v_trial < fric(46,iFaultNodePair,iFault)) then
-       v_trial  = fric(46,iFaultNodePair,iFault)
-       taoc_new = trialTractVec(4)*2.0d0
-    endif
+    ! ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
+    ! ! Also reset taoc_new to 2 X ttao1.
+    ! ! Without this, TPV1053D blew up at the surface station (-4.2,0)
+    ! if(v_trial < fric(46,iFaultNodePair,iFault)) then
+       ! v_trial  = fric(46,iFaultNodePair,iFault)
+       ! taoc_new = trialTractVec(4)*2.0d0
+    ! endif
     
     do j=2,3 !s,d
         nsdTractionVector(j) = taoc_old*0.5d0*(nsdSliprateVector(j)/nsdSliprateVector(4)) + taoc_new*0.5d0*(trialTractVec(j)/trialTractVec(4))
@@ -549,7 +552,7 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
     elseif (TPV == 2802) then
         !tpv2802 is drv.a6, plastic.
         if (nt == 1) then  
-            fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)*0.7d0
+            fric(81,iFaultNodePair,iFault) = nsdTractionVector(2)*1.3d0
             ttao = sqrt((nsdTractionVector(2)+fric(81,iFaultNodePair,iFault))**2 + nsdTractionVector(3)**2)
             backSliprate = sqrt((nsdSliprateVector(2)+fric(26,iFaultNodePair,iFault))**2 + &
                             (nsdSliprateVector(3)+fric(27,iFaultNodePair,iFault))**2)
@@ -606,3 +609,65 @@ subroutine showNewton(iFault,iFaultNodePair,iv,v_trial,nsdTractionVector)
         write(*,*) 'Newton: state variable is ', fric(20,iFaultNodePair,iFault)
     endif
 end subroutine showNewton
+
+subroutine NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, state0, thetaPc0, thetaPcDot, nsdTractionVector, trialTractVec, T_coeff)
+    use globalvar
+    implicit none 
+    integer (kind = 4) :: iFault, iFaultNodePair, ivmax=20, iv
+    real (kind = dp) :: v_trial, newSliprate, state0, stateTmp, thetaPc0, thetaPcTmp, thetaPcDot, xmu, dxmudv, nsdTractionVector(4), trialTractVec(4), T_coeff, rsfeq, drsfeqdv, taoc_new
+    ! Netwon solver for slip rate, v_trial, for the next time step.
+    
+    do iv = 1,ivmax
+        ! in each iteration, reupdate the new state variable [fric(20)] given the new 
+        !   slip rate, v_trial.
+        !fric(20,iFaultNodePair,iFault)  = statetmp
+        stateTmp = state0
+        if(friclaw == 3) then
+            call rate_state_ageing_law(v_trial,stateTmp,fric(1,iFaultNodePair,iFault),xmu,dxmudv)
+        else
+            call rate_state_slip_law(v_trial,stateTmp,fric(1,iFaultNodePair,iFault),xmu,dxmudv)
+        endif 
+        
+        ! [NOTE]: the code doesn't support normal stress evolution under thermo pressurization.
+        if (friclaw < 5) then
+            !fric(23,iFaultNodePair,iFault)  = thetaPcTmp 
+            thetaPcTmp = thetaPc0
+            call rate_state_normal_stress(v_trial, thetaPcTmp, thetaPcDot, nsdTractionVector(1), fric(1,iFaultNodePair,iFault))    
+            taoc_new        = xmu*thetaPcTmp
+            rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
+            drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * thetaPcTmp)*0.5d0  
+        else
+            taoc_new        = fric(4,iFaultNodePair,iFault) - xmu * MIN(nsdTractionVector(1), 0.0d0)
+            rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
+            drsfeqdv        = 1.0d0 + T_coeff * (-dxmudv * MIN(nsdTractionVector(1),0.0d0))*0.5d0  
+        endif
+        
+        ! exiting criteria:
+        !   1. relative residual, rsfeq/drsfeqdv, is smaller than 1e-14*v_trial
+        !   2. residual, rsfeq, is smaller than 1e-6*v_trial
+        if(abs(rsfeq/drsfeqdv) < 1.d-14 * abs(v_trial) .and. abs(rsfeq) < 1.d-6 * abs(v_trial)) exit 
+        !if(abs(rsfeq) < 1.d-5 * abs(v_trial)) exit 
+            newSliprate = v_trial - rsfeq / drsfeqdv
+        
+        ! additional constraints for solving trial slip rate, v_trial
+        !   if vtmp smaller than zero, reset it to half of v_trial in the last try. 
+        if(newSliprate <= 0.0d0) then
+            v_trial = v_trial/2.0d0
+        else
+            v_trial = newSliprate
+        endif  
+        !call showNewton(iFault,iFaultNodePair,iv,v_trial,nsdTractionVector)
+    enddo !iv
+
+    ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
+    ! Also reset taoc_new to 2 X ttao1.
+    ! Without this, TPV1053D blew up at the surface station (-4.2,0)
+    if(v_trial < fric(46,iFaultNodePair,iFault)) then
+       v_trial  = fric(46,iFaultNodePair,iFault)
+       taoc_new = trialTractVec(4)*2.0d0
+    endif
+    
+    state0   = stateTmp
+    thetaPc0 = thetaPcTmp
+    
+end subroutine 
