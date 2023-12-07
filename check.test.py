@@ -4,7 +4,7 @@ import numpy as np
 import xarray as xr
 from testNameList import nameList
 #testIDList   = ['tpv8', 'tpv104','tpv1053d','tpv1053d.6c','meng2023a','meng2023cb']
-fileNameList = ['fault.dyna.r.nc','frt.txt0','frt.txt2']
+fileNameList = ['fault.dyna.r.nc','frt.txt0','frt.txt1', 'frt.txt2','frt.txt3']
 refRoot  = 'test.reference.results'
 testRoot = 'test'
 
@@ -51,10 +51,9 @@ for testid in nameList:
     for filename in fileNameList:
         refPath  = refRoot+'/'+testid+'/'+filename
         testPath = testRoot+'/'+testid+'/'+filename
-        #os.system('vimdiff '+refPath+' '+testPath)
-        if 'nc' in filename:
-            compare_nc_files(refPath, testPath, 1e-3)
-        elif 'frt' in filename:
-            compare_txt_files(refPath, testPath, 1e-3)
-        #os.system('ncdiff '+refPath+' '+testPath+' tmp.nc')
+        if os.path.exists(refPath):
+            if 'nc' in filename:
+                compare_nc_files(refPath, testPath, 1e-3)
+            elif 'frt' in filename:
+                compare_txt_files(refPath, testPath, 1e-3)
 
