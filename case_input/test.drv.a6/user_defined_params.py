@@ -32,7 +32,7 @@ par.output_plastic     = 1
 par.nmat, par.n2mat = 1,3
 par.vp, par.vs, par.rou = 6.e3, 3.464e3, 2.67e3
 
-par.term    = 10.
+par.term    = 5.
 par.dx      = 500.
 par.dt      = 0.5*par.dx/par.vp
 
