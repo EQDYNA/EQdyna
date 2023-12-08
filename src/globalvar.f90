@@ -61,7 +61,7 @@ MODULE globalvar
         nplpts, nstep,  nhplt=1,        locplt=1, &
         dis4uniF,       dis4uniB,       nmat,   n2mat,  ninterval=1,&
         nftmx,  nonmx,  nt,     TPV = -1,       output_plastic,     &
-        nnx,    nnz,    rough_fault,    timeinfo = 0,   outputGroundMotion,&
+        nnx,    nnz,    insertFaultType,    timeinfo = 0,   outputGroundMotion,&
         surface_nnode = 0,  &
         ! Thickness (counted by nodes) of PML.nPML=6
         nPML = 6, &
