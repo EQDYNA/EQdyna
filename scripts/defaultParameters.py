@@ -15,7 +15,11 @@ class parameters:
     xmin, xmax   = -24.0e3, 24.0e3
     ymin, ymax   = -10.0e3, 12.0e3
     zmin, zmax   = -24.0e3, 0.0e3
-
+    
+    dip = 90. 
+    # positve dip angle to tilt the fault to y-
+    # negavtive dip angle to tile the fault to y+
+    
     # fault geometry (in meters)
     fxmin, fxmax = -22.0e3, 22.0e3
     fymin, fymax = 0.0e3,   0.0e3    # for vertical strike-slip faults, we align faults along xz planes.
@@ -63,7 +67,15 @@ class parameters:
     friclaw     = 5 # sw(1), tw(2), rsf_aging(3), rsf_slip_srw(4), rsf_slip_srw_tp(5).
     ntotft      = 1 # number of total faults.
     nucfault    = 1 # the fault id of nucleation fault. Should be no larger than ntotft
-    rough_fault = 0 # include rough fault yes(1) or not(0).
+    insertFaultType = 0 
+    # 0: don't insert customized fault interface;
+    # 1: insert customized fault interface;
+    # 2: 1 + activate fractal fault 
+    if insertFaultType == 2:
+        print('An integer seedId to generate fractal fault is needed;')
+        print('Please assign par.seedId accordingly.')
+        seedId = 1
+        
     nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault variables will be written out in netCDF format.
     tpv         = 105 
     # Control outputs

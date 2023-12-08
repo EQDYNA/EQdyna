@@ -64,7 +64,7 @@ def generatePlane(nz, nx, dx):
     return result
 
 def generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=None):
-    if isRoughFault == 1:
+    if isRoughFault == 2:
         hurst_exponent = 1.
         #seedId = 48
         alpha0 = 0.005
@@ -76,7 +76,7 @@ def generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=None):
         fractalSurface = w*alpha0/(std_w/nx/dx)
         subSurface     = fractalSurface[:nz, :nx] 
         figTitle = f'2D Fractal Surface (H={hurst_exponent})'
-    elif isRoughFault == 0:
+    elif isRoughFault == 1:
         subSurface     = generatePlane(nz, nx, dx)
         figTitle = 'Planar fault'
         
@@ -140,8 +140,8 @@ def generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=None):
 
 def _main_func(description):
     #dipAngle = par.dip
-    isRoughFault = par.rough_fault
-    dipAngle     = 90.
+    isRoughFault = par.insertFaultType
+    dipAngle     = par.dip
     nx           = par.nfx
     nz           = par.nfz
     dx           = par.dx

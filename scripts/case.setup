@@ -15,7 +15,7 @@ def create_model_input_file():
         f.write(str(par.C_elastic)   + "\n")
         f.write(str(par.C_nuclea)    + "\n")
         f.write(str(par.C_degen)     + "\n")
-        f.write(str(par.rough_fault) + "\n")
+        f.write(str(par.insertFaultType) + "\n")
         f.write(str(par.friclaw)  + "\n")
         f.write(str(par.ntotft)   + "\n")
         f.write(str(par.nucfault) + "\n")
@@ -299,7 +299,7 @@ def _main_func(description):
     create_station_input_file()
     estimate_HPC_resource()
     netcdf_write_on_fault_vars()
-    if par.rough_fault==1:
-        os.system('python3 genFractalSurface.py')
+    if par.insertFaultType>0:
+        os.system('./generateFaultInterface')
 if __name__ == "__main__":
     _main_func(__doc__)
