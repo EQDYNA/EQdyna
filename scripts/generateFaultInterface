@@ -1,0 +1,151 @@
+#! /usr/bin/env python3
+"""
+Script to generate and visualize fractal and dipping fault interface.
+"""
+import numpy as np
+from math import cos,sin,tan,pi
+from numpy.fft import fft2, ifft2
+import matplotlib.pyplot as plt
+from user_defined_params import par
+
+def generateFractalSurface(lx, hurst_exponent, seed=None):
+    np.random.seed(seed)
+    
+    lh = lx//2
+    pony = hurst_exponent + 1.
+    hrttwo = 0.5*np.sqrt(2.0)
+    kcut = lx/4
+    fcsq = kcut*kcut
+    npole = 4
+    
+    w = np.zeros((lx,lx),dtype=np.float64)
+    transf = np.zeros((lx,lx),dtype=np.complex128)
+    
+    transf = hrttwo*(np.random.normal(size=(lx,lx)) + 
+                     1j*np.random.normal(size=(lx,lx)))
+    for i in range(1,lx+1):
+        for j in range(1,lx+1):
+            # calculate square of wavenumber
+            ik = i-1 
+            jk = j-1
+            if ik>lh:
+                ik = ik - lx
+            if jk>lh:
+                jk = jk - lx
+            ksq = ik*ik+jk*jk
+            fsq = ksq
+            if ksq==0:
+                transf[i-1,j-1] = 0.0
+                pspec = 0.0
+            #elif ksq == 1:
+            #    if jk == 0:
+            #        transf[i-1,j-1] = -2.0
+            #        pspec = 1.0/fsq**pony
+            #    else:
+            #        transf[i-1,j-1] = 0.0
+            #        pspec = 1.0/fsq**pony
+            #elif ksq == 2:
+            #    transf[i-1,j-1] = 0.0
+            #    pspec = 1.0/fsq**pony
+            else:
+                pspec = 1.0/fsq**pony
+                       
+            filt  = 1.0/(1.0+(fsq/fcsq)**npole)
+            transf[i-1,j-1] = np.sqrt(pspec*filt)*transf[i-1,j-1]
+    
+    transf = ifft2(transf)
+    coef = 1.0/4.0
+    w = coef * np.real(transf)
+
+    return w
+
+def generatePlane(nz, nx, dx):
+    result = np.zeros((nz,nx))
+    return result
+
+def generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=None):
+    if isRoughFault == 1:
+        hurst_exponent = 1.
+        #seedId = 48
+        alpha0 = 0.005
+        
+        w = generateFractalSurface(nx, hurst_exponent, seedId)
+        mean_w = np.mean(w)
+        std_w  = np.std(w)
+        print(mean_w, std_w)
+        fractalSurface = w*alpha0/(std_w/nx/dx)
+        subSurface     = fractalSurface[:nz, :nx] 
+        figTitle = f'2D Fractal Surface (H={hurst_exponent})'
+    elif isRoughFault == 0:
+        subSurface     = generatePlane(nz, nx, dx)
+        figTitle = 'Planar fault'
+        
+    # adjust y coordinates to y- by depth z/tan(dip)
+    for i in range(nx):
+        for j in range(nz):
+            subSurface[j,i] = subSurface[j,i] - j*dx/tan(dipAngle/180.*pi)
+
+    # compute gradients for y=y(x,z), dy/dx, dy/dz
+    # axis=(1,0), 1 along columns, 0 along rows.
+    dSurface_dx, dSurface_dz = np.gradient(subSurface/dx, axis=(1,0)) 
+
+    if dSurface_dx.max()>0.2 or dSurface_dz.max()>0.2:
+        print('The fractal surface may be too rough that dy/dx or dy/dz is over 0.2')
+        print('Maximum dSurface_dx and dSurface_dz are ', dSurface_dx.max(), dSurface_dx.max())
+        
+    # convert format
+    result = np.zeros((nx*nz+2,4))
+    result[0,0] = nx
+    result[0,1] = nz
+    result[1,0] = dx
+    result[1,1] = par.fxmin
+    result[1,2] = par.fzmin
+    ntmp = 2 # skipping the first two lines
+    for i in range(nx):
+        for j in range(nz):
+            # shift the surface in y- direction
+            result[ntmp,0] = subSurface[j,i] 
+            result[ntmp,1] = dSurface_dx[j,i]
+            result[ntmp,3] = dSurface_dz[j,i]
+            ntmp = ntmp + 1
+
+    np.savetxt('bFault_Rough_Geometry.txt', result, fmt='%f', delimiter='\t')
+
+    print('Peak roughness of the fractal surface is ', np.max(subSurface),' m')
+    print('Dip of the fault is ', dipAngle)
+
+    fig = plt.figure(figsize=(24,6), dpi=300, facecolor='w', edgecolor='w')
+    fig.add_subplot(131)
+    plt.contourf(subSurface)
+    ax = plt.gca()
+    ax.set_aspect('equal')
+    plt.colorbar()
+    plt.title(figTitle)
+
+    fig.add_subplot(132)
+    plt.contourf(dSurface_dx)
+    ax = plt.gca()
+    ax.set_aspect('equal')
+    plt.colorbar()
+    plt.title('Derivative along x/strike')
+
+    fig.add_subplot(133)
+    plt.contourf(dSurface_dz)
+    ax = plt.gca()
+    ax.set_aspect('equal')
+    plt.colorbar()
+    plt.title('Derivative along z/dipAngle')
+
+    plt.savefig('cFaultInterfaceGeometry.png', dpi = 600)
+
+def _main_func(description):
+    #dipAngle = par.dip
+    isRoughFault = par.rough_fault
+    dipAngle     = 90.
+    nx           = par.nfx
+    nz           = par.nfz
+    dx           = par.dx
+    generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=1)
+
+if __name__ == "__main__":
+    _main_func(__doc__)
