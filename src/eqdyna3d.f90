@@ -59,7 +59,7 @@ PROGRAM EQdyna_3D
     allocate(an4nds(2,n4nds), xonfs(2,itmp,ntotft), x4nds(3,n4nds))
     call readstations2
     
-    if (insertFaultType == 1) call read_fault_rough_geometry
+    if (insertFaultType > 0) call read_fault_rough_geometry
 
     call warning
     

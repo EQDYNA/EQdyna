@@ -98,7 +98,7 @@ subroutine meshgen
             do iy = 1, ny
                 call initializeNodeXyzIndex(ix, iy, iz, nx, ny, nz, nodeXyzIndex)
                 call createNode(nodeCoor, xline(ix), yline(iy), zline(iz), nnode, nodeXyzIndex)
-                if (insertFaultType == 1) then 
+                if (insertFaultType > 0) then 
                     call insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
                     x(2,nnode) = ycoort
                 endif 
@@ -986,7 +986,7 @@ do iFault = 1, ntotft
         x(1,msnode) = nodeCoor(1)
         x(2,msnode) = nodeCoor(2)
         x(3,msnode) = nodeCoor(3)
-        if (insertFaultType == 1) then 
+        if (insertFaultType > 0) then 
             x(2,msnode) = ycoort
         endif
         
@@ -1047,7 +1047,7 @@ do iFault = 1, ntotft
         ud(2,nftnd0(iFault),iFault) = dsin(fltxyz(1,4,iFault))*dcos(fltxyz(2,4,iFault))
         ud(3,nftnd0(iFault),iFault) = dsin(fltxyz(2,4,iFault))
         
-        if (insertFaultType == 1) then
+        if (insertFaultType >0) then
             un(1,nftnd0(iFault),iFault) = -pfx/(pfx**2 + 1.0d0 + pfz**2)**0.5
             un(2,nftnd0(iFault),iFault) = 1.0d0/(pfx**2 + 1.0d0 + pfz**2)**0.5
             un(3,nftnd0(iFault),iFault) = -pfz/(pfx**2 + 1.0d0 + pfz**2)**0.5    
