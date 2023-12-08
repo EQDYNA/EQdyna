@@ -58,7 +58,7 @@ def ruptureDynamics():
             rupt2d[jj,ii,3]  = a[i,10]                       # final slip magnitude
             rupt2d[jj,ii,4]  = a[i,12]/1.e6 # final shear stress
             rupt2d[jj,ii,5]  = a[i,11]/1.e6 # final normal stress
-
+            rupt2d[jj,ii,6]  = a[i,13]/1.e6 # final dip shear
             # 
             # fVarArr will be passed to the function generateNcRestart(faultVarArr):
             fVarArr[jj,ii,0]  = a[i,12] # shear_strike, Pa
@@ -99,8 +99,13 @@ def ruptureDynamics():
     plt.contourf(xx,zz,rupt2d[:,:,4])
     plt.colorbar()
     plt.title('Shear stress (MPa)')
-
+   
     ax22 = fig.add_subplot(325)
+    plt.contourf(xx,zz,rupt2d[:,:,6])
+    plt.colorbar()
+    plt.title('Dip shear stress (MPa)')
+
+    ax22 = fig.add_subplot(326)
     plt.contourf(xx,zz,rupt2d[:,:,5])
     plt.colorbar()
     plt.title('Normal stress (MPa)')
