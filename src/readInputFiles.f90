@@ -30,7 +30,7 @@ subroutine readglobal
         read(1001,*) C_elastic
         read(1001,*) C_nuclea
         read(1001,*) C_degen
-        read(1001,*) rough_fault
+        read(1001,*) insertFaultType
         read(1001,*) friclaw
         read(1001,*) ntotft
         read(1001,*) nucfault

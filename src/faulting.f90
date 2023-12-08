@@ -265,7 +265,7 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     endif 
 
     ! If non-planar fault geometry and elastic material, enforce normal stress caps.
-    if (rough_fault == 1 .and. C_elastic == 1) then
+    if (insertFaultType == 1 .and. C_elastic == 1) then
         !tnrm = min(min_norm, tnrm) ! Maintain a minimum normal stress level.
         max_norm      = -40.0d6
         min_norm      = -10.0d6
@@ -321,7 +321,7 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     ! compute trial traction.
     ! for cases with large fluctuations of effective normal stress, 
     !   use the state variable for effective normal stress, thetaPcTmp, 
-    !   rather than tnrm, when friclaw==5/rough_fault==1.
+    !   rather than tnrm, when friclaw==5/insertFaultType==1.
     ! [NOTE]: friclaw=5 doesn't support normal stress evolution yet. See TPV1053D.
     if (friclaw==5) then 
         taoc_old = fric(4,iFaultNodePair,iFault) - xmu * nsdTractionVector(1)
