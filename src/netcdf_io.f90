@@ -29,7 +29,7 @@ subroutine netcdf_read_on_fault_eqdyna
     
     infile = "on_fault_vars_input.nc"
     
-    nvar = 22
+    nvar = 24
     allocate(on_fault_vars(fnx,fnz,nvar))
     
     ! Open the file. NF90_NOWRITE tells netCDF we want read-only access to the file. 
@@ -54,10 +54,12 @@ subroutine netcdf_read_on_fault_eqdyna
     call check( nf90_inq_varid(ncid, "tp_Tini",  var_id(16)))
     call check( nf90_inq_varid(ncid, "tp_pini",  var_id(17)))
     call check( nf90_inq_varid(ncid, "init_slip_rate",     var_id(18)))
-    call check( nf90_inq_varid(ncid, "init_shear_stress",  var_id(19)))
+    call check( nf90_inq_varid(ncid, "init_strike_shear",  var_id(19)))
     call check( nf90_inq_varid(ncid, "init_normal_stress", var_id(20)))
     call check( nf90_inq_varid(ncid, "init_state",         var_id(21)))
-    call check( nf90_inq_varid(ncid, "tw_t0",    var_id(22)))
+    call check( nf90_inq_varid(ncid, "tw_t0",          var_id(22)))
+    call check( nf90_inq_varid(ncid, "cohesion",       var_id(23)))
+    call check( nf90_inq_varid(ncid, "init_dip_shear", var_id(24)))
     ! Read the data
     do i = 1, nvar
         call check( nf90_get_var(ncid, var_id(i), on_fault_vars(:,:,i)))
@@ -87,7 +89,7 @@ subroutine netcdf_read_on_fault_eqdyna
             fric(41, i, 1) = on_fault_vars(ii,jj,16)! tp_Tini 
             fric(42, i, 1) = on_fault_vars(ii,jj,17)! tp_pini 
             fric(46, i, 1) = on_fault_vars(ii,jj,18)! creeping slip rate, lower bound
-            fric(8,  i, 1) = on_fault_vars(ii,jj,19)! init_shear
+            fric(8,  i, 1) = on_fault_vars(ii,jj,19)! init_strike_shear
             fric(7,  i, 1) = on_fault_vars(ii,jj,20)! init_norm
             fric(20, i, 1) = on_fault_vars(ii,jj,21)! init_state variable
             fric(47, i, 1) = fric(46, i, 1)         ! peak slip rate
@@ -95,6 +97,8 @@ subroutine netcdf_read_on_fault_eqdyna
             fric(26, i, 1) = fric(46, i, 1)         ! vinix
             fric(27, i, 1) = 0.0d0                  ! viniz
             fric(5,  i, 1) = on_fault_vars(ii,jj,22)! tw_t0
+            fric(4,  i, 1) = on_fault_vars(ii,jj,23)! cohesion
+            fric(49, i, 1) = on_fault_vars(ii,jj,24)! init_dip_shear
             
             fric(23, i, 1) = abs(fric(7, i, 1))     ! initialize theta_pc as abs(normal stress)
         enddo 

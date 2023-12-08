@@ -103,12 +103,16 @@ def netcdf_write_on_fault_vars():
   
   # kinematics and initial stresses
   var17 = ds.createVariable('init_slip_rate',     np.float64, ('dip','strike',))
-  var18 = ds.createVariable('init_shear_stress',  np.float64, ('dip','strike',))
+  var18 = ds.createVariable('init_strike_shear',  np.float64, ('dip','strike',))
   var19 = ds.createVariable('init_normal_stress', np.float64, ('dip','strike',))
   var20 = ds.createVariable('init_state',         np.float64, ('dip','strike',))
   
   # for the time weakening law
   var21 = ds.createVariable('tw_t0', np.float64, ('dip','strike',))
+  
+  # newly added
+  var22 = ds.createVariable('init_dip_shear',     np.float64, ('dip','strike',))
+  var23 = ds.createVariable('cohesion',           np.float64, ('dip','strike',))
   
   var0.units = 'unit'
   var1.units = 'unit'
@@ -138,6 +142,9 @@ def netcdf_write_on_fault_vars():
   
   var21.units = 's'
   
+  var22.units = 'Pa'
+  var23.units = 'Pa'
+  
   strike_var[:] = par.fx[:]
   dip_var[:]    = par.fz[:]
   
@@ -162,13 +169,14 @@ def netcdf_write_on_fault_vars():
   var15[:,:] = par.on_fault_vars[:,:,41] # tp_Tini
   var16[:,:] = par.on_fault_vars[:,:,42] # tp_pini
   
-  var17[:,:] = par.on_fault_vars[:,:,46]  # init_slip_rate  
-  var18[:,:] = par.on_fault_vars[:,:,8]  # init_shear_stress
+  var17[:,:] = par.on_fault_vars[:,:,46] # init_slip_rate  
+  var18[:,:] = par.on_fault_vars[:,:,8]  # init_strike_shear
   var19[:,:] = par.on_fault_vars[:,:,7]  # init_normal_stress
-  var20[:,:] = par.on_fault_vars[:,:,20]  # init_state
+  var20[:,:] = par.on_fault_vars[:,:,20] # init_state
   
   var21[:,:] = par.on_fault_vars[:,:,5]  # tw_t0
-  
+  var22[:,:] = par.on_fault_vars[:,:,4]  # cohesion
+  var23[:,:] = par.on_fault_vars[:,:,49] # init_dip_shear
   ds.close()
   
 def create_batch_script():
