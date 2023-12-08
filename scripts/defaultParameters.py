@@ -102,6 +102,7 @@ class parameters:
     fric_sw_fs      = 0.18
     fric_sw_fd      = 0.12
     fric_sw_D0      = 0.3
+    fric_cohesion   = 0.
     # parameters needed for rsf.
     # friclaw == 3/4, rsf with the aging law/slip law.
     fric_rsf_a      = 0.01 
@@ -153,6 +154,7 @@ class parameters:
         on_fault_vars[iz,ix,1]   = fric_sw_fs 
         on_fault_vars[iz,ix,2]   = fric_sw_fd
         on_fault_vars[iz,ix,3]   = fric_sw_D0
+        on_fault_vars[iz,ix,4]   = fric_cohesion
         on_fault_vars[iz,ix,7]   = -max(min(grav*1670.*abs(zcoor), 45.0e6), grav*1670.0*dx/2.)   # Depth dependent initial normal stress. Negative compressive.
         on_fault_vars[iz,ix,8]   = -0.41*on_fault_vars[iz,ix,7]       # initial shear stress.
         
