@@ -16,7 +16,7 @@ PROGRAM EQdyna
 
     if (me == master) then 
         write(*,*) '====================================================================='
-        write(*,*) '==================   Welcome to EQdyna 5.3.0  ======================='
+        write(*,*) '==================   Welcome to EQdyna 5.3.1  ======================='
         write(*,*) '===== Product of Earthquake Modeling Lab @ Texas A&M University ====='
         write(*,*) '====  & Institute for Geophysics, University of Texas at Austin  ===='
         write(*,*) '============== https://github.com/dunyuliu/EQdyna.git ==============='

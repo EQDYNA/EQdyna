@@ -1,9 +1,10 @@
 # News in 2023
-* 20231130 v5.3.0 release notes
-  * refactor faulting.f90 and meshgen.f90;
-  * introduce a system for quick testing by running testAll.py; 
-  * test system now supports tpv8, tpv104, tpv1053d, tpv1053d.6c, meng2023a, meng2023cb;
-  * update input parameter system with a single defaultParameters.py and customized user_defined_params.py;
+* 20231209 v5.3.1 release notes
+  * Python utility generateFaultInterface is created to generate fractal and dipping fault interface;
+  * update the test system to compare the numerical residuals between test and reference results; 
+  * support a new test test.tpv10, a 60 deg dipping fault;
+  * support a new test test.drv.a6, a fractal fault plastic model for ground motion application;
+  * refactoring and bug fixes. 
 
 # Introduction to *```EQdyna```*
 
@@ -86,12 +87,17 @@ source $EQDYNAROOT/test-all.sh
 Four pre-defined test cases will be created and run using 4 CPUs, which will take a few minutes.
 
 # Currently supported compset (more to come)
+* drv.a6, for determinisitc ground motion with fractal fault and plasticity
+* tpv8
+* tpv10
 * tpv104
 * tpv1053d
+* meng2023a, for stress inversion
+* meng2023cb
 
 # Benchmark computational performance and resource
 TPV104:   15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run 24.20 minutes on Lonestar6.  <br/>
-TPV1053D: 15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run I
+
 # Note
 *```EQdyna```* is still under heavy development and comes without any guaranteed functionality. But we hope *```EQdyna```* would be easy to use and we bear this goal in mind when developing it. 
 
@@ -105,6 +111,12 @@ We welcome developers and users. If you are interested in developing and collabo
 * Liu, D. and B. Duan (2018). "Scenario Earthquake and Ground‐Motion Simulations in North China: Effects of Heterogeneous Fault Stress and 3D Basin Structure." BSSA.
 
 # Past release notes
+* 20231130 v5.3.0 release notes
+  * refactor faulting.f90 and meshgen.f90;
+  * introduce a system for quick testing by running testAll.py; 
+  * test system now supports tpv8, tpv104, tpv1053d, tpv1053d.6c, meng2023a, meng2023cb;
+  * update input parameter system with a single defaultParameters.py and customized user_defined_params.py;
+
 * 20230327 
   * *```EQdyna```* works on Ubuntu now. 
   * install-eqdyna.sh can support multiple systems. 
