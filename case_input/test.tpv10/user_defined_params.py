@@ -14,13 +14,16 @@ par.zmin, par.zmax = -22.0e3, 0.0e3
 
 par.fxmin, par.fxmax = -15.0e3, 15.0e3
 #par.fymin, par.fymax = 0.0, -9999999999.
-par.fzmin, par.fzmax = -15.0e3, 0.0e3 #*sin(abs(par.dip)/180.*pi), 0.0e3
+par.fzmin, par.fzmax = -15.0e3*sin(abs(par.dip)/180.*pi), 0.0e3
 
 par.xsource = 0.0
-par.ysource = 12.0e3/tan(abs(par.dip)/180.*pi)
-par.zsource = -12.0e3#*sin(abs(par.dip)/180.*pi)
+par.ysource = 12.0e3*cos(abs(par.dip)/180.*pi)
+par.zsource = -12.0e3*sin(abs(par.dip)/180.*pi)
 
 par.dx   = 500.
+par.dy = par.dx
+par.dz = par.dx*sin(abs(par.dip)/180.*pi)
+
 par.nmat = 1
 par.vp, par.vs, par.rou = 5716, 3300, 2700
 
@@ -28,7 +31,7 @@ par.term = 5.
 
 par.C_elastic = 1
 par.insertFaultType = 1 # insert planar dipping fault
-par.dt   = 0.3*par.dx/par.vp
+par.dt   = 0.5*par.dz/par.vp
 par.friclaw = 1
 par.tpv  = 10
 
@@ -53,8 +56,7 @@ par.fric_sw_fs = 0.76
 par.fric_sw_fd = 0.448
 par.fric_sw_D0 = 0.5
 par.grav       = 9.8
-par.fric_cohesion   = 0.2e6
-        #os.system('ncdiff '+refPath+' '+testPath+' tmp.nc')
+par.fric_cohesion = 0.2e6
 for ix, xcoor in enumerate(par.fx):
   for iz, zcoor in enumerate(par.fz):
     downDipDistance = abs(zcoor)/sin(abs(par.dip)/180.*pi)
@@ -70,5 +72,6 @@ for ix, xcoor in enumerate(par.fx):
     par.on_fault_vars[iz,ix,49]  = abs(0.55*par.on_fault_vars[iz,ix,7])       # initial shear stress.
     if abs(xcoor-par.xsource)<=1.5e3 and abs(zcoor-par.zsource)<=1.5e3*cos(abs(par.dip)/180.*pi):
         par.on_fault_vars[iz,ix,49] = 0.2e6 + abs((0.76+0.0057)*par.on_fault_vars[iz,ix,7])
+        #par.on_fault_vars[iz,ix,49] = -par.on_fault_vars[iz,ix,49]
     
 print(dir(par))

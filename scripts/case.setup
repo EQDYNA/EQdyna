@@ -106,13 +106,11 @@ def netcdf_write_on_fault_vars():
   var18 = ds.createVariable('init_strike_shear',  np.float64, ('dip','strike',))
   var19 = ds.createVariable('init_normal_stress', np.float64, ('dip','strike',))
   var20 = ds.createVariable('init_state',         np.float64, ('dip','strike',))
-  
   # for the time weakening law
-  var21 = ds.createVariable('tw_t0', np.float64, ('dip','strike',))
-  
+  var21 = ds.createVariable('tw_t0',              np.float64, ('dip','strike',))
   # newly added
-  var22 = ds.createVariable('init_dip_shear',     np.float64, ('dip','strike',))
-  var23 = ds.createVariable('cohesion',           np.float64, ('dip','strike',))
+  var22 = ds.createVariable('cohesion',           np.float64, ('dip','strike',))
+  var23 = ds.createVariable('init_dip_shear',     np.float64, ('dip','strike',))
   
   var0.units = 'unit'
   var1.units = 'unit'

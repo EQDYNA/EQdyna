@@ -688,7 +688,7 @@ subroutine getSize1DCoorZ(nzt, nzuni, edgezn)
         if(zcoor <= zmin) exit
     enddo
     edgezn = iz + nPML
-    nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dx + 1 
+    nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dz + 1 
     nzt = edgezn + nzuni
 end subroutine getSize1DCoorZ
     

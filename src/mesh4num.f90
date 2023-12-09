@@ -143,7 +143,7 @@ do iz=1,np
     if(zcoor <= zmin) exit
 enddo
 edgezn = iz + nPML
-nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dx + 1 
+nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dz + 1 
 nzt = edgezn + nzuni
 !...predetermine z-coor
 
