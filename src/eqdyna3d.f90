@@ -1,9 +1,8 @@
-!/* Copyright (C) 2006-2020, Earthquake Modeling Lab @ Texas A&M University. 
+!/* Copyright (C) 2006-2023, Earthquake Modeling Lab @ Texas A&M University. 
 ! * All Rights Reserved.
-! * This code is part of software EQdyna, please see EQdyna License Agreement
-! * attached before you copy, download, install or use EQdyna./
+! * It is part of EQdyna, which is distributed under MIT LICENSE./
 
-PROGRAM EQdyna_3D
+PROGRAM EQdyna
 
     use globalvar
     implicit none
@@ -17,10 +16,10 @@ PROGRAM EQdyna_3D
 
     if (me == master) then 
         write(*,*) '====================================================================='
-        write(*,*) '==================   Welcome to EQdyna 5.2.3  ======================='
+        write(*,*) '==================   Welcome to EQdyna 5.3.0  ======================='
         write(*,*) '===== Product of Earthquake Modeling Lab @ Texas A&M University ====='
         write(*,*) '====  & Institute for Geophysics, University of Texas at Austin  ===='
-        write(*,*) '========== Website https://seismotamu.wixsite.com/emlam ============='
+        write(*,*) '============== https://github.com/dunyuliu/EQdyna.git ==============='
         write(*,*) '========== Contacts: bduan@tamu.edu, dliu@ig.utexas.edu ============='
         write(*,*) '=                                                                   ='
         write(*,*) '=   EQdyna is a parallel finite element software to simulate        ='
@@ -29,12 +28,6 @@ PROGRAM EQdyna_3D
         write(*,*) '=                                                                   ='
         write(*,*) '=          Model and system parameters can be adjusted in           ='
         write(*,*) '=            User_defined_params.py                                 ='
-        ! write(*,*) '=       FE_Model_Geometry.txt,                                      ='
-        ! write(*,*) '=       FE_Fault_Geometry.txt,                                      ='
-        ! write(*,*) '=       FE_Material.txt,                                            ='
-        ! write(*,*) '=       FE_Fric.txt,                                                ='
-        ! write(*,*) '=       FE_Stations.txt,                                            ='
-        ! write(*,*) '=                                                                   ='
         write(*,*) '====================================================================='    
     endif 
     
@@ -216,7 +209,7 @@ PROGRAM EQdyna_3D
     call MPI_Finalize(ierr)
     stop
     
-end PROGRAM EQdyna_3D
+end PROGRAM EQdyna
 
 subroutine checkMeshMaterial
     use globalvar
