@@ -29,8 +29,8 @@ subroutine meshgen
 
     write(mm,'(i6)') me
     mm = trim(adjustl(mm))
-    dy=dx
-    dz=dx
+    !dy=dx
+    !dz=dx
 
     call calcXyzMPIId(mex, mey, mez)
     

@@ -81,7 +81,7 @@ subroutine readmodelgeometry
         read(1002,*) 
         read(1002,*) dis4uniF, dis4uniB
         read(1002,*) rat
-        read(1002,*) dx 
+        read(1002,*) dx, dy, dz 
     close(1002)
 end subroutine readmodelgeometry
 
