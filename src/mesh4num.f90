@@ -10,8 +10,8 @@ integer(kind=4)::nxuni,nyuni,nzuni,ift,n1,n2,n3,n4,m1,m2,m3,m4,rlp,rr,mex,mey,me
 real (kind = dp)::xcoor,ycoor,zcoor,xstep,ystep,zstep,mdx(3)
 real (kind = dp),allocatable,dimension(:)::xlinet,ylinet,zlinet,xline,yline,zline
 
-dy=dx
-dz=dx
+!dy=dx
+!dz=dx
 
 
 !3DMPI: Prepare for MPI partitioning
