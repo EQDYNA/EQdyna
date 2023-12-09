@@ -40,7 +40,7 @@ def create_model_input_file():
         f.write(" " + "\n")
         f.write(str(par.nuni_y_plus) + " " + str(par.nuni_y_minus) + "\n")
         f.write(str(par.enlarging_ratio) + "\n")
-        f.write(str(par.dx))
+        f.write(str(par.dx) + " " + str(par.dy) + " " + str(par.dz) + "\n")
         
     with open('bFaultGeometry.txt', "w") as f:
         for i in range(par.ntotft):

@@ -28,6 +28,9 @@ class parameters:
     xsource, ysource, zsource = -4.0e3, 0.0, -7.5e3
 
     dx           = 400.0e0 # cell size, spatial resolution
+    dy = dx
+    dz = dx
+    
     nuni_y_plus  = 5 # along the fault-normal dimension, the number of cells share the dx cell size.
     nuni_y_minus = 5 
     enlarging_ratio = 1.025e0 # along the fault-normal dimension (y), cell size will be enlarged at this ratio compoundly.
