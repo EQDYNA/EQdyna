@@ -35,6 +35,9 @@ par.vp, par.vs, par.rou = 6.e3, 3.464e3, 2.67e3
 
 par.term    = 5.
 par.dx      = 500.
+par.dy = par.dx
+par.dz = par.dx
+
 par.dt      = 0.5*par.dx/par.vp
 
 par.nucR = 4.0e3
