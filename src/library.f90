@@ -95,15 +95,18 @@ subroutine memory_estimate
     
     real(kind = dp) :: memory = 0.0d0 ! in bytes
     
-    memory = memory + 4*(maxm+(5+2*ndof)*numnp)
-    memory = memory + 4*(nen+2*nee+1+2*14+nen*4+2*(nrowsh-1)*nen)*numel
-    memory = memory + 4*(2+120*2)*nftmx*ntotft
-    memory = memory + 4*numel + 8*5*maxm
-    memory = memory + 8*4*neq + 8*2*ndof*numnp
-    memory = memory/1024/1024
+    !memory = memory + 4*(maxm+(5+2*ndof)*numnp)
+    !memory = memory + 4*(nen+2*nee+1+2*14+nen*4+2*(nrowsh-1)*nen)*numel
+    !memory = memory + 4*(2+120*2)*nftmx*ntotft
+    !memory = memory + 4*numel + 8*5*maxm
+    !memory = memory + 8*4*neq + 8*2*ndof*numnp
+    !memory = memory/1024/1024
     
     if (me == 0) then
-        write(*,*) memory, 'GB memory would be used on me=0'
+        !write(*,*) memory, 'GB memory would be used on me=0'
+        ! An estimate of 2GB/million elements memory is needed; 
+        ! Test done on Ubuntu docker for test.drv.a6 with 4 cores;
+        write(*,*) 1.54d0*numel/1.0e6*npx*npy*npz, ' GB memory is expected for EQdyna ... ...'
     endif
 end subroutine memory_estimate
     
