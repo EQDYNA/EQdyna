@@ -85,7 +85,7 @@ subroutine vlm(xl,volume)
     do i=1,nen
         volume = volume + xl(1,i) * bb(i)
     enddo
-    volume = volume/12.0
+    volume = volume/12.0d0
     !  
 end subroutine vlm
 
@@ -109,70 +109,3 @@ subroutine memory_estimate
         write(*,*) 1.54d0*numel/1.0e6*npx*npy*npz, ' GB memory is expected for EQdyna ... ...'
     endif
 end subroutine memory_estimate
-    
-subroutine plastic_set_mat_stress(depthz, nelement)
-    use globalvar
-    implicit none
-    
-    real(kind = dp) :: depthz, vstmp, vptmp, routmp, tmp2, norm_thres ! in positive meters
-    integer(kind = 4) :: nelement
-    
-    depthz = depthz/1.0d3 ! in km.
-    norm_thres = -100.0d6
-    
-    if (depthz<0.03d0) then 
-        vstmp = 2.206d0*depthz**0.272
-    elseif (depthz<0.19d0) then 
-        vstmp = 3.542d0*depthz**0.407
-    elseif (depthz<4.0d0) then 
-        vstmp = 2.505d0*depthz**0.199
-    elseif (depthz<8.0d0) then 
-        vstmp = 2.927d0*depthz**0.086
-    else
-        vstmp = 2.927d0*8.0d0**0.086
-    endif 
-    vptmp = max(1.4d0+1.14d0*vstmp, 1.68d0*vstmp)
-    routmp = 2.4405d0 + 0.10271d0*vstmp
-    !roumax = 2.4405d0 + 0.10271d0*2.927d0*8.0d0**0.086
-    vstmp = vstmp*1.0d3
-    vptmp = vptmp*1.0d3
-    routmp = routmp*1.0d3
-    !roumax = roumax*1.0d3
-    
-    mat(nelement,1)=vptmp
-    mat(nelement,2)=vstmp
-    mat(nelement,3)=routmp                
-    mat(nelement,5)=mat(nelement,2)**2*mat(nelement,3)!miu=vs**2*rho
-    mat(nelement,4)=mat(nelement,1)**2*mat(nelement,3)-2*mat(nelement,5)!lam=vp**2*rho-2*miu    
-    
-    depthz = depthz*1.0d3 
-    !tmp2 = min(depthz, 5.0d3) * grav
-    tmp2 = depthz * grav
-    
-    if(et(nelement)==1)then
-        eleporep(nelement)= 0.0d0!rhow*tmp2*gama  !pore pressure>0
-        s1(ids(nelement)+3)=-(roumax- rhow*(gamar+1.0d0))*tmp2  !vertical, comp<0    
-        s1(ids(nelement)+1)=s1(ids(nelement)+3)
-        s1(ids(nelement)+2)=s1(ids(nelement)+3) 
-        s1(ids(nelement)+6)=-s1(ids(nelement)+3) *0.33d0
-        ! if (s1(ids(nelement)+3)<norm_thres) then 
-            ! s1(ids(nelement)+3) = norm_thres
-            ! s1(ids(nelement)+1) = s1(ids(nelement)+3)
-            ! s1(ids(nelement)+2) = s1(ids(nelement)+3) 
-            ! s1(ids(nelement)+6) = (roumax -rhow)*0.33d0*tmp2*abs(norm_thres/(roumax*tmp2))
-        ! endif         
-    elseif(et(nelement)==2)then
-        eleporep(nelement)= 0.0d0!rhow*tmp2*gama  !pore pressure>0
-        s1(ids(nelement)+3+15)=-(roumax-rhow*(gamar+1.0d0))*tmp2  !vertical, comp<0
-        s1(ids(nelement)+1+15)=s1(ids(nelement)+3+15)
-        s1(ids(nelement)+2+15)=s1(ids(nelement)+3+15) 
-        s1(ids(nelement)+6+15)=-s1(ids(nelement)+3+15)*0.33d0        
-        ! if (s1(ids(nelement)+3+15)<norm_thres) then 
-            ! s1(ids(nelement)+3+15) = norm_thres
-            ! s1(ids(nelement)+1+15) = s1(ids(nelement)+3+15)
-            ! s1(ids(nelement)+2+15) = s1(ids(nelement)+3+15) 
-            ! s1(ids(nelement)+6+15) = (roumax -rhow)*0.33d0*tmp2*abs(norm_thres/(roumax*tmp2))
-        ! endif         
-    endif        
-    
-end subroutine plastic_set_mat_stress

@@ -125,7 +125,7 @@ subroutine meshgen
                     endif         
                     
                     call replaceSlaveWithMasterNode(nodeCoor, nelement, nftnd0) 
-                    if (C_elastic==0 .and. TPV==2802) call plastic_set_mat_stress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, nelement)          
+                    if (C_elastic == 0) call setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, nelement)          
                 endif!if element
             enddo!iy
         enddo!iz
@@ -1146,3 +1146,54 @@ subroutine initializeNodeXyzIndex(ix, iy, iz, nx, ny, nz, nodeXyzIndex)
     nodeXyzIndex(5) = ny
     nodeXyzIndex(6) = nz
 end subroutine initializeNodeXyzIndex
+
+subroutine setPlasticStress(depth, nelement)
+    use globalvar
+    implicit none
+    
+    real(kind = dp) :: depth, vstmp, vptmp, routmp, strVert, devStr
+    integer(kind = 4) :: nelement, etTag
+    
+    depth = depth/1.0d3 ! in km.
+    
+    if (depth<0.03d0) then 
+        vstmp = 2.206d0*depth**0.272
+    elseif (depth<0.19d0) then 
+        vstmp = 3.542d0*depth**0.407
+    elseif (depth<4.0d0) then 
+        vstmp = 2.505d0*depth**0.199
+    elseif (depth<8.0d0) then 
+        vstmp = 2.927d0*depth**0.086
+    else
+        vstmp = 2.927d0*8.0d0**0.086
+    endif 
+    vptmp = max(1.4d0+1.14d0*vstmp, 1.68d0*vstmp)
+    routmp = 2.4405d0 + 0.10271d0*vstmp
+    !roumax = 2.4405d0 + 0.10271d0*2.927d0*8.0d0**0.086
+    vstmp = vstmp*1.0d3
+    vptmp = vptmp*1.0d3
+    routmp = routmp*1.0d3
+    !roumax = roumax*1.0d3
+    
+    mat(nelement,1)=vptmp
+    mat(nelement,2)=vstmp
+    mat(nelement,3)=routmp                
+    mat(nelement,5)=mat(nelement,2)**2*mat(nelement,3)!miu=vs**2*rho
+    mat(nelement,4)=mat(nelement,1)**2*mat(nelement,3)-2*mat(nelement,5)!lam=vp**2*rho-2*miu    
+    
+    depth = depth*1.0d3 
+    
+    etTag = 0
+    if (et(nelement)==2) etTag = 1 ! adjustment for PML elements
+    
+    eleporep(nelement) = 0.0d0  !rhow*tmp2*gama  !pore pressure>0
+    strVert            = -(roumax- rhow*(gamar+1.0d0))*depth*grav ! should be negative   
+    devStr             = abs(strVert)*devStrToStrVertRatio ! positive
+    
+    s1(ids(nelement)+3+15*etTag) = strVert
+    s1(ids(nelement)+1+15*etTag) = strVert - devStr*dcos(2.0d0*str1ToFaultAngle)
+    s1(ids(nelement)+2+15*etTag) = strVert + devStr*dcos(2.0d0*str1ToFaultAngle)
+    s1(ids(nelement)+6+15*etTag) = devStr*dsin(2.0d0*str1ToFaultAngle)
+    if (s1(ids(nelement)+2+15*etTag) >= 0.0d0) write(*,*) 'WARNING: positive Sigma3 ... ...'
+    
+end subroutine setPlasticStress

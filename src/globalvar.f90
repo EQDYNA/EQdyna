@@ -49,7 +49,8 @@ MODULE globalvar
         fric_ww, fric_w,        fric_ini_sliprate,      fric_tp_pini,   &
         fric_tp_Tini,           dxtmp,      perturb = 0.7d0,            &
         gamar = 0.66d0,         roumax = 2.8d3,         rough_fx_min,   &
-        rough_fx_max,           rough_fz_min
+        rough_fx_max,           rough_fz_min,  &
+        str1ToFaultAngle,       devStrToStrVertRatio
         
     integer (kind = 8) :: time_array(8)
 

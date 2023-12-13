@@ -32,6 +32,7 @@ def create_model_input_file():
         f.write(" "     + "\n")
         f.write(str(par.xsource) + " " + str(par.ysource) + " " + str(par.zsource) + "\n")
         f.write(str(par.nucR) + " " + str(par.nucRuptVel) + " " + str(par.nucdtau0) + "\n")
+        f.write(str(par.str1ToFaultAngle) + " " + str(par.devStrToStrVertRatio) + "\n")
         
     with open('bModelGeometry.txt', "w") as f:
         f.write(str(par.xmin) + "  " + str(par.xmax) + "\n")
