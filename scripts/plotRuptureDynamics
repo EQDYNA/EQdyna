@@ -28,10 +28,10 @@ def ruptureDynamics():
     for me in range(nprocs):
       fname = 'frt.txt' + str(me)
       if exists(fname):
-        print(fname + '  exisits')
+        print('Post-processing ' + fname ' ... ...')
         a = np.loadtxt(fname)
         n, m = a.shape
-        print(n,m)
+        #print(n,m)
         for i in range(n):
             ii = int((a[i,0] - par.fxmin)/par.dx)
             jj = int((a[i,2] - par.fzmin)/par.dx)
