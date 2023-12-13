@@ -210,14 +210,14 @@ subroutine setElementMaterial(nelement, elementCenterCoor)
     use globalvar
     implicit none
     integer (kind = 4) :: nelement, i
-    real (kind = dp) :: elementCenterCoor(3)
+    real (kind = dp) :: elementCenterCoor(3), vptmp, vstmp, rhotmp
     
-    if (nmat==1 .and. n2mat == 3) then
+    if (nmat == 1 .and. n2mat == 3) then
     ! homogenous material
         mat(nelement,1)  = material(1,1)
         mat(nelement,2)  = material(1,2)
         mat(nelement,3)  = material(1,3)
-    elseif (nmat>1 .and. n2mat == 4) then 
+    elseif (nmat > 1 .and. n2mat == 4) then 
         ! 1D velocity structure
         ! material = material(i,j), i=1,nmat, and j=1,4
         ! for j
@@ -240,6 +240,29 @@ subroutine setElementMaterial(nelement, elementCenterCoor)
                 endif 
             enddo
         endif
+    ! elseif (nmat == -1) then 
+        ! if (me == 0) write(*,*) 'setElementMaterial: customized velocity structure is used ... ...'
+        
+        ! if (TPV == 2802) then 
+            ! depth = elementCenterCoor(3)/1.0d3 ! convert m to km.
+            ! if     (depth < 0.03d0) then 
+                ! vstmp = 2.206d0*depth**0.272
+            ! elseif (depth < 0.19d0) then 
+                ! vstmp = 3.542d0*depth**0.407
+            ! elseif (depth < 4.0d0) then 
+                ! vstmp = 2.505d0*depth**0.199
+            ! elseif (depth < 8.0d0) then 
+                ! vstmp = 2.927d0*depth**0.086
+            ! else
+                ! vstmp = 2.927d0*8.0d0**0.086
+            ! endif 
+            ! vptmp  = max(1.4d0+1.14d0*vstmp, 1.68d0*vstmp)
+            ! rhotmp = 2.4405d0 + 0.10271d0*vstmp
+            
+            ! mat(nelement,1) = vptmp*1.0d3
+            ! mat(nelement,2) = vstmp*1.0d3
+            ! mat(nelement,3) = rhotmp*1.0d3
+        !endif 
     endif 
     
     ! calculate lambda and mu from Vp, Vs and rho.
@@ -1153,35 +1176,6 @@ subroutine setPlasticStress(depth, nelement)
     
     real(kind = dp) :: depth, vstmp, vptmp, routmp, strVert, devStr
     integer(kind = 4) :: nelement, etTag
-    
-    depth = depth/1.0d3 ! in km.
-    
-    if (depth<0.03d0) then 
-        vstmp = 2.206d0*depth**0.272
-    elseif (depth<0.19d0) then 
-        vstmp = 3.542d0*depth**0.407
-    elseif (depth<4.0d0) then 
-        vstmp = 2.505d0*depth**0.199
-    elseif (depth<8.0d0) then 
-        vstmp = 2.927d0*depth**0.086
-    else
-        vstmp = 2.927d0*8.0d0**0.086
-    endif 
-    vptmp = max(1.4d0+1.14d0*vstmp, 1.68d0*vstmp)
-    routmp = 2.4405d0 + 0.10271d0*vstmp
-    !roumax = 2.4405d0 + 0.10271d0*2.927d0*8.0d0**0.086
-    vstmp = vstmp*1.0d3
-    vptmp = vptmp*1.0d3
-    routmp = routmp*1.0d3
-    !roumax = roumax*1.0d3
-    
-    mat(nelement,1)=vptmp
-    mat(nelement,2)=vstmp
-    mat(nelement,3)=routmp                
-    mat(nelement,5)=mat(nelement,2)**2*mat(nelement,3)!miu=vs**2*rho
-    mat(nelement,4)=mat(nelement,1)**2*mat(nelement,3)-2*mat(nelement,5)!lam=vp**2*rho-2*miu    
-    
-    depth = depth*1.0d3 
     
     etTag = 0
     if (et(nelement)==2) etTag = 1 ! adjustment for PML elements
