@@ -125,5 +125,3 @@ for ix, xcoor in enumerate(par.fx):
                                                 # par.on_fault_vars[iz,ix,46],
                                                 # par.friclaw) # initial state var.
     
-    
-print(dir(par))
