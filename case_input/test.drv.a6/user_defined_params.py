@@ -20,7 +20,11 @@ par.fzmin, par.fzmax = -25.0e3, 0.0e3
 par.xsource, par.ysource, par.zsource = -12.0e3, 0.0, -12.0e3
 
 par.C_elastic = 0
-#par.C_nuclea  = 1
+par.str1ToFaultAngle = 45.
+par.devStrToStrVertRatio = 0.33
+
+par.C_nuclea  = 1
+
 #par.C_degen   = 0
 par.friclaw   = 4
 par.insertFaultType = 2
