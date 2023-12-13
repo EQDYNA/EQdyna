@@ -65,6 +65,10 @@ class parameters:
 
     # Controlling switches for EQquasi system
     C_elastic   = 1 # elastic(1).
+    # if C_elastic == 0:
+    str1ToFaultAngle = 45.
+    devStrToStrVertRatio  = 0.33
+        
     C_nuclea    = 1 # artificial nucleation (1), no (0). 
     C_degen     = 0 # degenerate hexahedrals (1), no (0).
     friclaw     = 5 # sw(1), tw(2), rsf_aging(3), rsf_slip_srw(4), rsf_slip_srw_tp(5).
@@ -74,10 +78,10 @@ class parameters:
     # 0: don't insert customized fault interface;
     # 1: insert customized fault interface;
     # 2: 1 + activate fractal fault 
-    if insertFaultType == 2:
-        print('An integer seedId to generate fractal fault is needed;')
-        print('Please assign par.seedId accordingly.')
-        seedId = 1
+    
+    print('If insertFaultType==2, an integer seedId to generate fractal fault is needed;')
+    print('Please assign par.seedId accordingly.')
+    seedId = 1
         
     nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault variables will be written out in netCDF format.
     tpv         = 105 
