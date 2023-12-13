@@ -74,4 +74,3 @@ for ix, xcoor in enumerate(par.fx):
         par.on_fault_vars[iz,ix,49] = 0.2e6 + abs((0.76+0.0057)*par.on_fault_vars[iz,ix,7])
         #par.on_fault_vars[iz,ix,49] = -par.on_fault_vars[iz,ix,49]
     
-print(dir(par))
