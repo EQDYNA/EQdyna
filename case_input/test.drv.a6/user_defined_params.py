@@ -25,18 +25,44 @@ par.C_elastic = 0
 par.friclaw   = 4
 par.insertFaultType = 2
 par.seedId = 1
-par.tpv       = 2802
+
 par.enlarging_ratio = 1.
 par.outputGroundMotion = 0
 par.output_plastic     = 1
 
-par.nmat, par.n2mat = 1,3
-par.vp, par.vs, par.rou = 6.e3, 3.464e3, 2.67e3
 
 par.term    = 5.
 par.dx      = 500.
 par.dy = par.dx
 par.dz = par.dx
+
+# -1 nmat for customized velocity structure. Still hard coded in FORTRAN so far. 
+par.tpv = 2802
+par.nmat, par.n2mat = 0, 4
+nzMax = int((par.zmax-par.zmin)/par.dz+1)
+par.mat = np.zeros((nzMax, par.n2mat))
+for i in range(nzMax):
+    zcoor = (i+0.5)*par.dz/1.0e3 # convert m to km
+    if zcoor<0.03:
+        vs = 2.206*zcoor**0.272
+    elif zcoor<0.19:
+        vs = 3.542*zcoor**0.407
+    elif zcoor<4.0:
+        vs = 2.505*zcoor**0.199
+    elif zcoor<8.0:
+        vs = 2.927*zcoor**0.086
+    else:
+        vs = 2.927*8.0**0.086
+    vp = max(1.4+1.14*vs, 1.68*vs)
+    rou = 2.4405 + 0.10271*vs
+    
+    par.mat[par.nmat,:] = [zcoor*1e3+0.5*par.dz, vp*1e3, vs*1e3, rou*1e3]
+    par.nmat = par.nmat + 1
+    
+    if zcoor>8.0:
+        break
+par.mat[par.nmat-1,0] = 1.e6 # Set the depth of the last layer to a large number.
+print('Layers for velocity structure is ', par.nmat)
 
 par.dt      = 0.5*par.dx/par.vp
 
