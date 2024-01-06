@@ -181,7 +181,7 @@ do nel=1,numel
     !
 enddo  !nel
 
-call MPI4NodalQuant
+call MPI4NodalQuant(alhs)
 
 !prepare for MPI partitioning
 mex=int(me/(npy*npz))
@@ -459,15 +459,17 @@ call mpi_barrier(MPI_COMM_WORLD, ierr)
 end SUBROUTINE qdct2
 
 
-subroutine MPI4NodalQuant
+subroutine MPI4NodalQuant(quantArray)
     ! handle MPI communication for Nodal quantities - nodal force and nodal mass.
     use globalvar
     implicit none
     include 'mpif.h'
     integer (kind = 4) ::  ierr, rlp, rr, jj, istatus(MPI_STATUS_SIZE), i
+    real (kind = dp) :: quantArray(neq) 
     real (kind = dp), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
     integer (kind = 4)::mex,mey,mez,ix,iy,iz,nodenumtemp,ntagMPI,izz,nx,ny,nz
     integer (kind = 4)::bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj
+    
     !prepare for MPI partitioning
     mex=int(me/(npy*npz))
     mey=int((me-mex*npy*npz)/npz)
@@ -475,14 +477,6 @@ subroutine MPI4NodalQuant
     nx=numcount(1)
     ny=numcount(2)
     nz=numcount(3)
-
-    do i=1,neq
-        if(alhs(i)==0.0) then
-            write(*,*) 'i=',i,'alhs=0'
-            write(*,*) 'me,mex,mey,mez',me,mex,mey,mez
-            stop
-        endif
-    enddo
 
     !write(*,*) 'me',me,'begin MPI partioning'
     !*************************************************************
@@ -511,7 +505,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then
                             ntagMPI=ntagMPI+1
-                            btmp(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                            btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                         endif
                     enddo    
                 enddo
@@ -527,7 +521,7 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltl(ix)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    btmp(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                    btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                       enddo
                 enddo
               endif
@@ -556,7 +550,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then
                             ntagMPI=ntagMPI+1
-                            alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+&
+                            quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+&
                                 btmp1(ntagMPI)
                         endif
                     enddo    
@@ -567,13 +561,13 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltl(ix)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+btmp1(ntagMPI)
+                    quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp1(ntagMPI)
                       enddo
                 enddo
               endif
             deallocate(btmp, btmp1)
         endif !bndl/=0
-        !write(*,*) 'me',me,'Finished BNDL-alhs'        
+        !write(*,*) 'me',me,'Finished BNDL-quantArray'        
         !
         if (bndr/=0)then 
             !Check
@@ -588,7 +582,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then
                             ntagMPI=ntagMPI+1
-                            btmp2(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                            btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                         endif
                     enddo    
                 enddo
@@ -604,7 +598,7 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltr(ix)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    btmp2(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                    btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                       enddo
                 enddo
               endif
@@ -619,7 +613,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then
                             ntagMPI=ntagMPI+1
-                            alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+&
+                            quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+&
                                 btmp3(ntagMPI)
                         endif
                     enddo    
@@ -630,13 +624,13 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltr(ix)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+btmp3(ntagMPI)
+                    quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp3(ntagMPI)
                       enddo
                 enddo
               endif
             deallocate(btmp2, btmp3)
         endif !bndr/=0
-        !write(*,*) 'me',me,'Finished BNDR-alhs'    
+        !write(*,*) 'me',me,'Finished BNDR-quantArray'    
         !
       endif!if npx>1
     call mpi_barrier(MPI_COMM_WORLD, ierr)
@@ -665,7 +659,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then 
                             ntagMPI=ntagMPI+1
-                            btmp(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                            btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                         endif
                     enddo    
                 enddo
@@ -681,7 +675,7 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltf(iy)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    btmp(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                    btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                       enddo
                 enddo
               endif
@@ -696,7 +690,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then 
                             ntagMPI=ntagMPI+1
-                            alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+&
+                            quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+&
                                 btmp1(ntagMPI)
                         endif
                     enddo    
@@ -707,13 +701,13 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltf(iy)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+btmp1(ntagMPI)
+                    quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp1(ntagMPI)
                       enddo
                 enddo
               endif
             deallocate(btmp, btmp1)            
         endif!bndf/=0
-        !write(*,*) 'me',me,'Finished BNDF-alhs'    
+        !write(*,*) 'me',me,'Finished BNDF-quantArray'    
         !
         if (bndb/=0)then 
             !Check
@@ -727,7 +721,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then
                             ntagMPI=ntagMPI+1
-                            btmp2(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                            btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                         endif
                     enddo    
                 enddo
@@ -743,7 +737,7 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltb(iy)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    btmp2(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                    btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                       enddo
                 enddo
               endif
@@ -758,7 +752,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then
                             ntagMPI=ntagMPI+1
-                            alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+&
+                            quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+&
                                 btmp3(ntagMPI)
                         endif
                     enddo    
@@ -769,13 +763,13 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltb(iy)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+btmp3(ntagMPI)
+                    quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp3(ntagMPI)
                       enddo
                 enddo
               endif
             deallocate(btmp2, btmp3)            
         endif!bndb/=0
-        !write(*,*) 'me',me,'Finished BNDB-alhs'
+        !write(*,*) 'me',me,'Finished BNDB-quantArray'
         !
       endif!if npy>1
     call mpi_barrier(MPI_COMM_WORLD, ierr)
@@ -804,14 +798,14 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then
                             ntagMPI=ntagMPI+1
-                            btmp(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                            btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                         endif
                     enddo    
                 enddo
             enddo
             !Check
             if (rr/=ntagMPI) then 
-                stop 'rr&ntagMPI-qdct2-bndb-alhs'
+                stop 'rr&ntagMPI-qdct2-bndb-quantArray'
                 write(*,*) 'rr=',rr,'ntagMPI=',ntagMPI
             endif
 !
@@ -820,7 +814,7 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltd(iz)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    btmp(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                    btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                       enddo
                 enddo
               endif
@@ -835,7 +829,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then 
                             ntagMPI=ntagMPI+1
-                            alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+&
+                            quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+&
                                 btmp1(ntagMPI)
                         endif
                     enddo    
@@ -846,13 +840,13 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltd(iz)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+btmp1(ntagMPI)
+                    quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp1(ntagMPI)
                       enddo
                 enddo
               endif
             deallocate(btmp, btmp1)            
         endif!bndd/=0
-        !write(*,*) 'me',me,'Finished BNDD-alhs'
+        !write(*,*) 'me',me,'Finished BNDD-quantArray'
         !
         if (bndu/=0)then 
             !Check
@@ -866,7 +860,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then
                             ntagMPI=ntagMPI+1
-                            btmp2(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                            btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                         endif
                     enddo    
                 enddo
@@ -882,7 +876,7 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltu(iz)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    btmp2(ntagMPI)=alhs(id1(locid(nodenumtemp)+izz))
+                    btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                       enddo
                 enddo
               endif
@@ -897,7 +891,7 @@ subroutine MPI4NodalQuant
                     do izz=1,dof1(nodenumtemp)
                         if (id1(locid(nodenumtemp)+izz)>0) then
                             ntagMPI=ntagMPI+1
-                            alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+&
+                            quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+&
                                 btmp3(ntagMPI)
                         endif
                     enddo    
@@ -908,13 +902,13 @@ subroutine MPI4NodalQuant
                     nodenumtemp=nx*ny*nz+fltu(iz)
                     do izz=1,3
                     ntagMPI=ntagMPI+1
-                    alhs(id1(locid(nodenumtemp)+izz))=alhs(id1(locid(nodenumtemp)+izz))+btmp3(ntagMPI)
+                    quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp3(ntagMPI)
                       enddo
                 enddo
               endif
             deallocate(btmp2, btmp3)            
         endif!bndu/=0
-        !write(*,*) 'me',me,'Finished BNDU-alhs'
+        !write(*,*) 'me',me,'Finished BNDU-quantArray'
       endif!if npz>1
     call mpi_barrier(MPI_COMM_WORLD, ierr)
 end subroutine MPI4NodalQuant
