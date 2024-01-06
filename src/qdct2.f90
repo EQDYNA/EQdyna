@@ -23,7 +23,7 @@ real (kind = dp), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
 !DL variables for PML layer
 integer (kind=4):: non,itag,eqn
 !*******3D MPI partitioning*************
-integer(kind=4)::mex,mey,mez,ix,iy,iz,nodenumtemp,ntagMPI,izz,nx,ny,nz
+integer(kind=4)::mexyz(3), npxyz(3), ix,iy,iz,nodenumtemp,ntagMPI,izz,nx,ny,nz
 integer(kind=4)::bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj
 
 do nel=1,numel
@@ -184,9 +184,14 @@ enddo  !nel
 call MPI4NodalQuant(alhs)
 
 !prepare for MPI partitioning
-mex=int(me/(npy*npz))
-mey=int((me-mex*npy*npz)/npz)
-mez=int(me-mex*npy*npz-mey*npz)
+mexyz(1)=int(me/(npy*npz))
+mexyz(2)=int((me-mexyz(1)*npy*npz)/npz)
+mexyz(3)=int(me-mexyz(1)*npy*npz-mexyz(2)*npz)
+
+npxyz(1) = npx 
+npxyz(2) = npy
+npxyz(3) = npz
+
 nx=numcount(1)
 ny=numcount(2)
 nz=numcount(3)
@@ -198,9 +203,9 @@ if (npx>1) then
     jj=ny*nz+fltnum(2)
        bndl=1  !-x boundary
        bndr=nx !+x boundary 
-       if (mex == master) then
+       if (mexyz(1) == master) then
          bndl=0
-       elseif (mex == npx-1) then
+       elseif (mexyz(1) == npx-1) then
          bndr=0
        endif    
     allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
@@ -286,9 +291,9 @@ if (npy>1) then
     jj=nx*nz+fltnum(4)
        bndf=1  !-y boundary
        bndb=ny !+y boundary 
-       if (mey == master) then
+       if (mexyz(2) == master) then
          bndf=0
-       elseif (mey == npy-1) then
+       elseif (mexyz(2) == npy-1) then
          bndb=0
        endif    
     allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
@@ -374,9 +379,9 @@ if (npz>1) then
     jj=nx*ny+fltnum(6)
        bndd=1  !-z boundary
        bndu=nz !+z boundary 
-       if (mez == master) then
+       if (mexyz(3) == master) then
          bndd=0
-       elseif (mez == npz-1) then
+       elseif (mexyz(3) == npz-1) then
          bndu=0
        endif    
     allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
@@ -467,13 +472,18 @@ subroutine MPI4NodalQuant(quantArray)
     integer (kind = 4) ::  ierr, rlp, rr, jj, istatus(MPI_STATUS_SIZE), i
     real (kind = dp) :: quantArray(neq) 
     real (kind = dp), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
-    integer (kind = 4)::mex,mey,mez,ix,iy,iz,nodenumtemp,ntagMPI,izz,nx,ny,nz
-    integer (kind = 4)::bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj
+    integer (kind = 4)::ix,iy,iz,nodenumtemp,ntagMPI,izz,nx,ny,nz
+    integer (kind = 4)::bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj, mexyz(3), npxyz(3)
     
     !prepare for MPI partitioning
-    mex=int(me/(npy*npz))
-    mey=int((me-mex*npy*npz)/npz)
-    mez=int(me-mex*npy*npz-mey*npz)
+    mexyz(1)=int(me/(npy*npz))
+    mexyz(2)=int((me-mexyz(1)*npy*npz)/npz)
+    mexyz(3)=int(me-mexyz(1)*npy*npz-mexyz(2)*npz)
+    
+    npxyz(1) = npx 
+    npxyz(2) = npy
+    npxyz(3) = npz
+    
     nx=numcount(1)
     ny=numcount(2)
     nz=numcount(3)
@@ -487,9 +497,9 @@ subroutine MPI4NodalQuant(quantArray)
         jj=numcount(3+2)
         bndl=1!-x boundary
         bndr=nx!+x boundary
-        if (mex==master) then
+        if (mexyz(1)==master) then
             bndl=0
-        elseif (mex==npx-1) then
+        elseif (mexyz(1)==npx-1) then
             bndr=0
         endif
         
@@ -641,9 +651,9 @@ subroutine MPI4NodalQuant(quantArray)
         jj=numcount(3+4)
         bndf=1!-y boundary
         bndb=ny!+y boundary
-        if (mey==master) then
+        if (mexyz(2)==master) then
             bndf=0
-        elseif (mey==npy-1) then
+        elseif (mexyz(2)==npy-1) then
             bndb=0
         endif
         
@@ -780,9 +790,9 @@ subroutine MPI4NodalQuant(quantArray)
         jj=numcount(3+6)
         bndd=1!-z boundary
         bndu=nz!+z boundary
-        if (mez==master) then
+        if (mexyz(3)==master) then
             bndd=0
-        elseif (mez==npz-1) then
+        elseif (mexyz(3)==npz-1) then
             bndu=0
         endif
         
