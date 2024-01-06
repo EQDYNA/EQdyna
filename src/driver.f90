@@ -8,11 +8,11 @@ use globalvar
 implicit none
 include 'mpif.h'
 
-integer (kind = 4) :: i,j,k,k1,l,m
+integer (kind = 4) :: i
 
 do nt = 1, nstep
 
-    time    = time + dt
+    time = time + dt
     
     if (mod(nt,100) == 1 .and. me == master) then
         write(*,*) '=                                                                   ='
@@ -39,14 +39,12 @@ do nt = 1, nstep
     btime = btime + MPI_WTIME() - time1
     
     time1=MPI_WTIME()
-    if (friclaw == 5) then 
-        call thermop
-    endif    
+    if (friclaw == 5) call thermop
     call faulting
     timeused(6) = timeused(6) + MPI_WTIME() - time1 
     
     time1 = MPI_WTIME()
-    do i=1,neq
+    do i = 1, neq
         brhs(i)=brhs(i)/alhs(i)
     enddo
     timeused(7)=timeused(7) + MPI_WTIME() - time1     
