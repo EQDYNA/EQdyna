@@ -24,64 +24,7 @@ do nt=1,nstep
         write(*,'(X,A,40X,f7.3,4X,A)') '=',  time  , 's'
     endif
     
-    time1   = MPI_WTIME()
-    do i=1,numnp
-        if (dof1(i)==3) then
-            do j=1,3
-                itag=locid(i)+j
-                eqn=id1(itag)
-                v1(eqn)=v1(eqn)+brhs(eqn)*dt
-                d1(eqn)=d1(eqn)+v1(eqn)*dt
-                v(j,i)=v1(eqn)
-                d(j,i)=d1(eqn)
-            enddo
-        elseif (dof1(i)==12) then
-            itag=locid(i)+1
-            eqn=id1(itag)
-            if (eqn>0) then
-                call comdampv(x(1,i),x(2,i),x(3,i),dampv)
-            endif
-            do j=1,9
-                itag=locid(i)+j
-                eqn=id1(itag)
-                if (eqn>0) then
-                    v1(eqn)=(brhs(eqn)+v1(eqn)*(1/dt-dampv(j)/2))/(1/dt+dampv(j)/2)
-                endif
-            enddo
-            do j=10,12
-                itag=locid(i)+j
-                eqn=id1(itag)
-                if (eqn>0) then
-                    v1(eqn)=v1(eqn)+brhs(eqn)*dt
-                endif                
-            enddo
-            ! Update final velocity.
-            itag=locid(i)
-            eqn=id1(itag+1)
-            if (eqn>0) then
-                v(1,i)=v1(id1(itag+1))+v1(id1(itag+2))+v1(id1(itag+3))+v1(id1(itag+10))
-                v(2,i)=v1(id1(itag+4))+v1(id1(itag+5))+v1(id1(itag+6))+v1(id1(itag+11))
-                v(3,i)=v1(id1(itag+7))+v1(id1(itag+8))+v1(id1(itag+9))+v1(id1(itag+12))
-                d(1,i)=d(1,i)+v(1,i)*dt
-                d(2,i)=d(2,i)+v(2,i)*dt
-                d(3,i)=d(3,i)+v(3,i)*dt
-            elseif (eqn==-1) then
-                v(1,i)=0.0d0
-                v(2,i)=0.0d0
-                v(3,i)=0.0d0
-                d(1,i)=0.0d0
-                d(2,i)=0.0d0
-                d(3,i)=0.0d0                
-            endif    
-        endif
-        if ((v(1,i)/=v(1,i)).or.v(2,i)/=v(2,i).or.v(3,i)/=v(3,i)) then 
-            write(*,*) x(1,i),x(2,i),x(3,i),me,mex,mey,mez, 'nt=',nt
-            stop 'NAN'
-        endif
-    enddo
-!-------------------------------------------------------------------!    
-    time2       = MPI_WTIME()
-    timeused(3) = timeused(3)+(time2-time1)
+    call velDispUpdate
      
     !*** store desired results at set time intervals ***
     if (mod(nt,nhplt) == 0) then    
@@ -215,3 +158,69 @@ subroutine doubleCouplePointSource
         enddo!Enddo double-couple point source.    
     endif!ldc(logical double couple)    
 end subroutine doubleCouplePointSource
+
+subroutine velDispUpdate
+    use globalvar
+    implicit none 
+    include 'mpif.h'
+    
+    integer (kind = 4) :: i, j, eqn, itag
+    real (kind = dp) :: dampv(9)
+   
+    time1   = MPI_WTIME()
+    do i=1,numnp
+        if (dof1(i)==3) then
+            do j=1,3
+                itag=locid(i)+j
+                eqn=id1(itag)
+                v1(eqn)=v1(eqn)+brhs(eqn)*dt
+                d1(eqn)=d1(eqn)+v1(eqn)*dt
+                v(j,i)=v1(eqn)
+                d(j,i)=d1(eqn)
+            enddo
+        elseif (dof1(i)==12) then
+            itag=locid(i)+1
+            eqn=id1(itag)
+            if (eqn>0) then
+                call comdampv(x(1,i),x(2,i),x(3,i),dampv)
+            endif
+            do j=1,9
+                itag=locid(i)+j
+                eqn=id1(itag)
+                if (eqn>0) then
+                    v1(eqn)=(brhs(eqn)+v1(eqn)*(1/dt-dampv(j)/2))/(1/dt+dampv(j)/2)
+                endif
+            enddo
+            do j=10,12
+                itag=locid(i)+j
+                eqn=id1(itag)
+                if (eqn>0) then
+                    v1(eqn)=v1(eqn)+brhs(eqn)*dt
+                endif                
+            enddo
+            ! Update final velocity.
+            itag=locid(i)
+            eqn=id1(itag+1)
+            if (eqn>0) then
+                v(1,i)=v1(id1(itag+1))+v1(id1(itag+2))+v1(id1(itag+3))+v1(id1(itag+10))
+                v(2,i)=v1(id1(itag+4))+v1(id1(itag+5))+v1(id1(itag+6))+v1(id1(itag+11))
+                v(3,i)=v1(id1(itag+7))+v1(id1(itag+8))+v1(id1(itag+9))+v1(id1(itag+12))
+                d(1,i)=d(1,i)+v(1,i)*dt
+                d(2,i)=d(2,i)+v(2,i)*dt
+                d(3,i)=d(3,i)+v(3,i)*dt
+            elseif (eqn==-1) then
+                v(1,i)=0.0d0
+                v(2,i)=0.0d0
+                v(3,i)=0.0d0
+                d(1,i)=0.0d0
+                d(2,i)=0.0d0
+                d(3,i)=0.0d0                
+            endif    
+        endif
+        if ((v(1,i)/=v(1,i)).or.v(2,i)/=v(2,i).or.v(3,i)/=v(3,i)) then 
+            write(*,*) x(1,i),x(2,i),x(3,i), 'nt=',nt
+            stop 'NAN'
+        endif
+    enddo
+    timeused(3) = timeused(3) + MPI_WTIME() - time1
+ end subroutine velDispUpdate
