@@ -181,13 +181,294 @@ do nel=1,numel
     !
 enddo  !nel
 
-!*******************MPI**********************
-!...assemble alhs() for common nodes between adjacent MPI procs.
-!   4/19/09
+call MPI4NodalQuant
 
-!***********************************************!
-!********3D MPI partioning**********************!
 !prepare for MPI partitioning
+mex=int(me/(npy*npz))
+mey=int((me-mex*npy*npz)/npz)
+mez=int(me-mex*npy*npz-mey*npz)
+nx=numcount(1)
+ny=numcount(2)
+nz=numcount(3)
+    
+!===============================3DMPI===============================!
+!=====================Partitioning along x axis=====================!
+if (npx>1) then
+    rr=ny*nz+fltnum(1)
+    jj=ny*nz+fltnum(2)
+       bndl=1  !-x boundary
+       bndr=nx !+x boundary 
+       if (mex == master) then
+         bndl=0
+       elseif (mex == npx-1) then
+         bndr=0
+       endif    
+    allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
+
+    if (bndl/=0) then
+        ntagMPI=0
+        do iz=1,nz
+            do iy=1,ny
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(bndl-1)*ny*nz+(iz-1)*ny+iy
+                btmp(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        enddo
+        if (fltMPI(1)) then
+            do ix=1,fltnum(1)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltl(ix)
+                btmp(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        endif
+         call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me-npy*npz, 300000+me, &
+                btmp1, rr, MPI_DOUBLE_PRECISION, me-npy*npz, 300000+me-npy*npz,&
+                MPI_COMM_WORLD, istatus, ierr)
+        ntagMPI=0
+        do iz=1,nz
+            do iy=1,ny
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(bndl-1)*ny*nz+(iz-1)*ny+iy
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)                
+            enddo
+        enddo
+        if (fltMPI(1)) then
+            do ix=1,fltnum(1)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltl(ix)
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)
+            enddo
+        endif
+    endif !bndl/=0
+    !write(*,*) 'me',me,'Finished BNDL-fnms'
+    if (bndr/=0)then
+        ntagMPI=0
+        do iz=1,nz
+            do iy=1,ny
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(bndr-1)*ny*nz+(iz-1)*ny+iy
+                btmp2(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        enddo
+        if (fltMPI(2)) then
+            do ix=1,fltnum(2)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltr(ix)
+                btmp2(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        endif
+         call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me+npy*npz, 300000+me, &
+                btmp3, jj, MPI_DOUBLE_PRECISION, me+npy*npz, 300000+me+npy*npz,&
+                MPI_COMM_WORLD, istatus, ierr)
+        ntagMPI=0
+        do iz=1,nz
+            do iy=1,ny
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(bndr-1)*ny*nz+(iz-1)*ny+iy
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)                
+            enddo
+        enddo
+        if (fltMPI(2)) then
+            do ix=1,fltnum(2)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltr(ix)
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)
+            enddo
+        endif        
+    endif !bndr/=0
+    !write(*,*) 'me',me,'Finished BNDR-fnms'    
+    deallocate(btmp, btmp1, btmp2, btmp3)
+endif !npx>1
+call mpi_barrier(MPI_COMM_WORLD, ierr)
+!=====================Partitioning along y axis=====================!
+if (npy>1) then
+    rr=nx*nz+fltnum(3)
+    jj=nx*nz+fltnum(4)
+       bndf=1  !-y boundary
+       bndb=ny !+y boundary 
+       if (mey == master) then
+         bndf=0
+       elseif (mey == npy-1) then
+         bndb=0
+       endif    
+    allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
+
+    if (bndf/=0) then
+        ntagMPI=0
+        do ix=1,nx
+            do iz=1,nz
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(ix-1)*ny*nz+(iz-1)*ny+bndf
+                btmp(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        enddo
+        if (fltMPI(3)) then
+            do iy=1,fltnum(3)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltf(iy)
+                btmp(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        endif
+         call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me-npz, 310000+me, &
+                btmp1, rr, MPI_DOUBLE_PRECISION, me-npz, 310000+me-npz,&
+                MPI_COMM_WORLD, istatus, ierr)
+        ntagMPI=0
+        do ix=1,nx
+            do iz=1,nz
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(ix-1)*ny*nz+(iz-1)*ny+bndf
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)                
+            enddo
+        enddo
+        if (fltMPI(3)) then
+            do iy=1,fltnum(3)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltf(iy)
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)
+            enddo
+        endif
+    endif !bndf/=0
+    !write(*,*) 'me',me,'Finished BNDF-fnms'
+    if (bndb/=0)then
+        ntagMPI=0
+        do ix=1,nx
+            do iz=1,nz
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(ix-1)*ny*nz+(iz-1)*ny+bndb
+                btmp2(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        enddo
+        if (fltMPI(4)) then
+            do iy=1,fltnum(4)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltb(iy)
+                btmp2(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        endif
+         call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me+npz, 310000+me, &
+                btmp3, jj, MPI_DOUBLE_PRECISION, me+npz, 310000+me+npz,&
+                MPI_COMM_WORLD, istatus, ierr)
+        ntagMPI=0
+        do ix=1,nx
+            do iz=1,nz
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(ix-1)*ny*nz+(iz-1)*ny+bndb
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)                
+            enddo
+        enddo
+        if (fltMPI(4)) then
+            do iy=1,fltnum(4)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltb(iy)
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)
+            enddo
+        endif        
+    endif !bndb/=0
+    !write(*,*) 'me',me,'Finished BNDB-fnms'
+    deallocate(btmp, btmp1, btmp2, btmp3)
+endif !npy>1
+call mpi_barrier(MPI_COMM_WORLD, ierr)
+!=====================Partitioning along z axis=====================!
+if (npz>1) then
+    rr=nx*ny+fltnum(5)
+    jj=nx*ny+fltnum(6)
+       bndd=1  !-z boundary
+       bndu=nz !+z boundary 
+       if (mez == master) then
+         bndd=0
+       elseif (mez == npz-1) then
+         bndu=0
+       endif    
+    allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
+
+    if (bndd/=0) then
+        ntagMPI=0
+        do ix=1,nx
+            do iy=1,ny
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(ix-1)*ny*nz+(bndd-1)*ny+iy
+                btmp(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        enddo
+        if (fltMPI(5)) then
+            do iz=1,fltnum(5)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltd(iz)
+                btmp(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        endif
+         call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me-1, 320000+me, &
+                btmp1, rr, MPI_DOUBLE_PRECISION, me-1, 320000+me-1,&
+                MPI_COMM_WORLD, istatus, ierr)
+        ntagMPI=0
+        do ix=1,nx
+            do iy=1,ny
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(ix-1)*ny*nz+(bndd-1)*ny+iy
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)                
+            enddo
+        enddo
+        if (fltMPI(5)) then
+            do iz=1,fltnum(5)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltd(iz)
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)
+            enddo
+        endif
+    endif !bndd/=0
+    !write(*,*) 'me',me,'Finished BNDD-fnms'
+    if (bndu/=0)then
+        ntagMPI=0
+        do ix=1,nx
+            do iy=1,ny
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(ix-1)*ny*nz+(bndu-1)*ny+iy
+                btmp2(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        enddo
+        if (fltMPI(6)) then
+            do iz=1,fltnum(6)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltu(iz)
+                btmp2(ntagMPI)=fnms(nodenumtemp)
+            enddo
+        endif
+         call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me+1, 320000+me, &
+                btmp3, jj, MPI_DOUBLE_PRECISION, me+1, 320000+me+1,&
+                MPI_COMM_WORLD, istatus, ierr)
+        ntagMPI=0
+        do ix=1,nx
+            do iy=1,ny
+                ntagMPI=ntagMPI+1
+                nodenumtemp=(ix-1)*ny*nz+(bndu-1)*ny+iy
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)                
+            enddo
+        enddo
+        if (fltMPI(6)) then
+            do iz=1,fltnum(6)
+                ntagMPI=ntagMPI+1
+                nodenumtemp=nx*ny*nz+fltu(iz)
+                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)
+            enddo
+        endif        
+    endif !bndu/=0
+    !write(*,*) 'me',me,'Finished BNDU-fnms'    
+    deallocate(btmp, btmp1, btmp2, btmp3)
+endif !npz>1
+call mpi_barrier(MPI_COMM_WORLD, ierr)
+end SUBROUTINE qdct2
+
+
+subroutine MPI4NodalQuant
+    ! handle MPI communication for Nodal quantities - nodal force and nodal mass.
+    use globalvar
+    implicit none
+    include 'mpif.h'
+    integer (kind = 4) ::  ierr, rlp, rr, jj, istatus(MPI_STATUS_SIZE), i
+    real (kind = dp), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
+    integer (kind = 4)::mex,mey,mez,ix,iy,iz,nodenumtemp,ntagMPI,izz,nx,ny,nz
+    integer (kind = 4)::bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj
+    !prepare for MPI partitioning
     mex=int(me/(npy*npz))
     mey=int((me-mex*npy*npz)/npz)
     mez=int(me-mex*npy*npz-mey*npz)
@@ -195,18 +476,18 @@ enddo  !nel
     ny=numcount(2)
     nz=numcount(3)
 
-do i=1,neq
-    if(alhs(i)==0.0) then
-        write(*,*) 'i=',i,'alhs=0'
-        write(*,*) 'me,mex,mey,mez',me,mex,mey,mez
-        stop
-    endif
-enddo
+    do i=1,neq
+        if(alhs(i)==0.0) then
+            write(*,*) 'i=',i,'alhs=0'
+            write(*,*) 'me,mex,mey,mez',me,mex,mey,mez
+            stop
+        endif
+    enddo
 
-!write(*,*) 'me',me,'begin MPI partioning'
-!*************************************************************
-!************Partioning along x axis**************************
-!Loop sequence x->z->y
+    !write(*,*) 'me',me,'begin MPI partioning'
+    !*************************************************************
+    !************Partioning along x axis**************************
+    !Loop sequence x->z->y
     if (npx>1)then
         rr=numcount(3+1)
         jj=numcount(3+2)
@@ -636,269 +917,4 @@ enddo
         !write(*,*) 'me',me,'Finished BNDU-alhs'
       endif!if npz>1
     call mpi_barrier(MPI_COMM_WORLD, ierr)
-!===============================3DMPI===============================!
-!=====================Partitioning along x axis=====================!
-if (npx>1) then
-    rr=ny*nz+fltnum(1)
-    jj=ny*nz+fltnum(2)
-       bndl=1  !-x boundary
-       bndr=nx !+x boundary 
-       if (mex == master) then
-         bndl=0
-       elseif (mex == npx-1) then
-         bndr=0
-       endif    
-    allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
-
-    if (bndl/=0) then
-        ntagMPI=0
-        do iz=1,nz
-            do iy=1,ny
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(bndl-1)*ny*nz+(iz-1)*ny+iy
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(1)) then
-            do ix=1,fltnum(1)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltl(ix)
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me-npy*npz, 300000+me, &
-                btmp1, rr, MPI_DOUBLE_PRECISION, me-npy*npz, 300000+me-npy*npz,&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do iz=1,nz
-            do iy=1,ny
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(bndl-1)*ny*nz+(iz-1)*ny+iy
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(1)) then
-            do ix=1,fltnum(1)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltl(ix)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)
-            enddo
-        endif
-    endif !bndl/=0
-    !write(*,*) 'me',me,'Finished BNDL-fnms'
-    if (bndr/=0)then
-        ntagMPI=0
-        do iz=1,nz
-            do iy=1,ny
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(bndr-1)*ny*nz+(iz-1)*ny+iy
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(2)) then
-            do ix=1,fltnum(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltr(ix)
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me+npy*npz, 300000+me, &
-                btmp3, jj, MPI_DOUBLE_PRECISION, me+npy*npz, 300000+me+npy*npz,&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do iz=1,nz
-            do iy=1,ny
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(bndr-1)*ny*nz+(iz-1)*ny+iy
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(2)) then
-            do ix=1,fltnum(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltr(ix)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)
-            enddo
-        endif        
-    endif !bndr/=0
-    !write(*,*) 'me',me,'Finished BNDR-fnms'    
-    deallocate(btmp, btmp1, btmp2, btmp3)
-endif !npx>1
-call mpi_barrier(MPI_COMM_WORLD, ierr)
-!=====================Partitioning along y axis=====================!
-if (npy>1) then
-    rr=nx*nz+fltnum(3)
-    jj=nx*nz+fltnum(4)
-       bndf=1  !-y boundary
-       bndb=ny !+y boundary 
-       if (mey == master) then
-         bndf=0
-       elseif (mey == npy-1) then
-         bndb=0
-       endif    
-    allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
-
-    if (bndf/=0) then
-        ntagMPI=0
-        do ix=1,nx
-            do iz=1,nz
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*ny*nz+(iz-1)*ny+bndf
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(3)) then
-            do iy=1,fltnum(3)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltf(iy)
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me-npz, 310000+me, &
-                btmp1, rr, MPI_DOUBLE_PRECISION, me-npz, 310000+me-npz,&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do ix=1,nx
-            do iz=1,nz
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*ny*nz+(iz-1)*ny+bndf
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(3)) then
-            do iy=1,fltnum(3)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltf(iy)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)
-            enddo
-        endif
-    endif !bndf/=0
-    !write(*,*) 'me',me,'Finished BNDF-fnms'
-    if (bndb/=0)then
-        ntagMPI=0
-        do ix=1,nx
-            do iz=1,nz
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*ny*nz+(iz-1)*ny+bndb
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(4)) then
-            do iy=1,fltnum(4)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltb(iy)
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me+npz, 310000+me, &
-                btmp3, jj, MPI_DOUBLE_PRECISION, me+npz, 310000+me+npz,&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do ix=1,nx
-            do iz=1,nz
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*ny*nz+(iz-1)*ny+bndb
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(4)) then
-            do iy=1,fltnum(4)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltb(iy)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)
-            enddo
-        endif        
-    endif !bndb/=0
-    !write(*,*) 'me',me,'Finished BNDB-fnms'
-    deallocate(btmp, btmp1, btmp2, btmp3)
-endif !npy>1
-call mpi_barrier(MPI_COMM_WORLD, ierr)
-!=====================Partitioning along z axis=====================!
-if (npz>1) then
-    rr=nx*ny+fltnum(5)
-    jj=nx*ny+fltnum(6)
-       bndd=1  !-z boundary
-       bndu=nz !+z boundary 
-       if (mez == master) then
-         bndd=0
-       elseif (mez == npz-1) then
-         bndu=0
-       endif    
-    allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
-
-    if (bndd/=0) then
-        ntagMPI=0
-        do ix=1,nx
-            do iy=1,ny
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*ny*nz+(bndd-1)*ny+iy
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(5)) then
-            do iz=1,fltnum(5)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltd(iz)
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me-1, 320000+me, &
-                btmp1, rr, MPI_DOUBLE_PRECISION, me-1, 320000+me-1,&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do ix=1,nx
-            do iy=1,ny
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*ny*nz+(bndd-1)*ny+iy
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(5)) then
-            do iz=1,fltnum(5)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltd(iz)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)
-            enddo
-        endif
-    endif !bndd/=0
-    !write(*,*) 'me',me,'Finished BNDD-fnms'
-    if (bndu/=0)then
-        ntagMPI=0
-        do ix=1,nx
-            do iy=1,ny
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*ny*nz+(bndu-1)*ny+iy
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(6)) then
-            do iz=1,fltnum(6)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltu(iz)
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me+1, 320000+me, &
-                btmp3, jj, MPI_DOUBLE_PRECISION, me+1, 320000+me+1,&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do ix=1,nx
-            do iy=1,ny
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*ny*nz+(bndu-1)*ny+iy
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(6)) then
-            do iz=1,fltnum(6)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=nx*ny*nz+fltu(iz)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)
-            enddo
-        endif        
-    endif !bndu/=0
-    !write(*,*) 'me',me,'Finished BNDU-fnms'    
-    deallocate(btmp, btmp1, btmp2, btmp3)
-endif !npz>1
-call mpi_barrier(MPI_COMM_WORLD, ierr)
-end SUBROUTINE qdct2
+end subroutine MPI4NodalQuant
