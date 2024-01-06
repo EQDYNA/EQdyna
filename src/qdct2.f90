@@ -488,9 +488,8 @@ subroutine MPI4NodalQuant(quantArray)
         numxyz(i) = numcount(i)
     enddo
 
-
-    !Loop sequence x->z->y
-    do ixyz = 1, 2
+    ! loop over MPI interfaces along x, y, z directions
+    do ixyz = 1, 3
         if (npxyz(ixyz)>1)then
             rr     = numcount(3+2*ixyz-1)
             jj     = numcount(3+2*ixyz)
@@ -529,6 +528,11 @@ subroutine MPI4NodalQuant(quantArray)
                         sendtag = 210000 + me
                         source  = me - npxyz(3)*iSign
                         recvtag = 210000 + me - npxyz(3)*iSign
+                    elseif (ixyz == 3) then 
+                        dest    = me - iSign
+                        sendtag = 220000 + me
+                        source  = me - iSign
+                        recvtag = 220000 + me - iSign
                     endif 
                     
                     rrr = numcount(3+2*(ixyz-1)+ib) + fltnum(2*(ixyz-1)+ib)*3
@@ -559,6 +563,18 @@ subroutine MPI4NodalQuant(quantArray)
                                 enddo    
                             enddo
                         enddo
+                    elseif (ixyz == 3) then 
+                        do ix=1,numxyz(1)
+                            do iy=1,numxyz(2)
+                                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bnd(ib)-1)*numxyz(2)+iy
+                                do izz=1,dof1(nodenumtemp)
+                                    if (id1(locid(nodenumtemp)+izz)>0) then
+                                        ntagMPI=ntagMPI+1
+                                        btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
+                                    endif
+                                enddo    
+                            enddo
+                        enddo
                     endif 
                     
                     !Check
@@ -577,6 +593,10 @@ subroutine MPI4NodalQuant(quantArray)
                                 nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltf(ix)
                             elseif (ixyz == 2 .and. ib == 2) then 
                                 nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltb(ix)
+                            elseif (ixyz == 3 .and. ib == 1) then 
+                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltd(ix)
+                            elseif (ixyz == 3 .and. ib == 2) then 
+                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltu(ix)
                             endif 
                             do izz = 1, ndof
                                 ntagMPI = ntagMPI + 1
@@ -616,6 +636,18 @@ subroutine MPI4NodalQuant(quantArray)
                                 enddo    
                             enddo
                         enddo
+                    elseif (ixyz == 3) then 
+                        do ix=1,numxyz(1)
+                            do iy=1,numxyz(2)
+                                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bnd(ib)-1)*numxyz(2)+iy
+                                do izz=1,dof1(nodenumtemp)
+                                    if (id1(locid(nodenumtemp)+izz)>0) then
+                                        ntagMPI=ntagMPI+1
+                                        btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
+                                    endif
+                                enddo    
+                            enddo
+                        enddo
                     endif 
                     
                     if (fltMPI(2*(ixyz-1)+ib)) then
@@ -628,6 +660,10 @@ subroutine MPI4NodalQuant(quantArray)
                                 nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltf(ix)
                             elseif (ixyz == 2 .and. ib == 2) then 
                                 nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltb(ix)
+                            elseif (ixyz == 3 .and. ib == 1) then 
+                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltd(ix)
+                            elseif (ixyz == 3 .and. ib == 2) then 
+                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltu(ix)
                             endif 
                             do izz = 1, ndof
                                 ntagMPI = ntagMPI + 1
@@ -641,30 +677,30 @@ subroutine MPI4NodalQuant(quantArray)
         endif
         call mpi_barrier(MPI_COMM_WORLD, ierr)
     enddo 
-! !****************************************************************************
-! !******************Paritioning along y axis**********************************
-    ! if (npxyz(2)>1)then
-        ! rr=numcount(3+3)
-        ! jj=numcount(3+4)
-        ! bndf=1!-y boundary
-        ! bndb=numxyz(2)!+y boundary
-        ! if (mexyz(2)==master) then
-            ! bndf=0
-        ! elseif (mexyz(2)==npxyz(2)-1) then
-            ! bndb=0
+
+! !******************Paritioning along z axis**********************************
+    ! if (npxyz(3)>1)then
+        ! rr=numcount(3+5)
+        ! jj=numcount(3+6)
+        ! bndd=1!-z boundary
+        ! bndu=numxyz(3)!+z boundary
+        ! if (mexyz(3)==master) then
+            ! bndd=0
+        ! elseif (mexyz(3)==npxyz(3)-1) then
+            ! bndu=0
         ! endif
         
-        ! if (bndf/=0)then 
+        ! if (bndd/=0)then 
             ! !Check
             ! if (rr.eq.0) stop 'inconsistency in rr MPI Phase 1'
-            ! rrr=rr+fltnum(3)*3
+            ! rrr=rr+fltnum(5)*3
             ! allocate(btmp(rrr),btmp1(rrr))
             ! ntagMPI=0
             ! do ix=1,numxyz(1)
-                ! do iz=1,numxyz(3)
-                    ! nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bndf
+                ! do iy=1,numxyz(2)
+                    ! nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndd-1)*numxyz(2)+iy
                     ! do izz=1,dof1(nodenumtemp)
-                        ! if (id1(locid(nodenumtemp)+izz)>0) then 
+                        ! if (id1(locid(nodenumtemp)+izz)>0) then
                             ! ntagMPI=ntagMPI+1
                             ! btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                         ! endif
@@ -673,27 +709,27 @@ subroutine MPI4NodalQuant(quantArray)
             ! enddo
             ! !Check
             ! if (rr/=ntagMPI) then 
-                ! stop 'rr&ntagMPI-qdct2-bndf'
+                ! stop 'rr&ntagMPI-qdct2-bndb-quantArray'
                 ! write(*,*) 'rr=',rr,'ntagMPI=',ntagMPI
             ! endif
 ! !
-              ! if (fltMPI(3)) then
-                  ! do iy=1,fltnum(3)!using the free index, here iy.
-                    ! nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltf(iy)
+              ! if (fltMPI(5)) then
+                  ! do iz=1,fltnum(5)!using the free index, here iz.
+                    ! nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltd(iz)
                     ! do izz=1,3
                     ! ntagMPI=ntagMPI+1
                     ! btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                       ! enddo
                 ! enddo
               ! endif
-             ! call mpi_sendrecv(btmp, rrr, MPI_DOUBLE_PRECISION, me-npxyz(3), 210000+me, &
-                ! btmp1, rrr, MPI_DOUBLE_PRECISION, me-npxyz(3), 210000+me-npxyz(3),&
+             ! call mpi_sendrecv(btmp, rrr, MPI_DOUBLE_PRECISION, me-1, 220000+me, &
+                ! btmp1, rrr, MPI_DOUBLE_PRECISION, me-1, 220000+me-1,&
                 ! MPI_COMM_WORLD, istatus, ierr)
 ! !Update
             ! ntagMPI=0
             ! do ix=1,numxyz(1)
-                ! do iz=1,numxyz(3)
-                    ! nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bndf
+                ! do iy=1,numxyz(2)
+                    ! nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndd-1)*numxyz(2)+iy
                     ! do izz=1,dof1(nodenumtemp)
                         ! if (id1(locid(nodenumtemp)+izz)>0) then 
                             ! ntagMPI=ntagMPI+1
@@ -703,9 +739,9 @@ subroutine MPI4NodalQuant(quantArray)
                     ! enddo    
                 ! enddo
             ! enddo
-              ! if (fltMPI(3)) then
-                  ! do iy=1,fltnum(3)
-                    ! nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltf(iy)
+              ! if (fltMPI(5)) then
+                  ! do iz=1,fltnum(5)
+                    ! nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltd(iz)
                     ! do izz=1,3
                     ! ntagMPI=ntagMPI+1
                     ! quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp1(ntagMPI)
@@ -713,18 +749,18 @@ subroutine MPI4NodalQuant(quantArray)
                 ! enddo
               ! endif
             ! deallocate(btmp, btmp1)            
-        ! endif!bndf/=0
-        ! !write(*,*) 'me',me,'Finished BNDF-quantArray'    
+        ! endif!bndd/=0
+        ! !write(*,*) 'me',me,'Finished BNDD-quantArray'
         ! !
-        ! if (bndb/=0)then 
+        ! if (bndu/=0)then 
             ! !Check
             ! if (jj.eq.0) stop 'inconsistency in jj MPI Phase 1'
-            ! jjj=jj+fltnum(4)*3
+            ! jjj=jj+fltnum(6)*3
             ! allocate(btmp2(jjj),btmp3(jjj))
             ! ntagMPI=0
             ! do ix=1,numxyz(1)
-                ! do iz=1,numxyz(3)
-                    ! nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bndb
+                ! do iy=1,numxyz(2)
+                    ! nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndu-1)*numxyz(2)+iy
                     ! do izz=1,dof1(nodenumtemp)
                         ! if (id1(locid(nodenumtemp)+izz)>0) then
                             ! ntagMPI=ntagMPI+1
@@ -735,27 +771,27 @@ subroutine MPI4NodalQuant(quantArray)
             ! enddo
             ! !Check
             ! if (jj/=ntagMPI) then 
-                ! stop 'jj&ntagMPI-qdct2-bnd(1)'
+                ! stop 'jj&ntagMPI-qdct2-bndu'
                 ! write(*,*) 'jj=',jj,'ntagMPI=',ntagMPI
             ! endif
 ! !
-              ! if (fltMPI(4)) then
-                  ! do iy=1,fltnum(4)
-                    ! nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltb(iy)
+              ! if (fltMPI(6)) then
+                  ! do iz=1,fltnum(6)
+                    ! nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltu(iz)
                     ! do izz=1,3
                     ! ntagMPI=ntagMPI+1
                     ! btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
                       ! enddo
                 ! enddo
               ! endif
-             ! call mpi_sendrecv(btmp2, jjj, MPI_DOUBLE_PRECISION, me+npxyz(3), 210000+me, &
-                ! btmp3, jjj, MPI_DOUBLE_PRECISION, me+npxyz(3), 210000+me+npxyz(3),&
+             ! call mpi_sendrecv(btmp2, jjj, MPI_DOUBLE_PRECISION, me+1, 220000+me, &
+                ! btmp3, jjj, MPI_DOUBLE_PRECISION, me+1, 220000+me+1,&
                 ! MPI_COMM_WORLD, istatus, ierr)
 ! !Update
             ! ntagMPI=0
             ! do ix=1,numxyz(1)
-                ! do iz=1,numxyz(3)
-                    ! nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bndb
+                ! do iy=1,numxyz(2)
+                    ! nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndu-1)*numxyz(2)+iy
                     ! do izz=1,dof1(nodenumtemp)
                         ! if (id1(locid(nodenumtemp)+izz)>0) then
                             ! ntagMPI=ntagMPI+1
@@ -765,9 +801,9 @@ subroutine MPI4NodalQuant(quantArray)
                     ! enddo    
                 ! enddo
             ! enddo
-              ! if (fltMPI(4)) then
-                  ! do iy=1,fltnum(4)
-                    ! nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltb(iy)
+              ! if (fltMPI(6)) then
+                  ! do iz=1,fltnum(6)
+                    ! nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltu(iz)
                     ! do izz=1,3
                     ! ntagMPI=ntagMPI+1
                     ! quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp3(ntagMPI)
@@ -775,147 +811,8 @@ subroutine MPI4NodalQuant(quantArray)
                 ! enddo
               ! endif
             ! deallocate(btmp2, btmp3)            
-        ! endif!bndb/=0
-        ! !write(*,*) 'me',me,'Finished BNDB-quantArray'
-        ! !
-      ! endif!if npxyz(2)>1
+        ! endif!bndu/=0
+        ! !write(*,*) 'me',me,'Finished BNDU-quantArray'
+      ! endif!if npxyz(3)>1
     ! call mpi_barrier(MPI_COMM_WORLD, ierr)
-!****************************************************************************
-!******************Paritioning along z axis**********************************
-    if (npxyz(3)>1)then
-        rr=numcount(3+5)
-        jj=numcount(3+6)
-        bndd=1!-z boundary
-        bndu=numxyz(3)!+z boundary
-        if (mexyz(3)==master) then
-            bndd=0
-        elseif (mexyz(3)==npxyz(3)-1) then
-            bndu=0
-        endif
-        
-        if (bndd/=0)then 
-            !Check
-            if (rr.eq.0) stop 'inconsistency in rr MPI Phase 1'
-            rrr=rr+fltnum(5)*3
-            allocate(btmp(rrr),btmp1(rrr))
-            ntagMPI=0
-            do ix=1,numxyz(1)
-                do iy=1,numxyz(2)
-                    nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndd-1)*numxyz(2)+iy
-                    do izz=1,dof1(nodenumtemp)
-                        if (id1(locid(nodenumtemp)+izz)>0) then
-                            ntagMPI=ntagMPI+1
-                            btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
-                        endif
-                    enddo    
-                enddo
-            enddo
-            !Check
-            if (rr/=ntagMPI) then 
-                stop 'rr&ntagMPI-qdct2-bndb-quantArray'
-                write(*,*) 'rr=',rr,'ntagMPI=',ntagMPI
-            endif
-!
-              if (fltMPI(5)) then
-                  do iz=1,fltnum(5)!using the free index, here iz.
-                    nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltd(iz)
-                    do izz=1,3
-                    ntagMPI=ntagMPI+1
-                    btmp(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
-                      enddo
-                enddo
-              endif
-             call mpi_sendrecv(btmp, rrr, MPI_DOUBLE_PRECISION, me-1, 220000+me, &
-                btmp1, rrr, MPI_DOUBLE_PRECISION, me-1, 220000+me-1,&
-                MPI_COMM_WORLD, istatus, ierr)
-!Update
-            ntagMPI=0
-            do ix=1,numxyz(1)
-                do iy=1,numxyz(2)
-                    nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndd-1)*numxyz(2)+iy
-                    do izz=1,dof1(nodenumtemp)
-                        if (id1(locid(nodenumtemp)+izz)>0) then 
-                            ntagMPI=ntagMPI+1
-                            quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+&
-                                btmp1(ntagMPI)
-                        endif
-                    enddo    
-                enddo
-            enddo
-              if (fltMPI(5)) then
-                  do iz=1,fltnum(5)
-                    nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltd(iz)
-                    do izz=1,3
-                    ntagMPI=ntagMPI+1
-                    quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp1(ntagMPI)
-                      enddo
-                enddo
-              endif
-            deallocate(btmp, btmp1)            
-        endif!bndd/=0
-        !write(*,*) 'me',me,'Finished BNDD-quantArray'
-        !
-        if (bndu/=0)then 
-            !Check
-            if (jj.eq.0) stop 'inconsistency in jj MPI Phase 1'
-            jjj=jj+fltnum(6)*3
-            allocate(btmp2(jjj),btmp3(jjj))
-            ntagMPI=0
-            do ix=1,numxyz(1)
-                do iy=1,numxyz(2)
-                    nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndu-1)*numxyz(2)+iy
-                    do izz=1,dof1(nodenumtemp)
-                        if (id1(locid(nodenumtemp)+izz)>0) then
-                            ntagMPI=ntagMPI+1
-                            btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
-                        endif
-                    enddo    
-                enddo
-            enddo
-            !Check
-            if (jj/=ntagMPI) then 
-                stop 'jj&ntagMPI-qdct2-bndu'
-                write(*,*) 'jj=',jj,'ntagMPI=',ntagMPI
-            endif
-!
-              if (fltMPI(6)) then
-                  do iz=1,fltnum(6)
-                    nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltu(iz)
-                    do izz=1,3
-                    ntagMPI=ntagMPI+1
-                    btmp2(ntagMPI)=quantArray(id1(locid(nodenumtemp)+izz))
-                      enddo
-                enddo
-              endif
-             call mpi_sendrecv(btmp2, jjj, MPI_DOUBLE_PRECISION, me+1, 220000+me, &
-                btmp3, jjj, MPI_DOUBLE_PRECISION, me+1, 220000+me+1,&
-                MPI_COMM_WORLD, istatus, ierr)
-!Update
-            ntagMPI=0
-            do ix=1,numxyz(1)
-                do iy=1,numxyz(2)
-                    nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndu-1)*numxyz(2)+iy
-                    do izz=1,dof1(nodenumtemp)
-                        if (id1(locid(nodenumtemp)+izz)>0) then
-                            ntagMPI=ntagMPI+1
-                            quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+&
-                                btmp3(ntagMPI)
-                        endif
-                    enddo    
-                enddo
-            enddo
-              if (fltMPI(6)) then
-                  do iz=1,fltnum(6)
-                    nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltu(iz)
-                    do izz=1,3
-                    ntagMPI=ntagMPI+1
-                    quantArray(id1(locid(nodenumtemp)+izz))=quantArray(id1(locid(nodenumtemp)+izz))+btmp3(ntagMPI)
-                      enddo
-                enddo
-              endif
-            deallocate(btmp2, btmp3)            
-        endif!bndu/=0
-        !write(*,*) 'me',me,'Finished BNDU-quantArray'
-      endif!if npxyz(3)>1
-    call mpi_barrier(MPI_COMM_WORLD, ierr)
 end subroutine MPI4NodalQuant
