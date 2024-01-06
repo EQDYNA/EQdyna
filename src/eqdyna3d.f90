@@ -184,6 +184,12 @@ PROGRAM EQdyna
     time2=MPI_WTIME()        
     timeused(1)=time2-time1
 
+    time1 = MPI_WTIME()
+    call qdct2
+    timeused(2) = timeused(2) + MPI_WTIME() - time1
+
+    call init_vel ! Initiate on-fault node velocities.
+    
     call driver
     
     if (me == master) then 
