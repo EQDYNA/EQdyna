@@ -1,6 +1,5 @@
-!/* Copyright (C) 2006-2023, Earthquake Modeling Lab @ Texas A&M University. 
-! * All Rights Reserved.
-! * It is part of EQdyna, which is distributed under MIT LICENSE./
+!/* Copyright (C) 2006-2024, Earthquake Modeling Lab @ Texas A&M University. 
+! * All Rights Reserved. eqdyna3d.f90 is part of EQdyna distributed under MIT LICENSE./
 
 PROGRAM EQdyna
 
