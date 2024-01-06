@@ -8,15 +8,11 @@ use globalvar
 implicit none
 include 'mpif.h'
 
-integer (kind = 4) ::ntstep=0,i,j,k,k1,l,m,ierr,rr,jj,izz,ntagMPI,ix,iy,iz,nx,ny,nz,mex,mey,mez,nodenumtemp,&
-                    bndl,bndr,bndf,bndb,bndd,bndu,rrr,jjj,istatus(MPI_STATUS_SIZE),itag,eqn
-real (kind = dp) :: dampv(9)
-real (kind = dp), allocatable,dimension(:) :: btmp,btmp1,btmp2,btmp3
+integer (kind = 4) :: i,j,k,k1,l,m
 
-do nt=1,nstep
+do nt = 1, nstep
 
     time    = time + dt
-    ntstep  = ntstep + 1 
     
     if (mod(nt,100) == 1 .and. me == master) then
         write(*,*) '=                                                                   ='
@@ -25,34 +21,9 @@ do nt=1,nstep
     endif
     
     call velDispUpdate
-     
-    !*** store desired results at set time intervals ***
-    if (mod(nt,nhplt) == 0) then    
-        lstr    = .true.    
-        locplt  = locplt+ 1    !when nt=1, locplt=2 due to 1 in eqdy3d.f90
-    else
-        lstr    = .false.
-    endif
-    if (lstr) then
-        if((ndout>0).and.(locplt>1)) then
-            dout(1,locplt)=time
-            do i=1,ndout 
-                j=idhist(1,i)
-                if(j<=0) j=1  !avoid zero that cannot be used below
-                    k=idhist(2,i)
-                    l=idhist(3,i)
-                if(l==1) then
-                    dout(i+1,locplt)=d(k,j)
-                elseif(l==2) then
-                    dout(i+1,locplt)=v(k,j)
-                elseif(l==3) then
-                    k1=id1(locid(j)+k)
-                    dout(i+1,locplt)=brhs(k1)
-                endif
-            enddo
-        endif
-    endif
-
+    
+    call offFaultStationSCEC
+    
     brhs=0.0d0
     
     time1=MPI_WTIME()
@@ -223,4 +194,38 @@ subroutine velDispUpdate
         endif
     enddo
     timeused(3) = timeused(3) + MPI_WTIME() - time1
- end subroutine velDispUpdate
+end subroutine velDispUpdate
+
+subroutine offFaultStationSCEC
+    use globalvar
+    implicit none
+    
+    integer (kind = 4) :: i, j, l, k, k1
+    
+    if (mod(nt,nhplt) == 0) then    
+        lstr    = .true.    
+        locplt  = locplt+ 1    !when nt=1, locplt=2 due to 1 in eqdy3d.f90
+    else
+        lstr    = .false.
+    endif
+    if (lstr) then
+        if((ndout>0).and.(locplt>1)) then
+            dout(1,locplt)=time
+            do i=1,ndout 
+                j=idhist(1,i)
+                if(j<=0) j=1  !avoid zero that cannot be used below
+                    k=idhist(2,i)
+                    l=idhist(3,i)
+                if(l==1) then
+                    dout(i+1,locplt)=d(k,j)
+                elseif(l==2) then
+                    dout(i+1,locplt)=v(k,j)
+                elseif(l==3) then
+                    k1=id1(locid(j)+k)
+                    dout(i+1,locplt)=brhs(k1)
+                endif
+            enddo
+        endif
+    endif
+end subroutine offFaultStationSCEC
+ 
