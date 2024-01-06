@@ -573,7 +573,52 @@ do nt=1,nstep
         
     time2=MPI_WTIME()
     timeused(6)=timeused(6)+(time2-time1) 
-    !Implementation of Double-couple point source.Sep.12.2015/D.L.
+    
+    time1=MPI_WTIME()
+    !!$omp parallel do default(shared) private(i)
+    do i=1,neq
+        brhs(i)=brhs(i)/alhs(i)
+    enddo
+    !!$omp end parallel do
+    time2=MPI_WTIME()
+    timeused(7)=timeused(7)+(time2-time1)     
+    
+    if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) call output_gm
+    
+enddo     !end time step loop nt
+if (me==master) then
+    write(*,*) 'mpi_send + mpi_recv time:',btime
+endif
+end SUBROUTINE driver
+
+subroutine init_vel
+    ! initiate the 1d velocity array v1. 
+    ! if mode==2, non-zero values for fric(31-36,i,ift) loaded from 
+    !    the restart file.
+    ! if mode==1, fric(31-36,i) will be zeros.
+    use globalvar
+    implicit none
+    integer (kind = 4) :: i, ift, tmp
+    
+    do ift = 1, ntotft
+        do i = 1,nftnd(ift)
+            tmp = locid(nsmp(1,i,ift))! slave nodeid i 
+            v1(id1(tmp+1)) = fric(34,i,ift) ! vxs
+            v1(id1(tmp+2)) = fric(35,i,ift) ! vys
+            v1(id1(tmp+3)) = fric(36,i,ift) ! vzs
+            tmp = locid(nsmp(2,i,ift))! master nodeid i
+            v1(id1(tmp+1)) = fric(31,i,ift) ! vxm
+            v1(id1(tmp+2)) = fric(32,i,ift) ! vym
+            v1(id1(tmp+3)) = fric(33,i,ift) ! vzm
+        enddo
+    enddo
+end subroutine init_vel
+
+subroutine doubleCouplePointSource
+    use globalvar 
+    implicit none
+    integer (kind = 4) :: i
+    
     if (C_dc==1)then
         do i=1,numnp
         !x positive. Adding a point force in y+ direction.
@@ -618,42 +663,4 @@ do nt=1,nstep
         endif
         enddo!Enddo double-couple point source.    
     endif!ldc(logical double couple)    
-    time1=MPI_WTIME()
-    !!$omp parallel do default(shared) private(i)
-    do i=1,neq
-        brhs(i)=brhs(i)/alhs(i)
-    enddo
-    !!$omp end parallel do
-    time2=MPI_WTIME()
-    timeused(7)=timeused(7)+(time2-time1)     
-    
-    if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) call output_gm
-    
-enddo     !end time step loop nt
-if (me==master) then
-    write(*,*) 'mpi_send + mpi_recv time:',btime
-endif
-end SUBROUTINE driver
-
-subroutine init_vel
-    ! initiate the 1d velocity array v1. 
-    ! if mode==2, non-zero values for fric(31-36,i,ift) loaded from 
-    !    the restart file.
-    ! if mode==1, fric(31-36,i) will be zeros.
-    use globalvar
-    implicit none
-    integer (kind = 4) :: i, ift, tmp
-    
-    do ift = 1, ntotft
-        do i = 1,nftnd(ift)
-            tmp = locid(nsmp(1,i,ift))! slave nodeid i 
-            v1(id1(tmp+1)) = fric(34,i,ift) ! vxs
-            v1(id1(tmp+2)) = fric(35,i,ift) ! vys
-            v1(id1(tmp+3)) = fric(36,i,ift) ! vzs
-            tmp = locid(nsmp(2,i,ift))! master nodeid i
-            v1(id1(tmp+1)) = fric(31,i,ift) ! vxm
-            v1(id1(tmp+2)) = fric(32,i,ift) ! vym
-            v1(id1(tmp+3)) = fric(33,i,ift) ! vzm
-        enddo
-    enddo
-end subroutine init_vel
+end subroutine doubleCouplePointSource
