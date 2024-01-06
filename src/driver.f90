@@ -13,18 +13,6 @@ integer (kind = 4) ::ntstep=0,i,j,k,k1,l,m,ierr,rr,jj,izz,ntagMPI,ix,iy,iz,nx,ny
 real (kind = dp) :: dampv(9)
 real (kind = dp), allocatable,dimension(:) :: btmp,btmp1,btmp2,btmp3
 
-! Tatnode = fric_tp_Tini
-! patnode = fric_tp_pini
-
-time1       = MPI_WTIME()
-call qdct2
-
-time2       = MPI_WTIME()
-timeused(2) = timeused(2)+(time2-time1)
-
-! Initiate on-fault node velocities.
-call init_vel
-
 do nt=1,nstep
 
     time    = time + dt
