@@ -1,3 +1,5 @@
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
 subroutine qdct2
     use globalvar
     implicit none

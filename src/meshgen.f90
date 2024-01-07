@@ -1,7 +1,5 @@
-!/* Copyright (C) 2006-2023, Earthquake Modeling Lab @ Texas A&M University. 
-! * All Rights Reserved.
-! * This code is part of software EQdyna, please see EQdyna License Agreement
-! * attached before you copy, download, install or use EQdyna./
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
 subroutine meshgen
     ! Create regular node grids and hexahedral elements for this MPI process.
     ! Create split nodes.

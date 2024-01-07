@@ -1,13 +1,11 @@
-!/* Copyright (C) 2006-2024, Earthquake Modeling Lab @ Texas A&M University. 
-! * All Rights Reserved. eqdyna3d.f90 is part of EQdyna distributed under MIT LICENSE./
-
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
 PROGRAM EQdyna
-
     use globalvar
     implicit none
     include 'mpif.h'
         
-    integer (kind=4) :: i, j, k, l, itmp, alloc_err, ierr
+    integer (kind = 4) :: i, j, k, l, itmp, alloc_err, ierr
 
     call MPI_Init(ierr)
     call mpi_comm_rank(MPI_COMM_WORLD,me,ierr)
