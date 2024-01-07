@@ -1,4 +1,4 @@
-subroutine qdct3
+subroutine ku
     use globalvar
     implicit none
     include 'mpif.h'
@@ -7,7 +7,7 @@ subroutine qdct3
     real (kind = 8) :: det,constk,pstrinc,xc(3),matelement(5),esPML(21),es(12),ex(3,8),efPML(96),&
         elresf(nee), eleffm(nee), dl(ned,nen), vl(ned,nen), al(ned,nen)
         
-
+    time1=MPI_WTIME()
     do nel=1,numel
 
         do j=1,nen
@@ -116,4 +116,5 @@ subroutine qdct3
             enddo
         endif!et(nel)=1/2
     enddo!nel loop
-end subroutine qdct3
+    timeused(4) = timeused(4) + MPI_WTIME() - time1
+end subroutine ku
