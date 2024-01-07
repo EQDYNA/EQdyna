@@ -31,8 +31,8 @@ do nel=1,numel
         xl(j,i) = x(j,k)
         enddo
     enddo
-    m = 1    !material number
-    !...if element degenerate. B.D. 11/27/08
+   
+    !...if degenerate
     lcubic = .true.
     itmp = 0
     outloop: do i=2,nen
@@ -46,36 +46,10 @@ do nel=1,numel
             enddo outloop
     !...compute global shape function and derivatives at 1 Gaussian
     !    point.
-    call qdcshg(xl,det,shg,nel,xs,lcubic)
-    !...form mass matrix for left-hand-side
-    !constm = (1.0d0+rdampm*0.5d0*dt)*mat(nel,3)
-    !if(constm /= 0.0d0) then
-    !    call contm(shg,det,eleffm,constm)
-    !endif
+    call qdcshg(xl, det, shg, nel, xs, lcubic)
     call contm(shg, det, eleffm, mat(nel,3))
-    call assembleElementMass(nel, eleffm)
-    eledet(nel) = det
-    !...derivatives of global shape function
-    do i=1,nen
-        do j=1,nrowsh-1
-            eleshp(j,i,nel) = shg(j,i)
-        enddo
-    enddo
-    !...mass matrix for right-hand-side to use.
-    !    Note: different "constm" from above.
-    !constm = mat(nel,3)
-    !eleffm = 0.0d0    !must initialize again here
-    !call contm(shg,det,eleffm,constm)
-    ! do i=1,nee
-        ! elemass(i,nel) = eleffm(i)
-    ! enddo
+    call assembleElementMassDetShg(nel, eleffm, det, shg)
 
-    ! do i=1,nen
-        ! k = ien(i,nel)
-        ! k1= 1 + (i-1) * ned
-        ! fnms(k) = fnms(k) + eleffm(k1)
-    ! enddo
-    
     call calcSSPhi4Hrgls(nel, xl, xs, shg)
 enddo  !nel
 
@@ -305,11 +279,11 @@ subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, q
     endif 
 end subroutine processNodalQuantArr
 
-subroutine assembleElementMass(elemID, elementMass)
+subroutine assembleElementMassDetShg(elemID, elementMass, det, shg)
     use globalvar 
     implicit none 
     integer (kind = 4) :: i, j, eqn, nodeID, ixyz, elemID
-    real (kind = dp) :: elementMass(nee)
+    real (kind = dp) :: elementMass(nee), det, shg(nrowsh, nen)
     
     do i = 1, nen 
         nodeID = ien(i,elemID)
@@ -340,7 +314,15 @@ subroutine assembleElementMass(elemID, elementMass)
         elemass(i,elemID) = elementMass(i)
     enddo
 
-end subroutine assembleElementMass
+    eledet(elemID) = det
+    
+    do i = 1, nen
+        do j=1, nrowsh-1
+            eleshp(j,i,elemID) = shg(j,i)
+        enddo
+    enddo
+    
+end subroutine assembleElementMassDetShg
 
 subroutine calcSSPhi4Hrgls(elemID, xl, xs, shg)
     use globalvar
