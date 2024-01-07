@@ -12,10 +12,6 @@ real(kind = dp),dimension(nesd,nen) :: xl
 real(kind = dp),dimension(3,3) :: xs
 real(kind = dp),dimension(nrowb,nee) :: b
 real(kind = dp),dimension(nrowsh,nen) :: shg
-integer(kind=4),dimension(8,4) :: ha = reshape((/ &
-    1,1,-1,-1,-1,-1,1,1, 1,-1,-1,1,-1,1,1,-1, &
-    1,-1,1,-1,1,-1,1,-1, -1,1,-1,1,1,-1,1,-1/), &
-    (/8,4/))
 !...MPI
 integer  ierr, rlp, rr, jj
 integer istatus(MPI_STATUS_SIZE)
@@ -56,69 +52,8 @@ do nel=1,numel
     if(constm /= 0.0d0) then
         call contm(shg,det,eleffm,constm)
     endif
-    !...assemble into left-hand-side
     
-    ! *.* D.L. Jan/23/2015. Including rayleigh damping into the left-hand-side when using SUBROUTINE contm
-    do i=1,nen
-            ! do j=1,ned
-                ! k=lm(j,i,nel)
-                ! k1=j+(i-1)*ned
-                ! if(k>0) then
-                    ! alhs(k) = alhs(k) + eleffm(k1)
-                ! endif
-            ! enddo
-        ! *.* Update alhs according to dof1. D.L. Jan/23/2015    
-        non=ien(i,nel)
-        if (dof1(non)==12) then
-            do j=1,3
-                itag=locid(non)+j
-                eqn=id1(itag)
-                if (eqn>0) then
-                    alhs(eqn)=alhs(eqn)+eleffm(3*(i-1)+1)
-                endif
-            enddo
-            do j=4,6
-                itag=locid(non)+j
-                eqn=id1(itag)
-                if (eqn>0) then
-                    alhs(eqn)=alhs(eqn)+eleffm(3*(i-1)+2)
-                endif
-            enddo    
-            do j=7,9
-                itag=locid(non)+j
-                eqn=id1(itag)
-                if (eqn>0) then
-                    alhs(eqn)=alhs(eqn)+eleffm(3*(i-1)+3)
-                endif
-            enddo    
-            j=10
-            itag=locid(non)+j
-            eqn=id1(itag)
-            if (eqn>0) then
-                alhs(eqn)=alhs(eqn)+eleffm(3*(i-1)+1)
-            endif
-            j=11
-            itag=locid(non)+j
-            eqn=id1(itag)
-            if (eqn>0) then
-                alhs(eqn)=alhs(eqn)+eleffm(3*(i-1)+2)
-            endif    
-            j=12
-            itag=locid(non)+j
-            eqn=id1(itag)
-            if (eqn>0) then
-                alhs(eqn)=alhs(eqn)+eleffm(3*(i-1)+3)
-            endif                        
-        elseif (dof1(non)==3) then
-            do j=1,3
-                itag=locid(non)+j
-                eqn=id1(itag)
-                alhs(eqn)=alhs(eqn)+eleffm((i-1)*3+j)
-            enddo
-        endif
-        ! *.* D.L.
-    enddo
-
+    call assembleElementMass(nel, eleffm)
     eledet(nel) = det
     !...derivatives of global shape function
     do i=1,nen
@@ -142,7 +77,7 @@ do nel=1,numel
         k1= 1 + (i-1) * ned
         fnms(k) = fnms(k) + eleffm(k1)
     enddo
-    !...SS matrix for "hrglss"
+    !...SS matrix for "hrglss":
     call vlm(xl,vol)
     ce=mat(nel,5)*(3*mat(nel,4)+2*mat(nel,5))/(mat(nel,4)+mat(nel,5))
     ce = 16.d0* ce / 15.d0    !close to plane-strain
@@ -154,315 +89,17 @@ do nel=1,numel
     ss(4,nel)=co*(xs(1,2)**2+xs(2,2)**2+xs(3,2)**2)
     ss(5,nel)=co*(xs(1,2)*xs(1,3)+xs(2,2)*xs(2,3)+xs(3,2)*xs(3,3))
     ss(6,nel)=co*(xs(1,3)**2+xs(2,3)**2+xs(3,3)**2)
-    !...Phi for "hrglss"
-    ! Note: there are 4 sets of Phi for one element in 3D.
-    do i=1,4    !4 sets of phi
-        !...phi prime
-        do j=1,nen
-            vol = 0.0d0    !temp variable
-            do k=1,nen
-                vol = vol + ha(k,i)*(xl(1,k)*shg(1,j) + xl(2,k)  &
-                *shg(2,j) + xl(3,k)*shg(3,j))
-            enddo
-            phi(j,i,nel) = ha(j,i) - vol
-        enddo
-        !...sum
-        vol = 0.0d0
-        do j=1,nen
-            vol = vol + phi(j,i,nel)**2
-        enddo
-        vol = sqrt(vol/8.0d0)
-        !...normalize to get phi from phi prime
-        do j=1,nen
-            phi(j,i,nel) = phi(j,i,nel) / vol
-        enddo
-        !
-    enddo
+    
+    call calcPhi4Hrgls(nel, xl, shg)
+    
+    
     !
 enddo  !nel
 
 call MPI4NodalQuant(alhs, 3)
+call MPI4NodalQuant(fnms, 1)
 
-!prepare for MPI partitioning
-mexyz(1)=int(me/(npy*npz))
-mexyz(2)=int((me-mexyz(1)*npy*npz)/npz)
-mexyz(3)=int(me-mexyz(1)*npy*npz-mexyz(2)*npz)
-
-npxyz(1) = npx 
-npxyz(2) = npy
-npxyz(3) = npz
-
-numxyz(1)=numcount(1)
-numxyz(2)=numcount(2)
-numxyz(3)=numcount(3)
-    
-!===============================3DMPI===============================!
-!=====================Partitioning along x axis=====================!
-if (npxyz(1)>1) then
-    rr=numxyz(2)*numxyz(3)+fltnum(1)
-    jj=numxyz(2)*numxyz(3)+fltnum(2)
-       bnd(1)=1  !-x boundary
-       bnd(2)=numxyz(1) !+x boundary 
-       if (mexyz(1) == master) then
-         bnd(1)=0
-       elseif (mexyz(1) == npxyz(1)-1) then
-         bnd(2)=0
-       endif    
-    allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
-
-    if (bnd(1)/=0) then
-        ntagMPI=0
-        do iz=1,numxyz(3)
-            do iy=1,numxyz(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(bnd(1)-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+iy
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(1)) then
-            do ix=1,fltnum(1)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltl(ix)
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me-npxyz(2)*npxyz(3), 300000+me, &
-                btmp1, rr, MPI_DOUBLE_PRECISION, me-npxyz(2)*npxyz(3), 300000+me-npxyz(2)*npxyz(3),&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do iz=1,numxyz(3)
-            do iy=1,numxyz(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(bnd(1)-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+iy
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(1)) then
-            do ix=1,fltnum(1)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltl(ix)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)
-            enddo
-        endif
-    endif !bnd(1)/=0
-    !write(*,*) 'me',me,'Finished BNDL-fnms'
-    if (bnd(2)/=0)then
-        ntagMPI=0
-        do iz=1,numxyz(3)
-            do iy=1,numxyz(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(bnd(2)-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+iy
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(2)) then
-            do ix=1,fltnum(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltr(ix)
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me+npxyz(2)*npxyz(3), 300000+me, &
-                btmp3, jj, MPI_DOUBLE_PRECISION, me+npxyz(2)*npxyz(3), 300000+me+npxyz(2)*npxyz(3),&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do iz=1,numxyz(3)
-            do iy=1,numxyz(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(bnd(2)-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+iy
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(2)) then
-            do ix=1,fltnum(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltr(ix)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)
-            enddo
-        endif        
-    endif !bnd(2)/=0
-    !write(*,*) 'me',me,'Finished BNDR-fnms'    
-    deallocate(btmp, btmp1, btmp2, btmp3)
-endif !npxyz(1)>1
-call mpi_barrier(MPI_COMM_WORLD, ierr)
-!=====================Partitioning along y axis=====================!
-if (npxyz(2)>1) then
-    rr=numxyz(1)*numxyz(3)+fltnum(3)
-    jj=numxyz(1)*numxyz(3)+fltnum(4)
-       bndf=1  !-y boundary
-       bndb=numxyz(2) !+y boundary 
-       if (mexyz(2) == master) then
-         bndf=0
-       elseif (mexyz(2) == npxyz(2)-1) then
-         bndb=0
-       endif    
-    allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
-
-    if (bndf/=0) then
-        ntagMPI=0
-        do ix=1,numxyz(1)
-            do iz=1,numxyz(3)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bndf
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(3)) then
-            do iy=1,fltnum(3)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltf(iy)
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me-npxyz(3), 310000+me, &
-                btmp1, rr, MPI_DOUBLE_PRECISION, me-npxyz(3), 310000+me-npxyz(3),&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do ix=1,numxyz(1)
-            do iz=1,numxyz(3)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bndf
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(3)) then
-            do iy=1,fltnum(3)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltf(iy)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)
-            enddo
-        endif
-    endif !bndf/=0
-    !write(*,*) 'me',me,'Finished BNDF-fnms'
-    if (bndb/=0)then
-        ntagMPI=0
-        do ix=1,numxyz(1)
-            do iz=1,numxyz(3)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bndb
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(4)) then
-            do iy=1,fltnum(4)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltb(iy)
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me+npxyz(3), 310000+me, &
-                btmp3, jj, MPI_DOUBLE_PRECISION, me+npxyz(3), 310000+me+npxyz(3),&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do ix=1,numxyz(1)
-            do iz=1,numxyz(3)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bndb
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(4)) then
-            do iy=1,fltnum(4)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltb(iy)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)
-            enddo
-        endif        
-    endif !bndb/=0
-    !write(*,*) 'me',me,'Finished BNDB-fnms'
-    deallocate(btmp, btmp1, btmp2, btmp3)
-endif !npxyz(2)>1
-call mpi_barrier(MPI_COMM_WORLD, ierr)
-!=====================Partitioning along z axis=====================!
-if (npxyz(3)>1) then
-    rr=numxyz(1)*numxyz(2)+fltnum(5)
-    jj=numxyz(1)*numxyz(2)+fltnum(6)
-       bndd=1  !-z boundary
-       bndu=numxyz(3) !+z boundary 
-       if (mexyz(3) == master) then
-         bndd=0
-       elseif (mexyz(3) == npxyz(3)-1) then
-         bndu=0
-       endif    
-    allocate(btmp(rr), btmp1(rr), btmp2(jj), btmp3(jj))
-
-    if (bndd/=0) then
-        ntagMPI=0
-        do ix=1,numxyz(1)
-            do iy=1,numxyz(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndd-1)*numxyz(2)+iy
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(5)) then
-            do iz=1,fltnum(5)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltd(iz)
-                btmp(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp, rr, MPI_DOUBLE_PRECISION, me-1, 320000+me, &
-                btmp1, rr, MPI_DOUBLE_PRECISION, me-1, 320000+me-1,&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do ix=1,numxyz(1)
-            do iy=1,numxyz(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndd-1)*numxyz(2)+iy
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(5)) then
-            do iz=1,fltnum(5)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltd(iz)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp1(ntagMPI)
-            enddo
-        endif
-    endif !bndd/=0
-    !write(*,*) 'me',me,'Finished BNDD-fnms'
-    if (bndu/=0)then
-        ntagMPI=0
-        do ix=1,numxyz(1)
-            do iy=1,numxyz(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndu-1)*numxyz(2)+iy
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        enddo
-        if (fltMPI(6)) then
-            do iz=1,fltnum(6)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltu(iz)
-                btmp2(ntagMPI)=fnms(nodenumtemp)
-            enddo
-        endif
-         call mpi_sendrecv(btmp2, jj, MPI_DOUBLE_PRECISION, me+1, 320000+me, &
-                btmp3, jj, MPI_DOUBLE_PRECISION, me+1, 320000+me+1,&
-                MPI_COMM_WORLD, istatus, ierr)
-        ntagMPI=0
-        do ix=1,numxyz(1)
-            do iy=1,numxyz(2)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bndu-1)*numxyz(2)+iy
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)                
-            enddo
-        enddo
-        if (fltMPI(6)) then
-            do iz=1,fltnum(6)
-                ntagMPI=ntagMPI+1
-                nodenumtemp=numxyz(1)*numxyz(2)*numxyz(3)+fltu(iz)
-                fnms(nodenumtemp)=fnms(nodenumtemp)+btmp3(ntagMPI)
-            enddo
-        endif        
-    endif !bndu/=0
-    !write(*,*) 'me',me,'Finished BNDU-fnms'    
-    deallocate(btmp, btmp1, btmp2, btmp3)
-endif !npxyz(3)>1
-call mpi_barrier(MPI_COMM_WORLD, ierr)
 end SUBROUTINE qdct2
-
 
 subroutine MPI4NodalQuant(quantArray, numDof)
     ! handle MPI communication for Nodal quantities - nodal force and nodal mass.
@@ -568,11 +205,11 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                         enddo
                     endif 
                     
-                    !Check
-                    if (numcount(3+2*(ixyz-1)+ib)/=ntagMPI) then 
-                        stop 'rr&ntagMPI-qdct2-bnd(1)'
-                        write(*,*) 'rr=',numcount(3+2*(ixyz-1)+ib),'ntagMPI=',ntagMPI
-                    endif
+                    ! !Check
+                    ! if (numcount(3+2*(ixyz-1)+ib)/=ntagMPI) then 
+                        ! stop 'rr&ntagMPI-qdct2-bnd(1)'
+                        ! write(*,*) 'rr=',numcount(3+2*(ixyz-1)+ib),'ntagMPI=',ntagMPI
+                    ! endif
         !
                     if (fltMPI(2*(ixyz-1)+ib)) then
                         do ix = 1, fltnum(2*(ixyz-1)+ib)
@@ -684,3 +321,66 @@ subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, q
         endif
     endif 
 end subroutine processNodalQuantArr
+
+subroutine assembleElementMass(elemID, elementMass)
+    use globalvar 
+    implicit none 
+    integer (kind = 4) :: i, j, eqn, nodeID, ixyz, elemID
+    real (kind = dp) :: elementMass(nee)
+    
+    do i = 1, nen 
+        nodeID = ien(i,elemID)
+        if (dof1(nodeID)==12) then
+            do ixyz = 1, 3
+                do j = 3*(ixyz-1)+1, 3*(ixyz-1)+3
+                    eqn = id1(locid(nodeID)+j)
+                    if (eqn > 0) then
+                        alhs(eqn) = alhs(eqn) + elementMass(3*(i-1)+ixyz)
+                    endif
+                enddo
+                eqn = id1(locid(nodeID)+ixyz+9)
+                if (eqn>0) then
+                    alhs(eqn) = alhs(eqn) + elementMass(3*(i-1)+ixyz)
+                endif
+            enddo                       
+        elseif (dof1(nodeID) == ndof) then
+            do j = 1, ndof
+                eqn = id1(locid(nodeID)+j)
+                alhs(eqn) = alhs(eqn) + elementMass((i-1)*3+j)
+            enddo
+        endif
+    enddo
+end subroutine assembleElementMass
+
+subroutine calcPhi4Hrgls(elemID, xl, shg)
+    use globalvar
+    implicit none
+    integer (kind = 4) :: elemID, i, j, k
+    integer (kind = 4), dimension(8,4) :: ha = reshape((/ &
+            1,1,-1,-1,-1,-1,1,1, 1,-1,-1,1,-1,1,1,-1, &
+            1,-1,1,-1,1,-1,1,-1, -1,1,-1,1,1,-1,1,-1/), &
+            (/8,4/))
+    real (kind = dp) :: xl(nesd,nen), shg(nrowsh, nen), vol
+    
+    do i = 1, 4    ! 4 sets of phi
+        ! calc phi prime
+        do j = 1, nen
+            vol = 0.0d0    !temp variable
+            do k = 1, nen
+                vol = vol + ha(k,i)*(xl(1,k)*shg(1,j) + &
+                    xl(2,k)*shg(2,j) + xl(3,k)*shg(3,j))
+            enddo
+            phi(j,i,elemID) = ha(j,i) - vol
+        enddo
+        
+        vol = 0.0d0
+        do j = 1, nen
+            vol = vol + phi(j,i,elemID)**2
+        enddo
+        vol = sqrt(vol/8.0d0)
+        ! normalize to get phi from phi prime
+        do j = 1, nen
+            phi(j,i,elemID) = phi(j,i,elemID) / vol
+        enddo
+    enddo
+end subroutine calcPhi4Hrgls
