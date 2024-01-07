@@ -48,11 +48,11 @@ do nel=1,numel
     !    point.
     call qdcshg(xl,det,shg,nel,xs,lcubic)
     !...form mass matrix for left-hand-side
-    constm = (1.0d0+rdampm*0.5d0*dt)*mat(nel,3)
-    if(constm /= 0.0d0) then
-        call contm(shg,det,eleffm,constm)
-    endif
-    
+    !constm = (1.0d0+rdampm*0.5d0*dt)*mat(nel,3)
+    !if(constm /= 0.0d0) then
+    !    call contm(shg,det,eleffm,constm)
+    !endif
+    call contm(shg, det, eleffm, mat(nel,3))
     call assembleElementMass(nel, eleffm)
     eledet(nel) = det
     !...derivatives of global shape function
@@ -69,31 +69,14 @@ do nel=1,numel
     do i=1,nee
         elemass(i,nel) = eleffm(i)
     enddo
-    !...assemble above mass to nodal mass for "faulting".
-    !    Note: ned degree of an element node have a same
-    !    mass, so only one used here.
+
     do i=1,nen
         k = ien(i,nel)
         k1= 1 + (i-1) * ned
         fnms(k) = fnms(k) + eleffm(k1)
     enddo
-    !...SS matrix for "hrglss":
-    call vlm(xl,vol)
-    ce=mat(nel,5)*(3*mat(nel,4)+2*mat(nel,5))/(mat(nel,4)+mat(nel,5))
-    ce = 16.d0* ce / 15.d0    !close to plane-strain
-    !E=miu*(3*lam+2*miu)/(lam+miu)
-    co = ce * vol / 48.d0
-    ss(1,nel)=co*(xs(1,1)**2+xs(2,1)**2+xs(3,1)**2)
-    ss(2,nel)=co*(xs(1,1)*xs(1,2)+xs(2,1)*xs(2,2)+xs(3,1)*xs(3,2))
-    ss(3,nel)=co*(xs(1,1)*xs(1,3)+xs(2,1)*xs(2,3)+xs(3,1)*xs(3,3))
-    ss(4,nel)=co*(xs(1,2)**2+xs(2,2)**2+xs(3,2)**2)
-    ss(5,nel)=co*(xs(1,2)*xs(1,3)+xs(2,2)*xs(2,3)+xs(3,2)*xs(3,3))
-    ss(6,nel)=co*(xs(1,3)**2+xs(2,3)**2+xs(3,3)**2)
     
-    call calcPhi4Hrgls(nel, xl, shg)
-    
-    
-    !
+    call calcSSPhi4Hrgls(nel, xl, xs, shg)
 enddo  !nel
 
 call MPI4NodalQuant(alhs, 3)
@@ -352,7 +335,7 @@ subroutine assembleElementMass(elemID, elementMass)
     enddo
 end subroutine assembleElementMass
 
-subroutine calcPhi4Hrgls(elemID, xl, shg)
+subroutine calcSSPhi4Hrgls(elemID, xl, xs, shg)
     use globalvar
     implicit none
     integer (kind = 4) :: elemID, i, j, k
@@ -360,9 +343,24 @@ subroutine calcPhi4Hrgls(elemID, xl, shg)
             1,1,-1,-1,-1,-1,1,1, 1,-1,-1,1,-1,1,1,-1, &
             1,-1,1,-1,1,-1,1,-1, -1,1,-1,1,1,-1,1,-1/), &
             (/8,4/))
-    real (kind = dp) :: xl(nesd,nen), shg(nrowsh, nen), vol
+    real (kind = dp) :: xl(nesd,nen), shg(nrowsh, nen), xs(3,3), &
+        vol, ce, co
     
-    do i = 1, 4    ! 4 sets of phi
+    ! calc SS matrix for hourglass control 
+    call vlm(xl,vol)
+    ce = mat(elemID,5)*(3*mat(elemID,4)+2*mat(elemID,5))/(mat(elemID,4)+mat(elemID,5))
+    ce = 16.d0* ce / 15.d0    !close to plane-strain
+    !E=miu*(3*lam+2*miu)/(lam+miu)
+    co = ce * vol / 48.d0
+    ss(1,elemID) = co*(xs(1,1)**2+xs(2,1)**2+xs(3,1)**2)
+    ss(2,elemID) = co*(xs(1,1)*xs(1,2)+xs(2,1)*xs(2,2)+xs(3,1)*xs(3,2))
+    ss(3,elemID) = co*(xs(1,1)*xs(1,3)+xs(2,1)*xs(2,3)+xs(3,1)*xs(3,3))
+    ss(4,elemID) = co*(xs(1,2)**2+xs(2,2)**2+xs(3,2)**2)
+    ss(5,elemID) = co*(xs(1,2)*xs(1,3)+xs(2,2)*xs(2,3)+xs(3,2)*xs(3,3))
+    ss(6,elemID) = co*(xs(1,3)**2+xs(2,3)**2+xs(3,3)**2)
+    
+    ! calc 4 sets of Phi for hourglass control
+    do i = 1, 4    
         ! calc phi prime
         do j = 1, nen
             vol = 0.0d0    !temp variable
@@ -383,7 +381,7 @@ subroutine calcPhi4Hrgls(elemID, xl, shg)
             phi(j,i,elemID) = phi(j,i,elemID) / vol
         enddo
     enddo
-end subroutine calcPhi4Hrgls
+end subroutine calcSSPhi4Hrgls
 
 subroutine contm(shg,det,elmass,constm)
     use globalvar
