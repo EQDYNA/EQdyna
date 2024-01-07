@@ -63,18 +63,18 @@ do nel=1,numel
     enddo
     !...mass matrix for right-hand-side to use.
     !    Note: different "constm" from above.
-    constm = mat(nel,3)
-    eleffm = 0.0d0    !must initialize again here
-    call contm(shg,det,eleffm,constm)
-    do i=1,nee
-        elemass(i,nel) = eleffm(i)
-    enddo
+    !constm = mat(nel,3)
+    !eleffm = 0.0d0    !must initialize again here
+    !call contm(shg,det,eleffm,constm)
+    ! do i=1,nee
+        ! elemass(i,nel) = eleffm(i)
+    ! enddo
 
-    do i=1,nen
-        k = ien(i,nel)
-        k1= 1 + (i-1) * ned
-        fnms(k) = fnms(k) + eleffm(k1)
-    enddo
+    ! do i=1,nen
+        ! k = ien(i,nel)
+        ! k1= 1 + (i-1) * ned
+        ! fnms(k) = fnms(k) + eleffm(k1)
+    ! enddo
     
     call calcSSPhi4Hrgls(nel, xl, xs, shg)
 enddo  !nel
@@ -332,7 +332,14 @@ subroutine assembleElementMass(elemID, elementMass)
                 alhs(eqn) = alhs(eqn) + elementMass((i-1)*3+j)
             enddo
         endif
+        
+        fnms(nodeID) = fnms(nodeID) + elementMass((i-1)*ned+1)
     enddo
+    
+    do i = 1, nee
+        elemass(i,elemID) = elementMass(i)
+    enddo
+
 end subroutine assembleElementMass
 
 subroutine calcSSPhi4Hrgls(elemID, xl, xs, shg)
