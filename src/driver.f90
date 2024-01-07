@@ -35,7 +35,7 @@ do nt = 1, nstep
     timeused(5) = timeused(5) + MPI_WTIME() - time1
 
     time1 = MPI_WTIME()     
-    call MPI4NodalQuant(brhs)
+    call MPI4NodalQuant(brhs, 3)
     btime = btime + MPI_WTIME() - time1
     
     time1=MPI_WTIME()
