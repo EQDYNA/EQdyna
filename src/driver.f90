@@ -1,55 +1,53 @@
-!/* Copyright (C) 2006-2024, Earthquake Modeling Lab @ Texas A&M University. 
-! * All Rights Reserved.
-! * This code is part of software EQdyna, please see EQdyna License Agreement
-! * attached before you copy, download, install or use EQdyna./
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
 subroutine driver
 
-use globalvar
-implicit none
-include 'mpif.h'
+    use globalvar
+    implicit none
+    include 'mpif.h'
 
-integer (kind = 4) :: i
+    integer (kind = 4) :: i
 
-do nt = 1, nstep
+    do nt = 1, nstep
 
-    time = time + dt
-    
-    if (mod(nt,100) == 1 .and. me == master) then
-        write(*,*) '=                                                                   ='
-        write(*,*) '=     Current time in dynamic rupture                               ='
-        write(*,'(X,A,40X,f7.3,4X,A)') '=',  time  , 's'
-    endif
-    
-    call velDispUpdate
-    
-    call offFaultStationSCEC
-    
-    brhs=0.0d0
-    
-    
-    call ku
-    
-    time1 = MPI_WTIME()
-    call hrglss
-    timeused(5) = timeused(5) + MPI_WTIME() - time1
+        time = time + dt
+        
+        if (mod(nt,100) == 1 .and. me == master) then
+            write(*,*) '=                                                                   ='
+            write(*,*) '=     Current time in dynamic rupture                               ='
+            write(*,'(X,A,40X,f7.3,4X,A)') '=',  time  , 's'
+        endif
+        
+        call velDispUpdate
+        
+        call offFaultStationSCEC
+        
+        brhs=0.0d0
+        
+        
+        call ku
+        
+        time1 = MPI_WTIME()
+        call hrglss
+        timeused(5) = timeused(5) + MPI_WTIME() - time1
 
-    time1 = MPI_WTIME()     
-    call MPI4NodalQuant(brhs, 3)
-    btime = btime + MPI_WTIME() - time1
-    
-    time1=MPI_WTIME()
-    if (friclaw == 5) call thermop
-    call faulting
-    timeused(6) = timeused(6) + MPI_WTIME() - time1 
-    
-    time1 = MPI_WTIME()
-    do i = 1, neq
-        brhs(i)=brhs(i)/alhs(i)
-    enddo
-    timeused(7)=timeused(7) + MPI_WTIME() - time1     
-     
-    if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) call output_gm
-enddo 
+        time1 = MPI_WTIME()     
+        call MPI4NodalQuant(brhs, 3)
+        btime = btime + MPI_WTIME() - time1
+        
+        time1=MPI_WTIME()
+        if (friclaw == 5) call thermop
+        call faulting
+        timeused(6) = timeused(6) + MPI_WTIME() - time1 
+        
+        time1 = MPI_WTIME()
+        do i = 1, neq
+            brhs(i)=brhs(i)/alhs(i)
+        enddo
+        timeused(7)=timeused(7) + MPI_WTIME() - time1     
+         
+        if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) call output_gm
+    enddo 
 
 end subroutine driver
 

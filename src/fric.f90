@@ -1,3 +1,5 @@
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
 SUBROUTINE slip_weak(slip,fricsgl,xmu)
   use globalvar
   implicit none

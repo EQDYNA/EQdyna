@@ -1,7 +1,5 @@
-!/* Copyright (C) 2006-2020, Earthquake Modeling Lab @ Texas A&M University. 
-! * All Rights Reserved.
-! * This code is part of software EQdyna, please see EQdyna License Agreement
-! * attached before you copy, download, install or use EQdyna./
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
 subroutine hrglss
  
 	use globalvar
@@ -63,105 +61,7 @@ subroutine hrglss
 					enddo
 				enddo
 			enddo 
-			! !
-			! fhr = 0.0d0	!initialize 
-			! !... calculate sum(phi*dl)
-			! do i=1,ned
-				! phid(i) = 0.0d0
-				! do j=1,nen
-					! phid(i) = phid(i) + phi(j,2,nel) * dl(i,j)
-				! enddo
-			! enddo
-			! !... calculate hourglass resistence
-			! do i=1,nen
-				! fhr(1,i) = phi(i,2,nel) * (ss(1,nel)*phid(1)  &
-						! + ss(2,nel)*phid(2) + ss(3,nel)*phid(3))
-				! fhr(2,i) = phi(i,2,nel) * (ss(2,nel)*phid(1)  &
-						! + ss(4,nel)*phid(2) + ss(5,nel)*phid(3))
-				! fhr(3,i) = phi(i,2,nel) * (ss(3,nel)*phid(1)  &
-						! + ss(5,nel)*phid(2) + ss(6,nel)*phid(3))
-			! enddo
-			! !... assemble to global right-hand-side force vector
-			! do i=1,nen
-				! do j=1,ned
-					! non=ien(i,nel)
-					! if (dof1(non).eq.3) then
-						! itag=locid(non)+j
-					! elseif (dof1(non).eq.12) then
-						! itag=locid(non)+j+9
-					! endif
-					! k=id1(itag)
-					! if(k > 0) then
-						! brhs(k) = brhs(k) - fhr(j,i)
-					! endif
-				! enddo
-			! enddo
-			! !
-			! fhr = 0.0d0	!initialize 
-			! !... calculate sum(phi*dl)
-			! do i=1,ned
-				! phid(i) = 0.0d0
-				! do j=1,nen
-					! phid(i) = phid(i) + phi(j,3,nel) * dl(i,j)
-				! enddo
-			! enddo
-			! !... calculate hourglass resistence
-			! do i=1,nen
-				! fhr(1,i) = phi(i,3,nel) * (ss(1,nel)*phid(1)  &
-					! + ss(2,nel)*phid(2) + ss(3,nel)*phid(3))
-				! fhr(2,i) = phi(i,3,nel) * (ss(2,nel)*phid(1)  &
-					! + ss(4,nel)*phid(2) + ss(5,nel)*phid(3))
-				! fhr(3,i) = phi(i,3,nel) * (ss(3,nel)*phid(1)  &
-					! + ss(5,nel)*phid(2) + ss(6,nel)*phid(3))
-			! enddo
-			! !... assemble to global right-hand-side force vector
-			! do i=1,nen
-				! do j=1,ned
-					! non=ien(i,nel)
-					! if (dof1(non).eq.3) then
-						! itag=locid(non)+j
-					! elseif (dof1(non).eq.12) then
-						! itag=locid(non)+j+9
-					! endif
-					! k=id1(itag)					
-					! if(k > 0) then
-						! brhs(k) = brhs(k) - fhr(j,i)
-					! endif
-				! enddo
-			! enddo
-			! !
-			! fhr = 0.0d0	!initialize 
-			! !... calculate sum(phi*dl)
-			! do i=1,ned
-				! phid(i) = 0.0d0
-				! do j=1,nen
-					! phid(i) = phid(i) + phi(j,4,nel) * dl(i,j)
-				! enddo
-			! enddo
-			! !... calculate hourglass resistence
-			! do i=1,nen
-				! fhr(1,i) = phi(i,4,nel) * (ss(1,nel)*phid(1)  &
-						! + ss(2,nel)*phid(2) + ss(3,nel)*phid(3))
-				! fhr(2,i) = phi(i,4,nel) * (ss(2,nel)*phid(1)  &
-						! + ss(4,nel)*phid(2) + ss(5,nel)*phid(3))
-				! fhr(3,i) = phi(i,4,nel) * (ss(3,nel)*phid(1)  &
-						! + ss(5,nel)*phid(2) + ss(6,nel)*phid(3))
-			! enddo
-			! !... assemble to global right-hand-side force vector
-			! do i=1,nen
-				! do j=1,ned
-					! non=ien(i,nel)
-					! if (dof1(non).eq.3) then
-						! itag=locid(non)+j
-					! elseif (dof1(non).eq.12) then
-						! itag=locid(non)+j+9
-					! endif
-					! k=id1(itag)					
-					! if(k > 0) then
-						! brhs(k) = brhs(k) - fhr(j,i)
-					! endif
-				! enddo
-			! enddo
+
 		elseif (C_hg==2) then
 			!viscous hourglass control
 			det=eledet(nel)

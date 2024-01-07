@@ -1,8 +1,9 @@
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
 subroutine qdckd(shg,mate,vl,dl,stress,elresf,constk,porep,pstrmag,ex)
-
     use globalvar
     implicit none
-
+    
     integer (kind=4) :: i,j,j1,j2,j3
     real (kind=8) :: constk,temp,porep
     real (kind=8),dimension(nee) :: elresf,work,vl,dl

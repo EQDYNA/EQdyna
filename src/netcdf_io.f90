@@ -1,3 +1,6 @@
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
+
 ! netcdf_io reads and writes out arrays into netcdf format.
 ! A Fortran example code is shown here https://www.unidata.ucar.edu/software/netcdf/examples/programs/sfc_pres_temp_wr.f90
 ! A companion exmaple code to read the data written by sfc_pres_temp_wr.f90 could be found via 
