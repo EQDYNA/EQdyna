@@ -1,5 +1,4 @@
 ! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
-! MIT
 subroutine ku
     use globalvar
     implicit none

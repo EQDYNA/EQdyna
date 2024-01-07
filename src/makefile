@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# This makefile file is part of software EQdyna.
-
-# This makefile is to compile EQdyna v5.2.3. 
+# Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+# MIT
 
 # Environment variable MACHINE is defined in install-eqdyna.sh.
 # Currently, EQdyna supports: 
@@ -41,7 +40,7 @@ OPT1 = ${FFLAGS}
 
 OBJ  = eqdyna3d.o  globalvar.o mesh4num.o  meshgen.o   qdcshl.o    \
        driver.o    qdct2.o     qdcshg.o    contm.o     qdcb.o      \
-       qdct3.o     contma.o    qdckd.o     hrglss.o    fric.o      \
+       ku.o        contma.o    qdckd.o     hrglss.o    fric.o      \
        faulting.o  PMLwhg.o    comdampv.o  qconstant.o             \
        readInputFiles.o        thermop.o   library.o   warning.o   \
        library_degeneration.f90            library_output.o        \
@@ -64,7 +63,7 @@ meshgen.o: meshgen.f90 globalvar.o library.o library_degeneration.o
 	$(FC) $(OPT) meshgen.f90
 qdcshl.o: qdcshl.f90 globalvar.o
 	$(FC) $(OPT) qdcshl.f90		
-driver.o: driver.f90 qdct2.o qdct3.o hrglss.o faulting.o \
+driver.o: driver.f90 qdct2.o ku.o hrglss.o faulting.o \
           globalvar.o comdampv.o thermop.o
 	$(FC) $(OPT) driver.f90
 qdct2.o: qdct2.f90 qdcshg.o contm.o library.o globalvar.o
@@ -75,8 +74,8 @@ contm.o: contm.f90 globalvar.o
 	$(FC) $(OPT) contm.f90
 library.o: library.f90 globalvar.o
 	$(FC) $(OPT) library.f90
-qdct3.o: qdct3.f90 contma.o qdckd.o globalvar.o PMLwhg.o
-	$(FC) $(OPT) qdct3.f90
+ku.o: ku.f90 contma.o qdckd.o globalvar.o PMLwhg.o
+	$(FC) $(OPT) ku.f90
 contma.o: contma.f90 globalvar.o
 	$(FC) $(OPT) contma.f90
 qdckd.o: qdckd.f90 qdcb.o qconstant.o globalvar.o
