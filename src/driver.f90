@@ -26,9 +26,8 @@ do nt = 1, nstep
     
     brhs=0.0d0
     
-    time1=MPI_WTIME()
-    call qdct3
-    timeused(4) = timeused(4) + MPI_WTIME() - time1
+    
+    call ku
     
     time1 = MPI_WTIME()
     call hrglss
