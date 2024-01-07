@@ -181,7 +181,7 @@ do nel=1,numel
     !
 enddo  !nel
 
-call MPI4NodalQuant(alhs)
+call MPI4NodalQuant(alhs, 3)
 
 !prepare for MPI partitioning
 mexyz(1)=int(me/(npy*npz))
@@ -464,12 +464,12 @@ call mpi_barrier(MPI_COMM_WORLD, ierr)
 end SUBROUTINE qdct2
 
 
-subroutine MPI4NodalQuant(quantArray)
+subroutine MPI4NodalQuant(quantArray, numDof)
     ! handle MPI communication for Nodal quantities - nodal force and nodal mass.
     use globalvar
     implicit none
     include 'mpif.h'
-    integer (kind = 4) ::  ierr, rlp, rr, jj, istatus(MPI_STATUS_SIZE), i, ixyz
+    integer (kind = 4) ::  ierr, rlp, rr, jj, istatus(MPI_STATUS_SIZE), i, ixyz, numDof
     real (kind = dp) :: quantArray(neq) 
     real (kind = dp), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
     integer (kind = 4)::ix,iy,iz,nodenumtemp,ntagMPI,izz, dest, sendtag, source, recvtag, ib, iSign
@@ -520,19 +520,19 @@ subroutine MPI4NodalQuant(quantArray)
                 if (bnd(ib) /= 0)then 
                     if (ixyz == 1) then
                         dest    = me - npxyz(2)*npxyz(3)*iSign
-                        sendtag = 200000 + me
+                        sendtag = 200000*numDof + me
                         source  = me - npxyz(2)*npxyz(3)*iSign
-                        recvtag = 200000 + me-npxyz(2)*npxyz(3)*iSign
+                        recvtag = 200000*numDof + me-npxyz(2)*npxyz(3)*iSign
                     elseif (ixyz == 2) then 
                         dest    = me - npxyz(3)*iSign
-                        sendtag = 210000 + me
+                        sendtag = 210000*numDof + me
                         source  = me - npxyz(3)*iSign
-                        recvtag = 210000 + me - npxyz(3)*iSign
+                        recvtag = 210000*numDof + me - npxyz(3)*iSign
                     elseif (ixyz == 3) then 
                         dest    = me - iSign
-                        sendtag = 220000 + me
+                        sendtag = 220000*numDof + me
                         source  = me - iSign
-                        recvtag = 220000 + me - iSign
+                        recvtag = 220000*numDof + me - iSign
                     endif 
                     
                     rrr = numcount(3+2*(ixyz-1)+ib) + fltnum(2*(ixyz-1)+ib)*3
