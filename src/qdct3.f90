@@ -4,10 +4,10 @@ subroutine ku
     include 'mpif.h'
     
     integer (kind = 4) :: nel,m,i,j,ntemp,k,k1, non,itag,eqn,label
-    real (kind = 8) :: det,constk,pstrinc,xc(3),matelement(5),esPML(21),es(12),ex(3,8),efPML(96),&
+    real (kind = dp) :: det,constk,pstrinc,xc(3),matelement(5),esPML(21),es(12),ex(3,8),efPML(96),&
         elresf(nee), eleffm(nee), dl(ned,nen), vl(ned,nen), al(ned,nen)
         
-    time1=MPI_WTIME()
+    time1 = MPI_WTIME()
     do nel=1,numel
 
         do j=1,nen
