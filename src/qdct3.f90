@@ -1,3 +1,4 @@
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
 subroutine ku
     use globalvar
     implicit none
@@ -8,21 +9,13 @@ subroutine ku
         elresf(nee), eleffm(nee), dl(ned,nen), vl(ned,nen), al(ned,nen)
         
     time1 = MPI_WTIME()
-    do nel=1,numel
-
-        do j=1,nen
-            ntemp = ien(j,nel)
-            do i=1,ned
-                dl(i,j) = d(i,ntemp)
-                vl(i,j) = v(i,ntemp)
+    
+    do nel = 1, numel
+        do j = 1, nen
+            do i = 1, ned
+                dl(i,j) = d(i,ien(j,nel))
+                vl(i,j) = v(i,ien(j,nel))
                 al(i,j) = 0.0d0
-            enddo
-        enddo
-        !...compute effective dl accounting for Rayleigh damping!
-        do j=1,nen
-            do i=1,ned
-            !...for rate formulation, damping done in qdckd.f90. B.D. 1/5/12
-            !dl(i,j) = dl(i,j) + rdampk(m)*vl(i,j)
                 al(i,j) = al(i,j) + rdampm*vl(i,j)
                 if(i==3.and.C_elastic==0) then  !for inelastic off-fault, gravity included
                     al(i,j) = al(i,j) + grav*(roumax-(gamar+1.0d0)*rhow)/roumax
@@ -40,17 +33,9 @@ subroutine ku
 
         if (et(nel)==1.or.et(nel)>10) then
             constk=-det
-            do i=1,12
-                es(i)=s1(ids(nel)+i)
-            enddo
-            do i=1,8
-                do j=1,3
-                    ex(j,i)=x(j,ien(i,nel))
-                enddo
-            enddo
-            do i=1,5 
-                matelement(i)=mat(nel,i)
-            enddo
+            es(1:12)    = s1(ids(nel)+1:ids(nel)+12)
+            ex(1:3,1:8) = x(1:3,ien(1:8,nel))
+            matelement(1:5) = mat(nel,1:5)
             call qdckd(eleshp(1,1,nel),matelement,vl,dl,es,elresf,constk,&
                     eleporep(nel),pstrinc,ex)
 
