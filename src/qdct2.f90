@@ -1,62 +1,44 @@
-SUBROUTINE qdct2
-use globalvar
-implicit none
-include 'mpif.h'
-!...program to calcuate lumped mass matrix for 8-node hexahedral
-!    (brick),elastic continue element and assemble.
-logical :: lcubic
-integer(kind=4) :: nel,i,j,k,k1,m,itmp,itmp1,itmp2
-real(kind = dp) :: det,constm,vol,ce,co
-real(kind = dp),dimension(nee) :: eleffm
-real(kind = dp),dimension(nesd,nen) :: xl
-real(kind = dp),dimension(3,3) :: xs
-real(kind = dp),dimension(nrowb,nee) :: b
-real(kind = dp),dimension(nrowsh,nen) :: shg
-!...MPI
-integer  ierr, rlp, rr, jj
-integer istatus(MPI_STATUS_SIZE)
-real (kind = dp), allocatable, dimension(:) :: btmp, btmp1, btmp2, btmp3
-!DL variables for PML layer
-integer (kind=4):: non,itag,eqn
-!*******3D MPI partitioning*************
-integer(kind=4)::mexyz(3), npxyz(3), numxyz(3), ix,iy,iz,nodenumtemp,ntagMPI,izz
-integer(kind=4)::bnd(2),bndf,bndb,bndd,bndu,rrr,jjj
+subroutine qdct2
+    use globalvar
+    implicit none
+    include 'mpif.h'
 
-do nel=1,numel
-    !...initialize and localize
-    eleffm = 0.0d0
-    do i=1,nen
-        k = ien(i,nel)
-        do j=1,nesd
-        xl(j,i) = x(j,k)
+    logical :: lcubic
+    integer (kind = 4) :: nel, i, j, itmp
+    real (kind = dp) :: det, xs(3,3), xl(nesd,nen), eleffm(nee), shg(nrowsh,nen) 
+
+    do nel = 1, numel
+        eleffm = 0.0d0
+        do i=1,nen
+            do j=1,nesd
+                xl(j,i) = x(j,ien(i,nel))
+            enddo
         enddo
+        
+        !...if to degenerate
+        lcubic = .true.
+        itmp = 0
+        outloop: do i=2,nen
+                    do j=1,i-1
+                        if(ien(j,nel)==ien(i,nel)) itmp=itmp+1
+                            if(itmp>=2) then
+                                lcubic = .false.
+                            exit outloop
+                        endif
+                    enddo
+                enddo outloop
+        !...compute global shape function and derivatives at 1 Gaussian
+        !    point.
+        call qdcshg(xl, det, shg, nel, xs, lcubic)
+        call contm(shg, det, eleffm, mat(nel,3))
+        call assembleElementMassDetShg(nel, eleffm, det, shg)
+        call calcSSPhi4Hrgls(nel, xl, xs, shg)
     enddo
-   
-    !...if degenerate
-    lcubic = .true.
-    itmp = 0
-    outloop: do i=2,nen
-                do j=1,i-1
-                    if(ien(j,nel)==ien(i,nel)) itmp=itmp+1
-                        if(itmp>=2) then
-                            lcubic = .false.
-                        exit outloop
-                    endif
-                enddo
-            enddo outloop
-    !...compute global shape function and derivatives at 1 Gaussian
-    !    point.
-    call qdcshg(xl, det, shg, nel, xs, lcubic)
-    call contm(shg, det, eleffm, mat(nel,3))
-    call assembleElementMassDetShg(nel, eleffm, det, shg)
 
-    call calcSSPhi4Hrgls(nel, xl, xs, shg)
-enddo  !nel
+    call MPI4NodalQuant(alhs, 3)
+    call MPI4NodalQuant(fnms, 1)
 
-call MPI4NodalQuant(alhs, 3)
-call MPI4NodalQuant(fnms, 1)
-
-end SUBROUTINE qdct2
+end subroutine qdct2
 
 subroutine MPI4NodalQuant(quantArray, numDof)
     ! handle MPI communication for Nodal quantities - nodal force and nodal mass.
