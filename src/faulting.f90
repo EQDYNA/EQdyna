@@ -3,10 +3,14 @@
 subroutine faulting
     use globalvar
     implicit none
+    include 'mpif.h'
+    
     integer (kind = 4) :: i, j, ift
     real (kind = dp) :: dtau=0.0d0
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
     real (kind = dp) :: nsdInitTractionVector(3)
+    
+    time1=MPI_WTIME()
     do ift = 1, ntotft
         do i = 1, nftnd(ift)   
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
@@ -16,7 +20,8 @@ subroutine faulting
             call storeOnFaultStationQuantSCEC(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
             call storeRuptureTime(ift, i, nsdSliprateVector)
         enddo 
-    enddo
+    enddo  
+    timeused(6) = timeused(6) + MPI_WTIME() - time1 
 end subroutine faulting     
 
 ! Subroutine rate_state_normal_stress calculates the effect of normal stress change
