@@ -53,6 +53,8 @@ subroutine MPI4NodalQuant(quantArray, numDof)
     real (kind = dp) :: quantArray(neq) 
     real (kind = dp), allocatable, dimension(:) :: btmp, btmp1
     
+    time1 = MPI_WTIME()     
+    
     mexyz(1)=int(me/(npy*npz))
     mexyz(2)=int((me-mexyz(1)*npy*npz)/npz)
     mexyz(3)=int(me-mexyz(1)*npy*npz-mexyz(2)*npz)
@@ -225,6 +227,8 @@ subroutine MPI4NodalQuant(quantArray, numDof)
         endif
         call mpi_barrier(MPI_COMM_WORLD, ierr)
     enddo 
+    
+    btime = btime + MPI_WTIME() - time1
 end subroutine MPI4NodalQuant
 
 subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, quantArray, ntagMPI)
