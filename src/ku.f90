@@ -36,8 +36,8 @@ subroutine ku
             constk=-det
             es(1:12)    = s1(ids(nel)+1:ids(nel)+12)
             ex(1:3,1:8) = x(1:3,ien(1:8,nel))
-            matelement(1:5) = mat(nel,1:5)
-            call qdckd(eleshp(1,1,nel),matelement,vl,dl,es,elresf,constk,&
+            !matelement(1:5) = mat(nel,1:5)
+            call qdckd(eleshp(1,1,nel),mat(nel,1:5),vl,dl,es,elresf,constk,&
                     eleporep(nel),pstrinc,ex)
 
             pstrain(nel) = pstrain(nel) + pstrinc
@@ -67,12 +67,12 @@ subroutine ku
                 enddo
             enddo
             !do i=1,21
-                esPML(1:21)=s1(ids(nel)+1:ids(nel)+21)
+                !esPML(1:21)=s1(ids(nel)+1:ids(nel)+21)
             !enddo
             !do i=1,5 
-                matelement(1:5)=mat(nel,1:5)
+                !matelement(1:5)=mat(nel,1:5)
             !enddo		
-            call PMLwhg(vl,efPML,esPML,ex,matelement,eleshp(1,1,nel),det,nel)
+            call PMLwhg(vl,efPML,s1(ids(nel)+1:ids(nel)+21),ex,mat(nel,1:5),eleshp(1,1,nel),det,nel)
             do i=1,8
                 non=ien(i,nel)
                 if (dof1(non)==12) then
@@ -97,7 +97,7 @@ subroutine ku
             enddo
             !update the stress components 
             !do i=1,21
-                s1(ids(nel)+1:ids(nel)+21)=esPML(1:21)
+                !s1(ids(nel)+1:ids(nel)+21)=esPML(1:21)
             !enddo
         endif!et(nel)=1/2
     enddo!nel loop
