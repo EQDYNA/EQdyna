@@ -24,12 +24,11 @@ subroutine driver
         
         brhs=0.0d0
         
-        
         call ku
         
-        time1 = MPI_WTIME()
+        !time1 = MPI_WTIME()
         call hrglss
-        timeused(5) = timeused(5) + MPI_WTIME() - time1
+        !timeused(5) = timeused(5) + MPI_WTIME() - time1
 
         time1 = MPI_WTIME()     
         call MPI4NodalQuant(brhs, 3)
