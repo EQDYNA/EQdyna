@@ -19,29 +19,16 @@ subroutine driver
         endif
         
         call velDispUpdate
-        
         call offFaultStationSCEC
         
         brhs=0.0d0
         
         call ku
-        call hrglss
-
-        !time1 = MPI_WTIME()     
+        call hrglss   
         call MPI4NodalQuant(brhs, 3)
-        !btime = btime + MPI_WTIME() - time1
-        
-        time1=MPI_WTIME()
         if (friclaw == 5) call thermop
         call faulting
-        timeused(6) = timeused(6) + MPI_WTIME() - time1 
-        
-        !time1 = MPI_WTIME()
-        !do i = 1, neq
-        brhs(1:neq)=brhs(1:neq)/alhs(1:neq)
-        !enddo
-        !timeused(7)=timeused(7) + MPI_WTIME() - time1     
-         
+        brhs(1:neq)=brhs(1:neq)/alhs(1:neq) ! timeused(7), depreciated
         if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) call output_gm
     enddo 
 
