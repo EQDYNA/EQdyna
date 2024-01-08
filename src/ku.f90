@@ -15,14 +15,16 @@ subroutine ku
         vl(1:ned,1:nen) = v(1:ned,ien(1:nen,nel))
         al(1:ned,1:nen) = 0.0d0
         al(1:ned,1:nen) = al(1:ned,1:nen) + rdampm*vl(1:ned,1:nen)
-        
-        do j = 1, nen
-           do i = 1, ned
-                if(i==3.and.C_elastic==0) then  !for inelastic off-fault, gravity included
-                    al(i,j) = al(i,j) + grav*(roumax-(gamar+1.0d0)*rhow)/roumax
-                endif
-            enddo
-        enddo
+        !if (C_elastic==0) then
+            al(3,1:nen) = al(3,1:nen) + (1.0d0-C_elastic)*grav*(roumax-(gamar+1.0d0)*rhow)/roumax
+        !endif
+        ! do j = 1, nen
+           ! do i = 1, ned
+                ! if(i==3.and.C_elastic==0) then  !for inelastic off-fault, gravity included
+                    ! al(i,j) = al(i,j) + grav*(roumax-(gamar+1.0d0)*rhow)/roumax
+                ! endif
+            ! enddo
+        ! enddo
 
         elresf = 0.0d0 
         det = eledet(nel)
