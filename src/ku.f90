@@ -63,12 +63,12 @@ subroutine ku
                     ex(j,i)=x(j,ien(i,nel))
                 enddo
             enddo
-            do i=1,21
-                esPML(i)=s1(ids(nel)+i)
-            enddo
-            do i=1,5 
-                matelement(i)=mat(nel,i)
-            enddo		
+            !do i=1,21
+                esPML(1:21)=s1(ids(nel)+1:ids(nel)+21)
+            !enddo
+            !do i=1,5 
+                matelement(1:5)=mat(nel,1:5)
+            !enddo		
             call PMLwhg(vl,efPML,esPML,ex,matelement,eleshp(1,1,nel),det,nel)
             do i=1,8
                 non=ien(i,nel)
@@ -93,9 +93,9 @@ subroutine ku
                 endif
             enddo
             !update the stress components 
-            do i=1,21
-                s1(ids(nel)+i)=esPML(i)
-            enddo
+            !do i=1,21
+                s1(ids(nel)+1:ids(nel)+21)=esPML(1:21)
+            !enddo
         endif!et(nel)=1/2
     enddo!nel loop
     timeused(4) = timeused(4) + MPI_WTIME() - time1
