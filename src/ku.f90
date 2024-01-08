@@ -25,10 +25,8 @@ subroutine ku
 
         elresf = 0.0d0 
         det = eledet(nel)
-
-        do i=1,nee
-            eleffm(i)=elemass(i,nel)
-        enddo
+        eleffm(1:nee)=elemass(1:nee,nel)
+        
         call contma(eleffm,al,elresf)
 
         if (et(nel)==1.or.et(nel)>10) then
@@ -40,9 +38,8 @@ subroutine ku
                     eleporep(nel),pstrinc,ex)
 
             pstrain(nel) = pstrain(nel) + pstrinc
-            do i=1,12!DL update the stress
-                s1(ids(nel)+i)=es(i)
-            enddo				
+            s1(ids(nel)+1:ids(nel)+12)=es(1:12)
+            
             do i=1,nen					
                 non=ien(i,nel)
                 do j=1,ned
