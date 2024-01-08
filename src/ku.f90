@@ -28,20 +28,20 @@ subroutine ku
 
         elresf = 0.0d0 
         det = eledet(nel)
-        eleffm(1:nee)=elemass(1:nee,nel)
+        !eleffm(1:nee)=elemass(1:nee,nel)
         
-        call contma(eleffm,al,elresf)
+        call contma(elemass(1:nee,nel),al,elresf)
 
         if (et(nel)==1.or.et(nel)>10) then
-            constk=-det
-            es(1:12)    = s1(ids(nel)+1:ids(nel)+12)
-            ex(1:3,1:8) = x(1:3,ien(1:8,nel))
+            !constk = -eledet(nel)
+            !es(1:12)    = s1(ids(nel)+1:ids(nel)+12)
+            !ex(1:3,1:8) = x(1:3,ien(1:8,nel))
             !matelement(1:5) = mat(nel,1:5)
-            call qdckd(eleshp(1,1,nel),mat(nel,1:5),vl,dl,es,elresf,constk,&
-                    eleporep(nel),pstrinc,ex)
-
+            call qdckd(eleshp(1,1,nel),mat(nel,1:5),vl,dl, &
+                        s1(ids(nel)+1:ids(nel)+12),elresf,-eledet(nel),&
+                        eleporep(nel),pstrinc,x(1:3,ien(1:8,nel)))
             pstrain(nel) = pstrain(nel) + pstrinc
-            s1(ids(nel)+1:ids(nel)+12)=es(1:12)
+            !s1(ids(nel)+1:ids(nel)+12)=es(1:12)
             
             do i=1,nen					
                 non=ien(i,nel)
@@ -61,18 +61,19 @@ subroutine ku
                 efPML((i-1)*12+9+j)=elresf((i-1)*3+j)
                 enddo
             enddo
-            do i=1,8
-                do j=1,3
-                    ex(j,i)=x(j,ien(i,nel))
-                enddo
-            enddo
+            ! do i=1,8
+                ! do j=1,3
+                    ! ex(j,i)=x(j,ien(i,nel))
+                ! enddo
+            ! enddo
             !do i=1,21
                 !esPML(1:21)=s1(ids(nel)+1:ids(nel)+21)
             !enddo
             !do i=1,5 
                 !matelement(1:5)=mat(nel,1:5)
             !enddo		
-            call PMLwhg(vl,efPML,s1(ids(nel)+1:ids(nel)+21),ex,mat(nel,1:5),eleshp(1,1,nel),det,nel)
+            call PMLwhg(vl,efPML,s1(ids(nel)+1:ids(nel)+21),x(1:3,ien(1:8,nel)),&
+                        mat(nel,1:5),eleshp(1,1,nel),eledet(nel),nel)
             do i=1,8
                 non=ien(i,nel)
                 if (dof1(non)==12) then
