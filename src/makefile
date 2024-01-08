@@ -41,7 +41,7 @@ OPT1 = ${FFLAGS}
 OBJ  = eqdyna3d.o  globalvar.o mesh4num.o  meshgen.o   qdcshl.o    \
        driver.o    qdct2.o     qdcshg.o    contm.o     qdcb.o      \
        ku.o        contma.o    qdckd.o     hrglss.o    fric.o      \
-       faulting.o  PMLwhg.o    comdampv.o  qconstant.o             \
+       faulting.o              comdampv.o  qconstant.o             \
        readInputFiles.o        thermop.o   library.o   warning.o   \
        library_degeneration.f90            library_output.o        \
        netcdf_io.o
@@ -74,7 +74,7 @@ contm.o: contm.f90 globalvar.o
 	$(FC) $(OPT) contm.f90
 library.o: library.f90 globalvar.o
 	$(FC) $(OPT) library.f90
-ku.o: ku.f90 contma.o qdckd.o globalvar.o PMLwhg.o
+ku.o: ku.f90 contma.o qdckd.o globalvar.o 
 	$(FC) $(OPT) ku.f90
 contma.o: contma.f90 globalvar.o
 	$(FC) $(OPT) contma.f90
@@ -88,8 +88,6 @@ fric.o: fric.f90 globalvar.o
 	$(FC) $(OPT) fric.f90
 faulting.o: faulting.f90 fric.o globalvar.o
 	$(FC) $(OPT) faulting.f90
-PMLwhg.o: PMLwhg.f90 globalvar.o
-	$(FC) $(OPT) PMLwhg.f90 
 comdampv.o: comdampv.f90
 	$(FC) $(OPT) comdampv.f90
 qconstant.o: qconstant.f90
