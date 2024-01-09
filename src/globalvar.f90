@@ -1,20 +1,13 @@
-!/* Copyright (C) 2006-2023, Earthquake Modeling Lab @ Texas A&M University. 
-! * All Rights Reserved.
-! * This code is part of software EQdyna, please see EQdyna License Agreement
-! * attached before you copy, download, install or use EQdyna./
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
 MODULE globalvar
 
     implicit none
-    save
-
     character(len=30) :: mm,    &
         sttmp,  dptmp,  bodytmp,    projectname,    author
     character(len=90) :: loca
-    
     logical :: lstr, fltMPI(6)
-    
     integer, parameter :: dp = selected_real_kind(15,307)
-    
     real (kind = dp) :: timeused(9) = 0.0d0,&
         time1,      time2,      time=0.0d0, &
         btime=0.0d0,            timebegin,  timeover,   pi=4*atan(1.0_dp), &

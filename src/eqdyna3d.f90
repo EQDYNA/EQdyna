@@ -1,6 +1,6 @@
 ! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
 ! MIT
-PROGRAM EQdyna
+program EQdyna
     use globalvar
     implicit none
     include 'mpif.h'
@@ -14,10 +14,9 @@ PROGRAM EQdyna
     if (me == master) then 
         write(*,*) '====================================================================='
         write(*,*) '==================   Welcome to EQdyna 5.3.1  ======================='
-        write(*,*) '===== Product of Earthquake Modeling Lab @ Texas A&M University ====='
-        write(*,*) '====  & Institute for Geophysics, University of Texas at Austin  ===='
-        write(*,*) '============== https://github.com/dunyuliu/EQdyna.git ==============='
-        write(*,*) '========== Contacts: bduan@tamu.edu, dliu@ig.utexas.edu ============='
+        write(*,*) '===== Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>           ====' 
+        write(*,*) '====    & Dunyu Liu <dliu@ig.utexas.edu> under MIT License.      ===='
+        write(*,*) '============== https://github.com/EQDYNA/EQdyna.git   ==============='
         write(*,*) '=                                                                   ='
         write(*,*) '=   EQdyna is a parallel finite element software to simulate        ='
         write(*,*) '=    earthquake spontaneous dynamic rupture, seismic wave           ='
@@ -212,7 +211,7 @@ PROGRAM EQdyna
     call MPI_Finalize(ierr)
     stop
     
-end PROGRAM EQdyna
+end program EQdyna
 
 subroutine checkMeshMaterial
     use globalvar
