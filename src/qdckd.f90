@@ -4,21 +4,21 @@ subroutine qdckd(shg,mate,vl,dl,stress,elresf,constk,porep,pstrmag,ex)
     use globalvar
     implicit none
     
-    integer (kind=4) :: i,j,j1,j2,j3
-    real (kind=8) :: constk,temp,porep
-    real (kind=8),dimension(nee) :: elresf,work,vl,dl
-    real (kind=8),dimension(nstr) :: strainrate,stressrate,strtemp,strain
-    real(kind=8)::stress(12),anestr(6),anestr1(6)
-    real (kind=8),dimension(nrowsh-1,nen) :: shg
-    real (kind=8),dimension(nrowb,nee) :: bb	!correspond to b
-    real (kind=8),dimension(nrowc,nrowc) :: cc	!correspond to c
+    integer (kind = 4) :: i,j,j1,j2,j3
+    real (kind = dp) :: constk,temp,porep
+    real (kind = dp),dimension(nee) :: elresf,work,vl,dl
+    real (kind = dp),dimension(nstr) :: strainrate,stressrate,strtemp,strain
+    real (kind = dp)::stress(12),anestr(6),anestr1(6)
+    real (kind = dp),dimension(nrowsh-1,nen) :: shg
+    real (kind = dp),dimension(nrowb,nee) :: bb	!correspond to b
+    real (kind = dp),dimension(nrowc,nrowc) :: cc	!correspond to c
     !...plasticity vlrables. B.D. 1/5/12
-    real (kind=8) :: strmea,taomax, yield, rjust,pstrmea,pstrmag,xc(3),ex(3,8)
-    real (kind=8),dimension(nstr) :: strdev,pstrinc
+    real (kind = dp) :: strmea,taomax, yield, rjust,pstrmea,pstrmag,xc(3),ex(3,8)
+    real (kind = dp),dimension(nstr) :: strdev,pstrinc
     !Parameters for Q model.
-    real(kind=8)::Qp,Qs,wkp,wks,taok,cv,cs
-    real(kind=8)::lam,miu,Mu,miuu,vols,mate(5)
-    integer(kind=4)::k,ip,iq,ir
+    real (kind = dp)::Qp,Qs,wkp,wks,taok,cv,cs
+    real (kind = dp)::lam,miu,Mu,miuu,vols,mate(5)
+    integer (kind = 4)::k,ip,iq,ir
     !
     pstrmag = 0.0d0
     stressrate = 0.0d0

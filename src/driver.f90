@@ -28,7 +28,7 @@ subroutine driver
         call MPI4NodalQuant(brhs, 3)
         if (friclaw == 5) call thermop
         call faulting
-        brhs(1:neq)=brhs(1:neq)/alhs(1:neq) ! timeused(7), depreciated
+        brhs(1:neq) = brhs(1:neq)/alhs(1:neq) ! timeused(7), depreciated
         if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) call output_gm
     enddo 
 
