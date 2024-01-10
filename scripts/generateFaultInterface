@@ -81,9 +81,10 @@ def generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=None):
         figTitle = 'Planar fault'
         
     # adjust y coordinates to y- by depth z/tan(dip)
+    # Index (i,j) are from fault corner(fxmin, fzmin), consistent with reading in EQdyna.
     for i in range(nx):
         for j in range(nz):
-            subSurface[j,i] = subSurface[j,i] - j*dx/tan(dipAngle/180.*pi)
+            subSurface[j,i] = subSurface[j,i] - (nz-1-j)*dx/tan(dipAngle/180.*pi)
 
     # compute gradients for y=y(x,z), dy/dx, dy/dz
     # axis=(1,0), 1 along columns, 0 along rows.
