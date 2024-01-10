@@ -10,7 +10,7 @@ subroutine faulting
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
     real (kind = dp) :: nsdInitTractionVector(3)
     
-    time1=MPI_WTIME()
+    time1 = MPI_WTIME()
     do ift = 1, ntotft
         do i = 1, nftnd(ift)   
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
@@ -51,67 +51,6 @@ subroutine rate_state_normal_stress(V2, theta_pc, theta_pc_dot, tnrm, fricsgl)
     
 end subroutine rate_state_normal_stress
 
-subroutine nucleation(dtau, xmu, xx, yy, zz, twt0, fs, fd)
-    ! Subroutine nucleation handles the artificial nucleation for 
-    !   various friction laws.
-    ! It will return friction coefficient xmu or dtau as a function of time 
-    !   and fault node locations.
-    
-    ! nucR, dtau0, nucRuptVel are loaded from input file bGlobal.txt, which is 
-    !   generated from user_defined_param.py.
-    use globalvar
-    implicit none
-    real(kind = dp) :: T, F, G, rr, dtau, xmu, xx, yy, zz
-    real(kind = dp) :: tr, tc, tmp1, tmp2, twt0, fs, fd
-    
-    dtau = 0.0d0 
-    
-    if (TPV == 105 .or. TPV == 104) then
-        T  = 1.0d0
-        F  = 0.0d0
-        G  = 1.0d0
-        rr = sqrt((xx-xsource)**2 + (yy-ysource)**2 + (zz-zsource)**2)
-        
-        if (rr < nucR) then 
-            F=dexp(rr**2/(rr**2-nucR**2))
-        endif 
-
-        if (time<=T)  then 
-            G=dexp((time-T)**2/(time*(time-2*T)))
-        endif 
-    
-        dtau = nucdtau0*F*G
-    
-    elseif (TPV == 201 .or. TPV == 202) then
-        rr = sqrt((xx-xsource)**2 + (yy-ysource)**2 + (zz-zsource)**2)
-        if(rr <= nucR) then 
-            if (TPV == 201) then 
-                tr = (rr+0.081d0*nucR*(1.0d0/(1.0d0-(rr/nucR)**2)-1.0d0))/(0.7d0*3464.d0)
-            elseif (TPV == 202) then 
-                tr = rr/nucRuptVel
-            endif 
-        else
-            tr = 1.0d9 
-        endif
-        
-        if(time<tr) then 
-            tc = 0.0d0
-        elseif ((time<(tr+twt0)).and.(time>=tr)) then 
-            tc = (time-tr)/twt0
-        else 
-            tc = 1.0d0
-        endif
-        
-        tmp1 = fs+(fd-fs)*tc 
-        tmp2 = xmu
-        xmu  = min(tmp1,tmp2)  
-    else
-        write(*,*) "Artificial nucleation mode is not supported yet"
-        write(*,*) "Exiting ... ..."
-        stop
-    endif 
-end subroutine nucleation
-
 subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
 ! get slip, sliprate, and traction vectors on one pair of fault split-nodes
     use globalvar
@@ -133,16 +72,16 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     massMaster    = fnms(nsmp(2,iFaultNodePair,iFault))
     totalMass     = (massSlave + massMaster)*arn(iFaultNodePair,iFault)
     
-    do j=1,2  ! slave, master
-        do k=1,3  ! x,y,z
+    do j = 1, 2  ! slave, master
+        do k = 1, 3  ! x,y,z
             xyzNodalQuant(k,j,1) = brhs(id1(locid(nsmp(j,iFaultNodePair,iFault))+k))  !1-force !DL 
             xyzNodalQuant(k,j,2) = v(k,nsmp(j,iFaultNodePair,iFault)) !2-vel
             xyzNodalQuant(k,j,3) = d(k,nsmp(j,iFaultNodePair,iFault)) !3-di,iftsp
         enddo
     enddo
     
-    do j=1,3    !1-force,2-vel,3-disp
-        do k=1,2  !1-slave,2-master
+    do j = 1, 3    !1-force,2-vel,3-disp
+        do k = 1, 2  !1-slave,2-master
             nsdNodalQuant(1,k,j) = xyzNodalQuant(1,k,j)*un(1,iFaultNodePair,iFault) &
                                     + xyzNodalQuant(2,k,j)*un(2,iFaultNodePair,iFault) &
                                     + xyzNodalQuant(3,k,j)*un(3,iFaultNodePair,iFault)  !norm
@@ -407,22 +346,22 @@ subroutine showSourceDynamics(iFault,iFaultNodePair)
     implicit none
     integer (kind = 4) :: iFault, iFaultNodePair
     
-    if (x(1,nsmp(1,iFaultNodePair,iFault))==xsource .and. &
-        x(3,nsmp(1,iFaultNodePair,iFault))==zsource) then
-        write(*,*) 'Time ', time, ' s'
-        write(*,*) 'n,s,d tractions (MPa) ', fric(78,iFaultNodePair,iFault)/1.d6, fric(79,iFaultNodePair,iFault)/1.d6, fric(80,iFaultNodePair,iFault)/1.d6
-        write(*,*) 'state_normal (MPa)', fric(23,iFaultNodePair,iFault)/1.d6
-        write(*,*) 'n,s,d slip (m) ', fric(73,iFaultNodePair,iFault), fric(71,iFaultNodePair,iFault), fric(72,iFaultNodePair,iFault)
-        write(*,*) 's,d, peak sliprate (m/s) ', fric(74,iFaultNodePair,iFault), fric(75,iFaultNodePair,iFault), fric(76,iFaultNodePair,iFault)
-        write(*,*) 'cummulative slip (m) ', fric(77,iFaultNodePair,iFault)
-        write(*,*) 'sw_fs, sw_fd, sw_D0 ', fric(1,iFaultNodePair,iFault), fric(2,iFaultNodePair,iFault), fric(3,iFaultNodePair,iFault)
-        write(*,*) 'rsf_a, rsf_b ', fric(9,iFaultNodePair,iFault), fric(10,iFaultNodePair,iFault)
-        write(*,*) 'rsf_state', fric(20,iFaultNodePair,iFault)
+    if (abs(x(1,nsmp(1,iFaultNodePair,iFault))-xsource)<tol .and. &
+        abs(x(3,nsmp(1,iFaultNodePair,iFault))-zsource)<tol) then
+        write(*,*) 'Hypocenter dynamics'
+        write(*,'(X,A,E15.7)') 'Time         (s)   ', time
+        write(*,'(X,A,3E15.7)') 'n,s,d tract  (MPa) ', fric(78,iFaultNodePair,iFault)/1.d6, fric(79,iFaultNodePair,iFault)/1.d6, fric(80,iFaultNodePair,iFault)/1.d6
+        write(*,'(X,A,E15.7)') 'state_normal (MPa) ', fric(23,iFaultNodePair,iFault)/1.d6
+        write(*,'(X,A,3E15.7)') 'n,s,d slip   (m)   ', fric(73,iFaultNodePair,iFault), fric(71,iFaultNodePair,iFault), fric(72,iFaultNodePair,iFault)
+        write(*,'(X,A,3E15.7)') 's,d, peak sr (m/s) ', fric(74,iFaultNodePair,iFault), fric(75,iFaultNodePair,iFault), fric(76,iFaultNodePair,iFault)
+        write(*,'(X,A,E15.7)') 'cummul slip  (m)   ', fric(77,iFaultNodePair,iFault)
+        write(*,'(X,A,3E15.7)') 'sw_fs, sw_fd, sw_D0', fric(1,iFaultNodePair,iFault), fric(2,iFaultNodePair,iFault), fric(3,iFaultNodePair,iFault)
+        write(*,'(X,A,2E15.7)') 'rsf_a, rsf_b       ', fric(9,iFaultNodePair,iFault), fric(10,iFaultNodePair,iFault)
+        write(*,'(X,A,E15.7)') 'rsf_state          ', fric(20,iFaultNodePair,iFault)
+        write(*,'(X,A,E15.7)') 'Nuc add tau0 (MPa) ', fric(81,iFaultNodePair,iFault)/1.d6
     endif 
     
 end subroutine showSourceDynamics
-
-
 
 subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateVector)
     use globalvar
@@ -434,6 +373,7 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
     radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
                   (x(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
                   (x(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
+    
     T    = 1.0d0
     F    = 0.0d0
     G    = 1.0d0
@@ -460,6 +400,14 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
         dtau = fric(81,iFaultNodePair,iFault)*F*G
     endif
     
+    ! if (radius < 1.d3) then 
+        ! write(*,*) '========='
+        ! write(*,*) x(1,nsmp(1,iFaultNodePair,iFault)), x(2,nsmp(1,iFaultNodePair,iFault)), x(3,nsmp(1,iFaultNodePair,iFault))
+        ! write(*,*) radius
+        ! write(*,*) xsource, ysource, zsource
+        ! write(*,*) F, G, dtau
+    ! endif 
+    
     nsdTractionVector(2) = nsdTractionVector(2) + dtau
     
 end subroutine rsfNucleation
@@ -471,8 +419,8 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
     real (kind = dp) :: radius, tr, tc, fricCoeff
     
     radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
-              (x(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
-              (x(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
+                  (x(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
+                  (x(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
     
     tr = 1.0d9 
     if(radius <= nucR) then 

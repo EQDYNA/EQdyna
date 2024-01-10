@@ -1113,17 +1113,16 @@ subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nnode, nodeXyzIndex)
 end subroutine createNode
 
 subroutine insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
-    ! This subroutine is to modify ycoor if a rough_fault interface is inserted.
-    
+    ! This subroutine is to modify ycoor to insert a rough/& dipping fault interface.
     use globalvar
     implicit none
-    real (kind = dp) :: nodeCoor(10), peak, ycoort, pfx, pfz
-    real (kind = dp) :: fx1, fx2, fz1
+    real (kind = dp) :: nodeCoor(10), peak, ycoort, pfx, pfz, fx1, fx2, fz1
     integer (kind = 4) :: ixx, izz
     
     fx1 = rough_fx_min
     fx2 = rough_fx_max
     fz1 = rough_fz_min
+    ! Index (ixx, izz) are counted from the fault corner (rough_fx_min, rough_fz_min)
     if ((nodeCoor(1) < fx2 + tol) .and. (nodeCoor(1) > fx1 - tol) .and. (nodeCoor(3) > fz1 - tol)) then 
         ixx = (nodeCoor(1) - fx1)/dx + 1
         izz = (nodeCoor(3) - fz1)/dx + 1
@@ -1145,8 +1144,8 @@ subroutine insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
     endif 
     
     peak = rough_geo(1,nnz*(ixx-1)+izz)
-    pfx = rough_geo(2,nnz*(ixx-1)+izz)
-    pfz = rough_geo(3,nnz*(ixx-1)+izz)    
+    pfx  = rough_geo(2,nnz*(ixx-1)+izz)
+    pfz  = rough_geo(3,nnz*(ixx-1)+izz)    
     
     if (nodeCoor(2) > -tol) then
         ycoort = nodeCoor(2)*(ymax - peak)/ymax + peak
