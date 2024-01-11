@@ -35,7 +35,6 @@ subroutine output_onfault_st
 				'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &
 				':',time_array(7)
 			write(51,*) '# code = EQdyna3D'
-			write(51,*) '# code_version = 5.1.0'
 			write(51,*) '# element_size =',dx
 			write(51,'( a14,f8.4,a3)') '# time_step =', dt, ' s'
 			write(51,'( a19,i6)') '# num_time_steps =', locplt-1
@@ -108,7 +107,6 @@ subroutine output_offfault_st
 					'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &
 					':',time_array(7)
 			write(51,*) '# code = EQdyna3D'
-			write(51,*) '# code_version = 5.1.0'
 			write(51,*) '# element_size =',dx
 			write(51,'( a14,f8.4,a3)') '# time_step=', dt, ' s'
 			write(51,'( a19,i6)') '# num_time_steps=',locplt

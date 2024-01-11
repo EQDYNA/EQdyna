@@ -18,6 +18,9 @@ par.fzmin, par.fzmax = -8.0e3, 0.0e3
 par.xsource, par.ysource, par.zsource = 0.0, 0.0, -3.4e3
 
 par.dx = 400.
+par.dy = par.dx
+par.dz = par.dx
+
 par.nuni_y_plus=10
 par.nuni_y_minus=10
 par.enlarging_ratio = 1.025
@@ -44,7 +47,7 @@ par.nucdtau0 = -9999.
             
 # Creating the fault interface
 par.nfx = int((par.fxmax - par.fxmin)/par.dx + 1)
-par.nfz = int((par.fzmax - par.fzmin)/par.dx + 1)
+par.nfz = int((par.fzmax - par.fzmin)/par.dz + 1)
 par.fx  = np.linspace(par.fxmin,par.fxmax,par.nfx) # coordinates of fault grids along strike.
 par.fz  = np.linspace(par.fzmin,par.fzmax,par.nfz) # coordinates of fault grids along dip.
 

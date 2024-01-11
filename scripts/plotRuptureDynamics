@@ -25,17 +25,12 @@ def ruptureDynamics():
     xx = xx/1.e3
     zz = zz/1.e3#/sin(par.dip/180.*pi) # along dip distance
     
-    print(par.dx, par.dz)
-    print(na, ma)
-    print(xx)
-    print(zz)
     for me in range(nprocs):
       fname = 'frt.txt' + str(me)
       if exists(fname):
         print('Post-processing ' + fname + ' ... ...')
         a = np.loadtxt(fname)
         n, m = a.shape
-        print(n, m)
         for i in range(n):
             #!! use round() instead of int()!!
             ii = round((a[i,0] - par.fxmin)/par.dx)

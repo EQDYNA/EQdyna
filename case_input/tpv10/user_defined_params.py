@@ -20,7 +20,7 @@ par.xsource = 0.0
 par.ysource = 12.0e3*cos(abs(par.dip)/180.*pi)
 par.zsource = -12.0e3*sin(abs(par.dip)/180.*pi)
 
-par.dx   = 500.
+par.dx   = 100.
 par.dy = par.dx
 par.dz = par.dx*sin(abs(par.dip)/180.*pi)
 
