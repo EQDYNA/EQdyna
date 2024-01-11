@@ -7,9 +7,9 @@ import numpy as np
 
 par = parameters()
 
-par.xmin, par.xmax = -22.0e3, 22.0e3
-par.ymin, par.ymax = -10.0e3, 12.0e3
-par.zmin, par.zmax = -22.0e3, 0.0e3
+par.xmin, par.xmax = -38.0e3, 38.0e3
+par.ymin, par.ymax = -20.0e3, 22.0e3
+par.zmin, par.zmax = -38.0e3, 0.0e3
 
 par.fxmin, par.fxmax = -18.0e3, 18.0e3
 par.fymin, par.fymax = 0.0, 0.0
@@ -18,17 +18,20 @@ par.fzmin, par.fzmax = -18.0e3, 0.0e3
 par.xsource, par.ysource, par.zsource = 0.0, 0.0, -7.5e3
 
 par.term = 5.
-par.dx = 400.
+par.dx = 500.
 par.dy = par.dx
 par.dz = par.dx
 
-par.dt = 0.008*par.dx/100.
+par.dt = 0.5*par.dx/par.vp
 par.friclaw = 4
 par.tpv = 104
 
 par.nucR = 3.0e3
 par.nucdtau0 = 45.0e6
 
+par.nx = 2
+par.ny = 2
+par.nz = 1
             
 # Creating the fault interface
 par.nfx = int((par.fxmax - par.fxmin)/par.dx + 1)
