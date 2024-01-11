@@ -16,9 +16,10 @@ class parameters:
     ymin, ymax   = -10.0e3, 12.0e3
     zmin, zmax   = -24.0e3, 0.0e3
     
-    dip = 90. 
-    # positve dip angle to tilt the fault to y-
-    # negavtive dip angle to tile the fault to y+
+    strike = 270.
+    dip    = 90. 
+    # positve dip angle to tilt the fault to y+
+    # negavtive dip angle to tile the fault to y-
     
     # fault geometry (in meters)
     fxmin, fxmax = -22.0e3, 22.0e3

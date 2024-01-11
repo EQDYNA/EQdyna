@@ -48,6 +48,7 @@ subroutine readglobal
         read(1001,*) xsource, ysource, zsource
         read(1001,*) nucR, nucRuptVel, nucdtau0
         read(1001,*) str1ToFaultAngle, devStrToStrVertRatio
+        read(1001,*) fstrike, fdip
     close(1001)
     str1ToFaultAngle = str1ToFaultAngle*pi/180.0d0 !convert degrees to radian
     

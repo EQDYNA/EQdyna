@@ -6,7 +6,7 @@ from lib import *
 import numpy as np
 
 par = parameters()
-par.dip = -60 # negative dipping angle tiles the fault to y+
+par.dip = 60 # positive dipping angle tiles the fault to y+
 
 par.xmin, par.xmax = -22.0e3, 22.0e3
 par.ymin, par.ymax = -10.0e3, 20.0e3

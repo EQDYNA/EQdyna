@@ -31,8 +31,8 @@ MODULE globalvar
         b13=-0.169029,          critt0=0.2d0,           srcrad0=2500.d0,&
         vrupt0=1500.d0,         critd0,     cohes,      brangle, &
         bulk=0.75d0,            coheplas=5.0d6,         tv,     &
-        ccosphi,    sinphi,     mus,        mud,        fstrike=270.d0, &
-        fdip=90.d0, dxtp,       tpw, &
+        ccosphi,    sinphi,     mus,        mud,        fstrike,        &
+        fdip,       dxtp,       tpw, &
         fric_sw_fs, fric_sw_fd, fric_sw_D0, fric_rsf_a, fric_rsf_deltaa0,&
         fric_rsf_b, fric_rsf_Dc,            fric_rsf_r0,                &
         fric_rsf_v0,            fric_rsf_vinix,         fric_rsf_viniz, &
