@@ -40,7 +40,7 @@ par.nucR = 1.5e3
             
 # Creating the fault interface
 par.nfx = int((par.fxmax - par.fxmin)/par.dx + 1)
-par.nfz = int((par.fzmax - par.fzmin)/par.dx + 1)
+par.nfz = int((par.fzmax - par.fzmin)/par.dz + 1)
 par.fx  = np.linspace(par.fxmin,par.fxmax,par.nfx) # coordinates of fault grids along strike.
 par.fz  = np.linspace(par.fzmin,par.fzmax,par.nfz) # coordinates of fault grids along dip.
 
@@ -70,7 +70,7 @@ for ix, xcoor in enumerate(par.fx):
     par.on_fault_vars[iz,ix,7]   = -7378.*downDipDistance # initial normal stress. Negative compressive.
     par.on_fault_vars[iz,ix,8]   = 0.
     par.on_fault_vars[iz,ix,49]  = abs(0.55*par.on_fault_vars[iz,ix,7])       # initial shear stress.
-    if abs(xcoor-par.xsource)<=1.5e3 and abs(zcoor-par.zsource)<=1.5e3*cos(abs(par.dip)/180.*pi):
+    if abs(xcoor-par.xsource)<=1.5e3 and abs(zcoor-par.zsource)<=1.5e3*sin(abs(par.dip)/180.*pi):
         par.on_fault_vars[iz,ix,49] = 0.2e6 + abs((0.76+0.0057)*par.on_fault_vars[iz,ix,7])
         #par.on_fault_vars[iz,ix,49] = -par.on_fault_vars[iz,ix,49]
     

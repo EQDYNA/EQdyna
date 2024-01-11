@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Script to plot on fault rupture dynamics.
+1. Plot on fault rupture dynamics.
+2. Generate SCECRuptureTime.txt for benchmarking.
 """
 import numpy as np
 from math    import *
@@ -15,26 +16,31 @@ SMALL_SIZE = 12
 def ruptureDynamics():
     nprocs = par.nx*par.ny*par.nz
     na     = int((par.fxmax-par.fxmin)/par.dx+1)
-    ma     = int((par.fzmax-par.fzmin)/par.dx+1)
+    ma     = int((par.fzmax-par.fzmin)/par.dz+1)
     rupt   = np.zeros((na*ma,3))
     rupt2d = np.zeros((ma,na,100))
     fVarArr= np.zeros((ma,na,100))
  
-    [xx,zz] = np.meshgrid(par.fx,par.fz)
+    [xx,zz] = np.meshgrid(par.fx,par.fz/sin(par.dip/180.*pi))
     xx = xx/1.e3
-    zz = zz/1.e3
-
+    zz = zz/1.e3#/sin(par.dip/180.*pi) # along dip distance
+    
+    print(par.dx, par.dz)
     print(na, ma)
+    print(xx)
+    print(zz)
     for me in range(nprocs):
       fname = 'frt.txt' + str(me)
       if exists(fname):
-        print('Post-processing ' + fname ' ... ...')
+        print('Post-processing ' + fname + ' ... ...')
         a = np.loadtxt(fname)
         n, m = a.shape
-        #print(n,m)
+        print(n, m)
         for i in range(n):
-            ii = int((a[i,0] - par.fxmin)/par.dx)
-            jj = int((a[i,2] - par.fzmin)/par.dx)
+            #!! use round() instead of int()!!
+            ii = round((a[i,0] - par.fxmin)/par.dx)
+            jj = round((a[i,2] - par.fzmin)/par.dz)
+            
             # frt.txt* file structure:
             # Starting from 1, 1-3: coorx,y,z
             # 4, rupture time
@@ -49,7 +55,7 @@ def ruptureDynamics():
             # 22,   state var for normal stress variation (Shi and Day)
             
             rupt[jj*na+ii,0] = a[i,0]  # xcoor
-            rupt[jj*na+ii,1] = -a[i,2] # zcoor, reverse sign to positive numbers.
+            rupt[jj*na+ii,1] = -a[i,2]/sin(par.dip/180.*pi) # zcoor to along dip distance, reverse sign to positive numbers.
             rupt[jj*na+ii,2] = a[i,3]  # rupture time
 
             rupt2d[jj,ii,0]  = a[i,3]  # rupture time
@@ -114,7 +120,10 @@ def ruptureDynamics():
     #plt.contourf(xx,zz,rupt2d[:,:,9])
     #plt.colorbar()
     #plt.title('Normal stress change (MPa)')
-
+    
+    np.savetxt('SCECRuptureTime.txt', rupt, fmt='%e', delimiter='\t',
+                header= "j k t", comments = ' ')
+    
     plt.savefig("cRuptureDynamics.png", dpi = 300)
     plt.close()
 
