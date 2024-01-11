@@ -27,7 +27,7 @@ par.dz = par.dx*sin(abs(par.dip)/180.*pi)
 par.nmat = 1
 par.vp, par.vs, par.rou = 5716, 3300, 2700
 
-par.term = 6.
+par.term = 5.
 
 par.C_elastic = 1
 par.insertFaultType = 1 # insert planar dipping fault
@@ -38,9 +38,9 @@ par.tpv  = 10
 par.C_nuclea = 0 # no artifical nulceation; instead, higher initial shear in a patch
 par.nucR = 1.5e3
 
-par.nx = 3
+par.nx = 2
 par.ny = 2
-par.nz = 2
+par.nz = 1
 
 # Creating the fault interface
 par.nfx = int((par.fxmax - par.fxmin)/par.dx + 1)
