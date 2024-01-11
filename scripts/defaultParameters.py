@@ -18,8 +18,8 @@ class parameters:
     
     strike = 270.
     dip    = 90. 
-    # positve dip angle to tilt the fault to y+
-    # negavtive dip angle to tile the fault to y-
+    # positve dip angle to tilt the fault to y-
+    # negavtive dip angle to tile the fault to y+
     
     # fault geometry (in meters)
     fxmin, fxmax = -22.0e3, 22.0e3

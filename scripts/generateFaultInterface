@@ -11,14 +11,14 @@ from user_defined_params import par
 def generateFractalSurface(lx, hurst_exponent, seed=None):
     np.random.seed(seed)
     
-    lh = lx//2
-    pony = hurst_exponent + 1.
+    lh     = lx//2
+    pony   = hurst_exponent + 1.
     hrttwo = 0.5*np.sqrt(2.0)
-    kcut = lx/4
-    fcsq = kcut*kcut
-    npole = 4
+    kcut   = lx/4
+    fcsq   = kcut*kcut
+    npole  = 4
     
-    w = np.zeros((lx,lx),dtype=np.float64)
+    w      = np.zeros((lx,lx),dtype=np.float64)
     transf = np.zeros((lx,lx),dtype=np.complex128)
     
     transf = hrttwo*(np.random.normal(size=(lx,lx)) + 
@@ -54,8 +54,8 @@ def generateFractalSurface(lx, hurst_exponent, seed=None):
             transf[i-1,j-1] = np.sqrt(pspec*filt)*transf[i-1,j-1]
     
     transf = ifft2(transf)
-    coef = 1.0/4.0
-    w = coef * np.real(transf)
+    coef   = 1.0/4.0
+    w      = coef * np.real(transf)
 
     return w
 
@@ -63,10 +63,9 @@ def generatePlane(nz, nx, dx):
     result = np.zeros((nz,nx))
     return result
 
-def generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=None):
+def generateFaultInterface(nx, nz, dx, dz, isRoughFault, dipAngle, seedId=None):
     if isRoughFault == 2:
         hurst_exponent = 1.
-        #seedId = 48
         alpha0 = 0.005
         
         w = generateFractalSurface(nx, hurst_exponent, seedId)
@@ -79,23 +78,27 @@ def generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=None):
     elif isRoughFault == 1:
         subSurface     = generatePlane(nz, nx, dx)
         figTitle = 'Planar fault'
-        
-    # adjust y coordinates to y+ by depth z/tan(dip)
+    
+    # The fault interface is discretized to dx by dx squares.   
+    # Rotate y coordinates to y+ by the (90-dip) angle.
+    # 1. shorten z coordinate by depth z/tan(dip)
+    # 2. extend y coordinate by 
     # Index (i,j) are from fault corner(fxmin, fzmin), consistent with reading in EQdyna.
     for i in range(nx):
         for j in range(nz):
-            subSurface[j,i] = subSurface[j,i] + (nz-1-j)*dx/tan(dipAngle/180.*pi)
+            subSurface[j,i] = subSurface[j,i] + (nz-1-j)*dx*cos(dipAngle/180.*pi)
 
     # compute gradients for y=y(x,z), dy/dx, dy/dz
     # axis=(1,0), 1 along columns, 0 along rows.
-    dSurface_dx, dSurface_dz = np.gradient(subSurface/dx, axis=(1,0)) 
-
+    dSurface_dx = np.gradient(subSurface/dx, axis=1) 
+    dSurface_dz = np.gradient(subSurface/dz, axis=0) 
+    
     if dSurface_dx.max()>0.2 or dSurface_dz.max()>0.2:
         print('The fractal surface may be too rough that dy/dx or dy/dz is over 0.2')
         print('Maximum dSurface_dx and dSurface_dz are ', dSurface_dx.max(), dSurface_dx.max())
         
     # convert format
-    result = np.zeros((nx*nz+2,4))
+    result = np.zeros((nx*nz+2,3))
     result[0,0] = nx
     result[0,1] = nz
     result[1,0] = dx
@@ -107,7 +110,7 @@ def generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=None):
             # shift the surface in y- direction
             result[ntmp,0] = subSurface[j,i] 
             result[ntmp,1] = dSurface_dx[j,i]
-            result[ntmp,3] = dSurface_dz[j,i]
+            result[ntmp,2] = dSurface_dz[j,i]
             ntmp = ntmp + 1
 
     np.savetxt('bFault_Rough_Geometry.txt', result, fmt='%f', delimiter='\t')
@@ -146,7 +149,8 @@ def _main_func(description):
     nx           = par.nfx
     nz           = par.nfz
     dx           = par.dx
-    generateFaultInterface(nx, nz, dx, isRoughFault, dipAngle, seedId=1)
+    dz           = par.dz
+    generateFaultInterface(nx, nz, dx, dz, isRoughFault, dipAngle, seedId=1)
 
 if __name__ == "__main__":
     _main_func(__doc__)
