@@ -12,9 +12,9 @@ class parameters:
     #mode   = 2  # serve in earthquake cycles
 
     # model_domain (in meters)
-    xmin, xmax   = -24.0e3, 24.0e3
-    ymin, ymax   = -10.0e3, 12.0e3
-    zmin, zmax   = -24.0e3, 0.0e3
+    xmin, xmax   = -42.0e3, 42.0e3
+    ymin, ymax   = -20.0e3, 22.0e3
+    zmin, zmax   = -42.0e3, 0.0e3
     
     strike = 270.
     dip    = 90. 
@@ -28,7 +28,7 @@ class parameters:
 
     xsource, ysource, zsource = -4.0e3, 0.0, -7.5e3
 
-    dx           = 400.0e0 # cell size, spatial resolution
+    dx           = 500.0e0 # cell size, spatial resolution
     dy = dx
     dz = dx
     
@@ -56,13 +56,14 @@ class parameters:
         mat[2,:] = [4.94e3,  5.72e3, 3.4e3,  2.6e3] # 3rd
         mat[3,:] = [10.94e3, 6.18e3, 3.62e3, 2.8e3] # 4th
         mat[4,:] = [-zmin,   6.32e3, 3.67e3, 2.8e3] # rest
-        print(mat)
+        vp = mat[nmat,1]
+        #print(mat)
 
     init_norm = -25.0e6 # initial normal stress in Pa. Negative compressive.
 
     # total simulation time and dt
-    term        = 10.
-    dt          = 0.032
+    term        = 5.
+    dt          = 0.5*dx/vp
 
     # Controlling switches for EQquasi system
     C_elastic   = 1 # elastic(1).

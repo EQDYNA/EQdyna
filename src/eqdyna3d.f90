@@ -13,7 +13,7 @@ program EQdyna
 
     if (me == master) then 
         write(*,*) '====================================================================='
-        write(*,*) '==================   Welcome to EQdyna 5.3.1  ======================='
+        write(*,*) '==================   Welcome to EQdyna 5.3.2  ======================='
         write(*,*) '===== Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>           ====' 
         write(*,*) '====    & Dunyu Liu <dliu@ig.utexas.edu> under MIT License.      ===='
         write(*,*) '============== https://github.com/EQDYNA/EQdyna.git   ==============='
