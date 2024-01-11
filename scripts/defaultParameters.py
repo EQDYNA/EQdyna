@@ -142,7 +142,7 @@ class parameters:
 
     # Creating the fault interface
     nfx     = int((fxmax - fxmin)/dx + 1)
-    nfz     = int((fzmax - fzmin)/dx + 1)
+    nfz     = int((fzmax - fzmin)/dz + 1)
     fx      = np.linspace(fxmin,fxmax,nfx) # coordinates of fault grids along strike.
     fz      = np.linspace(fzmin,fzmax,nfz) # coordinates of fault grids along dip.
 

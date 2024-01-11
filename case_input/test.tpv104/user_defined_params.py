@@ -19,6 +19,9 @@ par.xsource, par.ysource, par.zsource = 0.0, 0.0, -7.5e3
 
 par.term = 5.
 par.dx = 400.
+par.dy = par.dx
+par.dz = par.dx
+
 par.dt = 0.008*par.dx/100.
 par.friclaw = 4
 par.tpv = 104

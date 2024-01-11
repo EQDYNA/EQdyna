@@ -87,7 +87,7 @@ par.fric_rsf_deltavw0 = 0.9
 
 # Creating the fault interface
 par.nfx = int((par.fxmax - par.fxmin)/par.dx + 1)
-par.nfz = int((par.fzmax - par.fzmin)/par.dx + 1)
+par.nfz = int((par.fzmax - par.fzmin)/par.dz + 1)
 par.fx  = np.linspace(par.fxmin,par.fxmax,par.nfx) # coordinates of fault grids along strike.
 par.fz  = np.linspace(par.fzmin,par.fzmax,par.nfz) # coordinates of fault grids along dip.
 
