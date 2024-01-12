@@ -33,7 +33,7 @@ par.outputGroundMotion = 1
 par.output_plastic     = 1
 
 
-par.term    = 50.
+par.term    = 25.
 par.dx      = 500.
 par.dy = par.dx
 par.dz = par.dx
@@ -69,7 +69,7 @@ print('Layers for velocity structure is ', par.nmat)
 par.dt       = 0.5*par.dx/par.vp
 
 par.nucR     = 3.0e3
-par.nucdtau0 = 50.0e6
+par.nucdtau0 = 35.0e6
 
 par.nx, par.ny, par.nz = 2, 2, 1
 
@@ -132,9 +132,9 @@ for ix, xcoor in enumerate(par.fx):
     par.on_fault_vars[iz,ix,7]   = -120.0e6     # initial normal stress. Negative compressive.
     par.on_fault_vars[iz,ix,8]   = 40.0e6       # initial shear stress.
     
-    tmp1, tmp2 = getScaleCoeff(xcoor,zcoor,20.e3,2.e3,2.e3,2.e3,12.e3,1.e3)
+    tmp1, tmp2 = getScaleCoeff(xcoor,zcoor,20.e3,2.e3,2.e3,2.e3,10.e3,1.e3)
     deltaa_tmp = par.fric_rsf_deltaa
-    if abs(zcoor)>13.e3:
+    if abs(zcoor)>11.e3:
         deltaa_tmp = 2.*par.fric_rsf_deltaa
         
     par.on_fault_vars[iz,ix,9]  = par.fric_rsf_a + (1. - tmp1*tmp2)*deltaa_tmp
