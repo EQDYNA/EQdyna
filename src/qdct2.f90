@@ -101,19 +101,19 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                 if (bnd(ib) /= 0)then 
                     if (ixyz == 1) then
                         dest    = me - npxyz(2)*npxyz(3)*iSign
-                        sendtag = 200000*numDof + me
+                        sendtag = 0*numDof + me
                         source  = me - npxyz(2)*npxyz(3)*iSign
-                        recvtag = 200000*numDof + me-npxyz(2)*npxyz(3)*iSign
+                        recvtag = 0*numDof + me-npxyz(2)*npxyz(3)*iSign
                     elseif (ixyz == 2) then 
                         dest    = me - npxyz(3)*iSign
-                        sendtag = 210000*numDof + me
+                        sendtag = 10000*numDof + me
                         source  = me - npxyz(3)*iSign
-                        recvtag = 210000*numDof + me - npxyz(3)*iSign
+                        recvtag = 10000*numDof + me - npxyz(3)*iSign
                     elseif (ixyz == 3) then 
                         dest    = me - iSign
-                        sendtag = 220000*numDof + me
+                        sendtag = 20000*numDof + me
                         source  = me - iSign
-                        recvtag = 220000*numDof + me - iSign
+                        recvtag = 20000*numDof + me - iSign
                     endif 
                     
                     if (numDof == 1) then 
