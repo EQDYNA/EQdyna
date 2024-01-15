@@ -41,7 +41,7 @@ par.dz = par.dx
 # -1 nmat for customized velocity structure. Still hard coded in FORTRAN so far. 
 par.tpv = 2802
 par.nmat, par.n2mat = 0, 4
-nzMax = int((par.zmax-par.zmin)/par.dz+1)
+nzMax = round((par.zmax-par.zmin)/par.dz+1)
 par.mat = np.zeros((nzMax, par.n2mat))
 for i in range(nzMax):
     zcoor = (i+0.5)*par.dz/1.0e3 # convert m to km
@@ -87,8 +87,8 @@ par.fric_rsf_vw = 0.1
 par.fric_rsf_deltavw0 = 0.9
 
 # Creating the fault interface
-par.nfx = int((par.fxmax - par.fxmin)/par.dx + 1)
-par.nfz = int((par.fzmax - par.fzmin)/par.dz + 1)
+par.nfx = round((par.fxmax - par.fxmin)/par.dx + 1)
+par.nfz = round((par.fzmax - par.fzmin)/par.dz + 1)
 par.fx  = np.linspace(par.fxmin,par.fxmax,par.nfx) # coordinates of fault grids along strike.
 par.fz  = np.linspace(par.fzmin,par.fzmax,par.nfz) # coordinates of fault grids along dip.
 
