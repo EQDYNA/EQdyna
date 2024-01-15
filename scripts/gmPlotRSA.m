@@ -1,4 +1,4 @@
-function gmPlotRSA(dx, np, T, range, xLimit)
+function gmPlotRSA(dx, np, T, range, xLimit, RBinSize, Rmin, Rmax)
     % gmPlotRSA.m plots RSA distribution on the surface.
     % Dunyu Liu <dliu@ig.utexas.edu>, 20210715.
     % It loads rsa*.mat, where * is MPI process ID. rsa*.mat is processed by
@@ -36,26 +36,23 @@ function gmPlotRSA(dx, np, T, range, xLimit)
         end
     end
     
-    [coor_new, id] =  unique(coor, 'rows');
+    % remove redudant data points (rows)
+    [coor1, id] =  unique(coor, 'rows');
     for i = 1: nT
         tmp = res_sa(:,i);
         tmp1 = tmp(id);
-        res_sa_new(:,i) = tmp1;
+        SA(:,i) = tmp1;
     end
     
-    xx = xs0:dx:xs1; 
-    yy = ys0:dx:ys1;
-    xx = xx*1e3; 
-    yy = yy*1e3;
-    [x2,y2] = meshgrid(xx,yy);
+    [xx,yy] = meshgrid(xs0:dx:xs1,ys0:dx:ys1);
     
     h1 = figure(1);
     set(h1, 'Position', [10 10 500 800]);
     for i = 1: nT
-        F = scatteredInterpolant(coor_new(:,1),coor_new(:,2), res_sa_new(:,i),'linear');
-        sa_map = F(x2,y2);
+        F = scatteredInterpolant(coor1(:,1)/1e3,coor1(:,2)/1e3, SA(:,i),'linear');
+        saMap = F(xx,yy);
         subplot(nT,1,i)
-        contourf(x2/1e3, y2/1e3, sa_map); colorbar;
+        contourf(xx, yy, saMap, 'LineStyle','none'); colorbar;
         axis equal;
         title(strcat('SA (g) at ', num2str(T(i)),' s'));
         if i == floor(nT/2)
@@ -80,16 +77,37 @@ function gmPlotRSA(dx, np, T, range, xLimit)
     h2=figure(2);
     set(h2, 'Position', [10 10 600 200*nT]);
     for i = 1: nT
-        [stat, R] = gmGetSARrupt(coor,res_sa(:,i), xLimit);
+        [stat, R, numSA, r, saRjb] = gmGetSARrupt(coor1, SA(:,i), xLimit, RBinSize, Rmin, Rmax);
     
         subplot(nT,1,i)
         plot(Rrup,dmean(:,k(i)),'k-', 'LineWidth', 1); hold on;
         plot(Rrup,dmax(:,k(i)),'k:', 'LineWidth', 1); hold on;
         plot(Rrup,dmin(:,k(i)),'k:', 'LineWidth', 1); hold on;
-        plot(R,stat(:,1),'o-','Linewidth',2);
+        plot(R,stat(:,1),'o-'); hold on;
+        plot(R,stat(:,3),'*'); hold on;
+        plot(R,stat(:,4),'^'); hold on;
+        plot(R,stat(:,5),'^'); hold on;
+        plot(R,stat(:,6),'*'); hold on;
+        % for iR = 1: length(R)
+        %     for iS = 1: numSA(iR)
+        %         plot(R(iR), saRjb(iR,iS),'.'); hold on;
+        %     end
+        % end
         ylim([0.01 1]);
         title(strcat('SA GMRotD50 (g) at ', num2str(T(i)),' s'));
         set(gca, 'YScale', 'log', 'XScale', 'log', 'color', 'white');
+        set(gcf, 'color', 'white');
+        set(gca, 'Fontsize', 12, 'Fontweight', 'bold');
+    end
+
+    h3=figure(3);
+    set(h3, 'Position', [10 10 600 200*nT]);
+    for i = 1: nT
+        subplot(nT,1,i)
+        plot(Rrup,0.6,'k-', 'LineWidth', 1); hold on;
+        plot(R,stat(:,2),'o-','Linewidth',2);
+        ylim([0 1]);
+        title(strcat('Intra-event variability of log(SA) at ', num2str(T(i)),' s'));
         set(gcf, 'color', 'white');
         set(gca, 'Fontsize', 12, 'Fontweight', 'bold');
     end

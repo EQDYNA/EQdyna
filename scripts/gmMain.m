@@ -4,19 +4,22 @@ close all;
 % Dunyu Liu <dliu@ig.utexas.edu>, 20240109.
 addpath('D:\GitHub\EQdyna\gm_utils_steve');
 
-processRawGM = 1; % 1: yes, 2: no;
-np = 4;
+processRawGM = 0; % 1: yes, 2: no;
+np = 10;
 dx = 500; % in m
 dt = 0.5*dx/6000;
 nIntervalEQdyna = 10; % EQdyna writes out results every nIntervalEQdyna steps.
-dt = dt * nIntervalEQdyna;
-gamma = 0.05; % critical damping fraction
-T  = [0.5, 1, 3, 5]; 
-range = [-40, 40, -20, 20];
-xLimit = 20; % x coor of one fault end in km.
+dt       = dt * nIntervalEQdyna;
+gamma    = 0.05; % critical damping fraction
+T        = [0.5, 1, 3]; 
+range    = [-40, 40, -20, 20];
+xLimit   = 25; % x coor of one fault end in km.
 % to calculate Rupture distance from a station.
+RBinSize = 1;  % km
+Rmin     = 1;  % km
+Rmax     = 20; % km
 
 if processRawGM == 1
     gmGetRSA(dx, dt, gamma, np, T, range);
 end
-gmPlotRSA(dx, np, T, range, xLimit);
+gmPlotRSA(dx, np, T, range, xLimit, RBinSize, Rmin, Rmax);

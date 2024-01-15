@@ -65,6 +65,9 @@ for i in range(nzMax):
         break
 par.mat[par.nmat-1,0] = 1.e6 # Set the depth of the last layer to a large number.
 print('Layers for velocity structure is ', par.nmat)
+print('Maxmium and minimum S wave velocity is ', np.max(par.mat[:par.nmat,:],0)[2], np.min(par.mat[:par.nmat,:],0)[2])
+print('Maxmium and minimum P wave velocity is ', np.max(par.mat[:par.nmat,:],0)[1], np.min(par.mat[:par.nmat,:],0)[1])
+print('Maxmium and minimum Density is ', np.max(par.mat[:par.nmat,:],0)[3], np.min(par.mat[:par.nmat,:],0)[3])
 
 par.dt       = 0.5*par.dx/par.vp
 
