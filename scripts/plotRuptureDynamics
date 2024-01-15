@@ -15,8 +15,8 @@ SMALL_SIZE = 12
 
 def ruptureDynamics():
     nprocs = par.nx*par.ny*par.nz
-    na     = int((par.fxmax-par.fxmin)/par.dx+1)
-    ma     = int((par.fzmax-par.fzmin)/par.dz+1)
+    na     = round((par.fxmax-par.fxmin)/par.dx+1)
+    ma     = round((par.fzmax-par.fzmin)/par.dz+1)
     rupt   = np.zeros((na*ma,3))
     rupt2d = np.zeros((ma,na,100))
     fVarArr= np.zeros((ma,na,100))
