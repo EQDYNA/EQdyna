@@ -285,8 +285,8 @@ subroutine read_fault_rough_geometry
         read(1008,*) nnxTmp, nnzTmp
         read(1008,*) dxtmp, rough_fx_min, rough_fz_min 
     close(1008)
-    nnx = int(nnxTmp)
-    nnz = int(nnzTmp)
+    nnx = nint(nnxTmp)
+    nnz = nint(nnzTmp)
     rough_fx_max = (nnx - 1)*dxtmp + rough_fx_min
     
     allocate(rough_geo(3,nnx*nnz))

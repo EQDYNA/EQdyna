@@ -27,8 +27,8 @@ subroutine netcdf_read_on_fault_eqdyna
     real (kind = dp), allocatable, dimension(:,:,:) :: on_fault_vars
     real (kind = dp)   :: xcord, zcord
     
-    fnx  = (fxmax(1) - fxmin(1))/dx+1
-    fnz  = (fzmax(1) - fzmin(1))/dz+1
+    fnx  = nint((fxmax(1) - fxmin(1))/dx)+1
+    fnz  = nint((fzmax(1) - fzmin(1))/dz)+1
     
     infile = "on_fault_vars_input.nc"
     
@@ -72,8 +72,8 @@ subroutine netcdf_read_on_fault_eqdyna
         do i = 1, nftnd(ift)
             xcord          = x(1, nsmp(1,i,ift))
             zcord          = x(3, nsmp(1,i,ift))
-            ii             = (xcord - fxmin(ift))/dx + 1
-            jj             = (zcord - fzmin(ift))/dz + 1
+            ii             = nint((xcord - fxmin(ift))/dx) + 1
+            jj             = nint((zcord - fzmin(ift))/dz) + 1
             fric(1,  i, 1) = on_fault_vars(ii,jj,1) ! sw_fs
             fric(2,  i, 1) = on_fault_vars(ii,jj,2) ! sw_fd
             fric(3,  i, 1) = on_fault_vars(ii,jj,3) ! sw_D0
@@ -125,8 +125,8 @@ subroutine netcdf_read_on_fault_eqdyna_restart
     
     infile = "fault.r.nc"
     
-    fnx  = (fxmax(1) - fxmin(1))/dx+1
-    fnz  = (fzmax(1) - fzmin(1))/dz+1
+    fnx  = nint((fxmax(1) - fxmin(1))/dx)+1
+    fnz  = nint((fzmax(1) - fzmin(1))/dz)+1
     
     ! Read in initial conditions from restart files fault.r.nc spun off by EQquasi. 
     nvar = 12
@@ -162,8 +162,8 @@ subroutine netcdf_read_on_fault_eqdyna_restart
         do i = 1, nftnd(ift)
             xcord            = x(1, nsmp(1,i,ift))
             zcord            = x(3, nsmp(1,i,ift))
-            ii               = (xcord - fxmin(ift))/dx + 1
-            jj               = (zcord - fzmin(ift))/dz + 1
+            ii               = nint((xcord - fxmin(ift))/dx) + 1
+            jj               = nint((zcord - fzmin(ift))/dz) + 1
             fric(8,  i, ift) = on_fault_vars(ii,jj, 1) ! tstk0
             fric(49, i, ift) = on_fault_vars(ii,jj, 2) ! tdip0
             fric(7,  i, ift) = on_fault_vars(ii,jj, 3) ! tnorm0

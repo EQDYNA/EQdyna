@@ -1124,16 +1124,16 @@ subroutine insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
     fz1 = rough_fz_min
     ! Index (ixx, izz) are counted from the fault corner (rough_fx_min, rough_fz_min)
     if ((nodeCoor(1) < fx2 + tol) .and. (nodeCoor(1) > fx1 - tol) .and. (nodeCoor(3) > fz1 - tol)) then 
-        ixx = (nodeCoor(1) - fx1)/dx + 1
-        izz = (nodeCoor(3) - fz1)/dz + 1
+        ixx = nint((nodeCoor(1) - fx1)/dx) + 1
+        izz = nint((nodeCoor(3) - fz1)/dz) + 1
     elseif ((nodeCoor(1) < fx1 - tol) .and. (nodeCoor(3) > fz1 - tol) ) then
         ixx = 1
-        izz = (nodeCoor(3) - fz1)/dz + 1
+        izz = nint((nodeCoor(3) - fz1)/dz) + 1
     elseif ((nodeCoor(1) > fx2 + tol) .and. (nodeCoor(3) > fz1 - tol)) then 
         ixx = nnx
-        izz = (nodeCoor(3) - fz1)/dz + 1
+        izz = nint((nodeCoor(3) - fz1)/dz) + 1
     elseif ((nodeCoor(1) < fx2 + tol) .and. (nodeCoor(1) > fx1 - tol) .and. (nodeCoor(3) < fz1 - tol)) then 
-        ixx = (nodeCoor(1) - fx1)/dx + 1
+        ixx = nint((nodeCoor(1) - fx1)/dx) + 1
         izz = 1
     elseif ((nodeCoor(1) < fx1 - tol) .and. (nodeCoor(3) < fz1 - tol)) then 
         ixx = 1
