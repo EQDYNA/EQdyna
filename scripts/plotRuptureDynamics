@@ -99,7 +99,7 @@ def ruptureDynamics():
     ax21 = fig.add_subplot(323)
     plt.contourf(xx,zz,rupt2d[:,:,3])
     plt.colorbar()
-    plt.title('Final slip magnitude (m/s)')
+    plt.title('Final slip rate (m/s)')
 
     ax22 = fig.add_subplot(324)
     plt.contourf(xx,zz,rupt2d[:,:,4])

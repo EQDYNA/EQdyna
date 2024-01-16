@@ -349,6 +349,7 @@ subroutine showSourceDynamics(iFault,iFaultNodePair)
     if (abs(x(1,nsmp(1,iFaultNodePair,iFault))-xsource)<tol .and. &
         abs(x(3,nsmp(1,iFaultNodePair,iFault))-zsource)<tol) then
         write(*,*) 'Hypocenter dynamics'
+        write(*,'(X,A,3E15.7)') 'X, Y, Z     (m)    ', x(1,nsmp(1,iFaultNodePair,iFault)), x(2,nsmp(1,iFaultNodePair,iFault)), x(3,nsmp(1,iFaultNodePair,iFault))
         write(*,'(X,A,E15.7)') 'Time         (s)   ', time
         write(*,'(X,A,3E15.7)') 'n,s,d tract  (MPa) ', fric(78,iFaultNodePair,iFault)/1.d6, fric(79,iFaultNodePair,iFault)/1.d6, fric(80,iFaultNodePair,iFault)/1.d6
         write(*,'(X,A,E15.7)') 'state_normal (MPa) ', fric(23,iFaultNodePair,iFault)/1.d6
