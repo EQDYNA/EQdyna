@@ -1,4 +1,4 @@
-function gmGetRSA(dx, dt, gamma, np, T, range)
+function gmGetRSA(dx, dt, gamma, np, T, range, stCoorList)
     % gmGetRSA.m converts binary ground motion output gm* from EQdyna to MATLAB
     % .mat format. Dunyu Liu <dliu@ig.utexas.edu>, 20210715.
     % It calls ResSpecRotD50.m and ResSpecTimeDomVectorized_3.m written by Dr. Steven Day.
@@ -10,7 +10,9 @@ function gmGetRSA(dx, dt, gamma, np, T, range)
     y0 = range(3); %-40; % km
     y1 = range(4); %41; % km
     dx = dx/1000; % km
-    
+    nst = size(stCoorList,1)
+    tol = dx/2;
+
     for me = 0: np-1
         ntag  = 0;
         fname = strcat('surface_coor.txt',num2str(me));
@@ -47,6 +49,17 @@ function gmGetRSA(dx, dt, gamma, np, T, range)
                         end
                         acc_x = vel_to_acc(timeseries_x(i,:)',dt);
                         acc_y = vel_to_acc(timeseries_y(i,:)',dt);
+                        
+                        for ist = 1: nst
+                            if abs(xcoor(i)/1e3-stCoorList(ist,1))<tol && abs(ycoor(i)/1e3-stCoorList(ist,2))<tol
+                                 stName = strcat('st.x',num2str(xcoor(i)/1e3),'.y',num2str(ycoor(i)/1e3),'.accx.txt');
+                                 f0 = fopen(stName,'w');
+                                 fprintf(f0, '%3d \n', acc_x);
+                                 stName = strcat('st.x',num2str(xcoor(i)/1e3),'.y',num2str(ycoor(i)/1e3),'.accy.txt');
+                                 f0 = fopen(stName,'w');
+                                 fprintf(f0, '%3d \n', acc_y);
+                            end
+                        end
                         
                         sa_rotd50 = ResSpecRotD50(acc_x', acc_y', dt ,T ,gamma, NintMax);
                         res_sa(ntag,:) = sa_rotd50; 
