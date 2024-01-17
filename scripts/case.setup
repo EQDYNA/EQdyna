@@ -179,7 +179,7 @@ def netcdf_write_on_fault_vars():
   var23[:,:] = par.on_fault_vars[:,:,49] # init_dip_shear
   ds.close()
   
-def create_batch_script():
+def create_LS6batch_script():
     # Function to create batch script used by HPC system.
     with open("batch.hpc", "w") as f:
         f.write("#! /bin/bash" + "\n")
@@ -194,7 +194,8 @@ def create_batch_script():
         f.write("#SBATCH --mail-type=begin" + "\n")
         f.write("#SBATCH --mail-type=end" + "\n")
         # Executable part.
-        f.write("  ibrun eqdyna" + "\n")
+        f.write("  ibrun -np 1 python clean.py" + "\n")
+        f.write("  ibrun -np " + str(par.nx*par.ny*par.nz) + " eqdyna" + "\n")
         f.write("  ibrun -np 1 python plotRuptureDynamics" + "\n") # produce figure of rupture dynamics
         #f.write("for i in $(seq " + str(istart) + " " + str(iend) + ");" + "\n")
         #f.write("do" + "\n")
@@ -205,6 +206,15 @@ def create_batch_script():
         #f.write("  cp \"./Q$((i-1))/\"*.r.nc ./" + "\n")
         #f.write("done" + "\n")
         # End excutable part.
+
+def create_run_sh():
+    # Function to create batch script used by HPC system.
+    with open("run.sh", "w") as f:
+        f.write("#! /bin/bash" + "\n")
+        # Executable part.
+        f.write("  python3 clean.py" + "\n")
+        f.write("  mpirun -np " + str(par.nx*par.ny*par.nz) + " eqdyna" + "\n")
+        f.write("  python3 plotRuptureDynamics" + "\n") # produce figure of rupture dynamics      
         
 def create_batch_script_cycle_old():
     # Function to create batch script used by HPC system.
@@ -303,7 +313,8 @@ def estimate_HPC_resource():
 
 def _main_func(description):
     create_model_input_file()
-    create_batch_script()
+    create_LS6batch_script()
+    create_run_sh()
     create_batch_script_cycle()
     create_station_input_file()
     estimate_HPC_resource()
