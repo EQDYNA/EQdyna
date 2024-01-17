@@ -4,7 +4,7 @@ close all;
 % Dunyu Liu <dliu@ig.utexas.edu>, 20240109.
 addpath('D:\GitHub\EQdyna\gm_utils_steve');
 
-processRawGM = 0; % 1: yes, 2: no;
+processRawGM = 1; % 1: yes, 2: no;
 np = 10;
 dx = 500; % in m
 dt = 0.5*dx/6000;
@@ -19,7 +19,11 @@ RBinSize = 1;  % km
 Rmin     = 1;  % km
 Rmax     = 20; % km
 
+% selected stations to save acc seismograms; 
+stCoorList = [0,15; 0,10; 0,5; 0,1; 0,0.1;
+    5,15; 5,10; 5,5; 5,1; 5,0.1]; 
+
 if processRawGM == 1
-    gmGetRSA(dx, dt, gamma, np, T, range);
+    gmGetRSA(dx, dt, gamma, np, T, range, stCoorList);
 end
 gmPlotRSA(dx, np, T, range, xLimit, RBinSize, Rmin, Rmax);

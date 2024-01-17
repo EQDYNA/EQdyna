@@ -1,6 +1,6 @@
 import os
 
-np = 10
+np = 10000
 fnameList = [['gm',''], ['rsa','.mat'], ['frt.txt',''], 
         ['surface_coor.txt',''], ['pstr.txt','']]
 
