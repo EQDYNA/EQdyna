@@ -2,7 +2,7 @@ import os
 
 np = 10
 fnameList = [['gm',''], ['rsa','.mat'], ['frt.txt',''], 
-        ['surface_coor.txt','']]
+        ['surface_coor.txt',''], ['pstr.txt','']]
 
 for f in fnameList:
     for i in range(np):
@@ -10,3 +10,6 @@ for f in fnameList:
         if os.path.exists(fname):
             print('Removing ', fname, ' ...')
             os.remove(fname) 
+
+os.system("rm -rf body*st*dp*.txt")
+os.system("rm -rf faultst*dp*.txt")
