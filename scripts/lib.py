@@ -38,7 +38,7 @@ def B2(y,ww,w):
     print('z coordinates should be positive for B3')
     sys.exit()
   if y<w:
-    res = 0.5*(1.+tanh(w/(w-y) - w/y))
+    res = 0.5*(1.+tanh(w/(w-y) - w/(y+1e-30)))
   elif y>=w and y<=ww:
     res = 1.0
   elif y>ww and y<ww+w: 
