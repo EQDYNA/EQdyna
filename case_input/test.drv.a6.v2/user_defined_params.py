@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-from defaultParameters import parameters
+from defaultParameters import *
 from math import *
 from lib import *
 import numpy as np
@@ -9,13 +9,15 @@ import numpy as np
 
 par = parameters()
 
+par.dip = 90.
+
 par.xmin, par.xmax = -40.0e3, 40.0e3
 par.ymin, par.ymax = -31.0e3, 30.0e3
 par.zmin, par.zmax = -40.0e3, 0.0e3
 
 par.fxmin, par.fxmax = -25.0e3, 25.0e3
 par.fymin, par.fymax = 0.0, 0.0
-par.fzmin, par.fzmax = -25.0e3, 0.0e3
+par.fzmin, par.fzmax = -15.0e3, 0.0e3
 
 par.xsource, par.ysource, par.zsource = -12.0e3, 0.0, -8.0e3
 
@@ -74,7 +76,21 @@ par.dt       = 0.5*par.dx/par.vp
 par.nucR     = 3.0e3
 par.nucdtau0 = 35.0e6
 
+par.dz, par.fzmin, par.ysource, par.zsource, par.dt = mod4dip(par.dip,
+    par.dx, par.fzmin, par.zsource, par.vp)
+print(' ')
+print('DIP: dz is    ',par.dz)
+print('DIP: fzmin is ', par.fzmin)
+print('DIP: ysource, zsource are' , par.ysource, par.zsource)
+print('DIP: dt is    ', par.dt)
+
 par.nx, par.ny, par.nz = 2, 2, 1
+par.HPC_ncpu  = par.nx*par.ny*par.nz # Number of CPUs requested.
+par.HPC_nnode = round(floor(par.HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
+par.HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
+par.HPC_time  = "00:10:00" # WALLTIME, in hh:mm:ss format.
+par.HPC_account = "EAR22013" # Project account to be charged SUs against.
+par.HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
 
 par.fric_rsf_a = 0.01
 par.fric_rsf_deltaa = 0.01

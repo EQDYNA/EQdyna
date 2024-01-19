@@ -1,46 +1,67 @@
 #! /usr/bin/env python3
 
-from defaultParameters import parameters
+from defaultParameters import *
 from math import *
 from lib import *
 import numpy as np
 
 par = parameters()
-par.dip = 60 # positive dipping angle tiles the fault to y+
 
+par.dip = 60 # positive dipping angle tiles the fault to y+
+# NOTE: for dipping faults, par.fzmin, par.ysource, par.zsource, par.dz, par.dt
+# will be modified by mod4dip below. 
+ 
 par.xmin, par.xmax = -30.0e3, 30.0e3
 par.ymin, par.ymax = -20.0e3, 40.0e3
 par.zmin, par.zmax = -35.0e3, 0.0e3
 
 par.fxmin, par.fxmax = -15.0e3, 15.0e3
 #par.fymin, par.fymax = 0.0, -9999999999.
-par.fzmin, par.fzmax = -15.0e3*sin(abs(par.dip)/180.*pi), 0.0e3
+par.fzmin, par.fzmax = -15.0e3, 0.0e3
 
 par.xsource = 0.0
-par.ysource = 12.0e3*cos(abs(par.dip)/180.*pi)
-par.zsource = -12.0e3*sin(abs(par.dip)/180.*pi)
+#par.ysource = 0.0
+par.zsource = -12.0e3 # down dip distance for dipping fault; negative downwards.
 
 par.dx   = 500.
 par.dy = par.dx
-par.dz = par.dx*sin(abs(par.dip)/180.*pi)
+par.dz = par.dx # will be modified for dipping fault by mod4dip 
 
 par.nmat = 1
 par.vp, par.vs, par.rou = 5716, 3300, 2700
+if par.nmat > 1:
+    print('Layers for velocity structure is ', par.nmat)
+    print('Maxmium and minimum S wave velocity is ', np.max(par.mat[:par.nmat,:],0)[2], np.min(par.mat[:par.nmat,:],0)[2])
+    print('Maxmium and minimum P wave velocity is ', np.max(par.mat[:par.nmat,:],0)[1], np.min(par.mat[:par.nmat,:],0)[1])
+    print('Maxmium and minimum Density is ', np.max(par.mat[:par.nmat,:],0)[3], np.min(par.mat[:par.nmat,:],0)[3])
 
 par.term = 5.
 
 par.C_elastic = 1
 par.insertFaultType = 1 # insert planar dipping fault
-par.dt   = 0.5*par.dz/par.vp
+#par.dt   = 0.5*par.dz/par.vp
 par.friclaw = 1
 par.tpv  = 10
-
 par.C_nuclea = 0 # no artifical nulceation; instead, higher initial shear in a patch
 par.nucR = 1.5e3
+
+par.dz, par.fzmin, par.ysource, par.zsource, par.dt = mod4dip(par.dip,
+    par.dx, par.fzmin, par.zsource, par.vp)
+print(' ')
+print('DIP: dz is    ',par.dz)
+print('DIP: fzmin is ', par.fzmin)
+print('DIP: ysource, zsource are' , par.ysource, par.zsource)
+print('DIP: dt is    ', par.dt)
 
 par.nx = 2
 par.ny = 2
 par.nz = 1
+par.HPC_ncpu  = par.nx*par.ny*par.nz # Number of CPUs requested.
+par.HPC_nnode = round(floor(par.HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
+par.HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
+par.HPC_time  = "00:10:00" # WALLTIME, in hh:mm:ss format.
+par.HPC_account = "EAR22013" # Project account to be charged SUs against.
+par.HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
 
 # Creating the fault interface
 par.nfx = round((par.fxmax - par.fxmin)/par.dx + 1)

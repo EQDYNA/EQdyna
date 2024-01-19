@@ -18,8 +18,10 @@ class parameters:
     
     strike = 270.
     dip    = 90. 
-    # positve dip angle to tilt the fault to y-
-    # negavtive dip angle to tile the fault to y+
+    print(' ')
+    print('PARAMETERS: positve dip angle to tilt the fault to y+')
+    print('PARAMETERS: negavtive dip to tilt the fault to y-')
+    print('PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults') 
     
     # fault geometry (in meters)
     fxmin, fxmax = -22.0e3, 22.0e3
@@ -57,7 +59,6 @@ class parameters:
         mat[3,:] = [10.94e3, 6.18e3, 3.62e3, 2.8e3] # 4th
         mat[4,:] = [-zmin,   6.32e3, 3.67e3, 2.8e3] # rest
         vp = mat[nmat,1]
-        #print(mat)
 
     init_norm = -25.0e6 # initial normal stress in Pa. Negative compressive.
 
@@ -227,7 +228,7 @@ class parameters:
     HPC_time  = "00:10:00" # WALLTIME, in hh:mm:ss format.
     HPC_account = "EAR22013" # Project account to be charged SUs against.
     HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
-
+    
     ##############################################
     ##### Single station time series output ######
     ##############################################
@@ -244,4 +245,15 @@ class parameters:
     n_off_fault = len(st_coor_off_fault)
 
 
-
+def mod4dip(dip, dx, fzmin, srcDowndip, vp):
+    sinDip = sin(dip/180.*pi)
+    cosDip = cos(dip/180.*pi)
+    fzmin  = fzmin*sinDip
+    ysource= -srcDowndip*cosDip
+    zsource= srcDowndip*sinDip
+    dz     = dx*sinDip
+    dt     = 0.5*dz/vp
+    
+    return dz, fzmin, ysource, zsource, dt
+    
+    
