@@ -44,11 +44,15 @@ subroutine readglobal
         read(1001,*) dt 
         read(1001,*)
         read(1001,*) nmat, n2mat
+        read(1001,*) roumax, rhow, gamar
+        read(1001,*) rdampk, vmaxPML
         read(1001,*) 
         read(1001,*) xsource, ysource, zsource
         read(1001,*) nucR, nucRuptVel, nucdtau0
         read(1001,*) str1ToFaultAngle, devStrToStrVertRatio
+        read(1001,*) bulk, coheplas
         read(1001,*) fstrike, fdip
+
     close(1001)
     str1ToFaultAngle = str1ToFaultAngle*pi/180.0d0 !convert degrees to radian
     
@@ -169,11 +173,11 @@ subroutine readmaterial
         enddo 
     close(1004)
 
-    ccosphi=coheplas*dcos(atan(bulk))
-    sinphi=dsin(atan(bulk))
-    nstep=idnint(term/dt)
-    rdampk=rdampk*dt    
-    tv = 2.0d0*dx/3464.0d0
+    ccosphi = coheplas*dcos(atan(bulk))
+    sinphi  = dsin(atan(bulk))
+    nstep   = idnint(term/dt)
+    rdampk  = rdampk*dt    
+    tv      = 2.0d0*dz/3464.0d0
 end subroutine readmaterial
 
 ! #6 readstations --------------------------------------------------------

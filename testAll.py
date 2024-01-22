@@ -6,7 +6,7 @@ from testNameList import nameList, coreNumList
 #
 #testList = ['tpv8', 'tpv104','tpv1053d','tpv1053d.6c','meng2023a','meng2023cb']
 #cpuNumList  = [4, 4, 4, 6, 4, 4]
-MPIRUN='mpirun.mpich'
+MPIRUN='mpirun'
 
 os.system('rm -rf test')
 os.system('rm -rf bin/eqdyna')
@@ -21,7 +21,7 @@ def runTest(testDir, compSet, coreNum):
     os.system(cmd)
     os.chdir(testDir)
     os.system('./case.setup')
-    os.system('mpirun.mpich -np '+str(coreNum)+' eqdyna')
+    os.system('mpirun -np '+str(coreNum)+' eqdyna')
     os.system('python3 plotRuptureDynamics')
     os.chdir('..')
     

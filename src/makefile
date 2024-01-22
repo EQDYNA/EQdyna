@@ -11,8 +11,8 @@
 SYSTEM = ${MACHINE}
 
 ifeq ($(SYSTEM), ubuntu)
-    FFLAGS     = -fopenmp -ffree-line-length-none
-    FC         = mpif90.mpich
+    FFLAGS     = -fopenmp -ffree-line-length-none -O2
+    FC         = mpif90
     LIB        = /usr/lib/x86_64-linux-gnu
     INC        = /usr/include
     NETCDF_LIB = -L${LIB} -lnetcdf -L{LIB} -lnetcdff
