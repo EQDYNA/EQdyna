@@ -37,16 +37,16 @@ def generateFractalSurface(lx, hurst_exponent, seed=None):
             if ksq==0:
                 transf[i-1,j-1] = 0.0
                 pspec = 0.0
-            #elif ksq == 1:
-            #    if jk == 0:
-            #        transf[i-1,j-1] = -2.0
-            #        pspec = 1.0/fsq**pony
-            #    else:
-            #        transf[i-1,j-1] = 0.0
-            #        pspec = 1.0/fsq**pony
-            #elif ksq == 2:
-            #    transf[i-1,j-1] = 0.0
-            #    pspec = 1.0/fsq**pony
+            elif ksq == 1:
+                if jk == 0:
+                    transf[i-1,j-1] = 0.0
+                    pspec = 1.0/fsq**pony
+                else:
+                    transf[i-1,j-1] = 0.0
+                    pspec = 1.0/fsq**pony
+            elif ksq == 2:
+                transf[i-1,j-1] = 0.0
+                pspec = 1.0/fsq**pony
             else:
                 pspec = 1.0/fsq**pony
                        

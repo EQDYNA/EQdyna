@@ -29,10 +29,13 @@ def create_model_input_file():
         f.write(str(par.dt)   + "\n")
         f.write(" "       + "\n")
         f.write(str(par.nmat)  + " " + str(par.n2mat) + "\n")
+        f.write(str(par.roumax)+" "+str(par.rhow)+" "+str(par.gamar)+"\n")
+        f.write(str(par.rdampk)+" "+str(par.vmaxPML)+"\n")
         f.write(" "     + "\n")
         f.write(str(par.xsource) + " " + str(par.ysource) + " " + str(par.zsource) + "\n")
         f.write(str(par.nucR) + " " + str(par.nucRuptVel) + " " + str(par.nucdtau0) + "\n")
         f.write(str(par.str1ToFaultAngle) + " " + str(par.devStrToStrVertRatio) + "\n")
+        f.write(str(par.bulk)+" "+str(par.coheplas)+"\n")
         f.write(str(par.strike) + " " + str(par.dip) + "\n")
         
     with open('bModelGeometry.txt', "w") as f:

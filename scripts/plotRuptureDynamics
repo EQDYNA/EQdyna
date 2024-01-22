@@ -63,6 +63,9 @@ def ruptureDynamics():
             rupt2d[jj,ii,4]  = a[i,12]/1.e6 # final shear stress
             rupt2d[jj,ii,5]  = a[i,11]/1.e6 # final normal stress
             rupt2d[jj,ii,6]  = a[i,13]/1.e6 # final dip shear
+            rupt2d[jj,ii,7]  = a[i,4] # final slip s
+            rupt2d[jj,ii,8]  = a[i,5] # final slip d
+
             # 
             # fVarArr will be passed to the function generateNcRestart(faultVarArr):
             fVarArr[jj,ii,0]  = a[i,12] # shear_strike, Pa
@@ -82,36 +85,46 @@ def ruptureDynamics():
     
     levels = np.linspace(0,30,60) 
     #dt     = 30/60
-    fig = plt.figure(figsize=(16,12), dpi= 300, facecolor='w', edgecolor='k')
+    fig = plt.figure(figsize=(24,12), dpi= 300, facecolor='w', edgecolor='k')
 
     plt.rc('font', size=SMALL_SIZE)
-    ax11 = fig.add_subplot(321)
+    ax11 = fig.add_subplot(331)
     plt.contourf(xx,zz,rupt2d[:,:,1])
     plt.colorbar()
     plt.contour(xx,zz,rupt2d[:,:,0], levels)
     plt.title('Slip (m) & Rupture time (per 0.05 s)')
 
-    ax12 = fig.add_subplot(322)
+    ax11 = fig.add_subplot(332)
+    plt.contourf(xx,zz,rupt2d[:,:,7])
+    plt.colorbar()
+    plt.title('Slip s (m) ')
+    
+    ax11 = fig.add_subplot(333)
+    plt.contourf(xx,zz,rupt2d[:,:,8])
+    plt.colorbar()
+    plt.title('Slip d (m) ')
+    
+    ax12 = fig.add_subplot(334)
     plt.contourf(xx,zz,rupt2d[:,:,2])
     plt.colorbar()
     plt.title('Peak slip rate (m/s); Mag = '+str(magnitude))
 
-    ax21 = fig.add_subplot(323)
+    ax21 = fig.add_subplot(335)
     plt.contourf(xx,zz,rupt2d[:,:,3])
     plt.colorbar()
     plt.title('Final slip rate (m/s)')
 
-    ax22 = fig.add_subplot(324)
+    ax22 = fig.add_subplot(336)
     plt.contourf(xx,zz,rupt2d[:,:,4])
     plt.colorbar()
     plt.title('Shear stress (MPa)')
    
-    ax22 = fig.add_subplot(325)
+    ax22 = fig.add_subplot(337)
     plt.contourf(xx,zz,rupt2d[:,:,6])
     plt.colorbar()
     plt.title('Dip shear stress (MPa)')
 
-    ax22 = fig.add_subplot(326)
+    ax22 = fig.add_subplot(338)
     plt.contourf(xx,zz,rupt2d[:,:,5])
     plt.colorbar()
     plt.title('Normal stress (MPa)')

@@ -11,7 +11,7 @@ MODULE globalvar
     real (kind = dp) :: timeused(9) = 0.0d0,&
         time1,      time2,      time=0.0d0, &
         btime=0.0d0,            timebegin,  timeover,   pi=4*atan(1.0_dp), &
-        rdampm=0.0d0,           rdampk=0.1d0,           grav = 9.8d0, &
+        rdampm=0.0d0,           rdampk,                 grav = 9.8d0, &
         w,          term,       dt,         totmemcost, memcost=0.0d0,&
         rat,        dx,         dy,         dz,         xsource,    &
         ysource,    zsource,    xmin,       xmax,       ymin,       &
@@ -22,15 +22,15 @@ MODULE globalvar
         ! Other options for pairs of (nPML/R) are:
         !   nPML/R=6/0.01;10/0.001;20/0.0001.Collino& Tsogka(2001)
         R = 0.01d0, &
-        PMLb(8),    vmaxPML=6000.0d0, &
+        PMLb(8),    vmaxPML, &
         ! kapa_hg: Coefficient for viscous HG.
         ! Typical valus varies from 0.05~0.15. Goudreau& Hallquist(1982).
         kapa_hg = 0.1d0,    &
         tol     = 1.0d-5,   &
-        rhow=1000.d0,           b11=0.926793,           b33=1.073206, &
+        rhow,           b11=0.926793,           b33=1.073206, &
         b13=-0.169029,          critt0=0.2d0,           srcrad0=2500.d0,&
         vrupt0=1500.d0,         critd0,     cohes,      brangle, &
-        bulk=0.75d0,            coheplas=5.0d6,         tv,     &
+        bulk,                   coheplas,               tv,     &
         ccosphi,    sinphi,     mus,        mud,        fstrike,        &
         fdip,       dxtp,       tpw, &
         fric_sw_fs, fric_sw_fd, fric_sw_D0, fric_rsf_a, fric_rsf_deltaa0,&
@@ -41,7 +41,7 @@ MODULE globalvar
         fric_tp_h,  fric_tp_a_hy,           fric_tp_deltaa_hy0,         &
         fric_ww, fric_w,        fric_ini_sliprate,      fric_tp_pini,   &
         fric_tp_Tini,           dxtmp,      perturb = 0.7d0,            &
-        gamar = 0.66d0,         roumax = 2.8d3,         rough_fx_min,   &
+        gamar,                  roumax,         rough_fx_min,   &
         rough_fx_max,           rough_fz_min,  &
         str1ToFaultAngle,       devStrToStrVertRatio
         

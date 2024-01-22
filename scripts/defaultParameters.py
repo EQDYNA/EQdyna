@@ -41,37 +41,45 @@ class parameters:
     #################################
     #####  Material property   ######
     #################################
+    rhow = 1.e3 # fluid density
     nmat = 1 # 1: isotropic; >1: layered. 
     # nmat: number of layers
-
     if nmat == 1: 
         # only Vp, Vs, rou, 3 (n2mat) are needed.
-        n2mat = 3 
+        n2mat    = 3 
         # Vp, Vs, Rou
         vp, vs, rou = 6.0e3, 3.464e3, 2.67e3
+        roumax   = rou
+        vmaxPML  = vp
     elif nmat > 1: 
-        n2mat = 4
-        mat = np.zeros((nmat, n2mat))
+        n2mat    = 4
+        mat      = np.zeros((nmat, n2mat))
         # example here 1D velocity structure for the Cushing earthquake.
         mat[0,:] = [1.19e3,  2.74e3, 1.45e3, 2.1e3] # top layer
         mat[1,:] = [2.01e3,  5.75e3, 3.06e3, 2.4e3] # 2nd layer going downwards into the earth.
         mat[2,:] = [4.94e3,  5.72e3, 3.4e3,  2.6e3] # 3rd
         mat[3,:] = [10.94e3, 6.18e3, 3.62e3, 2.8e3] # 4th
         mat[4,:] = [-zmin,   6.32e3, 3.67e3, 2.8e3] # rest
-        vp = mat[nmat,1]
-
+        vp       = mat[nmat,1]
+        roumax   = mat[nmat,3]
+        vmaxPML  = vp
+        
     init_norm = -25.0e6 # initial normal stress in Pa. Negative compressive.
 
     # total simulation time and dt
     term        = 5.
     dt          = 0.5*dx/vp
-
+    rdampk      = 0.1 # Rayleigh damping coefficient; usually no need to change.
+    
     # Controlling switches for EQquasi system
     C_elastic   = 1 # elastic(1).
-    # if C_elastic == 0:
+    # parameters for viscoplastic rheology with C_elastic == 0:
     str1ToFaultAngle = 45.
     devStrToStrVertRatio  = 0.33
-        
+    gamar       = 0.66 # overpressurization coefficient
+    bulk        = 0.75 # bulk friction
+    coheplas    = 5.e6 # Pa
+    
     C_nuclea    = 1 # artificial nucleation (1), no (0). 
     C_degen     = 0 # degenerate hexahedrals (1), no (0).
     friclaw     = 5 # sw(1), tw(2), rsf_aging(3), rsf_slip_srw(4), rsf_slip_srw_tp(5).
