@@ -112,7 +112,8 @@ class parameters:
     nucR       = 1.5e3   # nucleation patch radius, m
     nucRuptVel = -9999.   # nucleation rupture velocity, m/s; useful for sw and tw.
     nucdtau0   = 50.0e6  # peak shear stress increase for TPV104 and 105, Pa; useful for rsf
-
+    nucT       = 1.  # Time (s) to nucleate to nucdtau0
+    slipRateThres = 0.001 # slip rate threshold (m/s) to record rupture time. 
     #################################
     ##### Frictional variables ######
     #################################

@@ -48,10 +48,11 @@ subroutine readglobal
         read(1001,*) rdampk, vmaxPML
         read(1001,*) 
         read(1001,*) xsource, ysource, zsource
-        read(1001,*) nucR, nucRuptVel, nucdtau0
+        read(1001,*) nucR, nucRuptVel, nucdtau0, nucT
         read(1001,*) str1ToFaultAngle, devStrToStrVertRatio
         read(1001,*) bulk, coheplas
         read(1001,*) fstrike, fdip
+        read(1001,*) slipRateThres
 
     close(1001)
     str1ToFaultAngle = str1ToFaultAngle*pi/180.0d0 !convert degrees to radian

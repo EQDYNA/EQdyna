@@ -32,7 +32,7 @@ MODULE globalvar
         vrupt0=1500.d0,         critd0,     cohes,      brangle, &
         bulk,                   coheplas,               tv,     &
         ccosphi,    sinphi,     mus,        mud,        fstrike,        &
-        fdip,       dxtp,       tpw, &
+        fdip,       dxtp,       tpw,        slipRateThres, nucT, &
         fric_sw_fs, fric_sw_fd, fric_sw_D0, fric_rsf_a, fric_rsf_deltaa0,&
         fric_rsf_b, fric_rsf_Dc,            fric_rsf_r0,                &
         fric_rsf_v0,            fric_rsf_vinix,         fric_rsf_viniz, &

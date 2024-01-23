@@ -231,10 +231,11 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     nsdSliprateVector(4) = sqrt(nsdSliprateVector(2)**2+nsdSliprateVector(3)**2)
         
     if(fnft(iFaultNodePair,iFault)>600.0d0) then    !fnft should be initialized by >10000
-        if(nsdSliprateVector(4) >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
+        if (nsdSliprateVector(4) >= slipRateThres) then
+        !if(nsdSliprateVector(4) >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
             fnft(iFaultNodePair,iFault) = time    !rupture time for the node
-        elseif (nsdSliprateVector(4)>=0.05d0 .and. mode==2) then
-            fnft(iFaultNodePair,iFault) = time
+        !elseif (nsdSliprateVector(4)>=0.05d0 .and. mode==2) then
+        !    fnft(iFaultNodePair,iFault) = time
         endif
     endif
     
@@ -375,14 +376,14 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
                   (x(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
                   (x(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
     
-    T    = 1.0d0
+    !T    = 1.0d0
     F    = 0.0d0
     G    = 1.0d0
     if (radius < nucR) then 
         F = dexp(radius**2/(radius**2-nucR**2))
     endif 
-    if (time<=T)  then 
-        G = dexp((time-T)**2/(time*(time-2.0d0*T)))
+    if (time<=nucT)  then 
+        G = dexp((time-nucT)**2/(time*(time-2.0d0*nucT)))
     endif
     
     if (TPV == 105 .or. TPV == 104) then
