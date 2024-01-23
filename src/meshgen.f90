@@ -327,12 +327,12 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif
  
         if (bndl/=0) then
-            call mpi_sendrecv(fltnum(1), 1, MPI_INTEGER, me-npy*npz, 1000+me, &
-                itmp1, 1, MPI_INTEGER, me-npy*npz, 1000+me-npy*npz, &
-                MPI_COMM_WORLD, istatus, ierr)
+            !call mpi_sendrecv(fltnum(1), 1, MPI_INTEGER, me-npy*npz, 1000+me, &
+            !    itmp1, 1, MPI_INTEGER, me-npy*npz, 1000+me-npy*npz, &
+            !    MPI_COMM_WORLD, istatus, ierr)
             !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-            if(fltnum(1)>0 .and. itmp1>0 ) then  
-                if(fltnum(1) /= itmp1) stop 'error in fltnum(1)'
+            if(fltnum(1)>0 ) then  
+                !if(fltnum(1) /= itmp1) stop 'error in fltnum(1)'
                 fltMPI(1)=.true.
                 allocate(btmp(fltnum(1)),btmp1(fltnum(1)))
                 btmp = 0.
@@ -351,12 +351,12 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif !if bhdl/=0
 
         if (bndr/=0) then
-            call mpi_sendrecv(fltnum(2), 1, MPI_INTEGER, me+npy*npz, 1000+me, &
-                itmp1, 1, MPI_INTEGER, me+npy*npz, 1000+me+npy*npz, &
-                MPI_COMM_WORLD, istatus, ierr)
+            !call mpi_sendrecv(fltnum(2), 1, MPI_INTEGER, me+npy*npz, 1000+me, &
+            !    itmp1, 1, MPI_INTEGER, me+npy*npz, 1000+me+npy*npz, &
+            !    MPI_COMM_WORLD, istatus, ierr)
             !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-            if(fltnum(2)>0 .and. itmp1>0 ) then  
-                if(fltnum(2) /= itmp1) stop 'error in fltnum(2)'
+            if(fltnum(2)>0 ) then  
+                !if(fltnum(2) /= itmp1) stop 'error in fltnum(2)'
                 fltMPI(2)=.true.
                 allocate(btmp(fltnum(2)),btmp1(fltnum(2)))
                 btmp  = 0.
@@ -385,12 +385,12 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif
 
         if (bndf/=0) then
-            call mpi_sendrecv(fltnum(3), 1, MPI_INTEGER, me-npz, 2000+me, &
-                itmp1, 1, MPI_INTEGER, me-npz, 2000+me-npz, &
-                MPI_COMM_WORLD, istatus, ierr)
+            !call mpi_sendrecv(fltnum(3), 1, MPI_INTEGER, me-npz, 2000+me, &
+            !    itmp1, 1, MPI_INTEGER, me-npz, 2000+me-npz, &
+            !    MPI_COMM_WORLD, istatus, ierr)
             !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-            if(fltnum(3)>0 .and. itmp1>0) then
-                if(fltnum(3) /= itmp1) stop 'error in fltnum(3)'
+            if(fltnum(3)>0) then
+                !if(fltnum(3) /= itmp1) stop 'error in fltnum(3)'
                 fltMPI(3)=.true.
                 allocate(btmp(fltnum(3)),btmp1(fltnum(3)))
                 btmp = 0.
@@ -409,12 +409,12 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif !bhdf/=0
 
         if (bndb/=0) then
-            call mpi_sendrecv(fltnum(4), 1, MPI_INTEGER, me+npz, 2000+me, &
-                itmp1, 1, MPI_INTEGER, me+npz, 2000+me+npz, &
-                MPI_COMM_WORLD, istatus, ierr)
+            !call mpi_sendrecv(fltnum(4), 1, MPI_INTEGER, me+npz, 2000+me, &
+            !    itmp1, 1, MPI_INTEGER, me+npz, 2000+me+npz, &
+            !    MPI_COMM_WORLD, istatus, ierr)
             !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-            if(fltnum(4)>0 .and. itmp1>0) then  
-                if(fltnum(4) /= itmp1) stop 'error in fltnum(4)'
+            if(fltnum(4)>0) then  
+            !   if(fltnum(4) /= itmp1) stop 'error in fltnum(4)'
                 fltMPI(4)=.true.
                 allocate(btmp(fltnum(4)),btmp1(fltnum(4)))
                 btmp  = 0.
@@ -442,12 +442,12 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
             bndu=0
         endif
         if (bndd/=0) then
-            call mpi_sendrecv(fltnum(5), 1, MPI_INTEGER, me-1, 3000+me, &
-                itmp1, 1, MPI_INTEGER, me-1, 3000+me-1, &
-                MPI_COMM_WORLD, istatus, ierr)
+            !call mpi_sendrecv(fltnum(5), 1, MPI_INTEGER, me-1, 3000+me, &
+            !    itmp1, 1, MPI_INTEGER, me-1, 3000+me-1, &
+            !    MPI_COMM_WORLD, istatus, ierr)
             !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-            if(fltnum(5)>0 .and. itmp1>0) then
-                if(fltnum(5) /= itmp1) stop 'error in fltnum(5)'
+            if(fltnum(5)>0) then
+                !if(fltnum(5) /= itmp1) stop 'error in fltnum(5)'
                 fltMPI(5)=.true.
                 allocate(btmp(fltnum(5)),btmp1(fltnum(5)))
                 btmp = 0.
@@ -466,12 +466,12 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif !bhdd/=0
         
         if (bndu/=0) then
-            call mpi_sendrecv(fltnum(6), 1, MPI_INTEGER, me+1, 3000+me, &
-                itmp1, 1, MPI_INTEGER, me+1, 3000+me+1, &
-                MPI_COMM_WORLD, istatus, ierr)
+            !call mpi_sendrecv(fltnum(6), 1, MPI_INTEGER, me+1, 3000+me, &
+            !    itmp1, 1, MPI_INTEGER, me+1, 3000+me+1, &
+            !    MPI_COMM_WORLD, istatus, ierr)
                 !write(*,*) 'me= ',me, 'itmp1=',itmp1                
-                if(fltnum(6)>0 .and. itmp1>0) then  
-                    if(fltnum(6) /= itmp1) stop 'error in fltnum(6)'
+                if(fltnum(6)>0) then  
+                    !if(fltnum(6) /= itmp1) stop 'error in fltnum(6)'
                     fltMPI(6)=.true.
                     allocate(btmp(fltnum(6)),btmp1(fltnum(6)))
                     btmp  = 0.
