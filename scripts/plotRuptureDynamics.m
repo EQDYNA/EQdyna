@@ -4,14 +4,13 @@
 % Last update: 20230511.
 % Author: Dunyu Liu (dliu@ig.utexas.edu).
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-clear all; 
-close all;
+clear all; close all;
 %%
 % adjustable parameters
 path  = './';
-x0    = 40e3; % half length of the fault along strike, m. 
-z0    = 40e3; % vertical dimension of the fault, m
-dx    = 250;  % grid size, m
+x0    = 25e3; % half length of the fault along strike, m. 
+z0    = 15e3; % vertical dimension of the fault, m
+dx    = 100;  % grid size, m
 np    = 1000; % max # of CPUs used.
 font  = 12;
 line  = 0:0.5:15; % contour info for rupture time contours.
@@ -55,16 +54,16 @@ end
 % plot rupture time contour.
 peak_slip = max(max(slip));
 h = figure(1);
-set(h,'Position', [30 30 1500 1000]);
+set(h,'Position', [30 30 1000 700]);
 
 % creating 6 panel figure.
 
 % panel 1, slip + rupture time contour
 subplot(3,2,1);
-contourf(xx/1e3,zz/1e3,slip,'LineStyle','None');
-colorbar;
+%contourf(xx/1e3,zz/1e3,slip,'LineStyle','None');
+%colorbar;
 hold on; 
-contour(xx/1e3,zz/1e3,t,line,'w-'); 
+contour(xx/1e3,zz/1e3,t,line,'k-'); 
 axis equal;
 caxis([0 peak_slip]);
 title('Rupture time contour (s) & Slip (m)');
