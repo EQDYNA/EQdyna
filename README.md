@@ -65,7 +65,7 @@ bash run.sh # or ./case.submit to submit batch job on LS6.
 ```
 Replace $caseDirectoryName with the directory name you want to create. <br/>
 Replace $predefinedCompset with one of the following supported compsets <br/>
-* drv.a6, for determinisitc ground motion with fractal fault and plasticity
+* test.drv.a6, for determinisitc ground motion with fractal fault and plasticity
 * test.tpv8
 * test.tpv10
 * test.tpv104
