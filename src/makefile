@@ -15,7 +15,7 @@ ifeq ($(SYSTEM), ubuntu)
     FC         = mpif90.mpich
     LIB        = /usr/lib/x86_64-linux-gnu
     INC        = /usr/include
-    NETCDF_LIB = -L${LIB} -lnetcdf -L{LIB} -lnetcdff
+    NETCDF_LIB = -L${LIB} -lnetcdf -lnetcdff
     NETCDF_INC = -I${INC}
     
 else ifeq ($(SYSTEM), ls6)
