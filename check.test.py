@@ -26,7 +26,13 @@ def compare_nc_files(fn1,fn2,threshold=1e-3):
         
     if not metadata_equal:# and data_equal:
         isTheSame = 'FAIL metadata '+fn1+' '+fn2
-        
+    
+    try:
+        xr.testing.assert_allclose(f1,f2)
+        print('SUCCESS by xarray.testing.assert_allclose')
+        print('SUCCESS '+fn1 +' '+fn2)
+    except AssertionError as e:
+        print(e)
     print(isTheSame)
     
     return isTheSame
@@ -48,6 +54,7 @@ def compare_txt_files(fn1,fn2,threshold=1e-3):
     
 
 for testid in nameList:
+    print(' ')
     for filename in fileNameList:
         refPath  = refRoot+'/'+testid+'/'+filename
         testPath = testRoot+'/'+testid+'/'+filename
