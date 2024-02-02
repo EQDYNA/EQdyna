@@ -24,76 +24,56 @@ Other features include
 
 *```EQdyna```* is also part of the fully dynamic earthquake cycle simulator *```EQsimu```* [(*Liu et al., 2020, GJI*)](https://www.researchgate.net/publication/346814142_EQsimu_a_3-D_finite_element_dynamic_earthquake_simulator_for_multicycle_dynamics_of_geometrically_complex_faults_governed_by_rate-_and_state-dependent_friction).
 
-# Dependence
-*```EQdyna```* requires the following environments and packages: <br/>
-  - FORTRAN compiler and MPI
+# Environment
+*```EQdyna```* requires <br/>
+  - FORTRAN compiler (gfortran/intel FORTRAN)
+  - MPI (mpich/intel MPI)
+  - netCDF (libnetcdf libnetcdff)
+
+* Pre-staging and post-processing require Python packages <br/>
   - Python3
-  - netCDF
-  
+  - numpy>=1.20 (as of 20240201, matplotlib requires numpy>=1.20)
+  - matplotlib
+  - xarray
+  - netCDF4
+
+ubuntu.env.sh contains the installation of the above packages through apt-get and pip
+```
+bash ubuntu.env.sh
+```
+
 # Installation
-A strengh of *```EQdyna```* is that it doesn't need an external mesh generator. <br/> 
-Except for some really geometrically complex fault systems, it works well for many applications. <br/> 
-
-*```EQdyna```* now supports Ubuntu and Lonestar6 at TACC. <br/> 
-
-To install it on Ubuntu, 
 ```
 git clone https://github.com/EQDYNA/EQdyna.git
 cd EQdyna
 chmod -R 755 install-eqdyna.sh scripts
-./install-eqdyna.sh -m ubuntu
+./install-eqdyna.sh -m ubuntu # ubuntu/ls6
+python3 testAll.py # quick testing ~180 s.
 ```
-
-To install it on Lonestar6 TACC,
+For bash, please insert the following lines in .bashrc
 ```
-./install-eqdyna.sh -m ls6
-```
-
-To activate environment variable $EQDYNAROOT and add executables to $PATH,
-```
-source install-eqdyna.sh
+export $EQDYNAROOT=/path/to/EQdynaRootDirectory
+PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 ```
 
 # Quick Start Guide
-After the installation, you just need three steps to run a pre-defined case. <br/>
+Three steps are needed to run a new case. <br/>
+```
+create.newcase $caseDirectoryName $predefinedCompset
+cd $caseDirectoryName
+./case.setup
+bash run.sh # ./case.submit to submit batch job on LS6.
+```
 
-First, create a new case with the utility *create_newcase*. <br/> 
-*create_newcase* takes in two parameters: <br/> 
-  (a) case_dir - the case directory where you want to run the job, and <br/>
-  (b) compset  - the predefined case (tpv104, tpv1053d, etc) <br/>
-
+ Currently supported predefinedCompsets include
+* drv.a6, for determinisitc ground motion with fractal fault and plasticity
+* test.tpv8
+* test.tpv10
+* test.tpv104
+* test.tpv1053d
 [TPV+number is the naming convention of [SCEC/USGS Spontaneous Rupture Code Verification Excercise](https://strike.scec.org/cvws/).] <br/>
 
-```
-create_newcase case_dir compset
-```
-Second, cd into the case_dir, modifiy the *user_defined_params.py* and then run the utility *case.setup*.
-```
-case.setup
-```
-Third, run the utility *case.submit*, which will submit the job to the HPC system.
-```
-case.submit
-```
-
 For customized case, please choose the most relevant predefined case and modify the user_defined_param.py accordingly. <br/>
-
-# Test All 
-To routinely test the consistency and stability of *```EQdyna```*, <br/>
-run the following command:
-```
-source $EQDYNAROOT/test-all.sh
-```
-Four pre-defined test cases will be created and run using 4 CPUs, which will take a few minutes.
-
-# Currently supported compset (more to come)
-* drv.a6, for determinisitc ground motion with fractal fault and plasticity
-* tpv8
-* tpv10
-* tpv104
-* tpv1053d
-* meng2023a, for stress inversion
-* meng2023cb
 
 # Benchmark computational performance and resource
 TPV104:   15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run 24.20 minutes on Lonestar6.  <br/>
