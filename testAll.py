@@ -1,12 +1,11 @@
 #! /bin/bash 
 import os, time
 from testNameList import nameList, coreNumList
-# This script will perform tests on default test cases.
-# Currently, it includes tpv104 and tpv1053d with smaller domains and coarse element sizes.
-#
-#testList = ['tpv8', 'tpv104','tpv1053d','tpv1053d.6c','meng2023a','meng2023cb']
-#cpuNumList  = [4, 4, 4, 6, 4, 4]
-MPIRUN='mpirun'
+# This script will perform tests on test cases defined in testNameList.
+
+MPIRUN='mpirun.mpich' # please modify MPIRUN to fit your system accordingly. 
+print('testAll: MPIRUN is ', MPIRUN)
+print('testAll: please modify MPIRUN to fit your system accordingly.')
 
 os.system('rm -rf test')
 os.system('rm -rf bin/eqdyna')
@@ -21,7 +20,7 @@ def runTest(testDir, compSet, coreNum):
     os.system(cmd)
     os.chdir(testDir)
     os.system('./case.setup')
-    os.system('mpirun -np '+str(coreNum)+' eqdyna')
+    os.system(MPIRUN+' -np '+str(coreNum)+' eqdyna')
     os.system('python3 plotRuptureDynamics')
     os.chdir('..')
     
