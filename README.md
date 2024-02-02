@@ -38,20 +38,20 @@ Except for some really geometrically complex fault systems, it works well for ma
 
 To install it on Ubuntu, 
 ```
-git clone https://github.com/dunyuliu/EQdyna.git
+git clone https://github.com/EQDYNA/EQdyna.git
 cd EQdyna
-chmod 755 install-eqquasi.sh
-./install-eqquasi.sh -m ubuntu
+chmod -R 755 install-eqdyna.sh scripts
+./install-eqdyna.sh -m ubuntu
 ```
 
 To install it on Lonestar6 TACC,
 ```
-./install-eqquasi.sh -m ls6
+./install-eqdyna.sh -m ls6
 ```
 
 To activate environment variable $EQDYNAROOT and add executables to $PATH,
 ```
-source install-eqquasi.sh
+source install-eqdyna.sh
 ```
 
 # Quick Start Guide
