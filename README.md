@@ -30,17 +30,16 @@ Other features include
   - MPI (mpich/intel MPI)
   - netCDF (libnetcdf libnetcdff)
 
-* Pre-staging and post-processing require Python packages <br/>
+Pre-staging and post-processing require Python packages <br/>
   - Python3
   - numpy>=1.20 (as of 20240201, matplotlib requires numpy>=1.20)
   - matplotlib
   - xarray
   - netCDF4
-
-ubuntu.env.sh contains the installation of the above packages through apt-get and pip
 ```
 bash ubuntu.env.sh
 ```
+will install the required packages through apt-get and pip on Ubuntu 22. <br/>
 
 # Installation
 ```
@@ -48,7 +47,7 @@ git clone https://github.com/EQDYNA/EQdyna.git
 cd EQdyna
 chmod -R 755 install-eqdyna.sh scripts
 ./install-eqdyna.sh -m ubuntu # ubuntu/ls6
-python3 testAll.py # quick testing ~180 s.
+python3 testAll.py # quick testing of multiple examples with 4 cores; take ~180 s.
 ```
 For bash, please insert the following lines in .bashrc
 ```
@@ -62,18 +61,18 @@ Three steps are needed to run a new case. <br/>
 create.newcase $caseDirectoryName $predefinedCompset
 cd $caseDirectoryName
 ./case.setup
-bash run.sh # ./case.submit to submit batch job on LS6.
+bash run.sh # or ./case.submit to submit batch job on LS6.
 ```
-
- Currently supported predefinedCompsets include
+Replace $caseDirectoryName with the directory name you want to create. <br/>
+Replace $predefinedCompset with one of the following supported compsets <br/>
 * drv.a6, for determinisitc ground motion with fractal fault and plasticity
 * test.tpv8
 * test.tpv10
 * test.tpv104
-* test.tpv1053d
+* test.tpv1053d <br/>
 [TPV+number is the naming convention of [SCEC/USGS Spontaneous Rupture Code Verification Excercise](https://strike.scec.org/cvws/).] <br/>
 
-For customized case, please choose the most relevant predefined case and modify the user_defined_param.py accordingly. <br/>
+For a customized case, please choose the most relevant predefined compset and modify ```user_defined_param.py``` accordingly. <br/>
 
 # Benchmark computational performance and resource
 TPV104:   15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run 24.20 minutes on Lonestar6.  <br/>
