@@ -33,7 +33,8 @@ subroutine meshgen
     call calcXyzMPIId(mex, mey, mez)
     
     ! get xline, yline, zline
-    call getSize1DCoorX(nxt, nxuni, edgex1)
+    call getSize1DCoor(nxt, nxuni, edgex1, 1)
+    !call getSize1DCoorX(nxt, nxuni, edgex1)
         allocate(xlinet(nxt))
     call get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
         allocate(xline(nx))
@@ -238,29 +239,6 @@ subroutine setElementMaterial(nelement, elementCenterCoor)
                 endif 
             enddo
         endif
-    ! elseif (nmat == -1) then 
-        ! if (me == 0) write(*,*) 'setElementMaterial: customized velocity structure is used ... ...'
-        
-        ! if (TPV == 2802) then 
-            ! depth = elementCenterCoor(3)/1.0d3 ! convert m to km.
-            ! if     (depth < 0.03d0) then 
-                ! vstmp = 2.206d0*depth**0.272
-            ! elseif (depth < 0.19d0) then 
-                ! vstmp = 3.542d0*depth**0.407
-            ! elseif (depth < 4.0d0) then 
-                ! vstmp = 2.505d0*depth**0.199
-            ! elseif (depth < 8.0d0) then 
-                ! vstmp = 2.927d0*depth**0.086
-            ! else
-                ! vstmp = 2.927d0*8.0d0**0.086
-            ! endif 
-            ! vptmp  = max(1.4d0+1.14d0*vstmp, 1.68d0*vstmp)
-            ! rhotmp = 2.4405d0 + 0.10271d0*vstmp
-            
-            ! mat(nelement,1) = vptmp*1.0d3
-            ! mat(nelement,2) = vstmp*1.0d3
-            ! mat(nelement,3) = rhotmp*1.0d3
-        !endif 
     endif 
     
     ! calculate lambda and mu from Vp, Vs and rho.
@@ -532,6 +510,42 @@ subroutine calcXyzMPIId(mex, mey, mez)
     mey=int((me-mex*npy*npz)/npz)
     mez=int(me-mex*npy*npz-mey*npz)
 end subroutine calcXyzMPIId
+
+subroutine getSize1DCoor(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
+    use globalvar
+    implicit none 
+    integer (kind = 4) :: numNodeWhole, numNodeUni, dimId
+    integer (kind = 4) :: frontEdgeNodeId
+    integer (kind = 4) :: i
+    real (kind = dp) :: gridSize, frontEdgeCoor, backEdgeCoor, &
+            minCoor, maxCoor, coorTmp, gridSizeTmp
+    if (dimId == 1) then 
+        numNodeUni = (fltxyz(2,1,1) - fltxyz(1,1,1))/dx + 1
+        gridSize   = dx
+        frontEdgeCoor = fltxyz(1,1,1)
+        backEdgeCoor  = fltxyz(2,1,1)
+        minCoor       = xmin
+        maxCoor       = xmax
+    endif 
+
+    coorTmp = frontEdgeCoor
+    gridSizeTmp = gridSize
+    do i = 1, np
+        gridSizeTmp = gridSizeTmp * rat
+        coorTmp = coorTmp - gridSizeTmp
+        if (coorTmp <= minCoor) exit
+    enddo 
+    frontEdgeNodeId = i + nPML
+  
+    coorTmp = backEdgeCoor
+    gridSizeTmp = gridSize
+    do i = 1, np
+        gridSizeTmp = gridSizeTmp * rat
+        coorTmp = coorTmp + gridSizeTmp
+        if (coorTmp >= maxCoor) exit
+    enddo 
+    numNodeWhole = numNodeUni + frontEdgeNodeId + i + nPML
+end subroutine getSize1DCoor
 
 subroutine getSize1DCoorX(nxt, nxuni, edgex1)
     use globalvar
