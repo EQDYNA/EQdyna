@@ -22,28 +22,33 @@ subroutine meshgen
     ! Temporary real variables
     real (kind = dp) :: nodeCoor(10), elementCenterCoor(3), &
                        a,b,area,aa1,bb1,cc1,dd1,p1,q1, ycoort, pfx = 0.0d0, pfz = 0.0d0
-    real (kind = dp) :: xline(10000), yline(10000), zline(10000)
+    real (kind = dp) :: xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2)
 
     call calcXyzMPIId(mex, mey, mez)
     ! get xline, yline, zline
-    call getLocalOneDimCoorArrAndSize(nxt, nxuni, edgex1, mex, nx, xline, 1)
+    call getLocalOneDimCoorArrAndSize(nxt, nxuni, edgex1, mex, nx, xline, modelBoundCoor, 1)
     !    allocate(xlinet(nxt))
     !call get1DCoorX(nxt, nxuni, edgex1, xlinet)
     !    allocate(xline(nx))
     !call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     
-    call getLocalOneDimCoorArrAndSize(nyt, nyuni, edgey1, mey, ny, yline, 2)
+    call getLocalOneDimCoorArrAndSize(nyt, nyuni, edgey1, mey, ny, yline, modelBoundCoor, 2)
     !    allocate(ylinet(nyt))
     !call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
     !    allocate(yline(ny))
     !call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
     
-    call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, 3)
+    call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, modelBoundCoor, 3)
     !    allocate(zlinet(nzt))
     !call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
     !    allocate(zline(nz))
     !call get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
-
+    xmin = modelBoundCoor(1,1)
+    xmax = modelBoundCoor(1,2)
+    ymin = modelBoundCoor(2,1)
+    ymax = modelBoundCoor(2,2)
+    zmin = modelBoundCoor(3,1)
+    zmax = modelBoundCoor(3,2)
     ! Move adjacent plane1 and plane2 to create hexahedral meshes
     allocate(plane1(ny+ntotft,nz),plane2(ny+ntotft,nz),fltrc(2,nxuni,nzuni,ntotft))
     plane1 = 0
@@ -504,7 +509,7 @@ subroutine calcXyzMPIId(mex, mey, mez)
 end subroutine calcXyzMPIId
 
 subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithUniformGridsize, &
-    frontEdgeNodeId, MPIXyzId, localOneDimCoorArrSize, localOneDimCoorArr, dimId)
+    frontEdgeNodeId, MPIXyzId, localOneDimCoorArrSize, localOneDimCoorArr, modelBoundCoor, dimId)
     use globalvar
     implicit none 
     integer (kind = 4) :: globalOneDimCoorArrSize, numOfNodesWithUniformGridsize, dimId
@@ -512,7 +517,8 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
     integer (kind = 4) :: numOfNodesPerMPI, residualNumOfNodes
     integer (kind = 4) :: i, numOfMPIXyz
     real (kind = dp) :: gridSize, frontEdgeCoor, backEdgeCoor, &
-            minCoor, maxCoor, coorTmp, gridSizeTmp, localOneDimCoorArr(10000)
+            minCoor, maxCoor, coorTmp, gridSizeTmp, localOneDimCoorArr(10000), &
+            modelBoundCoor(3,2)
     real (kind = dp), allocatable :: globalOneDimCoorArr(:)
 
     if (dimId == 1) then 
@@ -588,14 +594,23 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
         enddo 
     endif 
     if (dimId == 1) then 
-        xmin = globalOneDimCoorArr(1)
-        xmax = globalOneDimCoorArr(globalOneDimCoorArrSize)
+        modelBoundCoor(1,1) = globalOneDimCoorArr(1)
+        modelBoundCoor(1,2) = globalOneDimCoorArr(globalOneDimCoorArrSize)
+        PMLb(1) = globalOneDimCoorArr(globalOneDimCoorArrSize-nPML)
+        PMLb(2) = globalOneDimCoorArr(nPML+1)
+        PMLb(6) = globalOneDimCoorArr(globalOneDimCoorArrSize) - globalOneDimCoorArr(globalOneDimCoorArrSize-1)
     elseif (dimId == 2) then 
-        ymin = globalOneDimCoorArr(1)
-        ymax = globalOneDimCoorArr(globalOneDimCoorArrSize)      
+        modelBoundCoor(2,1) = globalOneDimCoorArr(1)
+        modelBoundCoor(2,2) = globalOneDimCoorArr(globalOneDimCoorArrSize)     
+        PMLb(3) = globalOneDimCoorArr(globalOneDimCoorArrSize-nPML)
+        PMLb(4) = globalOneDimCoorArr(nPML+1) 
+        PMLb(7) = globalOneDimCoorArr(globalOneDimCoorArrSize) - globalOneDimCoorArr(globalOneDimCoorArrSize-1)
     elseif (dimId == 3) then
-        zmin = globalOneDimCoorArr(1) 
+        modelBoundCoor(3,1) = globalOneDimCoorArr(1) 
+        modelBoundCoor(3,2) = globalOneDimCoorArr(globalOneDimCoorArrSize)    
         write(*,*) zmax, globalOneDimCoorArr(globalOneDimCoorArrSize), 'should be the same'  
+        PMLb(5) = globalOneDimCoorArr(nPML+1)
+        PMLb(8) = globalOneDimCoorArr(2) - globalOneDimCoorArr(1)
     endif 
 
     if (MPIXyzId <= (numOfMPIXyz - residualNumOfNodes)) then 
