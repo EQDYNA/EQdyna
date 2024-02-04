@@ -33,19 +33,19 @@ subroutine meshgen
     call calcXyzMPIId(mex, mey, mez)
     
     ! get xline, yline, zline
-    call getGlobalOneDimCoorArrSize(nxt, nxuni, edgex1, 1)
+    call getGlobalOneDimCoorArrSize(nxt, nxuni, edgex1, 1, mex, nx)
         allocate(xlinet(nxt))
-    call get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
+    call get1DCoorX(nxt, nxuni, edgex1, xlinet)
         allocate(xline(nx))
     call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     
-    call getGlobalOneDimCoorArrSize(nyt, nyuni, edgey1, 2)
+    call getGlobalOneDimCoorArrSize(nyt, nyuni, edgey1, 2, mey, ny)
         allocate(ylinet(nyt))
     call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
         allocate(yline(ny))
     call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
     
-    call getGlobalOneDimCoorArrSize(nzt, nzuni, edgezn, 3)
+    call getGlobalOneDimCoorArrSize(nzt, nzuni, edgezn, 3, mez, nz)
         allocate(zlinet(nzt))
     call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
         allocate(zline(nz))
@@ -510,11 +510,13 @@ subroutine calcXyzMPIId(mex, mey, mez)
     mez=int(me-mex*npy*npz-mey*npz)
 end subroutine calcXyzMPIId
 
-subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
+subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId, &
+    dimId, MPIXyzId, localCoorArrSize)
     use globalvar
     implicit none 
     integer (kind = 4) :: numNodeWhole, numNodeUni, dimId
-    integer (kind = 4) :: frontEdgeNodeId
+    integer (kind = 4) :: frontEdgeNodeId, localCoorArrSize, MPIXyzId
+    integer (kind = 4) :: globalNodeNumPlusMPINum, nodeNumPerMPI, residualNodeNum
     integer (kind = 4) :: i
     real (kind = dp) :: gridSize, frontEdgeCoor, backEdgeCoor, &
             minCoor, maxCoor, coorTmp, gridSizeTmp
@@ -559,10 +561,19 @@ subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId,
     enddo
     if (dimId == 3) i = -nPML 
     numNodeWhole = numNodeUni + frontEdgeNodeId + i + nPML
+
+    globalNodeNumPlusMPINum = numNodeWhole + npx - 1
+    nodeNumPerMPI   = int(globalNodeNumPlusMPINum/npx)
+    residualNodeNum = globalNodeNumPlusMPINum - nodeNumPerMPI * npx
+
+    if (MPIXyzId<(npx-residualNodeNum)) then 
+        localCoorArrSize = nodeNumPerMPI
+    else 
+        localCoorArrSize = nodeNumPerMPI + 1
+    endif 
 end subroutine getGlobalOneDimCoorArrSize
 
-
-subroutine get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
+subroutine get1DCoorX(nxt, nxuni, edgex1, xlinet)
     use globalvar
     implicit none
     integer (kind = 4) :: nxuni, nxt, edgex1, nx, j1, rlp, rr, mex, ix
@@ -584,15 +595,6 @@ subroutine get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
         xlinet(ix) = xlinet(ix-1) + xstep
     enddo
     xmax = xlinet(nxt)
-
-    j1 = nxt + npx - 1
-    rlp = j1/npx
-    rr = j1 - rlp*npx
-    if(mex<(npx-rr)) then
-        nx = rlp
-    else
-        nx = rlp + 1    !evenly distributed to last rr
-    endif
 
 end subroutine get1DCoorX
 
