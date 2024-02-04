@@ -47,11 +47,13 @@ git clone https://github.com/EQDYNA/EQdyna.git
 cd EQdyna
 chmod -R 755 install-eqdyna.sh scripts
 ./install-eqdyna.sh -m ubuntu # ubuntu/ls6
+export EQDYNAROOT=$(pwd)
+PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 python3 testAll.py # quick testing of multiple examples with 4 cores; take ~180 s.
 ```
 For bash, please insert the following lines in .bashrc
 ```
-export $EQDYNAROOT=/path/to/EQdynaRootDirectory
+export EQDYNAROOT=/path/to/EQdynaRootDirectory
 PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 ```
 
