@@ -34,21 +34,18 @@ subroutine meshgen
     
     ! get xline, yline, zline
     call getSize1DCoor(nxt, nxuni, edgex1, 1)
-    !call getSize1DCoorX(nxt, nxuni, edgex1)
         allocate(xlinet(nxt))
     call get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
         allocate(xline(nx))
     call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     
     call getSize1DCoor(nyt, nyuni, edgey1, 2)
-    !call getSize1DCoorY(nyt, nyuni, edgey1)
         allocate(ylinet(nyt))
     call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
         allocate(yline(ny))
     call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
     
     call getSize1DCoor(nzt, nzuni, edgezn, 3)
-    !call getSize1DCoorZ(nzt, nzuni, edgezn)
         allocate(zlinet(nzt))
     call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
         allocate(zline(nz))
@@ -564,33 +561,6 @@ subroutine getSize1DCoor(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
     numNodeWhole = numNodeUni + frontEdgeNodeId + i + nPML
 end subroutine getSize1DCoor
 
-subroutine getSize1DCoorX(nxt, nxuni, edgex1)
-    use globalvar
-    implicit none
-    integer (kind = 4) :: nxuni, ix, edgex1, nxt
-    real (kind = dp) :: xstep, xcoor
-    
-    
-    nxuni = (fltxyz(2,1,1) - fltxyz(1,1,1)) / dx + 1
-    xstep = dx
-    xcoor = fltxyz(1,1,1)
-    do ix = 1, np
-        xstep = xstep * rat
-        xcoor = xcoor - xstep
-        if(xcoor <= xmin) exit
-    enddo
-    edgex1 = ix + nPML
-    xstep = dx
-    xcoor = fltxyz(2,1,1)
-    do ix = 1, np
-        xstep = xstep * rat
-        xcoor = xcoor + xstep
-        if(xcoor >= xmax) exit
-    enddo
-    nxt = nxuni + edgex1 + ix + nPML
-    
-    end subroutine getSize1DCoorX
-
 subroutine get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
     use globalvar
     implicit none
@@ -646,32 +616,6 @@ subroutine get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     endif    
 end subroutine get1DCoorXLocal
 
-subroutine getSize1DCoorY(nyt, nyuni, edgey1)
-    use globalvar
-    implicit none
-    integer (kind = 4) :: nyuni, iy, edgey1, nyt
-    real (kind = dp) :: ystep, ycoor
-    nyuni = dis4uniF + dis4uniB + 1
-    ystep = dy
-    !ycoor = -dy*(dis4uniF+fltxyz(2,1,1)/dx+1)
-    ycoor = -dy*(dis4uniF)
-    do iy = 1, np
-        ystep = ystep * rat
-        ycoor = ycoor - ystep
-        if(ycoor <= ymin) exit
-    enddo
-    edgey1 = iy + nPML
-    ystep = dy
-    ycoor = dy*(dis4uniB)
-    do iy = 1, np
-        ystep = ystep * rat
-        ycoor = ycoor + ystep
-        if(ycoor >= ymax) exit
-    enddo
-    nyt = nyuni + edgey1 + iy + nPML
-    
-end subroutine getSize1DCoorY
-
 subroutine get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
     use globalvar
     implicit none
@@ -725,24 +669,6 @@ subroutine get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
         enddo
     endif
 end subroutine get1DCoorYLocal
-
-subroutine getSize1DCoorZ(nzt, nzuni, edgezn)
-    use globalvar
-    implicit none
-    integer (kind = 4) :: nzt, nzuni, edgezn, iz
-    real (kind = dp) :: zstep, zcoor
-    
-    zstep = dz
-    zcoor = fltxyz(1,3,1)
-    do iz=1,np
-        zstep = zstep * rat
-        zcoor = zcoor - zstep
-        if(zcoor <= zmin) exit
-    enddo
-    edgezn = iz + nPML
-    nzuni = (fltxyz(2,3,1)-fltxyz(1,3,1))/dz + 1 
-    nzt = edgezn + nzuni
-end subroutine getSize1DCoorZ
     
 subroutine get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
     use globalvar
