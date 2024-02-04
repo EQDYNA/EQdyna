@@ -40,7 +40,8 @@ subroutine meshgen
         allocate(xline(nx))
     call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     
-    call getSize1DCoorY(nyt, nyuni, edgey1)
+    call getSize1DCoor(nyt, nyuni, edgey1, 2)
+    !call getSize1DCoorY(nyt, nyuni, edgey1)
         allocate(ylinet(nyt))
     call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
         allocate(yline(ny))
@@ -526,6 +527,13 @@ subroutine getSize1DCoor(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
         backEdgeCoor  = fltxyz(2,1,1)
         minCoor       = xmin
         maxCoor       = xmax
+    elseif (dimId == 2) then 
+        numNodeUni = dis4uniF + dis4uniB + 1
+        gridSize   = dy
+        frontEdgeCoor = -dis4uniF*dy
+        backEdgeCoor  = dis4uniB*dy
+        minCoor       = ymin
+        maxCoor       = ymax
     endif 
 
     coorTmp = frontEdgeCoor
