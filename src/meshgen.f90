@@ -22,34 +22,29 @@ subroutine meshgen
     ! Temporary real variables
     real (kind = dp) :: nodeCoor(10), elementCenterCoor(3), &
                        a,b,area,aa1,bb1,cc1,dd1,p1,q1, ycoort, pfx = 0.0d0, pfz = 0.0d0
-    real (kind = dp), allocatable :: xlinet(:), ylinet(:), zlinet(:), &
-                                     xline(:),  yline(:) , zline(:)
-
-    write(mm,'(i6)') me
-    mm = trim(adjustl(mm))
-    !dy=dx
-    !dz=dx
+    real (kind = dp), allocatable :: xlinet(:), ylinet(:), zlinet(:)
+    !                                xline(:),  yline(:) , zline(:)
+    real (kind = dp) :: xline(10000), yline(10000), zline(10000)
 
     call calcXyzMPIId(mex, mey, mez)
-    
     ! get xline, yline, zline
-    call getGlobalOneDimCoorArrSize(nxt, nxuni, edgex1, 1, mex, nx)
-        allocate(xlinet(nxt))
-    call get1DCoorX(nxt, nxuni, edgex1, xlinet)
-        allocate(xline(nx))
-    call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
+    call getGlobalOneDimCoorArrSize(nxt, nxuni, edgex1, mex, nx, xline, 1)
+    !    allocate(xlinet(nxt))
+    !call get1DCoorX(nxt, nxuni, edgex1, xlinet)
+    !    allocate(xline(nx))
+    !call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     
-    call getGlobalOneDimCoorArrSize(nyt, nyuni, edgey1, 2, mey, ny)
-        allocate(ylinet(nyt))
-    call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
-        allocate(yline(ny))
-    call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
+    call getGlobalOneDimCoorArrSize(nyt, nyuni, edgey1, mey, ny, yline, 2)
+    !    allocate(ylinet(nyt))
+    !call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
+    !    allocate(yline(ny))
+    !call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
     
-    call getGlobalOneDimCoorArrSize(nzt, nzuni, edgezn, 3, mez, nz)
-        allocate(zlinet(nzt))
-    call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
-        allocate(zline(nz))
-    call get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
+    call getGlobalOneDimCoorArrSize(nzt, nzuni, edgezn, mez, nz, zline, 3)
+    !    allocate(zlinet(nzt))
+    !call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
+    !    allocate(zline(nz))
+    !call get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
 
     ! Move adjacent plane1 and plane2 to create hexahedral meshes
     allocate(plane1(ny+ntotft,nz),plane2(ny+ntotft,nz),fltrc(2,nxuni,nzuni,ntotft))
@@ -511,15 +506,17 @@ subroutine calcXyzMPIId(mex, mey, mez)
 end subroutine calcXyzMPIId
 
 subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId, &
-    dimId, MPIXyzId, localCoorArrSize)
+    MPIXyzId, localCoorArrSize, line, dimId)
     use globalvar
     implicit none 
     integer (kind = 4) :: numNodeWhole, numNodeUni, dimId
     integer (kind = 4) :: frontEdgeNodeId, localCoorArrSize, MPIXyzId
     integer (kind = 4) :: globalNodeNumPlusMPINum, nodeNumPerMPI, residualNodeNum
-    integer (kind = 4) :: i
+    integer (kind = 4) :: i, MPInum
     real (kind = dp) :: gridSize, frontEdgeCoor, backEdgeCoor, &
-            minCoor, maxCoor, coorTmp, gridSizeTmp
+            minCoor, maxCoor, coorTmp, gridSizeTmp, line(10000)
+    real (kind = dp), allocatable :: linet(:)
+
     if (dimId == 1) then 
         numNodeUni = nint((fltxyz(2,1,1) - fltxyz(1,1,1))/dx) + 1
         gridSize   = dx
@@ -527,6 +524,7 @@ subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId,
         backEdgeCoor  = fltxyz(2,1,1)
         minCoor       = xmin
         maxCoor       = xmax
+        MPInum        = npx
     elseif (dimId == 2) then 
         numNodeUni = dis4uniF + dis4uniB + 1
         gridSize   = dy
@@ -534,6 +532,7 @@ subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId,
         backEdgeCoor  = dis4uniB*dy
         minCoor       = ymin
         maxCoor       = ymax
+        MPInum        = npy
     elseif (dimId == 3) then 
         numNodeUni = nint((fltxyz(2,3,1) - fltxyz(1,3,1))/dz) + 1
         gridSize   = dz
@@ -541,6 +540,7 @@ subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId,
         backEdgeCoor  = fltxyz(2,3,1)
         minCoor       = zmin
         maxCoor       = zmax
+        MPInum        = npz 
     endif 
 
     coorTmp = frontEdgeCoor
@@ -561,16 +561,55 @@ subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId,
     enddo
     if (dimId == 3) i = -nPML 
     numNodeWhole = numNodeUni + frontEdgeNodeId + i + nPML
+    allocate(linet(numNodeWhole))
 
-    globalNodeNumPlusMPINum = numNodeWhole + npx - 1
-    nodeNumPerMPI   = int(globalNodeNumPlusMPINum/npx)
-    residualNodeNum = globalNodeNumPlusMPINum - nodeNumPerMPI * npx
+    globalNodeNumPlusMPINum = numNodeWhole + MPInum - 1
+    nodeNumPerMPI   = int(globalNodeNumPlusMPINum/MPInum)
+    residualNodeNum = globalNodeNumPlusMPINum - nodeNumPerMPI * MPInum
 
-    if (MPIXyzId<(npx-residualNodeNum)) then 
+    if (MPIXyzId<(MPInum-residualNodeNum)) then 
         localCoorArrSize = nodeNumPerMPI
     else 
         localCoorArrSize = nodeNumPerMPI + 1
     endif 
+    if (localCoorArrSize > 10000) write(*,*) 'localCoorArrSize should be < 10000'
+
+    linet(frontEdgeNodeId+1) = frontEdgeCoor
+    gridSizeTmp = gridSize
+    do i = frontEdgeNodeId, 1, -1
+        gridSizeTmp = gridSizeTmp * rat 
+        linet(i) = linet(i+1) - gridSizeTmp
+    enddo 
+    do i = frontEdgeNodeId+2, frontEdgeNodeId + numNodeUni
+        linet(i) = linet(i-1) + gridSize
+    enddo 
+    if (dimId < 3) then 
+        gridSizeTmp = gridSize
+        do i = frontEdgeNodeId+numNodeUni+1, numNodeWhole
+            gridSizeTmp = gridSizeTmp * rat
+            linet(i) = linet(i-1) + gridSizeTmp
+        enddo 
+    endif 
+    if (dimId == 1) then 
+        xmin = linet(1)
+        xmax = linet(numNodeWhole)
+    elseif (dimId == 2) then 
+        ymin = linet(1)
+        ymax = linet(numNodeWhole)      
+    elseif (dimId == 3) then
+        zmin = linet(1) 
+        write(*,*) zmax, linet(numNodeWhole), 'should be the same'  
+    endif 
+
+    if (MPIXyzId <= (MPInum - residualNodeNum)) then 
+        do i = 1, localCoorArrSize
+            line(i) = linet((nodeNumPerMPI-1)*MPIXyzId+i)
+        enddo
+    else
+        do i = 1, localCoorArrSize
+            line(i) = linet((nodeNumPerMPI-1)*MPIXyzId+i+(MPIXyzId-MPInum+residualNodeNum))
+        enddo
+    endif
 end subroutine getGlobalOneDimCoorArrSize
 
 subroutine get1DCoorX(nxt, nxuni, edgex1, xlinet)
