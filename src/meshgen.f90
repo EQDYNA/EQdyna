@@ -22,25 +22,23 @@ subroutine meshgen
     ! Temporary real variables
     real (kind = dp) :: nodeCoor(10), elementCenterCoor(3), &
                        a,b,area,aa1,bb1,cc1,dd1,p1,q1, ycoort, pfx = 0.0d0, pfz = 0.0d0
-    real (kind = dp), allocatable :: xlinet(:), ylinet(:), zlinet(:)
-    !                                xline(:),  yline(:) , zline(:)
     real (kind = dp) :: xline(10000), yline(10000), zline(10000)
 
     call calcXyzMPIId(mex, mey, mez)
     ! get xline, yline, zline
-    call getGlobalOneDimCoorArrSize(nxt, nxuni, edgex1, mex, nx, xline, 1)
+    call getLocalOneDimCoorArrAndSize(nxt, nxuni, edgex1, mex, nx, xline, 1)
     !    allocate(xlinet(nxt))
     !call get1DCoorX(nxt, nxuni, edgex1, xlinet)
     !    allocate(xline(nx))
     !call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     
-    call getGlobalOneDimCoorArrSize(nyt, nyuni, edgey1, mey, ny, yline, 2)
+    call getLocalOneDimCoorArrAndSize(nyt, nyuni, edgey1, mey, ny, yline, 2)
     !    allocate(ylinet(nyt))
     !call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
     !    allocate(yline(ny))
     !call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
     
-    call getGlobalOneDimCoorArrSize(nzt, nzuni, edgezn, mez, nz, zline, 3)
+    call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, 3)
     !    allocate(zlinet(nzt))
     !call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
     !    allocate(zline(nz))
@@ -505,42 +503,42 @@ subroutine calcXyzMPIId(mex, mey, mez)
     mez=int(me-mex*npy*npz-mey*npz)
 end subroutine calcXyzMPIId
 
-subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId, &
-    MPIXyzId, localCoorArrSize, line, dimId)
+subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithUniformGridsize, &
+    frontEdgeNodeId, MPIXyzId, localOneDimCoorArrSize, localOneDimCoorArr, dimId)
     use globalvar
     implicit none 
-    integer (kind = 4) :: numNodeWhole, numNodeUni, dimId
-    integer (kind = 4) :: frontEdgeNodeId, localCoorArrSize, MPIXyzId
-    integer (kind = 4) :: globalNodeNumPlusMPINum, nodeNumPerMPI, residualNodeNum
-    integer (kind = 4) :: i, MPInum
+    integer (kind = 4) :: globalOneDimCoorArrSize, numOfNodesWithUniformGridsize, dimId
+    integer (kind = 4) :: frontEdgeNodeId, localOneDimCoorArrSize, MPIXyzId
+    integer (kind = 4) :: numOfNodesPerMPI, residualNumOfNodes
+    integer (kind = 4) :: i, numOfMPIXyz
     real (kind = dp) :: gridSize, frontEdgeCoor, backEdgeCoor, &
-            minCoor, maxCoor, coorTmp, gridSizeTmp, line(10000)
-    real (kind = dp), allocatable :: linet(:)
+            minCoor, maxCoor, coorTmp, gridSizeTmp, localOneDimCoorArr(10000)
+    real (kind = dp), allocatable :: globalOneDimCoorArr(:)
 
     if (dimId == 1) then 
-        numNodeUni = nint((fltxyz(2,1,1) - fltxyz(1,1,1))/dx) + 1
-        gridSize   = dx
+        numOfNodesWithUniformGridsize = nint((fltxyz(2,1,1) - fltxyz(1,1,1))/dx) + 1
+        gridSize      = dx
         frontEdgeCoor = fltxyz(1,1,1)
         backEdgeCoor  = fltxyz(2,1,1)
         minCoor       = xmin
         maxCoor       = xmax
-        MPInum        = npx
+        numOfMPIXyz   = npx
     elseif (dimId == 2) then 
-        numNodeUni = dis4uniF + dis4uniB + 1
-        gridSize   = dy
+        numOfNodesWithUniformGridsize = dis4uniF + dis4uniB + 1
+        gridSize      = dy
         frontEdgeCoor = -dis4uniF*dy
         backEdgeCoor  = dis4uniB*dy
         minCoor       = ymin
         maxCoor       = ymax
-        MPInum        = npy
+        numOfMPIXyz   = npy
     elseif (dimId == 3) then 
-        numNodeUni = nint((fltxyz(2,3,1) - fltxyz(1,3,1))/dz) + 1
-        gridSize   = dz
+        numOfNodesWithUniformGridsize = nint((fltxyz(2,3,1) - fltxyz(1,3,1))/dz) + 1
+        gridSize      = dz
         frontEdgeCoor = fltxyz(1,3,1)
         backEdgeCoor  = fltxyz(2,3,1)
         minCoor       = zmin
         maxCoor       = zmax
-        MPInum        = npz 
+        numOfMPIXyz   = npz 
     endif 
 
     coorTmp = frontEdgeCoor
@@ -560,57 +558,56 @@ subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId,
         if (coorTmp >= maxCoor) exit
     enddo
     if (dimId == 3) i = -nPML 
-    numNodeWhole = numNodeUni + frontEdgeNodeId + i + nPML
-    allocate(linet(numNodeWhole))
+    globalOneDimCoorArrSize = numOfNodesWithUniformGridsize + frontEdgeNodeId + i + nPML
+    allocate(globalOneDimCoorArr(globalOneDimCoorArrSize))
 
-    globalNodeNumPlusMPINum = numNodeWhole + MPInum - 1
-    nodeNumPerMPI   = int(globalNodeNumPlusMPINum/MPInum)
-    residualNodeNum = globalNodeNumPlusMPINum - nodeNumPerMPI * MPInum
+    numOfNodesPerMPI = int((globalOneDimCoorArrSize+numOfMPIXyz-1)/numOfMPIXyz)
+    residualNumOfNodes = (globalOneDimCoorArrSize+numOfMPIXyz-1) - numOfNodesPerMPI * numOfMPIXyz
 
-    if (MPIXyzId<(MPInum-residualNodeNum)) then 
-        localCoorArrSize = nodeNumPerMPI
+    if (MPIXyzId<(numOfMPIXyz-residualNumOfNodes)) then 
+        localOneDimCoorArrSize = numOfNodesPerMPI
     else 
-        localCoorArrSize = nodeNumPerMPI + 1
+        localOneDimCoorArrSize = numOfNodesPerMPI + 1
     endif 
-    if (localCoorArrSize > 10000) write(*,*) 'localCoorArrSize should be < 10000'
+    if (localOneDimCoorArrSize > 10000) write(*,*) 'localOneDimCoorArrSize should be < 10000'
 
-    linet(frontEdgeNodeId+1) = frontEdgeCoor
+    globalOneDimCoorArr(frontEdgeNodeId+1) = frontEdgeCoor
     gridSizeTmp = gridSize
     do i = frontEdgeNodeId, 1, -1
         gridSizeTmp = gridSizeTmp * rat 
-        linet(i) = linet(i+1) - gridSizeTmp
+        globalOneDimCoorArr(i) = globalOneDimCoorArr(i+1) - gridSizeTmp
     enddo 
-    do i = frontEdgeNodeId+2, frontEdgeNodeId + numNodeUni
-        linet(i) = linet(i-1) + gridSize
+    do i = frontEdgeNodeId+2, frontEdgeNodeId + numOfNodesWithUniformGridsize
+        globalOneDimCoorArr(i) = globalOneDimCoorArr(i-1) + gridSize
     enddo 
     if (dimId < 3) then 
         gridSizeTmp = gridSize
-        do i = frontEdgeNodeId+numNodeUni+1, numNodeWhole
+        do i = frontEdgeNodeId+numOfNodesWithUniformGridsize+1, globalOneDimCoorArrSize
             gridSizeTmp = gridSizeTmp * rat
-            linet(i) = linet(i-1) + gridSizeTmp
+            globalOneDimCoorArr(i) = globalOneDimCoorArr(i-1) + gridSizeTmp
         enddo 
     endif 
     if (dimId == 1) then 
-        xmin = linet(1)
-        xmax = linet(numNodeWhole)
+        xmin = globalOneDimCoorArr(1)
+        xmax = globalOneDimCoorArr(globalOneDimCoorArrSize)
     elseif (dimId == 2) then 
-        ymin = linet(1)
-        ymax = linet(numNodeWhole)      
+        ymin = globalOneDimCoorArr(1)
+        ymax = globalOneDimCoorArr(globalOneDimCoorArrSize)      
     elseif (dimId == 3) then
-        zmin = linet(1) 
-        write(*,*) zmax, linet(numNodeWhole), 'should be the same'  
+        zmin = globalOneDimCoorArr(1) 
+        write(*,*) zmax, globalOneDimCoorArr(globalOneDimCoorArrSize), 'should be the same'  
     endif 
 
-    if (MPIXyzId <= (MPInum - residualNodeNum)) then 
-        do i = 1, localCoorArrSize
-            line(i) = linet((nodeNumPerMPI-1)*MPIXyzId+i)
+    if (MPIXyzId <= (numOfMPIXyz - residualNumOfNodes)) then 
+        do i = 1, localOneDimCoorArrSize
+            localOneDimCoorArr(i) = globalOneDimCoorArr((numOfNodesPerMPI-1)*MPIXyzId+i)
         enddo
     else
-        do i = 1, localCoorArrSize
-            line(i) = linet((nodeNumPerMPI-1)*MPIXyzId+i+(MPIXyzId-MPInum+residualNodeNum))
+        do i = 1, localOneDimCoorArrSize
+            localOneDimCoorArr(i) = globalOneDimCoorArr((numOfNodesPerMPI-1)*MPIXyzId+i+(MPIXyzId-numOfMPIXyz+residualNumOfNodes))
         enddo
     endif
-end subroutine getGlobalOneDimCoorArrSize
+end subroutine getLocalOneDimCoorArrAndSize
 
 subroutine get1DCoorX(nxt, nxuni, edgex1, xlinet)
     use globalvar
