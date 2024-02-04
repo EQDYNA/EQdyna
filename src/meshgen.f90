@@ -47,7 +47,8 @@ subroutine meshgen
         allocate(yline(ny))
     call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
     
-    call getSize1DCoorZ(nzt, nzuni, edgezn)
+    call getSize1DCoor(nzt, nzuni, edgezn, 3)
+    !call getSize1DCoorZ(nzt, nzuni, edgezn)
         allocate(zlinet(nzt))
     call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
         allocate(zline(nz))
@@ -521,7 +522,7 @@ subroutine getSize1DCoor(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
     real (kind = dp) :: gridSize, frontEdgeCoor, backEdgeCoor, &
             minCoor, maxCoor, coorTmp, gridSizeTmp
     if (dimId == 1) then 
-        numNodeUni = (fltxyz(2,1,1) - fltxyz(1,1,1))/dx + 1
+        numNodeUni = nint((fltxyz(2,1,1) - fltxyz(1,1,1))/dx) + 1
         gridSize   = dx
         frontEdgeCoor = fltxyz(1,1,1)
         backEdgeCoor  = fltxyz(2,1,1)
@@ -534,6 +535,13 @@ subroutine getSize1DCoor(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
         backEdgeCoor  = dis4uniB*dy
         minCoor       = ymin
         maxCoor       = ymax
+    elseif (dimId == 3) then 
+        numNodeUni = nint((fltxyz(2,3,1) - fltxyz(1,3,1))/dz) + 1
+        gridSize   = dz
+        frontEdgeCoor = fltxyz(1,3,1)
+        backEdgeCoor  = fltxyz(2,3,1)
+        minCoor       = zmin
+        maxCoor       = zmax
     endif 
 
     coorTmp = frontEdgeCoor
@@ -551,7 +559,8 @@ subroutine getSize1DCoor(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
         gridSizeTmp = gridSizeTmp * rat
         coorTmp = coorTmp + gridSizeTmp
         if (coorTmp >= maxCoor) exit
-    enddo 
+    enddo
+    if (dimId == 3) i = -nPML 
     numNodeWhole = numNodeUni + frontEdgeNodeId + i + nPML
 end subroutine getSize1DCoor
 
