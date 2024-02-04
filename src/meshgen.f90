@@ -33,19 +33,19 @@ subroutine meshgen
     call calcXyzMPIId(mex, mey, mez)
     
     ! get xline, yline, zline
-    call getSize1DCoor(nxt, nxuni, edgex1, 1)
+    call getGlobalOneDimCoorArrSize(nxt, nxuni, edgex1, 1)
         allocate(xlinet(nxt))
     call get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
         allocate(xline(nx))
     call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
     
-    call getSize1DCoor(nyt, nyuni, edgey1, 2)
+    call getGlobalOneDimCoorArrSize(nyt, nyuni, edgey1, 2)
         allocate(ylinet(nyt))
     call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
         allocate(yline(ny))
     call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
     
-    call getSize1DCoor(nzt, nzuni, edgezn, 3)
+    call getGlobalOneDimCoorArrSize(nzt, nzuni, edgezn, 3)
         allocate(zlinet(nzt))
     call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
         allocate(zline(nz))
@@ -510,7 +510,7 @@ subroutine calcXyzMPIId(mex, mey, mez)
     mez=int(me-mex*npy*npz-mey*npz)
 end subroutine calcXyzMPIId
 
-subroutine getSize1DCoor(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
+subroutine getGlobalOneDimCoorArrSize(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
     use globalvar
     implicit none 
     integer (kind = 4) :: numNodeWhole, numNodeUni, dimId
@@ -559,7 +559,8 @@ subroutine getSize1DCoor(numNodeWhole, numNodeUni, frontEdgeNodeId, dimId)
     enddo
     if (dimId == 3) i = -nPML 
     numNodeWhole = numNodeUni + frontEdgeNodeId + i + nPML
-end subroutine getSize1DCoor
+end subroutine getGlobalOneDimCoorArrSize
+
 
 subroutine get1DCoorX(mex, nxt, nxuni, edgex1, xlinet, nx)
     use globalvar
