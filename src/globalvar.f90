@@ -92,7 +92,7 @@ MODULE globalvar
     real (kind = dp), allocatable, dimension(:,:,:,:):: onFaultTPHist
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
-        equationNumIndexArr,    stressCompIndexArr,    et,     eqNumStartIndexLoc,  dof1,   surface_node_id,&
+        equationNumIndexArr,    stressCompIndexArr,    et,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surface_node_id,&
         nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
         fltu,   fltgm
     integer (kind = 4), allocatable, dimension(:,:) :: ien,     &

@@ -10,13 +10,13 @@ subroutine meshgen
     implicit none
     include 'mpif.h'
     ! incremental variables 
-    integer (kind = 4) :: nodeCount=0, elemCount=0, equationNumCount=0, ntag, ntags
+    integer (kind = 4) :: nodeCount=0, elemCount=0, equationNumCount=0, eqNumIndexArrLocTag=0, stressDofCount=0
     integer (kind = 4) :: nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
                        edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,edgezn, &
                        nxuni,nyuni,nzuni,ift, &
                        n1,n2,n3,n4,m1,m2,m3,m4,&
                        mex,mey,mez,itmp1,&
-                       nodeDofNum, msnode, nodeXyzIndex(10)
+                       numOfDofPerNodeTmp, msnode, nodeXyzIndex(10)
     integer (kind = 4), dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
     integer (kind = 4), allocatable :: fltrc(:,:,:,:)
     ! Temporary real variables
@@ -25,24 +25,9 @@ subroutine meshgen
     real (kind = dp) :: xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2)
 
     call calcXyzMPIId(mex, mey, mez)
-    ! get xline, yline, zline
     call getLocalOneDimCoorArrAndSize(nxt, nxuni, edgex1, mex, nx, xline, modelBoundCoor, 1)
-    !    allocate(xlinet(nxt))
-    !call get1DCoorX(nxt, nxuni, edgex1, xlinet)
-    !    allocate(xline(nx))
-    !call get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
-    
     call getLocalOneDimCoorArrAndSize(nyt, nyuni, edgey1, mey, ny, yline, modelBoundCoor, 2)
-    !    allocate(ylinet(nyt))
-    !call get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
-    !    allocate(yline(ny))
-    !call get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
-    
     call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, modelBoundCoor, 3)
-    !    allocate(zlinet(nzt))
-    !call get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
-    !    allocate(zline(nz))
-    !call get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
     xmin = modelBoundCoor(1,1)
     xmax = modelBoundCoor(1,2)
     ymin = modelBoundCoor(2,1)
@@ -67,19 +52,9 @@ subroutine meshgen
     an4nds   = 0
     ! Initialize arrays
     nftnd0   = 0
-    x        = 0.0d0
-    ien      = 0
-    equationNumIndexArr      = 0
-    stressCompIndexArr      = 0
-    eqNumStartIndexLoc    = 0
-    dof1     = 0
-    et       = 0
     
     ixfi = 0
     izfi = 0
-    ! increments
-    ntag     = 0
-    ntags    = 0
     
     allocate(n4yn(n4nds))
     n4yn = 0
@@ -96,25 +71,25 @@ subroutine meshgen
                     x(2,nodeCount) = ycoort
                 endif 
                 
-                call setNumDof(nodeCoor, nodeDofNum)
+                call setNumDof(nodeCoor, numOfDofPerNodeTmp)
 
-                eqNumStartIndexLoc(nodeCount) = ntag
-                dof1(nodeCount)  = nodeDofNum
+                eqNumStartIndexLoc(nodeCount) = eqNumIndexArrLocTag
+                numOfDofPerNodeArr(nodeCount)  = numOfDofPerNodeTmp
                 
-                call setEquationNumber(nodeXyzIndex, nodeCoor, ntag, equationNumCount, nodeDofNum)
+                call setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equationNumCount, numOfDofPerNodeTmp)
                 call setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
-                call createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCount, msnode, nftnd0, equationNumCount, ntag, &
+                call createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCount, msnode, nftnd0, equationNumCount, eqNumIndexArrLocTag, &
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
                 
                 ! Create element
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
-                    call createElement(elemCount, ntags, iy, iz, elementCenterCoor)
+                    call createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
                     call setElementMaterial(elemCount, elementCenterCoor)
                     
                     if (C_degen == 1) then 
-                        call wedge(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, ntags, iy, iz, nftnd0(1))
+                        call wedge(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, stressDofCount, iy, iz, nftnd0(1))
                     elseif (C_degen == 2) then 
-                        call tetra(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, ntags, iy, iz, nftnd0(1))
+                        call tetra(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, stressDofCount, iy, iz, nftnd0(1))
                     endif         
                     
                     call replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0) 
@@ -125,9 +100,9 @@ subroutine meshgen
         plane1 = plane2
     enddo!ix
     
-    maxs=ntags
+    maxs=stressDofCount
     
-    call meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, ntag, nftnd0)
+    call meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, eqNumIndexArrLocTag, nftnd0)
     
     ! compute on-fault area associated with each fault node pair and distance from source
     do ift=1,ntotft
@@ -463,11 +438,11 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
     endif !npz>1
 end subroutine MPI4arn 
 
-subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, ntag, nftnd0)
+subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, eqNumIndexArrLocTag, nftnd0)
 ! Check consistency between mesh4 and meshgen
     use globalvar
     implicit none
-    integer (kind = 4) :: nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, nftnd0(ntotft), ntag
+    integer (kind = 4) :: nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, nftnd0(ntotft), eqNumIndexArrLocTag
     integer (kind = 4) :: i
     if (maxs>=(5*maxm)) then
         write(*,*) '5*maxm',maxm,'is not enough for maxs',maxs
@@ -482,9 +457,9 @@ subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCou
         write(*,*) 'msnode,numnp',msnode,numnp
         stop 2003
     endif
-    if(ntag/=maxm) then
-        write(*,*) 'Inconsistency in ntag and maxm: stop!',me
-        write(*,*) ntag,maxm
+    if(eqNumIndexArrLocTag/=maxm) then
+        write(*,*) 'Inconsistency in eqNumIndexArrLocTag and maxm: stop!',me
+        write(*,*) eqNumIndexArrLocTag,maxm
         stop 2004
     endif
     do i=1,ntotft
@@ -621,163 +596,15 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
     endif
 end subroutine getLocalOneDimCoorArrAndSize
 
-subroutine get1DCoorX(nxt, nxuni, edgex1, xlinet)
+subroutine setNumDof(nodeCoor, numOfDofPerNodeTmp)
     use globalvar
     implicit none
-    integer (kind = 4) :: nxuni, nxt, edgex1, nx, j1, rlp, rr, mex, ix
-    real (kind = dp) :: xlinet(nxt), xstep
-    
-    xlinet(edgex1+1) = fltxyz(1,1,1)
-    xstep = dx
-    do ix = edgex1, 1, -1
-        xstep = xstep * rat
-        xlinet(ix) = xlinet(ix+1) - xstep
-    enddo
-    xmin = xlinet(1)
-    do ix = edgex1+2,edgex1+nxuni
-        xlinet(ix) = xlinet(ix-1) + dx
-    enddo
-    xstep = dx
-    do ix = edgex1+nxuni+1,nxt
-        xstep = xstep * rat
-        xlinet(ix) = xlinet(ix-1) + xstep
-    enddo
-    xmax = xlinet(nxt)
-
-end subroutine get1DCoorX
-
-subroutine get1DCoorXLocal(mex, nxt, nx, xline, xlinet)
-    use globalvar
-    implicit none
-    integer (kind = 4) :: mex, j1, rlp, rr, nxt, nx, k1, ix
-    real (kind = dp) :: xline(nx), xlinet(nxt)
-    
-    j1  = nxt + npx - 1
-    rlp = j1/npx
-    rr  = j1 - rlp*npx
-    if(mex<=npx-rr) then
-        do ix=1,nx
-          xline(ix) = xlinet(rlp*mex-mex+ix)
-        enddo
-    else
-        do ix=1,nx
-            k1 = mex - (npx - rr)
-            xline(ix) = xlinet(rlp*mex-mex+k1+ix)
-        enddo
-    endif    
-end subroutine get1DCoorXLocal
-
-subroutine get1DCoorY(mey, nyt, nyuni, edgey1, ylinet, ny)
-    use globalvar
-    implicit none
-    integer (kind = 4) :: nyuni, nyt, edgey1, ny, j1, rlp, rr, mey, iy
-    real (kind = dp) :: ylinet(nyt), ystep
-
-    ylinet(edgey1+1) = -dy*(dis4uniF)
-    ystep = dy
-    do iy = edgey1, 1, -1
-        ystep = ystep * rat    
-        ylinet(iy) = ylinet(iy+1) - ystep
-    enddo
-    ymin = ylinet(1)
-    do iy = edgey1+2,edgey1+nyuni
-        ylinet(iy) = ylinet(iy-1) + dy
-    enddo
-    ystep = dy
-    do iy = edgey1+nyuni+1,nyt
-        ystep = ystep * rat
-        ylinet(iy) = ylinet(iy-1) + ystep
-    enddo
-    ymax = ylinet(nyt)
-
-    j1 = nyt + npy - 1
-    rlp = j1/npy
-    rr = j1 - rlp*npy
-    if(mey<(npy-rr)) then
-        ny = rlp
-    else
-        ny = rlp + 1    
-    endif
-end subroutine get1DCoorY
-
-subroutine get1DCoorYLocal(mey, nyt, ny, yline, ylinet)
-    use globalvar
-    implicit none
-    integer (kind = 4) :: mey, j1, rlp, rr, nyt, ny, k1, iy
-    real (kind = dp) :: yline(ny), ylinet(nyt)
-    
-    j1  = nyt + npy - 1
-    rlp = j1/npy
-    rr  = j1 - rlp*npy
-    if(mey<=npy-rr) then
-        do iy=1,ny
-            yline(iy) = ylinet(rlp*mey-mey+iy)
-        enddo
-    else
-        do iy=1,ny
-            k1 = mey - (npy - rr)
-            yline(iy) = ylinet(rlp*mey-mey+k1+iy)
-        enddo
-    endif
-end subroutine get1DCoorYLocal
-    
-subroutine get1DCoorZ(mez, nzt, nzuni, edgezn, zlinet, nz)
-    use globalvar
-    implicit none
-    integer (kind = 4) :: nzuni, nzt, edgezn, nz, j1, rlp, rr, mez, iz
-    real (kind = dp) :: zlinet(nzt), zstep
-
-    zlinet(nzt) = zmax
-    do iz = nzt-1,nzt-nzuni+1,-1
-        zlinet(iz) = zlinet(iz+1) - dz
-    enddo
-    zstep = dz
-    do iz = nzt-nzuni,1,-1
-        zstep = zstep * rat
-        zlinet(iz) = zlinet(iz+1) -zstep
-    enddo
-    zmin = zlinet(1) 
-    
-    j1 = nzt + npz - 1
-    rlp = j1/npz
-    rr = j1 - rlp*npz
-    if(mez<(npz-rr)) then
-        nz = rlp
-    else
-        nz = rlp + 1   
-    endif
-end subroutine get1DCoorZ
-
-subroutine get1DCoorZLocal(mez, nzt, nz, zline, zlinet)
-    use globalvar
-    implicit none
-    integer (kind = 4) :: mez, j1, rlp, rr, nzt, nz, k1, iz
-    real (kind = dp) :: zline(nz), zlinet(nzt)
-    
-    j1  = nzt + npz - 1
-    rlp = j1/npz
-    rr  = j1 - rlp*npz
-    if(mez<=npz-rr) then
-        do iz=1,nz
-            zline(iz) = zlinet(rlp*mez-mez+iz)
-        enddo
-    else
-        do iz=1,nz
-            k1 = mez - (npz - rr)
-            zline(iz) = zlinet(rlp*mez-mez+k1+iz)
-        enddo
-    endif
-end subroutine get1DCoorZLocal
-
-subroutine setNumDof(nodeCoor, nodeDofNum)
-    use globalvar
-    implicit none
-    integer (kind = 4) :: nodeDofNum
+    integer (kind = 4) :: numOfDofPerNodeTmp
     real (kind = dp) :: nodeCoor(10)
-    nodeDofNum = ndof !Default
+    numOfDofPerNodeTmp = ndof !Default
     if (nodeCoor(1)>PMLb(1) .or. nodeCoor(1)<PMLb(2) .or. nodeCoor(2)>PMLb(3) &
         .or. nodeCoor(2)<PMLb(4) .or. nodeCoor(3)<PMLb(5)) then
-        nodeDofNum = 12 ! Modify if inside PML
+        numOfDofPerNodeTmp = 12 ! Modify if inside PML
     endif   
 end subroutine setNumDof
 
@@ -867,22 +694,22 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
     endif    
 end subroutine setSurfaceStation
 
-subroutine setEquationNumber(nodeXyzIndex, nodeCoor, ntag, equationNumCount, nodeDofNum)
+subroutine setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equationNumCount, numOfDofPerNodeTmp)
     use globalvar 
     implicit none
-    integer (kind = 4) :: iDof, nodeDofNum, ntag, equationNumCount, nodeXyzIndex(10)
+    integer (kind = 4) :: iDof, numOfDofPerNodeTmp, eqNumIndexArrLocTag, equationNumCount, nodeXyzIndex(10)
     real (kind = dp) :: nodeCoor(10)
     
-    do iDof = 1,nodeDofNum
+    do iDof = 1,numOfDofPerNodeTmp
         if(abs(nodeCoor(1)-xmin)<tol.or.abs(nodeCoor(1)-xmax)<tol.or.abs(nodeCoor(2)-ymin)<tol &
         .or.abs(nodeCoor(2)-ymax)<tol.or.abs(nodeCoor(3)-zmin)<tol) then
-            ntag      = ntag+1
-            equationNumIndexArr(ntag) = -1 
+            eqNumIndexArrLocTag      = eqNumIndexArrLocTag+1
+            equationNumIndexArr(eqNumIndexArrLocTag) = -1 
             ! Dof = -1 for fixed boundary nodes, no eq #. 
         else
             equationNumCount      = equationNumCount + 1
-            ntag      = ntag+1
-            equationNumIndexArr(ntag) = equationNumCount
+            eqNumIndexArrLocTag      = eqNumIndexArrLocTag+1
+            equationNumIndexArr(eqNumIndexArrLocTag) = equationNumCount
             
             !Count # of DOF on MPI boundaries
             if (nodeXyzIndex(1)==1) then !Left
@@ -909,10 +736,10 @@ subroutine setEquationNumber(nodeXyzIndex, nodeCoor, ntag, equationNumCount, nod
 end subroutine setEquationNumber
 
 
-subroutine createElement(elemCount, ntags, iy, iz, elementCenterCoor)
+subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     use globalvar
     implicit none
-    integer (kind = 4) :: elemCount, ntags, iy, iz, i, j 
+    integer (kind = 4) :: elemCount, stressDofCount, iy, iz, i, j 
     real (kind = dp) :: elementCenterCoor(3)
     
     elementCenterCoor = 0.0d0 
@@ -927,7 +754,7 @@ subroutine createElement(elemCount, ntags, iy, iz, elementCenterCoor)
     ien(6,elemCount) = plane2(iy-1,iz)
     ien(7,elemCount) = plane2(iy,iz)
     ien(8,elemCount) = plane1(iy,iz)
-    stressCompIndexArr(elemCount)   = ntags
+    stressCompIndexArr(elemCount)   = stressDofCount
     
     do i=1,nen
         do j=1,3
@@ -940,14 +767,14 @@ subroutine createElement(elemCount, ntags, iy, iz, elementCenterCoor)
     .or.elementCenterCoor(2)>PMLb(3).or.elementCenterCoor(2)<PMLb(4) &
     .or.elementCenterCoor(3)<PMLb(5)) then
         et(elemCount) = 2
-        ntags        = ntags+15+6
+        stressDofCount        = stressDofCount+15+6
     else
-        ntags        = ntags+12
+        stressDofCount        = stressDofCount+12
     endif
     
     ! assign ien(elemCount), ids(elemCount), et(elemCount)
     ! return elementCenterCoor, 
-    ! update elemCount, ntags
+    ! update elemCount, stressDofCount
 end subroutine createElement
 
  subroutine replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
@@ -988,11 +815,11 @@ subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
     endif 
 end subroutine checkIsOnFault
 
-subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCount, msnode, nftnd0, equationNumCount, ntag,&
+subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCount, msnode, nftnd0, equationNumCount, eqNumIndexArrLocTag,&
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
 use globalvar 
 implicit none
-integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nodeCount, msnode, nftnd0(ntotft), equationNumCount, i, nxuni, nzuni, ntag
+integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nodeCount, msnode, nftnd0(ntotft), equationNumCount, i, nxuni, nzuni, eqNumIndexArrLocTag
 integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft), nodeXyzIndex(10)
 real (kind = dp) :: nodeCoor(10), ycoort, pfx, pfz
 
@@ -1007,8 +834,8 @@ do iFault = 1, ntotft
         msnode                        = nodeXyzIndex(4)*nodeXyzIndex(5)*nodeXyzIndex(6) + nftnd0(iFault) ! create Master node at the end of regular grids
         if (iFault>1) stop 'msnode cannot handle iFault>1'
         
-        eqNumStartIndexLoc(msnode)                 = ntag
-        dof1(msnode)                  = 3         
+        eqNumStartIndexLoc(msnode) = eqNumIndexArrLocTag
+        numOfDofPerNodeArr(msnode) = 3         
         nsmp(2,nftnd0(iFault),iFault) = msnode !set Master node nodeID to nsmp
         plane2(nodeXyzIndex(5)+iFault,nodeXyzIndex(3)) = msnode
         
@@ -1022,8 +849,8 @@ do iFault = 1, ntotft
         !set Equation Numbers for the newly created Master Node.
         do i = 1, ndof
             equationNumCount      = equationNumCount + 1
-            ntag      = ntag + 1
-            equationNumIndexArr(ntag) = equationNumCount
+            eqNumIndexArrLocTag      = eqNumIndexArrLocTag + 1
+            equationNumIndexArr(eqNumIndexArrLocTag) = equationNumCount
         enddo
         
         ! Count split-node pair # for MPI

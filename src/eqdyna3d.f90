@@ -162,16 +162,28 @@ end program EQdyna
 subroutine allocInit
     use globalvar 
     implicit none 
-    allocate(equationNumIndexArr(maxm),eqNumStartIndexLoc(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
+    allocate(equationNumIndexArr(maxm),eqNumStartIndexLoc(numnp),numOfDofPerNodeArr(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
 
     allocate(ien(nen,totalNumOfElements), mat(totalNumOfElements,5), et(totalNumOfElements), eleporep(totalNumOfElements), pstrain(totalNumOfElements), &
                 eledet(totalNumOfElements), elemass(nee,totalNumOfElements), eleshp(nrowsh-1,nen,totalNumOfElements), &
                 ss(6,totalNumOfElements), phi(nen,4,totalNumOfElements))
-
+    
+    x        = 0.0d0 
+    fnms     = 0.0d0
+    equationNumIndexArr = 0
+    eqNumStartIndexLoc  = 0
+    numOfDofPerNodeArr  = 0
+    surface_node_id     = 0
+    ien      = 0
+    et       = 0
+    mat      = 0.0d0
     eleporep = 0.0d0
     pstrain  = 0.0d0
     eledet   = 0.0d0
     elemass  = 0.0d0
+    eleshp   = 0.0d0
+    ss       = 0.0d0
+    phi      = 0.0d0 
 
     nftmx=maxval(nftnd) !max fault nodel num for all faults, used for arrays.
     if(nftmx<=0) nftmx=1  !fortran arrays cannot be zero size,use 1 for 0
@@ -200,6 +212,7 @@ subroutine allocInit
         
     allocate(stressCompIndexArr(totalNumOfElements))
     allocate(s1(5*maxm))
+    stressCompIndexArr = 0
     s1      = 0.0d0
 end subroutine allocInit
 

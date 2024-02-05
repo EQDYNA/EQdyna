@@ -1,9 +1,9 @@
-subroutine wedge(cenx, ceny, cenz, elemCount, ntags, iy, iz, nftndtmp) 
+subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp) 
 	
 	use globalvar
 	implicit none
 	
-	integer (kind = 4) :: elemCount, ntags, iy, iz, nftndtmp, k, i, neworder(nen)
+	integer (kind = 4) :: elemCount, stressDofCount, iy, iz, nftndtmp, k, i, neworder(nen)
 	real (kind = dp) :: cenx, ceny, cenz
 
 	if (cenx>fltxyz(1,1,1).and.cenx<fltxyz(2,1,1).and.ceny<dx.and.ceny>-dx.and.cenz>fltxyz(1,3,1)) then 	
@@ -61,8 +61,8 @@ subroutine wedge(cenx, ceny, cenz, elemCount, ntags, iy, iz, nftndtmp)
 		neworder = (/3,4,1,1,7,8,5,5/)
 		call reorder(neworder, elemCount, iy, iz)
 		
-		stressCompIndexArr(elemCount)=ntags
-		ntags = ntags + 12
+		stressCompIndexArr(elemCount)=stressDofCount
+		stressDofCount = stressDofCount + 12
 
 		mat(elemCount,1)=material(1,1)
 		mat(elemCount,2)=material(1,2)
@@ -95,12 +95,12 @@ subroutine wedge4num(cenx, ceny, cenz, elemCount)
 	endif 
 end subroutine
 
-subroutine tetra(cenx, ceny, cenz, elemCount, ntags, iy, iz, nftndtmp) 
+subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp) 
 	
 	use globalvar
 	implicit none
 	
-	integer (kind = 4) :: elemCount, ntags, iy, iz, nftndtmp, k, i, neworder(nen)
+	integer (kind = 4) :: elemCount, stressDofCount, iy, iz, nftndtmp, k, i, neworder(nen)
 	real (kind = dp) :: cenx, ceny, cenz
 
 		if (cenx>fltxyz(1,1,1).and.cenx<fltxyz(2,1,1).and.ceny<dx.and.ceny>-dx.and.cenz>fltxyz(1,3,1)) then 	
@@ -165,8 +165,8 @@ subroutine tetra(cenx, ceny, cenz, elemCount, ntags, iy, iz, nftndtmp)
 		 mat(elemCount,4)=mat(elemCount-1,4)
 		 mat(elemCount,5)=mat(elemCount-1,5)
 		 et(elemCount)=12 
-		 stressCompIndexArr(elemCount)= ntags
-		 ntags = ntags + 12					
+		 stressCompIndexArr(elemCount)= stressDofCount
+		 stressDofCount = stressDofCount + 12					
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
@@ -197,8 +197,8 @@ subroutine tetra(cenx, ceny, cenz, elemCount, ntags, iy, iz, nftndtmp)
 		mat(elemCount,4)=mat(elemCount-1,4)
 		mat(elemCount,5)=mat(elemCount-1,5)	
 		et(elemCount)=12 
-		stressCompIndexArr(elemCount)= ntags
-		ntags = ntags + 12					
+		stressCompIndexArr(elemCount)= stressDofCount
+		stressDofCount = stressDofCount + 12					
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
@@ -229,8 +229,8 @@ subroutine tetra(cenx, ceny, cenz, elemCount, ntags, iy, iz, nftndtmp)
 		mat(elemCount,4)=mat(elemCount-1,4)
 		mat(elemCount,5)=mat(elemCount-1,5)
 		et(elemCount)=12 
-		stressCompIndexArr(elemCount)= ntags
-		ntags = ntags + 12
+		stressCompIndexArr(elemCount)= stressDofCount
+		stressDofCount = stressDofCount + 12
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
@@ -261,8 +261,8 @@ subroutine tetra(cenx, ceny, cenz, elemCount, ntags, iy, iz, nftndtmp)
 		mat(elemCount,4)=mat(elemCount-1,4)
 		mat(elemCount,5)=mat(elemCount-1,5)
 		et(elemCount)=12 
-		stressCompIndexArr(elemCount)=ntags
-		ntags = ntags + 12
+		stressCompIndexArr(elemCount)=stressDofCount
+		stressDofCount = stressDofCount + 12
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
