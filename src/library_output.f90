@@ -214,7 +214,7 @@ subroutine output_plastic_strain
 				sc(1)=sc(1)/8.0d0
 				sc(2)=sc(2)/8.0d0
 				sc(3)=sc(3)/8.0d0			
-				write(10007+me,'(1x,16e18.7e4)') sc(1),sc(2),sc(3),pstrain(i),(s1(stressCompIndexArr(i)+j),j=1,12)	
+				write(10007+me,'(1x,16e18.7e4)') sc(1),sc(2),sc(3),pstrain(i),(stressArr(stressCompIndexArr(i)+j),j=1,12)	
 			endif
 		enddo
 	endif
@@ -242,7 +242,7 @@ end subroutine find_surface_node_id
 subroutine output_gm
 	use globalvar
 	implicit none
-	integer (kind = 4) :: i, j, itag
+	integer (kind = 4) :: i, j, nodeId
 
 	! if (output_ground_motion == 1 .and. surface_nnode > 0) then	
 		! open(unit=1009,file='gm.txt'//mm,status='unknown',position='append')		
@@ -254,8 +254,8 @@ subroutine output_gm
 	if (outputGroundMotion == 1 .and. surface_nnode > 0) then	
 		open(unit=10009+me,file='gm'//mm,status='unknown',position='append', access='stream')		
 			do i=1,surface_nnode
-				itag = surface_node_id(i)
-				write(10009+me) v(1,itag), v(2,itag), v(3,itag)
+				nodeId = surface_node_id(i)
+				write(10009+me) velArr(1,nodeId), velArr(2,nodeId), velArr(3,nodeId)
 			enddo
 	endif	
 end subroutine output_gm

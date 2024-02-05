@@ -28,7 +28,7 @@ subroutine driver
         call MPI4NodalQuant(nodalForceArr, 3)
         if (friclaw == 5) call thermop
         call faulting
-        nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/nodalMassArr(1:totalNumOfEquations) ! timeused(7), depreciated
+        nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/nodalMassArr(1:totalNumOfEquations)
         if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) call output_gm
     enddo 
 
@@ -113,62 +113,71 @@ subroutine velDispUpdate
     implicit none 
     include 'mpif.h'
     
-    integer (kind = 4) :: i, j, eqNumTmp, itag
+    integer (kind = 4) :: i, j, eqNumTmp
     real (kind = dp) :: dampv(9)
    
-    time1   = MPI_WTIME()
-    do i=1,totalNumOfNodes
+    time1 = MPI_WTIME()
+    do i = 1, totalNumOfNodes
         if (numOfDofPerNodeArr(i)==3) then
-            do j=1,3
-                itag=eqNumStartIndexLoc(i)+j
-                eqNumTmp=eqNumIndexArr(itag)
-                v1(eqNumTmp)=v1(eqNumTmp)+nodalForceArr(eqNumTmp)*dt
-                d1(eqNumTmp)=d1(eqNumTmp)+v1(eqNumTmp)*dt
-                v(j,i)=v1(eqNumTmp)
-                d(j,i)=d1(eqNumTmp)
+            do j = 1, 3
+                !eqNumStartIndexLoc(i) = eqNumSt
+                eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
+                v1(eqNumTmp) = v1(eqNumTmp) + nodalForceArr(eqNumTmp)*dt
+                d1(eqNumTmp) = d1(eqNumTmp) + v1(eqNumTmp)*dt
+                velArr(j,i) = v1(eqNumTmp)
+                dispArr(j,i) = d1(eqNumTmp)
             enddo
         elseif (numOfDofPerNodeArr(i)==12) then
-            itag=eqNumStartIndexLoc(i)+1
-            eqNumTmp=eqNumIndexArr(itag)
+            !eqNumStartIndexLoc(i)=eqNumStartIndexLoc(i)+1
+            eqNumTmp=eqNumIndexArr(eqNumStartIndexLoc(i)+1)
             if (eqNumTmp>0) then
                 call comdampv(x(1,i),x(2,i),x(3,i),dampv)
             endif
-            do j=1,9
-                itag=eqNumStartIndexLoc(i)+j
-                eqNumTmp=eqNumIndexArr(itag)
+            do j = 1, 9
+                !eqNumStartIndexLoc(i)=eqNumStartIndexLoc(i)+j
+                eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
                 if (eqNumTmp>0) then
-                    v1(eqNumTmp)=(nodalForceArr(eqNumTmp)+v1(eqNumTmp)*(1/dt-dampv(j)/2))/(1/dt+dampv(j)/2)
+                    v1(eqNumTmp) = (nodalForceArr(eqNumTmp)+v1(eqNumTmp)*(1/dt-dampv(j)/2))/(1/dt+dampv(j)/2)
                 endif
             enddo
-            do j=10,12
-                itag=eqNumStartIndexLoc(i)+j
-                eqNumTmp=eqNumIndexArr(itag)
+            do j = 10, 12
+                !eqNumStartIndexLoc(i)=eqNumStartIndexLoc(i)+j
+                eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
                 if (eqNumTmp>0) then
-                    v1(eqNumTmp)=v1(eqNumTmp)+nodalForceArr(eqNumTmp)*dt
+                    v1(eqNumTmp) = v1(eqNumTmp) + nodalForceArr(eqNumTmp)*dt
                 endif                
             enddo
             ! Update final velocity.
-            itag=eqNumStartIndexLoc(i)
-            eqNumTmp=eqNumIndexArr(itag+1)
+            ! eqNumStartIndexLoc(i)=eqNumStartIndexLoc(i)
+            eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+1)
             if (eqNumTmp>0) then
-                v(1,i)=v1(eqNumIndexArr(itag+1))+v1(eqNumIndexArr(itag+2))+v1(eqNumIndexArr(itag+3))+v1(eqNumIndexArr(itag+10))
-                v(2,i)=v1(eqNumIndexArr(itag+4))+v1(eqNumIndexArr(itag+5))+v1(eqNumIndexArr(itag+6))+v1(eqNumIndexArr(itag+11))
-                v(3,i)=v1(eqNumIndexArr(itag+7))+v1(eqNumIndexArr(itag+8))+v1(eqNumIndexArr(itag+9))+v1(eqNumIndexArr(itag+12))
-                d(1,i)=d(1,i)+v(1,i)*dt
-                d(2,i)=d(2,i)+v(2,i)*dt
-                d(3,i)=d(3,i)+v(3,i)*dt
-            elseif (eqNumTmp==-1) then
-                v(1,i)=0.0d0
-                v(2,i)=0.0d0
-                v(3,i)=0.0d0
-                d(1,i)=0.0d0
-                d(2,i)=0.0d0
-                d(3,i)=0.0d0                
+                velArr(1,i) = v1(eqNumIndexArr(eqNumStartIndexLoc(i)+1)) + &
+                            v1(eqNumIndexArr(eqNumStartIndexLoc(i)+2)) + &
+                            v1(eqNumIndexArr(eqNumStartIndexLoc(i)+3)) + &
+                            v1(eqNumIndexArr(eqNumStartIndexLoc(i)+10))
+                velArr(2,i) = v1(eqNumIndexArr(eqNumStartIndexLoc(i)+4)) + &
+                        v1(eqNumIndexArr(eqNumStartIndexLoc(i)+5)) + &
+                        v1(eqNumIndexArr(eqNumStartIndexLoc(i)+6)) + &
+                        v1(eqNumIndexArr(eqNumStartIndexLoc(i)+11))
+                velArr(3,i) = v1(eqNumIndexArr(eqNumStartIndexLoc(i)+7)) + &
+                        v1(eqNumIndexArr(eqNumStartIndexLoc(i)+8)) + &
+                        v1(eqNumIndexArr(eqNumStartIndexLoc(i)+9)) + &
+                        v1(eqNumIndexArr(eqNumStartIndexLoc(i)+12))
+                dispArr(1,i) = dispArr(1,i) + velArr(1,i)*dt
+                dispArr(2,i) = dispArr(2,i) + velArr(2,i)*dt
+                dispArr(3,i) = dispArr(3,i) + velArr(3,i)*dt
+            elseif (eqNumTmp == -1) then
+                velArr(1:3,i) = 0.0d0
+                !v(2,i)=0.0d0
+                !v(3,i)=0.0d0
+                dispArr(1:3,i) = 0.0d0
+                !d(2,i)=0.0d0
+                !d(3,i)=0.0d0                
             endif    
         endif
-        if ((v(1,i)/=v(1,i)).or.v(2,i)/=v(2,i).or.v(3,i)/=v(3,i)) then 
-            write(*,*) x(1,i),x(2,i),x(3,i), 'nt=',nt
-            stop 'NAN'
+        if ((velArr(1,i)/=velArr(1,i)).or.velArr(2,i)/=velArr(2,i).or.velArr(3,i)/=velArr(3,i)) then 
+            write(*,*) 'Velocity NaN at point ', x(1,i),x(2,i),x(3,i), ' at time step ', nt
+            stop
         endif
     enddo
     timeused(3) = timeused(3) + MPI_WTIME() - time1
@@ -195,12 +204,12 @@ subroutine offFaultStationSCEC
                     k=idhist(2,i)
                     l=idhist(3,i)
                 if(l==1) then
-                    dout(i+1,locplt)=d(k,j)
+                    dout(i+1,locplt) = dispArr(k,j)
                 elseif(l==2) then
-                    dout(i+1,locplt)=v(k,j)
+                    dout(i+1,locplt) = velArr(k,j)
                 elseif(l==3) then
-                    k1=eqNumIndexArr(eqNumStartIndexLoc(j)+k)
-                    dout(i+1,locplt)=nodalForceArr(k1)
+                    k1 = eqNumIndexArr(eqNumStartIndexLoc(j)+k)
+                    dout(i+1,locplt) = nodalForceArr(k1)
                 endif
             enddo
         endif

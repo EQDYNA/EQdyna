@@ -1016,10 +1016,10 @@ subroutine setPlasticStress(depth, elemCount)
     strVert            = -(roumax- rhow*(gamar+1.0d0))*depth*grav ! should be negative   
     devStr             = abs(strVert)*devStrToStrVertRatio ! positive
     
-    s1(stressCompIndexArr(elemCount)+3+15*etTag) = strVert
-    s1(stressCompIndexArr(elemCount)+1+15*etTag) = strVert - devStr*dcos(2.0d0*str1ToFaultAngle)
-    s1(stressCompIndexArr(elemCount)+2+15*etTag) = strVert + devStr*dcos(2.0d0*str1ToFaultAngle)
-    s1(stressCompIndexArr(elemCount)+6+15*etTag) = devStr*dsin(2.0d0*str1ToFaultAngle)
-    if (s1(stressCompIndexArr(elemCount)+2+15*etTag) >= 0.0d0) write(*,*) 'WARNING: positive Sigma3 ... ...'
+    stressArr(stressCompIndexArr(elemCount)+3+15*etTag) = strVert
+    stressArr(stressCompIndexArr(elemCount)+1+15*etTag) = strVert - devStr*dcos(2.0d0*str1ToFaultAngle)
+    stressArr(stressCompIndexArr(elemCount)+2+15*etTag) = strVert + devStr*dcos(2.0d0*str1ToFaultAngle)
+    stressArr(stressCompIndexArr(elemCount)+6+15*etTag) = devStr*dsin(2.0d0*str1ToFaultAngle)
+    if (stressArr(stressCompIndexArr(elemCount)+2+15*etTag) >= 0.0d0) write(*,*) 'WARNING: positive Sigma3 ... ...'
     
 end subroutine setPlasticStress

@@ -13,8 +13,8 @@ subroutine hrglss
     do nel = 1, totalNumOfElements
         do i = 1, nen
             do j = 1, ned
-                vl(j,i) = v(j,ien(i,nel))
-                dl(j,i) = d(j,ien(i,nel)) + rdampk* vl(j,i)
+                vl(j,i) = velArr(j,ien(i,nel))
+                dl(j,i) = dispArr(j,ien(i,nel)) + rdampk* vl(j,i)
             enddo
         enddo
         if (C_hg == 1) then

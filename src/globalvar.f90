@@ -78,11 +78,11 @@ MODULE globalvar
         numcount(9)
      
     real (kind = dp), allocatable, dimension(:) :: nodalForceArr,   nodalMassArr,&
-        v1,     d1,     s1,     miuonf, vponf,  eleporep,       &
+        v1,     d1,     stressArr,     miuonf, vponf,  eleporep,       &
         pstrain,eledet, fnms,   fxmin,  fxmax,  fymin,  fymax,  &
         fzmin,  fzmax
     real (kind = dp), allocatable, dimension(:,:) :: x, &
-        d,      v,      mat,    shl,    fnft,   arn,    r4nuc,  &
+        dispArr,      velArr,      mat,    shl,    fnft,   arn,    r4nuc,  &
         arn4m,  slp4fri,state,  elemass,ss,     plane1, plane2, &
         Tatnode,patnode,dout,   material,       rough_geo,      &
         x4nds
