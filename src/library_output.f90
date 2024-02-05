@@ -190,7 +190,7 @@ subroutine output_timeanalysis
 	integer (kind = 4) :: i, j 	
 	
 	open(unit=14,file='timeinfo'//mm,status='unknown')	!rupture time
-		write(14,'(1x,10e18.7e4,2i10)') (timeused(i),i=1,9),btime,numel,totalNumOfEquations
+		write(14,'(1x,10e18.7e4,2i10)') (timeused(i),i=1,9),btime,totalNumOfElements,totalNumOfEquations
 	close(14)
 end subroutine output_timeanalysis
 
@@ -202,7 +202,7 @@ subroutine output_plastic_strain
 	real (kind = dp) :: sc(3)
 	if (output_plastic == 1) then	
 		
-		do i=1,numel
+		do i=1,totalNumOfElements
 			if ((pstrain(i)>1.0d-4).and.(abs(x(1,ien(1,i)))<5.0d3).and.(abs(x(2,ien(1,i)))<2.0d3).and.(abs(x(3,ien(1,i)))<8.0d3)) then 
 				open(unit=10007+me,file='pstr.txt'//mm,status='unknown',position='append')
 				sc=0.0d0

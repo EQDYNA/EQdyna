@@ -10,7 +10,7 @@ subroutine meshgen
     implicit none
     include 'mpif.h'
     ! incremental variables 
-    integer (kind = 4) :: nnode, nelement, equationNumCount, ntag, ntags
+    integer (kind = 4) :: nodeCount=0, elemCount=0, equationNumCount=0, ntag, ntags
     integer (kind = 4) :: nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
                        edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,edgezn, &
                        nxuni,nyuni,nzuni,ift, &
@@ -78,9 +78,6 @@ subroutine meshgen
     ixfi = 0
     izfi = 0
     ! increments
-    nnode    = 0
-    nelement = 0
-    equationNumCount     = 0
     ntag     = 0
     ntags    = 0
     
@@ -93,35 +90,35 @@ subroutine meshgen
         do iz = 1, nz
             do iy = 1, ny
                 call initializeNodeXyzIndex(ix, iy, iz, nx, ny, nz, nodeXyzIndex)
-                call createNode(nodeCoor, xline(ix), yline(iy), zline(iz), nnode, nodeXyzIndex)
+                call createNode(nodeCoor, xline(ix), yline(iy), zline(iz), nodeCount, nodeXyzIndex)
                 if (insertFaultType > 0) then 
                     call insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
-                    x(2,nnode) = ycoort
+                    x(2,nodeCount) = ycoort
                 endif 
                 
                 call setNumDof(nodeCoor, nodeDofNum)
 
-                locateEqNumStartIndex(nnode) = ntag
-                dof1(nnode)  = nodeDofNum
+                locateEqNumStartIndex(nodeCount) = ntag
+                dof1(nodeCount)  = nodeDofNum
                 
                 call setEquationNumber(nodeXyzIndex, nodeCoor, ntag, equationNumCount, nodeDofNum)
-                call setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
-                call createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, equationNumCount, ntag, &
+                call setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
+                call createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCount, msnode, nftnd0, equationNumCount, ntag, &
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
                 
                 ! Create element
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
-                    call createElement(nelement, ntags, iy, iz, elementCenterCoor)
-                    call setElementMaterial(nelement, elementCenterCoor)
+                    call createElement(elemCount, ntags, iy, iz, elementCenterCoor)
+                    call setElementMaterial(elemCount, elementCenterCoor)
                     
                     if (C_degen == 1) then 
-                        call wedge(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), nelement, ntags, iy, iz, nftnd0(1))
+                        call wedge(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, ntags, iy, iz, nftnd0(1))
                     elseif (C_degen == 2) then 
-                        call tetra(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), nelement, ntags, iy, iz, nftnd0(1))
+                        call tetra(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, ntags, iy, iz, nftnd0(1))
                     endif         
                     
-                    call replaceSlaveWithMasterNode(nodeCoor, nelement, nftnd0) 
-                    if (C_elastic == 0) call setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, nelement)          
+                    call replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0) 
+                    if (C_elastic == 0) call setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, elemCount)          
                 endif!if element
             enddo!iy
         enddo!iz
@@ -130,7 +127,7 @@ subroutine meshgen
     
     maxs=ntags
     
-    call meshGenError(nx, ny, nz, nnode, msnode, nelement, equationNumCount, ntag, nftnd0)
+    call meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, ntag, nftnd0)
     
     ! compute on-fault area associated with each fault node pair and distance from source
     do ift=1,ntotft
@@ -148,7 +145,7 @@ subroutine meshgen
         do i=2,ifd(ift)
             do j=2,ifs(ift)
             !...4 nodes of quadrilateral
-                n1 = fltrc(1,j,i,ift) !use nodal number in nnode
+                n1 = fltrc(1,j,i,ift) !use nodal number in nodeCount
                 n2 = fltrc(1,j-1,i,ift)
                 n3 = fltrc(1,j-1,i-1,ift)
                 n4 = fltrc(1,j,i-1,ift)
@@ -198,21 +195,21 @@ end subroutine meshgen
 !**************************************************************************************************
 !==================================================================================================
 
-subroutine setElementMaterial(nelement, elementCenterCoor)
+subroutine setElementMaterial(elemCount, elementCenterCoor)
 ! Subroutine velocityStructure will asign Vp, Vs and rho 
 !   based on input from bMaterial.txt, which is created by 
 !   case input file user_defined_param.py.
 
     use globalvar
     implicit none
-    integer (kind = 4) :: nelement, i
+    integer (kind = 4) :: elemCount, i
     real (kind = dp) :: elementCenterCoor(3), vptmp, vstmp, rhotmp
     
     if (nmat == 1 .and. n2mat == 3) then
     ! homogenous material
-        mat(nelement,1)  = material(1,1)
-        mat(nelement,2)  = material(1,2)
-        mat(nelement,3)  = material(1,3)
+        mat(elemCount,1)  = material(1,1)
+        mat(elemCount,2)  = material(1,2)
+        mat(elemCount,3)  = material(1,3)
     elseif (nmat > 1 .and. n2mat == 4) then 
         ! 1D velocity structure
         ! material = material(i,j), i=1,nmat, and j=1,4
@@ -222,17 +219,17 @@ subroutine setElementMaterial(nelement, elementCenterCoor)
         !   3: Vs, m/s
         !   4: rho, kg/m3
         if (abs(elementCenterCoor(3)) < material(1,1)) then
-            mat(nelement,1)  = material(1,2)
-            mat(nelement,2)  = material(1,3)
-            mat(nelement,3)  = material(1,4)
+            mat(elemCount,1)  = material(1,2)
+            mat(elemCount,2)  = material(1,3)
+            mat(elemCount,3)  = material(1,4)
         else
             do i = 2, nmat
                 if (abs(elementCenterCoor(3)) < material(i,1) &
                     .and. abs(elementCenterCoor(3)) >= material(i-1,1)) then
                     
-                    mat(nelement,1)  = material(i,2)
-                    mat(nelement,2)  = material(i,3)
-                    mat(nelement,3)  = material(i,4)
+                    mat(elemCount,1)  = material(i,2)
+                    mat(elemCount,2)  = material(i,3)
+                    mat(elemCount,3)  = material(i,4)
                 endif 
             enddo
         endif
@@ -240,9 +237,9 @@ subroutine setElementMaterial(nelement, elementCenterCoor)
     
     ! calculate lambda and mu from Vp, Vs and rho.
     ! mu = Vs**2*rho
-    mat(nelement,5)  = mat(nelement,2)**2*mat(nelement,3)
+    mat(elemCount,5)  = mat(elemCount,2)**2*mat(elemCount,3)
     ! lambda = Vp**2*rho-2*mu
-    mat(nelement,4)  = mat(nelement,1)**2*mat(nelement,3)-2.0d0*mat(nelement,5)
+    mat(elemCount,4)  = mat(elemCount,1)**2*mat(elemCount,3)-2.0d0*mat(elemCount,5)
 
 end subroutine setElementMaterial
 
@@ -466,22 +463,22 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
     endif !npz>1
 end subroutine MPI4arn 
 
-subroutine meshGenError(nx, ny, nz, nnode, msnode, nelement, equationNumCount, ntag, nftnd0)
+subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, ntag, nftnd0)
 ! Check consistency between mesh4 and meshgen
     use globalvar
     implicit none
-    integer (kind = 4) :: nx, ny, nz, nnode, msnode, nelement, equationNumCount, nftnd0(ntotft), ntag
+    integer (kind = 4) :: nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, nftnd0(ntotft), ntag
     integer (kind = 4) :: i
     if (maxs>=(5*maxm)) then
         write(*,*) '5*maxm',maxm,'is not enough for maxs',maxs
         stop 2002
     endif
-    if(nnode/=nx*ny*nz.or.msnode/=numnp.or.nelement/=numel.or.equationNumCount/=totalNumOfEquations) then
+    if(nodeCount/=nx*ny*nz.or.msnode/=numnp.or.elemCount/=totalNumOfElements.or.equationNumCount/=totalNumOfEquations) then
         write(*,*) 'Inconsistency in node/element/equation/between meshgen and mesh4num: stop!',me
-        write(*,*) 'nnode&numnp=',nnode,numnp
-        write(*,*) 'nelement,numel=',nelement,numel
+        write(*,*) 'nodeCount&numnp=',nodeCount,numnp
+        write(*,*) 'elemCount,totalNumOfElements=',elemCount,totalNumOfElements
         write(*,*) 'equationNumCount,totalNumOfEquations=',equationNumCount,totalNumOfEquations
-        write(*,*) 'nnode,nx,ny,nz',nnode,nx,ny,nz
+        write(*,*) 'nodeCount,nx,ny,nz',nodeCount,nx,ny,nz
         write(*,*) 'msnode,numnp',msnode,numnp
         stop 2003
     endif
@@ -784,10 +781,10 @@ subroutine setNumDof(nodeCoor, nodeDofNum)
     endif   
 end subroutine setNumDof
 
-subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
+subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
     use globalvar
     implicit none
-    integer (kind = 4) :: nodeXyzIndex(10), ix, iy, nnode, i
+    integer (kind = 4) :: nodeXyzIndex(10), ix, iy, nodeCount, i
     real (kind = dp) :: nodeCoor(10), xline(nodeXyzIndex(4)), yline(nodeXyzIndex(5))
     
     ix = nodeXyzIndex(1)
@@ -810,7 +807,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
                             n4yn(i) = 1
                             n4out = n4out + 1
                             an4nds(1,n4out) = i
-                            an4nds(2,n4out) = nnode
+                            an4nds(2,n4out) = nodeCount
                             exit     !if node found, jump out the loop
                         endif
                     endif
@@ -836,7 +833,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
                             n4yn(i) = 1
                             n4out = n4out + 1
                             an4nds(1,n4out) = i
-                            an4nds(2,n4out) = nnode
+                            an4nds(2,n4out) = nodeCount
                             exit     !if node found, jump out the loop
                         endif
                     endif
@@ -860,7 +857,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
                             n4yn(i) = 1
                             n4out = n4out + 1
                             an4nds(1,n4out) = i
-                            an4nds(2,n4out) = nnode
+                            an4nds(2,n4out) = nodeCount
                             exit     !if node found, jump out the loop
                         endif
                     endif
@@ -912,29 +909,29 @@ subroutine setEquationNumber(nodeXyzIndex, nodeCoor, ntag, equationNumCount, nod
 end subroutine setEquationNumber
 
 
-subroutine createElement(nelement, ntags, iy, iz, elementCenterCoor)
+subroutine createElement(elemCount, ntags, iy, iz, elementCenterCoor)
     use globalvar
     implicit none
-    integer (kind = 4) :: nelement, ntags, iy, iz, i, j 
+    integer (kind = 4) :: elemCount, ntags, iy, iz, i, j 
     real (kind = dp) :: elementCenterCoor(3)
     
     elementCenterCoor = 0.0d0 
     
-    nelement        = nelement + 1
-    et(nelement)    = 1 
-    ien(1,nelement) = plane1(iy-1,iz-1)
-    ien(2,nelement) = plane2(iy-1,iz-1)
-    ien(3,nelement) = plane2(iy,iz-1)
-    ien(4,nelement) = plane1(iy,iz-1)
-    ien(5,nelement) = plane1(iy-1,iz)
-    ien(6,nelement) = plane2(iy-1,iz)
-    ien(7,nelement) = plane2(iy,iz)
-    ien(8,nelement) = plane1(iy,iz)
-    stressCompIndexArr(nelement)   = ntags
+    elemCount        = elemCount + 1
+    et(elemCount)    = 1 
+    ien(1,elemCount) = plane1(iy-1,iz-1)
+    ien(2,elemCount) = plane2(iy-1,iz-1)
+    ien(3,elemCount) = plane2(iy,iz-1)
+    ien(4,elemCount) = plane1(iy,iz-1)
+    ien(5,elemCount) = plane1(iy-1,iz)
+    ien(6,elemCount) = plane2(iy-1,iz)
+    ien(7,elemCount) = plane2(iy,iz)
+    ien(8,elemCount) = plane1(iy,iz)
+    stressCompIndexArr(elemCount)   = ntags
     
     do i=1,nen
         do j=1,3
-            elementCenterCoor(j)=elementCenterCoor(j)+x(j,ien(i,nelement))
+            elementCenterCoor(j)=elementCenterCoor(j)+x(j,ien(i,elemCount))
         enddo
     enddo
     elementCenterCoor = elementCenterCoor/8.0d0
@@ -942,34 +939,34 @@ subroutine createElement(nelement, ntags, iy, iz, elementCenterCoor)
     if (elementCenterCoor(1)>PMLb(1).or.elementCenterCoor(1)<PMLb(2) &
     .or.elementCenterCoor(2)>PMLb(3).or.elementCenterCoor(2)<PMLb(4) &
     .or.elementCenterCoor(3)<PMLb(5)) then
-        et(nelement) = 2
+        et(elemCount) = 2
         ntags        = ntags+15+6
     else
         ntags        = ntags+12
     endif
     
-    ! assign ien(nelement), ids(nelement), et(nelement)
+    ! assign ien(elemCount), ids(elemCount), et(elemCount)
     ! return elementCenterCoor, 
-    ! update nelement, ntags
+    ! update elemCount, ntags
 end subroutine createElement
 
- subroutine replaceSlaveWithMasterNode(nodeCoor, nelement, nftnd0)
+ subroutine replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
     use globalvar 
     implicit none
-    integer (kind = 4) :: nelement, iFault, iFaultNodePair, nftnd0(ntotft), k
+    integer (kind = 4) :: elemCount, iFault, iFaultNodePair, nftnd0(ntotft), k
     real (kind = dp) :: nodeCoor(10)
     ! The default grids only contain slave nodes. 
     ! This subroutine will replace slave nodes with corresponding master nodes.
     
     ! Currently only work for vertical fault on xz plane. 
-    if(et(nelement) == 1 .and. &
+    if(et(elemCount) == 1 .and. &
         (nodeCoor(1)>(fltxyz(1,1,1)-tol) .and. nodeCoor(1)<(fltxyz(2,1,1)+dx+tol) .and. &
          nodeCoor(3)>(fltxyz(1,3,1)-tol) .and. nodeCoor(2)>0.0d0 .and. abs(nodeCoor(2)-dy)<tol)) then
         do iFault = 1, ntotft
             do iFaultNodePair = 1, nftnd0(iFault)
                 do k = 1,nen
-                    if(ien(k,nelement)==nsmp(1,iFaultNodePair,iFault)) then
-                        ien(k,nelement) = nsmp(2,iFaultNodePair,iFault)  !use master node for the node!
+                    if(ien(k,elemCount)==nsmp(1,iFaultNodePair,iFault)) then
+                        ien(k,elemCount) = nsmp(2,iFaultNodePair,iFault)  !use master node for the node!
                     endif
                 enddo
             enddo
@@ -991,11 +988,11 @@ subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
     endif 
 end subroutine checkIsOnFault
 
-subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, equationNumCount, ntag,&
+subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCount, msnode, nftnd0, equationNumCount, ntag,&
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
 use globalvar 
 implicit none
-integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nnode, msnode, nftnd0(ntotft), equationNumCount, i, nxuni, nzuni, ntag
+integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nodeCount, msnode, nftnd0(ntotft), equationNumCount, i, nxuni, nzuni, ntag
 integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft), nodeXyzIndex(10)
 real (kind = dp) :: nodeCoor(10), ycoort, pfx, pfz
 
@@ -1006,7 +1003,7 @@ do iFault = 1, ntotft
 
     if (isOnFault == 1) then
         nftnd0(iFault)                = nftnd0(iFault) + 1 ! # of split-node pairs + 1
-        nsmp(1,nftnd0(iFault),iFault) = nnode              ! set Slave node nodeID to nsmp  
+        nsmp(1,nftnd0(iFault),iFault) = nodeCount              ! set Slave node nodeID to nsmp  
         msnode                        = nodeXyzIndex(4)*nodeXyzIndex(5)*nodeXyzIndex(6) + nftnd0(iFault) ! create Master node at the end of regular grids
         if (iFault>1) stop 'msnode cannot handle iFault>1'
         
@@ -1106,21 +1103,21 @@ enddo
 
 end subroutine createMasterNode
 
-subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nnode, nodeXyzIndex)
+subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nodeCount, nodeXyzIndex)
     use globalvar
     implicit none
-    integer (kind = 4) :: nnode, nodeXyzIndex(10), iy, iz
+    integer (kind = 4) :: nodeCount, nodeXyzIndex(10), iy, iz
     real (kind = dp) :: nodeCoor(10), xcoor, ycoor, zcoor
     iy = nodeXyzIndex(2)
     iz = nodeXyzIndex(3)
     nodeCoor(1)   = xcoor
     nodeCoor(2)   = ycoor
     nodeCoor(3)   = zcoor
-    nnode         = nnode + 1        
-    plane2(iy,iz) = nnode
-    x(1,nnode)    = nodeCoor(1)
-    x(2,nnode)    = nodeCoor(2)
-    x(3,nnode)    = nodeCoor(3) 
+    nodeCount         = nodeCount + 1        
+    plane2(iy,iz) = nodeCount
+    x(1,nodeCount)    = nodeCoor(1)
+    x(2,nodeCount)    = nodeCoor(2)
+    x(3,nodeCount)    = nodeCoor(3) 
 end subroutine createNode
 
 subroutine insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
@@ -1178,24 +1175,24 @@ subroutine initializeNodeXyzIndex(ix, iy, iz, nx, ny, nz, nodeXyzIndex)
     nodeXyzIndex(6) = nz
 end subroutine initializeNodeXyzIndex
 
-subroutine setPlasticStress(depth, nelement)
+subroutine setPlasticStress(depth, elemCount)
     use globalvar
     implicit none
     
     real(kind = dp) :: depth, vstmp, vptmp, routmp, strVert, devStr
-    integer(kind = 4) :: nelement, etTag
+    integer(kind = 4) :: elemCount, etTag
     
     etTag = 0
-    if (et(nelement)==2) etTag = 1 ! adjustment for PML elements
+    if (et(elemCount)==2) etTag = 1 ! adjustment for PML elements
     
-    eleporep(nelement) = 0.0d0  !rhow*tmp2*gama  !pore pressure>0
+    eleporep(elemCount) = 0.0d0  !rhow*tmp2*gama  !pore pressure>0
     strVert            = -(roumax- rhow*(gamar+1.0d0))*depth*grav ! should be negative   
     devStr             = abs(strVert)*devStrToStrVertRatio ! positive
     
-    s1(stressCompIndexArr(nelement)+3+15*etTag) = strVert
-    s1(stressCompIndexArr(nelement)+1+15*etTag) = strVert - devStr*dcos(2.0d0*str1ToFaultAngle)
-    s1(stressCompIndexArr(nelement)+2+15*etTag) = strVert + devStr*dcos(2.0d0*str1ToFaultAngle)
-    s1(stressCompIndexArr(nelement)+6+15*etTag) = devStr*dsin(2.0d0*str1ToFaultAngle)
-    if (s1(stressCompIndexArr(nelement)+2+15*etTag) >= 0.0d0) write(*,*) 'WARNING: positive Sigma3 ... ...'
+    s1(stressCompIndexArr(elemCount)+3+15*etTag) = strVert
+    s1(stressCompIndexArr(elemCount)+1+15*etTag) = strVert - devStr*dcos(2.0d0*str1ToFaultAngle)
+    s1(stressCompIndexArr(elemCount)+2+15*etTag) = strVert + devStr*dcos(2.0d0*str1ToFaultAngle)
+    s1(stressCompIndexArr(elemCount)+6+15*etTag) = devStr*dsin(2.0d0*str1ToFaultAngle)
+    if (s1(stressCompIndexArr(elemCount)+2+15*etTag) >= 0.0d0) write(*,*) 'WARNING: positive Sigma3 ... ...'
     
 end subroutine setPlasticStress

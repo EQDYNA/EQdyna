@@ -99,6 +99,6 @@ subroutine memory_estimate
         !write(*,*) memory, 'GB memory would be used on me=0'
         ! An estimate of 2GB/million elements memory is needed; 
         ! Test done on Ubuntu docker for test.drv.a6 with 4 cores;
-        write(*,*) 1.54d0*numel/1.0e6*npx*npy*npz, ' GB memory is expected for EQdyna ... ...'
+        write(*,*) 1.54d0*totalNumOfElements/1.0e6*npx*npy*npz, ' GB memory is expected for EQdyna ... ...'
     endif
 end subroutine memory_estimate
