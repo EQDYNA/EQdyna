@@ -81,7 +81,7 @@ subroutine mesh4num
         enddo    !iz
     enddo        !ix
     maxm  = eqNumIndexArrSizeCount
-    numnp = nodeCount
+    totalNumOfNodes = nodeCount
     totalNumOfElements = elementCount
     totalNumOfEquations = equationNumCount
 end subroutine mesh4num

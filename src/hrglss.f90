@@ -46,7 +46,7 @@ subroutine hrglss
                         elseif (numOfDofPerNodeArr(ien(i,nel)) == 12) then
                             itag = eqNumStartIndexLoc(ien(i,nel))+j+9
                         endif
-                        k = equationNumIndexArr(itag)
+                        k = eqNumIndexArr(itag)
                         if(k > 0) then
                             nodalForceArr(k) = nodalForceArr(k) - fhr(j,i)
                         endif
@@ -88,7 +88,7 @@ subroutine hrglss
                     elseif (numOfDofPerNodeArr(ien(i,nel)).eq.12) then
                         itag=eqNumStartIndexLoc(ien(i,nel))+j+9
                     endif
-                    k=equationNumIndexArr(itag)
+                    k=eqNumIndexArr(itag)
                     if(k > 0) then
                         nodalForceArr(k) = nodalForceArr(k)+f((i-1)*3+j)
                     endif

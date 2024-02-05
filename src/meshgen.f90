@@ -448,13 +448,13 @@ subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCou
         write(*,*) '5*maxm',maxm,'is not enough for maxs',maxs
         stop 2002
     endif
-    if(nodeCount/=nx*ny*nz.or.msnode/=numnp.or.elemCount/=totalNumOfElements.or.equationNumCount/=totalNumOfEquations) then
+    if(nodeCount/=nx*ny*nz.or.msnode/=totalNumOfNodes.or.elemCount/=totalNumOfElements.or.equationNumCount/=totalNumOfEquations) then
         write(*,*) 'Inconsistency in node/element/equation/between meshgen and mesh4num: stop!',me
-        write(*,*) 'nodeCount&numnp=',nodeCount,numnp
+        write(*,*) 'nodeCount&totalNumOfNodes=',nodeCount,totalNumOfNodes
         write(*,*) 'elemCount,totalNumOfElements=',elemCount,totalNumOfElements
         write(*,*) 'equationNumCount,totalNumOfEquations=',equationNumCount,totalNumOfEquations
         write(*,*) 'nodeCount,nx,ny,nz',nodeCount,nx,ny,nz
-        write(*,*) 'msnode,numnp',msnode,numnp
+        write(*,*) 'msnode,totalNumOfNodes',msnode,totalNumOfNodes
         stop 2003
     endif
     if(eqNumIndexArrLocTag/=maxm) then
@@ -704,12 +704,12 @@ subroutine setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equati
         if(abs(nodeCoor(1)-xmin)<tol.or.abs(nodeCoor(1)-xmax)<tol.or.abs(nodeCoor(2)-ymin)<tol &
         .or.abs(nodeCoor(2)-ymax)<tol.or.abs(nodeCoor(3)-zmin)<tol) then
             eqNumIndexArrLocTag      = eqNumIndexArrLocTag+1
-            equationNumIndexArr(eqNumIndexArrLocTag) = -1 
+            eqNumIndexArr(eqNumIndexArrLocTag) = -1 
             ! Dof = -1 for fixed boundary nodes, no eq #. 
         else
             equationNumCount      = equationNumCount + 1
             eqNumIndexArrLocTag      = eqNumIndexArrLocTag+1
-            equationNumIndexArr(eqNumIndexArrLocTag) = equationNumCount
+            eqNumIndexArr(eqNumIndexArrLocTag) = equationNumCount
             
             !Count # of DOF on MPI boundaries
             if (nodeXyzIndex(1)==1) then !Left
@@ -850,7 +850,7 @@ do iFault = 1, ntotft
         do i = 1, ndof
             equationNumCount      = equationNumCount + 1
             eqNumIndexArrLocTag      = eqNumIndexArrLocTag + 1
-            equationNumIndexArr(eqNumIndexArrLocTag) = equationNumCount
+            eqNumIndexArr(eqNumIndexArrLocTag) = equationNumCount
         enddo
         
         ! Count split-node pair # for MPI
