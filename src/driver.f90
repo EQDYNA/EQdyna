@@ -123,9 +123,10 @@ subroutine velDispUpdate
                 !eqNumStartIndexLoc(i) = eqNumSt
                 eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
                 v1(eqNumTmp) = v1(eqNumTmp) + nodalForceArr(eqNumTmp)*dt
-                d1(eqNumTmp) = d1(eqNumTmp) + v1(eqNumTmp)*dt
+                !d1(eqNumTmp) = d1(eqNumTmp) + v1(eqNumTmp)*dt
                 velArr(j,i) = v1(eqNumTmp)
-                dispArr(j,i) = d1(eqNumTmp)
+                dispArr(j,i) = dispArr(j,i) + v1(eqNumTmp)*dt
+                !dispArr(j,i) = d1(eqNumTmp)
             enddo
         elseif (numOfDofPerNodeArr(i)==12) then
             !eqNumStartIndexLoc(i)=eqNumStartIndexLoc(i)+1
