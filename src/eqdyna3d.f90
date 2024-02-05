@@ -86,10 +86,10 @@ program EQdyna
     allocate(fltsta(12,nplpts-1,n4onf),stat=alloc_err)
     fltsta = 0.0d0
 
-    allocate(nodalForceArr(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), alhs(totalNumOfEquations), v(ndof,numnp),d(ndof,numnp),stat=alloc_err)
+    allocate(nodalForceArr(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), nodalMassArr(totalNumOfEquations), v(ndof,numnp),d(ndof,numnp),stat=alloc_err)
 
     nodalForceArr    = 0.0d0
-    alhs    = 0.0d0
+    nodalMassArr    = 0.0d0
     v1      = 0.0d0
     d1      = 0.0d0
     v       = 0.0d0

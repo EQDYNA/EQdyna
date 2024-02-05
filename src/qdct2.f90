@@ -37,7 +37,7 @@ subroutine qdct2
         call calcSSPhi4Hrgls(nel, xl, xs, shg)
     enddo
 
-    call MPI4NodalQuant(alhs, 3)
+    call MPI4NodalQuant(nodalMassArr, 3)
     call MPI4NodalQuant(fnms, 1)
 
 end subroutine qdct2
@@ -280,18 +280,18 @@ subroutine assembleElementMassDetShg(elemID, elementMass, det, shg)
                 do j = 3*(ixyz-1)+1, 3*(ixyz-1)+3
                     eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(nodeID)+j)
                     if (eqNumTmp > 0) then
-                        alhs(eqNumTmp) = alhs(eqNumTmp) + elementMass(3*(i-1)+ixyz)
+                        nodalMassArr(eqNumTmp) = nodalMassArr(eqNumTmp) + elementMass(3*(i-1)+ixyz)
                     endif
                 enddo
                 eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(nodeID)+ixyz+9)
                 if (eqNumTmp>0) then
-                    alhs(eqNumTmp) = alhs(eqNumTmp) + elementMass(3*(i-1)+ixyz)
+                    nodalMassArr(eqNumTmp) = nodalMassArr(eqNumTmp) + elementMass(3*(i-1)+ixyz)
                 endif
             enddo                       
         elseif (dof1(nodeID) == ndof) then
             do j = 1, ndof
                 eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(nodeID)+j)
-                alhs(eqNumTmp) = alhs(eqNumTmp) + elementMass((i-1)*3+j)
+                nodalMassArr(eqNumTmp) = nodalMassArr(eqNumTmp) + elementMass((i-1)*3+j)
             enddo
         endif
         
