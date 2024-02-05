@@ -12,15 +12,15 @@ subroutine ku
     
     do nel = 1, totalNumOfElements
         !al(1:ned,1:nen) = 0.0d0
-        al(1:ned,1:nen) = rdampm*v(1:ned,ien(1:nen,nel))
+        al(1:ned,1:nen) = rdampm*velArr(1:ned,ien(1:nen,nel))
         al(3,1:nen)     = al(3,1:nen) + (1.0d0-C_elastic)*grav*(roumax-(gamar+1.0d0)*rhow)/roumax
 
         elresf = 0.0d0 
         call contma(elemass(1:nee,nel),al,elresf)
 
         if (et(nel)==1 .or. et(nel)>10) then
-            call qdckd(eleshp(1,1,nel), mat(nel,1:5), v(1:ned,ien(1:nen,nel)), &
-                        d(1:ned,ien(1:nen,nel)), s1(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+12), &
+            call qdckd(eleshp(1,1,nel), mat(nel,1:5), velArr(1:ned,ien(1:nen,nel)), &
+                        dispArr(1:ned,ien(1:nen,nel)), stressArr(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+12), &
                         elresf, -eledet(nel), eleporep(nel), pstrinc, &
                         x(1:3,ien(1:8,nel)))
             pstrain(nel) = pstrain(nel) + pstrinc
@@ -41,7 +41,7 @@ subroutine ku
                 enddo
             enddo
 
-            call elemPMLKu(v(1:ned,ien(1:nen,nel)), efPML, s1(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+21), &
+            call elemPMLKu(velArr(1:ned,ien(1:nen,nel)), efPML, stressArr(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+21), &
                            x(1:3,ien(1:8,nel)), mat(nel,1:5), eleshp(1,1,nel), &
                            eledet(nel), nel)
             do i = 1, 8

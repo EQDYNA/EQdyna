@@ -74,9 +74,9 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     
     do j = 1, 2  ! slave, master
         do k = 1, 3  ! x,y,z
-            xyzNodalQuant(k,j,1) = nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(nsmp(j,iFaultNodePair,iFault))+k))  !1-force !DL 
-            xyzNodalQuant(k,j,2) = v(k,nsmp(j,iFaultNodePair,iFault)) !2-vel
-            xyzNodalQuant(k,j,3) = d(k,nsmp(j,iFaultNodePair,iFault)) !3-di,iftsp
+            xyzNodalQuant(k,j,1) = nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(nsmp(j,iFaultNodePair,iFault))+k))  
+            xyzNodalQuant(k,j,2) = velArr(k,nsmp(j,iFaultNodePair,iFault)) 
+            xyzNodalQuant(k,j,3) = dispArr(k,nsmp(j,iFaultNodePair,iFault)) 
         enddo
     enddo
     
@@ -320,8 +320,8 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
         nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(nsmp(2,iFaultNodePair,iFault))+j)) = (xyzAccVec(j)  + xyzR(j)/massSlave)*mr ! Acc.Master.x/y/z
         ! store normal velocities for master-slave node pair ...
         ! v(k,nsmp(j,iFaultNodePair,iFault)) - k:xyz, j:slave1,master2
-        fric(31+j-1,iFaultNodePair,iFault) = v(j,nsmp(2,iFaultNodePair,iFault)) + (xyzAccVec(j)+xyzR(j)/massSlave)*dt !Velocity.Master.x/y/z
-        fric(34+j-1,iFaultNodePair,iFault) = v(j,nsmp(1,iFaultNodePair,iFault)) + (-xyzAccVec(j)+xyzR(j)/massMaster)*dt !Velocity.Slave.x/y/z
+        fric(31+j-1,iFaultNodePair,iFault) = velArr(j,nsmp(2,iFaultNodePair,iFault)) + (xyzAccVec(j)+xyzR(j)/massSlave)*dt !Velocity.Master.x/y/z
+        fric(34+j-1,iFaultNodePair,iFault) = velArr(j,nsmp(1,iFaultNodePair,iFault)) + (-xyzAccVec(j)+xyzR(j)/massMaster)*dt !Velocity.Slave.x/y/z
     enddo
     
 end subroutine solveRSF

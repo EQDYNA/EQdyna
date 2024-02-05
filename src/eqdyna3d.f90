@@ -85,14 +85,16 @@ program EQdyna
     allocate(onFaultQuantHistSCECForm(12,nplpts-1,n4onf))
     onFaultQuantHistSCECForm = 0.0d0
 
-    allocate(nodalForceArr(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), nodalMassArr(totalNumOfEquations), v(ndof,totalNumOfNodes),d(ndof,totalNumOfNodes))
+    allocate(nodalForceArr(totalNumOfEquations), v1(totalNumOfEquations), &
+            d1(totalNumOfEquations), nodalMassArr(totalNumOfEquations), &
+            velArr(ndof,totalNumOfNodes), dispArr(ndof,totalNumOfNodes))
 
     nodalForceArr    = 0.0d0
     nodalMassArr    = 0.0d0
     v1      = 0.0d0
     d1      = 0.0d0
-    v       = 0.0d0
-    d       = 0.0d0
+    velArr  = 0.0d0
+    dispArr = 0.0d0
 
     allocate(onFaultTPHist(2,nftmx,nplpts,ntotft))
     onFaultTPHist = 0.0d0
@@ -205,9 +207,9 @@ subroutine allocInit
     patnode = 0.0d0
         
     allocate(stressCompIndexArr(totalNumOfElements))
-    allocate(s1(5*maxm))
+    allocate(stressArr(5*maxm))
     stressCompIndexArr = 0
-    s1      = 0.0d0
+    stressArr = 0.0d0
 end subroutine allocInit
 
 subroutine checkMeshMaterial
