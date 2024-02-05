@@ -49,7 +49,7 @@ MODULE globalvar
 
     integer (kind = 4)  :: np = 1000000, &
         nsd=3,  ndof=3, nen=8,  ned=3,  nee=24, nesd=3, nrowsh=4, &
-        nrowb=6,nrowc=6,nstr=6, noid=2, numnp,  numel,  neq,      & 
+        nrowb=6,nrowc=6,nstr=6, noid=2, numnp,  numel,  totalNumOfEquations,      & 
         maxm,   maxs,   npx,    npy,    npz,    master=0,         &
         me,     nprocs, mode, &
         nplpts, nstep,  nhplt=1,        locplt=1, &
