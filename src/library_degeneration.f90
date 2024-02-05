@@ -61,7 +61,7 @@ subroutine wedge(cenx, ceny, cenz, nelement, ntags, iy, iz, nftndtmp)
 		neworder = (/3,4,1,1,7,8,5,5/)
 		call reorder(neworder, nelement, iy, iz)
 		
-		ids(nelement)=ntags
+		stressCompIndexArr(nelement)=ntags
 		ntags = ntags + 12
 
 		mat(nelement,1)=material(1,1)
@@ -165,7 +165,7 @@ subroutine tetra(cenx, ceny, cenz, nelement, ntags, iy, iz, nftndtmp)
 		 mat(nelement,4)=mat(nelement-1,4)
 		 mat(nelement,5)=mat(nelement-1,5)
 		 et(nelement)=12 
-		 ids(nelement)= ntags
+		 stressCompIndexArr(nelement)= ntags
 		 ntags = ntags + 12					
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
@@ -197,7 +197,7 @@ subroutine tetra(cenx, ceny, cenz, nelement, ntags, iy, iz, nftndtmp)
 		mat(nelement,4)=mat(nelement-1,4)
 		mat(nelement,5)=mat(nelement-1,5)	
 		et(nelement)=12 
-		ids(nelement)= ntags
+		stressCompIndexArr(nelement)= ntags
 		ntags = ntags + 12					
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
@@ -229,7 +229,7 @@ subroutine tetra(cenx, ceny, cenz, nelement, ntags, iy, iz, nftndtmp)
 		mat(nelement,4)=mat(nelement-1,4)
 		mat(nelement,5)=mat(nelement-1,5)
 		et(nelement)=12 
-		ids(nelement)= ntags
+		stressCompIndexArr(nelement)= ntags
 		ntags = ntags + 12
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
@@ -261,7 +261,7 @@ subroutine tetra(cenx, ceny, cenz, nelement, ntags, iy, iz, nftndtmp)
 		mat(nelement,4)=mat(nelement-1,4)
 		mat(nelement,5)=mat(nelement-1,5)
 		et(nelement)=12 
-		ids(nelement)=ntags
+		stressCompIndexArr(nelement)=ntags
 		ntags = ntags + 12
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
