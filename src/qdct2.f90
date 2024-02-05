@@ -48,7 +48,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
     implicit none
     include 'mpif.h'
     integer (kind = 4) ::  ierr, istatus(MPI_STATUS_SIZE), i, ixyz, numDof, rrr, &
-        ix,iy,iz, nodenumtemp, ntagMPI, dest, sendtag, source, recvtag, ib, iSign, &
+        ix,iy,iz, nodenumtemp, dofCount4MPI, dest, sendtag, source, recvtag, ib, iSign, &
         bnd(2), mexyz(3), npxyz(3), numxyz(3), abc(3)
     real (kind = dp) :: quantArray(totalNumOfEquations) 
     real (kind = dp), allocatable, dimension(:) :: btmp, btmp1
@@ -123,35 +123,35 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                     endif 
                     allocate(btmp(rrr),btmp1(rrr))
                     
-                    ntagMPI = 0
+                    dofCount4MPI = 0
                     if (ixyz == 1) then 
                         do iz=1,numxyz(3)
                             do iy=1,numxyz(2)
                                 nodenumtemp=(bnd(ib)-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+iy
                                 !                         nodeID, numDof, fetch, ...
-                                call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, ntagMPI) 
+                                call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, dofCount4MPI) 
                             enddo
                         enddo
                     elseif (ixyz == 2) then 
                         do ix=1,numxyz(1)
                             do iz=1,numxyz(3)
                                 nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bnd(ib)
-                                call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, ntagMPI)   
+                                call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, dofCount4MPI)   
                             enddo
                         enddo
                     elseif (ixyz == 3) then 
                         do ix=1,numxyz(1)
                             do iy=1,numxyz(2)
                                 nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bnd(ib)-1)*numxyz(2)+iy
-                                call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, ntagMPI)   
+                                call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, dofCount4MPI)   
                             enddo
                         enddo
                     endif 
                     
                     ! !Check
-                    ! if (numcount(3+2*(ixyz-1)+ib)/=ntagMPI) then 
-                        ! stop 'rr&ntagMPI-qdct2-bnd(1)'
-                        ! write(*,*) 'rr=',numcount(3+2*(ixyz-1)+ib),'ntagMPI=',ntagMPI
+                    ! if (numcount(3+2*(ixyz-1)+ib)/=dofCount4MPI) then 
+                        ! stop 'rr&dofCount4MPI-qdct2-bnd(1)'
+                        ! write(*,*) 'rr=',numcount(3+2*(ixyz-1)+ib),'dofCount4MPI=',dofCount4MPI
                     ! endif
         !
                     if (fltMPI(2*(ixyz-1)+ib)) then
@@ -169,7 +169,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                             elseif (ixyz == 3 .and. ib == 2) then 
                                 nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltu(ix)
                             endif 
-                            call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, ntagMPI)
+                            call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, dofCount4MPI)
                           
                         enddo
                     endif
@@ -178,27 +178,27 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                                       btmp1, rrr, MPI_DOUBLE_PRECISION, source, recvtag, &
                                       MPI_COMM_WORLD, istatus, ierr)
                     
-                    ntagMPI=0
+                    dofCount4MPI=0
                     if (ixyz == 1) then 
                         do iz=1,numxyz(3)
                             do iy=1,numxyz(2)
                                 nodenumtemp=(bnd(ib)-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+iy
                                 !                                        add
-                                call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, ntagMPI)  
+                                call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, dofCount4MPI)  
                             enddo
                         enddo
                     elseif (ixyz == 2) then 
                         do ix=1,numxyz(1)
                             do iz=1,numxyz(3)
                                 nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bnd(ib)
-                                call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, ntagMPI)   
+                                call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, dofCount4MPI)   
                             enddo
                         enddo
                     elseif (ixyz == 3) then 
                         do ix=1,numxyz(1)
                             do iy=1,numxyz(2)
                                 nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bnd(ib)-1)*numxyz(2)+iy
-                                call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, ntagMPI)    
+                                call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, dofCount4MPI)    
                             enddo
                         enddo
                     endif 
@@ -218,7 +218,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                             elseif (ixyz == 3 .and. ib == 2) then 
                                 nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltu(ix)
                             endif 
-                            call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, ntagMPI) 
+                            call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, dofCount4MPI) 
                         enddo
                     endif
                     deallocate(btmp, btmp1)
@@ -231,36 +231,36 @@ subroutine MPI4NodalQuant(quantArray, numDof)
     btime = btime + MPI_WTIME() - time1
 end subroutine MPI4NodalQuant
 
-subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, quantArray, ntagMPI)
+subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, quantArray, dofCount4MPI)
     use globalvar
     implicit none
-    integer (kind = 4) :: nodeID, numDof, iDof, ntagMPI, resArrSize, operation
+    integer (kind = 4) :: nodeID, numDof, iDof, dofCount4MPI, resArrSize, operation
     real(kind = dp) :: resArr(resArrSize), quantArray(totalNumOfEquations)
     !character (len = 20) :: operation
     
     ! operation = 'fetch'; 'add'
     
     if (numDof == 1) then 
-        ntagMPI = ntagMPI + 1
+        dofCount4MPI = dofCount4MPI + 1
         if (operation == 1) then 
-            resArr(ntagMPI) = quantArray(nodeID)
+            resArr(dofCount4MPI) = quantArray(nodeID)
         elseif (operation == 2) then 
-            quantArray(nodeID) = quantArray(nodeID) + resArr(ntagMPI)
+            quantArray(nodeID) = quantArray(nodeID) + resArr(dofCount4MPI)
         endif 
     elseif (numDof == 3) then 
         if (operation == 1) then 
-            do iDof = 1, dof1(nodeID)
+            do iDof = 1, numOfDofPerNodeArr(nodeID)
                 if (equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof)>0) then
-                    ntagMPI = ntagMPI + 1
-                    resArr(ntagMPI) = quantArray(equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof))
+                    dofCount4MPI = dofCount4MPI + 1
+                    resArr(dofCount4MPI) = quantArray(equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof))
                 endif
             enddo
         elseif (operation == 2) then 
-            do iDof = 1, dof1(nodeID)
+            do iDof = 1, numOfDofPerNodeArr(nodeID)
                 if (equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof)>0) then
-                    ntagMPI = ntagMPI + 1
+                    dofCount4MPI = dofCount4MPI + 1
                     quantArray(equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof)) = quantArray(equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof)) + &
-                        resArr(ntagMPI)
+                        resArr(dofCount4MPI)
                 endif
             enddo   
         endif
@@ -275,7 +275,7 @@ subroutine assembleElementMassDetShg(elemID, elementMass, det, shg)
     
     do i = 1, nen 
         nodeID = ien(i,elemID)
-        if (dof1(nodeID)==12) then
+        if (numOfDofPerNodeArr(nodeID)==12) then
             do ixyz = 1, 3
                 do j = 3*(ixyz-1)+1, 3*(ixyz-1)+3
                     eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(nodeID)+j)
@@ -288,7 +288,7 @@ subroutine assembleElementMassDetShg(elemID, elementMass, det, shg)
                     nodalMassArr(eqNumTmp) = nodalMassArr(eqNumTmp) + elementMass(3*(i-1)+ixyz)
                 endif
             enddo                       
-        elseif (dof1(nodeID) == ndof) then
+        elseif (numOfDofPerNodeArr(nodeID) == ndof) then
             do j = 1, ndof
                 eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(nodeID)+j)
                 nodalMassArr(eqNumTmp) = nodalMassArr(eqNumTmp) + elementMass((i-1)*3+j)

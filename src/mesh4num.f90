@@ -8,7 +8,7 @@ subroutine mesh4num
     logical,dimension(ntotft) :: ynft
     integer(kind = 4) :: nodeCount=0, elementCount=0, equationNumCount=0, &
             nxt, nyt, nzt, nx, ny, nz, ix, iy, iz, &
-        edgex1,edgey1, iDof,edgezn, ntag,numOfDof, nxuni,nyuni,nzuni,ift,mex,mey,mez
+        edgex1,edgey1, iDof,edgezn, eqNumIndexArrSizeCount=0,numOfDof, nxuni,nyuni,nzuni,ift,mex,mey,mez
     real (kind = dp) :: xcoor, ycoor, zcoor, xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2)
 
     call calcXyzMPIId(mex, mey, mez)
@@ -17,7 +17,6 @@ subroutine mesh4num
     call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, modelBoundCoor, 3)
 
     nftnd = 0
-    ntag=0
 
     do ix = 1, nx
         do iz = 1, nz
@@ -38,10 +37,10 @@ subroutine mesh4num
                     if(abs(xcoor-modelBoundCoor(1,1))<tol.or.abs(xcoor-modelBoundCoor(1,2))<tol.or.abs(ycoor-modelBoundCoor(2,1))<tol &
                         .or.abs(ycoor-modelBoundCoor(2,2))<tol.or.abs(zcoor-modelBoundCoor(3,1))<tol) then
                         ! -1 for fixed boundary nodes; no equation number needed.
-                        ntag=ntag+1
+                        eqNumIndexArrSizeCount=eqNumIndexArrSizeCount+1
                     else
                         equationNumCount = equationNumCount + 1
-                        ntag=ntag+1                    
+                        eqNumIndexArrSizeCount=eqNumIndexArrSizeCount+1                    
                     endif
                 enddo
 
@@ -61,7 +60,7 @@ subroutine mesh4num
                             !...establish equation numbers for this master node
                             do iDof=1,ndof
                                 equationNumCount = equationNumCount + 1
-                                ntag=ntag+1!DL
+                                eqNumIndexArrSizeCount=eqNumIndexArrSizeCount+1!DL
                             enddo
                             exit !can only be on 1 fault, thus if ynft(ift), exit do loop       
                         endif  !if ynft(ift)
@@ -81,7 +80,7 @@ subroutine mesh4num
             enddo    !iy
         enddo    !iz
     enddo        !ix
-    maxm  = ntag
+    maxm  = eqNumIndexArrSizeCount
     numnp = nodeCount
     totalNumOfElements = elementCount
     totalNumOfEquations = equationNumCount

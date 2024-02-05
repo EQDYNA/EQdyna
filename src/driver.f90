@@ -118,7 +118,7 @@ subroutine velDispUpdate
    
     time1   = MPI_WTIME()
     do i=1,numnp
-        if (dof1(i)==3) then
+        if (numOfDofPerNodeArr(i)==3) then
             do j=1,3
                 itag=eqNumStartIndexLoc(i)+j
                 eqNumTmp=equationNumIndexArr(itag)
@@ -127,7 +127,7 @@ subroutine velDispUpdate
                 v(j,i)=v1(eqNumTmp)
                 d(j,i)=d1(eqNumTmp)
             enddo
-        elseif (dof1(i)==12) then
+        elseif (numOfDofPerNodeArr(i)==12) then
             itag=eqNumStartIndexLoc(i)+1
             eqNumTmp=equationNumIndexArr(itag)
             if (eqNumTmp>0) then

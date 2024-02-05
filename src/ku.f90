@@ -45,14 +45,14 @@ subroutine ku
                            x(1:3,ien(1:8,nel)), mat(nel,1:5), eleshp(1,1,nel), &
                            eledet(nel), nel)
             do i = 1, 8
-                if (dof1(ien(i,nel))==12) then
+                if (numOfDofPerNodeArr(ien(i,nel))==12) then
                     do j = 1, 12 
                         eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(ien(i,nel))+j)
                         if (eqNumTmp > 0) then
                             nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+j)
                         endif
                     enddo
-                elseif (dof1(ien(i,nel)) == ndof) then 
+                elseif (numOfDofPerNodeArr(ien(i,nel)) == ndof) then 
                     eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(ien(i,nel))+1)
                     nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp) + efPML((i-1)*12+1)+efPML((i-1)*12+2)+efPML((i-1)*12+3)+efPML((i-1)*12+10)
                     eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(ien(i,nel))+2)

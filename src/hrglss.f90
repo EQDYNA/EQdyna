@@ -41,9 +41,9 @@ subroutine hrglss
                 !... assemble to global right-hand-side force vector
                 do i = 1, nen
                     do j = 1, ned
-                        if (dof1(ien(i,nel)) == 3) then
+                        if (numOfDofPerNodeArr(ien(i,nel)) == 3) then
                             itag = eqNumStartIndexLoc(ien(i,nel))+j
-                        elseif (dof1(ien(i,nel)) == 12) then
+                        elseif (numOfDofPerNodeArr(ien(i,nel)) == 12) then
                             itag = eqNumStartIndexLoc(ien(i,nel))+j+9
                         endif
                         k = equationNumIndexArr(itag)
@@ -83,9 +83,9 @@ subroutine hrglss
             enddo
             do i = 1, nen
                 do j = 1, ned
-                    if (dof1(ien(i,nel)).eq.3) then
+                    if (numOfDofPerNodeArr(ien(i,nel)).eq.3) then
                         itag=eqNumStartIndexLoc(ien(i,nel))+j
-                    elseif (dof1(ien(i,nel)).eq.12) then
+                    elseif (numOfDofPerNodeArr(ien(i,nel)).eq.12) then
                         itag=eqNumStartIndexLoc(ien(i,nel))+j+9
                     endif
                     k=equationNumIndexArr(itag)
