@@ -42,13 +42,13 @@ subroutine hrglss
                 do i = 1, nen
                     do j = 1, ned
                         if (dof1(ien(i,nel)) == 3) then
-                            itag = locid(ien(i,nel))+j
+                            itag = locateEqNumStartIndex(ien(i,nel))+j
                         elseif (dof1(ien(i,nel)) == 12) then
-                            itag = locid(ien(i,nel))+j+9
+                            itag = locateEqNumStartIndex(ien(i,nel))+j+9
                         endif
                         k = equationNumIndexArr(itag)
                         if(k > 0) then
-                            brhs(k) = brhs(k) - fhr(j,i)
+                            nodalForceArr(k) = nodalForceArr(k) - fhr(j,i)
                         endif
                     enddo
                 enddo
@@ -84,13 +84,13 @@ subroutine hrglss
             do i = 1, nen
                 do j = 1, ned
                     if (dof1(ien(i,nel)).eq.3) then
-                        itag=locid(ien(i,nel))+j
+                        itag=locateEqNumStartIndex(ien(i,nel))+j
                     elseif (dof1(ien(i,nel)).eq.12) then
-                        itag=locid(ien(i,nel))+j+9
+                        itag=locateEqNumStartIndex(ien(i,nel))+j+9
                     endif
                     k=equationNumIndexArr(itag)
                     if(k > 0) then
-                        brhs(k) = brhs(k)+f((i-1)*3+j)
+                        nodalForceArr(k) = nodalForceArr(k)+f((i-1)*3+j)
                     endif
                 enddo
             enddo
