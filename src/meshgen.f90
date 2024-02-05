@@ -71,7 +71,7 @@ subroutine meshgen
     ien      = 0
     equationNumIndexArr      = 0
     stressCompIndexArr      = 0
-    locateEqNumStartIndex    = 0
+    eqNumStartIndexLoc    = 0
     dof1     = 0
     et       = 0
     
@@ -98,7 +98,7 @@ subroutine meshgen
                 
                 call setNumDof(nodeCoor, nodeDofNum)
 
-                locateEqNumStartIndex(nodeCount) = ntag
+                eqNumStartIndexLoc(nodeCount) = ntag
                 dof1(nodeCount)  = nodeDofNum
                 
                 call setEquationNumber(nodeXyzIndex, nodeCoor, ntag, equationNumCount, nodeDofNum)
@@ -1007,7 +1007,7 @@ do iFault = 1, ntotft
         msnode                        = nodeXyzIndex(4)*nodeXyzIndex(5)*nodeXyzIndex(6) + nftnd0(iFault) ! create Master node at the end of regular grids
         if (iFault>1) stop 'msnode cannot handle iFault>1'
         
-        locateEqNumStartIndex(msnode)                 = ntag
+        eqNumStartIndexLoc(msnode)                 = ntag
         dof1(msnode)                  = 3         
         nsmp(2,nftnd0(iFault),iFault) = msnode !set Master node nodeID to nsmp
         plane2(nodeXyzIndex(5)+iFault,nodeXyzIndex(3)) = msnode
