@@ -83,8 +83,8 @@ program EQdyna
     endif
     
     if(n4onf<=0) n4onf=1 
-    allocate(fltsta(12,nplpts-1,n4onf),stat=alloc_err)
-    fltsta = 0.0d0
+    allocate(onFaultQuantHistSCECForm(12,nplpts-1,n4onf),stat=alloc_err)
+    onFaultQuantHistSCECForm = 0.0d0
 
     allocate(nodalForceArr(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), nodalMassArr(totalNumOfEquations), v(ndof,numnp),d(ndof,numnp),stat=alloc_err)
 
@@ -95,8 +95,8 @@ program EQdyna
     v       = 0.0d0
     d       = 0.0d0
 
-    allocate(frichis(2,nftmx,nplpts,ntotft))
-    frichis = 0.0d0
+    allocate(onFaultTPHist(2,nftmx,nplpts,ntotft))
+    onFaultTPHist = 0.0d0
 
     if(n4out>0) then 
         ndout=n4out*ndof*noid!3 components of 2 quantities: v and d
@@ -162,7 +162,7 @@ end program EQdyna
 subroutine allocInit
     use globalvar 
     implicit none 
-    allocate(equationNumIndexArr(maxm),locateEqNumStartIndex(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
+    allocate(equationNumIndexArr(maxm),eqNumStartIndexLoc(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
 
     allocate(ien(nen,totalNumOfElements), mat(totalNumOfElements,5), et(totalNumOfElements), eleporep(totalNumOfElements), pstrain(totalNumOfElements), &
                 eledet(totalNumOfElements), elemass(nee,totalNumOfElements), eleshp(nrowsh-1,nen,totalNumOfElements), &

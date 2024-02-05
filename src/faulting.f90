@@ -74,7 +74,7 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     
     do j = 1, 2  ! slave, master
         do k = 1, 3  ! x,y,z
-            xyzNodalQuant(k,j,1) = nodalForceArr(equationNumIndexArr(locateEqNumStartIndex(nsmp(j,iFaultNodePair,iFault))+k))  !1-force !DL 
+            xyzNodalQuant(k,j,1) = nodalForceArr(equationNumIndexArr(eqNumStartIndexLoc(nsmp(j,iFaultNodePair,iFault))+k))  !1-force !DL 
             xyzNodalQuant(k,j,2) = v(k,nsmp(j,iFaultNodePair,iFault)) !2-vel
             xyzNodalQuant(k,j,3) = d(k,nsmp(j,iFaultNodePair,iFault)) !3-di,iftsp
         enddo
@@ -178,8 +178,8 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, ns
     enddo
     
     do j=1,3 !x,y,z
-        nodalForceArr(equationNumIndexArr(locateEqNumStartIndex(nsmp(1,iFaultNodePair,iFault))+j)) = nodalForceArr(equationNumIndexArr(locateEqNumStartIndex(nsmp(1,iFaultNodePair,iFault))+j)) + xyzTractionVector(j) - xyzInitTractionVector(j)*C_elastic
-        nodalForceArr(equationNumIndexArr(locateEqNumStartIndex(nsmp(2,iFaultNodePair,iFault))+j)) = nodalForceArr(equationNumIndexArr(locateEqNumStartIndex(nsmp(2,iFaultNodePair,iFault))+j)) - xyzTractionVector(j) + xyzInitTractionVector(j)*C_elastic
+        nodalForceArr(equationNumIndexArr(eqNumStartIndexLoc(nsmp(1,iFaultNodePair,iFault))+j)) = nodalForceArr(equationNumIndexArr(eqNumStartIndexLoc(nsmp(1,iFaultNodePair,iFault))+j)) + xyzTractionVector(j) - xyzInitTractionVector(j)*C_elastic
+        nodalForceArr(equationNumIndexArr(eqNumStartIndexLoc(nsmp(2,iFaultNodePair,iFault))+j)) = nodalForceArr(equationNumIndexArr(eqNumStartIndexLoc(nsmp(2,iFaultNodePair,iFault))+j)) - xyzTractionVector(j) + xyzInitTractionVector(j)*C_elastic
     enddo
     
     do j=1,3 !n,s,d
@@ -298,8 +298,8 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     fric(47,iFaultNodePair,iFault) = v_trial
     fric(48,iFaultNodePair,iFault) = sqrt(nsdTractionVector(2)**2 + nsdTractionVector(3)**2) 
     
-    frichis(1,iFaultNodePair,nt,iFault) = fric(47,iFaultNodePair,iFault)
-    frichis(2,iFaultNodePair,nt,iFault) = fric(48,iFaultNodePair,iFault)
+    onFaultTPHist(1,iFaultNodePair,nt,iFault) = fric(47,iFaultNodePair,iFault)
+    onFaultTPHist(2,iFaultNodePair,nt,iFault) = fric(48,iFaultNodePair,iFault)
     
     ! 3 components of relative acceleration bewteen m-s nodes in the fault plane coordinate sys. 
     nsdAccVec(1) = -nsdSliprateVector(1)/dt - nsdSlipVector(1)/dt/dt
@@ -310,14 +310,14 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     do j=1,3 !x,y,z
         xyzAccVec(j) = nsdAccVec(1)*un(j,iFaultNodePair,iFault) + nsdAccVec(2)*us(j,iFaultNodePair,iFault) + nsdAccVec(3)*ud(j,iFaultNodePair,iFault)
         ! determine total forces acting on the node pair ...
-        xyzR(j) = nodalForceArr(equationNumIndexArr(locateEqNumStartIndex(nsmp(1,iFaultNodePair,iFault))+j)) + nodalForceArr(equationNumIndexArr(locateEqNumStartIndex(nsmp(2,iFaultNodePair,iFault))+j))
+        xyzR(j) = nodalForceArr(equationNumIndexArr(eqNumStartIndexLoc(nsmp(1,iFaultNodePair,iFault))+j)) + nodalForceArr(equationNumIndexArr(eqNumStartIndexLoc(nsmp(2,iFaultNodePair,iFault))+j))
     enddo 
     
     do j=1,3 !x,y,z
         ! calculate xyz components of nodal forces that can generate 
         !  the above calculated accelerations for the m-s node pair. 
-        nodalForceArr(equationNumIndexArr(locateEqNumStartIndex(nsmp(1,iFaultNodePair,iFault))+j)) = (-xyzAccVec(j) + xyzR(j)/massMaster)*mr ! Acc.Slave.x/y/z
-        nodalForceArr(equationNumIndexArr(locateEqNumStartIndex(nsmp(2,iFaultNodePair,iFault))+j)) = (xyzAccVec(j)  + xyzR(j)/massSlave)*mr ! Acc.Master.x/y/z
+        nodalForceArr(equationNumIndexArr(eqNumStartIndexLoc(nsmp(1,iFaultNodePair,iFault))+j)) = (-xyzAccVec(j) + xyzR(j)/massMaster)*mr ! Acc.Slave.x/y/z
+        nodalForceArr(equationNumIndexArr(eqNumStartIndexLoc(nsmp(2,iFaultNodePair,iFault))+j)) = (xyzAccVec(j)  + xyzR(j)/massSlave)*mr ! Acc.Master.x/y/z
         ! store normal velocities for master-slave node pair ...
         ! v(k,nsmp(j,iFaultNodePair,iFault)) - k:xyz, j:slave1,master2
         fric(31+j-1,iFaultNodePair,iFault) = v(j,nsmp(2,iFaultNodePair,iFault)) + (xyzAccVec(j)+xyzR(j)/massSlave)*dt !Velocity.Master.x/y/z
@@ -524,18 +524,18 @@ subroutine storeOnFaultStationQuantSCEC(iFault, iFaultNodePair, nsdSlipVector, n
     if(n4onf>0 .and. lstr) then    
         do j = 1, n4onf
             if(anonfs(1,j)==iFaultNodePair .and. anonfs(3,j)==iFault) then 
-                fltsta(1,locplt-1,j)  = time
-                fltsta(2,locplt-1,j)  = nsdSliprateVector(2)
-                fltsta(3,locplt-1,j)  = nsdSliprateVector(3)
-                fltsta(4,locplt-1,j)  = fric(20,iFaultNodePair,iFault)
-                fltsta(5,locplt-1,j)  = nsdSlipVector(2)
-                fltsta(6,locplt-1,j)  = nsdSlipVector(3)
-                fltsta(7,locplt-1,j)  = nsdSlipVector(1)
-                fltsta(8,locplt-1,j)  = nsdTractionVector(2) !tstk
-                fltsta(9,locplt-1,j)  = nsdTractionVector(3) !tdip
-                fltsta(10,locplt-1,j) = nsdTractionVector(1) !tnrm
-                fltsta(11,locplt-1,j) = fric(51,iFaultNodePair,iFault) + fric(42,iFaultNodePair,iFault) ! + fric_tp_pini
-                fltsta(12,locplt-1,j) = fric(52,iFaultNodePair,iFault) 
+                onFaultQuantHistSCECForm(1,locplt-1,j)  = time
+                onFaultQuantHistSCECForm(2,locplt-1,j)  = nsdSliprateVector(2)
+                onFaultQuantHistSCECForm(3,locplt-1,j)  = nsdSliprateVector(3)
+                onFaultQuantHistSCECForm(4,locplt-1,j)  = fric(20,iFaultNodePair,iFault)
+                onFaultQuantHistSCECForm(5,locplt-1,j)  = nsdSlipVector(2)
+                onFaultQuantHistSCECForm(6,locplt-1,j)  = nsdSlipVector(3)
+                onFaultQuantHistSCECForm(7,locplt-1,j)  = nsdSlipVector(1)
+                onFaultQuantHistSCECForm(8,locplt-1,j)  = nsdTractionVector(2) !tstk
+                onFaultQuantHistSCECForm(9,locplt-1,j)  = nsdTractionVector(3) !tdip
+                onFaultQuantHistSCECForm(10,locplt-1,j) = nsdTractionVector(1) !tnrm
+                onFaultQuantHistSCECForm(11,locplt-1,j) = fric(51,iFaultNodePair,iFault) + fric(42,iFaultNodePair,iFault) ! + fric_tp_pini
+                onFaultQuantHistSCECForm(12,locplt-1,j) = fric(52,iFaultNodePair,iFault) 
             endif
         enddo 
     endif   

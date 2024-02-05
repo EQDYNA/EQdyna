@@ -54,21 +54,21 @@ subroutine output_onfault_st
 			write(51,*) '# The line below lists the names of the data fields:'
 			write(51,'(1X,103A)') 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress psi temperature pressure'
 			write(51,*) '#'
-					! fltsta(1,locplt-1,j) = time
-					! fltsta(2,locplt-1,j) = sliprates
-					! fltsta(3,locplt-1,j) = sliprated
-					! fltsta(4,locplt-1,j) = state(i)
-					! fltsta(5,locplt-1,j) = slips
-					! fltsta(6,locplt-1,j) = slipd
-					! fltsta(7,locplt-1,j) = slipn
-					! fltsta(8,locplt-1,j) = tstk
-					! fltsta(9,locplt-1,j) = tdip
-					! fltsta(10,locplt-1,j) = tnrm
-					! fltsta(11,locplt-1,j) = fric(51,i)
-					! fltsta(12,locplt-1,j) = fric(52,i)		
+					! onFaultQuantHistSCECForm(1,locplt-1,j) = time
+					! onFaultQuantHistSCECForm(2,locplt-1,j) = sliprates
+					! onFaultQuantHistSCECForm(3,locplt-1,j) = sliprated
+					! onFaultQuantHistSCECForm(4,locplt-1,j) = state(i)
+					! onFaultQuantHistSCECForm(5,locplt-1,j) = slips
+					! onFaultQuantHistSCECForm(6,locplt-1,j) = slipd
+					! onFaultQuantHistSCECForm(7,locplt-1,j) = slipn
+					! onFaultQuantHistSCECForm(8,locplt-1,j) = tstk
+					! onFaultQuantHistSCECForm(9,locplt-1,j) = tdip
+					! onFaultQuantHistSCECForm(10,locplt-1,j) = tnrm
+					! onFaultQuantHistSCECForm(11,locplt-1,j) = fric(51,i)
+					! onFaultQuantHistSCECForm(12,locplt-1,j) = fric(52,i)		
 			do j=1,locplt-1
-				write(51,'( E21.13,10E15.7)') fltsta(1,j,i),fltsta(5,j,i),fltsta(2,j,i),fltsta(8,j,i)/1.0d6,&
-						-fltsta(6,j,i),-fltsta(3,j,i),-fltsta(9,j,i)/1.0d6, -fltsta(10,j,i)/1.0d6, fltsta(4,j,i), fltsta(12,j,i), fltsta(11,j,i)/1.0d6  
+				write(51,'( E21.13,10E15.7)') onFaultQuantHistSCECForm(1,j,i),onFaultQuantHistSCECForm(5,j,i),onFaultQuantHistSCECForm(2,j,i),onFaultQuantHistSCECForm(8,j,i)/1.0d6,&
+						-onFaultQuantHistSCECForm(6,j,i),-onFaultQuantHistSCECForm(3,j,i),-onFaultQuantHistSCECForm(9,j,i)/1.0d6, -onFaultQuantHistSCECForm(10,j,i)/1.0d6, onFaultQuantHistSCECForm(4,j,i), onFaultQuantHistSCECForm(12,j,i), onFaultQuantHistSCECForm(11,j,i)/1.0d6  
 			enddo
 			close(51)
 		enddo

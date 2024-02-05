@@ -250,16 +250,16 @@ subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, q
     elseif (numDof == 3) then 
         if (operation == 1) then 
             do iDof = 1, dof1(nodeID)
-                if (equationNumIndexArr(locateEqNumStartIndex(nodeID)+iDof)>0) then
+                if (equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof)>0) then
                     ntagMPI = ntagMPI + 1
-                    resArr(ntagMPI) = quantArray(equationNumIndexArr(locateEqNumStartIndex(nodeID)+iDof))
+                    resArr(ntagMPI) = quantArray(equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof))
                 endif
             enddo
         elseif (operation == 2) then 
             do iDof = 1, dof1(nodeID)
-                if (equationNumIndexArr(locateEqNumStartIndex(nodeID)+iDof)>0) then
+                if (equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof)>0) then
                     ntagMPI = ntagMPI + 1
-                    quantArray(equationNumIndexArr(locateEqNumStartIndex(nodeID)+iDof)) = quantArray(equationNumIndexArr(locateEqNumStartIndex(nodeID)+iDof)) + &
+                    quantArray(equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof)) = quantArray(equationNumIndexArr(eqNumStartIndexLoc(nodeID)+iDof)) + &
                         resArr(ntagMPI)
                 endif
             enddo   
@@ -278,19 +278,19 @@ subroutine assembleElementMassDetShg(elemID, elementMass, det, shg)
         if (dof1(nodeID)==12) then
             do ixyz = 1, 3
                 do j = 3*(ixyz-1)+1, 3*(ixyz-1)+3
-                    eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(nodeID)+j)
+                    eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(nodeID)+j)
                     if (eqNumTmp > 0) then
                         nodalMassArr(eqNumTmp) = nodalMassArr(eqNumTmp) + elementMass(3*(i-1)+ixyz)
                     endif
                 enddo
-                eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(nodeID)+ixyz+9)
+                eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(nodeID)+ixyz+9)
                 if (eqNumTmp>0) then
                     nodalMassArr(eqNumTmp) = nodalMassArr(eqNumTmp) + elementMass(3*(i-1)+ixyz)
                 endif
             enddo                       
         elseif (dof1(nodeID) == ndof) then
             do j = 1, ndof
-                eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(nodeID)+j)
+                eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(nodeID)+j)
                 nodalMassArr(eqNumTmp) = nodalMassArr(eqNumTmp) + elementMass((i-1)*3+j)
             enddo
         endif

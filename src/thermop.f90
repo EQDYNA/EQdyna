@@ -22,14 +22,14 @@ do ift = 1, ntotft
 		do j = 1, nt-1
 			ker = -kapa/(omega - kapa)/(4.0d0*kapa*(nt-j)*dt + 2.0d0*fric_tp_h**2)**0.5
 			ker = ker + omega/(omega - kapa)/(4.0d0*omega*(nt-j)*dt + 2.0d0*fric_tp_h**2)**0.5
-			tmp = tmp + abs(frichis(2,i,j,ift))*frichis(1,i,j,ift)*ker*dt  
+			tmp = tmp + abs(onFaultTPHist(2,i,j,ift))*onFaultTPHist(1,i,j,ift)*ker*dt  
 		enddo 
 		patnode(i,ift) = tmp*gama/(pi)**0.5
 
 		tmp = 0.0d0 
 		do j = 1, nt-1
 			ker = 1.0d0/(4.0d0*kapa*(nt-j)*dt + 2.0d0*fric_tp_h**2)**0.5
-			tmp = tmp + abs(frichis(2,i,j,ift))*frichis(1,i,j,ift)*ker*dt
+			tmp = tmp + abs(onFaultTPHist(2,i,j,ift))*onFaultTPHist(1,i,j,ift)*ker*dt
 		enddo 
 		Tatnode(i,ift) = tmp/fric(18,i,ift)/(pi)**0.5
 		fric(51,i,ift) = patnode(i,ift) 

@@ -31,7 +31,7 @@ MODULE globalvar
         b13=-0.169029,          critt0=0.2d0,           srcrad0=2500.d0,&
         vrupt0=1500.d0,         critd0,     cohes,      brangle, &
         bulk,                   coheplas,               tv,     &
-        ccosphi,    sinphi,     mus,        mud,        fstrike,        &
+        ccosphi,    sinphi,     fstrike,        &
         fdip,       dxtp,       tpw,        slipRateThres, nucT, &
         fric_sw_fs, fric_sw_fd, fric_sw_D0, fric_rsf_a, fric_rsf_deltaa0,&
         fric_rsf_b, fric_rsf_Dc,            fric_rsf_r0,                &
@@ -87,12 +87,12 @@ MODULE globalvar
         Tatnode,patnode,dout,   material,       rough_geo,      &
         x4nds
     real (kind = dp), allocatable, dimension(:,:,:) :: fric,    &
-        un,     us,     ud,     fltsta, fltslp, eleshp, phi,    &
+        un,     us,     ud,     onFaultQuantHistSCECForm, eleshp, phi,    &
         fltxyz, xonfs
-    real (kind = dp), allocatable, dimension(:,:,:,:):: frichis
+    real (kind = dp), allocatable, dimension(:,:,:,:):: onFaultTPHist
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
-        equationNumIndexArr,    stressCompIndexArr,    et,     locateEqNumStartIndex,  dof1,   surface_node_id,&
+        equationNumIndexArr,    stressCompIndexArr,    et,     eqNumStartIndexLoc,  dof1,   surface_node_id,&
         nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
         fltu,   fltgm
     integer (kind = 4), allocatable, dimension(:,:) :: ien,     &

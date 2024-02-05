@@ -27,7 +27,7 @@ subroutine ku
            
             do i = 1, nen
                 do j = 1, ned
-                    eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(ien(i,nel))+j)
+                    eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(ien(i,nel))+j)
                     if(eqNumTmp > 0) then
                         nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp) + elresf((i-1)*ned+j)
                     endif
@@ -47,17 +47,17 @@ subroutine ku
             do i = 1, 8
                 if (dof1(ien(i,nel))==12) then
                     do j = 1, 12 
-                        eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(ien(i,nel))+j)
+                        eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(ien(i,nel))+j)
                         if (eqNumTmp > 0) then
                             nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+j)
                         endif
                     enddo
                 elseif (dof1(ien(i,nel)) == ndof) then 
-                    eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(ien(i,nel))+1)
+                    eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(ien(i,nel))+1)
                     nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp) + efPML((i-1)*12+1)+efPML((i-1)*12+2)+efPML((i-1)*12+3)+efPML((i-1)*12+10)
-                    eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(ien(i,nel))+2)
+                    eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(ien(i,nel))+2)
                     nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+4)+efPML((i-1)*12+5)+efPML((i-1)*12+6)+efPML((i-1)*12+11)
-                    eqNumTmp = equationNumIndexArr(locateEqNumStartIndex(ien(i,nel))+3)
+                    eqNumTmp = equationNumIndexArr(eqNumStartIndexLoc(ien(i,nel))+3)
                     nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+7)+efPML((i-1)*12+8)+efPML((i-1)*12+9)+efPML((i-1)*12+12)				
                 endif
             enddo
