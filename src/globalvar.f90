@@ -92,7 +92,7 @@ MODULE globalvar
     real (kind = dp), allocatable, dimension(:,:,:,:):: frichis
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
-        id1,    ids,    et,     locid,  dof1,   surface_node_id,&
+        equationNumIndexArr,    ids,    et,     locid,  dof1,   surface_node_id,&
         nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
         fltu,   fltgm
     integer (kind = 4), allocatable, dimension(:,:) :: ien,     &

@@ -69,7 +69,7 @@ subroutine meshgen
     nftnd0   = 0
     x        = 0.0d0
     ien      = 0
-    id1      = 0
+    equationNumIndexArr      = 0
     ids      = 0
     locid    = 0
     dof1     = 0
@@ -880,12 +880,12 @@ subroutine setEquationNumber(nodeXyzIndex, nodeCoor, ntag, equationNumCount, nod
         if(abs(nodeCoor(1)-xmin)<tol.or.abs(nodeCoor(1)-xmax)<tol.or.abs(nodeCoor(2)-ymin)<tol &
         .or.abs(nodeCoor(2)-ymax)<tol.or.abs(nodeCoor(3)-zmin)<tol) then
             ntag      = ntag+1
-            id1(ntag) = -1 
+            equationNumIndexArr(ntag) = -1 
             ! Dof = -1 for fixed boundary nodes, no eq #. 
         else
             equationNumCount      = equationNumCount + 1
             ntag      = ntag+1
-            id1(ntag) = equationNumCount
+            equationNumIndexArr(ntag) = equationNumCount
             
             !Count # of DOF on MPI boundaries
             if (nodeXyzIndex(1)==1) then !Left
@@ -1026,7 +1026,7 @@ do iFault = 1, ntotft
         do i = 1, ndof
             equationNumCount      = equationNumCount + 1
             ntag      = ntag + 1
-            id1(ntag) = equationNumCount
+            equationNumIndexArr(ntag) = equationNumCount
         enddo
         
         ! Count split-node pair # for MPI

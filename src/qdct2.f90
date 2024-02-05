@@ -250,16 +250,16 @@ subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, q
     elseif (numDof == 3) then 
         if (operation == 1) then 
             do iDof = 1, dof1(nodeID)
-                if (id1(locid(nodeID)+iDof)>0) then
+                if (equationNumIndexArr(locid(nodeID)+iDof)>0) then
                     ntagMPI = ntagMPI + 1
-                    resArr(ntagMPI) = quantArray(id1(locid(nodeID)+iDof))
+                    resArr(ntagMPI) = quantArray(equationNumIndexArr(locid(nodeID)+iDof))
                 endif
             enddo
         elseif (operation == 2) then 
             do iDof = 1, dof1(nodeID)
-                if (id1(locid(nodeID)+iDof)>0) then
+                if (equationNumIndexArr(locid(nodeID)+iDof)>0) then
                     ntagMPI = ntagMPI + 1
-                    quantArray(id1(locid(nodeID)+iDof)) = quantArray(id1(locid(nodeID)+iDof)) + &
+                    quantArray(equationNumIndexArr(locid(nodeID)+iDof)) = quantArray(equationNumIndexArr(locid(nodeID)+iDof)) + &
                         resArr(ntagMPI)
                 endif
             enddo   
@@ -278,19 +278,19 @@ subroutine assembleElementMassDetShg(elemID, elementMass, det, shg)
         if (dof1(nodeID)==12) then
             do ixyz = 1, 3
                 do j = 3*(ixyz-1)+1, 3*(ixyz-1)+3
-                    eqn = id1(locid(nodeID)+j)
+                    eqn = equationNumIndexArr(locid(nodeID)+j)
                     if (eqn > 0) then
                         alhs(eqn) = alhs(eqn) + elementMass(3*(i-1)+ixyz)
                     endif
                 enddo
-                eqn = id1(locid(nodeID)+ixyz+9)
+                eqn = equationNumIndexArr(locid(nodeID)+ixyz+9)
                 if (eqn>0) then
                     alhs(eqn) = alhs(eqn) + elementMass(3*(i-1)+ixyz)
                 endif
             enddo                       
         elseif (dof1(nodeID) == ndof) then
             do j = 1, ndof
-                eqn = id1(locid(nodeID)+j)
+                eqn = equationNumIndexArr(locid(nodeID)+j)
                 alhs(eqn) = alhs(eqn) + elementMass((i-1)*3+j)
             enddo
         endif
