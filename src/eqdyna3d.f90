@@ -86,13 +86,12 @@ program EQdyna
     onFaultQuantHistSCECForm = 0.0d0
 
     allocate(nodalForceArr(totalNumOfEquations), v1(totalNumOfEquations), &
-            d1(totalNumOfEquations), nodalMassArr(totalNumOfEquations), &
+            nodalMassArr(totalNumOfEquations), &
             velArr(ndof,totalNumOfNodes), dispArr(ndof,totalNumOfNodes))
 
-    nodalForceArr    = 0.0d0
-    nodalMassArr    = 0.0d0
+    nodalForceArr = 0.0d0
+    nodalMassArr  = 0.0d0
     v1      = 0.0d0
-    d1      = 0.0d0
     velArr  = 0.0d0
     dispArr = 0.0d0
 
