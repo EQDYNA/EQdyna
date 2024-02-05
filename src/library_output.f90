@@ -190,7 +190,7 @@ subroutine output_timeanalysis
 	integer (kind = 4) :: i, j 	
 	
 	open(unit=14,file='timeinfo'//mm,status='unknown')	!rupture time
-		write(14,'(1x,10e18.7e4,2i10)') (timeused(i),i=1,9),btime,numel,neq
+		write(14,'(1x,10e18.7e4,2i10)') (timeused(i),i=1,9),btime,numel,totalNumOfEquations
 	close(14)
 end subroutine output_timeanalysis
 

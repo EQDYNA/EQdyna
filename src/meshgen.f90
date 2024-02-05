@@ -10,7 +10,7 @@ subroutine meshgen
     implicit none
     include 'mpif.h'
     ! incremental variables 
-    integer (kind = 4) :: nnode, nelement, neq0, ntag, ntags
+    integer (kind = 4) :: nnode, nelement, equationNumCount, ntag, ntags
     integer (kind = 4) :: nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
                        edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,edgezn, &
                        nxuni,nyuni,nzuni,ift, &
@@ -80,7 +80,7 @@ subroutine meshgen
     ! increments
     nnode    = 0
     nelement = 0
-    neq0     = 0
+    equationNumCount     = 0
     ntag     = 0
     ntags    = 0
     
@@ -104,9 +104,9 @@ subroutine meshgen
                 locid(nnode) = ntag
                 dof1(nnode)  = nodeDofNum
                 
-                call setEquationNumber(nodeXyzIndex, nodeCoor, ntag, neq0, nodeDofNum)
+                call setEquationNumber(nodeXyzIndex, nodeCoor, ntag, equationNumCount, nodeDofNum)
                 call setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
-                call createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag, &
+                call createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, equationNumCount, ntag, &
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
                 
                 ! Create element
@@ -130,7 +130,7 @@ subroutine meshgen
     
     maxs=ntags
     
-    call meshGenError(nx, ny, nz, nnode, msnode, nelement, neq0, ntag, nftnd0)
+    call meshGenError(nx, ny, nz, nnode, msnode, nelement, equationNumCount, ntag, nftnd0)
     
     ! compute on-fault area associated with each fault node pair and distance from source
     do ift=1,ntotft
@@ -466,21 +466,21 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
     endif !npz>1
 end subroutine MPI4arn 
 
-subroutine meshGenError(nx, ny, nz, nnode, msnode, nelement, neq0, ntag, nftnd0)
+subroutine meshGenError(nx, ny, nz, nnode, msnode, nelement, equationNumCount, ntag, nftnd0)
 ! Check consistency between mesh4 and meshgen
     use globalvar
     implicit none
-    integer (kind = 4) :: nx, ny, nz, nnode, msnode, nelement, neq0, nftnd0(ntotft), ntag
+    integer (kind = 4) :: nx, ny, nz, nnode, msnode, nelement, equationNumCount, nftnd0(ntotft), ntag
     integer (kind = 4) :: i
     if (maxs>=(5*maxm)) then
         write(*,*) '5*maxm',maxm,'is not enough for maxs',maxs
         stop 2002
     endif
-    if(nnode/=nx*ny*nz.or.msnode/=numnp.or.nelement/=numel.or.neq0/=neq) then
+    if(nnode/=nx*ny*nz.or.msnode/=numnp.or.nelement/=numel.or.equationNumCount/=totalNumOfEquations) then
         write(*,*) 'Inconsistency in node/element/equation/between meshgen and mesh4num: stop!',me
         write(*,*) 'nnode&numnp=',nnode,numnp
         write(*,*) 'nelement,numel=',nelement,numel
-        write(*,*) 'neq0,neq=',neq0,neq
+        write(*,*) 'equationNumCount,totalNumOfEquations=',equationNumCount,totalNumOfEquations
         write(*,*) 'nnode,nx,ny,nz',nnode,nx,ny,nz
         write(*,*) 'msnode,numnp',msnode,numnp
         stop 2003
@@ -870,10 +870,10 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nnode)
     endif    
 end subroutine setSurfaceStation
 
-subroutine setEquationNumber(nodeXyzIndex, nodeCoor, ntag, neq0, nodeDofNum)
+subroutine setEquationNumber(nodeXyzIndex, nodeCoor, ntag, equationNumCount, nodeDofNum)
     use globalvar 
     implicit none
-    integer (kind = 4) :: iDof, nodeDofNum, ntag, neq0, nodeXyzIndex(10)
+    integer (kind = 4) :: iDof, nodeDofNum, ntag, equationNumCount, nodeXyzIndex(10)
     real (kind = dp) :: nodeCoor(10)
     
     do iDof = 1,nodeDofNum
@@ -883,9 +883,9 @@ subroutine setEquationNumber(nodeXyzIndex, nodeCoor, ntag, neq0, nodeDofNum)
             id1(ntag) = -1 
             ! Dof = -1 for fixed boundary nodes, no eq #. 
         else
-            neq0      = neq0 + 1
+            equationNumCount      = equationNumCount + 1
             ntag      = ntag+1
-            id1(ntag) = neq0
+            id1(ntag) = equationNumCount
             
             !Count # of DOF on MPI boundaries
             if (nodeXyzIndex(1)==1) then !Left
@@ -991,11 +991,11 @@ subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
     endif 
 end subroutine checkIsOnFault
 
-subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, neq0, ntag,&
+subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nnode, msnode, nftnd0, equationNumCount, ntag,&
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
 use globalvar 
 implicit none
-integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nnode, msnode, nftnd0(ntotft), neq0, i, nxuni, nzuni, ntag
+integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nnode, msnode, nftnd0(ntotft), equationNumCount, i, nxuni, nzuni, ntag
 integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft), nodeXyzIndex(10)
 real (kind = dp) :: nodeCoor(10), ycoort, pfx, pfz
 
@@ -1024,9 +1024,9 @@ do iFault = 1, ntotft
         
         !set Equation Numbers for the newly created Master Node.
         do i = 1, ndof
-            neq0      = neq0 + 1
+            equationNumCount      = equationNumCount + 1
             ntag      = ntag + 1
-            id1(ntag) = neq0
+            id1(ntag) = equationNumCount
         enddo
         
         ! Count split-node pair # for MPI

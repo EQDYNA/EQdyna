@@ -6,7 +6,8 @@ subroutine mesh4num
     include 'mpif.h'
 
     logical,dimension(ntotft) :: ynft
-    integer(kind = 4) :: nodeCount, elementCount, nxt, nyt, nzt, nx, ny, nz, ix, iy, iz, &
+    integer(kind = 4) :: nodeCount=0, elementCount=0, equationNumCount=0, &
+            nxt, nyt, nzt, nx, ny, nz, ix, iy, iz, &
         edgex1,edgey1, iDof,edgezn, ntag,numOfDof, nxuni,nyuni,nzuni,ift,mex,mey,mez
     real (kind = dp) :: xcoor, ycoor, zcoor, xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2)
 
@@ -15,9 +16,6 @@ subroutine mesh4num
     call getLocalOneDimCoorArrAndSize(nyt, nyuni, edgey1, mey, ny, yline, modelBoundCoor, 2)
     call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, modelBoundCoor, 3)
 
-    nodeCount = 0
-    elementCount = 0
-    neq = 0
     nftnd = 0
     ntag=0
 
@@ -42,7 +40,7 @@ subroutine mesh4num
                         ! -1 for fixed boundary nodes; no equation number needed.
                         ntag=ntag+1
                     else
-                        neq = neq + 1
+                        equationNumCount = equationNumCount + 1
                         ntag=ntag+1                    
                     endif
                 enddo
@@ -62,7 +60,7 @@ subroutine mesh4num
                             nodeCount = nodeCount + 1
                             !...establish equation numbers for this master node
                             do iDof=1,ndof
-                                neq = neq + 1
+                                equationNumCount = equationNumCount + 1
                                 ntag=ntag+1!DL
                             enddo
                             exit !can only be on 1 fault, thus if ynft(ift), exit do loop       
@@ -86,4 +84,5 @@ subroutine mesh4num
     maxm  = ntag
     numnp = nodeCount
     numel = elementCount
+    totalNumOfEquations = equationNumCount
 end subroutine mesh4num

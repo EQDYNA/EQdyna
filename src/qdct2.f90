@@ -50,7 +50,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
     integer (kind = 4) ::  ierr, istatus(MPI_STATUS_SIZE), i, ixyz, numDof, rrr, &
         ix,iy,iz, nodenumtemp, ntagMPI, dest, sendtag, source, recvtag, ib, iSign, &
         bnd(2), mexyz(3), npxyz(3), numxyz(3), abc(3)
-    real (kind = dp) :: quantArray(neq) 
+    real (kind = dp) :: quantArray(totalNumOfEquations) 
     real (kind = dp), allocatable, dimension(:) :: btmp, btmp1
     
     time1 = MPI_WTIME()     
@@ -235,7 +235,7 @@ subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, q
     use globalvar
     implicit none
     integer (kind = 4) :: nodeID, numDof, iDof, ntagMPI, resArrSize, operation
-    real(kind = dp) :: resArr(resArrSize), quantArray(neq)
+    real(kind = dp) :: resArr(resArrSize), quantArray(totalNumOfEquations)
     !character (len = 20) :: operation
     
     ! operation = 'fetch'; 'add'
