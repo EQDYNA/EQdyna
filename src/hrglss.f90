@@ -46,7 +46,7 @@ subroutine hrglss
                         elseif (dof1(ien(i,nel)) == 12) then
                             itag = locid(ien(i,nel))+j+9
                         endif
-                        k = id1(itag)
+                        k = equationNumIndexArr(itag)
                         if(k > 0) then
                             brhs(k) = brhs(k) - fhr(j,i)
                         endif
@@ -88,7 +88,7 @@ subroutine hrglss
                     elseif (dof1(ien(i,nel)).eq.12) then
                         itag=locid(ien(i,nel))+j+9
                     endif
-                    k=id1(itag)
+                    k=equationNumIndexArr(itag)
                     if(k > 0) then
                         brhs(k) = brhs(k)+f((i-1)*3+j)
                     endif

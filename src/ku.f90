@@ -27,7 +27,7 @@ subroutine ku
            
             do i = 1, nen
                 do j = 1, ned
-                    eqn = id1(locid(ien(i,nel))+j)
+                    eqn = equationNumIndexArr(locid(ien(i,nel))+j)
                     if(eqn > 0) then
                         brhs(eqn) = brhs(eqn) + elresf((i-1)*ned+j)
                     endif
@@ -47,17 +47,17 @@ subroutine ku
             do i = 1, 8
                 if (dof1(ien(i,nel))==12) then
                     do j = 1, 12 
-                        eqn = id1(locid(ien(i,nel))+j)
+                        eqn = equationNumIndexArr(locid(ien(i,nel))+j)
                         if (eqn > 0) then
                             brhs(eqn) = brhs(eqn)+efPML((i-1)*12+j)
                         endif
                     enddo
                 elseif (dof1(ien(i,nel)) == ndof) then 
-                    eqn = id1(locid(ien(i,nel))+1)
+                    eqn = equationNumIndexArr(locid(ien(i,nel))+1)
                     brhs(eqn) = brhs(eqn) + efPML((i-1)*12+1)+efPML((i-1)*12+2)+efPML((i-1)*12+3)+efPML((i-1)*12+10)
-                    eqn = id1(locid(ien(i,nel))+2)
+                    eqn = equationNumIndexArr(locid(ien(i,nel))+2)
                     brhs(eqn) = brhs(eqn)+efPML((i-1)*12+4)+efPML((i-1)*12+5)+efPML((i-1)*12+6)+efPML((i-1)*12+11)
-                    eqn = id1(locid(ien(i,nel))+3)
+                    eqn = equationNumIndexArr(locid(ien(i,nel))+3)
                     brhs(eqn) = brhs(eqn)+efPML((i-1)*12+7)+efPML((i-1)*12+8)+efPML((i-1)*12+9)+efPML((i-1)*12+12)				
                 endif
             enddo

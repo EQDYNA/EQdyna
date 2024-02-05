@@ -74,7 +74,7 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     
     do j = 1, 2  ! slave, master
         do k = 1, 3  ! x,y,z
-            xyzNodalQuant(k,j,1) = brhs(id1(locid(nsmp(j,iFaultNodePair,iFault))+k))  !1-force !DL 
+            xyzNodalQuant(k,j,1) = brhs(equationNumIndexArr(locid(nsmp(j,iFaultNodePair,iFault))+k))  !1-force !DL 
             xyzNodalQuant(k,j,2) = v(k,nsmp(j,iFaultNodePair,iFault)) !2-vel
             xyzNodalQuant(k,j,3) = d(k,nsmp(j,iFaultNodePair,iFault)) !3-di,iftsp
         enddo
@@ -178,8 +178,8 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, ns
     enddo
     
     do j=1,3 !x,y,z
-        brhs(id1(locid(nsmp(1,iFaultNodePair,iFault))+j)) = brhs(id1(locid(nsmp(1,iFaultNodePair,iFault))+j)) + xyzTractionVector(j) - xyzInitTractionVector(j)*C_elastic
-        brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) = brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) - xyzTractionVector(j) + xyzInitTractionVector(j)*C_elastic
+        brhs(equationNumIndexArr(locid(nsmp(1,iFaultNodePair,iFault))+j)) = brhs(equationNumIndexArr(locid(nsmp(1,iFaultNodePair,iFault))+j)) + xyzTractionVector(j) - xyzInitTractionVector(j)*C_elastic
+        brhs(equationNumIndexArr(locid(nsmp(2,iFaultNodePair,iFault))+j)) = brhs(equationNumIndexArr(locid(nsmp(2,iFaultNodePair,iFault))+j)) - xyzTractionVector(j) + xyzInitTractionVector(j)*C_elastic
     enddo
     
     do j=1,3 !n,s,d
@@ -310,14 +310,14 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     do j=1,3 !x,y,z
         xyzAccVec(j) = nsdAccVec(1)*un(j,iFaultNodePair,iFault) + nsdAccVec(2)*us(j,iFaultNodePair,iFault) + nsdAccVec(3)*ud(j,iFaultNodePair,iFault)
         ! determine total forces acting on the node pair ...
-        xyzR(j) = brhs(id1(locid(nsmp(1,iFaultNodePair,iFault))+j)) + brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j))
+        xyzR(j) = brhs(equationNumIndexArr(locid(nsmp(1,iFaultNodePair,iFault))+j)) + brhs(equationNumIndexArr(locid(nsmp(2,iFaultNodePair,iFault))+j))
     enddo 
     
     do j=1,3 !x,y,z
         ! calculate xyz components of nodal forces that can generate 
         !  the above calculated accelerations for the m-s node pair. 
-        brhs(id1(locid(nsmp(1,iFaultNodePair,iFault))+j)) = (-xyzAccVec(j) + xyzR(j)/massMaster)*mr ! Acc.Slave.x/y/z
-        brhs(id1(locid(nsmp(2,iFaultNodePair,iFault))+j)) = (xyzAccVec(j)  + xyzR(j)/massSlave)*mr ! Acc.Master.x/y/z
+        brhs(equationNumIndexArr(locid(nsmp(1,iFaultNodePair,iFault))+j)) = (-xyzAccVec(j) + xyzR(j)/massMaster)*mr ! Acc.Slave.x/y/z
+        brhs(equationNumIndexArr(locid(nsmp(2,iFaultNodePair,iFault))+j)) = (xyzAccVec(j)  + xyzR(j)/massSlave)*mr ! Acc.Master.x/y/z
         ! store normal velocities for master-slave node pair ...
         ! v(k,nsmp(j,iFaultNodePair,iFault)) - k:xyz, j:slave1,master2
         fric(31+j-1,iFaultNodePair,iFault) = v(j,nsmp(2,iFaultNodePair,iFault)) + (xyzAccVec(j)+xyzR(j)/massSlave)*dt !Velocity.Master.x/y/z

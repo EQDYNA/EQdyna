@@ -162,7 +162,7 @@ end program EQdyna
 subroutine allocInit
     use globalvar 
     implicit none 
-    allocate(id1(maxm),locid(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
+    allocate(equationNumIndexArr(maxm),locid(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
 
     allocate(ien(nen,numel), mat(numel,5), et(numel), eleporep(numel), pstrain(numel), &
                 eledet(numel), elemass(nee,numel), eleshp(nrowsh-1,nen,numel), &
