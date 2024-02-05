@@ -77,7 +77,7 @@ MODULE globalvar
         fltnum(6) = 0,  &
         numcount(9)
      
-    real (kind = dp), allocatable, dimension(:) :: brhs,   alhs,&
+    real (kind = dp), allocatable, dimension(:) :: nodalForceArr,   alhs,&
         v1,     d1,     s1,     miuonf, vponf,  eleporep,       &
         pstrain,eledet, fnms,   fxmin,  fxmax,  fymin,  fymax,  &
         fzmin,  fzmax
@@ -92,7 +92,7 @@ MODULE globalvar
     real (kind = dp), allocatable, dimension(:,:,:,:):: frichis
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
-        equationNumIndexArr,    stressCompIndexArr,    et,     locid,  dof1,   surface_node_id,&
+        equationNumIndexArr,    stressCompIndexArr,    et,     locateEqNumStartIndex,  dof1,   surface_node_id,&
         nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
         fltu,   fltgm
     integer (kind = 4), allocatable, dimension(:,:) :: ien,     &

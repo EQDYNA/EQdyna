@@ -86,9 +86,9 @@ program EQdyna
     allocate(fltsta(12,nplpts-1,n4onf),stat=alloc_err)
     fltsta = 0.0d0
 
-    allocate(brhs(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), alhs(totalNumOfEquations), v(ndof,numnp),d(ndof,numnp),stat=alloc_err)
+    allocate(nodalForceArr(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), alhs(totalNumOfEquations), v(ndof,numnp),d(ndof,numnp),stat=alloc_err)
 
-    brhs    = 0.0d0
+    nodalForceArr    = 0.0d0
     alhs    = 0.0d0
     v1      = 0.0d0
     d1      = 0.0d0
@@ -162,7 +162,7 @@ end program EQdyna
 subroutine allocInit
     use globalvar 
     implicit none 
-    allocate(equationNumIndexArr(maxm),locid(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
+    allocate(equationNumIndexArr(maxm),locateEqNumStartIndex(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
 
     allocate(ien(nen,numel), mat(numel,5), et(numel), eleporep(numel), pstrain(numel), &
                 eledet(numel), elemass(nee,numel), eleshp(nrowsh-1,nen,numel), &
