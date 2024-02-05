@@ -5,7 +5,7 @@ program EQdyna
     implicit none
     include 'mpif.h'
         
-    integer (kind = 4) :: i, j, k, l, itmp, alloc_err, ierr
+    integer (kind = 4) :: i, j, k, l, ierr
 
     call MPI_Init(ierr)
     call mpi_comm_rank(MPI_COMM_WORLD,me,ierr)
@@ -44,8 +44,7 @@ program EQdyna
     call readmaterial
     call readstations1
 
-    itmp = maxval(nonfs)
-    allocate(an4nds(2,n4nds), xonfs(2,itmp,ntotft), x4nds(3,n4nds))
+    allocate(an4nds(2,n4nds), xonfs(2,maxval(nonfs),ntotft), x4nds(3,n4nds))
 
     call readstations2
     if (insertFaultType > 0) call read_fault_rough_geometry
@@ -83,10 +82,10 @@ program EQdyna
     endif
     
     if(n4onf<=0) n4onf=1 
-    allocate(onFaultQuantHistSCECForm(12,nplpts-1,n4onf),stat=alloc_err)
+    allocate(onFaultQuantHistSCECForm(12,nplpts-1,n4onf))
     onFaultQuantHistSCECForm = 0.0d0
 
-    allocate(nodalForceArr(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), nodalMassArr(totalNumOfEquations), v(ndof,totalNumOfNodes),d(ndof,totalNumOfNodes),stat=alloc_err)
+    allocate(nodalForceArr(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), nodalMassArr(totalNumOfEquations), v(ndof,totalNumOfNodes),d(ndof,totalNumOfNodes))
 
     nodalForceArr    = 0.0d0
     nodalMassArr    = 0.0d0
@@ -100,12 +99,7 @@ program EQdyna
 
     if(n4out>0) then 
         ndout=n4out*ndof*noid!3 components of 2 quantities: v and d
-        !   write(*,*) 'ndout= ',ndout    
-        allocate(idhist(3,ndout),dout(ndout+1,nplpts),stat=alloc_err)
-        if(alloc_err /=0) then
-            write(*,*) 'me= ',me,'insufficient space to allocate array idhist or dout'
-        endif
-
+        allocate(idhist(3,ndout),dout(ndout+1,nplpts))
         idhist=0
         dout=0.0d0
         l=0
