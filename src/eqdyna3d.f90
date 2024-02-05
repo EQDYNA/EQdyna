@@ -198,7 +198,7 @@ subroutine allocInit
     Tatnode = 0.0d0 
     patnode = 0.0d0
         
-    allocate(ids(numel))
+    allocate(stressCompIndexArr(numel))
     allocate(s1(5*maxm))
     s1      = 0.0d0
 end subroutine allocInit

@@ -70,7 +70,7 @@ subroutine meshgen
     x        = 0.0d0
     ien      = 0
     equationNumIndexArr      = 0
-    ids      = 0
+    stressCompIndexArr      = 0
     locid    = 0
     dof1     = 0
     et       = 0
@@ -930,7 +930,7 @@ subroutine createElement(nelement, ntags, iy, iz, elementCenterCoor)
     ien(6,nelement) = plane2(iy-1,iz)
     ien(7,nelement) = plane2(iy,iz)
     ien(8,nelement) = plane1(iy,iz)
-    ids(nelement)   = ntags
+    stressCompIndexArr(nelement)   = ntags
     
     do i=1,nen
         do j=1,3
@@ -1192,10 +1192,10 @@ subroutine setPlasticStress(depth, nelement)
     strVert            = -(roumax- rhow*(gamar+1.0d0))*depth*grav ! should be negative   
     devStr             = abs(strVert)*devStrToStrVertRatio ! positive
     
-    s1(ids(nelement)+3+15*etTag) = strVert
-    s1(ids(nelement)+1+15*etTag) = strVert - devStr*dcos(2.0d0*str1ToFaultAngle)
-    s1(ids(nelement)+2+15*etTag) = strVert + devStr*dcos(2.0d0*str1ToFaultAngle)
-    s1(ids(nelement)+6+15*etTag) = devStr*dsin(2.0d0*str1ToFaultAngle)
-    if (s1(ids(nelement)+2+15*etTag) >= 0.0d0) write(*,*) 'WARNING: positive Sigma3 ... ...'
+    s1(stressCompIndexArr(nelement)+3+15*etTag) = strVert
+    s1(stressCompIndexArr(nelement)+1+15*etTag) = strVert - devStr*dcos(2.0d0*str1ToFaultAngle)
+    s1(stressCompIndexArr(nelement)+2+15*etTag) = strVert + devStr*dcos(2.0d0*str1ToFaultAngle)
+    s1(stressCompIndexArr(nelement)+6+15*etTag) = devStr*dsin(2.0d0*str1ToFaultAngle)
+    if (s1(stressCompIndexArr(nelement)+2+15*etTag) >= 0.0d0) write(*,*) 'WARNING: positive Sigma3 ... ...'
     
 end subroutine setPlasticStress

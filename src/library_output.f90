@@ -214,7 +214,7 @@ subroutine output_plastic_strain
 				sc(1)=sc(1)/8.0d0
 				sc(2)=sc(2)/8.0d0
 				sc(3)=sc(3)/8.0d0			
-				write(10007+me,'(1x,16e18.7e4)') sc(1),sc(2),sc(3),pstrain(i),(s1(ids(i)+j),j=1,12)	
+				write(10007+me,'(1x,16e18.7e4)') sc(1),sc(2),sc(3),pstrain(i),(s1(stressCompIndexArr(i)+j),j=1,12)	
 			endif
 		enddo
 	endif
