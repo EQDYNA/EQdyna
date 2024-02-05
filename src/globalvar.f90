@@ -77,7 +77,7 @@ MODULE globalvar
         fltnum(6) = 0,  &
         numcount(9)
      
-    real (kind = dp), allocatable, dimension(:) :: nodalForceArr,   alhs,&
+    real (kind = dp), allocatable, dimension(:) :: nodalForceArr,   nodalMassArr,&
         v1,     d1,     s1,     miuonf, vponf,  eleporep,       &
         pstrain,eledet, fnms,   fxmin,  fxmax,  fymin,  fymax,  &
         fzmin,  fzmax

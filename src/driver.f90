@@ -28,7 +28,7 @@ subroutine driver
         call MPI4NodalQuant(nodalForceArr, 3)
         if (friclaw == 5) call thermop
         call faulting
-        nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/alhs(1:totalNumOfEquations) ! timeused(7), depreciated
+        nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/nodalMassArr(1:totalNumOfEquations) ! timeused(7), depreciated
         if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) call output_gm
     enddo 
 
