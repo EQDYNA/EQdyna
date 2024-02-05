@@ -10,7 +10,7 @@ subroutine ku
         
     time1 = MPI_WTIME()
     
-    do nel = 1, numel
+    do nel = 1, totalNumOfElements
         !al(1:ned,1:nen) = 0.0d0
         al(1:ned,1:nen) = rdampm*v(1:ned,ien(1:nen,nel))
         al(3,1:nen)     = al(3,1:nen) + (1.0d0-C_elastic)*grav*(roumax-(gamar+1.0d0)*rhow)/roumax

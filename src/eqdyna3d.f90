@@ -164,9 +164,9 @@ subroutine allocInit
     implicit none 
     allocate(equationNumIndexArr(maxm),locateEqNumStartIndex(numnp),dof1(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
 
-    allocate(ien(nen,numel), mat(numel,5), et(numel), eleporep(numel), pstrain(numel), &
-                eledet(numel), elemass(nee,numel), eleshp(nrowsh-1,nen,numel), &
-                ss(6,numel), phi(nen,4,numel))
+    allocate(ien(nen,totalNumOfElements), mat(totalNumOfElements,5), et(totalNumOfElements), eleporep(totalNumOfElements), pstrain(totalNumOfElements), &
+                eledet(totalNumOfElements), elemass(nee,totalNumOfElements), eleshp(nrowsh-1,nen,totalNumOfElements), &
+                ss(6,totalNumOfElements), phi(nen,4,totalNumOfElements))
 
     eleporep = 0.0d0
     pstrain  = 0.0d0
@@ -198,7 +198,7 @@ subroutine allocInit
     Tatnode = 0.0d0 
     patnode = 0.0d0
         
-    allocate(stressCompIndexArr(numel))
+    allocate(stressCompIndexArr(totalNumOfElements))
     allocate(s1(5*maxm))
     s1      = 0.0d0
 end subroutine allocInit
@@ -207,7 +207,7 @@ subroutine checkMeshMaterial
     use globalvar
     implicit none
     integer (kind = 4) :: i
-    do i = 1, numel
+    do i = 1, totalNumOfElements
         if (mat(i,1) == 0.0d3 .or. mat(i,2) == 0.0d3 .or. mat(i,3) == 0.0d3) then
             write(*,*) 'Element ', i, ' is not assigned material property. Exiting ... ...'
             stop 

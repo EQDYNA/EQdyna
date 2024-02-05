@@ -9,7 +9,7 @@ subroutine qdct2
     integer (kind = 4) :: nel, i, j, itmp
     real (kind = dp) :: det, xs(3,3), xl(nesd,nen), eleffm(nee), shg(nrowsh,nen) 
 
-    do nel = 1, numel
+    do nel = 1, totalNumOfElements
         eleffm = 0.0d0
         do i=1,nen
             do j=1,nesd

@@ -10,7 +10,7 @@ subroutine hrglss
     real (kind = dp) :: phid(ned), dl(ned,nen), vl(ned,nen), fhr(ned,nen), f(24), det, coef, q(3,4)
     
     time1 = MPI_WTIME()
-    do nel = 1, numel
+    do nel = 1, totalNumOfElements
         do i = 1, nen
             do j = 1, ned
                 vl(j,i) = v(j,ien(i,nel))

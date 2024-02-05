@@ -83,6 +83,6 @@ subroutine mesh4num
     enddo        !ix
     maxm  = ntag
     numnp = nodeCount
-    numel = elementCount
+    totalNumOfElements = elementCount
     totalNumOfEquations = equationNumCount
 end subroutine mesh4num
