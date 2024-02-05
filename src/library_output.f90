@@ -227,7 +227,7 @@ subroutine find_surface_node_id
 	integer (kind = 4) :: i, j 	
 	real (kind = dp) :: sc(3)
 	if (outputGroundMotion == 1) then	
-		do i=1,numnp
+		do i=1,totalNumOfNodes
 			if ((x(1,i)<fltxyz(2,1,1)+20.0d3) .and. (x(1,i)>fltxyz(1,1,1)-20.0d3) .and. (abs(x(2,i))<20.0d3) .and. (abs(x(3,i))<dx/1000)) then 
 				surface_nnode = surface_nnode + 1
 				surface_node_id(surface_nnode) = i

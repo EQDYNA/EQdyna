@@ -72,7 +72,7 @@ program EQdyna
     if (outputGroundMotion == 1) call find_surface_node_id
     
     if (C_degen == 1) then 
-        do i = 1, numnp
+        do i = 1, totalNumOfNodes
            if (x(2,i)>dx/2.0d0) then 
                 x(1,i) = x(1,i) - dx/2.0d0
            endif
@@ -86,7 +86,7 @@ program EQdyna
     allocate(onFaultQuantHistSCECForm(12,nplpts-1,n4onf),stat=alloc_err)
     onFaultQuantHistSCECForm = 0.0d0
 
-    allocate(nodalForceArr(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), nodalMassArr(totalNumOfEquations), v(ndof,numnp),d(ndof,numnp),stat=alloc_err)
+    allocate(nodalForceArr(totalNumOfEquations),v1(totalNumOfEquations),d1(totalNumOfEquations), nodalMassArr(totalNumOfEquations), v(ndof,totalNumOfNodes),d(ndof,totalNumOfNodes),stat=alloc_err)
 
     nodalForceArr    = 0.0d0
     nodalMassArr    = 0.0d0
@@ -162,7 +162,7 @@ end program EQdyna
 subroutine allocInit
     use globalvar 
     implicit none 
-    allocate(equationNumIndexArr(maxm),eqNumStartIndexLoc(numnp),numOfDofPerNodeArr(numnp),x(ndof,numnp), fnms(numnp), surface_node_id(numnp)) 
+    allocate(eqNumIndexArr(maxm),eqNumStartIndexLoc(totalNumOfNodes),numOfDofPerNodeArr(totalNumOfNodes),x(ndof,totalNumOfNodes), fnms(totalNumOfNodes), surface_node_id(totalNumOfNodes)) 
 
     allocate(ien(nen,totalNumOfElements), mat(totalNumOfElements,5), et(totalNumOfElements), eleporep(totalNumOfElements), pstrain(totalNumOfElements), &
                 eledet(totalNumOfElements), elemass(nee,totalNumOfElements), eleshp(nrowsh-1,nen,totalNumOfElements), &
@@ -170,7 +170,7 @@ subroutine allocInit
     
     x        = 0.0d0 
     fnms     = 0.0d0
-    equationNumIndexArr = 0
+    eqNumIndexArr = 0
     eqNumStartIndexLoc  = 0
     numOfDofPerNodeArr  = 0
     surface_node_id     = 0

@@ -49,7 +49,7 @@ MODULE globalvar
 
     integer (kind = 4)  :: np = 1000000, &
         nsd=3,  ndof=3, nen=8,  ned=3,  nee=24, nesd=3, nrowsh=4, &
-        nrowb=6,nrowc=6,nstr=6, noid=2, numnp,  totalNumOfElements,  totalNumOfEquations,      & 
+        nrowb=6,nrowc=6,nstr=6, noid=2, totalNumOfNodes,  totalNumOfElements,  totalNumOfEquations,      & 
         maxm,   maxs,   npx,    npy,    npz,    master=0,         &
         me,     nprocs, mode, &
         nplpts, nstep,  nhplt=1,        locplt=1, &
@@ -92,7 +92,7 @@ MODULE globalvar
     real (kind = dp), allocatable, dimension(:,:,:,:):: onFaultTPHist
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
-        equationNumIndexArr,    stressCompIndexArr,    et,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surface_node_id,&
+        eqNumIndexArr,    stressCompIndexArr,    et,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surface_node_id,&
         nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
         fltu,   fltgm
     integer (kind = 4), allocatable, dimension(:,:) :: ien,     &
