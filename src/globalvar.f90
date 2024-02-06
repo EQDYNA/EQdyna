@@ -48,7 +48,7 @@ MODULE globalvar
 
     integer (kind = 4)  :: np = 1000000, &
         nsd=3,  ndof=3, nen=8,  ned=3,  nee=24, nesd=3, nrowsh=4, &
-        nrowb=6,nrowc=6,nstr=6, noid=2, totalNumOfNodes,  totalNumOfElements,  totalNumOfEquations,      & 
+        nrowb=6,nrowc=6,nstr=6, totalNumOfNodes,  totalNumOfElements,  totalNumOfEquations,      & 
         maxm,   maxs,   npx,    npy,    npz,    master=0,         &
         me,     totalNumOfMPIProcs, mode,   nstep, &
         dis4uniF,       dis4uniB,       nmat,   n2mat,  &
@@ -57,7 +57,7 @@ MODULE globalvar
         surface_nnode = 0,  &
         ! Thickness (counted by nodes) of PML.nPML=6
         nPML = 6, &
-        n4nds,  n4onf,  n4out,  ndout, &
+        totalNumOfOffSt,  numOfOnFaultStCount,  numOfOffFaultStCount, &
         ! 1=elastic version; 0=plastic version;
         C_elastic,  &
         ! 1=allow artificial nucleation; !0=disabled;
@@ -82,7 +82,7 @@ MODULE globalvar
     real (kind = dp), allocatable, dimension(:,:) :: meshCoor, &
         dispArr,      velArr,      mat,    localShapeFunc,    fnft,   arn, &
         arn4m,  slp4fri,state,  elemass,ss,     plane1, plane2, &
-        Tatnode,patnode,dout,   material,       rough_geo,      &
+        Tatnode,patnode,OffFaultStGramSCEC,   material,       rough_geo,      &
         x4nds
     real (kind = dp), allocatable, dimension(:,:,:) :: fric,    &
         un,     us,     ud,     onFaultQuantHistSCECForm, eleshp, phi,    &
@@ -94,7 +94,7 @@ MODULE globalvar
         nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
         fltu,   fltgm
     integer (kind = 4), allocatable, dimension(:,:) :: nodeIdElemIdRelation,     &
-        anonfs, idhist, an4nds
+        anonfs, idhist, OffFaultStNodeIdIndex
     integer (kind = 4), allocatable, dimension(:,:,:) :: nsmp
 
 end MODULE globalvar           

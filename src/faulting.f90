@@ -519,8 +519,8 @@ subroutine storeOnFaultStationQuantSCEC(iFault, iFaultNodePair, nsdSlipVector, n
     implicit none
     integer (kind = 4) :: iFault, iFaultNodePair, j
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
-    if (n4onf>0) then    
-        do j = 1, n4onf
+    if (numOfOnFaultStCount>0) then    
+        do j = 1, numOfOnFaultStCount
             if(anonfs(1,j)==iFaultNodePair .and. anonfs(3,j)==iFault) then 
                 onFaultQuantHistSCECForm(1,nt,j)  = timeElapsed
                 onFaultQuantHistSCECForm(2,nt,j)  = nsdSliprateVector(2)

@@ -47,16 +47,16 @@ subroutine meshgen
     ! Initialize scalars
 
     msnode   = nx*ny*nz
-    n4onf    = 0
-    n4out    = 0
-    an4nds   = 0
+    numOfOnFaultStCount    = 0
+    numOfOffFaultStCount    = 0
+    OffFaultStNodeIdIndex   = 0
     ! Initialize arrays
     nftnd0   = 0
     
     ixfi = 0
     izfi = 0
     
-    allocate(n4yn(n4nds))
+    allocate(n4yn(totalNumOfOffSt))
     n4yn = 0
     
     ! Loop over x,y,z grids to create nodes and elements
@@ -576,7 +576,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
     iy = nodeXyzIndex(2)
     !Part1. Stations inside the region.
     if(ix>1.and.ix<nodeXyzIndex(4) .and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
-        do i=1,n4nds
+        do i=1,totalNumOfOffSt
             if(n4yn(i)==0) then
                 if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
                     if(abs(nodeCoor(1)-x4nds(1,i))<tol .or.&
@@ -590,9 +590,9 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
                         (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
                         (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) then
                             n4yn(i) = 1
-                            n4out = n4out + 1
-                            an4nds(1,n4out) = i
-                            an4nds(2,n4out) = nodeCount
+                            numOfOffFaultStCount = numOfOffFaultStCount + 1
+                            OffFaultStNodeIdIndex(1,numOfOffFaultStCount) = i
+                            OffFaultStNodeIdIndex(2,numOfOffFaultStCount) = nodeCount
                             exit     !if node found, jump out the loop
                         endif
                     endif
@@ -604,7 +604,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
     !Part2. Stations along ix==1
     !Big Bug!!!iz==nz is no valid for 3D MPI.
     if(ix==1.and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
-        do i=1,n4nds
+        do i=1,totalNumOfOffSt
             if(n4yn(i)==0) then
                 if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
                     if(abs(nodeCoor(1)-x4nds(1,i))<tol .or. &
@@ -616,9 +616,9 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
                         (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
                         (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) then
                             n4yn(i) = 1
-                            n4out = n4out + 1
-                            an4nds(1,n4out) = i
-                            an4nds(2,n4out) = nodeCount
+                            numOfOffFaultStCount = numOfOffFaultStCount + 1
+                            OffFaultStNodeIdIndex(1,numOfOffFaultStCount) = i
+                            OffFaultStNodeIdIndex(2,numOfOffFaultStCount) = nodeCount
                             exit     !if node found, jump out the loop
                         endif
                     endif
@@ -629,7 +629,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
     !...identify output nodes (off-fault)
     !Part3. Stations along ix==nx
     if(ix==nodeXyzIndex(4) .and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
-        do i=1,n4nds
+        do i=1,totalNumOfOffSt
             if(n4yn(i)==0) then
                 if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
                     if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<nodeCoor(1).and. &
@@ -640,9 +640,9 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
                         (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
                         (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) then
                             n4yn(i) = 1
-                            n4out = n4out + 1
-                            an4nds(1,n4out) = i
-                            an4nds(2,n4out) = nodeCount
+                            numOfOffFaultStCount = numOfOffFaultStCount + 1
+                            OffFaultStNodeIdIndex(1,numOfOffFaultStCount) = i
+                            OffFaultStNodeIdIndex(2,numOfOffFaultStCount) = nodeCount
                             exit     !if node found, jump out the loop
                         endif
                     endif
@@ -842,10 +842,10 @@ do iFault = 1, ntotft
         do i = 1, nonfs(iFault)
             if(abs(nodeCoor(1)-xonfs(1,i,iFault))<tol .and. &
                 abs(nodeCoor(3)-xonfs(2,i,iFault))<tol) then
-                n4onf = n4onf + 1
-                anonfs(1,n4onf) = nftnd0(iFault)
-                anonfs(2,n4onf) = i
-                anonfs(3,n4onf) = iFault
+                numOfOnFaultStCount = numOfOnFaultStCount + 1
+                anonfs(1,numOfOnFaultStCount) = nftnd0(iFault)
+                anonfs(2,numOfOnFaultStCount) = i
+                anonfs(3,numOfOnFaultStCount) = iFault
                 exit
             endif
         enddo  
