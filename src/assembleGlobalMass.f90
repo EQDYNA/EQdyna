@@ -7,7 +7,7 @@ subroutine assembleGlobalMass
 
     logical :: lcubic
     integer (kind = 4) :: nel, i, j, itmp
-    real (kind = dp) :: det, xs(3,3), xl(nesd,nen), eleffm(nee), shg(nrowsh,nen) 
+    real (kind = dp) :: det, xs(3,3), xl(nesd,nen), eleffm(nee), globalShapeFunc(nrowsh,nen) 
 
     do nel = 1, totalNumOfElements
         eleffm = 0.0d0
@@ -31,10 +31,10 @@ subroutine assembleGlobalMass
                 enddo outloop
         !...compute global shape function and derivatives at 1 Gaussian
         !    point.
-        call qdcshg(xl, det, shg, nel, xs, lcubic)
-        call contm(shg, det, eleffm, mat(nel,3))
-        call assembleElementMassDetShg(nel, eleffm, det, shg)
-        call calcSSPhi4Hrgls(nel, xl, xs, shg)
+        call calcGlobalShapeFunc(xl, det, globalShapeFunc, nel, xs, lcubic)
+        call contm(globalShapeFunc, det, eleffm, mat(nel,3))
+        call assembleElementMassDetShg(nel, eleffm, det, globalShapeFunc)
+        call calcSSPhi4Hrgls(nel, xl, xs, globalShapeFunc)
     enddo
 
     call MPI4NodalQuant(nodalMassArr, 3)
@@ -267,11 +267,11 @@ subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, q
     endif 
 end subroutine processNodalQuantArr
 
-subroutine assembleElementMassDetShg(elemID, elementMass, det, shg)
+subroutine assembleElementMassDetShg(elemID, elementMass, det, globalShapeFunc)
     use globalvar 
     implicit none 
     integer (kind = 4) :: i, j, eqNumTmp, nodeID, ixyz, elemID
-    real (kind = dp) :: elementMass(nee), det, shg(nrowsh, nen)
+    real (kind = dp) :: elementMass(nee), det, globalShapeFunc(nrowsh, nen)
     
     do i = 1, nen 
         nodeID = nodeIdElemIdRelation(i,elemID)
@@ -306,13 +306,13 @@ subroutine assembleElementMassDetShg(elemID, elementMass, det, shg)
     
     do i = 1, nen
         do j=1, nrowsh-1
-            eleshp(j,i,elemID) = shg(j,i)
+            eleshp(j,i,elemID) = globalShapeFunc(j,i)
         enddo
     enddo
     
 end subroutine assembleElementMassDetShg
 
-subroutine calcSSPhi4Hrgls(elemID, xl, xs, shg)
+subroutine calcSSPhi4Hrgls(elemID, xl, xs, globalShapeFunc)
     use globalvar
     implicit none
     integer (kind = 4) :: elemID, i, j, k
@@ -320,7 +320,7 @@ subroutine calcSSPhi4Hrgls(elemID, xl, xs, shg)
             1,1,-1,-1,-1,-1,1,1, 1,-1,-1,1,-1,1,1,-1, &
             1,-1,1,-1,1,-1,1,-1, -1,1,-1,1,1,-1,1,-1/), &
             (/8,4/))
-    real (kind = dp) :: xl(nesd,nen), shg(nrowsh, nen), xs(3,3), &
+    real (kind = dp) :: xl(nesd,nen), globalShapeFunc(nrowsh, nen), xs(3,3), &
         vol, ce, co
     
     ! calc SS matrix for hourglass control 
@@ -342,8 +342,8 @@ subroutine calcSSPhi4Hrgls(elemID, xl, xs, shg)
         do j = 1, nen
             vol = 0.0d0    !temp variable
             do k = 1, nen
-                vol = vol + ha(k,i)*(xl(1,k)*shg(1,j) + &
-                    xl(2,k)*shg(2,j) + xl(3,k)*shg(3,j))
+                vol = vol + ha(k,i)*(xl(1,k)*globalShapeFunc(1,j) + &
+                    xl(2,k)*globalShapeFunc(2,j) + xl(3,k)*globalShapeFunc(3,j))
             enddo
             phi(j,i,elemID) = ha(j,i) - vol
         enddo
@@ -360,7 +360,7 @@ subroutine calcSSPhi4Hrgls(elemID, xl, xs, shg)
     enddo
 end subroutine calcSSPhi4Hrgls
 
-subroutine contm(shg,det,elmass,constm)
+subroutine contm(globalShapeFunc,det,elmass,constm)
     use globalvar
     implicit none     
     ! to calc lumped mass for an element
@@ -368,7 +368,7 @@ subroutine contm(shg,det,elmass,constm)
     real (kind = dp) :: det,dsum,totmas,constm,temp1,temp2
     real (kind = dp),dimension(nee) :: elmass
     real (kind = dp),dimension(nen) :: work
-    real (kind = dp),dimension(nrowsh,nen) :: shg
+    real (kind = dp),dimension(nrowsh,nen) :: globalShapeFunc
     !...initialize
     dsum   = 0.0d0
     totmas = 0.0d0
@@ -376,7 +376,7 @@ subroutine contm(shg,det,elmass,constm)
     !...calculate
     totmas = constm*w*det
     do j=1,nen
-        temp2 = totmas*shg(nrowsh,j)**2
+        temp2 = totmas*globalShapeFunc(nrowsh,j)**2
         dsum = dsum + temp2
         work(j) = work(j) + temp2
     enddo

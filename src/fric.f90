@@ -1,6 +1,6 @@
 ! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
 ! MIT
-SUBROUTINE slip_weak(slip,fricsgl,xmu)
+subroutine slip_weak(slip,fricsgl,xmu)
   use globalvar
   implicit none
   !
@@ -23,11 +23,11 @@ SUBROUTINE slip_weak(slip,fricsgl,xmu)
     xmu = fricsgl(2)
   endif
   !
-end SUBROUTINE slip_weak
+end subroutine slip_weak
 
 !================================================
 
-SUBROUTINE time_weak(trupt,fricsgl,xmu)
+subroutine time_weak(trupt,fricsgl,xmu)
     ! Subroutine time_weak calculates friction xmu under
     !   the time weakening law.
     use globalvar
@@ -44,9 +44,9 @@ SUBROUTINE time_weak(trupt,fricsgl,xmu)
         xmu = fricsgl(2)
     endif
 
-end SUBROUTINE time_weak
+end subroutine time_weak
 
-SUBROUTINE rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
+subroutine rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   use globalvar
   implicit none
   !
@@ -71,11 +71,11 @@ SUBROUTINE rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   dxmudv = A * tmpc / sqrt(1.0d0 + tmp**2) ! d(arcsinh(z))/dz = 1/sqrt(1+z^2)
   theta = L/V2 + (theta - L/V2)*dexp(-V2*dt/L)
   !
-end SUBROUTINE rate_state_ageing_law
+end subroutine rate_state_ageing_law
 
 !================================================
 
-SUBROUTINE rate_state_slip_law(V2,psi,fricsgl,xmu,dxmudv)
+subroutine rate_state_slip_law(V2,psi,fricsgl,xmu,dxmudv)
   use globalvar
   implicit none
   !
@@ -110,7 +110,7 @@ SUBROUTINE rate_state_slip_law(V2,psi,fricsgl,xmu,dxmudv)
   psiss = A * dlog(2.0d0 * V0 / V2 * (dexp(fssa) - dexp(-fssa))/2.0d0)
   psi = psiss + (psi - psiss) * dexp(-V2*dt/L)
   !
-end SUBROUTINE rate_state_slip_law
+end subroutine rate_state_slip_law
 
 
 

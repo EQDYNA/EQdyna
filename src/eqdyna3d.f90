@@ -47,9 +47,9 @@ program EQdyna
     if (insertFaultType > 0) call read_fault_rough_geometry
     call warning
     
-    allocate(nftnd(ntotft),shl(nrowsh,nen))
+    allocate(nftnd(ntotft),localShapeFunc(nrowsh,nen))
     
-    call localShapeFuncTrilinearHex
+    call calcLocalShapeFunc
     call mesh4num
     call allocInit
     call memory_estimate

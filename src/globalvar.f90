@@ -81,7 +81,7 @@ MODULE globalvar
         pstrain,eledet, fnms,   fxmin,  fxmax,  fymin,  fymax,  &
         fzmin,  fzmax
     real (kind = dp), allocatable, dimension(:,:) :: meshCoor, &
-        dispArr,      velArr,      mat,    shl,    fnft,   arn, &
+        dispArr,      velArr,      mat,    localShapeFunc,    fnft,   arn, &
         arn4m,  slp4fri,state,  elemass,ss,     plane1, plane2, &
         Tatnode,patnode,dout,   material,       rough_geo,      &
         x4nds

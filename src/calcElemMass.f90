@@ -1,4 +1,4 @@
-SUBROUTINE contma(elmass,al,elresf)
+subroutine calcElemMass(elmass,al,elresf)
   use globalvar
   implicit none
   !
@@ -16,4 +16,4 @@ SUBROUTINE contma(elmass,al,elresf)
       !note: - m * a is accumulated! 7/3/05
     enddo
   enddo
-end SUBROUTINE contma
+end subroutine calcElemMass

@@ -1,6 +1,6 @@
 ! Copyright(C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
 ! MIT
-subroutine localShapeFuncTrilinearHex
+subroutine calcLocalShapeFunc
   use globalvar
   implicit none
   ! reduced order one-point Gaussian rule.
@@ -18,9 +18,9 @@ subroutine localShapeFuncTrilinearHex
 
   w = 8.0d0    !weight for 1-point Gaussian rule
   do i = 1, 8
-    shl(4,i) = cst    !the 4th is shape function itself
+    localShapeFunc(4,i) = cst    !the 4th is shape function itself
     do j = 1, 3
-      shl(j,i) = cst * acoor(j,i)    !derivatives
+      localShapeFunc(j,i) = cst * acoor(j,i)    !derivatives
     enddo
   enddo
-end subroutine localShapeFuncTrilinearHex
+end subroutine calcLocalShapeFunc
