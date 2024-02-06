@@ -8,12 +8,12 @@ subroutine driver
 
     do nt = 1, nstep
 
-        time = time + dt
+        timeElapsed = timeElapsed + dt
         
         if (mod(nt,100) == 1 .and. me == master) then
             write(*,*) '=                                                                   ='
             write(*,*) '=     Current time in dynamic rupture                               ='
-            write(*,'(X,A,40X,f7.3,4X,A)') '=',  time  , 's'
+            write(*,'(X,A,40X,f7.3,4X,A)') '=',  timeElapsed  , 's'
         endif
         
         call velDispUpdate
@@ -65,9 +65,9 @@ subroutine doubleCouplePointSource
         !x positive. Adding a point force in y+ direction.
         if (meshCoor(1,i)==100.0.and.meshCoor(2,i)==0.0.and.meshCoor(3,i)==-2000.)then
             !write(*,*) 'right',i,me
-            if (time<0.2)then
+            if (timeElapsed<0.2)then
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))+&
-                (1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+                (1.0e14/0.2/2*timeElapsed-1.0e14/2/2/3.1415*sin(2*3.1415*timeElapsed/0.2))
             else
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))+1.0e14/2
             endif
@@ -75,9 +75,9 @@ subroutine doubleCouplePointSource
         !x negative. Adding a point force in y- direction.
         if (meshCoor(1,i)==-100.0.and.meshCoor(2,i)==0.0.and.meshCoor(3,i)==-2000.)then
             !write(*,*) 'left',i,me    
-            if (time<0.2)then
+            if (timeElapsed<0.2)then
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))-&
-                (1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+                (1.0e14/0.2/2*timeElapsed-1.0e14/2/2/3.1415*sin(2*3.1415*timeElapsed/0.2))
             else
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))-1.0e14/2
             endif
@@ -85,9 +85,9 @@ subroutine doubleCouplePointSource
         !y positive. Adding a point force in x+ direction.
         if (meshCoor(1,i)==0.0.and.meshCoor(2,i)==100.0.and.meshCoor(3,i)==-2000.)then
             !write(*,*) 'up',i,me    
-            if (time<0.2)then
+            if (timeElapsed<0.2)then
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))+&
-                (1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+                (1.0e14/0.2/2*timeElapsed-1.0e14/2/2/3.1415*sin(2*3.1415*timeElapsed/0.2))
             else
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))+1.0e14/2
             endif
@@ -95,9 +95,9 @@ subroutine doubleCouplePointSource
         !y negative. Adding a point force in x- direction.
         if (meshCoor(1,i)==0.0.and.meshCoor(2,i)==-100.0.and.meshCoor(3,i)==-2000.)then
             !write(*,*) 'down',i,me    
-            if (time<0.2)then
+            if (timeElapsed<0.2)then
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))-&
-                (1.0e14/0.2/2*time-1.0e14/2/2/3.1415*sin(2*3.1415*time/0.2))
+                (1.0e14/0.2/2*timeElapsed-1.0e14/2/2/3.1415*sin(2*3.1415*timeElapsed/0.2))
             else
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))-1.0e14/2
             endif
@@ -114,7 +114,7 @@ subroutine velDispUpdate
     integer (kind = 4) :: i, j, eqNumTmp
     real (kind = dp) :: dampv(9)
    
-    time1 = MPI_WTIME()
+    startTimeStamp = MPI_WTIME()
     do i = 1, totalNumOfNodes
         if (numOfDofPerNodeArr(i)==3) then
             do j = 1, 3
@@ -169,7 +169,7 @@ subroutine velDispUpdate
             stop
         endif
     enddo
-    timeused(3) = timeused(3) + MPI_WTIME() - time1
+    compTimeInSeconds(3) = compTimeInSeconds(3) + MPI_WTIME() - startTimeStamp
 end subroutine velDispUpdate
 
 subroutine offFaultStationSCEC
@@ -179,7 +179,7 @@ subroutine offFaultStationSCEC
     integer (kind = 4) :: i, j, l, k, k1
     
         if (ndout>0) then
-            dout(1,nt) = time
+            dout(1,nt) = timeElapsed
             do i = 1, ndout 
                 j = idhist(1,i)
                 if (j<=0) j=1  !avoid zero that cannot be used below

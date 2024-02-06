@@ -9,7 +9,7 @@ subroutine hrglss
     integer (kind = 4) :: nel, i , j, k, itmp, itag, fi(4,8)
     real (kind = dp) :: phid(ned), dl(ned,nen), vl(ned,nen), fhr(ned,nen), f(24), det, coef, q(3,4)
     
-    time1 = MPI_WTIME()
+    startTimeStamp = MPI_WTIME()
     do nel = 1, totalNumOfElements
         do i = 1, nen
             do j = 1, ned
@@ -96,5 +96,5 @@ subroutine hrglss
             enddo
         endif
     enddo
-    timeused(5) = timeused(5) + MPI_WTIME() - time1
+    compTimeInSeconds(5) = compTimeInSeconds(5) + MPI_WTIME() - startTimeStamp
 end subroutine hrglss

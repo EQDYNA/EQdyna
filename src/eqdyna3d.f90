@@ -5,11 +5,11 @@ program EQdyna
     implicit none
     include 'mpif.h'
         
-    integer (kind = 4) :: i, j, k, l, ierr
+    integer (kind = 4) :: i, j, k, l, iMPIerr
 
-    call MPI_Init(ierr)
-    call mpi_comm_rank(MPI_COMM_WORLD,me,ierr)
-    call mpi_comm_size(MPI_COMM_WORLD,nprocs,ierr)
+    call MPI_Init(iMPIerr)
+    call mpi_comm_rank(MPI_COMM_WORLD,me,iMPIerr)
+    call mpi_comm_size(MPI_COMM_WORLD,totalNumOfMPIProcs,iMPIerr)
 
     if (me == master) then 
         write(*,*) '====================================================================='
@@ -27,8 +27,8 @@ program EQdyna
         write(*,*) '====================================================================='    
     endif 
     
-    timebegin = MPI_WTIME()
-    time1 = MPI_WTIME()    
+    simuStartTime = MPI_WTIME()
+    startTimeStamp = MPI_WTIME()    
     
     call readglobal
     call readmodelgeometry
@@ -108,13 +108,11 @@ program EQdyna
             enddo
         enddo            
     endif
-    
-    time2=MPI_WTIME()        
-    timeused(1)=time2-time1
+    compTimeInSeconds(1) = MPI_WTIME() - startTimeStamp
 
-    time1 = MPI_WTIME()
+    startTimeStamp = MPI_WTIME()
     call assembleGlobalMass
-    timeused(2) = timeused(2) + MPI_WTIME() - time1
+    compTimeInSeconds(2) = MPI_WTIME() - startTimeStamp
 
     call init_vel ! Initiate on-fault node velocities.
     
@@ -126,21 +124,17 @@ program EQdyna
         write(*,*) '====================================================================='    
     endif
     
-    time1=MPI_WTIME()
-    
+    startTimeStamp = MPI_WTIME()
     call output_onfault_st
     call output_offfault_st
     call output_frt
-
-    time2=MPI_WTIME()
-    timeused(8)=time2-time1 
-    timeover=MPI_WTIME()
-    timeused(9)=timeover-timebegin 
-    
+    if (output_plastic == 1) call output_plastic_strain  
+    compTimeInSeconds(8) = MPI_WTIME() - startTimeStamp 
+    compTimeInSeconds(9) = MPI_WTIME() - simuStartTime 
+   
     if (timeinfo == 1) call output_timeanalysis
-    if (output_plastic == 1) call output_plastic_strain
     
-    call MPI_Finalize(ierr)
+    call MPI_Finalize(iMPIerr)
     stop
     
 end program EQdyna

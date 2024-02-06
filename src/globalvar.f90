@@ -5,14 +5,14 @@ MODULE globalvar
     implicit none
     character(len=30) :: mm,    &
         sttmp,  dptmp,  bodytmp,    projectname,    author
-    character(len=90) :: loca
+    character(len=90) :: stLocStamp
     logical :: fltMPI(6)
-    integer, parameter :: dp = selected_real_kind(15,307)
-    real (kind = dp) :: timeused(9) = 0.0d0,&
-        time1,      time2,      time=0.0d0, &
-        btime=0.0d0,            timebegin,  timeover,   pi=4*atan(1.0_dp), &
+    integer, parameter :: dp=selected_real_kind(15,307)
+    real (kind = dp) :: compTimeInSeconds(9)=0.0d0, &
+        startTimeStamp,         timeElapsed=0.0d0, &
+        MPICommTimeInSeconds=0.0d0,            simuStartTime,  pi=4*atan(1.0_dp), &
         rdampm=0.0d0,           rdampk,                 grav = 9.8d0, &
-        w,          term,       dt,         totmemcost, memcost=0.0d0,&
+        w,          totalSimuTime,       dt,         totmemcost, memcost=0.0d0,&
         rat,        dx,         dy,         dz,         xsource,    &
         ysource,    zsource,    xmin,       xmax,       ymin,       &
         ymax,       zmin,       zmax,       xmin1,      xmax1,      &
@@ -27,8 +27,7 @@ MODULE globalvar
         ! Typical valus varies from 0.05~0.15. Goudreau& Hallquist(1982).
         kapa_hg = 0.1d0,    &
         tol     = 1.0d-5,   &
-        rhow,           b11=0.926793,           b33=1.073206, &
-        b13=-0.169029,          critt0=0.2d0,           srcrad0=2500.d0,&
+        rhow,                   critt0=0.2d0,           srcrad0=2500.d0,&
         vrupt0=1500.d0,         critd0,     cohes,      brangle, &
         bulk,                   coheplas,               tv,     &
         ccosphi,    sinphi,     fstrike,        &
@@ -40,7 +39,7 @@ MODULE globalvar
         fric_tp_a_th,           fric_tp_rouc,           fric_tp_lambda, &
         fric_tp_h,  fric_tp_a_hy,           fric_tp_deltaa_hy0,         &
         fric_ww, fric_w,        fric_ini_sliprate,      fric_tp_pini,   &
-        fric_tp_Tini,           dxtmp,      perturb = 0.7d0,            &
+        fric_tp_Tini,           dxtmp,            &
         gamar,                  roumax,         rough_fx_min,   &
         rough_fx_max,           rough_fz_min,  &
         str1ToFaultAngle,       devStrToStrVertRatio
@@ -51,8 +50,8 @@ MODULE globalvar
         nsd=3,  ndof=3, nen=8,  ned=3,  nee=24, nesd=3, nrowsh=4, &
         nrowb=6,nrowc=6,nstr=6, noid=2, totalNumOfNodes,  totalNumOfElements,  totalNumOfEquations,      & 
         maxm,   maxs,   npx,    npy,    npz,    master=0,         &
-        me,     nprocs, mode,   nstep, &
-        dis4uniF,       dis4uniB,       nmat,   n2mat,  ninterval=1,&
+        me,     totalNumOfMPIProcs, mode,   nstep, &
+        dis4uniF,       dis4uniB,       nmat,   n2mat,  &
         nftmx,  nonmx,  nt,     TPV = -1,       output_plastic,     &
         nnx,    nnz,    insertFaultType,    timeinfo = 0,   outputGroundMotion,&
         surface_nnode = 0,  &

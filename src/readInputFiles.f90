@@ -40,7 +40,7 @@ subroutine readglobal
         read(1001,*) 
         read(1001,*) npx, npy, npz
         read(1001,*)
-        read(1001,*) term
+        read(1001,*) totalSimuTime
         read(1001,*) dt 
         read(1001,*)
         read(1001,*) nmat, n2mat
@@ -176,7 +176,7 @@ subroutine readmaterial
 
     ccosphi = coheplas*dcos(atan(bulk))
     sinphi  = dsin(atan(bulk))
-    nstep   = idnint(term/dt)
+    nstep   = idnint(totalSimuTime/dt)
     rdampk  = rdampk*dt    
     tv      = 2.0d0*dz/3464.0d0
 end subroutine readmaterial
