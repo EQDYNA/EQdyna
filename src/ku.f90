@@ -18,11 +18,11 @@ subroutine ku
         elresf = 0.0d0 
         call contma(elemass(1:nee,nel),al,elresf)
 
-        if (et(nel)==1 .or. et(nel)>10) then
+        if (elemTypeArr(nel)==1 .or. elemTypeArr(nel)>10) then
             call qdckd(eleshp(1,1,nel), mat(nel,1:5), velArr(1:ned,ien(1:nen,nel)), &
                         dispArr(1:ned,ien(1:nen,nel)), stressArr(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+12), &
                         elresf, -eledet(nel), eleporep(nel), pstrinc, &
-                        x(1:3,ien(1:8,nel)))
+                        meshCoor(1:3,ien(1:8,nel)))
             pstrain(nel) = pstrain(nel) + pstrinc
            
             do i = 1, nen
@@ -33,7 +33,7 @@ subroutine ku
                     endif
                 enddo
             enddo
-        elseif (et(nel)==2) then ! PML element. 
+        elseif (elemTypeArr(nel)==2) then ! PML element. 
             efPML=0.0d0 
             do i = 1, 8
                 do j = 1,3
@@ -42,7 +42,7 @@ subroutine ku
             enddo
 
             call elemPMLKu(velArr(1:ned,ien(1:nen,nel)), efPML, stressArr(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+21), &
-                           x(1:3,ien(1:8,nel)), mat(nel,1:5), eleshp(1,1,nel), &
+                           meshCoor(1:3,ien(1:8,nel)), mat(nel,1:5), eleshp(1,1,nel), &
                            eledet(nel), nel)
             do i = 1, 8
                 if (numOfDofPerNodeArr(ien(i,nel))==12) then

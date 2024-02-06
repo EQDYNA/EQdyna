@@ -68,13 +68,13 @@ subroutine meshgen
                 call createNode(nodeCoor, xline(ix), yline(iy), zline(iz), nodeCount, nodeXyzIndex)
                 if (insertFaultType > 0) then 
                     call insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
-                    x(2,nodeCount) = ycoort
+                    meshCoor(2,nodeCount) = ycoort
                 endif 
                 
                 call setNumDof(nodeCoor, numOfDofPerNodeTmp)
 
                 eqNumStartIndexLoc(nodeCount) = eqNumIndexArrLocTag
-                numOfDofPerNodeArr(nodeCount)  = numOfDofPerNodeTmp
+                numOfDofPerNodeArr(nodeCount) = numOfDofPerNodeTmp
                 
                 call setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equationNumCount, numOfDofPerNodeTmp)
                 call setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
@@ -107,15 +107,6 @@ subroutine meshgen
     ! compute on-fault area associated with each fault node pair and distance from source
     do ift=1,ntotft
         if(nftnd0(ift)>0) then
-        !...distance from the source point
-        do i=1,ifd(ift)
-            do j=1,ifs(ift)
-                i1 = fltrc(1,j,i,ift)
-                j1 = fltrc(2,j,i,ift)
-                r4nuc(j1,ift) = sqrt((x(1,i1)-xsource)**2 + (x(2,i1)-ysource)**2 &
-                + (x(3,i1)-zsource)**2)
-            enddo
-        enddo
         !...element areas and distribute evenly to its four nodes
         do i=2,ifd(ift)
             do j=2,ifs(ift)
@@ -130,22 +121,22 @@ subroutine meshgen
                 m4 = fltrc(2,j,i-1,ift)
                 !...calculate area of the quadrilateral
                 !......if fault is not in coor axes plane
-                aa1=sqrt((x(1,n2)-x(1,n1))**2 + (x(2,n2)-x(2,n1))**2 &
-                + (x(3,n2)-x(3,n1))**2)
-                bb1=sqrt((x(1,n3)-x(1,n2))**2 + (x(2,n3)-x(2,n2))**2 &
-                + (x(3,n3)-x(3,n2))**2)
-                cc1=sqrt((x(1,n4)-x(1,n3))**2 + (x(2,n4)-x(2,n3))**2 &
-                + (x(3,n4)-x(3,n3))**2)
-                dd1=sqrt((x(1,n1)-x(1,n4))**2 + (x(2,n1)-x(2,n4))**2 &
-                + (x(3,n1)-x(3,n4))**2)
-                p1=sqrt((x(1,n4)-x(1,n2))**2 + (x(2,n4)-x(2,n2))**2 &
-                + (x(3,n4)-x(3,n2))**2)
-                q1=sqrt((x(1,n3)-x(1,n1))**2 + (x(2,n3)-x(2,n1))**2 &
-                + (x(3,n3)-x(3,n1))**2)
-                area=0.25 * sqrt(4*p1*p1*q1*q1 - &
+                aa1=sqrt((meshCoor(1,n2)-meshCoor(1,n1))**2 + (meshCoor(2,n2)-meshCoor(2,n1))**2 &
+                + (meshCoor(3,n2)-meshCoor(3,n1))**2)
+                bb1=sqrt((meshCoor(1,n3)-meshCoor(1,n2))**2 + (meshCoor(2,n3)-meshCoor(2,n2))**2 &
+                + (meshCoor(3,n3)-meshCoor(3,n2))**2)
+                cc1=sqrt((meshCoor(1,n4)-meshCoor(1,n3))**2 + (meshCoor(2,n4)-meshCoor(2,n3))**2 &
+                + (meshCoor(3,n4)-meshCoor(3,n3))**2)
+                dd1=sqrt((meshCoor(1,n1)-meshCoor(1,n4))**2 + (meshCoor(2,n1)-meshCoor(2,n4))**2 &
+                + (meshCoor(3,n1)-meshCoor(3,n4))**2)
+                p1=sqrt((meshCoor(1,n4)-meshCoor(1,n2))**2 + (meshCoor(2,n4)-meshCoor(2,n2))**2 &
+                + (meshCoor(3,n4)-meshCoor(3,n2))**2)
+                q1=sqrt((meshCoor(1,n3)-meshCoor(1,n1))**2 + (meshCoor(2,n3)-meshCoor(2,n1))**2 &
+                + (meshCoor(3,n3)-meshCoor(3,n1))**2)
+                area = 0.25d0 * sqrt(4*p1*p1*q1*q1 - &
                (bb1*bb1 + dd1*dd1 - aa1*aa1 -cc1*cc1)**2) 
                 !...distribute above area to 4 nodes evenly
-                area = 0.25 * area
+                area = 0.25d0 * area
                 arn(m1,ift) = arn(m1,ift) + area
                 arn(m2,ift) = arn(m2,ift) + area
                 arn(m3,ift) = arn(m3,ift) + area
@@ -745,7 +736,7 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     elementCenterCoor = 0.0d0 
     
     elemCount        = elemCount + 1
-    et(elemCount)    = 1 
+    elemTypeArr(elemCount)    = 1 
     ien(1,elemCount) = plane1(iy-1,iz-1)
     ien(2,elemCount) = plane2(iy-1,iz-1)
     ien(3,elemCount) = plane2(iy,iz-1)
@@ -758,7 +749,7 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     
     do i=1,nen
         do j=1,3
-            elementCenterCoor(j)=elementCenterCoor(j)+x(j,ien(i,elemCount))
+            elementCenterCoor(j) = elementCenterCoor(j) + meshCoor(j,ien(i,elemCount))
         enddo
     enddo
     elementCenterCoor = elementCenterCoor/8.0d0
@@ -766,7 +757,7 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     if (elementCenterCoor(1)>PMLb(1).or.elementCenterCoor(1)<PMLb(2) &
     .or.elementCenterCoor(2)>PMLb(3).or.elementCenterCoor(2)<PMLb(4) &
     .or.elementCenterCoor(3)<PMLb(5)) then
-        et(elemCount) = 2
+        elemTypeArr(elemCount) = 2
         stressDofCount        = stressDofCount+15+6
     else
         stressDofCount        = stressDofCount+12
@@ -786,7 +777,7 @@ end subroutine createElement
     ! This subroutine will replace slave nodes with corresponding master nodes.
     
     ! Currently only work for vertical fault on xz plane. 
-    if(et(elemCount) == 1 .and. &
+    if(elemTypeArr(elemCount) == 1 .and. &
         (nodeCoor(1)>(fltxyz(1,1,1)-tol) .and. nodeCoor(1)<(fltxyz(2,1,1)+dx+tol) .and. &
          nodeCoor(3)>(fltxyz(1,3,1)-tol) .and. nodeCoor(2)>0.0d0 .and. abs(nodeCoor(2)-dy)<tol)) then
         do iFault = 1, ntotft
@@ -839,11 +830,11 @@ do iFault = 1, ntotft
         nsmp(2,nftnd0(iFault),iFault) = msnode !set Master node nodeID to nsmp
         plane2(nodeXyzIndex(5)+iFault,nodeXyzIndex(3)) = msnode
         
-        x(1,msnode) = nodeCoor(1)
-        x(2,msnode) = nodeCoor(2)
-        x(3,msnode) = nodeCoor(3)
+        meshCoor(1,msnode) = nodeCoor(1)
+        meshCoor(2,msnode) = nodeCoor(2)
+        meshCoor(3,msnode) = nodeCoor(3)
         if (insertFaultType > 0) then 
-            x(2,msnode) = ycoort
+            meshCoor(2,msnode) = ycoort
         endif
         
         !set Equation Numbers for the newly created Master Node.
@@ -942,9 +933,9 @@ subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nodeCount, nodeXyzIndex)
     nodeCoor(3)   = zcoor
     nodeCount         = nodeCount + 1        
     plane2(iy,iz) = nodeCount
-    x(1,nodeCount)    = nodeCoor(1)
-    x(2,nodeCount)    = nodeCoor(2)
-    x(3,nodeCount)    = nodeCoor(3) 
+    meshCoor(1,nodeCount) = nodeCoor(1)
+    meshCoor(2,nodeCount) = nodeCoor(2)
+    meshCoor(3,nodeCount) = nodeCoor(3) 
 end subroutine createNode
 
 subroutine insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
@@ -1010,7 +1001,7 @@ subroutine setPlasticStress(depth, elemCount)
     integer(kind = 4) :: elemCount, etTag
     
     etTag = 0
-    if (et(elemCount)==2) etTag = 1 ! adjustment for PML elements
+    if (elemTypeArr(elemCount)==2) etTag = 1 ! adjustment for PML elements
     
     eleporep(elemCount) = 0.0d0  !rhow*tmp2*gama  !pore pressure>0
     strVert            = -(roumax- rhow*(gamar+1.0d0))*depth*grav ! should be negative   

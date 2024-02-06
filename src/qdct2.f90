@@ -13,7 +13,7 @@ subroutine qdct2
         eleffm = 0.0d0
         do i=1,nen
             do j=1,nesd
-                xl(j,i) = x(j,ien(i,nel))
+                xl(j,i) = meshCoor(j,ien(i,nel))
             enddo
         enddo
         

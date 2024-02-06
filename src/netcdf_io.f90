@@ -70,8 +70,8 @@ subroutine netcdf_read_on_fault_eqdyna
 
     do ift = 1, ntotft
         do i = 1, nftnd(ift)
-            xcord          = x(1, nsmp(1,i,ift))
-            zcord          = x(3, nsmp(1,i,ift))
+            xcord          = meshCoor(1, nsmp(1,i,ift))
+            zcord          = meshCoor(3, nsmp(1,i,ift))
             ii             = nint((xcord - fxmin(ift))/dx) + 1
             jj             = nint((zcord - fzmin(ift))/dz) + 1
             fric(1,  i, 1) = on_fault_vars(ii,jj,1) ! sw_fs
@@ -160,8 +160,8 @@ subroutine netcdf_read_on_fault_eqdyna_restart
     
     do ift = 1, ntotft
         do i = 1, nftnd(ift)
-            xcord            = x(1, nsmp(1,i,ift))
-            zcord            = x(3, nsmp(1,i,ift))
+            xcord            = meshCoor(1, nsmp(1,i,ift))
+            zcord            = meshCoor(3, nsmp(1,i,ift))
             ii               = nint((xcord - fxmin(ift))/dx) + 1
             jj               = nint((zcord - fzmin(ift))/dz) + 1
             fric(8,  i, ift) = on_fault_vars(ii,jj, 1) ! tstk0
