@@ -539,25 +539,4 @@ subroutine storeOnFaultStationQuantSCEC(iFault, iFaultNodePair, nsdSlipVector, n
             endif
         enddo 
     endif   
-    
-    !-------------------------------------------------------------------!
-    !-------------Late Sep.2015/ D.Liu----------------------------------!
-    !-----------Writing out results on fault for evert nstep------------!
-    !if(mod(nt,315)==1.and.nt<5000) then 
-    !    write(mm,'(i6)') me
-    !    mm = trim(adjustl(mm))
-    !    foutmov='fslipout_'//mm
-    !    open(9002+me,file=foutmov,form='formatted',status='unknown',position='append')
-    !        write(9002+me,'(1x,4f10.3)') ((fltslp(j,ifout),j=1,3),fltslr(1,ifout),ifout=1,nftnd)
-    !endif
-    !----nftnd for each me for plotting---------------------------------!
-    !if (nt==1) then
-    !    write(mm,'(i6)') me    
-    !    mm = trim(adjustl(mm))            
-    !    foutmov='fnode.txt'//mm
-    !    open(unit=9800,file=foutmov,form='formatted',status='unknown')
-    !        write(9800,'(2I7)') me,nftnd 
-    !    close(9800)            
-    !endif     
-    !-------------------------------------------------------------------!   
 end subroutine storeOnFaultStationQuantSCEC

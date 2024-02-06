@@ -27,11 +27,8 @@ program EQdyna
         write(*,*) '====================================================================='    
     endif 
     
-    timebegin=MPI_WTIME()
-    time1=MPI_WTIME()    
-
-    write(mm,'(i6)') me
-    mm=trim(adjustl(mm))
+    timebegin = MPI_WTIME()
+    time1 = MPI_WTIME()    
     
     call readglobal
     call readmodelgeometry
@@ -52,8 +49,7 @@ program EQdyna
     
     allocate(nftnd(ntotft),shl(nrowsh,nen))
     
-    call qdcshl
-
+    call localShapeFuncTrilinearHex
     call mesh4num
     call allocInit
     call memory_estimate
@@ -151,7 +147,11 @@ end program EQdyna
 
 subroutine allocInit
     use globalvar 
-    implicit none 
+    implicit none
+    
+    write(mm,'(i6)') me
+    mm = trim(adjustl(mm))
+    
     allocate(eqNumIndexArr(maxm), eqNumStartIndexLoc(totalNumOfNodes), &
             numOfDofPerNodeArr(totalNumOfNodes), meshCoor(ndof,totalNumOfNodes), &
             fnms(totalNumOfNodes), surface_node_id(totalNumOfNodes), &
