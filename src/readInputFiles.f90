@@ -208,9 +208,9 @@ subroutine readstations1
     endif     
     
     open(unit = 1006, file = 'bStations.txt', form = 'formatted', status = 'old')
-        read(1006,*) n4nds
+        read(1006,*) totalNumOfOffSt
         read(1006,*) (nonfs(i), i = 1, ntotft)
-        !write(*,*) 'n4nds,nonfs',n4nds, (nonfs(i), i = 1, ntotft), me
+        !write(*,*) 'totalNumOfOffSt,nonfs',totalNumOfOffSt, (nonfs(i), i = 1, ntotft), me
     close(1006)
 end subroutine readstations1
 ! #7 readstations2 --------------------------------------------------------
@@ -249,7 +249,7 @@ subroutine readstations2
             enddo 
         enddo
         read(1006,*)
-        do i = 1, n4nds
+        do i = 1, totalNumOfOffSt
             read(1006,*) x4nds(1,i), x4nds(2,i), x4nds(3,i)
         enddo 
     close(1006)

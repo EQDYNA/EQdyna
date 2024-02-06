@@ -17,7 +17,7 @@ subroutine driver
         endif
         
         call velDispUpdate
-        call offFaultStationSCEC
+        call storeOffFaultStData
         
         nodalForceArr=0.0d0
         
@@ -31,29 +31,6 @@ subroutine driver
     enddo 
 
 end subroutine driver
-
-subroutine init_vel
-    ! initiate the 1d velocity array v1. 
-    ! if mode==2, non-zero values for fric(31-36,i,ift) loaded from 
-    !    the restart file.
-    ! if mode==1, fric(31-36,i) will be zeros.
-    use globalvar
-    implicit none
-    integer (kind = 4) :: i, ift, tmp
-    
-    do ift = 1, ntotft
-        do i = 1,nftnd(ift)
-            tmp = eqNumStartIndexLoc(nsmp(1,i,ift))! slave nodeid i 
-            v1(eqNumIndexArr(tmp+1)) = fric(34,i,ift) ! vxs
-            v1(eqNumIndexArr(tmp+2)) = fric(35,i,ift) ! vys
-            v1(eqNumIndexArr(tmp+3)) = fric(36,i,ift) ! vzs
-            tmp = eqNumStartIndexLoc(nsmp(2,i,ift))! master nodeid i
-            v1(eqNumIndexArr(tmp+1)) = fric(31,i,ift) ! vxm
-            v1(eqNumIndexArr(tmp+2)) = fric(32,i,ift) ! vym
-            v1(eqNumIndexArr(tmp+3)) = fric(33,i,ift) ! vzm
-        enddo
-    enddo
-end subroutine init_vel
 
 subroutine doubleCouplePointSource
     use globalvar 
@@ -172,28 +149,28 @@ subroutine velDispUpdate
     compTimeInSeconds(3) = compTimeInSeconds(3) + MPI_WTIME() - startTimeStamp
 end subroutine velDispUpdate
 
-subroutine offFaultStationSCEC
+subroutine storeOffFaultStData
     use globalvar
     implicit none
     
-    integer (kind = 4) :: i, j, l, k, k1
+    integer (kind = 4) :: i, nodeId, quantType, k, eqNum
     
-        if (ndout>0) then
-            dout(1,nt) = timeElapsed
-            do i = 1, ndout 
-                j = idhist(1,i)
-                if (j<=0) j=1  !avoid zero that cannot be used below
+        if (numOfOffFaultStCount*ndof*2>0) then
+            OffFaultStGramSCEC(1,nt) = timeElapsed
+            do i = 1, numOfOffFaultStCount*ndof*2 
+                nodeId = idhist(1,i)
+                !if (j<=0) j=1  !avoid zero that cannot be used below
                     k = idhist(2,i)
-                    l = idhist(3,i)
-                if (l ==1) then
-                    dout(i+1,nt) = dispArr(k,j)
-                elseif(l==2) then
-                    dout(i+1,nt) = velArr(k,j)
-                elseif(l==3) then
-                    k1 = eqNumIndexArr(eqNumStartIndexLoc(j)+k)
-                    dout(i+1,nt) = nodalForceArr(k1)
+                    quantType = idhist(3,i)
+                if (quantType ==1) then
+                    OffFaultStGramSCEC(i+1,nt) = dispArr(k,nodeId)
+                elseif(quantType == 2) then
+                    OffFaultStGramSCEC(i+1,nt) = velArr(k,nodeId)
+                elseif(quantType == 3) then
+                    eqNum = eqNumIndexArr(eqNumStartIndexLoc(nodeId)+k)
+                    OffFaultStGramSCEC(i+1,nt) = nodalForceArr(eqNum)
                 endif
             enddo
         endif
-end subroutine offFaultStationSCEC
+end subroutine storeOffFaultStData
  

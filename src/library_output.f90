@@ -12,8 +12,8 @@ subroutine output_onfault_st
 	
 	integer (kind = 4) :: i, j 
 	
-	if(n4onf>0) then
-		do i=1,n4onf
+	if(numOfOnFaultStCount>0) then
+		do i=1,numOfOnFaultStCount
 			j=anonfs(3,i)
 			if(j==1)  then  !main fault stations
 				sttmp = '      '
@@ -68,23 +68,23 @@ subroutine output_offfault_st
 	
 	integer (kind = 4) :: i, j 	
 	
-	if(n4out>0) then
-		do i=1,n4out
+	if(numOfOffFaultStCount>0) then
+		do i=1,numOfOffFaultStCount
 			bodytmp = '      '
 			sttmp = '      '
 			dptmp = '      '
-			write(bodytmp,'(i4.3)') int(x4nds(2,an4nds(1,i))/100.d0) 
-			write(sttmp,'(i4.3)') int(x4nds(1,an4nds(1,i))/100.d0) 
-			write(dptmp,'(i4.3)') int(abs(x4nds(3,an4nds(1,i)))/100.d0) 
+			write(bodytmp,'(i4.3)') int(x4nds(2,OffFaultStNodeIdIndex(1,i))/100.d0) 
+			write(sttmp,'(i4.3)') int(x4nds(1,OffFaultStNodeIdIndex(1,i))/100.d0) 
+			write(dptmp,'(i4.3)') int(abs(x4nds(3,OffFaultStNodeIdIndex(1,i)))/100.d0) 
 
 			open(51,file='body'//trim(adjustl(bodytmp))//'st'//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
 
 			bodytmp = '      '
 			sttmp = '      '
 			dptmp = '      '
-			write(bodytmp,'(f5.1)') x4nds(2,an4nds(1,i))/1000. 
-			write(sttmp,'(f5.1)') x4nds(1,an4nds(1,i))/1000. 
-			write(dptmp,'(f5.1)') abs(x4nds(3,an4nds(1,i)))/1000. 
+			write(bodytmp,'(f5.1)') x4nds(2,OffFaultStNodeIdIndex(1,i))/1000. 
+			write(sttmp,'(f5.1)') x4nds(1,OffFaultStNodeIdIndex(1,i))/1000. 
+			write(dptmp,'(f5.1)') abs(x4nds(3,OffFaultStNodeIdIndex(1,i)))/1000. 
 			stLocStamp = '# location = '//trim(adjustl(bodytmp))//' km off fault, '//trim(adjustl(sttmp))//' km along strike'//trim(adjustl(dptmp))//' km depth'
 			write(51,*) '# ',projectname
 			write(51,*) '# Author=',author
@@ -108,9 +108,9 @@ subroutine output_offfault_st
 			write(51,*) '# The line below lists the names of the data fields:'
 			write(51,*) 't h-disp h-vel v-disp v-vel n-disp n-vel'
 			do j=1, nstep 
-				write(51,'( E21.13,6E15.7)') dout(1,j),dout((i-1)*6+2,j), &
-				dout((i-1)*6+3,j),-dout((i-1)*6+6,j),-dout((i-1)*6+7,j), &
-				dout((i-1)*6+4,j),dout((i-1)*6+5,j)
+				write(51,'( E21.13,6E15.7)') OffFaultStGramSCEC(1,j),OffFaultStGramSCEC((i-1)*6+2,j), &
+				OffFaultStGramSCEC((i-1)*6+3,j),-OffFaultStGramSCEC((i-1)*6+6,j),-OffFaultStGramSCEC((i-1)*6+7,j), &
+				OffFaultStGramSCEC((i-1)*6+4,j),OffFaultStGramSCEC((i-1)*6+5,j)
 			enddo
 			close(51)
 		enddo
