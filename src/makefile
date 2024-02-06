@@ -38,9 +38,9 @@ endif
 OPT  = -c ${FFLAGS} 
 OPT1 = ${FFLAGS}
 
-OBJ  = eqdyna3d.o  globalvar.o mesh4num.o  meshgen.o   qdcshl.o    \
-       driver.o    qdct2.o     qdcshg.o                qdcb.o      \
-       ku.o        contma.o    qdckd.o     hrglss.o    fric.o      \
+OBJ  = eqdyna3d.o  globalvar.o mesh4num.o  meshgen.o   localShapeFuncTrilinearHex.o    \
+       driver.o    assembleGlobalMass.o     qdcshg.o                qdcb.o      \
+       assembleGlobalKU.o        contma.o    calcElemKU.o     hrglss.o    fric.o      \
        faulting.o              comdampv.o  qconstant.o             \
        readInputFiles.o        thermop.o   library.o   warning.o   \
        library_degeneration.f90            library_output.o        \
@@ -61,23 +61,23 @@ mesh4num.o: mesh4num.f90 globalvar.o library_degeneration.o
 	$(FC) $(OPT) mesh4num.f90
 meshgen.o: meshgen.f90 globalvar.o library.o library_degeneration.o
 	$(FC) $(OPT) meshgen.f90
-qdcshl.o: qdcshl.f90 globalvar.o
-	$(FC) $(OPT) qdcshl.f90		
-driver.o: driver.f90 qdct2.o ku.o hrglss.o faulting.o \
+localShapeFuncTrilinearHex.o: localShapeFuncTrilinearHex.f90 globalvar.o
+	$(FC) $(OPT) localShapeFuncTrilinearHex.f90		
+driver.o: driver.f90 assembleGlobalMass.o assembleGlobalKU.o hrglss.o faulting.o \
           globalvar.o comdampv.o thermop.o
 	$(FC) $(OPT) driver.f90
-qdct2.o: qdct2.f90 qdcshg.o library.o globalvar.o
-	$(FC) $(OPT) qdct2.f90
+assembleGlobalMass.o: assembleGlobalMass.f90 qdcshg.o library.o globalvar.o
+	$(FC) $(OPT) assembleGlobalMass.f90
 qdcshg.o: qdcshg.f90 globalvar.o
 	$(FC) $(OPT) qdcshg.f90
 library.o: library.f90 globalvar.o
 	$(FC) $(OPT) library.f90
-ku.o: ku.f90 qdckd.o globalvar.o 
-	$(FC) $(OPT) ku.f90
+assembleGlobalKU.o: assembleGlobalKU.f90 calcElemKU.o globalvar.o 
+	$(FC) $(OPT) assembleGlobalKU.f90
 contma.o: contma.f90 globalvar.o
 	$(FC) $(OPT) contma.f90
-qdckd.o: qdckd.f90 qdcb.o qconstant.o globalvar.o
-	$(FC) $(OPT) qdckd.f90
+calcElemKU.o: calcElemKU.f90 qdcb.o qconstant.o globalvar.o
+	$(FC) $(OPT) calcElemKU.f90
 qdcb.o: qdcb.f90 globalvar.o
 	$(FC) $(OPT) qdcb.f90
 hrglss.o: hrglss.f90 globalvar.o
