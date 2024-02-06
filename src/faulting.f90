@@ -10,7 +10,7 @@ subroutine faulting
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
     real (kind = dp) :: nsdInitTractionVector(3)
     
-    time1 = MPI_WTIME()
+    startTimeStamp = MPI_WTIME()
     do ift = 1, ntotft
         do i = 1, nftnd(ift)   
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
@@ -21,7 +21,7 @@ subroutine faulting
             call storeRuptureTime(ift, i, nsdSliprateVector)
         enddo 
     enddo  
-    timeused(6) = timeused(6) + MPI_WTIME() - time1 
+    compTimeInSeconds(6) = compTimeInSeconds(6) + MPI_WTIME() - startTimeStamp 
 end subroutine faulting     
 
 ! Subroutine rate_state_normal_stress calculates the effect of normal stress change
@@ -148,7 +148,7 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, ns
     if (iFrictionLaw == 1) then
         call slip_weak(fric(77,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),fricCoeff)
     elseif(iFrictionLaw == 2) then
-        trupt =  time - fnft(iFaultNodePair,iFault)
+        trupt =  timeElapsed - fnft(iFaultNodePair,iFault)
         call time_weak(trupt,fric(1,iFaultNodePair,iFault),fricCoeff)
     endif
     
@@ -224,7 +224,7 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     !-----------------
     ! Add the background slip rate on top. 
     do j=1,3 !n,s,d
-        nsdSlipVector(j) = nsdSlipVector(j) + fric(25+j-1,iFaultNodePair,iFault)*time
+        nsdSlipVector(j) = nsdSlipVector(j) + fric(25+j-1,iFaultNodePair,iFault)*timeElapsed
         nsdSliprateVector(j) = nsdSliprateVector(j) + fric(25+j-1,iFaultNodePair,iFault)
     enddo
     nsdSlipVector(4) = sqrt(nsdSlipVector(2)**2+nsdSlipVector(3)**2)
@@ -334,9 +334,7 @@ subroutine storeRuptureTime(iFault, iFaultNodePair, nsdSliprateVector)
     
     if(fnft(iFaultNodePair,iFault)>5000.0d0) then    !fnft is initialized to be 99999
         if(nsdSliprateVector(4) >= slipRateThres) then    !first time to reach 1mm/s
-            fnft(iFaultNodePair,iFault) = time    !rupture time for the node
-        ! elseif (nsdSliprateVector(4) >=0.05d0 .and. mode==2) then
-            ! fnft(iFaultNodePair,iFault) = time
+            fnft(iFaultNodePair,iFault) = timeElapsed    !rupture time for the node
         endif
     endif  
 
@@ -351,7 +349,7 @@ subroutine showSourceDynamics(iFault,iFaultNodePair)
         abs(meshCoor(3,nsmp(1,iFaultNodePair,iFault))-zsource)<tol) then
         write(*,*) 'Hypocenter dynamics'
         write(*,'(X,A,3E15.7)') 'X, Y, Z      (m)   ', meshCoor(1,nsmp(1,iFaultNodePair,iFault)), meshCoor(2,nsmp(1,iFaultNodePair,iFault)), meshCoor(3,nsmp(1,iFaultNodePair,iFault))
-        write(*,'(X,A,E15.7)') 'Time         (s)   ', time
+        write(*,'(X,A,E15.7)') 'TimeElapsed  (s)   ', timeElapsed
         write(*,'(X,A,3E15.7)') 'n,s,d tract  (MPa) ', fric(78,iFaultNodePair,iFault)/1.d6, fric(79,iFaultNodePair,iFault)/1.d6, fric(80,iFaultNodePair,iFault)/1.d6
         write(*,'(X,A,E15.7)') 'state_normal (MPa) ', fric(23,iFaultNodePair,iFault)/1.d6
         write(*,'(X,A,3E15.7)') 'n,s,d slip   (m)   ', fric(73,iFaultNodePair,iFault), fric(71,iFaultNodePair,iFault), fric(72,iFaultNodePair,iFault)
@@ -382,8 +380,8 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
     if (radius < nucR) then 
         F = dexp(radius**2/(radius**2-nucR**2))
     endif 
-    if (time<=nucT)  then 
-        G = dexp((time-nucT)**2/(time*(time-2.0d0*nucT)))
+    if (timeElapsed<=nucT)  then 
+        G = dexp((timeElapsed-nucT)**2/(timeElapsed*(timeElapsed-2.0d0*nucT)))
     endif
     
     if (TPV == 105 .or. TPV == 104) then
@@ -431,10 +429,10 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
     endif
     
     tc = 1.0d0 
-    if(time<tr) then 
+    if(timeElapsed<tr) then 
         tc = 0.0d0
-    elseif ((time<(tr+fric(5,iFaultNodePair,iFault))).and.(time>=tr)) then 
-        tc = (time-tr)/fric(5,iFaultNodePair,iFault)
+    elseif ((timeElapsed<(tr+fric(5,iFaultNodePair,iFault))).and.(timeElapsed>=tr)) then 
+        tc = (timeElapsed-tr)/fric(5,iFaultNodePair,iFault)
     endif
 
     fricCoeff = min(fric(1,iFaultNodePair,iFault)+(fric(2,iFaultNodePair,iFault)-fric(1,iFaultNodePair,iFault))*tc, fricCoeff)
@@ -524,7 +522,7 @@ subroutine storeOnFaultStationQuantSCEC(iFault, iFaultNodePair, nsdSlipVector, n
     if (n4onf>0) then    
         do j = 1, n4onf
             if(anonfs(1,j)==iFaultNodePair .and. anonfs(3,j)==iFault) then 
-                onFaultQuantHistSCECForm(1,nt,j)  = time
+                onFaultQuantHistSCECForm(1,nt,j)  = timeElapsed
                 onFaultQuantHistSCECForm(2,nt,j)  = nsdSliprateVector(2)
                 onFaultQuantHistSCECForm(3,nt,j)  = nsdSliprateVector(3)
                 onFaultQuantHistSCECForm(4,nt,j)  = fric(20,iFaultNodePair,iFault)

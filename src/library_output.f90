@@ -26,7 +26,7 @@ subroutine output_onfault_st
 				dptmp = '      '
 				write(sttmp,'(f5.1)') xonfs(1,anonfs(2,i),j)/1000.d0 
 				write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j)/1000.d0) 
-				loca = '# location = on fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km down-dip'		
+				stLocStamp = '# location = on fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km down-dip'		
 			endif
 			write(51,*) '# ',projectname
 			write(51,*) '# Author=',author
@@ -85,7 +85,7 @@ subroutine output_offfault_st
 			write(bodytmp,'(f5.1)') x4nds(2,an4nds(1,i))/1000. 
 			write(sttmp,'(f5.1)') x4nds(1,an4nds(1,i))/1000. 
 			write(dptmp,'(f5.1)') abs(x4nds(3,an4nds(1,i)))/1000. 
-			loca = '# location = '//trim(adjustl(bodytmp))//' km off fault, '//trim(adjustl(sttmp))//' km along strike'//trim(adjustl(dptmp))//' km depth'
+			stLocStamp = '# location = '//trim(adjustl(bodytmp))//' km off fault, '//trim(adjustl(sttmp))//' km along strike'//trim(adjustl(dptmp))//' km depth'
 			write(51,*) '# ',projectname
 			write(51,*) '# Author=',author
 			call date_and_time(values=time_array)
@@ -174,7 +174,7 @@ subroutine output_timeanalysis
 	integer (kind = 4) :: i, j 	
 	
 	open(unit=14,file='timeinfo'//mm,status='unknown')	!rupture time
-		write(14,'(1x,10e18.7e4,2i10)') (timeused(i),i=1,9),btime,totalNumOfElements,totalNumOfEquations
+		write(14,'(1x,10e18.7e4,2i10)') (compTimeInSeconds(i),i=1,9),MPICommTimeInSeconds,totalNumOfElements,totalNumOfEquations
 	close(14)
 end subroutine output_timeanalysis
 

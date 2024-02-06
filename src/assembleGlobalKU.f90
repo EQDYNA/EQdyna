@@ -8,7 +8,7 @@ subroutine assembleGlobalKU
     integer (kind = 4) :: nel, i, j, eqNumTmp
     real (kind = dp) :: pstrinc, efPML(96), elresf(nee), al(ned,nen)
         
-    time1 = MPI_WTIME()
+    startTimeStamp = MPI_WTIME()
     
     do nel = 1, totalNumOfElements
         !al(1:ned,1:nen) = 0.0d0
@@ -63,7 +63,7 @@ subroutine assembleGlobalKU
             enddo
         endif
     enddo
-    timeused(4) = timeused(4) + MPI_WTIME() - time1
+    compTimeInSeconds(4) = compTimeInSeconds(4) + MPI_WTIME() - startTimeStamp
 end subroutine assembleGlobalKU
 
 

@@ -47,13 +47,13 @@ subroutine MPI4NodalQuant(quantArray, numDof)
     use globalvar
     implicit none
     include 'mpif.h'
-    integer (kind = 4) ::  ierr, istatus(MPI_STATUS_SIZE), i, ixyz, numDof, rrr, &
+    integer (kind = 4) ::  iMPIerr, iMPIstatus(MPI_STATUS_SIZE), i, ixyz, numDof, rrr, &
         ix,iy,iz, nodenumtemp, dofCount4MPI, dest, sendtag, source, recvtag, ib, iSign, &
         bnd(2), mexyz(3), npxyz(3), numxyz(3), abc(3)
     real (kind = dp) :: quantArray(totalNumOfEquations) 
     real (kind = dp), allocatable, dimension(:) :: btmp, btmp1
     
-    time1 = MPI_WTIME()     
+    startTimeStamp = MPI_WTIME()     
     
     mexyz(1)=int(me/(npy*npz))
     mexyz(2)=int((me-mexyz(1)*npy*npz)/npz)
@@ -176,7 +176,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                 
                     call mpi_sendrecv(btmp,  rrr, MPI_DOUBLE_PRECISION, dest, sendtag, &
                                       btmp1, rrr, MPI_DOUBLE_PRECISION, source, recvtag, &
-                                      MPI_COMM_WORLD, istatus, ierr)
+                                      MPI_COMM_WORLD, iMPIstatus, iMPIerr)
                     
                     dofCount4MPI=0
                     if (ixyz == 1) then 
@@ -225,10 +225,10 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                 endif 
             enddo 
         endif
-        call mpi_barrier(MPI_COMM_WORLD, ierr)
+        call mpi_barrier(MPI_COMM_WORLD, iMPIerr)
     enddo 
     
-    btime = btime + MPI_WTIME() - time1
+    MPICommTimeInSeconds = MPICommTimeInSeconds + MPI_WTIME() - startTimeStamp
 end subroutine MPI4NodalQuant
 
 subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, quantArray, dofCount4MPI)

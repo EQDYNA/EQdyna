@@ -311,7 +311,7 @@ def estimate_HPC_resource():
     estimate_ncpu = int(ncell/10000)
     estimate_nnode = int(estimate_ncpu/128) + 1
     print("Estimated total cells in the model is " + str(ncell))
-    print("Estimated memory required is about " + str(ncell*1.54/1.e6) +" GBs")
+    print("Estimated memory required is about " + str(ncell*1.54/1.e6*par.nx*par.ny*par.nz) +" GBs")
     #print("Estimated number of computing nodes to be requested is " + str(estimate_nnode))
     #print("Estimated number of CPUs to be requested is " + str(estimate_ncpu))
 
