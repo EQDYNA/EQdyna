@@ -44,16 +44,16 @@ MODULE globalvar
         rough_fx_max,           rough_fz_min,  &
         str1ToFaultAngle,       devStrToStrVertRatio
         
-    integer (kind = 8) :: time_array(8)
+    integer (kind = 8) :: dateTimeStamp(8)
 
     integer (kind = 4)  :: np = 1000000, &
         nsd=3,  ndof=3, nen=8,  ned=3,  nee=24, nesd=3, nrowsh=4, &
         nrowb=6,nrowc=6,nstr=6, totalNumOfNodes,  totalNumOfElements,  totalNumOfEquations,      & 
-        maxm,   maxs,   npx,    npy,    npz,    master=0,         &
+        sizeOfEqNumIndexArr,   sizeOfStressDofIndexArr,   npx,    npy,    npz,    masterProcsId=0, &
         me,     totalNumOfMPIProcs, mode,   nstep, &
         dis4uniF,       dis4uniB,       nmat,   n2mat,  &
         nftmx,  nonmx,  nt,     TPV = -1,       output_plastic,     &
-        nnx,    nnz,    insertFaultType,    timeinfo = 0,   outputGroundMotion,&
+        nnx,    nnz,    insertFaultType,    writeCompTime = 0,   outputGroundMotion,&
         surface_nnode = 0,  &
         ! Thickness (counted by nodes) of PML.nPML=6
         nPML = 6, &
@@ -81,7 +81,7 @@ MODULE globalvar
         fzmin,  fzmax
     real (kind = dp), allocatable, dimension(:,:) :: meshCoor, &
         dispArr,      velArr,      mat,    localShapeFunc,    fnft,   arn, &
-        arn4m,  slp4fri,state,  elemass,ss,     plane1, plane2, &
+        slp4fri, elemass,ss,     plane1, plane2, &
         Tatnode,patnode,OffFaultStGramSCEC,   material,       rough_geo,      &
         x4nds
     real (kind = dp), allocatable, dimension(:,:,:) :: fric,    &
@@ -90,10 +90,10 @@ MODULE globalvar
     real (kind = dp), allocatable, dimension(:,:,:,:):: onFaultTPHist
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
-        eqNumIndexArr,    stressCompIndexArr,    elemTypeArr,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surface_node_id,&
+        eqNumIndexArr,    stressCompIndexArr,    elemTypeArr,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surfaceNodeIdArr,&
         nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
         fltu,   fltgm
-    integer (kind = 4), allocatable, dimension(:,:) :: nodeIdElemIdRelation,     &
+    integer (kind = 4), allocatable, dimension(:,:) :: nodeElemIdRelation,     &
         anonfs, idhist, OffFaultStNodeIdIndex
     integer (kind = 4), allocatable, dimension(:,:,:) :: nsmp
 

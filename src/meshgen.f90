@@ -100,7 +100,7 @@ subroutine meshgen
         plane1 = plane2
     enddo!ix
     
-    maxs=stressDofCount
+    sizeOfStressDofIndexArr=stressDofCount
     
     call meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, eqNumIndexArrLocTag, nftnd0)
     
@@ -143,7 +143,6 @@ subroutine meshgen
                 arn(m4,ift) = arn(m4,ift) + area
                 enddo
             enddo
-            arn4m = arn
         endif
 
         call MPI4arn(nx, ny, nz, mex, mey, mez, nftnd0(ift), ift)
@@ -250,7 +249,7 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
     if (npx > 1) then
         bndl=1  !left boundary
         bndr=nx ! right boundary
-        if (mex == master) then
+        if (mex == masterProcsId) then
             bndl=0
         elseif (mex == npx-1) then
             bndr=0
@@ -300,7 +299,7 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
     if (npy > 1) then   !MPI:no fault message passing along y due to the x-z vertical fault.
         bndf=1  !front boundary
         bndb=ny ! back boundary
-        if (mey == master) then
+        if (mey == masterProcsId) then
             bndf=0
         elseif (mey == npy-1) then
             bndb=0
@@ -350,7 +349,7 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
     if (npz > 1) then
         bndd=1  !lower(down) boundary
         bndu=nz ! upper boundary
-        if (mez == master) then
+        if (mez == masterProcsId) then
             bndd=0
         elseif (mez == npz-1) then
             bndu=0
@@ -403,8 +402,8 @@ subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCou
     implicit none
     integer (kind = 4) :: nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, nftnd0(ntotft), eqNumIndexArrLocTag
     integer (kind = 4) :: i
-    if (maxs>=(5*maxm)) then
-        write(*,*) '5*maxm',maxm,'is not enough for maxs',maxs
+    if (sizeOfStressDofIndexArr>=(3*sizeOfEqNumIndexArr)) then
+        write(*,*) '3*sizeOfEqNumIndexArr',sizeOfEqNumIndexArr,'is not enough for sizeOfStressDofIndexArr',sizeOfStressDofIndexArr
         stop 2002
     endif
     if(nodeCount/=nx*ny*nz.or.msnode/=totalNumOfNodes.or.elemCount/=totalNumOfElements.or.equationNumCount/=totalNumOfEquations) then
@@ -416,9 +415,9 @@ subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCou
         write(*,*) 'msnode,totalNumOfNodes',msnode,totalNumOfNodes
         stop 2003
     endif
-    if(eqNumIndexArrLocTag/=maxm) then
-        write(*,*) 'Inconsistency in eqNumIndexArrLocTag and maxm: stop!',me
-        write(*,*) eqNumIndexArrLocTag,maxm
+    if(eqNumIndexArrLocTag/=sizeOfEqNumIndexArr) then
+        write(*,*) 'Inconsistency in eqNumIndexArrLocTag and sizeOfEqNumIndexArr: stop!',me
+        write(*,*) eqNumIndexArrLocTag,sizeOfEqNumIndexArr
         stop 2004
     endif
     do i=1,ntotft
@@ -704,19 +703,19 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     
     elemCount        = elemCount + 1
     elemTypeArr(elemCount)    = 1 
-    nodeIdElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)
-    nodeIdElemIdRelation(2,elemCount) = plane2(iy-1,iz-1)
-    nodeIdElemIdRelation(3,elemCount) = plane2(iy,iz-1)
-    nodeIdElemIdRelation(4,elemCount) = plane1(iy,iz-1)
-    nodeIdElemIdRelation(5,elemCount) = plane1(iy-1,iz)
-    nodeIdElemIdRelation(6,elemCount) = plane2(iy-1,iz)
-    nodeIdElemIdRelation(7,elemCount) = plane2(iy,iz)
-    nodeIdElemIdRelation(8,elemCount) = plane1(iy,iz)
+    nodeElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)
+    nodeElemIdRelation(2,elemCount) = plane2(iy-1,iz-1)
+    nodeElemIdRelation(3,elemCount) = plane2(iy,iz-1)
+    nodeElemIdRelation(4,elemCount) = plane1(iy,iz-1)
+    nodeElemIdRelation(5,elemCount) = plane1(iy-1,iz)
+    nodeElemIdRelation(6,elemCount) = plane2(iy-1,iz)
+    nodeElemIdRelation(7,elemCount) = plane2(iy,iz)
+    nodeElemIdRelation(8,elemCount) = plane1(iy,iz)
     stressCompIndexArr(elemCount)   = stressDofCount
     
     do i=1,nen
         do j=1,3
-            elementCenterCoor(j) = elementCenterCoor(j) + meshCoor(j,nodeIdElemIdRelation(i,elemCount))
+            elementCenterCoor(j) = elementCenterCoor(j) + meshCoor(j,nodeElemIdRelation(i,elemCount))
         enddo
     enddo
     elementCenterCoor = elementCenterCoor/8.0d0
@@ -730,7 +729,7 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
         stressDofCount        = stressDofCount+12
     endif
     
-    ! assign nodeIdElemIdRelation(elemCount), ids(elemCount), et(elemCount)
+    ! assign nodeElemIdRelation(elemCount), ids(elemCount), et(elemCount)
     ! return elementCenterCoor, 
     ! update elemCount, stressDofCount
 end subroutine createElement
@@ -750,8 +749,8 @@ end subroutine createElement
         do iFault = 1, ntotft
             do iFaultNodePair = 1, nftnd0(iFault)
                 do k = 1,nen
-                    if(nodeIdElemIdRelation(k,elemCount)==nsmp(1,iFaultNodePair,iFault)) then
-                        nodeIdElemIdRelation(k,elemCount) = nsmp(2,iFaultNodePair,iFault)  !use master node for the node!
+                    if(nodeElemIdRelation(k,elemCount)==nsmp(1,iFaultNodePair,iFault)) then
+                        nodeElemIdRelation(k,elemCount) = nsmp(2,iFaultNodePair,iFault)  !use master node for the node!
                     endif
                 enddo
             enddo
