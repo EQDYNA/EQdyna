@@ -32,7 +32,7 @@ MODULE globalvar
         vrupt0=1500.d0,         critd0,     cohes,      brangle, &
         bulk,                   coheplas,               tv,     &
         ccosphi,    sinphi,     fstrike,        &
-        fdip,       dxtp,       tpw,        slipRateThres, nucT, &
+        fdip,       slipRateThres, nucT, &
         fric_sw_fs, fric_sw_fd, fric_sw_D0, fric_rsf_a, fric_rsf_deltaa0,&
         fric_rsf_b, fric_rsf_Dc,            fric_rsf_r0,                &
         fric_rsf_v0,            fric_rsf_vinix,         fric_rsf_viniz, &
@@ -80,8 +80,8 @@ MODULE globalvar
         v1,     stressArr,     miuonf, vponf,  eleporep,       &
         pstrain,eledet, fnms,   fxmin,  fxmax,  fymin,  fymax,  &
         fzmin,  fzmax
-    real (kind = dp), allocatable, dimension(:,:) :: x, &
-        dispArr,      velArr,      mat,    shl,    fnft,   arn,    r4nuc,  &
+    real (kind = dp), allocatable, dimension(:,:) :: meshCoor, &
+        dispArr,      velArr,      mat,    shl,    fnft,   arn, &
         arn4m,  slp4fri,state,  elemass,ss,     plane1, plane2, &
         Tatnode,patnode,dout,   material,       rough_geo,      &
         x4nds
@@ -91,7 +91,7 @@ MODULE globalvar
     real (kind = dp), allocatable, dimension(:,:,:,:):: onFaultTPHist
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
-        eqNumIndexArr,    stressCompIndexArr,    et,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surface_node_id,&
+        eqNumIndexArr,    stressCompIndexArr,    elemTypeArr,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surface_node_id,&
         nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
         fltu,   fltgm
     integer (kind = 4), allocatable, dimension(:,:) :: ien,     &

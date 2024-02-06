@@ -347,10 +347,10 @@ subroutine showSourceDynamics(iFault,iFaultNodePair)
     implicit none
     integer (kind = 4) :: iFault, iFaultNodePair
     
-    if (abs(x(1,nsmp(1,iFaultNodePair,iFault))-xsource)<tol .and. &
-        abs(x(3,nsmp(1,iFaultNodePair,iFault))-zsource)<tol) then
+    if (abs(meshCoor(1,nsmp(1,iFaultNodePair,iFault))-xsource)<tol .and. &
+        abs(meshCoor(3,nsmp(1,iFaultNodePair,iFault))-zsource)<tol) then
         write(*,*) 'Hypocenter dynamics'
-        write(*,'(X,A,3E15.7)') 'X, Y, Z      (m)   ', x(1,nsmp(1,iFaultNodePair,iFault)), x(2,nsmp(1,iFaultNodePair,iFault)), x(3,nsmp(1,iFaultNodePair,iFault))
+        write(*,'(X,A,3E15.7)') 'X, Y, Z      (m)   ', meshCoor(1,nsmp(1,iFaultNodePair,iFault)), meshCoor(2,nsmp(1,iFaultNodePair,iFault)), meshCoor(3,nsmp(1,iFaultNodePair,iFault))
         write(*,'(X,A,E15.7)') 'Time         (s)   ', time
         write(*,'(X,A,3E15.7)') 'n,s,d tract  (MPa) ', fric(78,iFaultNodePair,iFault)/1.d6, fric(79,iFaultNodePair,iFault)/1.d6, fric(80,iFaultNodePair,iFault)/1.d6
         write(*,'(X,A,E15.7)') 'state_normal (MPa) ', fric(23,iFaultNodePair,iFault)/1.d6
@@ -372,9 +372,9 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
     real (kind = dp) :: dtau, radius, T, F, G, nsdTractionVector(4), nsdSliprateVector(4), ttao, backSliprate
     
     dtau = 0.0d0 
-    radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
-                  (x(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
-                  (x(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
+    radius = sqrt((meshCoor(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
+                  (meshCoor(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
+                  (meshCoor(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
     
     !T    = 1.0d0
     F    = 0.0d0
@@ -420,9 +420,9 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
     integer (kind = 4) :: iFault, iFaultNodePair
     real (kind = dp) :: radius, tr, tc, fricCoeff
     
-    radius = sqrt((x(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
-                  (x(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
-                  (x(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
+    radius = sqrt((meshCoor(1,nsmp(1,iFaultNodePair,iFault))-xsource)**2 + &
+                  (meshCoor(2,nsmp(1,iFaultNodePair,iFault))-ysource)**2 + &
+                  (meshCoor(3,nsmp(1,iFaultNodePair,iFault))-zsource)**2)
     
     tr = 1.0d9 
     if(radius <= nucR) then 
@@ -448,8 +448,8 @@ subroutine showNewton(iFault,iFaultNodePair,iv,v_trial,nsdTractionVector)
     implicit none
     integer (kind = 4) :: iFault,iFaultNodePair,iv
     real (kind = dp) :: v_trial, nsdTractionVector(4)
-    if (x(1,nsmp(1,iFaultNodePair,iFault))==-22500.d0 .and. &
-        x(3,nsmp(1,iFaultNodePair,iFault))==-21500.d0) then
+    if (meshCoor(1,nsmp(1,iFaultNodePair,iFault))==-22500.d0 .and. &
+        meshCoor(3,nsmp(1,iFaultNodePair,iFault))==-21500.d0) then
         write(*,*) 'Newton: iteration step iv = ', iv
         write(*,*) 'Newton: trial slip rate is ', v_trial
         write(*,*) 'Newton: nsdTractionVector', nsdTractionVector(1)/1.0d6, nsdTractionVector(2)/1.0d6, nsdTractionVector(3)/1.0d6, nsdTractionVector(4)/1.0d6 

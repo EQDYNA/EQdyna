@@ -132,7 +132,7 @@ subroutine output_frt
 		
 		write(10004+me,'(1x,22e18.7e4)')    &
 				! 3 coordinates of the fault nodes.
-			((x(j,nsmp(1,i,1)), j = 1,3), & 
+			((meshCoor(j,nsmp(1,i,1)), j = 1,3), & 
 				! rupture time 
 			fnft(i,1),                    & 
 				! 71-73: final slips, slipd, slipn
@@ -186,14 +186,14 @@ subroutine output_plastic_strain
 	real (kind = dp) :: sc(3)
 	if (output_plastic == 1) then	
 		
-		do i=1,totalNumOfElements
-			if ((pstrain(i)>1.0d-4).and.(abs(x(1,ien(1,i)))<5.0d3).and.(abs(x(2,ien(1,i)))<2.0d3).and.(abs(x(3,ien(1,i)))<8.0d3)) then 
+		do i=1,totalNumOfElements 
+                    if ((pstrain(i)>1.0d-4).and.(abs(meshCoor(1,ien(1,i)))<5.0d3).and.(abs(meshCoor(2,ien(1,i)))<2.0d3).and.(abs(meshCoor(3,ien(1,i)))<8.0d3)) then 
 				open(unit=10007+me,file='pstr.txt'//mm,status='unknown',position='append')
 				sc=0.0d0
 				do j=1,8
-					sc(1)=sc(1)+x(1,ien(j,i))
-					sc(2)=sc(2)+x(2,ien(j,i))
-					sc(3)=sc(3)+x(3,ien(j,i))
+					sc(1)=sc(1)+meshCoor(1,ien(j,i))
+					sc(2)=sc(2)+meshCoor(2,ien(j,i))
+					sc(3)=sc(3)+meshCoor(3,ien(j,i))
 				enddo
 				sc(1)=sc(1)/8.0d0
 				sc(2)=sc(2)/8.0d0
@@ -212,11 +212,11 @@ subroutine find_surface_node_id
 	real (kind = dp) :: sc(3)
 	if (outputGroundMotion == 1) then	
 		do i=1,totalNumOfNodes
-			if ((x(1,i)<fltxyz(2,1,1)+20.0d3) .and. (x(1,i)>fltxyz(1,1,1)-20.0d3) .and. (abs(x(2,i))<20.0d3) .and. (abs(x(3,i))<dx/1000)) then 
+			if ((meshCoor(1,i)<fltxyz(2,1,1)+20.0d3) .and. (meshCoor(1,i)>fltxyz(1,1,1)-20.0d3) .and. (abs(meshCoor(2,i))<20.0d3) .and. (abs(meshCoor(3,i))<dx/1000)) then 
 				surface_nnode = surface_nnode + 1
 				surface_node_id(surface_nnode) = i
 				open(unit=10008+me,file='surface_coor.txt'//mm,status='unknown',position='append')		
-					write(10008+me,'(1x,3e18.7e4)') x(1,i),x(2,i),x(3,i)	
+					write(10008+me,'(1x,3e18.7e4)') meshCoor(1,i), meshCoor(2,i), meshCoor(3,i)	
 			endif
 		enddo
 	endif

@@ -21,7 +21,7 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		! 	    6		 ! Wedge one
 		!  1       3(4)
 		! 	    2		
-		et(elemCount) = 11 ! et ==11 indicates a wedge element.
+		elemTypeArr(elemCount) = 11 ! et ==11 indicates a wedge element.
 		ien(1,elemCount) = plane1(iy-1,iz-1)
 		ien(2,elemCount) = plane2(iy-1,iz-1)
 		ien(3,elemCount) = plane2(iy,iz-1)
@@ -48,7 +48,7 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		!   	2       
 		!  3(4)      1				
 		elemCount = elemCount + 1
-		et(elemCount) = 11
+		elemTypeArr(elemCount) = 11
 		ien(1,elemCount) = plane2(iy,iz-1)
 		ien(2,elemCount) = plane1(iy,iz-1)
 		ien(3,elemCount) = plane1(iy-1,iz-1)
@@ -121,7 +121,7 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		!4-1-8-3;
 		!6-3-8-1;
 		 
-		 et(elemCount)=12
+		 elemTypeArr(elemCount)=12
 		 ien(1,elemCount) = plane1(iy-1,iz-1)!#1
 		 ien(2,elemCount) = plane2(iy,iz-1)!#3
 		 ien(3,elemCount) = plane2(iy-1,iz)!#6
@@ -164,7 +164,7 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		 mat(elemCount,3)=mat(elemCount-1,3)
 		 mat(elemCount,4)=mat(elemCount-1,4)
 		 mat(elemCount,5)=mat(elemCount-1,5)
-		 et(elemCount)=12 
+		 elemTypeArr(elemCount)=12 
 		 stressCompIndexArr(elemCount)= stressDofCount
 		 stressDofCount = stressDofCount + 12					
 		if (ceny>0.0d0) then 
@@ -196,7 +196,7 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		mat(elemCount,3)=mat(elemCount-1,3)
 		mat(elemCount,4)=mat(elemCount-1,4)
 		mat(elemCount,5)=mat(elemCount-1,5)	
-		et(elemCount)=12 
+		elemTypeArr(elemCount)=12 
 		stressCompIndexArr(elemCount)= stressDofCount
 		stressDofCount = stressDofCount + 12					
 		if (ceny>0.0d0) then 
@@ -228,7 +228,7 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		mat(elemCount,3)=mat(elemCount-1,3)
 		mat(elemCount,4)=mat(elemCount-1,4)
 		mat(elemCount,5)=mat(elemCount-1,5)
-		et(elemCount)=12 
+		elemTypeArr(elemCount)=12 
 		stressCompIndexArr(elemCount)= stressDofCount
 		stressDofCount = stressDofCount + 12
 		if (ceny>0.0d0) then 
@@ -260,7 +260,7 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		mat(elemCount,3)=mat(elemCount-1,3)
 		mat(elemCount,4)=mat(elemCount-1,4)
 		mat(elemCount,5)=mat(elemCount-1,5)
-		et(elemCount)=12 
+		elemTypeArr(elemCount)=12 
 		stressCompIndexArr(elemCount)=stressDofCount
 		stressDofCount = stressDofCount + 12
 		if (ceny>0.0d0) then 

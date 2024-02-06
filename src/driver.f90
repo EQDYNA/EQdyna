@@ -65,7 +65,7 @@ subroutine doubleCouplePointSource
     if (C_dc==1)then
         do i=1,totalNumOfNodes
         !x positive. Adding a point force in y+ direction.
-        if (x(1,i)==100.0.and.x(2,i)==0.0.and.x(3,i)==-2000.)then
+        if (meshCoor(1,i)==100.0.and.meshCoor(2,i)==0.0.and.meshCoor(3,i)==-2000.)then
             !write(*,*) 'right',i,me
             if (time<0.2)then
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))+&
@@ -75,7 +75,7 @@ subroutine doubleCouplePointSource
             endif
         endif
         !x negative. Adding a point force in y- direction.
-        if (x(1,i)==-100.0.and.x(2,i)==0.0.and.x(3,i)==-2000.)then
+        if (meshCoor(1,i)==-100.0.and.meshCoor(2,i)==0.0.and.meshCoor(3,i)==-2000.)then
             !write(*,*) 'left',i,me    
             if (time<0.2)then
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+2))-&
@@ -85,7 +85,7 @@ subroutine doubleCouplePointSource
             endif
         endif
         !y positive. Adding a point force in x+ direction.
-        if (x(1,i)==0.0.and.x(2,i)==100.0.and.x(3,i)==-2000.)then
+        if (meshCoor(1,i)==0.0.and.meshCoor(2,i)==100.0.and.meshCoor(3,i)==-2000.)then
             !write(*,*) 'up',i,me    
             if (time<0.2)then
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))+&
@@ -95,7 +95,7 @@ subroutine doubleCouplePointSource
             endif
         endif
         !y negative. Adding a point force in x- direction.
-        if (x(1,i)==0.0.and.x(2,i)==-100.0.and.x(3,i)==-2000.)then
+        if (meshCoor(1,i)==0.0.and.meshCoor(2,i)==-100.0.and.meshCoor(3,i)==-2000.)then
             !write(*,*) 'down',i,me    
             if (time<0.2)then
                 nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))=nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+1))-&
@@ -123,39 +123,33 @@ subroutine velDispUpdate
                 !eqNumStartIndexLoc(i) = eqNumSt
                 eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
                 v1(eqNumTmp) = v1(eqNumTmp) + nodalForceArr(eqNumTmp)*dt
-                !d1(eqNumTmp) = d1(eqNumTmp) + v1(eqNumTmp)*dt
                 velArr(j,i) = v1(eqNumTmp)
                 dispArr(j,i) = dispArr(j,i) + v1(eqNumTmp)*dt
-                !dispArr(j,i) = d1(eqNumTmp)
             enddo
         elseif (numOfDofPerNodeArr(i)==12) then
-            !eqNumStartIndexLoc(i)=eqNumStartIndexLoc(i)+1
             eqNumTmp=eqNumIndexArr(eqNumStartIndexLoc(i)+1)
             if (eqNumTmp>0) then
-                call comdampv(x(1,i),x(2,i),x(3,i),dampv)
+                call comdampv(meshCoor(1,i), meshCoor(2,i), meshCoor(3,i), dampv)
             endif
             do j = 1, 9
-                !eqNumStartIndexLoc(i)=eqNumStartIndexLoc(i)+j
                 eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
                 if (eqNumTmp>0) then
-                    v1(eqNumTmp) = (nodalForceArr(eqNumTmp)+v1(eqNumTmp)*(1/dt-dampv(j)/2))/(1/dt+dampv(j)/2)
+                    v1(eqNumTmp) = (nodalForceArr(eqNumTmp)+v1(eqNumTmp)*(1.0d0/dt-dampv(j)/2.0d0))/(1.0d0/dt+dampv(j)/2.0d0)
                 endif
             enddo
             do j = 10, 12
-                !eqNumStartIndexLoc(i)=eqNumStartIndexLoc(i)+j
                 eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
                 if (eqNumTmp>0) then
                     v1(eqNumTmp) = v1(eqNumTmp) + nodalForceArr(eqNumTmp)*dt
                 endif                
             enddo
             ! Update final velocity.
-            ! eqNumStartIndexLoc(i)=eqNumStartIndexLoc(i)
             eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+1)
             if (eqNumTmp>0) then
                 velArr(1,i) = v1(eqNumIndexArr(eqNumStartIndexLoc(i)+1)) + &
-                            v1(eqNumIndexArr(eqNumStartIndexLoc(i)+2)) + &
-                            v1(eqNumIndexArr(eqNumStartIndexLoc(i)+3)) + &
-                            v1(eqNumIndexArr(eqNumStartIndexLoc(i)+10))
+                        v1(eqNumIndexArr(eqNumStartIndexLoc(i)+2)) + &
+                        v1(eqNumIndexArr(eqNumStartIndexLoc(i)+3)) + &
+                        v1(eqNumIndexArr(eqNumStartIndexLoc(i)+10))
                 velArr(2,i) = v1(eqNumIndexArr(eqNumStartIndexLoc(i)+4)) + &
                         v1(eqNumIndexArr(eqNumStartIndexLoc(i)+5)) + &
                         v1(eqNumIndexArr(eqNumStartIndexLoc(i)+6)) + &
@@ -169,15 +163,11 @@ subroutine velDispUpdate
                 dispArr(3,i) = dispArr(3,i) + velArr(3,i)*dt
             elseif (eqNumTmp == -1) then
                 velArr(1:3,i) = 0.0d0
-                !v(2,i)=0.0d0
-                !v(3,i)=0.0d0
                 dispArr(1:3,i) = 0.0d0
-                !d(2,i)=0.0d0
-                !d(3,i)=0.0d0                
             endif    
         endif
         if ((velArr(1,i)/=velArr(1,i)).or.velArr(2,i)/=velArr(2,i).or.velArr(3,i)/=velArr(3,i)) then 
-            write(*,*) 'Velocity NaN at point ', x(1,i),x(2,i),x(3,i), ' at time step ', nt
+            write(*,*) 'Velocity NaN at point ', meshCoor(1,i), meshCoor(2,i), meshCoor(3,i), ' at time step ', nt
             stop
         endif
     enddo

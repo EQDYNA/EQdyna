@@ -67,11 +67,11 @@ program EQdyna
     
     if (C_degen == 1) then 
         do i = 1, totalNumOfNodes
-           if (x(2,i)>dx/2.0d0) then 
-                x(1,i) = x(1,i) - dx/2.0d0
+           if (meshCoor(2,i)>dx/2.0d0) then 
+                meshCoor(1,i) = meshCoor(1,i) - dx/2.0d0
            endif
-           if (x(2,i)<-dx/2.0d0) then 
-                x(1,i) = x(1,i) + dx/2.0d0
+           if (meshCoor(2,i)<-dx/2.0d0) then 
+                meshCoor(1,i) = meshCoor(1,i) + dx/2.0d0
            endif 
         enddo 
     endif
@@ -152,20 +152,23 @@ end program EQdyna
 subroutine allocInit
     use globalvar 
     implicit none 
-    allocate(eqNumIndexArr(maxm),eqNumStartIndexLoc(totalNumOfNodes),numOfDofPerNodeArr(totalNumOfNodes),x(ndof,totalNumOfNodes), fnms(totalNumOfNodes), surface_node_id(totalNumOfNodes)) 
-
-    allocate(ien(nen,totalNumOfElements), mat(totalNumOfElements,5), et(totalNumOfElements), eleporep(totalNumOfElements), pstrain(totalNumOfElements), &
-                eledet(totalNumOfElements), elemass(nee,totalNumOfElements), eleshp(nrowsh-1,nen,totalNumOfElements), &
-                ss(6,totalNumOfElements), phi(nen,4,totalNumOfElements))
+    allocate(eqNumIndexArr(maxm), eqNumStartIndexLoc(totalNumOfNodes), &
+            numOfDofPerNodeArr(totalNumOfNodes), meshCoor(ndof,totalNumOfNodes), &
+            fnms(totalNumOfNodes), surface_node_id(totalNumOfNodes), &
+            ien(nen,totalNumOfElements), mat(totalNumOfElements,5), &
+            elemTypeArr(totalNumOfElements), eleporep(totalNumOfElements), &
+            pstrain(totalNumOfElements), eledet(totalNumOfElements), &
+            elemass(nee,totalNumOfElements), eleshp(nrowsh-1,nen,totalNumOfElements), &
+            ss(6,totalNumOfElements), phi(nen,4,totalNumOfElements))
     
-    x        = 0.0d0 
+    meshCoor = 0.0d0 
     fnms     = 0.0d0
     eqNumIndexArr = 0
     eqNumStartIndexLoc  = 0
     numOfDofPerNodeArr  = 0
     surface_node_id     = 0
     ien      = 0
-    et       = 0
+    elemTypeArr = 0
     mat      = 0.0d0
     eleporep = 0.0d0
     pstrain  = 0.0d0
@@ -181,7 +184,7 @@ subroutine allocInit
 
     allocate(nsmp(2,nftmx,ntotft), fnft(nftmx,ntotft), un(3,nftmx,ntotft),&
                 us(3,nftmx,ntotft), ud(3,nftmx,ntotft), fric(100,nftmx,ntotft),&
-                arn(nftmx,ntotft), r4nuc(nftmx,ntotft), anonfs(3,nonmx),&
+                arn(nftmx,ntotft),  anonfs(3,nonmx),&
                 arn4m(nftmx,ntotft), state(nftmx,ntotft), fltgm(nftmx),&
                 Tatnode(nftmx,ntotft), patnode(nftmx,ntotft))
 
@@ -194,7 +197,6 @@ subroutine allocInit
     ud      = 0.0d0
     arn     = 0.0d0
     arn4m   = 0.0d0
-    r4nuc   = 0.0d0
     anonfs  = 0
     state   = 0.0d0
     Tatnode = 0.0d0 
