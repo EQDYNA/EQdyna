@@ -30,10 +30,10 @@ subroutine output_onfault_st
 			endif
 			write(51,*) '# ',projectname
 			write(51,*) '# Author=',author
-			call date_and_time(values=time_array)
-			write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',time_array(2), &
-				'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &
-				':',time_array(7)
+			call date_and_time(values=dateTimeStamp)
+			write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',dateTimeStamp(2), &
+				'/',dateTimeStamp(3),'/',dateTimeStamp(1),' ',dateTimeStamp(5),':',dateTimeStamp(6), &
+				':',dateTimeStamp(7)
 			write(51,*) '# code = EQdyna3D'
 			write(51,*) '# element_size =',dx
 			write(51,'( a14,f8.4,a3)') '# time_step =', dt, ' s'
@@ -88,10 +88,10 @@ subroutine output_offfault_st
 			stLocStamp = '# location = '//trim(adjustl(bodytmp))//' km off fault, '//trim(adjustl(sttmp))//' km along strike'//trim(adjustl(dptmp))//' km depth'
 			write(51,*) '# ',projectname
 			write(51,*) '# Author=',author
-			call date_and_time(values=time_array)
-			write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',time_array(2), &
-					'/',time_array(3),'/',time_array(1),' ',time_array(5),':',time_array(6), &
-					':',time_array(7)
+			call date_and_time(values=dateTimeStamp)
+			write(51,'( a10,i2,a1,i2,a1,i4,a1,i2,a1,i2,a1,i2)') ' # date = ',dateTimeStamp(2), &
+					'/',dateTimeStamp(3),'/',dateTimeStamp(1),' ',dateTimeStamp(5),':',dateTimeStamp(6), &
+					':',dateTimeStamp(7)
 			write(51,*) '# code = EQdyna3D'
 			write(51,*) '# element_size =',dx
 			write(51,'( a14,f8.4,a3)') '# time_step=', dt, ' s'
@@ -173,7 +173,7 @@ subroutine output_timeanalysis
 	
 	integer (kind = 4) :: i, j 	
 	
-	open(unit=14,file='timeinfo'//mm,status='unknown')	!rupture time
+	open(unit=14,file='compTime'//mm,status='unknown')	!rupture time
 		write(14,'(1x,10e18.7e4,2i10)') (compTimeInSeconds(i),i=1,9),MPICommTimeInSeconds,totalNumOfElements,totalNumOfEquations
 	close(14)
 end subroutine output_timeanalysis
@@ -187,13 +187,13 @@ subroutine output_plastic_strain
 	if (output_plastic == 1) then	
 		
 		do i=1,totalNumOfElements 
-                    if ((pstrain(i)>1.0d-4).and.(abs(meshCoor(1,nodeIdElemIdRelation(1,i)))<5.0d3).and.(abs(meshCoor(2,nodeIdElemIdRelation(1,i)))<2.0d3).and.(abs(meshCoor(3,nodeIdElemIdRelation(1,i)))<8.0d3)) then 
+                    if ((pstrain(i)>1.0d-4).and.(abs(meshCoor(1,nodeElemIdRelation(1,i)))<5.0d3).and.(abs(meshCoor(2,nodeElemIdRelation(1,i)))<2.0d3).and.(abs(meshCoor(3,nodeElemIdRelation(1,i)))<8.0d3)) then 
 				open(unit=10007+me,file='pstr.txt'//mm,status='unknown',position='append')
 				sc=0.0d0
 				do j=1,8
-					sc(1)=sc(1)+meshCoor(1,nodeIdElemIdRelation(j,i))
-					sc(2)=sc(2)+meshCoor(2,nodeIdElemIdRelation(j,i))
-					sc(3)=sc(3)+meshCoor(3,nodeIdElemIdRelation(j,i))
+					sc(1)=sc(1)+meshCoor(1,nodeElemIdRelation(j,i))
+					sc(2)=sc(2)+meshCoor(2,nodeElemIdRelation(j,i))
+					sc(3)=sc(3)+meshCoor(3,nodeElemIdRelation(j,i))
 				enddo
 				sc(1)=sc(1)/8.0d0
 				sc(2)=sc(2)/8.0d0
@@ -205,7 +205,7 @@ subroutine output_plastic_strain
 end subroutine output_plastic_strain
 
 !#6
-subroutine find_surface_node_id
+subroutine find_surfaceNodeIdArr
 	use globalvar
 	implicit none
 	integer (kind = 4) :: i, j 	
@@ -214,13 +214,13 @@ subroutine find_surface_node_id
 		do i=1,totalNumOfNodes
 			if ((meshCoor(1,i)<fltxyz(2,1,1)+20.0d3) .and. (meshCoor(1,i)>fltxyz(1,1,1)-20.0d3) .and. (abs(meshCoor(2,i))<20.0d3) .and. (abs(meshCoor(3,i))<dx/1000)) then 
 				surface_nnode = surface_nnode + 1
-				surface_node_id(surface_nnode) = i
+				surfaceNodeIdArr(surface_nnode) = i
 				open(unit=10008+me,file='surface_coor.txt'//mm,status='unknown',position='append')		
 					write(10008+me,'(1x,3e18.7e4)') meshCoor(1,i), meshCoor(2,i), meshCoor(3,i)	
 			endif
 		enddo
 	endif
-end subroutine find_surface_node_id
+end subroutine find_surfaceNodeIdArr
 
 !#7
 subroutine output_gm
@@ -231,14 +231,14 @@ subroutine output_gm
 	! if (output_ground_motion == 1 .and. surface_nnode > 0) then	
 		! open(unit=1009,file='gm.txt'//mm,status='unknown',position='append')		
 			! do i=1,surface_nnode
-				! itag = surface_node_id(i)
+				! itag = surfaceNodeIdArr(i)
 				! write(1009,'(1x,3e15.7)') v(1,itag), v(2,itag), v(3,itag)
 		! enddo
 	! endif
 	if (outputGroundMotion == 1 .and. surface_nnode > 0) then	
 		open(unit=10009+me,file='gm'//mm,status='unknown',position='append', access='stream')		
 			do i=1,surface_nnode
-				nodeId = surface_node_id(i)
+				nodeId = surfaceNodeIdArr(i)
 				write(10009+me) velArr(1,nodeId), velArr(2,nodeId), velArr(3,nodeId)
 			enddo
 	endif	

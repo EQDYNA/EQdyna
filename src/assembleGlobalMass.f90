@@ -13,7 +13,7 @@ subroutine assembleGlobalMass
         eleffm = 0.0d0
         do i=1,nen
             do j=1,nesd
-                xl(j,i) = meshCoor(j,nodeIdElemIdRelation(i,nel))
+                xl(j,i) = meshCoor(j,nodeElemIdRelation(i,nel))
             enddo
         enddo
         
@@ -22,7 +22,7 @@ subroutine assembleGlobalMass
         itmp = 0
         outloop: do i=2,nen
                     do j=1,i-1
-                        if(nodeIdElemIdRelation(j,nel)==nodeIdElemIdRelation(i,nel)) itmp=itmp+1
+                        if(nodeElemIdRelation(j,nel)==nodeElemIdRelation(i,nel)) itmp=itmp+1
                             if(itmp>=2) then
                                 lcubic = .false.
                             exit outloop
@@ -76,7 +76,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
         if (npxyz(ixyz)>1)then
             bnd(1) = 1            !- boundary
             bnd(2) = numxyz(ixyz) !+ boundary
-            if (mexyz(ixyz) == master) then
+            if (mexyz(ixyz) == masterProcsId) then
                 bnd(1) = 0
             elseif (mexyz(ixyz) == npxyz(ixyz)-1) then
                 bnd(2) = 0
@@ -274,7 +274,7 @@ subroutine assembleElementMassDetShg(elemID, elementMass, det, globalShapeFunc)
     real (kind = dp) :: elementMass(nee), det, globalShapeFunc(nrowsh, nen)
     
     do i = 1, nen 
-        nodeID = nodeIdElemIdRelation(i,elemID)
+        nodeID = nodeElemIdRelation(i,elemID)
         if (numOfDofPerNodeArr(nodeID)==12) then
             do ixyz = 1, 3
                 do j = 3*(ixyz-1)+1, 3*(ixyz-1)+3

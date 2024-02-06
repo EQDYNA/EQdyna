@@ -10,7 +10,7 @@ subroutine driver
 
         timeElapsed = timeElapsed + dt
         
-        if (mod(nt,100) == 1 .and. me == master) then
+        if (mod(nt,100) == 1 .and. me == masterProcsId) then
             write(*,*) '=                                                                   ='
             write(*,*) '=     Current time in dynamic rupture                               ='
             write(*,'(X,A,40X,f7.3,4X,A)') '=',  timeElapsed  , 's'

@@ -12,22 +12,22 @@ subroutine assembleGlobalKU
     
     do nel = 1, totalNumOfElements
         !al(1:ned,1:nen) = 0.0d0
-        al(1:ned,1:nen) = rdampm*velArr(1:ned,nodeIdElemIdRelation(1:nen,nel))
+        al(1:ned,1:nen) = rdampm*velArr(1:ned,nodeElemIdRelation(1:nen,nel))
         al(3,1:nen)     = al(3,1:nen) + (1.0d0-C_elastic)*grav*(roumax-(gamar+1.0d0)*rhow)/roumax
 
         elresf = 0.0d0 
         call calcElemMass(elemass(1:nee,nel),al,elresf)
 
         if (elemTypeArr(nel)==1 .or. elemTypeArr(nel)>10) then
-            call calcElemKU(eleshp(1,1,nel), mat(nel,1:5), velArr(1:ned,nodeIdElemIdRelation(1:nen,nel)), &
-                        dispArr(1:ned,nodeIdElemIdRelation(1:nen,nel)), stressArr(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+12), &
+            call calcElemKU(eleshp(1,1,nel), mat(nel,1:5), velArr(1:ned,nodeElemIdRelation(1:nen,nel)), &
+                        dispArr(1:ned,nodeElemIdRelation(1:nen,nel)), stressArr(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+12), &
                         elresf, -eledet(nel), eleporep(nel), pstrinc, &
-                        meshCoor(1:3,nodeIdElemIdRelation(1:8,nel)))
+                        meshCoor(1:3,nodeElemIdRelation(1:8,nel)))
             pstrain(nel) = pstrain(nel) + pstrinc
            
             do i = 1, nen
                 do j = 1, ned
-                    eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeIdElemIdRelation(i,nel))+j)
+                    eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeElemIdRelation(i,nel))+j)
                     if(eqNumTmp > 0) then
                         nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp) + elresf((i-1)*ned+j)
                     endif
@@ -41,23 +41,23 @@ subroutine assembleGlobalKU
                 enddo
             enddo
 
-            call calcPMLElemKU(velArr(1:ned,nodeIdElemIdRelation(1:nen,nel)), efPML, stressArr(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+21), &
-                           meshCoor(1:3,nodeIdElemIdRelation(1:8,nel)), mat(nel,1:5), eleshp(1,1,nel), &
+            call calcPMLElemKU(velArr(1:ned,nodeElemIdRelation(1:nen,nel)), efPML, stressArr(stressCompIndexArr(nel)+1:stressCompIndexArr(nel)+21), &
+                           meshCoor(1:3,nodeElemIdRelation(1:8,nel)), mat(nel,1:5), eleshp(1,1,nel), &
                            eledet(nel), nel)
             do i = 1, 8
-                if (numOfDofPerNodeArr(nodeIdElemIdRelation(i,nel))==12) then
+                if (numOfDofPerNodeArr(nodeElemIdRelation(i,nel))==12) then
                     do j = 1, 12 
-                        eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeIdElemIdRelation(i,nel))+j)
+                        eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeElemIdRelation(i,nel))+j)
                         if (eqNumTmp > 0) then
                             nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+j)
                         endif
                     enddo
-                elseif (numOfDofPerNodeArr(nodeIdElemIdRelation(i,nel)) == ndof) then 
-                    eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeIdElemIdRelation(i,nel))+1)
+                elseif (numOfDofPerNodeArr(nodeElemIdRelation(i,nel)) == ndof) then 
+                    eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeElemIdRelation(i,nel))+1)
                     nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp) + efPML((i-1)*12+1)+efPML((i-1)*12+2)+efPML((i-1)*12+3)+efPML((i-1)*12+10)
-                    eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeIdElemIdRelation(i,nel))+2)
+                    eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeElemIdRelation(i,nel))+2)
                     nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+4)+efPML((i-1)*12+5)+efPML((i-1)*12+6)+efPML((i-1)*12+11)
-                    eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeIdElemIdRelation(i,nel))+3)
+                    eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeElemIdRelation(i,nel))+3)
                     nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+7)+efPML((i-1)*12+8)+efPML((i-1)*12+9)+efPML((i-1)*12+12)				
                 endif
             enddo

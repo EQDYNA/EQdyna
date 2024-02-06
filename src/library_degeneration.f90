@@ -22,14 +22,14 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		!  1       3(4)
 		! 	    2		
 		elemTypeArr(elemCount) = 11 ! et ==11 indicates a wedge element.
-		nodeIdElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)
-		nodeIdElemIdRelation(2,elemCount) = plane2(iy-1,iz-1)
-		nodeIdElemIdRelation(3,elemCount) = plane2(iy,iz-1)
-		nodeIdElemIdRelation(4,elemCount) = nodeIdElemIdRelation(3,elemCount)
-		nodeIdElemIdRelation(5,elemCount) = plane1(iy-1,iz)
-		nodeIdElemIdRelation(6,elemCount) = plane2(iy-1,iz)
-		nodeIdElemIdRelation(7,elemCount) = plane2(iy,iz)
-		nodeIdElemIdRelation(8,elemCount) = nodeIdElemIdRelation(7,elemCount)	
+		nodeElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)
+		nodeElemIdRelation(2,elemCount) = plane2(iy-1,iz-1)
+		nodeElemIdRelation(3,elemCount) = plane2(iy,iz-1)
+		nodeElemIdRelation(4,elemCount) = nodeElemIdRelation(3,elemCount)
+		nodeElemIdRelation(5,elemCount) = plane1(iy-1,iz)
+		nodeElemIdRelation(6,elemCount) = plane2(iy-1,iz)
+		nodeElemIdRelation(7,elemCount) = plane2(iy,iz)
+		nodeElemIdRelation(8,elemCount) = nodeElemIdRelation(7,elemCount)	
 		
 		neworder = (/1,2,3,3,5,6,7,7/)
 		call reorder(neworder, elemCount, iy, iz)
@@ -37,8 +37,8 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
-					if(nodeIdElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
-						nodeIdElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
+					if(nodeElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
+						nodeElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
 					endif
 				enddo
 			enddo		
@@ -49,14 +49,14 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		!  3(4)      1				
 		elemCount = elemCount + 1
 		elemTypeArr(elemCount) = 11
-		nodeIdElemIdRelation(1,elemCount) = plane2(iy,iz-1)
-		nodeIdElemIdRelation(2,elemCount) = plane1(iy,iz-1)
-		nodeIdElemIdRelation(3,elemCount) = plane1(iy-1,iz-1)
-		nodeIdElemIdRelation(4,elemCount) = nodeIdElemIdRelation(3,elemCount)
-		nodeIdElemIdRelation(5,elemCount) = plane2(iy,iz)
-		nodeIdElemIdRelation(6,elemCount) = plane1(iy,iz)	
-		nodeIdElemIdRelation(7,elemCount) = plane1(iy-1,iz)
-		nodeIdElemIdRelation(8,elemCount) = nodeIdElemIdRelation(7,elemCount)
+		nodeElemIdRelation(1,elemCount) = plane2(iy,iz-1)
+		nodeElemIdRelation(2,elemCount) = plane1(iy,iz-1)
+		nodeElemIdRelation(3,elemCount) = plane1(iy-1,iz-1)
+		nodeElemIdRelation(4,elemCount) = nodeElemIdRelation(3,elemCount)
+		nodeElemIdRelation(5,elemCount) = plane2(iy,iz)
+		nodeElemIdRelation(6,elemCount) = plane1(iy,iz)	
+		nodeElemIdRelation(7,elemCount) = plane1(iy-1,iz)
+		nodeElemIdRelation(8,elemCount) = nodeElemIdRelation(7,elemCount)
 		
 		neworder = (/3,4,1,1,7,8,5,5/)
 		call reorder(neworder, elemCount, iy, iz)
@@ -73,8 +73,8 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
-					if(nodeIdElemIdRelation(k,elemCount) == nsmp(1,i,1)) then
-						nodeIdElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
+					if(nodeElemIdRelation(k,elemCount) == nsmp(1,i,1)) then
+						nodeElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
 					endif
 				enddo
 			enddo		
@@ -106,14 +106,14 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		if (cenx>fltxyz(1,1,1).and.cenx<fltxyz(2,1,1).and.ceny<dx.and.ceny>-dx.and.cenz>fltxyz(1,3,1)) then 	
 		! Orders in hexahedrons. 
 		
-		! nodeIdElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)
-		! nodeIdElemIdRelation(2,elemCount) = plane2(iy-1,iz-1)
-		! nodeIdElemIdRelation(3,elemCount) = plane2(iy,iz-1)
-		! nodeIdElemIdRelation(4,elemCount) = plane1(iy,iz-1)
-		! nodeIdElemIdRelation(5,elemCount) = plane1(iy-1,iz)
-		! nodeIdElemIdRelation(6,elemCount) = plane2(iy-1,iz)
-		! nodeIdElemIdRelation(7,elemCount) = plane2(iy,iz)
-		! nodeIdElemIdRelation(8,elemCount) = plane1(iy,iz)	
+		! nodeElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)
+		! nodeElemIdRelation(2,elemCount) = plane2(iy-1,iz-1)
+		! nodeElemIdRelation(3,elemCount) = plane2(iy,iz-1)
+		! nodeElemIdRelation(4,elemCount) = plane1(iy,iz-1)
+		! nodeElemIdRelation(5,elemCount) = plane1(iy-1,iz)
+		! nodeElemIdRelation(6,elemCount) = plane2(iy-1,iz)
+		! nodeElemIdRelation(7,elemCount) = plane2(iy,iz)
+		! nodeElemIdRelation(8,elemCount) = plane1(iy,iz)	
 		
 		!2-1-3-6; 
 		!5-6-8-1; 
@@ -122,14 +122,14 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		!6-3-8-1;
 		 
 		 elemTypeArr(elemCount)=12
-		 nodeIdElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)!#1
-		 nodeIdElemIdRelation(2,elemCount) = plane2(iy,iz-1)!#3
-		 nodeIdElemIdRelation(3,elemCount) = plane2(iy-1,iz)!#6
-		 nodeIdElemIdRelation(5,elemCount) = plane2(iy-1,iz-1)!#2
-		 nodeIdElemIdRelation(4,elemCount) = nodeIdElemIdRelation(3,elemCount)
-		 nodeIdElemIdRelation(6,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(7,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(8,elemCount) = nodeIdElemIdRelation(7,elemCount)
+		 nodeElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)!#1
+		 nodeElemIdRelation(2,elemCount) = plane2(iy,iz-1)!#3
+		 nodeElemIdRelation(3,elemCount) = plane2(iy-1,iz)!#6
+		 nodeElemIdRelation(5,elemCount) = plane2(iy-1,iz-1)!#2
+		 nodeElemIdRelation(4,elemCount) = nodeElemIdRelation(3,elemCount)
+		 nodeElemIdRelation(6,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(7,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(8,elemCount) = nodeElemIdRelation(7,elemCount)
 		 
 		neworder = (/1,3,6,6,2,2,2,2/)
 		call reorder(neworder, elemCount, iy, iz)	
@@ -137,8 +137,8 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
-					if(nodeIdElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
-						nodeIdElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
+					if(nodeElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
+						nodeElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
 					endif
 				enddo
 			enddo		
@@ -146,14 +146,14 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		
 		 !STEP2: Create the second one.
 		 elemCount=elemCount+1
-		 nodeIdElemIdRelation(1,elemCount) = plane2(iy-1,iz)!#6   5-6-8-1
-		 nodeIdElemIdRelation(2,elemCount) = plane1(iy,iz)!#8				  
-		 nodeIdElemIdRelation(3,elemCount) = plane1(iy-1,iz-1)!#1
-		 nodeIdElemIdRelation(5,elemCount) = plane1(iy-1,iz)!#5
-		 nodeIdElemIdRelation(4,elemCount) = nodeIdElemIdRelation(3,elemCount)
-		 nodeIdElemIdRelation(6,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(7,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(8,elemCount) = nodeIdElemIdRelation(7,elemCount)
+		 nodeElemIdRelation(1,elemCount) = plane2(iy-1,iz)!#6   5-6-8-1
+		 nodeElemIdRelation(2,elemCount) = plane1(iy,iz)!#8				  
+		 nodeElemIdRelation(3,elemCount) = plane1(iy-1,iz-1)!#1
+		 nodeElemIdRelation(5,elemCount) = plane1(iy-1,iz)!#5
+		 nodeElemIdRelation(4,elemCount) = nodeElemIdRelation(3,elemCount)
+		 nodeElemIdRelation(6,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(7,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(8,elemCount) = nodeElemIdRelation(7,elemCount)
 
 		 
 		neworder = (/6,8,1,1,5,5,5,5/)
@@ -170,8 +170,8 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
-					if(nodeIdElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
-						nodeIdElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
+					if(nodeElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
+						nodeElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
 					endif
 				enddo
 			enddo		
@@ -179,14 +179,14 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		
 		!STEP3: Create the third one.
 		elemCount=elemCount+1	 
-		nodeIdElemIdRelation(1,elemCount) = plane1(iy,iz)!#8   7-8-6-3
-		nodeIdElemIdRelation(2,elemCount) = plane2(iy-1,iz)!6				  
-		nodeIdElemIdRelation(3,elemCount) = plane2(iy,iz-1)!#3
-		nodeIdElemIdRelation(5,elemCount) = plane2(iy,iz)!#7			
-		 nodeIdElemIdRelation(4,elemCount) = nodeIdElemIdRelation(3,elemCount)
-		 nodeIdElemIdRelation(6,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(7,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(8,elemCount) = nodeIdElemIdRelation(7,elemCount)
+		nodeElemIdRelation(1,elemCount) = plane1(iy,iz)!#8   7-8-6-3
+		nodeElemIdRelation(2,elemCount) = plane2(iy-1,iz)!6				  
+		nodeElemIdRelation(3,elemCount) = plane2(iy,iz-1)!#3
+		nodeElemIdRelation(5,elemCount) = plane2(iy,iz)!#7			
+		 nodeElemIdRelation(4,elemCount) = nodeElemIdRelation(3,elemCount)
+		 nodeElemIdRelation(6,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(7,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(8,elemCount) = nodeElemIdRelation(7,elemCount)
 		 
 		neworder = (/8,6,3,3,7,7,7,7/)
 		call reorder(neworder, elemCount, iy, iz)	
@@ -202,8 +202,8 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
-					if(nodeIdElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
-						nodeIdElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
+					if(nodeElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
+						nodeElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
 					endif
 				enddo
 			enddo		
@@ -211,14 +211,14 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 			
 		!STEP4: Create the 4th one.
 		elemCount = elemCount + 1
-		nodeIdElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)!#1 4-1-8-3;
-		nodeIdElemIdRelation(2,elemCount) = plane1(iy,iz)!#8					  
-		nodeIdElemIdRelation(3,elemCount) = plane2(iy,iz-1)!#3
-		nodeIdElemIdRelation(5,elemCount) = plane1(iy,iz-1)!#4			
-		 nodeIdElemIdRelation(4,elemCount) = nodeIdElemIdRelation(3,elemCount)
-		 nodeIdElemIdRelation(6,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(7,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(8,elemCount) = nodeIdElemIdRelation(7,elemCount)
+		nodeElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)!#1 4-1-8-3;
+		nodeElemIdRelation(2,elemCount) = plane1(iy,iz)!#8					  
+		nodeElemIdRelation(3,elemCount) = plane2(iy,iz-1)!#3
+		nodeElemIdRelation(5,elemCount) = plane1(iy,iz-1)!#4			
+		 nodeElemIdRelation(4,elemCount) = nodeElemIdRelation(3,elemCount)
+		 nodeElemIdRelation(6,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(7,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(8,elemCount) = nodeElemIdRelation(7,elemCount)
 		 
 		neworder = (/1,8,3,3,4,4,4,4/)
 		call reorder(neworder, elemCount, iy, iz)	
@@ -234,8 +234,8 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
-					if(nodeIdElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
-						nodeIdElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
+					if(nodeElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
+						nodeElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
 					endif
 				enddo
 			enddo		
@@ -243,14 +243,14 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 
 		!STEP5: Create the 5th one.					
 		elemCount = elemCount + 1
-		nodeIdElemIdRelation(1,elemCount) = plane2(iy,iz-1)!#3  6-3-8-1;  
-		nodeIdElemIdRelation(2,elemCount) = plane1(iy,iz)!#8
-		nodeIdElemIdRelation(3,elemCount) = plane1(iy-1,iz-1)!#1	
-		nodeIdElemIdRelation(5,elemCount) = plane2(iy-1,iz)!#6		
-		 nodeIdElemIdRelation(4,elemCount) = nodeIdElemIdRelation(3,elemCount)
-		 nodeIdElemIdRelation(6,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(7,elemCount) = nodeIdElemIdRelation(5,elemCount)
-		 nodeIdElemIdRelation(8,elemCount) = nodeIdElemIdRelation(7,elemCount)
+		nodeElemIdRelation(1,elemCount) = plane2(iy,iz-1)!#3  6-3-8-1;  
+		nodeElemIdRelation(2,elemCount) = plane1(iy,iz)!#8
+		nodeElemIdRelation(3,elemCount) = plane1(iy-1,iz-1)!#1	
+		nodeElemIdRelation(5,elemCount) = plane2(iy-1,iz)!#6		
+		 nodeElemIdRelation(4,elemCount) = nodeElemIdRelation(3,elemCount)
+		 nodeElemIdRelation(6,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(7,elemCount) = nodeElemIdRelation(5,elemCount)
+		 nodeElemIdRelation(8,elemCount) = nodeElemIdRelation(7,elemCount)
 		 
 		neworder = (/3,8,1,1,6,6,6,6/)
 		call reorder(neworder, elemCount, iy, iz)	
@@ -266,8 +266,8 @@ subroutine tetra(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
 		if (ceny>0.0d0) then 
 			do i=1,nftndtmp
 				do k=1,nen
-					if(nodeIdElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
-						nodeIdElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
+					if(nodeElemIdRelation(k,elemCount)==nsmp(1,i,1)) then
+						nodeElemIdRelation(k,elemCount) = nsmp(2,i,1)  !use master node for the node!
 					endif
 				enddo
 			enddo		
@@ -306,7 +306,7 @@ subroutine reorder(neworder, elemCount, iy, iz)
 		nodeIdPerElem(8) = plane1(iy,iz)	
 		
 		do i = 1, nen
-			nodeIdElemIdRelation(i,elemCount) = nodeIdPerElem(neworder(i))
+			nodeElemIdRelation(i,elemCount) = nodeIdPerElem(neworder(i))
 		enddo 
 		
 end subroutine reorder

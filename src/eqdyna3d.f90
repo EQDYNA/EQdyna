@@ -11,7 +11,7 @@ program EQdyna
     call mpi_comm_rank(MPI_COMM_WORLD,me,iMPIerr)
     call mpi_comm_size(MPI_COMM_WORLD,totalNumOfMPIProcs,iMPIerr)
 
-    if (me == master) then 
+    if (me == masterProcsId) then 
         write(*,*) '====================================================================='
         write(*,*) '==================   Welcome to EQdyna 5.3.2  ======================='
         write(*,*) '===== Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>           ====' 
@@ -55,11 +55,12 @@ program EQdyna
     call memory_estimate
     call meshgen
     call checkMeshMaterial
+    call checkArrSize
 
     call netcdf_read_on_fault_eqdyna
     if (mode==2) call netcdf_read_on_fault_eqdyna_restart
     
-    if (outputGroundMotion == 1) call find_surface_node_id
+    if (outputGroundMotion == 1) call find_surfaceNodeIdArr
     
     if (C_degen == 1) then 
         do i = 1, totalNumOfNodes
@@ -91,7 +92,7 @@ program EQdyna
     compTimeInSeconds(8) = MPI_WTIME() - startTimeStamp 
     compTimeInSeconds(9) = MPI_WTIME() - simuStartTime 
    
-    if (timeinfo == 1) call output_timeanalysis
+    if (writeCompTime == 1) call output_timeanalysis
     
     call MPI_Finalize(iMPIerr)
     stop
@@ -105,10 +106,10 @@ subroutine allocInit
     write(mm,'(i6)') me
     mm = trim(adjustl(mm))
     
-    allocate(eqNumIndexArr(maxm), eqNumStartIndexLoc(totalNumOfNodes), &
+    allocate(eqNumIndexArr(sizeOfEqNumIndexArr), eqNumStartIndexLoc(totalNumOfNodes), &
             numOfDofPerNodeArr(totalNumOfNodes), meshCoor(ndof,totalNumOfNodes), &
-            fnms(totalNumOfNodes), surface_node_id(totalNumOfNodes), &
-            nodeIdElemIdRelation(nen,totalNumOfElements), mat(totalNumOfElements,5), &
+            fnms(totalNumOfNodes), surfaceNodeIdArr(totalNumOfNodes), &
+            nodeElemIdRelation(nen,totalNumOfElements), mat(totalNumOfElements,5), &
             elemTypeArr(totalNumOfElements), eleporep(totalNumOfElements), &
             pstrain(totalNumOfElements), eledet(totalNumOfElements), &
             elemass(nee,totalNumOfElements), eleshp(nrowsh-1,nen,totalNumOfElements), &
@@ -117,10 +118,10 @@ subroutine allocInit
     meshCoor = 0.0d0 
     fnms     = 0.0d0
     eqNumIndexArr = 0
-    eqNumStartIndexLoc  = 0
-    numOfDofPerNodeArr  = 0
-    surface_node_id     = 0
-    nodeIdElemIdRelation      = 0
+    eqNumStartIndexLoc = 0
+    numOfDofPerNodeArr = 0
+    surfaceNodeIdArr   = 0
+    nodeElemIdRelation = 0
     elemTypeArr = 0
     mat      = 0.0d0
     eleporep = 0.0d0
@@ -138,10 +139,9 @@ subroutine allocInit
     allocate(onFaultTPHist(2,nftmx,nstep,ntotft))
     onFaultTPHist = 0.0d0
 
-    allocate(nsmp(2,nftmx,ntotft), fnft(nftmx,ntotft), un(3,nftmx,ntotft),&
-                us(3,nftmx,ntotft), ud(3,nftmx,ntotft), fric(100,nftmx,ntotft),&
-                arn(nftmx,ntotft),  anonfs(3,nonmx),&
-                arn4m(nftmx,ntotft), state(nftmx,ntotft), fltgm(nftmx),&
+    allocate(nsmp(2,nftmx,ntotft), fnft(nftmx,ntotft), un(3,nftmx,ntotft), &
+                us(3,nftmx,ntotft), ud(3,nftmx,ntotft), fric(100,nftmx,ntotft), &
+                arn(nftmx,ntotft),  anonfs(3,nonmx), fltgm(nftmx), &
                 Tatnode(nftmx,ntotft), patnode(nftmx,ntotft))
     fltgm   = 0  
     nsmp    = 0    
@@ -151,14 +151,12 @@ subroutine allocInit
     us      = 1000.0d0
     ud      = 0.0d0
     arn     = 0.0d0
-    arn4m   = 0.0d0
     anonfs  = 0
-    state   = 0.0d0
     Tatnode = 0.0d0 
     patnode = 0.0d0
         
     allocate(stressCompIndexArr(totalNumOfElements))
-    allocate(stressArr(5*maxm))
+    allocate(stressArr(3*sizeOfEqNumIndexArr))
     stressCompIndexArr = 0
     stressArr = 0.0d0
 end subroutine allocInit
@@ -235,3 +233,12 @@ subroutine checkMeshMaterial
         endif 
     enddo 
 end subroutine checkMeshMaterial
+
+subroutine checkArrSize
+    use globalvar
+    implicit none
+
+    write(*,*) 'EqNumIndexArr size is ', sizeOfEqNumIndexArr
+    write(*,*) 'Size of stress dof index array is ', sizeOfStressDofIndexArr
+    write(*,*) 'Is', 3*sizeOfEqNumIndexArr, 'too large compared to ', sizeOfStressDofIndexArr
+end subroutine checkArrSize
