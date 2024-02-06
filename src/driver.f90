@@ -21,7 +21,7 @@ subroutine driver
         
         nodalForceArr=0.0d0
         
-        call ku
+        call assembleGlobalKU
         call hrglss   
         call MPI4NodalQuant(nodalForceArr, 3)
         if (friclaw == 5) call thermop
