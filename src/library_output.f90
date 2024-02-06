@@ -37,8 +37,7 @@ subroutine output_onfault_st
 			write(51,*) '# code = EQdyna3D'
 			write(51,*) '# element_size =',dx
 			write(51,'( a14,f8.4,a3)') '# time_step =', dt, ' s'
-			write(51,'( a19,i6)') '# num_time_steps =', locplt-1
-			!write(51,*) loca !Disable the loca to avoid writting in two lines.
+			write(51,'( a19,i6)') '# num_time_steps =', nstep
 			write(51,*) '# Time series in 11 columns in format E15.7'
 			write(51,*) '# Column #1 = Time (s)'
 			write(51,*) '# Column #2 = horizontal slip (m)'
@@ -53,20 +52,7 @@ subroutine output_onfault_st
 			write(51,*) '# Column #11 = Pore pressure (MPa)'		
 			write(51,*) '# The line below lists the names of the data fields:'
 			write(51,'(1X,103A)') 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress psi temperature pressure'
-			write(51,*) '#'
-					! onFaultQuantHistSCECForm(1,locplt-1,j) = time
-					! onFaultQuantHistSCECForm(2,locplt-1,j) = sliprates
-					! onFaultQuantHistSCECForm(3,locplt-1,j) = sliprated
-					! onFaultQuantHistSCECForm(4,locplt-1,j) = state(i)
-					! onFaultQuantHistSCECForm(5,locplt-1,j) = slips
-					! onFaultQuantHistSCECForm(6,locplt-1,j) = slipd
-					! onFaultQuantHistSCECForm(7,locplt-1,j) = slipn
-					! onFaultQuantHistSCECForm(8,locplt-1,j) = tstk
-					! onFaultQuantHistSCECForm(9,locplt-1,j) = tdip
-					! onFaultQuantHistSCECForm(10,locplt-1,j) = tnrm
-					! onFaultQuantHistSCECForm(11,locplt-1,j) = fric(51,i)
-					! onFaultQuantHistSCECForm(12,locplt-1,j) = fric(52,i)		
-			do j=1,locplt-1
+			do j = 1, nstep
 				write(51,'( E21.13,10E15.7)') onFaultQuantHistSCECForm(1,j,i),onFaultQuantHistSCECForm(5,j,i),onFaultQuantHistSCECForm(2,j,i),onFaultQuantHistSCECForm(8,j,i)/1.0d6,&
 						-onFaultQuantHistSCECForm(6,j,i),-onFaultQuantHistSCECForm(3,j,i),-onFaultQuantHistSCECForm(9,j,i)/1.0d6, -onFaultQuantHistSCECForm(10,j,i)/1.0d6, onFaultQuantHistSCECForm(4,j,i), onFaultQuantHistSCECForm(12,j,i), onFaultQuantHistSCECForm(11,j,i)/1.0d6  
 			enddo
@@ -109,9 +95,7 @@ subroutine output_offfault_st
 			write(51,*) '# code = EQdyna3D'
 			write(51,*) '# element_size =',dx
 			write(51,'( a14,f8.4,a3)') '# time_step=', dt, ' s'
-			write(51,'( a19,i6)') '# num_time_steps=',locplt
-			!write(51,*) loca
-			!write(51,*) '# Time series in 11 columns in format E15.7 for data'
+			write(51,'( a19,i6)') '# num_time_steps=', nstep
 			write(51,*) '# Column #1 = Time (s)'
 			write(51,*) '# Column #2 = horizontal displacement (m)'
 			write(51,*) '# Column #3 = horizontal displacement (m)'
@@ -123,7 +107,7 @@ subroutine output_offfault_st
 			write(51,*) '#'
 			write(51,*) '# The line below lists the names of the data fields:'
 			write(51,*) 't h-disp h-vel v-disp v-vel n-disp n-vel'
-			do j=1,locplt
+			do j=1, nstep 
 				write(51,'( E21.13,6E15.7)') dout(1,j),dout((i-1)*6+2,j), &
 				dout((i-1)*6+3,j),-dout((i-1)*6+6,j),-dout((i-1)*6+7,j), &
 				dout((i-1)*6+4,j),dout((i-1)*6+5,j)

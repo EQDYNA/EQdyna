@@ -6,7 +6,7 @@ MODULE globalvar
     character(len=30) :: mm,    &
         sttmp,  dptmp,  bodytmp,    projectname,    author
     character(len=90) :: loca
-    logical :: lstr, fltMPI(6)
+    logical :: fltMPI(6)
     integer, parameter :: dp = selected_real_kind(15,307)
     real (kind = dp) :: timeused(9) = 0.0d0,&
         time1,      time2,      time=0.0d0, &
@@ -51,8 +51,7 @@ MODULE globalvar
         nsd=3,  ndof=3, nen=8,  ned=3,  nee=24, nesd=3, nrowsh=4, &
         nrowb=6,nrowc=6,nstr=6, noid=2, totalNumOfNodes,  totalNumOfElements,  totalNumOfEquations,      & 
         maxm,   maxs,   npx,    npy,    npz,    master=0,         &
-        me,     nprocs, mode, &
-        nplpts, nstep,  nhplt=1,        locplt=1, &
+        me,     nprocs, mode,   nstep, &
         dis4uniF,       dis4uniB,       nmat,   n2mat,  ninterval=1,&
         nftmx,  nonmx,  nt,     TPV = -1,       output_plastic,     &
         nnx,    nnz,    insertFaultType,    timeinfo = 0,   outputGroundMotion,&

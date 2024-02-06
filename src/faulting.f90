@@ -521,21 +521,21 @@ subroutine storeOnFaultStationQuantSCEC(iFault, iFaultNodePair, nsdSlipVector, n
     implicit none
     integer (kind = 4) :: iFault, iFaultNodePair, j
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
-    if(n4onf>0 .and. lstr) then    
+    if (n4onf>0) then    
         do j = 1, n4onf
             if(anonfs(1,j)==iFaultNodePair .and. anonfs(3,j)==iFault) then 
-                onFaultQuantHistSCECForm(1,locplt-1,j)  = time
-                onFaultQuantHistSCECForm(2,locplt-1,j)  = nsdSliprateVector(2)
-                onFaultQuantHistSCECForm(3,locplt-1,j)  = nsdSliprateVector(3)
-                onFaultQuantHistSCECForm(4,locplt-1,j)  = fric(20,iFaultNodePair,iFault)
-                onFaultQuantHistSCECForm(5,locplt-1,j)  = nsdSlipVector(2)
-                onFaultQuantHistSCECForm(6,locplt-1,j)  = nsdSlipVector(3)
-                onFaultQuantHistSCECForm(7,locplt-1,j)  = nsdSlipVector(1)
-                onFaultQuantHistSCECForm(8,locplt-1,j)  = nsdTractionVector(2) !tstk
-                onFaultQuantHistSCECForm(9,locplt-1,j)  = nsdTractionVector(3) !tdip
-                onFaultQuantHistSCECForm(10,locplt-1,j) = nsdTractionVector(1) !tnrm
-                onFaultQuantHistSCECForm(11,locplt-1,j) = fric(51,iFaultNodePair,iFault) + fric(42,iFaultNodePair,iFault) ! + fric_tp_pini
-                onFaultQuantHistSCECForm(12,locplt-1,j) = fric(52,iFaultNodePair,iFault) 
+                onFaultQuantHistSCECForm(1,nt,j)  = time
+                onFaultQuantHistSCECForm(2,nt,j)  = nsdSliprateVector(2)
+                onFaultQuantHistSCECForm(3,nt,j)  = nsdSliprateVector(3)
+                onFaultQuantHistSCECForm(4,nt,j)  = fric(20,iFaultNodePair,iFault)
+                onFaultQuantHistSCECForm(5,nt,j)  = nsdSlipVector(2)
+                onFaultQuantHistSCECForm(6,nt,j)  = nsdSlipVector(3)
+                onFaultQuantHistSCECForm(7,nt,j)  = nsdSlipVector(1)
+                onFaultQuantHistSCECForm(8,nt,j)  = nsdTractionVector(2) !tstk
+                onFaultQuantHistSCECForm(9,nt,j)  = nsdTractionVector(3) !tdip
+                onFaultQuantHistSCECForm(10,nt,j) = nsdTractionVector(1) !tnrm
+                onFaultQuantHistSCECForm(11,nt,j) = fric(51,iFaultNodePair,iFault) + fric(42,iFaultNodePair,iFault) ! + fric_tp_pini
+                onFaultQuantHistSCECForm(12,nt,j) = fric(52,iFaultNodePair,iFault) 
             endif
         enddo 
     endif   

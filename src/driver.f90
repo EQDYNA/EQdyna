@@ -190,30 +190,22 @@ subroutine offFaultStationSCEC
     
     integer (kind = 4) :: i, j, l, k, k1
     
-    if (mod(nt,nhplt) == 0) then    
-        lstr    = .true.    
-        locplt  = locplt+ 1    !when nt=1, locplt=2 due to 1 in eqdy3d.f90
-    else
-        lstr    = .false.
-    endif
-    if (lstr) then
-        if((ndout>0).and.(locplt>1)) then
-            dout(1,locplt)=time
-            do i=1,ndout 
-                j=idhist(1,i)
-                if(j<=0) j=1  !avoid zero that cannot be used below
-                    k=idhist(2,i)
-                    l=idhist(3,i)
-                if(l==1) then
-                    dout(i+1,locplt) = dispArr(k,j)
+        if (ndout>0) then
+            dout(1,nt) = time
+            do i = 1, ndout 
+                j = idhist(1,i)
+                if (j<=0) j=1  !avoid zero that cannot be used below
+                    k = idhist(2,i)
+                    l = idhist(3,i)
+                if (l ==1) then
+                    dout(i+1,nt) = dispArr(k,j)
                 elseif(l==2) then
-                    dout(i+1,locplt) = velArr(k,j)
+                    dout(i+1,nt) = velArr(k,j)
                 elseif(l==3) then
                     k1 = eqNumIndexArr(eqNumStartIndexLoc(j)+k)
-                    dout(i+1,locplt) = nodalForceArr(k1)
+                    dout(i+1,nt) = nodalForceArr(k1)
                 endif
             enddo
         endif
-    endif
 end subroutine offFaultStationSCEC
  

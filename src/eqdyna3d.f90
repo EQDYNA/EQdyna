@@ -50,11 +50,6 @@ program EQdyna
     if (insertFaultType > 0) call read_fault_rough_geometry
     call warning
     
-    nplpts=0    !initialize number of time history plot
-    if (nhplt>0) then
-        nplpts=int(nstep/nhplt)+2
-    endif
-
     allocate(nftnd(ntotft),shl(nrowsh,nen))
     
     call qdcshl
@@ -82,7 +77,7 @@ program EQdyna
     endif
     
     if(n4onf<=0) n4onf=1 
-    allocate(onFaultQuantHistSCECForm(12,nplpts-1,n4onf))
+    allocate(onFaultQuantHistSCECForm(12,nstep,n4onf))
     onFaultQuantHistSCECForm = 0.0d0
 
     allocate(nodalForceArr(totalNumOfEquations), v1(totalNumOfEquations), &
@@ -95,12 +90,12 @@ program EQdyna
     velArr  = 0.0d0
     dispArr = 0.0d0
 
-    allocate(onFaultTPHist(2,nftmx,nplpts,ntotft))
+    allocate(onFaultTPHist(2,nftmx,nstep,ntotft))
     onFaultTPHist = 0.0d0
 
     if(n4out>0) then 
         ndout=n4out*ndof*noid!3 components of 2 quantities: v and d
-        allocate(idhist(3,ndout),dout(ndout+1,nplpts))
+        allocate(idhist(3,ndout),dout(ndout+1,nstep))
         idhist=0
         dout=0.0d0
         l=0
