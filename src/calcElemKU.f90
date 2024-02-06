@@ -1,6 +1,6 @@
 ! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
 ! MIT
-subroutine calcElemKU(shg,mate,vl,dl,stress,elresf,constk,porep,pstrmag,ex)
+subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstrmag,ex)
     use globalvar
     implicit none
     
@@ -9,7 +9,7 @@ subroutine calcElemKU(shg,mate,vl,dl,stress,elresf,constk,porep,pstrmag,ex)
     real (kind = dp),dimension(nee) :: elresf,work,vl,dl
     real (kind = dp),dimension(nstr) :: strainrate,stressrate,strtemp,strain
     real (kind = dp)::stress(12),anestr(6),anestr1(6)
-    real (kind = dp),dimension(nrowsh-1,nen) :: shg
+    real (kind = dp),dimension(nrowsh-1,nen) :: globalShapeFunc
     real (kind = dp),dimension(nrowb,nee) :: bb	!correspond to b
     real (kind = dp),dimension(nrowc,nrowc) :: cc	!correspond to c
     !...plasticity vlrables. B.D. 1/5/12
@@ -36,8 +36,8 @@ subroutine calcElemKU(shg,mate,vl,dl,stress,elresf,constk,porep,pstrmag,ex)
     cc(3,1)=lam 
     cc(2,3)=lam 
     cc(3,2)=lam 
-    !...calcuate b from shg
-    call qdcb(shg,bb)
+    !...calcuate b from globalShapeFunc
+    call calcB(globalShapeFunc,bb)
 
     strainrate = 0.0d0	!initialize
 

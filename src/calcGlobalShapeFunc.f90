@@ -1,11 +1,8 @@
-SUBROUTINE qdcshg(xl,det,shg,nel,xs,lcubic)
+subroutine calcGlobalShapeFunc(xl,det,globalShapeFunc,nel,xs,lcubic)
   use globalvar
   implicit none
-  !
-  !...program to calculate global derivatives of shape function and
-  !    Jacobian determinat for a 8-node hexahedral element.
-  !    1 Gaussian point only!
-  !
+  ! calculate global derivatives of shape function and
+  ! Jacobian determinant for a reduced order hexahedral element.
   logical :: lcubic
   
   integer (kind = 4) :: i,j,k,nel
@@ -15,18 +12,18 @@ SUBROUTINE qdcshg(xl,det,shg,nel,xs,lcubic)
                     cof21,cof22,cof23, &
                     cof31,cof32,cof33
   real(kind = dp), dimension(3,3)        :: xs
-  real(kind = dp), dimension(nrowsh,nen) :: shg,shlg
+  real(kind = dp), dimension(nrowsh,nen) :: globalShapeFunc,tmpGlobalShapeFunc
   real(kind = dp), dimension(nesd,nen)   :: xl
 
   !...equal local to global ,first
-  shg = shl
+  globalShapeFunc = localShapeFunc
   ! !...deal with wedge degeneration. B.D. 11/27/08
   ! if( et(nel) == 11 ) then    !degeneration to wedge element by following the book
     ! do i=1,nrowsh
-      ! shg(i,3) = shl(i,3) + shl(i,4)    !always 4=3, 8=7
-      ! shg(i,4) = 0.0d0
-      ! shg(i,7) = shl(i,7) + shl(i,8)
-      ! shg(i,8) = 0.0d0
+      ! globalShapeFunc(i,3) = localShapeFunc(i,3) + localShapeFunc(i,4)    !always 4=3, 8=7
+      ! globalShapeFunc(i,4) = 0.0d0
+      ! globalShapeFunc(i,7) = localShapeFunc(i,7) + localShapeFunc(i,8)
+      ! globalShapeFunc(i,8) = 0.0d0
     ! enddo
   ! endif
   !...calculate x,s
@@ -34,7 +31,7 @@ SUBROUTINE qdcshg(xl,det,shg,nel,xs,lcubic)
     do j=1,3
       temp = 0.0d0
       do k=1,nen
-      temp = temp + shg(i,k) * xl(j,k)
+      temp = temp + globalShapeFunc(i,k) * xl(j,k)
       enddo
       xs(j,i) = temp
     enddo
@@ -60,19 +57,19 @@ SUBROUTINE qdcshg(xl,det,shg,nel,xs,lcubic)
   endif
   
   !Calculate derivatives of global shape function
-  shlg  = shg
+  tmpGlobalShapeFunc  = globalShapeFunc
   
   do i  = 1,nen
-    shg(1,i) = (shlg(1,i)*cof11 + shlg(2,i)*cof12  &
-                + shlg(3,i)*cof13)/det
-    shg(2,i) = (shlg(1,i)*cof21 + shlg(2,i)*cof22  &
-                + shlg(3,i)*cof23)/det
-    shg(3,i) = (shlg(1,i)*cof31 + shlg(2,i)*cof32  &
-                + shlg(3,i)*cof33)/det
+    globalShapeFunc(1,i) = (tmpGlobalShapeFunc(1,i)*cof11 + tmpGlobalShapeFunc(2,i)*cof12  &
+                + tmpGlobalShapeFunc(3,i)*cof13)/det
+    globalShapeFunc(2,i) = (tmpGlobalShapeFunc(1,i)*cof21 + tmpGlobalShapeFunc(2,i)*cof22  &
+                + tmpGlobalShapeFunc(3,i)*cof23)/det
+    globalShapeFunc(3,i) = (tmpGlobalShapeFunc(1,i)*cof31 + tmpGlobalShapeFunc(2,i)*cof32  &
+                + tmpGlobalShapeFunc(3,i)*cof33)/det
   enddo
   !...now,get s,x from cof and save in xs to return
   xs    = reshape((/cof11,cof12,cof13, cof21,cof22,cof23, &
                  cof31,cof32,cof33/),(/3,3/))
   xs    = xs/det
 
-end SUBROUTINE qdcshg
+end subroutine calcGlobalShapeFunc

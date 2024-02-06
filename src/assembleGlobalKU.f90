@@ -16,7 +16,7 @@ subroutine assembleGlobalKU
         al(3,1:nen)     = al(3,1:nen) + (1.0d0-C_elastic)*grav*(roumax-(gamar+1.0d0)*rhow)/roumax
 
         elresf = 0.0d0 
-        call contma(elemass(1:nee,nel),al,elresf)
+        call calcElemMass(elemass(1:nee,nel),al,elresf)
 
         if (elemTypeArr(nel)==1 .or. elemTypeArr(nel)>10) then
             call calcElemKU(eleshp(1,1,nel), mat(nel,1:5), velArr(1:ned,nodeIdElemIdRelation(1:nen,nel)), &
@@ -67,7 +67,7 @@ subroutine assembleGlobalKU
 end subroutine assembleGlobalKU
 
 
-subroutine calcPMLElemKU(vl,f,s,ex,mat1,shg,det,nel)
+subroutine calcPMLElemKU(vl,f,s,ex,mat1,globalShapeFunc,det,nel)
 !efPML,evPML,esPML,ex,PMLb,c(1,1,1),eleshp(1,1,nel),det,dt
     use globalvar
     implicit none  
@@ -104,7 +104,7 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,shg,det,nel)
     real(kind = dp),dimension(3,8)::ex
     real(kind = dp),dimension(3)::xc
     real(kind = dp),dimension(3)::damps
-    real(kind = dp),dimension(3,8)::shg
+    real(kind = dp),dimension(3,8)::globalShapeFunc
     real(kind = dp),dimension(3,4)::q
     integer(kind=4),dimension(4,8)::fi
     real(kind = dp)::xmax2,xmin2,ymax2,ymin2,zmin2,&
@@ -219,7 +219,7 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,shg,det,nel)
         va(3*(i-1)+3)=vl(3,i)
     enddo
 
-    call qdcb(shg,bb)
+    call calcB(globalShapeFunc,bb)
     stressrate = 0.0d0
     strainrate = 0.0d0    !initialize
     do i=1,nen
@@ -262,15 +262,15 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,shg,det,nel)
     Dy_vz=0.0d0
     Dz_vy=0.0d0
     do i=1,8
-        Dx_vx=Dx_vx+shg(1,i)*va(3*(i-1)+1)
-        Dy_vy=Dy_vy+shg(2,i)*va(3*(i-1)+2)
-        Dz_vz=Dz_vz+shg(3,i)*va(3*(i-1)+3)
-        Dx_vy=Dx_vy+shg(1,i)*va(3*(i-1)+2)
-        Dy_vx=Dy_vx+shg(2,i)*va(3*(i-1)+1)
-        Dx_vz=Dx_vz+shg(1,i)*va(3*(i-1)+3)
-        Dz_vx=Dz_vx+shg(3,i)*va(3*(i-1)+1)
-        Dy_vz=Dy_vz+shg(2,i)*va(3*(i-1)+3)
-        Dz_vy=Dz_vy+shg(3,i)*va(3*(i-1)+2)
+        Dx_vx=Dx_vx+globalShapeFunc(1,i)*va(3*(i-1)+1)
+        Dy_vy=Dy_vy+globalShapeFunc(2,i)*va(3*(i-1)+2)
+        Dz_vz=Dz_vz+globalShapeFunc(3,i)*va(3*(i-1)+3)
+        Dx_vy=Dx_vy+globalShapeFunc(1,i)*va(3*(i-1)+2)
+        Dy_vx=Dy_vx+globalShapeFunc(2,i)*va(3*(i-1)+1)
+        Dx_vz=Dx_vz+globalShapeFunc(1,i)*va(3*(i-1)+3)
+        Dz_vx=Dz_vx+globalShapeFunc(3,i)*va(3*(i-1)+1)
+        Dy_vz=Dy_vz+globalShapeFunc(2,i)*va(3*(i-1)+3)
+        Dz_vy=Dz_vy+globalShapeFunc(3,i)*va(3*(i-1)+2)
     enddo
     !-------------------------------------------------!  
     ! Update stress
@@ -326,15 +326,15 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,shg,det,nel)
 
     !Calculate 'nodal forces'
     do i=1,8
-        f((i-1)*12+1)=f((i-1)*12+1)-det*w*shg(1,i)*sxx
-        f((i-1)*12+2)=f((i-1)*12+2)-det*w*shg(2,i)*sxy
-        f((i-1)*12+3)=f((i-1)*12+3)-det*w*shg(3,i)*sxz
-        f((i-1)*12+4)=f((i-1)*12+4)-det*w*shg(1,i)*sxy
-        f((i-1)*12+5)=f((i-1)*12+5)-det*w*shg(2,i)*syy
-        f((i-1)*12+6)=f((i-1)*12+6)-det*w*shg(3,i)*syz
-        f((i-1)*12+7)=f((i-1)*12+7)-det*w*shg(1,i)*sxz
-        f((i-1)*12+8)=f((i-1)*12+8)-det*w*shg(2,i)*syz
-        f((i-1)*12+9)=f((i-1)*12+9)-det*w*shg(3,i)*szz
+        f((i-1)*12+1)=f((i-1)*12+1)-det*w*globalShapeFunc(1,i)*sxx
+        f((i-1)*12+2)=f((i-1)*12+2)-det*w*globalShapeFunc(2,i)*sxy
+        f((i-1)*12+3)=f((i-1)*12+3)-det*w*globalShapeFunc(3,i)*sxz
+        f((i-1)*12+4)=f((i-1)*12+4)-det*w*globalShapeFunc(1,i)*sxy
+        f((i-1)*12+5)=f((i-1)*12+5)-det*w*globalShapeFunc(2,i)*syy
+        f((i-1)*12+6)=f((i-1)*12+6)-det*w*globalShapeFunc(3,i)*syz
+        f((i-1)*12+7)=f((i-1)*12+7)-det*w*globalShapeFunc(1,i)*sxz
+        f((i-1)*12+8)=f((i-1)*12+8)-det*w*globalShapeFunc(2,i)*syz
+        f((i-1)*12+9)=f((i-1)*12+9)-det*w*globalShapeFunc(3,i)*szz
         f((i-1)*12+10)=f((i-1)*12+10)-&
         det*w*(bb(1,3*(i-1)+1)*s0(1)+bb(5,3*(i-1)+1)*s0(5)+bb(6,3*(i-1)+1)*s0(6))
         f((i-1)*12+11)=f((i-1)*12+11)-&

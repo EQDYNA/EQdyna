@@ -38,9 +38,9 @@ endif
 OPT  = -c ${FFLAGS} 
 OPT1 = ${FFLAGS}
 
-OBJ  = eqdyna3d.o  globalvar.o mesh4num.o  meshgen.o   localShapeFuncTrilinearHex.o    \
-       driver.o    assembleGlobalMass.o     qdcshg.o                qdcb.o      \
-       assembleGlobalKU.o        contma.o    calcElemKU.o     hrglss.o    fric.o      \
+OBJ  = eqdyna3d.o  globalvar.o mesh4num.o  meshgen.o   calcLocalShapeFunc.o    \
+       driver.o    assembleGlobalMass.o     calcGlobalShapeFunc.o                calcB.o      \
+       assembleGlobalKU.o        calcElemMass.o    calcElemKU.o     hrglss.o    fric.o      \
        faulting.o              comdampv.o  qconstant.o             \
        readInputFiles.o        thermop.o   library.o   warning.o   \
        library_degeneration.f90            library_output.o        \
@@ -61,25 +61,25 @@ mesh4num.o: mesh4num.f90 globalvar.o library_degeneration.o
 	$(FC) $(OPT) mesh4num.f90
 meshgen.o: meshgen.f90 globalvar.o library.o library_degeneration.o
 	$(FC) $(OPT) meshgen.f90
-localShapeFuncTrilinearHex.o: localShapeFuncTrilinearHex.f90 globalvar.o
-	$(FC) $(OPT) localShapeFuncTrilinearHex.f90		
+calcLocalShapeFunc.o: calcLocalShapeFunc.f90 globalvar.o
+	$(FC) $(OPT) calcLocalShapeFunc.f90		
 driver.o: driver.f90 assembleGlobalMass.o assembleGlobalKU.o hrglss.o faulting.o \
           globalvar.o comdampv.o thermop.o
 	$(FC) $(OPT) driver.f90
-assembleGlobalMass.o: assembleGlobalMass.f90 qdcshg.o library.o globalvar.o
+assembleGlobalMass.o: assembleGlobalMass.f90 calcGlobalShapeFunc.o library.o globalvar.o
 	$(FC) $(OPT) assembleGlobalMass.f90
-qdcshg.o: qdcshg.f90 globalvar.o
-	$(FC) $(OPT) qdcshg.f90
+calcGlobalShapeFunc.o: calcGlobalShapeFunc.f90 globalvar.o
+	$(FC) $(OPT) calcGlobalShapeFunc.f90
 library.o: library.f90 globalvar.o
 	$(FC) $(OPT) library.f90
 assembleGlobalKU.o: assembleGlobalKU.f90 calcElemKU.o globalvar.o 
 	$(FC) $(OPT) assembleGlobalKU.f90
-contma.o: contma.f90 globalvar.o
-	$(FC) $(OPT) contma.f90
-calcElemKU.o: calcElemKU.f90 qdcb.o qconstant.o globalvar.o
+calcElemMass.o: calcElemMass.f90 globalvar.o
+	$(FC) $(OPT) calcElemMass.f90
+calcElemKU.o: calcElemKU.f90 calcB.o qconstant.o globalvar.o
 	$(FC) $(OPT) calcElemKU.f90
-qdcb.o: qdcb.f90 globalvar.o
-	$(FC) $(OPT) qdcb.f90
+calcB.o: calcB.f90 globalvar.o
+	$(FC) $(OPT) calcB.f90
 hrglss.o: hrglss.f90 globalvar.o
 	$(FC) $(OPT) hrglss.f90
 fric.o: fric.f90 globalvar.o

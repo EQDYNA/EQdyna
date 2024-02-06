@@ -571,7 +571,6 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
     elseif (dimId == 3) then
         modelBoundCoor(3,1) = globalOneDimCoorArr(1) 
         modelBoundCoor(3,2) = globalOneDimCoorArr(globalOneDimCoorArrSize)    
-        write(*,*) zmax, globalOneDimCoorArr(globalOneDimCoorArrSize), 'should be the same'  
         PMLb(5) = globalOneDimCoorArr(nPML+1)
         PMLb(8) = globalOneDimCoorArr(2) - globalOneDimCoorArr(1)
     endif 
