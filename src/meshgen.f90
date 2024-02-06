@@ -737,19 +737,19 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     
     elemCount        = elemCount + 1
     elemTypeArr(elemCount)    = 1 
-    ien(1,elemCount) = plane1(iy-1,iz-1)
-    ien(2,elemCount) = plane2(iy-1,iz-1)
-    ien(3,elemCount) = plane2(iy,iz-1)
-    ien(4,elemCount) = plane1(iy,iz-1)
-    ien(5,elemCount) = plane1(iy-1,iz)
-    ien(6,elemCount) = plane2(iy-1,iz)
-    ien(7,elemCount) = plane2(iy,iz)
-    ien(8,elemCount) = plane1(iy,iz)
+    nodeIdElemIdRelation(1,elemCount) = plane1(iy-1,iz-1)
+    nodeIdElemIdRelation(2,elemCount) = plane2(iy-1,iz-1)
+    nodeIdElemIdRelation(3,elemCount) = plane2(iy,iz-1)
+    nodeIdElemIdRelation(4,elemCount) = plane1(iy,iz-1)
+    nodeIdElemIdRelation(5,elemCount) = plane1(iy-1,iz)
+    nodeIdElemIdRelation(6,elemCount) = plane2(iy-1,iz)
+    nodeIdElemIdRelation(7,elemCount) = plane2(iy,iz)
+    nodeIdElemIdRelation(8,elemCount) = plane1(iy,iz)
     stressCompIndexArr(elemCount)   = stressDofCount
     
     do i=1,nen
         do j=1,3
-            elementCenterCoor(j) = elementCenterCoor(j) + meshCoor(j,ien(i,elemCount))
+            elementCenterCoor(j) = elementCenterCoor(j) + meshCoor(j,nodeIdElemIdRelation(i,elemCount))
         enddo
     enddo
     elementCenterCoor = elementCenterCoor/8.0d0
@@ -763,7 +763,7 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
         stressDofCount        = stressDofCount+12
     endif
     
-    ! assign ien(elemCount), ids(elemCount), et(elemCount)
+    ! assign nodeIdElemIdRelation(elemCount), ids(elemCount), et(elemCount)
     ! return elementCenterCoor, 
     ! update elemCount, stressDofCount
 end subroutine createElement
@@ -783,8 +783,8 @@ end subroutine createElement
         do iFault = 1, ntotft
             do iFaultNodePair = 1, nftnd0(iFault)
                 do k = 1,nen
-                    if(ien(k,elemCount)==nsmp(1,iFaultNodePair,iFault)) then
-                        ien(k,elemCount) = nsmp(2,iFaultNodePair,iFault)  !use master node for the node!
+                    if(nodeIdElemIdRelation(k,elemCount)==nsmp(1,iFaultNodePair,iFault)) then
+                        nodeIdElemIdRelation(k,elemCount) = nsmp(2,iFaultNodePair,iFault)  !use master node for the node!
                     endif
                 enddo
             enddo

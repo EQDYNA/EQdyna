@@ -13,7 +13,7 @@ subroutine qdct2
         eleffm = 0.0d0
         do i=1,nen
             do j=1,nesd
-                xl(j,i) = meshCoor(j,ien(i,nel))
+                xl(j,i) = meshCoor(j,nodeIdElemIdRelation(i,nel))
             enddo
         enddo
         
@@ -22,7 +22,7 @@ subroutine qdct2
         itmp = 0
         outloop: do i=2,nen
                     do j=1,i-1
-                        if(ien(j,nel)==ien(i,nel)) itmp=itmp+1
+                        if(nodeIdElemIdRelation(j,nel)==nodeIdElemIdRelation(i,nel)) itmp=itmp+1
                             if(itmp>=2) then
                                 lcubic = .false.
                             exit outloop
@@ -274,7 +274,7 @@ subroutine assembleElementMassDetShg(elemID, elementMass, det, shg)
     real (kind = dp) :: elementMass(nee), det, shg(nrowsh, nen)
     
     do i = 1, nen 
-        nodeID = ien(i,elemID)
+        nodeID = nodeIdElemIdRelation(i,elemID)
         if (numOfDofPerNodeArr(nodeID)==12) then
             do ixyz = 1, 3
                 do j = 3*(ixyz-1)+1, 3*(ixyz-1)+3

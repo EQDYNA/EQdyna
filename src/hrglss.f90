@@ -13,8 +13,8 @@ subroutine hrglss
     do nel = 1, totalNumOfElements
         do i = 1, nen
             do j = 1, ned
-                vl(j,i) = velArr(j,ien(i,nel))
-                dl(j,i) = dispArr(j,ien(i,nel)) + rdampk* vl(j,i)
+                vl(j,i) = velArr(j,nodeIdElemIdRelation(i,nel))
+                dl(j,i) = dispArr(j,nodeIdElemIdRelation(i,nel)) + rdampk* vl(j,i)
             enddo
         enddo
         if (C_hg == 1) then
@@ -41,10 +41,10 @@ subroutine hrglss
                 !... assemble to global right-hand-side force vector
                 do i = 1, nen
                     do j = 1, ned
-                        if (numOfDofPerNodeArr(ien(i,nel)) == 3) then
-                            itag = eqNumStartIndexLoc(ien(i,nel))+j
-                        elseif (numOfDofPerNodeArr(ien(i,nel)) == 12) then
-                            itag = eqNumStartIndexLoc(ien(i,nel))+j+9
+                        if (numOfDofPerNodeArr(nodeIdElemIdRelation(i,nel)) == 3) then
+                            itag = eqNumStartIndexLoc(nodeIdElemIdRelation(i,nel))+j
+                        elseif (numOfDofPerNodeArr(nodeIdElemIdRelation(i,nel)) == 12) then
+                            itag = eqNumStartIndexLoc(nodeIdElemIdRelation(i,nel))+j+9
                         endif
                         k = eqNumIndexArr(itag)
                         if(k > 0) then
@@ -83,10 +83,10 @@ subroutine hrglss
             enddo
             do i = 1, nen
                 do j = 1, ned
-                    if (numOfDofPerNodeArr(ien(i,nel)).eq.3) then
-                        itag=eqNumStartIndexLoc(ien(i,nel))+j
-                    elseif (numOfDofPerNodeArr(ien(i,nel)).eq.12) then
-                        itag=eqNumStartIndexLoc(ien(i,nel))+j+9
+                    if (numOfDofPerNodeArr(nodeIdElemIdRelation(i,nel)).eq.3) then
+                        itag=eqNumStartIndexLoc(nodeIdElemIdRelation(i,nel))+j
+                    elseif (numOfDofPerNodeArr(nodeIdElemIdRelation(i,nel)).eq.12) then
+                        itag=eqNumStartIndexLoc(nodeIdElemIdRelation(i,nel))+j+9
                     endif
                     k=eqNumIndexArr(itag)
                     if(k > 0) then

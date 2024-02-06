@@ -155,7 +155,7 @@ subroutine allocInit
     allocate(eqNumIndexArr(maxm), eqNumStartIndexLoc(totalNumOfNodes), &
             numOfDofPerNodeArr(totalNumOfNodes), meshCoor(ndof,totalNumOfNodes), &
             fnms(totalNumOfNodes), surface_node_id(totalNumOfNodes), &
-            ien(nen,totalNumOfElements), mat(totalNumOfElements,5), &
+            nodeIdElemIdRelation(nen,totalNumOfElements), mat(totalNumOfElements,5), &
             elemTypeArr(totalNumOfElements), eleporep(totalNumOfElements), &
             pstrain(totalNumOfElements), eledet(totalNumOfElements), &
             elemass(nee,totalNumOfElements), eleshp(nrowsh-1,nen,totalNumOfElements), &
@@ -167,7 +167,7 @@ subroutine allocInit
     eqNumStartIndexLoc  = 0
     numOfDofPerNodeArr  = 0
     surface_node_id     = 0
-    ien      = 0
+    nodeIdElemIdRelation      = 0
     elemTypeArr = 0
     mat      = 0.0d0
     eleporep = 0.0d0

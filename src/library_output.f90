@@ -187,13 +187,13 @@ subroutine output_plastic_strain
 	if (output_plastic == 1) then	
 		
 		do i=1,totalNumOfElements 
-                    if ((pstrain(i)>1.0d-4).and.(abs(meshCoor(1,ien(1,i)))<5.0d3).and.(abs(meshCoor(2,ien(1,i)))<2.0d3).and.(abs(meshCoor(3,ien(1,i)))<8.0d3)) then 
+                    if ((pstrain(i)>1.0d-4).and.(abs(meshCoor(1,nodeIdElemIdRelation(1,i)))<5.0d3).and.(abs(meshCoor(2,nodeIdElemIdRelation(1,i)))<2.0d3).and.(abs(meshCoor(3,nodeIdElemIdRelation(1,i)))<8.0d3)) then 
 				open(unit=10007+me,file='pstr.txt'//mm,status='unknown',position='append')
 				sc=0.0d0
 				do j=1,8
-					sc(1)=sc(1)+meshCoor(1,ien(j,i))
-					sc(2)=sc(2)+meshCoor(2,ien(j,i))
-					sc(3)=sc(3)+meshCoor(3,ien(j,i))
+					sc(1)=sc(1)+meshCoor(1,nodeIdElemIdRelation(j,i))
+					sc(2)=sc(2)+meshCoor(2,nodeIdElemIdRelation(j,i))
+					sc(3)=sc(3)+meshCoor(3,nodeIdElemIdRelation(j,i))
 				enddo
 				sc(1)=sc(1)/8.0d0
 				sc(2)=sc(2)/8.0d0
