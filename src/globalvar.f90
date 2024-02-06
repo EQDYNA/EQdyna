@@ -94,7 +94,7 @@ MODULE globalvar
         eqNumIndexArr,    stressCompIndexArr,    elemTypeArr,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surface_node_id,&
         nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
         fltu,   fltgm
-    integer (kind = 4), allocatable, dimension(:,:) :: ien,     &
+    integer (kind = 4), allocatable, dimension(:,:) :: nodeIdElemIdRelation,     &
         anonfs, idhist, an4nds
     integer (kind = 4), allocatable, dimension(:,:,:) :: nsmp
 

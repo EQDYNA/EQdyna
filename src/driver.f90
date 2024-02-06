@@ -6,8 +6,6 @@ subroutine driver
     implicit none
     include 'mpif.h'
 
-    integer (kind = 4) :: i
-
     do nt = 1, nstep
 
         time = time + dt
