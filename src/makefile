@@ -11,7 +11,7 @@
 SYSTEM = ${MACHINE}
 
 ifeq ($(SYSTEM), ubuntu)
-    FFLAGS     = -fopenmp -ffree-line-length-none -O2
+    FFLAGS     = -fopenmp -ffree-line-length-none -O3
     FC         = mpif90.mpich
     LIB        = /usr/lib/x86_64-linux-gnu
     INC        = /usr/include
