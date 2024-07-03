@@ -95,7 +95,7 @@ TPV104:   15 seconds simulation time with 0.008 dt and a total of 1875 time step
 We welcome developers and users. If you are interested in developing and collaborations using *```EQdyna```*, please contact Drs. Benchun Duan (bduan@tamu.edu) or Dunyu Liu (dliu@ig.utexas.edu).
 
 # Reference
-* Duan, B. (2010). Role of initial stress rotations in rupture dynamics and ground motion: A case study with implications for the Wenchuan earthquake, J. Geophys. Res. 115.
-* Duan, B. (2012). Dynamic rupture of the 2011 Mw 9.0 Tohoku-Oki earthquake: Roles of a possible subducting seamount, J. Geophys. Res. 117
-* Duan, B., D. Liu, and A. Yin (2017). Seismic shaking in the North China Basin expected from ruptures of a possible seismic gap, Geophys. Res. Lett. 44 4855-4862.
-* Liu, D. and B. Duan (2018). "Scenario Earthquake and Ground‐Motion Simulations in North China: Effects of Heterogeneous Fault Stress and 3D Basin Structure." BSSA.
+1. Duan, B. and D.D. Oglesby (2006). Heterogeneous fault stresses from previous earthquakes and the effect on dynamics of parallel strike-slip faults, J. Geophys. Res., 111, B05309, doi:10.1029/2005JB004138.
+2. Duan, B. (2012). Dynamic rupture of the 2011 Mw 9.0 Tohoku-Oki earthquake: Roles of a possible subducting seamount, J. Geophys. Res., 117, B05311, doi:10.1029/2011JB009124.
+3. Luo, B. and B. Duan (2018). Dynamics of non-planar thrust faults governed by various friction laws, J. Geophys. Res. Solid Earth, 123, https://doi.org/10.1029/2017JB015320.
+4. Liu, D. and B. Duan (2018). Scenario Earthquake and Ground‐Motion Simulations in North China: Effects of Heterogeneous Fault Stress and 3D Basin Structure, Bull. Seismol. Soc. Am., 108(4), 2148-2169, doi:10.1785/0120170374.
