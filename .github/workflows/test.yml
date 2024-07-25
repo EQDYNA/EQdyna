@@ -1,0 +1,30 @@
+name: EQdyna Test
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git vim make mpich libnetcdf-dev libnetcdff-dev python3 python3-pip
+        pip install numpy netCDF4 matplotlib xarray
+        pip install --upgrade numpy
+
+    - name: Run tests
+      run: |
+        chmod -R 755 install-eqdyna.sh scripts
+        ./install-eqdyna.sh -m ubuntu
+        export EQDYNAROOT=$(pwd)
+        PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        python3 testAll.py
