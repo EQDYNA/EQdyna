@@ -1,4 +1,4 @@
-name: EQdyna Test
+name: Automatic Testing of EQdyna
 
 on: [push, pull_request]
 
@@ -16,15 +16,21 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y git vim make mpich libnetcdf-dev libnetcdff-dev python3 python3-pip
-        pip install numpy netCDF4 matplotlib xarray
-        pip install --upgrade numpy
+        sudo bash ubuntu.env.sh > testRunLog.txt || true
 
     - name: Run tests
       run: |
         chmod -R 755 install-eqdyna.sh scripts
-        ./install-eqdyna.sh -m ubuntu
+        ./install-eqdyna.sh -m ubuntu >> testRunLog.txt || true
         export EQDYNAROOT=$(pwd)
         PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-        python3 testAll.py
+        python3 testAll.py >> testRunLog.txt || true
+
+    - name: Print testRunLog.txt
+      run: cat testRunLog.txt    
+      
+    - name: Check errors in testRunLog.txt
+      run: |
+        if grep -qiE 'error|Error|ERROR|exception|failed|fatal|abort' testRunLog.txt; then
+            exit 1
+        fi
