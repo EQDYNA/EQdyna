@@ -17,15 +17,15 @@ subroutine calcGlobalShapeFunc(xl,det,globalShapeFunc,nel,xs,lcubic)
 
   !...equal local to global ,first
   globalShapeFunc = localShapeFunc
-  ! !...deal with wedge degeneration. B.D. 11/27/08
-  ! if( et(nel) == 11 ) then    !degeneration to wedge element by following the book
-    ! do i=1,nrowsh
-      ! globalShapeFunc(i,3) = localShapeFunc(i,3) + localShapeFunc(i,4)    !always 4=3, 8=7
-      ! globalShapeFunc(i,4) = 0.0d0
-      ! globalShapeFunc(i,7) = localShapeFunc(i,7) + localShapeFunc(i,8)
-      ! globalShapeFunc(i,8) = 0.0d0
-    ! enddo
-  ! endif
+  ! degeneration; Hughes, P125, 
+  if( elemTypeArr(nel)==11 .or. elemTypeArr(nel)==12 ) then    !degeneration to wedge element by following the book
+    do i=1,nrowsh
+      globalShapeFunc(i,3) = localShapeFunc(i,3) + localShapeFunc(i,4)  
+      globalShapeFunc(i,4) = 0.0d0
+      globalShapeFunc(i,7) = localShapeFunc(i,7) + localShapeFunc(i,8)
+      globalShapeFunc(i,8) = 0.0d0
+    enddo
+  endif
   !...calculate x,s
   do i=1,3
     do j=1,3

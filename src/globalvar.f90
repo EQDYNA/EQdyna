@@ -4,7 +4,9 @@ MODULE globalvar
 
     implicit none
     character(len=30) :: mm,    &
-        sttmp,  dptmp,  bodytmp,    projectname,    author
+        sttmp,  dptmp,  bodytmp, &
+        projectname='San-Ti', &
+        author='Sophon'
     character(len=90) :: stLocStamp
     logical :: fltMPI(6)
     integer, parameter :: dp=selected_real_kind(15,307)
@@ -42,7 +44,8 @@ MODULE globalvar
         fric_tp_Tini,           dxtmp,            &
         gamar,                  roumax,         rough_fx_min,   &
         rough_fx_max,           rough_fz_min,  &
-        str1ToFaultAngle,       devStrToStrVertRatio
+        str1ToFaultAngle,       devStrToStrVertRatio, &
+        C_degen
         
     integer (kind = 8) :: dateTimeStamp(8)
 
@@ -54,7 +57,7 @@ MODULE globalvar
         dis4uniF,       dis4uniB,       nmat,   n2mat,  &
         nftmx,  nonmx,  nt,     TPV = -1,       output_plastic,     &
         nnx,    nnz,    insertFaultType,    writeCompTime = 0,   outputGroundMotion,&
-        surface_nnode = 0,  &
+        surface_nnode = 0,  outputFinalSurfDisp = 0, &
         ! Thickness (counted by nodes) of PML.nPML=6
         nPML = 6, &
         totalNumOfOffSt,  numOfOnFaultStCount,  numOfOffFaultStCount, &
@@ -63,7 +66,7 @@ MODULE globalvar
         ! 1=allow artificial nucleation; !0=disabled;
         C_nuclea,   &
         ! 0=brick; 1=wedge; 2=textra
-        C_degen,    &
+        !C_degen,    &
         nucfault,   friclaw,    ntotft, &
         ! Only works with C_elastic==1.
         ! 1=allow Q attenuation; 0=do not allow Q.

@@ -29,7 +29,6 @@ subroutine netcdf_read_on_fault_eqdyna
     
     fnx  = nint((fxmax(1) - fxmin(1))/dx)+1
     fnz  = nint((fzmax(1) - fzmin(1))/dz)+1
-    
     infile = "on_fault_vars_input.nc"
     
     nvar = 24
@@ -127,7 +126,6 @@ subroutine netcdf_read_on_fault_eqdyna_restart
     
     fnx  = nint((fxmax(1) - fxmin(1))/dx)+1
     fnz  = nint((fzmax(1) - fzmin(1))/dz)+1
-    
     ! Read in initial conditions from restart files fault.r.nc spun off by EQquasi. 
     nvar = 12
     allocate(on_fault_vars(fnx,fnz,nvar))    

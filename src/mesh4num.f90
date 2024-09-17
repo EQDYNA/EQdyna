@@ -9,7 +9,7 @@ subroutine mesh4num
     integer(kind = 4) :: nodeCount=0, elementCount=0, equationNumCount=0, &
             nxt, nyt, nzt, nx, ny, nz, ix, iy, iz, &
         edgex1,edgey1, iDof,edgezn, eqNumIndexArrSizeCount=0,numOfDof, nxuni,nyuni,nzuni,ift,mex,mey,mez
-    real (kind = dp) :: xcoor, ycoor, zcoor, xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2)
+    real (kind = dp) :: xcoor, ycoor, zcoor, xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2), distToFault
 
     call calcXyzMPIId(mex, mey, mez)
     call getLocalOneDimCoorArrAndSize(nxt, nxuni, edgex1, mex, nx, xline, modelBoundCoor, 1)
@@ -49,10 +49,12 @@ subroutine mesh4num
                     if(xcoor>=(fltxyz(1,1,ift)-tol).and.xcoor<=(fltxyz(2,1,ift)+tol).and. &
                         ycoor>=(fltxyz(1,2,ift)-tol).and.ycoor<=(fltxyz(2,2,ift)+tol).and. &
                         zcoor>=(fltxyz(1,3,ift)-tol) .and. zcoor<=(fltxyz(2,3,ift)+tol)) then
-                        if(ift==1) then
-                            ynft(ift) = .true.
-                        elseif(ift==2.and.abs(xcoor*dtan(brangle)-abs(ycoor))<tol) then
-                            ynft(ift)=.true.
+                        if (C_degen==0.0d0 .and. ycoor==0.0d0) then
+                            ynft(ift) = .true. ! planar or inserted fault
+                        elseif(C_degen>3.0d0) then 
+                            distToFault = abs(zcoor+ycoor*dtan(C_degen/180.d0*pi))
+                            distToFault = distToFault/(1.0d0+dtan(C_degen/180.0d0*pi)**2)**0.5
+                            if (distToFault<dx/100.0d0) ynft(ift)=.true.
                         endif
                         if(ynft(ift)) then
                             nftnd(ift) = nftnd(ift) + 1
@@ -71,15 +73,15 @@ subroutine mesh4num
                 
                     elementCount = elementCount + 1            
                     
-                    if (C_degen == 1) then 
-                        call wedge4num(xcoor-dx/2.0d0, ycoor-dx/2.0d0, zcoor-dx/2.0d0, elementCount)
-                    elseif (C_degen == 2) then 
-                        call tetra4num(xcoor-dx/2.0d0, ycoor-dx/2.0d0, zcoor-dx/2.0d0, elementCount)
+                    if (C_degen > 3.d0) then 
+                        call wedge4num(xcoor-dx/2.0d0, ycoor-dy/2.0d0, zcoor-dz/2.0d0, elementCount)
                     endif                 
-                endif  !if element
-            enddo    !iy
-        enddo    !iz
-    enddo        !ix
+                endif 
+
+            enddo   
+        enddo   
+    enddo       
+
     sizeOfEqNumIndexArr  = eqNumIndexArrSizeCount
     totalNumOfNodes = nodeCount
     totalNumOfElements = elementCount
