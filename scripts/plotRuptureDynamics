@@ -142,6 +142,30 @@ def ruptureDynamics():
 
     return fVarArr
 
+def finalSurfDisp():
+    nprocs = par.nx*par.ny*par.nz
+    ntag = 0
+    for me in range(nprocs):
+        fname = 'surface_coor.txt' + str(me)
+        fname2 = 'finalSurfDisp.txt' + str(me)
+        if exists(fname):
+            ntag = ntag + 1
+            print('Post-processing ' + fname + ' ... ...')
+            a = np.loadtxt(fname)
+            xyCoor = a[:,:2]
+            surfDisp = np.loadtxt(fname2)
+            surfCoorDispPerProc = np.concatenate((xyCoor,surfDisp), axis=1)
+            if ntag == 1: 
+                scec = surfCoorDispPerProc
+            else: 
+                scec = np.concatenate((scec, surfCoorDispPerProc), axis=0)
+
+    np.savetxt('SCECFinalSurfDisp.txt', scec, fmt='%e', delimiter='\t',
+                header= "x y dispx dispy dispz", comments = ' ')
+    
+    #plt.savefig("cFinalSurfDisp.png", dpi = 300)
+    #plt.close()
+
 def generateNcRestart(faultVarArr):
     # input fault_arr(nfx, nfz,) and make netCDF file fault.r.4eqquasi.nc for EQquasi. 
     # According to EQquasi subroutine netcdf_read_on_fault_restart(infile1, infile2),
@@ -207,6 +231,9 @@ def _main_func(description):
     print('Generating rupture dynamics figure ...')
     generateNcRestart(fVarArr)
     print('Generating restart file fault.dyna.r.nc ...')
+
+    if par.outputFinalSurfDisp==1:
+        finalSurfDisp()
 
 if __name__ == "__main__":
     _main_func(__doc__)

@@ -3,14 +3,7 @@
 subroutine slip_weak(slip,fricsgl,xmu)
   use globalvar
   implicit none
-  !
-  !### subroutine to implement linear slip-weakening
-  ! friction law for fault dynamics. B.D. 8/19/06
-  !...revised for ExGM 100runs. B.D. 8/10/10
-  !...revised for SCEC TPV19. B.D. 1/8/12
-  !  fricsgl(i,*),i=1 mus, 2 mud, 3 do, 4 cohesion, 
-  !  5 time for fixed rutpure, 6 for pore pressure
-  !
+
   real (kind = dp) :: xmu,slip
   real (kind = dp),dimension(20) :: fricsgl
   !
@@ -25,11 +18,8 @@ subroutine slip_weak(slip,fricsgl,xmu)
   !
 end subroutine slip_weak
 
-!================================================
-
 subroutine time_weak(trupt,fricsgl,xmu)
-    ! Subroutine time_weak calculates friction xmu under
-    !   the time weakening law.
+
     use globalvar
     implicit none
 
@@ -49,10 +39,7 @@ end subroutine time_weak
 subroutine rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   use globalvar
   implicit none
-  !
-  !### subroutine to implement rate- and state- 
-  ! friction law for fault dynamics. Bin Luo 4/9/2014
-  !
+
   real (kind = dp) :: xmu, dxmudv
   real (kind = dp) :: V2,theta
   real (kind = dp) :: A,B,L,f0,V0
@@ -73,15 +60,10 @@ subroutine rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   !
 end subroutine rate_state_ageing_law
 
-!================================================
-
 subroutine rate_state_slip_law(V2,psi,fricsgl,xmu,dxmudv)
   use globalvar
   implicit none
-  !
-  !### subroutine to implement rate- and state- 
-  ! friction law for fault dynamics. Bin Luo 4/9/2014
-  !
+
   real (kind = dp) :: xmu, dxmudv
   real (kind = dp) :: V2,psi,psiss,fLV,fss,fssa
   real (kind = dp) :: A,B,L,f0,V0,fw,Vw

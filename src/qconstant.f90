@@ -1,3 +1,5 @@
+! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! MIT
 subroutine qconstant(Q,rtaok,rwk,k,c1)
     use globalvar
     implicit none
