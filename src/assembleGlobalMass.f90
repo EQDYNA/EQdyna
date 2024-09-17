@@ -40,6 +40,19 @@ subroutine assembleGlobalMass
     call MPI4NodalQuant(nodalMassArr, 3)
     call MPI4NodalQuant(fnms, 1)
 
+    do nel = 1, totalNumOfElements
+        if (elemTypeArr(nel)>=11 .and. elemTypeArr(nel)<=12) then ! wedge below fault
+            if (nodeElemIdRelation(3,nel) .ne. nodeElemIdRelation(4,nel)) then 
+                    write(*,*) 'Wrongly created wedge; nel is',nel, 'elemType is', elemTypeArr(nel)
+                    stop
+            endif 
+        !elseif (elemTypeArr(nel)==12) then
+        !    if (nodeElemIdRelation(2,nel) .ne. nodeElemIdRelation(3,nel)) then
+        !            write(*,*) 'Wrongly created wedge above fault; nel is', nel
+        !            stop
+        !    endif
+        endif
+    enddo 
 end subroutine assembleGlobalMass
 
 subroutine MPI4NodalQuant(quantArray, numDof)

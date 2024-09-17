@@ -22,6 +22,7 @@ def create_model_input_file():
         f.write(str(par.tpv)      + "\n")
         f.write(str(par.output_plastic) + "\n")
         f.write(str(par.outputGroundMotion) + "\n")
+        f.write(str(par.outputFinalSurfDisp) + "\n")
         f.write(" "           + "\n")
         f.write(str(par.nx) + " " + str(par.ny) + " " + str(par.nz) + "\n")
         f.write(" "     + "\n")
@@ -44,7 +45,7 @@ def create_model_input_file():
         f.write(str(par.ymin) + "  " + str(par.ymax) + "\n")
         f.write(str(par.zmin) + "  " + str(par.zmax) + "\n")
         f.write(" " + "\n")
-        f.write(str(par.nuni_y_plus) + " " + str(par.nuni_y_minus) + "\n")
+        f.write(str(par.nuni_y_minus) + " " + str(par.nuni_y_plus) + "\n")
         f.write(str(par.enlarging_ratio) + "\n")
         f.write(str(par.dx) + " " + str(par.dy) + " " + str(par.dz) + "\n")
         

@@ -16,7 +16,7 @@ subroutine meshgen
                        nxuni,nyuni,nzuni,ift, &
                        n1,n2,n3,n4,m1,m2,m3,m4,&
                        mex,mey,mez,itmp1,&
-                       numOfDofPerNodeTmp, msnode, nodeXyzIndex(10)
+                       numOfDofPerNodeTmp, msnode, nodeXyzIndex(10),isOnFt
     integer (kind = 4), dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
     integer (kind = 4), allocatable :: fltrc(:,:,:,:)
     ! Temporary real variables
@@ -86,15 +86,21 @@ subroutine meshgen
                     call createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
                     call setElementMaterial(elemCount, elementCenterCoor)
                     
-                    if (C_degen == 1) then 
+                    if (C_degen > 3.0d0) then 
                         call wedge(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, stressDofCount, iy, iz, nftnd0(1))
-                    elseif (C_degen == 2) then 
-                        call tetra(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, stressDofCount, iy, iz, nftnd0(1))
+                        isOnFt=0
+                        call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(1,elemCount)), 1, isOnFt)
+                        if (isOnFt==1 .and. elemTypeArr(elemCount)==1) elemTypeArr(elemCount) = 13
+
+                        isOnFt=0
+                        call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(2,elemCount)), 1, isOnFt)
+                        if (isOnFt==1 .and. elemTypeArr(elemCount)==1) elemTypeArr(elemCount) = 13
+
                     endif         
                     
                     call replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0) 
                     if (C_elastic == 0) call setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, elemCount)          
-                endif!if element
+                 endif!if element
             enddo!iy
         enddo!iz
         plane1 = plane2
@@ -402,8 +408,8 @@ subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCou
     implicit none
     integer (kind = 4) :: nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, nftnd0(ntotft), eqNumIndexArrLocTag
     integer (kind = 4) :: i
-    if (sizeOfStressDofIndexArr>=(3*sizeOfEqNumIndexArr)) then
-        write(*,*) '3*sizeOfEqNumIndexArr',sizeOfEqNumIndexArr,'is not enough for sizeOfStressDofIndexArr',sizeOfStressDofIndexArr
+    if (sizeOfStressDofIndexArr>=(5*sizeOfEqNumIndexArr)) then
+        write(*,*) '5*sizeOfEqNumIndexArr',sizeOfEqNumIndexArr,'is not enough for sizeOfStressDofIndexArr',sizeOfStressDofIndexArr
         stop 2002
     endif
     if(nodeCount/=nx*ny*nz.or.msnode/=totalNumOfNodes.or.elemCount/=totalNumOfElements.or.equationNumCount/=totalNumOfEquations) then
@@ -742,10 +748,10 @@ end subroutine createElement
     ! The default grids only contain slave nodes. 
     ! This subroutine will replace slave nodes with corresponding master nodes.
     
-    ! Currently only work for vertical fault on xz plane. 
-    if(elemTypeArr(elemCount) == 1 .and. &
+    if ((elemTypeArr(elemCount) == 1 .and. &
         (nodeCoor(1)>(fltxyz(1,1,1)-tol) .and. nodeCoor(1)<(fltxyz(2,1,1)+dx+tol) .and. &
-         nodeCoor(3)>(fltxyz(1,3,1)-tol) .and. nodeCoor(2)>0.0d0 .and. abs(nodeCoor(2)-dy)<tol)) then
+         nodeCoor(3)>(fltxyz(1,3,1)-tol) .and. nodeCoor(2)>0.0d0 .and. abs(nodeCoor(2)-dy)<tol)) &
+         .or. elemTypeArr(elemCount)==12 .or. elemTypeArr(elemCount)==13 ) then
         do iFault = 1, ntotft
             do iFaultNodePair = 1, nftnd0(iFault)
                 do k = 1,nen
@@ -763,13 +769,21 @@ subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
     use globalvar
     implicit none
     integer (kind = 4) :: isOnFault, iFault
-    real (kind = dp) :: nodeCoor(10)
+    real (kind = dp) :: nodeCoor(10), distToFault
     isOnFault = 0
+ 
     if(nodeCoor(1)>=(fltxyz(1,1,iFault)-tol).and.nodeCoor(1)<=(fltxyz(2,1,iFault)+tol).and. &
         nodeCoor(2)>=(fltxyz(1,2,iFault)-tol).and.nodeCoor(2)<=(fltxyz(2,2,iFault)+tol).and. &
         nodeCoor(3)>=(fltxyz(1,3,iFault)-tol) .and. nodeCoor(3)<=(fltxyz(2,3,iFault)+tol)) then
-        isOnFault = 1
+        if (C_degen==0.0d0 .and. nodeCoor(2)==0.0d0) then 
+            isOnFault = 1
+        elseif (C_degen>3.) then
+            if (fltxyz(1,2,iFault)>=fltxyz(2,2,iFault)) write(*,*) 'ymax should be > ymin. Wrong geo, exit'
+            distToFault = abs(nodeCoor(3)+nodeCoor(2)*dtan(C_degen/180.d0*pi)) 
+            distToFault = distToFault/(1.d0+dtan(C_degen/180.d0*pi)**2)**0.5
+            if (distToFault < dx/100.d0) isOnFault = 1   
     endif 
+    endif
 end subroutine checkIsOnFault
 
 subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCount, msnode, nftnd0, equationNumCount, eqNumIndexArrLocTag,&

@@ -99,6 +99,7 @@ class parameters:
     # Control outputs
     output_plastic = 0
     outputGroundMotion = 0 # output big vel GM time series for all the surface stations?
+    outputFinalSurfDisp = 0 # output final surface displacement of all the surface stations?
 
     # currently supported cases
     # 104  (SCEC-TPV104)
