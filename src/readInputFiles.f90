@@ -37,6 +37,7 @@ subroutine readglobal
         read(1001,*) TPV
         read(1001,*) output_plastic
         read(1001,*) outputGroundMotion
+        read(1001,*) outputFinalSurfDisp
         read(1001,*) 
         read(1001,*) npx, npy, npz
         read(1001,*)
@@ -137,7 +138,11 @@ subroutine readfaultgeometry
         fltxyz(1,3,i)=fzmin(i)
         fltxyz(2,3,i)=fzmax(i)
         fltxyz(1,4,i)=fstrike*pi/180.0d0
-        fltxyz(2,4,i)=fdip*pi/180.0d0
+        if (C_degen>3.0d0) then 
+            fltxyz(2,4,i) = C_degen*pi/180.0d0
+        else
+            fltxyz(2,4,i) = 90.d0*pi/180.d0
+        endif
     enddo
     
 end subroutine readfaultgeometry

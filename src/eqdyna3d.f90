@@ -13,7 +13,7 @@ program EQdyna
 
     if (me == masterProcsId) then 
         write(*,*) '====================================================================='
-        write(*,*) '==================   Welcome to EQdyna 5.3.2  ======================='
+        write(*,*) '==================   Welcome to EQdyna 5.3.3  ======================='
         write(*,*) '===== Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>           ====' 
         write(*,*) '====    & Dunyu Liu <dliu@ig.utexas.edu> under MIT License.      ===='
         write(*,*) '============== https://github.com/EQDYNA/EQdyna.git   ==============='
@@ -55,23 +55,10 @@ program EQdyna
     call memory_estimate
     call meshgen
     call checkMeshMaterial
-    call checkArrSize
-
+    !call checkArrSize  ! disabled for productive runs
     call netcdf_read_on_fault_eqdyna
     if (mode==2) call netcdf_read_on_fault_eqdyna_restart
-    
-    if (outputGroundMotion == 1) call find_surfaceNodeIdArr
-    
-    if (C_degen == 1) then 
-        do i = 1, totalNumOfNodes
-           if (meshCoor(2,i)>dx/2.0d0) then 
-                meshCoor(1,i) = meshCoor(1,i) - dx/2.0d0
-           endif
-           if (meshCoor(2,i)<-dx/2.0d0) then 
-                meshCoor(1,i) = meshCoor(1,i) + dx/2.0d0
-           endif 
-        enddo 
-    endif
+    if (outputGroundMotion == 1 .or. outputFinalSurfDisp == 1) call find_surfaceNodeIdArr
     
     call allocInitAfterMeshGen
     compTimeInSeconds(1) = MPI_WTIME() - startTimeStamp
@@ -89,6 +76,8 @@ program EQdyna
     call output_offfault_st
     call output_frt
     if (output_plastic == 1) call output_plastic_strain  
+    if (outputFinalSurfDisp == 1) call output_finalSurfDisp
+
     compTimeInSeconds(8) = MPI_WTIME() - startTimeStamp 
     compTimeInSeconds(9) = MPI_WTIME() - simuStartTime 
    
@@ -156,7 +145,7 @@ subroutine allocInit
     patnode = 0.0d0
         
     allocate(stressCompIndexArr(totalNumOfElements))
-    allocate(stressArr(3*sizeOfEqNumIndexArr))
+    allocate(stressArr(5*sizeOfEqNumIndexArr))
     stressCompIndexArr = 0
     stressArr = 0.0d0
 end subroutine allocInit
@@ -240,5 +229,5 @@ subroutine checkArrSize
 
     write(*,*) 'EqNumIndexArr size is ', sizeOfEqNumIndexArr
     write(*,*) 'Size of stress dof index array is ', sizeOfStressDofIndexArr
-    write(*,*) 'Is', 3*sizeOfEqNumIndexArr, 'too large compared to ', sizeOfStressDofIndexArr
+    write(*,*) 'Is', 5*sizeOfEqNumIndexArr, 'too large compared to ', sizeOfStressDofIndexArr
 end subroutine checkArrSize

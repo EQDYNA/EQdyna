@@ -19,7 +19,7 @@ subroutine driver
         call velDispUpdate
         call storeOffFaultStData
         
-        nodalForceArr=0.0d0
+        nodalForceArr = 0.0d0
         
         call assembleGlobalKU
         call hrglss   
@@ -143,6 +143,8 @@ subroutine velDispUpdate
         endif
         if ((velArr(1,i)/=velArr(1,i)).or.velArr(2,i)/=velArr(2,i).or.velArr(3,i)/=velArr(3,i)) then 
             write(*,*) 'Velocity NaN at point ', meshCoor(1,i), meshCoor(2,i), meshCoor(3,i), ' at time step ', nt
+            write(*,*) 'brhs at this node are', nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i))+1)
+            write(*,*) 'alhs at this node are', nodalMassArr(eqNumIndexArr(eqNumStartIndexLoc(i))+1:eqNumIndexArr(eqNumStartIndexLoc(i))+3)
             stop
         endif
     enddo

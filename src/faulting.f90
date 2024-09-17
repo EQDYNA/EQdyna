@@ -16,7 +16,7 @@ subroutine faulting
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
             if (friclaw<=2) call solveSWTW(ift, i, friclaw, nsdTractionVector, nsdInitTractionVector)
             if (friclaw>=3) call solveRSF(ift, i, friclaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
-            call showSourceDynamics(ift,i)
+            call showSourceDynamics(ift,i,nsdSlipVector, nsdSliprateVector, nsdTractionVector)
             call storeOnFaultStationQuantSCEC(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
             call storeRuptureTime(ift, i, nsdSliprateVector)
         enddo 
@@ -340,10 +340,11 @@ subroutine storeRuptureTime(iFault, iFaultNodePair, nsdSliprateVector)
 
 end subroutine storeRuptureTime
 
-subroutine showSourceDynamics(iFault,iFaultNodePair)
+subroutine showSourceDynamics(iFault,iFaultNodePair, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
     use globalvar
     implicit none
     integer (kind = 4) :: iFault, iFaultNodePair
+    real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
     
     if (abs(meshCoor(1,nsmp(1,iFaultNodePair,iFault))-xsource)<tol .and. &
         abs(meshCoor(3,nsmp(1,iFaultNodePair,iFault))-zsource)<tol) then
@@ -424,7 +425,7 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
     
     tr = 1.0d9 
     if(radius <= nucR) then 
-        if (TPV == 201) tr = (radius+0.081d0*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(0.7d0*3464.d0)
+        if (TPV == 201 .or. TPV==36) tr = (radius+0.081d0*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(0.7d0*3464.d0)
         if (TPV == 202) tr = radius/nucRuptVel
     endif
     
