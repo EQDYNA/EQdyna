@@ -3,7 +3,7 @@ import os, time
 from testNameList import nameList, coreNumList
 # This script will perform tests on test cases defined in testNameList.
 
-MPIRUN='mpirun.mpich' # please modify MPIRUN to fit your system accordingly. 
+MPIRUN='mpirun' # please modify MPIRUN to fit your system accordingly. 
 print('testAll: MPIRUN is ', MPIRUN)
 print('testAll: please modify MPIRUN to fit your system accordingly.')
 
