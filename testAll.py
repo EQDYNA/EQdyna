@@ -8,10 +8,7 @@ print('testAll: MPIRUN is ', MPIRUN)
 print('testAll: please modify MPIRUN to fit your system accordingly.')
 
 os.system('rm -rf test')
-os.system('rm -rf bin/eqdyna')
 os.system('mkdir test')
-
-os.system('./install-eqdyna.sh -m ubuntu')
 os.chdir('test')
 
 startTime = time.time()
