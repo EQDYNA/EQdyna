@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
     - uses: actions/checkout@v2
@@ -13,7 +13,10 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: '3.x'
-
+    
+    - name: Update package list 
+      run: sudo apt-get update
+      
     - name: Install dependencies
       run: |
         sudo apt-get install git vim make mpich
