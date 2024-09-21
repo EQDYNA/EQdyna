@@ -10,10 +10,14 @@
 
 # Usage: install-eqdyna.sh [-h] [-m Machine_name] [-c Machine_name]
 
-while getopts "m:c:h" OPTION; do
+while getopts "m:e:c:h" OPTION; do
     case $OPTION in 
         m)
             MACH=$OPTARG
+            ;;
+        e)
+            MACH=$OPTARG
+            ENV="True"
             ;;
         c)
             MACH=$OPTARG
@@ -59,7 +63,14 @@ if [ -n "$MACH" ]; then
     elif [ $MACHINE == "ubuntu" ]; then 
         echo "Installing EQdyna on Ubuntu 22.04 ... ..."
         export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-    
+        if [ -n "$ENV" ]; then
+            # It uses MPICH MPI.
+            apt-get install git vim make mpich
+            apt-get install libnetcdf-dev libnetcdff-dev 
+            apt-get install python3 python3-pip
+            pip install numpy netCDF4 matplotlib xarray
+            pip install --upgrade numpy
+        fi 
     elif [ $MACHINE == "grace" ]; then 
         echo "Installing EQdyna on Grace at TAMU ... ..."
         echo "Loading netcdf module ... ..."
@@ -69,6 +80,16 @@ if [ -n "$MACH" ]; then
         echo "NETCDF INC and LIB PATH"
         echo ${EBROOTNETCDF}/include
         echo ${EBROOTNETCDF}/lib64
+    
+    elif [ $MACHINE == "macos" ]; then 
+        echo "Installing EQdyna on MacOS ... ..."
+        export MACOS_NETCDF_INC=$(brew --prefix netcdf-fortran)/include
+        export MACOS_NETCDF_LIB=$(brew --prefix netcdf)/lib
+        export MACOS_NETCDFF_LIB=$(brew --prefix netcdf-fortran)/lib       
+        if [ -n "$ENV" ]; then
+            brew install mpich python
+            pip3 install --break-system-packages numpy netCDF4 matplotlib xarray
+        fi    
     fi 
     
     if [ -n "$CONFIG" ]; then 
