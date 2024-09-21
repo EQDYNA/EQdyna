@@ -33,6 +33,14 @@ else ifeq ($(SYSTEM), grace)
     INC        = ${EBROOTNETCDF}/include
     NETCDF_INC = -I${INC}
     NETCDF_LIB = -L${LIB} -lnetcdf -L${LIB} -lnetcdff 
+
+else ifeq ($(SYSTEM), macos)
+    FFLAGS     = -O3 -ffast-math -ftree-vectorize 
+    FC         = mpif90
+    LIB        = ${MACOS_NETCDF_LIB}
+    INC        = ${MACOS_NETCDF_INC}
+    NETCDF_INC = -I${MACOS_NETCDF_INC}
+    NETCDF_LIB = -L${MACOS_NETCDF_LIB} -lnetcdf -L${MACOS_NETCDFF_LIB} -lnetcdff 
 endif
 
 OPT  = -c ${FFLAGS} 
