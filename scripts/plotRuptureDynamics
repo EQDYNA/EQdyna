@@ -154,17 +154,44 @@ def finalSurfDisp():
             a = np.loadtxt(fname)
             xyCoor = a[:,:2]
             surfDisp = np.loadtxt(fname2)
-            surfCoorDispPerProc = np.concatenate((xyCoor,surfDisp), axis=1)
+            h_disp = surfDisp[:,0].reshape(-1,1)
+            v_disp = -surfDisp[:,2].reshape(-1,1)
+            n_disp = surfDisp[:,1].reshape(-1,1)
+            surfCoorDispPerProc = np.concatenate((xyCoor,h_disp,v_disp,n_disp), axis=1)
             if ntag == 1: 
                 scec = surfCoorDispPerProc
             else: 
                 scec = np.concatenate((scec, surfCoorDispPerProc), axis=0)
 
-    np.savetxt('SCECFinalSurfDisp.txt', scec, fmt='%e', delimiter='\t',
-                header= "x y dispx dispy dispz", comments = ' ')
+    _, unique_indices = np.unique(scec[:, :2], axis=0, return_index=True)
+    scec = scec[unique_indices]
     
-    #plt.savefig("cFinalSurfDisp.png", dpi = 300)
-    #plt.close()
+    np.savetxt('SCECFinalSurfDisp.txt', scec, fmt='%e', delimiter='\t',
+                header= "x y h_disp v_disp n_disp", comments = ' ')
+    
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+
+    sc0 = axs[0].scatter(scec[:, 0], scec[:, 1], c=scec[:, 2], cmap='coolwarm_r')
+    fig.colorbar(sc0, ax=axs[0], label='h_disp')
+    axs[0].set_title('h_disp (m)')
+    axs[0].set_xlabel('x (m)')
+    axs[0].set_ylabel('y (m)')
+
+    sc1 = axs[1].scatter(scec[:, 0], scec[:, 1], c=scec[:, 3], cmap='coolwarm_r')
+    fig.colorbar(sc1, ax=axs[1], label='v_disp')
+    axs[1].set_title('v_disp (m)')
+    axs[1].set_xlabel('x (m)')
+    axs[1].set_ylabel('y (m)')
+
+    sc2 = axs[2].scatter(scec[:, 0], scec[:, 1], c=scec[:, 4], cmap='coolwarm_r')
+    fig.colorbar(sc2, ax=axs[2], label='n_disp')
+    axs[2].set_title('n_disp (m)')
+    axs[2].set_xlabel('x (m)')
+    axs[2].set_ylabel('y (m)')
+
+    plt.tight_layout()
+    plt.savefig("cFinalSurfDisp.png", dpi=300)
+    plt.close()
 
 def generateNcRestart(faultVarArr):
     # input fault_arr(nfx, nfz,) and make netCDF file fault.r.4eqquasi.nc for EQquasi. 
