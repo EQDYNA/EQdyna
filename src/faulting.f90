@@ -425,7 +425,7 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
     
     tr = 1.0d9 
     if(radius <= nucR) then 
-        if (TPV == 201 .or. TPV==36) tr = (radius+0.081d0*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(0.7d0*3464.d0)
+        if (TPV == 201 .or. TPV==36 .or. TPV==37) tr = (radius+0.081d0*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(0.7d0*3464.d0)
         if (TPV == 202) tr = radius/nucRuptVel
     endif
     
