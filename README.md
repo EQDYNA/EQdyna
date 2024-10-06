@@ -1,7 +1,7 @@
 # News in 2024
 * 20241006 v5.3.3 release notes:
   * New - verification against new SCEC/USGS Spontaneous Rupture Code Verification benchmarks [TPV36&37](https://strike.scec.org/cvws/tpv36_37docs.html) for 15 deg shallow dipping thrusting. 
-  * New - exclusive model setup python script user_defined_params.py for TPV36&37 are under /case_input/test.tpv36 and case_input/test.tpv37, respectively. 
+  * New - exclusive model setup python script user_defined_params.py for TPV36&37 are under /case_input/test.tpv36 and /case_input/test.tpv37, respectively. 
   * Performance: 512 cores are used for 50 m resolution TPV36 on Lonestar6 at TACC using 4 hours and 40 minutes. 
   * New - previous feature of degeneration of hexahedrons (Hughes, 2000) for complex fault geometry is incorporated in the new EQdyna architecture with TPV36&37.
   * New - autotesting workflow is added on GitHub for developers. 
@@ -24,7 +24,7 @@ Other features include
 * Drucker-prager off-fault viscoplasticity.
 * Dynamic relaxation for earthquake cycle applications, etc.
 
-*```EQdyna```* has been extensively verified against benchmark problems from SCEC/USGS Spontaneous Dynamic Rupture Code Verification Excercise.
+*```EQdyna```* has been extensively verified against benchmark problems from [SCEC/USGS Spontaneous Rupture Code Verification Project](https://strike.scec.org/cvws/).
 
 *```EQdyna```* is also part of the fully dynamic earthquake cycle simulator *```EQsimu```* [(*Liu et al., 2020, GJI*)](https://www.researchgate.net/publication/346814142_EQsimu_a_3-D_finite_element_dynamic_earthquake_simulator_for_multicycle_dynamics_of_geometrically_complex_faults_governed_by_rate-_and_state-dependent_friction).
 
@@ -50,7 +50,7 @@ will install the required packages through apt-get and pip on Ubuntu 22. <br/>
 git clone https://github.com/EQDYNA/EQdyna.git
 cd EQdyna
 chmod -R 755 install-eqdyna.sh scripts
-./install-eqdyna.sh -m ubuntu # ubuntu/ls6
+./install-eqdyna.sh -m ubuntu # ubuntu/ls6/macos
 export EQDYNAROOT=$(pwd)
 PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 python3 testAll.py # quick testing of multiple examples with 4 cores; take ~180 s.
@@ -74,6 +74,8 @@ Replace $predefinedCompset with one of the following supported compsets <br/>
 * test.drv.a6, for determinisitc ground motion with fractal fault and plasticity
 * test.tpv8
 * test.tpv10
+* test.tpv36
+* test.tpv37
 * test.tpv104
 * test.tpv1053d <br/>
 [TPV+number is the naming convention of [SCEC/USGS Spontaneous Rupture Code Verification Excercise](https://strike.scec.org/cvws/).] <br/>
@@ -81,13 +83,14 @@ Replace $predefinedCompset with one of the following supported compsets <br/>
 For a customized case, please choose the most relevant predefined compset and modify ```user_defined_param.py``` accordingly. <br/>
 
 # Benchmark computational performance and resource
-TPV104:   15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run 24.20 minutes on Lonestar6.  <br/>
+TPV36 (TPV37): 4 hours and 40 minutes for 50 m resolution using 512 CPUs on Lonestar6 at TACC. 
+TPV104: 15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run 24.20 minutes on Lonestar6.  <br/>
 
 # Note
 *```EQdyna```* is still under heavy development and comes without any guaranteed functionality. But we hope *```EQdyna```* would be easy to use and we bear this goal in mind when developing it. 
 
 # Developers and collaboration?
-We welcome developers and users. If you are interested in developing and collaborations using *```EQdyna```*, please contact Drs. Benchun Duan (bduan@tamu.edu) or Dunyu Liu (dliu@ig.utexas.edu).
+We welcome developers and users. If you are interested in developing and collaborations using *```EQdyna```*, please contact Drs. Benchun Duan (bduan@tamu.edu) and Dunyu Liu (dliu@ig.utexas.edu).
 
 # Reference
 1. Duan, B. and D.D. Oglesby (2006). Heterogeneous fault stresses from previous earthquakes and the effect on dynamics of parallel strike-slip faults, J. Geophys. Res., 111, B05309, doi:10.1029/2005JB004138.
