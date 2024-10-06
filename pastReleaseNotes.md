@@ -1,4 +1,21 @@
-# Past release notes
+# Past release notes\
+
+# News in 2024
+* 20240221 v5.3.2 release notes
+  * New - new link for EQdyna. https://github.com/EQDYNA/EQdyna.git
+  * New - new organization EQDYNA is created. 
+  * Bug - dz for dipping fault. Verified against TPV10.  
+  * Bug - avoid int() in Python and FORTRAN, use round() or nint() instead.
+  * Add - MATLAB scripts for GM postprocessing. 
+  * Add - str1ToFaultAngle and devStrToStrVertRatio for assigning stresses for plastic models.
+  * Add - case test.drv.a6.v2 
+  * Refactor - move adjustable parameters out of EQdyna. 
+  * Refactor - rename file and function names to reflect their intents, for easy search. 
+  * Refactor - driver for seismic wave propagation + faulting only. 
+  * Refactor - MPI communications for nodal quantities, driver.f90, depreciate PMLwhg.f90 and contm.f90, refactor qdct3.f90, rename qdct3 to ku, offFaultStationSCEC. 
+  * Change - Positive dip angles for faults tilting to y+.
+  * Change - Use empirical estimate for memory usage. 
+  * Update - ubuntu.env.sh
 
 # News in 2023
 * 20231209 v5.3.1 release notes

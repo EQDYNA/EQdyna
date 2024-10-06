@@ -1,19 +1,14 @@
 # News in 2024
-* 20240221 v5.3.2 release notes
-  * New - new link for EQdyna. https://github.com/EQDYNA/EQdyna.git
-  * New - new organization EQDYNA is created. 
-  * Bug - dz for dipping fault. Verified against TPV10.  
-  * Bug - avoid int() in Python and FORTRAN, use round() or nint() instead.
-  * Add - MATLAB scripts for GM postprocessing. 
-  * Add - str1ToFaultAngle and devStrToStrVertRatio for assigning stresses for plastic models.
-  * Add - case test.drv.a6.v2 
-  * Refactor - move adjustable parameters out of EQdyna. 
-  * Refactor - rename file and function names to reflect their intents, for easy search. 
-  * Refactor - driver for seismic wave propagation + faulting only. 
-  * Refactor - MPI communications for nodal quantities, driver.f90, depreciate PMLwhg.f90 and contm.f90, refactor qdct3.f90, rename qdct3 to ku, offFaultStationSCEC. 
-  * Change - Positive dip angles for faults tilting to y+.
-  * Change - Use empirical estimate for memory usage. 
-  * Update - ubuntu.env.sh
+* 20241006 v5.3.3 release notes:
+  * New - verification against new SCEC/USGS Spontaneous Rupture Code Verification benchmarks [TPV36&37](https://strike.scec.org/cvws/tpv36_37docs.html) for 15 deg shallow dipping thrusting. 
+  * New - exclusive model setup python script user_defined_params.py for TPV36&37 are under /case_input/test.tpv36 and case_input/test.tpv37, respectively. 
+  * Performance: 512 cores are used for 50 m resolution TPV36 on Lonestar6 at TACC using 4 hours and 40 minutes. 
+  * New - previous feature of degeneration of hexahedrons (Hughes, 2000) for complex fault geometry is incorporated in the new EQdyna architecture with TPV36&37.
+  * New - autotesting workflow is added on GitHub for developers. 
+  * New - supporting MacOS (M3 chip tested).
+  * Refctor - rename file and subroutine names for clarification.
+  * Reference: Hughes, 2000, The Finite Element Method: Linear Static and Dynamic Finite Element Analysis, Dover Publications.  
+  * For past release notes, please refer to pastReleaseNotes.md.
 
 # Introduction to *```EQdyna```*
 
