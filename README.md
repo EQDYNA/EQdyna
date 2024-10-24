@@ -83,17 +83,14 @@ Replace $predefinedCompset with one of the following supported compsets <br/>
 For a customized case, please choose the most relevant predefined compset and modify ```user_defined_param.py``` accordingly. <br/>
 
 # Benchmark computational performance and resource
-TPV36 (TPV37): 4 hours and 40 minutes for 50 m resolution using 512 CPUs on Lonestar6 at TACC. 
-TPV104: 15 seconds simulation time with 0.008 dt and a total of 1875 time steps. It took 40 CPUs to run 24.20 minutes on Lonestar6.  <br/>
+* TPV36 & 37: 4.7 hours for 50 m resolution using 512 CPUs on Lonestar6 at TACC. <br/>
+* TPV104: 0.4 hours for 15-sec simulation (1875 time steps) using 40 CPUs on Lonestar6.  <br/>
 
-# Note
-*```EQdyna```* is still under heavy development and comes without any guaranteed functionality. But we hope *```EQdyna```* would be easy to use and we bear this goal in mind when developing it. 
-
-# Developers and collaboration?
-We welcome developers and users. If you are interested in developing and collaborations using *```EQdyna```*, please contact Drs. Benchun Duan (bduan@tamu.edu) and Dunyu Liu (dliu@ig.utexas.edu).
+# Collaboration
+We try our best to make *```EQdyna```* easy to use but doing great science is our priority. We welcome collaborations, comments and suggestions. Please reach out to Drs Benchun Duan (bduan@tamu.edu) and Dunyu Liu (dliu@ig.utexas.edu).
 
 # Reference
-1. Duan, B. and D.D. Oglesby (2006). Heterogeneous fault stresses from previous earthquakes and the effect on dynamics of parallel strike-slip faults, J. Geophys. Res., 111, B05309, doi:10.1029/2005JB004138.
-2. Duan, B. (2012). Dynamic rupture of the 2011 Mw 9.0 Tohoku-Oki earthquake: Roles of a possible subducting seamount, J. Geophys. Res., 117, B05311, doi:10.1029/2011JB009124.
-3. Luo, B. and B. Duan (2018). Dynamics of non-planar thrust faults governed by various friction laws, J. Geophys. Res. Solid Earth, 123, https://doi.org/10.1029/2017JB015320.
-4. Liu, D. and B. Duan (2018). Scenario Earthquake and Ground‐Motion Simulations in North China: Effects of Heterogeneous Fault Stress and 3D Basin Structure, Bull. Seismol. Soc. Am., 108(4), 2148-2169, doi:10.1785/0120170374.
+1. [Duan and Oglesby (2006)]( https://doi.org/10.1029/2005JB004138). Heterogeneous fault stresses from previous earthquakes and the effect on dynamics of parallel strike-slip faults, J. Geophys. Res., 111.
+2. [Duan (2012)](https://doi.org/10.1029/2011JB009124). Dynamic rupture of the 2011 Mw 9.0 Tohoku-Oki earthquake: Roles of a possible subducting seamount, J. Geophys. Res., 117.
+3. [Luo and Duan (2018)](https://doi.org/10.1029/2017JB015320). Dynamics of non-planar thrust faults governed by various friction laws, J. Geophys. Res. Solid Earth, 123.
+4. [Liu and Duan (2018)](https://doi.org/10.1785/0120170374). Scenario Earthquake and Ground‐Motion Simulations in North China: Effects of Heterogeneous Fault Stress and 3D Basin Structure, Bull. Seismol. Soc. Am., 108(4).
