@@ -10,6 +10,8 @@
 ! 6. find_surfNodeIdArr
 ! 7. output_gm
 ! 8. output_finalSurfDisp
+! 9. output_src_evol
+
 !#1
 subroutine output_onfault_st
 
@@ -276,7 +278,7 @@ subroutine output_gm
     endif    
 end subroutine output_gm
 
-!#7
+!#8
 subroutine output_finalSurfDisp
     use globalvar
     implicit none
@@ -290,3 +292,21 @@ subroutine output_finalSurfDisp
             enddo
     endif    
 end subroutine output_finalSurfDisp
+
+!#9
+subroutine output_src_evol
+    ! The subroutine output_src_evol generates binary src_evol files for each MPI process.
+    ! srv_evol contains on-fault slip-rate system states for AI and visualization. 
+    use globalvar
+    implicit none
+    
+    integer (kind = 4) :: i, j, nodeId     
+    
+    if(nftnd(1) > 0) then
+        open(unit=30009+me,file='src_evol'//mm,position='append', access='stream')
+            do i=1,nftnd(1)
+                write(30009+me) fric(47,i,1) ! 47: final slip rate
+            enddo    
+        close(30009+me)
+    endif
+end subroutine output_src_evol

@@ -27,7 +27,10 @@ subroutine driver
         if (friclaw == 5) call thermop
         call faulting
         nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/nodalMassArr(1:totalNumOfEquations)
-        if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) call output_gm
+        if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) then 
+            call output_gm
+            call output_src_evol
+        endif 
     enddo 
 
 end subroutine driver
