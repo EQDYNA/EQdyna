@@ -2,7 +2,7 @@ import os
 
 np = 10000
 fnameList = [['gm',''], ['rsa','.mat'], ['frt.txt',''], 
-        ['surface_coor.txt',''], ['pstr.txt','']]
+        ['surface_coor.txt',''], ['pstr.txt',''], ['src_evol',''],['src','']]
 
 for f in fnameList:
     for i in range(np):
@@ -13,3 +13,4 @@ for f in fnameList:
 
 os.system("rm -rf body*st*dp*.txt")
 os.system("rm -rf faultst*dp*.txt")
+os.system("rm -rf src*")
