@@ -1,0 +1,45 @@
+{
+  "output_dir": "results/stress_maps",
+  "maps": [
+    {
+      "name": "smooth_surface",
+      "nx": 91,
+      "nz": 51,
+      "dx": 200.0,
+      "min_stress": 35000000.0,
+      "max_stress": 55000000.0,
+      "roughness": 0.1,
+      "seed": 1001
+    },
+    {
+      "name": "moderate_roughness",
+      "nx": 91,
+      "nz": 51,
+      "dx": 200.0,
+      "min_stress": 35000000.0,
+      "max_stress": 55000000.0,
+      "roughness": 0.5,
+      "seed": 1002
+    },
+    {
+      "name": "very_rough_surface",
+      "nx": 91,
+      "nz": 51,
+      "dx": 200.0,
+      "min_stress": 35000000.0,
+      "max_stress": 55000000.0,
+      "roughness": 0.9,
+      "seed": 1003
+    },
+    {
+      "name": "fine_grid_rough",
+      "nx": 181,
+      "nz": 101,
+      "dx": 100.0,
+      "min_stress": 30000000.0,
+      "max_stress": 60000000.0,
+      "roughness": 0.7,
+      "seed": 2001
+    }
+  ]
+}

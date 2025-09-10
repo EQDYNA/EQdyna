@@ -1,0 +1,6 @@
+# Hypocenter locations (x_km z_km name)
+# Coordinates relative to fault center
+0.0  -5.0   center_shallow
+5.0  -7.5   offset_medium
+-3.0 -8.0   left_deep
+0.0  -2.0   very_shallow
