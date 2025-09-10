@@ -1,0 +1,10 @@
+# Hypocenter locations (x, z) in kilometers
+# Format: x_km z_km [optional_name]
+# You can modify these locations as needed for your simulations
+
+# Central and distributed hypocenter locations
+0.0 -2.5 center_shallow
+-6 -5.0 left_middle
+7 -5.0 right_middle
+0.0 -7.5 center_deep
+-7 -2.75 corner_shallow_left
