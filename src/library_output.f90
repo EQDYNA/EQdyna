@@ -258,6 +258,7 @@ subroutine find_surfaceNodeIdArr
                 surfaceNodeIdArr(surface_nnode) = i
                 open(unit=10008+me,file='surface_coor.txt'//mm,status='unknown',position='append')        
                     write(10008+me,'(1x,3e18.7e4)') meshCoor(1,i), meshCoor(2,i), meshCoor(3,i)    
+                close(10008+me)
             endif
         enddo
     endif
