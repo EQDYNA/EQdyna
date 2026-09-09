@@ -12,7 +12,7 @@ SYSTEM = ${MACHINE}
 
 ifeq ($(SYSTEM), ubuntu)
     FFLAGS     = -fopenmp -ffree-line-length-none -O3
-    FC         = mpif90.mpich
+    FC         = mpif90
     LIB        = /usr/lib/x86_64-linux-gnu
     INC        = /usr/include
     NETCDF_LIB = -L${LIB} -lnetcdf -lnetcdff
