@@ -8,7 +8,8 @@ def case_copy(src, dst):
     filenames = os.listdir(src)
     for f in filenames:
         srcf = src + '/' + f
-        shutil.copy(srcf, dst)
+        if os.path.isfile(srcf):  # skip subdirectories (e.g., tool collections under scripts/)
+            shutil.copy(srcf, dst)
 
 def _main_func(description):
 
