@@ -1,0 +1,35 @@
+{
+  "output_dir": "results/stress_maps",
+  "maps": [
+    {
+      "name": "map_01_low_rough",
+      "nx": 91,
+      "nz": 51,
+      "dx": 200.0,
+      "min_stress": 35e6,
+      "max_stress": 55e6,
+      "roughness": 0.1,
+      "seed": 1001
+    },
+    {
+      "name": "map_02_med_rough",
+      "nx": 91,
+      "nz": 51,
+      "dx": 200.0,
+      "min_stress": 35e6,
+      "max_stress": 55e6,
+      "roughness": 0.5,
+      "seed": 1002
+    },
+    {
+      "name": "map_03_high_rough",
+      "nx": 91,
+      "nz": 51,
+      "dx": 200.0,
+      "min_stress": 35e6,
+      "max_stress": 55e6,
+      "roughness": 0.9,
+      "seed": 1003
+    }
+  ]
+}
