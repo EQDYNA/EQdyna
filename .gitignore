@@ -5,3 +5,5 @@ bin/
 __pycache__/
 *.mod
 *.pyc
+src/eqdyna
+test/
