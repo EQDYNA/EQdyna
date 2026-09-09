@@ -462,7 +462,13 @@ subroutine NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, state0, thet
     integer (kind = 4) :: iFault, iFaultNodePair, ivmax=20, iv
     real (kind = dp) :: v_trial, newSliprate, state0, stateTmp, thetaPc0, thetaPcTmp, thetaPcDot, xmu, dxmudv, nsdTractionVector(4), trialTractVec(4), T_coeff, rsfeq, drsfeqdv, taoc_new
     ! Netwon solver for slip rate, v_trial, for the next time step.
-    
+
+    ! Initialize thetaPcTmp here: the friclaw==5 branch below never assigns it
+    ! (normal stress evolution not supported for friclaw==5), yet the copy-back
+    ! thetaPc0 = thetaPcTmp at the end runs unconditionally. Without this line,
+    ! fric(23) receives an uninitialized stack value for friclaw==5.
+    thetaPcTmp = thetaPc0
+
     do iv = 1,ivmax
         ! in each iteration, reupdate the new state variable [fric(20)] given the new 
         !   slip rate, v_trial.
