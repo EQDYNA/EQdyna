@@ -1,2 +1,7 @@
 
 .DS_Store
+scratch/
+bin/
+__pycache__/
+*.mod
+*.pyc
