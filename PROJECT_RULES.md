@@ -236,7 +236,7 @@ committing, run `git diff --summary` and confirm it prints no
 
 ## 14. A living status board, re-checked on a schedule
 
-`docs/PROJECT_STATUS.md` is the one file recording every open issue and
+`pathway_forward.md` is the one file recording every open issue and
 standing claim for this repo, each with a re-check interval, the date it was
 last checked, and the exact command whose output was read. It is present
 tense — history belongs in `pastReleaseNotes.md`, not here.
@@ -246,5 +246,5 @@ append-only and accretive by design; neither one states whether a past claim
 still holds today.
 
 **How to apply**: before citing a "this already works" or "already fixed"
-claim from `README.md` or `pastReleaseNotes.md`, check `docs/PROJECT_STATUS.md`
+claim from `README.md` or `pastReleaseNotes.md`, check `pathway_forward.md`
 first, and re-run the cited command rather than trusting the recorded line.

@@ -1,6 +1,6 @@
-# EQdyna Status Board
+# Pathway Forward
 
-Present-tense record of open issues and standing claims for this repo. See
+Record of tasks done and open issues for this repo. See
 `PROJECT_RULES.md` for the rules each item enforces. History (what shipped,
 when) lives in `pastReleaseNotes.md` and `README.md` — this file does not
 duplicate it and is not append-only; items are updated or closed in place.
@@ -19,3 +19,12 @@ actually runs the command.
 | 7 | TO-DO: `netcdf_read_on_fault_eqdyna` hardcodes fault index `1` instead of loop var `ift` in all `fric(...)` assignments, so on-fault netcdf input is never applied to faults 2+ (fault-N data overwrites fault 1); `ii,jj` grid indices are also unchecked against bounds for faults 2+ (built from fault-1 extent). The restart routine below it (`netcdf_io.f90:159-179`) shows the correct `ift` pattern. Bites only `ntotft >= 2` — no current test case exercises it; fix needs a multi-fault regression case per rule 10. Does NOT explain the tpv1053d reference mismatch (that case runs `ntotft=1`; its golden reference is stale, carrying an uninitialized denormal). | 2, 10 | `src/netcdf_io.f90:76-105` | until fixed | 2026-09-09 | `grep -n "i, 1) = on_fault_vars" src/netcdf_io.f90` |
 
 **Deferred**: none.
+
+## Tasks done
+
+| Date | Task | Ref |
+|---|---|---|
+| 2026-09-09 | GM/src-evol output every step; mpif90 on ubuntu | b1bc5e9 |
+| 2026-09-09 | Project rule book seeded (14 rules); build artifacts + `scratch/` gitignored | 8c40871, 8414b5d |
+| 2026-09-09 | Exec bits restored on `create.newcase`, `generateFaultInterface` (test suite was unrunnable from clean checkout — PATH-shadowed by EQquasi) | 27f8a76 |
+| 2026-09-09 | v5.3.4 release audit run: build green, 4/5 reference cases pass; blocked on stale `test.tpv1053d` golden reference (uninitialized denormal captured pre-v5.3.3; HEAD == v5.3.3 byte-identical) | release not cut |
