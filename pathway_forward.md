@@ -28,3 +28,6 @@ actually runs the command.
 | 2026-09-09 | Project rule book seeded (14 rules); build artifacts + `scratch/` gitignored | 8c40871, 8414b5d |
 | 2026-09-09 | Exec bits restored on `create.newcase`, `generateFaultInterface` (test suite was unrunnable from clean checkout — PATH-shadowed by EQquasi) | 27f8a76 |
 | 2026-09-09 | v5.3.4 release audit run: build green, 4/5 reference cases pass; blocked on stale `test.tpv1053d` golden reference (uninitialized denormal captured pre-v5.3.3; HEAD == v5.3.3 byte-identical) | release not cut |
+| 2026-09-09 | Root-caused tpv1053d frt.txt col 22 mismatch: old reference never wrote fric(23) (uninitialized denormal at all 2025 nodes) | 85d4d53 |
+| 2026-09-09 | Fixed uninitialized `thetaPcTmp` in `NewtonRaphson` for friclaw==5 (src/faulting.f90); tpv1053d reference regenerated from the fixed binary, doubles as the rule-10 regression test | d9a50fa |
+| 2026-09-09 | v5.3.4 cut: clean rebuild, full gate 5/5 SUCCESS (drv.a6, tpv8, tpv10, tpv104, tpv1053d) | v5.3.4 |
