@@ -2,7 +2,7 @@
 
 Index — read this list first; jump to a rule only when it's load-bearing.
 
-1. Minimal changes; no new files until necessary.
+1. Minimal changes; no unnecessary new files.
 2. No silent fallbacks, swallowed errors, or placeholder data.
 3. Gate every stage; pass before moving on.
 4. Only fresh runs are evidence.
@@ -19,10 +19,11 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 ---
 
-## 1. Minimal changes; no new files until necessary
+## 1. Minimal changes; no unnecessary new files
 
-Make the smallest edit that solves the problem. Fold new content into the file
-it belongs to. Never refactor or rename unrelated code in the same change,
+Make the smallest edit that solves the problem. New files are fine when they
+carry their own weight; fold content into an existing file when one already
+owns that job. Never refactor or rename unrelated code in the same change,
 and never leave the old version sitting alongside the new one.
 
 **Rationale**: `misc/` already holds superseded originals (`case.setup.old`,
