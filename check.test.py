@@ -32,7 +32,18 @@ def compare_nc_files(fn1, fn2, threshold=THRESHOLD):
     f1 = xr.open_dataset(fn1)
     f2 = xr.open_dataset(fn2)
     try:
-        metadata_equal = f1.identical(f2)
+        # "Metadata" means variable set + attrs, not exact data values --
+        # comparing values is the per-variable allclose loop below, gated
+        # by the one calibrated threshold (rule 5). f1.identical(f2) also
+        # requires bit-exact data, which a parallel MPI dynamic-rupture
+        # rerun cannot promise (floating-point reduction order varies run
+        # to run); using it here previously turned ordinary within-
+        # threshold non-determinism into a false "FAIL metadata".
+        metadata_equal = (
+            set(f1.variables) == set(f2.variables)
+            and f1.attrs == f2.attrs
+            and all(f1[v].attrs == f2[v].attrs for v in f1.variables)
+        )
         for var in f1.variables:
             var1 = f1[var]
             var2 = f2[var]

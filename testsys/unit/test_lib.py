@@ -7,6 +7,8 @@ of the function's own output.
 """
 import math
 
+import pytest
+
 import lib
 
 
@@ -34,6 +36,19 @@ def test_B1_taper_is_strictly_between_bounds_inside_transition():
 
 
 # ---- B2: one-sided (y>=0) boxcar with a taper to 0 at the free surface ----
+
+def test_B2_negative_y_exits_cleanly_not_with_nameerror():
+    # Regression: lib.py used to do `from sys import *`, which does not bind
+    # the name `sys` itself -- the guard clause's `sys.exit()` therefore
+    # raised NameError instead of exiting, on this exact code path.
+    with pytest.raises(SystemExit):
+        lib.B2(-1.0, 15.0, 3.0)
+
+
+def test_B3_negative_y_exits_cleanly_not_with_nameerror():
+    with pytest.raises(SystemExit):
+        lib.B3(-1.0, 15.0, 3.0)
+
 
 def test_B2_tapers_to_zero_at_the_free_surface():
     # y=0 sits inside the near-surface taper branch (y<w): documented to

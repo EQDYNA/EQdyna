@@ -106,7 +106,15 @@ if [ -n "$MACH" ]; then
     export PATH=$(pwd)/bin:$PATH
     export PATH=$(pwd)/scripts:$PATH
     
-    chmod -R 755 scripts
+    # PROJECT_RULES.md rule 13: chmod only the specific entry-point scripts
+    # that are invoked directly (as `./name` or bare `name` on PATH), never
+    # the whole directory -- `chmod -R 755 scripts` previously flipped the
+    # mode bit on every tracked file under scripts/ (29+ files in one
+    # incident, including data files like *.m, *.txt, *.mat that were never
+    # meant to be executable), on every single build.
+    chmod 755 scripts/case.setup scripts/clean.py scripts/create.newcase \
+        scripts/generateFaultInterface scripts/plotRuptureDynamics \
+        scripts/plotSlipAndRPT
 fi
 
 export EQDYNAROOT=$(pwd)
