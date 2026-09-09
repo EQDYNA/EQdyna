@@ -7,6 +7,9 @@ MPIRUN='mpirun' # please modify MPIRUN to fit your system accordingly.
 print('testAll: MPIRUN is ', MPIRUN)
 print('testAll: please modify MPIRUN to fit your system accordingly.')
 
+if os.system('python3 testCreateNewcase.py') != 0:
+    raise SystemExit('testCreateNewcase FAILED; aborting before expensive runs')
+
 os.system('rm -rf test')
 os.system('mkdir test')
 os.chdir('test')
