@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""
+1. Plot on fault rupture dynamics.
+2. Generate SCECRuptureTime.txt for benchmarking.
+"""
+import numpy as np
+from math    import *
+from user_defined_params import par
+from os.path import exists
+import matplotlib.pyplot as plt
+from matplotlib import animation, rc
+import netCDF4 as nc
+#
+SMALL_SIZE = 10
+font = {'family': 'serif',
+        'weight': 'bold',
+        'size': 10}
+plt.rc('font', **font)
+plt.rcParams['axes.labelweight'] = font['weight']     # Ensures bold axis labels
+plt.rcParams['axes.labelsize'] = font['size']          # Ensures correct font size for xlabel/ylabel
+
+def ruptureDynamics():
+    nprocs = par.nx*par.ny*par.nz
+    na     = round((par.fxmax-par.fxmin)/par.dx+1)
+    ma     = round((par.fzmax-par.fzmin)/par.dz+1)
+    rupt   = np.zeros((na*ma,3))
+    rupt2d = np.zeros((ma,na,100))
+    fVarArr= np.zeros((ma,na,100))
+ 
+    [xx,zz] = np.meshgrid(par.fx,par.fz/sin(par.dip/180.*pi))
+    xx = xx/1.e3
+    zz = zz/1.e3#/sin(par.dip/180.*pi) # along dip distance
+    moment = 0.
+    
+    for me in range(nprocs):
+      fname = 'frt.txt' + str(me)
+      if exists(fname):
+        print('Post-processing ' + fname + ' ... ...')
+        a = np.loadtxt(fname)
+        n, m = a.shape
+        for i in range(n):
+            #!! use round() instead of int()!!
+            ii = round((a[i,0] - par.fxmin)/par.dx)
+            jj = round((a[i,2] - par.fzmin)/par.dz)
+            
+            # frt.txt* file structure:
+            # Starting from 1, 1-3: coorx,y,z
+            # 4, rupture time
+            # 5-9,  final slips,d,n, 
+            #       final sliprates,d.
+            # 10,   peak slip rate.
+            # 11,   final sliprate magnitude
+            # 12-14, final tnrm, tstk, tdip
+            # 15-20, vxm,vym,vzm,
+            #        vxs,vys,vzs.
+            # 21,   state variable
+            # 22,   state var for normal stress variation (Shi and Day)
+            
+            rupt[jj*na+ii,0] = a[i,0]  # xcoor
+            rupt[jj*na+ii,1] = -a[i,2]/sin(par.dip/180.*pi) # zcoor to along dip distance, reverse sign to positive numbers.
+            rupt[jj*na+ii,2] = a[i,3]  # rupture time
+
+            rupt2d[jj,ii,0]  = a[i,3]  # rupture time
+            rupt2d[jj,ii,1]  = (a[i,4]**2 + a[i,5]**2)**0.5  # slip magnitude
+            rupt2d[jj,ii,2]  = a[i,9]                        # peak slip rate
+            rupt2d[jj,ii,3]  = a[i,10]                       # final slip rate
+            shearMod = 3464**2*2800
+            moment = moment + rupt2d[jj,ii,1]*par.dx*par.dx*shearMod
+            rupt2d[jj,ii,4]  = a[i,12]/1.e6 # final shear stress
+            rupt2d[jj,ii,5]  = a[i,11]/1.e6 # final normal stress
+            rupt2d[jj,ii,6]  = a[i,13]/1.e6 # final dip shear
+            rupt2d[jj,ii,7]  = a[i,4] # final slip s
+            rupt2d[jj,ii,8]  = a[i,5] # final slip d
+
+            # 
+            # fVarArr will be passed to the function generateNcRestart(faultVarArr):
+            fVarArr[jj,ii,0]  = a[i,12] # shear_strike, Pa
+            fVarArr[jj,ii,1]  = a[i,13] # shear_dip, Pa
+            fVarArr[jj,ii,2]  = a[i,11] # effective_normal, Pa 
+            fVarArr[jj,ii,3]  = a[i,10] # slip_rate, m/s
+            fVarArr[jj,ii,4]  = a[i,20] # state_variable
+            fVarArr[jj,ii,5]  = a[i,21] # state_normal
+            fVarArr[jj,ii,6]  = a[i,14] # vxm, m/s
+            fVarArr[jj,ii,7]  = a[i,15] # vym
+            fVarArr[jj,ii,8]  = a[i,16] # vzm
+            fVarArr[jj,ii,9]  = a[i,17] # vxs
+            fVarArr[jj,ii,10] = a[i,18] # vys
+            fVarArr[jj,ii,11] = a[i,19] # vzs
+
+    magnitude = 2/3*log10(moment*1.e7)-10.7
+    
+    levels = np.linspace(0,30,60) 
+    fig = plt.figure(figsize=(6,3), dpi= 300, facecolor='w', edgecolor='k')
+    ax1 = plt.subplot(111)
+    plt.rc('font', size=SMALL_SIZE)
+    plt.contourf(xx,zz,rupt2d[:,:,1])
+    cbar=plt.colorbar()
+    cs=plt.contour(xx,zz,rupt2d[:,:,0], levels)
+    ax1.clabel(cs, inline=True, fontsize=SMALL_SIZE - 2, fmt="%.2f", colors='w') 
+    cbar.set_label('m')
+
+    ax1.set_xlabel('Strike (km)')
+    ax1.set_ylabel('Dip (km)')
+    ax1.set_aspect('equal')
+    plt.tight_layout()
+    plt.savefig("cRuptureDynamics.png", dpi = 300)
+    plt.close()
+
+    return fVarArr
+
+def _main_func(description):
+    fVarArr = ruptureDynamics()
+    print('Generating rupture dynamics figure ...')
+
+if __name__ == "__main__":
+    _main_func(__doc__)
