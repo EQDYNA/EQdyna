@@ -1,13 +1,16 @@
-# News in 2024
-* 20241006 v5.3.3 release notes:
-  * New - verification against new SCEC/USGS Spontaneous Rupture Code Verification benchmarks [TPV36&37](https://strike.scec.org/cvws/tpv36_37docs.html) for 15 deg shallow dipping thrusting. 
-  * New - exclusive model setup python script user_defined_params.py for TPV36&37 are under /case_input/test.tpv36 and /case_input/test.tpv37, respectively. 
-  * Performance: 512 cores are used for 50 m resolution TPV36 on Lonestar6 at TACC using 4 hours and 40 minutes. 
-  * New - previous feature of degeneration of hexahedrons (Hughes, 2000) for complex fault geometry is incorporated in the new EQdyna architecture with TPV36&37.
-  * New - autotesting workflow is added on GitHub for developers. 
-  * New - supporting MacOS (M3 chip tested).
-  * Refctor - rename file and subroutine names for clarification.
-  * Reference: Hughes, 2000, The Finite Element Method: Linear Static and Dynamic Finite Element Analysis, Dover Publications.  
+# News in 2026
+* 20260909 v5.3.4 release notes
+  * Fix - uninitialized `thetaPcTmp` in `NewtonRaphson` (src/faulting.f90) for friclaw==5: the copy-back `thetaPc0 = thetaPcTmp` ran unconditionally but `thetaPcTmp` was only assigned inside the friclaw<5 branch, so fric(23)/frt.txt col 22 held a deterministic uninitialized stack value every step. Physics for friclaw==5 is unaffected (theta_pc is not used); frt.txt cols 1-21 are bit-identical before and after. test.tpv1053d golden reference regenerated from the fixed binary and doubles as the regression test.
+  * Fix - src/makefile: FC on ubuntu changed from mpif90.mpich to mpif90; mpif90.mpich does not exist on the target system and the ubuntu build was broken.
+  * Fix - restored the executable bit on scripts/create.newcase and scripts/generateFaultInterface. Without it, create.newcase was PATH-shadowed by an unrelated project's script of the same name and the test suite could not run from a clean checkout.
+  * New - output_src_evol subroutine (src/library_output.f90) writes per-fault-node final slip rate to binary src_evol files, for on-fault state visualization/AI use.
+  * Change - output_gm and output_src_evol now run every time step (previously every 10th step via mod(nt,10)==1) in src/driver.f90.
+  * Add - PROJECT_RULES.md, a 14-rule project rule book, and pathway_forward.md (formerly docs/PROJECT_STATUS.md), a living status board of open issues, re-check intervals, and a tasks-done log.
+  * Add - .gitignore for bin/, __pycache__/, *.mod, *.pyc, scratch/, src/eqdyna, test/.
+  * Update - scripts/plotRuptureDynamics: fixed duplicate subplot-axis variable names and added axis labels.
+  * Update - scripts/clean.py: also purge src_evol and src* output files.
+  * Update - README.md: reworded collaboration and benchmark-performance sections, added DOI links to references.
+  * Known issue - src/netcdf_io.f90:76-105 hardcodes fault index 1 instead of the loop variable in on-fault netcdf-input assignment, so multi-fault (ntotft>=2) on-fault netcdf input is not applied correctly. No current test case exercises ntotft>=2. Tracked in pathway_forward.md item 7.
   * For past release notes, please refer to pastReleaseNotes.md.
 
 # Introduction to *```EQdyna```*

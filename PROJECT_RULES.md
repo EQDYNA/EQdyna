@@ -16,6 +16,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 12. Untracked build artifacts never accumulate in the working tree.
 13. File permission changes are reviewed individually, never bulk-applied.
 14. A living status board, re-checked on a schedule.
+15. Releases follow the documented workflow, notes lead the README.
 
 ---
 
@@ -248,3 +249,31 @@ still holds today.
 **How to apply**: before citing a "this already works" or "already fixed"
 claim from `README.md` or `pastReleaseNotes.md`, check `pathway_forward.md`
 first, and re-run the cited command rather than trusting the recorded line.
+
+---
+
+## 15. Releases follow the documented workflow, notes lead the README
+
+The release workflow, in order:
+
+1. Green gate first (rule 3): `make` exits 0 and `python3 testAll.py`
+   prints SUCCESS for every reference comparison. Never tag over a red gate.
+2. Bump `VERSION`.
+3. Release notes: add a `* YYYYMMDD vX.Y.Z release notes` block under a
+   `# News in <year>` heading at the TOP of `README.md`, ending with the
+   pointer line "For past release notes, please refer to
+   pastReleaseNotes.md." Move the previous release's block from `README.md`
+   into `pastReleaseNotes.md` under its year heading, dropping the pointer
+   line.
+4. Add a Tasks-done row to `pathway_forward.md` (rule 14).
+5. Commit everything above together; annotated tag `vX.Y.Z` on that commit.
+6. Push only on explicit approval from the maintainer.
+
+**Rationale**: v5.3.4 (2026-09-09) was cut with its notes appended to
+`pastReleaseNotes.md` instead of leading `README.md`, because the
+convention existed only in the files' shape, not as a rule — the release
+agent followed the wrong precedent and nothing could catch it.
+
+**How to apply**: at release time, `head README.md` must show the version
+being released; `pastReleaseNotes.md` must contain every prior version and
+not the current one.
