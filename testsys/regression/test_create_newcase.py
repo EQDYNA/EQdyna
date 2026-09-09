@@ -15,7 +15,7 @@ Exits non-zero on any failure (rule 2).
 """
 import os, shutil, subprocess, sys, tempfile
 
-root = os.path.dirname(os.path.abspath(__file__))
+root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['EQDYNAROOT'] = root
 script = os.path.join(root, 'scripts', 'create.newcase')
 
