@@ -1,16 +1,13 @@
 # News in 2026
-* 20260909 v5.3.4 release notes
-  * Fix - uninitialized `thetaPcTmp` in `NewtonRaphson` (src/faulting.f90) for friclaw==5: the copy-back `thetaPc0 = thetaPcTmp` ran unconditionally but `thetaPcTmp` was only assigned inside the friclaw<5 branch, so fric(23)/frt.txt col 22 held a deterministic uninitialized stack value every step. Physics for friclaw==5 is unaffected (theta_pc is not used); frt.txt cols 1-21 are bit-identical before and after. test.tpv1053d golden reference regenerated from the fixed binary and doubles as the regression test.
-  * Fix - src/makefile: FC on ubuntu changed from mpif90.mpich to mpif90; mpif90.mpich does not exist on the target system and the ubuntu build was broken.
-  * Fix - restored the executable bit on scripts/create.newcase and scripts/generateFaultInterface. Without it, create.newcase was PATH-shadowed by an unrelated project's script of the same name and the test suite could not run from a clean checkout.
-  * New - output_src_evol subroutine (src/library_output.f90) writes per-fault-node final slip rate to binary src_evol files, for on-fault state visualization/AI use.
-  * Change - output_gm and output_src_evol now run every time step (previously every 10th step via mod(nt,10)==1) in src/driver.f90.
-  * Add - PROJECT_RULES.md, a 14-rule project rule book, and pathway_forward.md (formerly docs/PROJECT_STATUS.md), a living status board of open issues, re-check intervals, and a tasks-done log.
-  * Add - .gitignore for bin/, __pycache__/, *.mod, *.pyc, scratch/, src/eqdyna, test/.
-  * Update - scripts/plotRuptureDynamics: fixed duplicate subplot-axis variable names and added axis labels.
-  * Update - scripts/clean.py: also purge src_evol and src* output files.
-  * Update - README.md: reworded collaboration and benchmark-performance sections, added DOI links to references.
-  * Known issue - src/netcdf_io.f90:76-105 hardcodes fault index 1 instead of the loop variable in on-fault netcdf-input assignment, so multi-fault (ntotft>=2) on-fault netcdf input is not applied correctly. No current test case exercises ntotft>=2. Tracked in pathway_forward.md item 7.
+* 20260909 v5.3.5 release notes
+  * Add - `testsys/`, a tiered test system (unit/regression/e2e) with a single entry point `testsys/run.py [unit|regression|e2e|all]`; `testAll.py` is now a thin wrapper delegating to `testsys/e2e/run_e2e.py` (PROJECT_RULES.md rule 3). Gate: `python3 testsys/run.py unit` (33 tests, pure Python, no MPI/Fortran, <1s) then `regression` (2 guards, one per past incident, rule 10) then `e2e` (full create.newcase -> case.setup -> mpirun -> plotRuptureDynamics -> check.test.py pipeline against test.reference.results/, rule 7).
+  * Fix - `scripts/lib.py`: `B2`/`B3`'s negative-`y` guard called `sys.exit()`, but the file did `from sys import *`, which does not bind the name `sys` -- the guard raised `NameError` instead of exiting. Changed to `import sys`. Covered by new unit tests `test_B2_negative_y_exits_cleanly_not_with_nameerror` / `test_B3_...` in `testsys/unit/test_lib.py`.
+  * Fix - `check.test.py`'s `compare_nc_files` set `metadata_equal = f1.identical(f2)`, which requires bit-exact data in addition to matching attrs -- conflating the function's one calibrated 1e-3 threshold (rule 5) with an uncalibrated bit-exact check. This turned ordinary parallel-MPI floating-point non-determinism into a false `FAIL metadata` (observed: `test.tpv10/fault.dyna.r.nc`'s `shear_strike`, off by ~2.9e-8 between reruns, well under threshold). Changed the metadata check to compare variable sets and attrs only. Covered by new unit tests in `testsys/unit/test_check_comparisons.py` (within-threshold-but-not-bit-exact -> SUCCESS; differing attrs -> FAIL).
+  * Fix - `testsys/e2e/run_e2e.py` dropped the `plotRuptureDynamics` step from the old `testAll.py`'s per-case sequence, so `fault.dyna.r.nc` (one of `check.test.py`'s `fileNameList` comparisons) was never regenerated. Restored: `create.newcase` -> `case.setup` -> `mpirun` -> `plotRuptureDynamics` -> `check.test.py`.
+  * Fix - `install-eqdyna.sh` ran `chmod -R 755 scripts` on every build (PROJECT_RULES.md rule 13), flipping the mode bit on all ~60+ tracked files under `scripts/` -- including data files (`*.m`, `*.txt`, `*.mat`) never meant to be executable -- as a side effect of running the e2e test tier. Replaced with `chmod 755` of only the specific entry-point scripts (`case.setup`, `clean.py`, `create.newcase`, `generateFaultInterface`, `plotRuptureDynamics`, `plotSlipAndRPT`), matching their git-tracked exec bits. README's Installation section updated to match (`chmod 755 install-eqdyna.sh`, dropping the recursive `scripts` chmod); resolves pathway_forward.md item 6.
+  * Add - `install-eqdyna.sh` to the exec-bit checks in `testsys/regression/test_create_newcase.py` (same guard family as `create.newcase`'s exec bit): it is invoked as `./install-eqdyna.sh` by `testsys/e2e/run_e2e.py`'s fresh-rebuild step, and a lost exec bit there fails a full e2e run the same way.
+  * Add - `test.prev/` to `.gitignore` (byproduct of the e2e tier's rule-8 evidence-preservation step; was showing untracked in `git status`, rule 12).
+  * Gate: build green; `testsys/run.py unit` 33/33 SUCCESS; `regression` 2/2 SUCCESS; `e2e` 5/5 cases, `check.test.py` 15/15 comparisons SUCCESS. Verified on ubuntu 22.04, gfortran 11.4.0, Open MPI 4.1.1, at commit c4b13e5 + this release's changes.
   * For past release notes, please refer to pastReleaseNotes.md.
 
 # Introduction to *```EQdyna```*
@@ -52,7 +49,7 @@ will install the required packages through apt-get and pip on Ubuntu 22. <br/>
 ```
 git clone https://github.com/EQDYNA/EQdyna.git
 cd EQdyna
-chmod -R 755 install-eqdyna.sh scripts
+chmod 755 install-eqdyna.sh
 ./install-eqdyna.sh -m ubuntu # ubuntu/ls6/macos
 export EQDYNAROOT=$(pwd)
 PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH

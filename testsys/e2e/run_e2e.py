@@ -3,7 +3,10 @@
 End-to-end pipeline tier (PROJECT_RULES.md rules 3, 7, 8, 9).
 
 Orchestrates the *existing* create.newcase -> case.setup -> mpirun ->
-check.test.py flow for every case in testNameList.nameList. It does not
+plotRuptureDynamics -> check.test.py flow for every case in
+testNameList.nameList (the plotRuptureDynamics step is what writes
+fault.dyna.r.nc, one of check.test.py's fileNameList comparisons -- see
+the pre-testsys testAll.py for the reference sequence). It does not
 duplicate those runs anywhere else in testsys/ -- this is the one place
 they happen.
 
@@ -16,9 +19,10 @@ Named gates, in order (rule 3):
      rm bin/eqquasi; reinstall). Machine defaults to "ubuntu"; override
      with the EQDYNA_TEST_MACHINE env var.
   3. For every case in testNameList.nameList: create.newcase, case.setup,
-     mpirun -np <n> eqdyna. A non-zero exit from any step is recorded and
-     the remaining steps for THAT case are skipped, but other cases still
-     run, so one crash doesn't hide evidence about the rest.
+     mpirun -np <n> eqdyna, plotRuptureDynamics (writes fault.dyna.r.nc).
+     A non-zero exit from any step is recorded and the remaining steps
+     for THAT case are skipped, but other cases still run, so one crash
+     doesn't hide evidence about the rest.
   4. check.test.py, comparing test/ against test.reference.results/
      (rule 7: reference tree is read-only, never written by this script).
 
@@ -95,6 +99,7 @@ def main():
             (['create.newcase', testName, testName], test_dir),
             (['./case.setup'], case_dir),
             ([MPIRUN, '-np', str(coreNum), 'eqdyna'], case_dir),
+            ([sys.executable, 'plotRuptureDynamics'], case_dir),
         ]
         for cmd, cwd in steps:
             rc = _run(cmd, cwd, env)

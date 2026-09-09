@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 from math import *
-from sys  import *
+import sys
 
 # functions are defined in lib.py under scripts/
 # function lists:

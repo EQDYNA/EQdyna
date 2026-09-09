@@ -100,3 +100,37 @@ def test_compare_nc_files_value_beyond_threshold_reports_fail(tmp_path):
     result = check_test.compare_nc_files(fn1, fn2)
 
     assert result.startswith('FAIL')
+
+
+def test_compare_nc_files_within_threshold_but_not_bit_exact_reports_success(tmp_path):
+    # Regression: compare_nc_files used to set metadata_equal = f1.identical(f2),
+    # which requires bit-exact data in addition to matching attrs. A parallel
+    # MPI dynamic-rupture rerun legitimately produces tiny (< THRESHOLD)
+    # floating-point differences from reduction-order non-determinism, which
+    # used to be mislabeled "FAIL metadata" even though every value was well
+    # within the one calibrated 1e-3 threshold (rule 5). See
+    # test.tpv10/fault.dyna.r.nc's shear_strike, off by ~2.9e-8 run-to-run.
+    fn1 = str(tmp_path / 'ref.nc')
+    fn2 = str(tmp_path / 'test.nc')
+    _make_dataset(1.0).to_netcdf(fn1)
+    _make_dataset(1.0 + 5e-8).to_netcdf(fn2)  # not bit-exact, well under 1e-3
+
+    result = check_test.compare_nc_files(fn1, fn2)
+
+    assert result.startswith('SUCCESS')
+
+
+def test_compare_nc_files_differing_attrs_reports_fail(tmp_path):
+    # The metadata check must still catch a real attrs mismatch.
+    fn1 = str(tmp_path / 'ref.nc')
+    fn2 = str(tmp_path / 'test.nc')
+    ds1 = _make_dataset(1.0)
+    ds1.attrs['source'] = 'reference-run'
+    ds1.to_netcdf(fn1)
+    ds2 = _make_dataset(1.0)
+    ds2.attrs['source'] = 'different-run'
+    ds2.to_netcdf(fn2)
+
+    result = check_test.compare_nc_files(fn1, fn2)
+
+    assert result.startswith('FAIL')

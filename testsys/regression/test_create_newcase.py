@@ -8,7 +8,11 @@ Guards two past failures:
      2026-09-09).
   2. Silent PATH-shadowing / missing exec bit: the test invokes the
      repo's own scripts/create.newcase explicitly, so a wrong or
-     non-executable script fails here, loudly.
+     non-executable script fails here, loudly. install-eqdyna.sh is
+     checked alongside it (same guard family): it is invoked as
+     `./install-eqdyna.sh` by testsys/e2e/run_e2e.py's fresh-rebuild
+     step, and a lost exec bit there fails a full e2e run the same
+     way a lost exec bit on create.newcase fails case creation.
 
 Cheap targeted check (rule 9): no build, no MPI, ~1 s.
 Exits non-zero on any failure (rule 2).
@@ -18,10 +22,13 @@ import os, shutil, subprocess, sys, tempfile
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['EQDYNAROOT'] = root
 script = os.path.join(root, 'scripts', 'create.newcase')
+install_script = os.path.join(root, 'install-eqdyna.sh')
 
 fails = []
 if not os.access(script, os.X_OK):
     fails.append(f'{script} is not executable')
+if not os.access(install_script, os.X_OK):
+    fails.append(f'{install_script} is not executable')
 
 tmp = tempfile.mkdtemp(prefix='testCreateNewcase.')
 case = os.path.join(tmp, 'case')
