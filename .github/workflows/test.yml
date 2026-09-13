@@ -13,31 +13,29 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: '3.x'
-    
-    - name: Update package list 
+
+    - name: Update package list
       run: sudo apt-get update
-      
+
     - name: Install dependencies
       run: |
         sudo apt-get install git vim make mpich
-        sudo apt-get install libnetcdf-dev libnetcdff-dev 
+        sudo apt-get install libnetcdf-dev libnetcdff-dev
         sudo apt-get install python3 python3-pip
-        pip install numpy netCDF4 matplotlib xarray
-        pip install --upgrade numpy 
+        pip install numpy netCDF4 matplotlib xarray pytest
+        pip install --upgrade numpy
 
+    # Exec bits are tracked in git (PROJECT_RULES.md rule 13) and guarded by
+    # testsys/regression/test_create_newcase.py — no chmod here. Exit codes
+    # gate directly: testsys/run.py and testAll.py exit non-zero on failure.
     - name: Run tests
       run: |
-        chmod -R 755 install-eqdyna.sh scripts
-        ./install-eqdyna.sh -m ubuntu >> testRunLog.txt || true
+        ./install-eqdyna.sh -m ubuntu 2>&1 | tee -a testRunLog.txt
         export EQDYNAROOT=$(pwd)
-        PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-        python3 testAll.py >> testRunLog.txt || true
+        export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        set -o pipefail
+        python3 testsys/run.py all 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt
-      run: cat testRunLog.txt    
-      
-    - name: Check errors in testRunLog.txt
-      run: |
-        if grep -qiE 'error|Error|ERROR|exception|failed|fatal|abort' testRunLog.txt; then
-            exit 1
-        fi
+      if: always()
+      run: cat testRunLog.txt
