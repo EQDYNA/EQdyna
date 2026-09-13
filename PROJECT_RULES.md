@@ -277,6 +277,10 @@ The release workflow, in order:
 convention existed only in the files' shape, not as a rule — the release
 agent followed the wrong precedent and nothing could catch it.
 
+README notes are USER-FACING: terse one-line bullets (the v5.3.2-era
+style); the full technical detail belongs in the GitHub Release body,
+the annotated tag message, and `pathway_forward.md`.
+
 **How to apply**: at release time, `head README.md` must show the version
 being released; `pastReleaseNotes.md` must contain every prior version and
 not the current one.
