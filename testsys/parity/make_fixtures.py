@@ -97,7 +97,7 @@ def main():
 
     required = ['frt.txt0', 'pydump_header.txt', 'pydump_meshCoor.txt', 'pydump_conn.txt',
                 'pydump_elemgeo.txt', 'pydump_nodeinfo.txt', 'pydump_nodalmass.txt',
-                'pydump_fnms.txt', 'pydump_fault.txt', 'pydump_v1.txt',
+                'pydump_fnms.txt', 'pydump_fault.txt', 'pydump_v1.txt', 'pydump_stations.txt',
                 'pydump_step5_accel.txt', 'pydump_step5_veldisp.txt', 'pydump_step5_fault.txt']
     missing = [f for f in required if not os.path.exists(os.path.join(fixture_case, f))]
     if missing:
