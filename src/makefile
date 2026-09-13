@@ -144,5 +144,3 @@ library_output.o: library_output.f90 globalvar.o
 	$(FC) $(OPT) library_output.f90
 netcdf_io.o: netcdf_io.f90 globalvar.o
 	$(FC) $(OPT) netcdf_io.f90 ${NETCDF_INC}
-pydump.o: pydump.f90 globalvar.o
-	$(FC) $(OPT) pydump.f90

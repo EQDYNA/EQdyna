@@ -6,8 +6,9 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
     python3 testsys/run.py regression    # one guard per past incident (rule 10)
     python3 testsys/run.py e2e           # full pipeline vs test.reference.results/ (rule 7)
     python3 testsys/run.py parity        # Python-port (NumPy/JAX) vs Fortran serial oracle (item 14)
+    python3 testsys/run.py accept        # standalone (no-Fortran-in-the-loop) solver vs committed 4-rank references
     python3 testsys/run.py perf          # pinned single-core Fortran/NumPy/JAX timing, ratio-guarded
-    python3 testsys/run.py all           # unit + regression + e2e, in that order (default; parity/perf are opt-in, not in "all" -- they need a Fortran build + fixtures a fresh checkout doesn't have yet)
+    python3 testsys/run.py all           # unit + regression + e2e, in that order (default; parity/accept/perf are opt-in, not in "all" -- they need a Fortran build + fixtures a fresh checkout doesn't have yet)
 
 Prints a per-test SUCCESS/FAIL line (from pytest or from each regression
 script's own banner), a per-tier SUMMARY line, and exits non-zero if
@@ -64,8 +65,42 @@ def run_parity():
         return rc
     # Standalone (no-Fortran-in-the-loop) meshgen port, milestones 1+2 --
     # same fixtures, same regeneration workflow as run_parity.py above.
-    return subprocess.call(
+    rc = subprocess.call(
         [sys.executable, os.path.join(TESTSYS, 'parity', 'test_standalone_meshgen.py')],
+        cwd=REPO_ROOT)
+    if rc != 0:
+        return rc
+    return run_functional_neutrality_check()
+
+
+def run_functional_neutrality_check():
+    """Cheap re-check (a byte compare, no Fortran re-run) of the
+    functional-neutrality fixture make_fixtures.py generates: frt.txt0 from
+    the default (pydump_noop-linked) binary must be byte-identical to
+    frt.txt0 from the PYDUMP=1 (pydump-linked) binary, on the same case.
+    Missing files (fixtures not regenerated since this check was added) is
+    a loud FAIL, not a silent skip."""
+    fixture_case = os.path.join(TESTSYS, 'parity', 'fixtures', 'test_tpv8_serial')
+    default_frt = os.path.join(fixture_case, 'frt.txt0.default-build')
+    pydump_frt = os.path.join(fixture_case, 'frt.txt0.pydump-build')
+    for p in (default_frt, pydump_frt):
+        if not os.path.isfile(p):
+            print(f'FAIL functional-neutrality check: missing {p} -- '
+                  f're-run testsys/parity/make_fixtures.py')
+            return 1
+    import filecmp
+    if not filecmp.cmp(default_frt, pydump_frt, shallow=False):
+        print('FAIL functional-neutrality check: frt.txt0 differs between the default and '
+              'PYDUMP=1 builds')
+        return 1
+    print('SUCCESS functional-neutrality check (frt.txt0 byte-identical, default vs PYDUMP=1 build)')
+    return 0
+
+
+def run_accept():
+    print('\n==== testsys: accept ====')
+    return subprocess.call(
+        [sys.executable, os.path.join(TESTSYS, 'parity', 'test_standalone_acceptance.py')],
         cwd=REPO_ROOT)
 
 
@@ -76,11 +111,12 @@ def run_perf():
 
 
 RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
-           'parity': run_parity, 'perf': run_perf}
-# 'all' stays unit+regression+e2e only (TIERS below) -- parity/perf require a
-# Fortran build and generated fixtures/baseline that a fresh checkout does
-# not have; they are opt-in tiers, invoked by name, not swept into 'all'.
-OPTIONAL_TIERS = ('parity', 'perf')
+           'parity': run_parity, 'accept': run_accept, 'perf': run_perf}
+# 'all' stays unit+regression+e2e only (TIERS below) -- parity/accept/perf
+# require a Fortran build and generated fixtures/baseline (accept also
+# needs the committed test.reference.results/ trees) that a fresh checkout
+# does not have; they are opt-in tiers, invoked by name, not swept into 'all'.
+OPTIONAL_TIERS = ('parity', 'accept', 'perf')
 
 
 def main(argv):

@@ -103,6 +103,28 @@ def main():
     if missing:
         raise SystemExit(f'FAIL: fixture generation ran but is missing {missing}')
 
+    # Functional-neutrality check (testsys/parity/README.md's documented
+    # link-time seam): driver.f90/eqdyna3d.f90 call pydump_step/pydump_state
+    # UNCONDITIONALLY; the default build links pydump_noop.o instead of
+    # pydump.o, so its frt.txt0 on the SAME case must be byte-identical to
+    # the PYDUMP=1 build's. One extra Fortran run on the same case (both
+    # binaries are already built above) -- cheap relative to the two builds
+    # already done, and it turns a by-hand development check into a fixture
+    # every `parity` tier invocation can re-verify cheaply (just a byte
+    # compare, see testsys/run.py's run_parity).
+    pydump_frt = os.path.join(fixture_case, 'frt.txt0')
+    pydump_frt_saved = os.path.join(fixture_case, 'frt.txt0.pydump-build')
+    shutil.copy(pydump_frt, pydump_frt_saved)
+    run_case(default_bin, fixture_case)
+    default_frt_saved = os.path.join(fixture_case, 'frt.txt0.default-build')
+    shutil.copy(pydump_frt, default_frt_saved)
+    shutil.copy(pydump_frt_saved, pydump_frt)  # restore the oracle the parity tier actually reads
+    import filecmp
+    if not filecmp.cmp(pydump_frt_saved, default_frt_saved, shallow=False):
+        raise SystemExit('FAIL: functional-neutrality check -- frt.txt0 differs between the '
+                          'default (pydump_noop) and PYDUMP=1 (pydump) builds on the same case')
+    print('Functional-neutrality check: frt.txt0 byte-identical between default and PYDUMP=1 builds.')
+
     print(f'\nFixtures written to {fixture_case}')
     print(f'Default (no-op stub) binary saved to {default_bin} for the neutrality check.')
     print('SUCCESS make_fixtures')
