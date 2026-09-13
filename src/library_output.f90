@@ -178,25 +178,25 @@ subroutine output_frt
                 ! 74-76: final sliprates, sliprated, slipraten
             (fric(j,i,1), j = 71,76),     &
                 ! 47: final slip rate
-            fric(47,i,1),                 &
-                ! 78: final effective normal stress, tnrm 
+            fric(FRIC_SLOT_PEAK_SLIPRATE,i,1),                 &
+                ! 78: final effective normal stress, tnrm
                 ! 79: final shear strike stress, tstk
-                ! 80: final shear dip stress, tdip 
-            fric(78,i,1),                 &
-            fric(79,i,1),                 &
-            fric(80,i,1),                 &
+                ! 80: final shear dip stress, tdip
+            fric(FRIC_SLOT_TRACT_NORM,i,1),                 &
+            fric(FRIC_SLOT_TRACT_STRIKE,i,1),                 &
+            fric(FRIC_SLOT_TRACT_DIP,i,1),                 &
                 ! 31-33, vxm, vym, vzm, 3 vel components of master nodes.
                 ! 34-36, vxs, vys, vzs, 3 vel components of slave nodes.
-            fric(31,i,1),                 &
-            fric(32,i,1),                 &
-            fric(33,i,1),                 &
-            fric(34,i,1),                 &
-            fric(35,i,1),                 &
-            fric(36,i,1),                 &
+            fric(FRIC_SLOT_VEL_MASTER_X,i,1),                 &
+            fric(FRIC_SLOT_VEL_MASTER_Y,i,1),                 &
+            fric(FRIC_SLOT_VEL_MASTER_Z,i,1),                 &
+            fric(FRIC_SLOT_VEL_SLAVE_X,i,1),                 &
+            fric(FRIC_SLOT_VEL_SLAVE_Y,i,1),                 &
+            fric(FRIC_SLOT_VEL_SLAVE_Z,i,1),                 &
                 ! 20: state variable in RSF
-            fric(20,i,1),                 &
+            fric(FRIC_SLOT_STATE,i,1),                 &
                 ! 21: state variable for normal stress variation (Shi and Day)
-            fric(23,i,1),                 &
+            fric(FRIC_SLOT_THETA_PC,i,1),                 &
                 !
             i=1,nftnd(1)) ! Finish the write(10004,me, ...) line.
             
@@ -306,7 +306,7 @@ subroutine output_src_evol
     if(nftnd(1) > 0) then
         open(unit=30009+me,file='src_evol'//mm,position='append', access='stream')
             do i=1,nftnd(1)
-                write(30009+me) fric(47,i,1) ! 47: final slip rate
+                write(30009+me) fric(FRIC_SLOT_PEAK_SLIPRATE,i,1) ! 47: final slip rate
             enddo    
         close(30009+me)
     endif

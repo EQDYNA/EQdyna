@@ -64,9 +64,9 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     
     real(kind = dp) :: dtau
     
-    nsdInitTractionVector(1) = fric(7,iFaultNodePair,iFault) !normal
-    nsdInitTractionVector(2) = fric(8,iFaultNodePair,iFault)+dtau !strike
-    nsdInitTractionVector(3) = fric(49,iFaultNodePair,iFault) !dip
+    nsdInitTractionVector(1) = fric(FRIC_SLOT_INIT_NORM,iFaultNodePair,iFault) !normal
+    nsdInitTractionVector(2) = fric(FRIC_SLOT_INIT_STRIKE_SHEAR,iFaultNodePair,iFault)+dtau !strike
+    nsdInitTractionVector(3) = fric(FRIC_SLOT_INIT_DIP_SHEAR,iFaultNodePair,iFault) !dip
     
     massSlave     = fnms(nsmp(1,iFaultNodePair,iFault))        
     massMaster    = fnms(nsmp(2,iFaultNodePair,iFault))
@@ -105,13 +105,13 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     nsdSliprateVector(4) = sqrt(nsdSliprateVector(1)**2 + nsdSliprateVector(2)**2 + nsdSliprateVector(3)**2)
     
     ! keep records
-    fric(71,iFaultNodePair,iFault) = nsdSlipVector(2) !s
-    fric(72,iFaultNodePair,iFault) = nsdSlipVector(3) !d
-    fric(73,iFaultNodePair,iFault) = nsdSlipVector(1) !n
-    fric(74,iFaultNodePair,iFault) = nsdSliprateVector(2) !s
-    fric(75,iFaultNodePair,iFault) = nsdSliprateVector(3) !d
-    if (nsdSliprateVector(4)>fric(76,iFaultNodePair,iFault)) fric(76,iFaultNodePair,iFault) = nsdSliprateVector(4) !mag
-    fric(77,iFaultNodePair,iFault) = fric(77,iFaultNodePair,iFault) + nsdSliprateVector(4)*dt ! cummulated slip
+    fric(FRIC_SLOT_SLIP_STRIKE,iFaultNodePair,iFault) = nsdSlipVector(2) !s
+    fric(FRIC_SLOT_SLIP_DIP,iFaultNodePair,iFault) = nsdSlipVector(3) !d
+    fric(FRIC_SLOT_SLIP_NORM,iFaultNodePair,iFault) = nsdSlipVector(1) !n
+    fric(FRIC_SLOT_SLIPRATE_STRIKE,iFaultNodePair,iFault) = nsdSliprateVector(2) !s
+    fric(FRIC_SLOT_SLIPRATE_DIP,iFaultNodePair,iFault) = nsdSliprateVector(3) !d
+    if (nsdSliprateVector(4)>fric(FRIC_SLOT_SLIPRATE_MAX,iFaultNodePair,iFault)) fric(FRIC_SLOT_SLIPRATE_MAX,iFaultNodePair,iFault) = nsdSliprateVector(4) !mag
+    fric(FRIC_SLOT_CUM_SLIP,iFaultNodePair,iFault) = fric(FRIC_SLOT_CUM_SLIP,iFaultNodePair,iFault) + nsdSliprateVector(4)*dt ! cummulated slip
     
     ! n
     nsdTractionVector(1) = (massSlave*massMaster*((nsdNodalQuant(1,2,2)-nsdNodalQuant(1,1,2))+(nsdNodalQuant(1,2,3)-nsdNodalQuant(1,1,3))/dt)/dt &
@@ -146,20 +146,20 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, ns
     
     
     if (iFrictionLaw == 1) then
-        call slip_weak(fric(77,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),fricCoeff)
+        call slip_weak(fric(FRIC_SLOT_CUM_SLIP,iFaultNodePair,iFault),fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault),fricCoeff)
     elseif(iFrictionLaw == 2) then
         trupt =  timeElapsed - fnft(iFaultNodePair,iFault)
-        call time_weak(trupt,fric(1,iFaultNodePair,iFault),fricCoeff)
+        call time_weak(trupt,fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault),fricCoeff)
     endif
-    
+
     if (C_nuclea==1 .and. iFault==nucFault) call swtwNucleation(iFault, iFaultNodePair, fricCoeff)
 
-    if((nsdTractionVector(1)+fric(6,iFaultNodePair,iFault))>0) then
+    if((nsdTractionVector(1)+fric(FRIC_SLOT_NORM_STRESS_ADD,iFaultNodePair,iFault))>0) then
         effectiveNormalStress = 0.0d0
     else
-        effectiveNormalStress = nsdTractionVector(1)+fric(6,iFaultNodePair,iFault)
+        effectiveNormalStress = nsdTractionVector(1)+fric(FRIC_SLOT_NORM_STRESS_ADD,iFaultNodePair,iFault)
     endif
-    trialShearTraction = fric(4,iFaultNodePair,iFault) - fricCoeff*effectiveNormalStress
+    trialShearTraction = fric(FRIC_SLOT_COHESION,iFaultNodePair,iFault) - fricCoeff*effectiveNormalStress
 
     if(nsdTractionVector(4) > trialShearTraction) then
         ! adjust strike shear traction 
@@ -198,20 +198,18 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     real(kind = dp) :: nsdAccVec(3), xyzAccVec(3), xyzR(3)
     
     
-    ! adjust normal stress 
+    ! adjust normal stress
     if (iFrictionLaw==5) then
-        nsdTractionVector(1) = nsdTractionVector(1) + fric(51,iFaultNodePair,iFault)
+        nsdTractionVector(1) = nsdTractionVector(1) + fric(FRIC_SLOT_TP_NORM_TP,iFaultNodePair,iFault)
     else
-        nsdTractionVector(1) = nsdTractionVector(1) + fric(6,iFaultNodePair,iFault)
-    endif 
+        nsdTractionVector(1) = nsdTractionVector(1) + fric(FRIC_SLOT_NORM_STRESS_ADD,iFaultNodePair,iFault)
+    endif
 
     ! If non-planar fault geometry and elastic material, enforce normal stress caps.
+    ! max_norm/min_norm are module-level constants initialized in globalvar.f90.
     if (insertFaultType >0 .and. C_elastic == 1) then
         !tnrm = min(min_norm, tnrm) ! Maintain a minimum normal stress level.
-        max_norm      = -40.0d6
-        min_norm      = -10.0d6
-    
-        if (nsdTractionVector(1)>=min_norm) then 
+        if (nsdTractionVector(1)>=min_norm) then
             nsdTractionVector(1) = min_norm
         elseif (nsdTractionVector(1)<=max_norm) then
             nsdTractionVector(1) = max_norm
@@ -234,31 +232,31 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     ! Given tractions, state variables, find the sliprate for next time step. 
     v_trial = nsdSliprateVector(4)
     
-    ! retrieve the state variable for normal stress thetaPcTmp from fric(23).
-    ! this accounts for normal stress change. 
-    theta_pc_tmp = fric(23,iFaultNodePair,iFault)
-    ! get updated trial state variable for normal stress [fric(23)] and its rate [fric(24)].
-    call rate_state_normal_stress(v_trial, fric(23,iFaultNodePair,iFault), theta_pc_dot, nsdTractionVector(1), fric(1,iFaultNodePair,iFault))    
-    fric(24,iFaultNodePair,iFault) = theta_pc_dot
-    ! retrieve the RSF state variable and assign it to a tempraroy statetmp. 
-    statetmp = fric(20,iFaultNodePair,iFault) 
-    
-    ! get updated trial RSF state variable [fric(20)],
+    ! retrieve the state variable for normal stress thetaPcTmp from fric(FRIC_SLOT_THETA_PC).
+    ! this accounts for normal stress change.
+    theta_pc_tmp = fric(FRIC_SLOT_THETA_PC,iFaultNodePair,iFault)
+    ! get updated trial state variable for normal stress [fric(FRIC_SLOT_THETA_PC)] and its rate [fric(FRIC_SLOT_THETA_PC_DOT)].
+    call rate_state_normal_stress(v_trial, fric(FRIC_SLOT_THETA_PC,iFaultNodePair,iFault), theta_pc_dot, nsdTractionVector(1), fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault))
+    fric(FRIC_SLOT_THETA_PC_DOT,iFaultNodePair,iFault) = theta_pc_dot
+    ! retrieve the RSF state variable and assign it to a tempraroy statetmp.
+    statetmp = fric(FRIC_SLOT_STATE,iFaultNodePair,iFault)
+
+    ! get updated trial RSF state variable [fric(FRIC_SLOT_STATE)],
     !   and trial friction coefficient, xmu,
     !   and trial derivative d(xmu)/dt, dxmudv,
     !   for friclaw=3,4,5.
     if(friclaw == 3) then
-        call rate_state_ageing_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv) !RSF
+        call rate_state_ageing_law(v_trial,fric(FRIC_SLOT_STATE,iFaultNodePair,iFault),fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault),xmu,dxmudv) !RSF
     elseif (friclaw == 4 .or. friclaw==5) then
-        call rate_state_slip_law(v_trial,fric(20,iFaultNodePair,iFault),fric(1,iFaultNodePair,iFault),xmu,dxmudv) !RSF
-    endif            
+        call rate_state_slip_law(v_trial,fric(FRIC_SLOT_STATE,iFaultNodePair,iFault),fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault),xmu,dxmudv) !RSF
+    endif
     ! compute trial traction.
-    ! for cases with large fluctuations of effective normal stress, 
-    !   use the state variable for effective normal stress, thetaPcTmp, 
+    ! for cases with large fluctuations of effective normal stress,
+    !   use the state variable for effective normal stress, thetaPcTmp,
     !   rather than tnrm, when friclaw==5/insertFaultType>0.
     ! [NOTE]: friclaw=5 doesn't support normal stress evolution yet. See TPV1053D.
-    if (friclaw==5) then 
-        taoc_old = fric(4,iFaultNodePair,iFault) - xmu * nsdTractionVector(1)
+    if (friclaw==5) then
+        taoc_old = fric(FRIC_SLOT_COHESION,iFaultNodePair,iFault) - xmu * nsdTractionVector(1)
     else
         taoc_old = xmu * theta_pc_tmp
     endif
@@ -275,23 +273,23 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     
     ! solve sliprate with Newton-Raphson method
     call NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, statetmp, theta_pc_tmp, theta_pc_dot, nsdTractionVector, trialTractVec, T_coeff)
-    fric(20,iFaultNodePair,iFault) = statetmp
-    fric(23,iFaultNodePair,iFault) = theta_pc_tmp
+    fric(FRIC_SLOT_STATE,iFaultNodePair,iFault) = statetmp
+    fric(FRIC_SLOT_THETA_PC,iFaultNodePair,iFault) = theta_pc_tmp
     do j=2,3 !s,d
         nsdTractionVector(j) = taoc_old*0.5d0*(nsdSliprateVector(j)/nsdSliprateVector(4)) + taoc_new*0.5d0*(trialTractVec(j)/trialTractVec(4))
     enddo
-        
-    ! store tnrm, tstk, tdip ... 
+
+    ! store tnrm, tstk, tdip ...
     ! [effective normal stress, shear_strike, and shear_dip]
     do j=1,3 !n,s,d
         fric(78+j-1,iFaultNodePair,iFault) = nsdTractionVector(j)
     enddo
     ! store final slip rate and final total traction ...
-    fric(47,iFaultNodePair,iFault) = v_trial
-    fric(48,iFaultNodePair,iFault) = sqrt(nsdTractionVector(2)**2 + nsdTractionVector(3)**2) 
-    
-    onFaultTPHist(1,iFaultNodePair,nt,iFault) = fric(47,iFaultNodePair,iFault)
-    onFaultTPHist(2,iFaultNodePair,nt,iFault) = fric(48,iFaultNodePair,iFault)
+    fric(FRIC_SLOT_PEAK_SLIPRATE,iFaultNodePair,iFault) = v_trial
+    fric(FRIC_SLOT_SHEAR_MAG,iFaultNodePair,iFault) = sqrt(nsdTractionVector(2)**2 + nsdTractionVector(3)**2)
+
+    onFaultTPHist(1,iFaultNodePair,nt,iFault) = fric(FRIC_SLOT_PEAK_SLIPRATE,iFaultNodePair,iFault)
+    onFaultTPHist(2,iFaultNodePair,nt,iFault) = fric(FRIC_SLOT_SHEAR_MAG,iFaultNodePair,iFault)
     
     ! 3 components of relative acceleration bewteen m-s nodes in the fault plane coordinate sys. 
     nsdAccVec(1) = -nsdSliprateVector(1)/dt - nsdSlipVector(1)/dt/dt
@@ -343,15 +341,15 @@ subroutine showSourceDynamics(iFault,iFaultNodePair, nsdSlipVector, nsdSliprateV
         write(*,*) 'Hypocenter dynamics'
         write(*,'(X,A,3E15.7)') 'X, Y, Z      (m)   ', meshCoor(1,nsmp(1,iFaultNodePair,iFault)), meshCoor(2,nsmp(1,iFaultNodePair,iFault)), meshCoor(3,nsmp(1,iFaultNodePair,iFault))
         write(*,'(X,A,E15.7)') 'TimeElapsed  (s)   ', timeElapsed
-        write(*,'(X,A,3E15.7)') 'n,s,d tract  (MPa) ', fric(78,iFaultNodePair,iFault)/1.d6, fric(79,iFaultNodePair,iFault)/1.d6, fric(80,iFaultNodePair,iFault)/1.d6
-        write(*,'(X,A,E15.7)') 'state_normal (MPa) ', fric(23,iFaultNodePair,iFault)/1.d6
-        write(*,'(X,A,3E15.7)') 'n,s,d slip   (m)   ', fric(73,iFaultNodePair,iFault), fric(71,iFaultNodePair,iFault), fric(72,iFaultNodePair,iFault)
-        write(*,'(X,A,3E15.7)') 's,d, peak sr (m/s) ', fric(74,iFaultNodePair,iFault), fric(75,iFaultNodePair,iFault), fric(76,iFaultNodePair,iFault)
-        write(*,'(X,A,E15.7)') 'cummul slip  (m)   ', fric(77,iFaultNodePair,iFault)
-        write(*,'(X,A,3E15.7)') 'sw_fs, sw_fd, sw_D0', fric(1,iFaultNodePair,iFault), fric(2,iFaultNodePair,iFault), fric(3,iFaultNodePair,iFault)
-        write(*,'(X,A,2E15.7)') 'rsf_a, rsf_b       ', fric(9,iFaultNodePair,iFault), fric(10,iFaultNodePair,iFault)
-        write(*,'(X,A,E15.7)') 'rsf_state          ', fric(20,iFaultNodePair,iFault)
-        write(*,'(X,A,E15.7)') 'Nuc add tau0 (MPa) ', fric(81,iFaultNodePair,iFault)/1.d6
+        write(*,'(X,A,3E15.7)') 'n,s,d tract  (MPa) ', fric(FRIC_SLOT_TRACT_NORM,iFaultNodePair,iFault)/1.d6, fric(FRIC_SLOT_TRACT_STRIKE,iFaultNodePair,iFault)/1.d6, fric(FRIC_SLOT_TRACT_DIP,iFaultNodePair,iFault)/1.d6
+        write(*,'(X,A,E15.7)') 'state_normal (MPa) ', fric(FRIC_SLOT_THETA_PC,iFaultNodePair,iFault)/1.d6
+        write(*,'(X,A,3E15.7)') 'n,s,d slip   (m)   ', fric(FRIC_SLOT_SLIP_NORM,iFaultNodePair,iFault), fric(FRIC_SLOT_SLIP_STRIKE,iFaultNodePair,iFault), fric(FRIC_SLOT_SLIP_DIP,iFaultNodePair,iFault)
+        write(*,'(X,A,3E15.7)') 's,d, peak sr (m/s) ', fric(FRIC_SLOT_SLIPRATE_STRIKE,iFaultNodePair,iFault), fric(FRIC_SLOT_SLIPRATE_DIP,iFaultNodePair,iFault), fric(FRIC_SLOT_SLIPRATE_MAX,iFaultNodePair,iFault)
+        write(*,'(X,A,E15.7)') 'cummul slip  (m)   ', fric(FRIC_SLOT_CUM_SLIP,iFaultNodePair,iFault)
+        write(*,'(X,A,3E15.7)') 'sw_fs, sw_fd, sw_D0', fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault), fric(FRIC_SLOT_SW_FD,iFaultNodePair,iFault), fric(FRIC_SLOT_SW_D0,iFaultNodePair,iFault)
+        write(*,'(X,A,2E15.7)') 'rsf_a, rsf_b       ', fric(FRIC_SLOT_RSF_A,iFaultNodePair,iFault), fric(FRIC_SLOT_RSF_B,iFaultNodePair,iFault)
+        write(*,'(X,A,E15.7)') 'rsf_state          ', fric(FRIC_SLOT_STATE,iFaultNodePair,iFault)
+        write(*,'(X,A,E15.7)') 'Nuc add tau0 (MPa) ', fric(FRIC_SLOT_NUC_DTAU0,iFaultNodePair,iFault)/1.d6
     endif 
     
 end subroutine showSourceDynamics
@@ -381,16 +379,16 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
         dtau = nucdtau0*F*G
     elseif (TPV == 2802) then
         !tpv2802 is drv.a6, plastic.
-        if (nt == 1) then  
-            fric(81,iFaultNodePair,iFault) = nucdtau0 !nsdTractionVector(2)*perturb
+        if (nt == 1) then
+            fric(FRIC_SLOT_NUC_DTAU0,iFaultNodePair,iFault) = nucdtau0 !nsdTractionVector(2)*perturb
             ttao = sqrt(nsdTractionVector(2)**2 + nsdTractionVector(3)**2)
-            backSliprate = sqrt((nsdSliprateVector(2)+fric(26,iFaultNodePair,iFault))**2 + &
-                            (nsdSliprateVector(3)+fric(27,iFaultNodePair,iFault))**2)
-            fric(20,iFaultNodePair,iFault) = fric(9,iFaultNodePair,iFault)*dlog(2.0d0*fric(12,iFaultNodePair,iFault)/backSliprate &
-                                        *dsinh(ttao/abs(nsdTractionVector(1))/fric(9,iFaultNodePair,iFault)))
-            fric(23,iFaultNodePair,iFault) = abs(nsdTractionVector(1))
-        endif 
-        dtau = fric(81,iFaultNodePair,iFault)*F*G
+            backSliprate = sqrt((nsdSliprateVector(2)+fric(FRIC_SLOT_VINI_X,iFaultNodePair,iFault))**2 + &
+                            (nsdSliprateVector(3)+fric(FRIC_SLOT_VINI_Z,iFaultNodePair,iFault))**2)
+            fric(FRIC_SLOT_STATE,iFaultNodePair,iFault) = fric(FRIC_SLOT_RSF_A,iFaultNodePair,iFault)*dlog(2.0d0*fric(FRIC_SLOT_RSF_V0,iFaultNodePair,iFault)/backSliprate &
+                                        *dsinh(ttao/abs(nsdTractionVector(1))/fric(FRIC_SLOT_RSF_A,iFaultNodePair,iFault)))
+            fric(FRIC_SLOT_THETA_PC,iFaultNodePair,iFault) = abs(nsdTractionVector(1))
+        endif
+        dtau = fric(FRIC_SLOT_NUC_DTAU0,iFaultNodePair,iFault)*F*G
     endif
     
     
@@ -417,11 +415,11 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
     tc = 1.0d0 
     if(timeElapsed<tr) then 
         tc = 0.0d0
-    elseif ((timeElapsed<(tr+fric(5,iFaultNodePair,iFault))).and.(timeElapsed>=tr)) then 
-        tc = (timeElapsed-tr)/fric(5,iFaultNodePair,iFault)
+    elseif ((timeElapsed<(tr+fric(FRIC_SLOT_TW_T0,iFaultNodePair,iFault))).and.(timeElapsed>=tr)) then
+        tc = (timeElapsed-tr)/fric(FRIC_SLOT_TW_T0,iFaultNodePair,iFault)
     endif
 
-    fricCoeff = min(fric(1,iFaultNodePair,iFault)+(fric(2,iFaultNodePair,iFault)-fric(1,iFaultNodePair,iFault))*tc, fricCoeff)
+    fricCoeff = min(fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault)+(fric(FRIC_SLOT_SW_FD,iFaultNodePair,iFault)-fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault))*tc, fricCoeff)
     ! tmp1 = fs+(fd-fs)*tc 
     ! tmp2 = xmu
     ! xmu  = min(tmp1,tmp2)  
@@ -437,7 +435,7 @@ subroutine showNewton(iFault,iFaultNodePair,iv,v_trial,nsdTractionVector)
         write(*,*) 'Newton: iteration step iv = ', iv
         write(*,*) 'Newton: trial slip rate is ', v_trial
         write(*,*) 'Newton: nsdTractionVector', nsdTractionVector(1)/1.0d6, nsdTractionVector(2)/1.0d6, nsdTractionVector(3)/1.0d6, nsdTractionVector(4)/1.0d6 
-        write(*,*) 'Newton: state variable is ', fric(20,iFaultNodePair,iFault)
+        write(*,*) 'Newton: state variable is ', fric(FRIC_SLOT_STATE,iFaultNodePair,iFault)
     endif
 end subroutine showNewton
 
@@ -451,30 +449,30 @@ subroutine NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, state0, thet
     ! Initialize thetaPcTmp here: the friclaw==5 branch below never assigns it
     ! (normal stress evolution not supported for friclaw==5), yet the copy-back
     ! thetaPc0 = thetaPcTmp at the end runs unconditionally. Without this line,
-    ! fric(23) receives an uninitialized stack value for friclaw==5.
+    ! fric(FRIC_SLOT_THETA_PC) receives an uninitialized stack value for friclaw==5.
     thetaPcTmp = thetaPc0
 
     do iv = 1,ivmax
-        ! in each iteration, reupdate the new state variable [fric(20)] given the new 
+        ! in each iteration, reupdate the new state variable [fric(FRIC_SLOT_STATE)] given the new
         !   slip rate, v_trial.
-        !fric(20,iFaultNodePair,iFault)  = statetmp
+        !fric(FRIC_SLOT_STATE,iFaultNodePair,iFault)  = statetmp
         stateTmp = state0
         if(friclaw == 3) then
-            call rate_state_ageing_law(v_trial,stateTmp,fric(1,iFaultNodePair,iFault),xmu,dxmudv)
+            call rate_state_ageing_law(v_trial,stateTmp,fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault),xmu,dxmudv)
         else
-            call rate_state_slip_law(v_trial,stateTmp,fric(1,iFaultNodePair,iFault),xmu,dxmudv)
-        endif 
-        
+            call rate_state_slip_law(v_trial,stateTmp,fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault),xmu,dxmudv)
+        endif
+
         ! [NOTE]: the code doesn't support normal stress evolution under thermo pressurization.
         if (friclaw < 5) then
-            !fric(23,iFaultNodePair,iFault)  = thetaPcTmp 
+            !fric(FRIC_SLOT_THETA_PC,iFaultNodePair,iFault)  = thetaPcTmp
             thetaPcTmp = thetaPc0
-            call rate_state_normal_stress(v_trial, thetaPcTmp, thetaPcDot, nsdTractionVector(1), fric(1,iFaultNodePair,iFault))    
+            call rate_state_normal_stress(v_trial, thetaPcTmp, thetaPcDot, nsdTractionVector(1), fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault))
             taoc_new        = xmu*thetaPcTmp
             rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
-            drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * thetaPcTmp)*0.5d0  
+            drsfeqdv        = 1.0d0 + T_coeff * (dxmudv * thetaPcTmp)*0.5d0
         else
-            taoc_new        = fric(4,iFaultNodePair,iFault) - xmu * MIN(nsdTractionVector(1), 0.0d0)
+            taoc_new        = fric(FRIC_SLOT_COHESION,iFaultNodePair,iFault) - xmu * MIN(nsdTractionVector(1), 0.0d0)
             rsfeq           = v_trial + T_coeff * (taoc_new*0.5d0 - trialTractVec(4))
             drsfeqdv        = 1.0d0 + T_coeff * (-dxmudv * MIN(nsdTractionVector(1),0.0d0))*0.5d0  
         endif
@@ -499,7 +497,7 @@ subroutine NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, state0, thet
     ! If cannot find a solution for v_trial, manually set it to a small value, typically the creeping rate.
     ! Also reset taoc_new to 2 X ttao1.
     ! Without this, TPV1053D blew up at the surface station (-4.2,0)
-    if(TPV==105 .and. v_trial < fric(46,iFaultNodePair,iFault)) v_trial = fric(46,iFaultNodePair,iFault) ! necessary for tpv1053d
+    if(TPV==105 .and. v_trial < fric(FRIC_SLOT_CREEP_VMIN,iFaultNodePair,iFault)) v_trial = fric(FRIC_SLOT_CREEP_VMIN,iFaultNodePair,iFault) ! necessary for tpv1053d
     
     state0   = stateTmp
     thetaPc0 = thetaPcTmp
@@ -517,15 +515,15 @@ subroutine storeOnFaultStationQuantSCEC(iFault, iFaultNodePair, nsdSlipVector, n
                 onFaultQuantHistSCECForm(1,nt,j)  = timeElapsed
                 onFaultQuantHistSCECForm(2,nt,j)  = nsdSliprateVector(2)
                 onFaultQuantHistSCECForm(3,nt,j)  = nsdSliprateVector(3)
-                onFaultQuantHistSCECForm(4,nt,j)  = fric(20,iFaultNodePair,iFault)
+                onFaultQuantHistSCECForm(4,nt,j)  = fric(FRIC_SLOT_STATE,iFaultNodePair,iFault)
                 onFaultQuantHistSCECForm(5,nt,j)  = nsdSlipVector(2)
                 onFaultQuantHistSCECForm(6,nt,j)  = nsdSlipVector(3)
                 onFaultQuantHistSCECForm(7,nt,j)  = nsdSlipVector(1)
                 onFaultQuantHistSCECForm(8,nt,j)  = nsdTractionVector(2) !tstk
                 onFaultQuantHistSCECForm(9,nt,j)  = nsdTractionVector(3) !tdip
                 onFaultQuantHistSCECForm(10,nt,j) = nsdTractionVector(1) !tnrm
-                onFaultQuantHistSCECForm(11,nt,j) = fric(51,iFaultNodePair,iFault) + fric(42,iFaultNodePair,iFault) ! + fric_tp_pini
-                onFaultQuantHistSCECForm(12,nt,j) = fric(52,iFaultNodePair,iFault) 
+                onFaultQuantHistSCECForm(11,nt,j) = fric(FRIC_SLOT_TP_NORM_TP,iFaultNodePair,iFault) + fric(FRIC_SLOT_TP_PINI,iFaultNodePair,iFault) ! + fric_tp_pini
+                onFaultQuantHistSCECForm(12,nt,j) = fric(FRIC_SLOT_TP_TEMP,iFaultNodePair,iFault)
             endif
         enddo 
     endif   

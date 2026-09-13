@@ -200,13 +200,13 @@ subroutine init_vel
     do ift = 1, ntotft
         do i = 1,nftnd(ift)
             tmp = eqNumStartIndexLoc(nsmp(1,i,ift))! slave nodeid i 
-            v1(eqNumIndexArr(tmp+1)) = fric(34,i,ift) ! vxs
-            v1(eqNumIndexArr(tmp+2)) = fric(35,i,ift) ! vys
-            v1(eqNumIndexArr(tmp+3)) = fric(36,i,ift) ! vzs
+            v1(eqNumIndexArr(tmp+1)) = fric(FRIC_SLOT_VEL_SLAVE_X,i,ift) ! vxs
+            v1(eqNumIndexArr(tmp+2)) = fric(FRIC_SLOT_VEL_SLAVE_Y,i,ift) ! vys
+            v1(eqNumIndexArr(tmp+3)) = fric(FRIC_SLOT_VEL_SLAVE_Z,i,ift) ! vzs
             tmp = eqNumStartIndexLoc(nsmp(2,i,ift))! master nodeid i
-            v1(eqNumIndexArr(tmp+1)) = fric(31,i,ift) ! vxm
-            v1(eqNumIndexArr(tmp+2)) = fric(32,i,ift) ! vym
-            v1(eqNumIndexArr(tmp+3)) = fric(33,i,ift) ! vzm
+            v1(eqNumIndexArr(tmp+1)) = fric(FRIC_SLOT_VEL_MASTER_X,i,ift) ! vxm
+            v1(eqNumIndexArr(tmp+2)) = fric(FRIC_SLOT_VEL_MASTER_Y,i,ift) ! vym
+            v1(eqNumIndexArr(tmp+3)) = fric(FRIC_SLOT_VEL_MASTER_Z,i,ift) ! vzm
         enddo
     enddo
 end subroutine init_vel
