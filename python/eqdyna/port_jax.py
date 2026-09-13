@@ -39,7 +39,7 @@ def build(S):
     pml_nodes_idx = np.nonzero(ndof == 12)[0]
     d1n, d2n, d3n = region_damp(S['meshCoor'][pml_nodes_idx, 0], S['meshCoor'][pml_nodes_idx, 1],
                                  S['meshCoor'][pml_nodes_idx, 2], S['PMLb'], S['nPML'],
-                                 S['vmaxPML'], S['R'])
+                                 S['vmaxPML'], S['R'], True)
     dampv_pml = np.zeros((pml_nodes_idx.shape[0], 9))
     for k, dk in enumerate((d1n, d2n, d3n)):
         dampv_pml[:, k] = dk; dampv_pml[:, k + 3] = dk; dampv_pml[:, k + 6] = dk
@@ -60,7 +60,7 @@ def build(S):
     conn_p = conn[E_pml]
     xc_p = S['meshCoor'][conn_p].mean(axis=1)
     d1p, d2p, d3p = region_damp(xc_p[:, 0], xc_p[:, 1], xc_p[:, 2], S['PMLb'], S['nPML'],
-                                 S['vmaxPML'], S['R'])
+                                 S['vmaxPML'], S['R'], False)
     a1 = 1.0 / dt - d1p / 2.0; b1 = 1.0 / dt + d1p / 2.0
     a2 = 1.0 / dt - d2p / 2.0; b2 = 1.0 / dt + d2p / 2.0
     a3 = 1.0 / dt - d3p / 2.0; b3 = 1.0 / dt + d3p / 2.0

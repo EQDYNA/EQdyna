@@ -9,9 +9,16 @@ starts). This ports only the per-step kernels: velDispUpdate, assembleGlobalKU
 storeRuptureTime). calcElemMass's contribution is analytically zero for this
 case (rdampm=0.0d0, C_elastic=1) and is not computed at all -- see README.
 
-Known-bug reproduction: the PML/comdampv region cascade uses `y>=xmax0`
-(not `y>=ymax0`) exactly as src/comdampv.f90 does (pathway_forward.md #8).
-Literal constant forms (3*vmaxPML/2/delta*log(1/R)*(.)**2) are preserved.
+UPDATE (post a844e92, master): `region_damp` now ports the FIXED PML
+region cascade (src/func_lib.f90's `pmlRegionDistance`, post-refactor) --
+region 14 correctly tests y against ymax0, not xmax0 (pathway_forward.md
+item 8's bug, since fixed). Also reproduces `pmlRegionDistance`'s
+`bound_inclusive` flag exactly: computePMLDampingVector.f90 (node-based,
+called from velDispUpdate) always uses inclusive (>=/<=) comparisons;
+assembleGlobalKU.f90's calcPMLElemKU (element-center-based) always uses
+strict (>/<) -- a genuine, pre-existing difference between the two call
+sites, not something this refactor (or this port) unifies. Literal
+constant forms (3*vmaxPML/2/delta*log(1/R)*(.)**2) are preserved.
 """
 import numpy as np
 import os
@@ -89,44 +96,45 @@ def load(case_dir):
                 ud=ud, arn=arn, fric_init=fric)
 
 
-def region_damp(x, y, z, PMLb, nPML, vmaxPML, R):
-    """Vectorized port of comdampv.f90's region cascade, bug-for-bug
-    (branch 'y>=xmax0' reproduced literally, per pathway_forward.md #8)."""
+def region_damp(x, y, z, PMLb, nPML, vmaxPML, R, bound_inclusive):
+    """Vectorized port of src/func_lib.f90's `pmlRegionDistance` (post
+    a844e92: region-14 now correctly tests y against ymax0, not xmax0;
+    z<=zmin0 gap closed). `bound_inclusive` reproduces the Fortran's own
+    pre-existing, NOT-unified difference between the two call sites:
+    computePMLDampingVector.f90 (node-based velDispUpdate damping) always
+    calls with boundInclusive=.true. (>=/<=); assembleGlobalKU.f90's
+    calcPMLElemKU (element-center damping) always calls with
+    boundInclusive=.false. (strict >/<). Get this flag right per caller,
+    not just once -- it changes which points land exactly on a PML shell
+    boundary, which is common on this code's structured grids."""
     xmax0, xmin0, ymax0, ymin0, zmin0, maxdx, maxdy, maxdz = PMLb
     n = x.shape[0]
-    zlo = z <= zmin0
-    d3 = np.where(zlo, np.abs(z - zmin0), 0.0)
+    if bound_inclusive:
+        xHi = x >= xmax0; xLo = x <= xmin0; yHi = y >= ymax0; yLo = y <= ymin0
+    else:
+        xHi = x > xmax0; xLo = x < xmin0; yHi = y > ymax0; yLo = y < ymin0
 
-    def classify(mask_region):
-        dd1 = np.zeros(n); dd2 = np.zeros(n)
-        taken = np.zeros(n, dtype=bool)
-        c11 = mask_region & (x >= xmax0) & (y >= ymax0)
-        c12 = mask_region & (x >= xmax0) & (y <= ymin0)
-        c13 = mask_region & (x <= xmin0) & (y <= ymin0)
-        c14 = mask_region & (x <= xmin0) & (y >= xmax0)  # literal bug: xmax0 not ymax0
-        for cond, a, b in [
-            (c11, np.abs(x - xmax0), np.abs(y - ymax0)),
-            (c12, np.abs(x - xmax0), np.abs(y - ymin0)),
-            (c13, np.abs(x - xmin0), np.abs(y - ymin0)),
-            (c14, np.abs(x - xmin0), np.abs(y - ymax0)),
-        ]:
-            sel = cond & ~taken
-            dd1 = np.where(sel, a, dd1); dd2 = np.where(sel, b, dd2)
-            taken |= sel
-        sel = mask_region & ~taken & (x >= xmax0) & (y > ymin0) & (y < ymax0)
-        dd1 = np.where(sel, np.abs(x - xmax0), dd1); dd2 = np.where(sel, 0.0, dd2); taken |= sel
-        sel = mask_region & ~taken & (y <= ymin0) & (x > xmin0) & (x < xmax0)
-        dd1 = np.where(sel, 0.0, dd1); dd2 = np.where(sel, np.abs(y - ymin0), dd2); taken |= sel
-        sel = mask_region & ~taken & (x <= xmin0) & (y > ymin0) & (y < ymax0)
-        dd1 = np.where(sel, np.abs(x - xmin0), dd1); dd2 = np.where(sel, 0.0, dd2); taken |= sel
-        sel = mask_region & ~taken & (y >= ymax0) & (x > xmin0) & (x < xmax0)
-        dd1 = np.where(sel, 0.0, dd1); dd2 = np.where(sel, np.abs(y - ymax0), dd2); taken |= sel
-        return dd1, dd2
+    d3 = np.where(z <= zmin0, np.abs(z - zmin0), 0.0)
 
-    dd1z, dd2z = classify(zlo)
-    dd1n, dd2n = classify(~zlo)
-    d1 = np.where(zlo, dd1z, dd1n)
-    d2 = np.where(zlo, dd2z, dd2n)
+    d1 = np.zeros(n); d2 = np.zeros(n)
+    taken = np.zeros(n, dtype=bool)
+    for cond, a, b in [
+        (xHi & yHi, np.abs(x - xmax0), np.abs(y - ymax0)),          # region 11
+        (xHi & yLo, np.abs(x - xmax0), np.abs(y - ymin0)),          # region 12
+        (xLo & yLo, np.abs(x - xmin0), np.abs(y - ymin0)),          # region 13
+        (xLo & yHi, np.abs(x - xmin0), np.abs(y - ymax0)),          # region 14 (fixed)
+    ]:
+        sel = cond & ~taken
+        d1 = np.where(sel, a, d1); d2 = np.where(sel, b, d2); taken |= sel
+    sel = ~taken & xHi & (y > ymin0) & (y < ymax0)                  # region 1_12
+    d1 = np.where(sel, np.abs(x - xmax0), d1); d2 = np.where(sel, 0.0, d2); taken |= sel
+    sel = ~taken & yLo & (x > xmin0) & (x < xmax0)                  # region 1_23
+    d1 = np.where(sel, 0.0, d1); d2 = np.where(sel, np.abs(y - ymin0), d2); taken |= sel
+    sel = ~taken & xLo & (y > ymin0) & (y < ymax0)                  # region 1_34
+    d1 = np.where(sel, np.abs(x - xmin0), d1); d2 = np.where(sel, 0.0, d2); taken |= sel
+    sel = ~taken & yHi & (x > xmin0) & (x < xmax0)                  # region 1_41
+    d1 = np.where(sel, 0.0, d1); d2 = np.where(sel, np.abs(y - ymax0), d2); taken |= sel
+    # else (middle area 9): d1=d2=0, already the default.
 
     out = []
     for d, delta in ((d1, nPML * maxdx), (d2, nPML * maxdy), (d3, nPML * maxdz)):
@@ -166,7 +174,7 @@ def run(S, nsteps=None, verbose=True):
     pml_nodes = np.nonzero(ndof == 12)[0]
     d1n, d2n, d3n = region_damp(S['meshCoor'][pml_nodes, 0], S['meshCoor'][pml_nodes, 1],
                                  S['meshCoor'][pml_nodes, 2], S['PMLb'], S['nPML'],
-                                 S['vmaxPML'], S['R'])
+                                 S['vmaxPML'], S['R'], True)
     dampv_pml = np.zeros((pml_nodes.shape[0], 9))
     for k, dk in enumerate((d1n, d2n, d3n)):
         dampv_pml[:, k] = dk; dampv_pml[:, k + 3] = dk; dampv_pml[:, k + 6] = dk
@@ -188,7 +196,7 @@ def run(S, nsteps=None, verbose=True):
     conn_p = conn[E_pml]
     xc_p = S['meshCoor'][conn_p].mean(axis=1)
     d1p, d2p, d3p = region_damp(xc_p[:, 0], xc_p[:, 1], xc_p[:, 2], S['PMLb'], S['nPML'],
-                                 S['vmaxPML'], S['R'])
+                                 S['vmaxPML'], S['R'], False)
     a1 = 1.0 / dt - d1p / 2.0; b1 = 1.0 / dt + d1p / 2.0
     a2 = 1.0 / dt - d2p / 2.0; b2 = 1.0 / dt + d2p / 2.0
     a3 = 1.0 / dt - d3p / 2.0; b3 = 1.0 / dt + d3p / 2.0
