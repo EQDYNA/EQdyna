@@ -268,6 +268,9 @@ The release workflow, in order:
 4. Add a Tasks-done row to `pathway_forward.md` (rule 14).
 5. Commit everything above together; annotated tag `vX.Y.Z` on that commit.
 6. Push only on explicit approval from the maintainer.
+7. With the push, publish the GitHub Release for the tag
+   (`gh release create vX.Y.Z --title vX.Y.Z --notes-file <notes> --latest`)
+   so the Releases page always shows the current version.
 
 **Rationale**: v5.3.4 (2026-09-09) was cut with its notes appended to
 `pastReleaseNotes.md` instead of leading `README.md`, because the
