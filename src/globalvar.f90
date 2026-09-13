@@ -24,7 +24,7 @@ MODULE globalvar
         FRIC_SLOT_SW_D0             =  3, &  ! slip-weakening critical slip distance D0, m
         FRIC_SLOT_COHESION          =  4, &  ! fault cohesion, Pa
         FRIC_SLOT_TW_T0             =  5, &  ! time-weakening rupture-time offset t0, s
-        FRIC_SLOT_NORM_STRESS_ADD   =  6, &  ! additive normal-stress term (non-restart path); no writer in current src/, always 0
+        ! slot 6 retired 2026-09-13: was 'surface pore pressure' (0.5*dz at surface nodes); writer intentionally disabled pre-2023, dead reads removed
         FRIC_SLOT_INIT_NORM         =  7, &  ! initial effective normal stress, Pa
         FRIC_SLOT_INIT_STRIKE_SHEAR =  8, &  ! initial strike-direction shear stress, Pa
         FRIC_SLOT_RSF_A             =  9, &  ! RSF direct-effect parameter a
