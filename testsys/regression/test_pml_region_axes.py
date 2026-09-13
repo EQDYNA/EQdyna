@@ -15,7 +15,7 @@ bad = []
 patterns = [r'\by\s*[<>]=?\s*x(?:max|min)', r'\bxc\(2\)\s*[<>]=?\s*x(?:max|min)',
             r'\bx2\s*[<>]=?\s*y(?:max|min)', r'\bxc\(1\)\s*[<>]=?\s*y(?:max|min)',
             r'\bxc\(3\)\s*[<>]=?\s*[xy](?:max|min)', r'\bz\s*[<>]=?\s*[xy](?:max|min)']
-for fname in ['src/comdampv.f90', 'src/assembleGlobalKU.f90']:
+for fname in ['src/computePMLDampingVector.f90', 'src/assembleGlobalKU.f90']:
     for n, line in enumerate(open(os.path.join(root, fname)), 1):
         code = line.split('!')[0]
         for p in patterns:

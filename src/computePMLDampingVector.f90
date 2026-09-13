@@ -1,4 +1,4 @@
-subroutine comdampv(x2,y,z,dv)
+subroutine computePMLDampingVector(x2,y,z,dv)
 use globalvar
 implicit none
 integer(kind=4)::i
@@ -107,4 +107,4 @@ real (kind = dp),dimension(9)::dv
             stop
         endif
     enddo
-end subroutine comdampv
+end subroutine computePMLDampingVector

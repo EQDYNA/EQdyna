@@ -45,12 +45,12 @@ program EQdyna
 
     call readstations2
     if (insertFaultType > 0) call read_fault_rough_geometry
-    call warning
+    call checkInputConsistency
     
     allocate(nftnd(ntotft),localShapeFunc(nrowsh,nen))
     
     call calcLocalShapeFunc
-    call mesh4num
+    call countMeshEntities
     call allocInit
     call memory_estimate
     call meshgen

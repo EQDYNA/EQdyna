@@ -1,6 +1,6 @@
 ! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
 ! MIT
-subroutine qconstant(Q,rtaok,rwk,k,c1)
+subroutine calcQAttenuationCoeff(Q,rtaok,rwk,k,c1)
     use globalvar
     implicit none
     real(kind = dp)::taok(8),alfk(8),betk(8)
@@ -23,4 +23,4 @@ subroutine qconstant(Q,rtaok,rwk,k,c1)
     bk0   = rwk*8.0d0*ref*rtaok/(1.0d0+(rtaok*ref)**2)
     c1    = 0.5d0*(ak0**2+bk0**2)**(-0.5)
     c1    = c1*(1.0d0+ak0*(ak0**2+bk0**2)**(-0.5))
-end subroutine qconstant
+end subroutine calcQAttenuationCoeff
