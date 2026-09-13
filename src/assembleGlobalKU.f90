@@ -136,71 +136,7 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,globalShapeFunc,det,nel)
     xc=xc/8
 
     ! Calculate damping profiles.
-    if (xc(3)<=zmin2) then !region 1
-        damps(3)=abs(xc(3)-zmin2)        
-        if (xc(1)>xmax2.and.xc(2)>ymax2) then !region 11
-            damps(1)=abs(xc(1)-xmax2)
-            damps(2)=abs(xc(2)-ymax2)            
-        elseif (xc(1)>xmax2.and.xc(2)<ymin2) then !region 12
-            damps(1)=abs(xc(1)-xmax2)
-            damps(2)=abs(xc(2)-ymin2)    
-        elseif (xc(1)<xmin2.and.xc(2)<ymin2) then !region 13
-            damps(1)=abs(xc(1)-xmin2)
-            damps(2)=abs(xc(2)-ymin2)            
-        elseif (xc(1)<xmin2.and.xc(2)>ymax2) then !region 14
-            damps(1)=abs(xc(1)-xmin2)
-            damps(2)=abs(xc(2)-ymax2)
-        elseif (xc(1)>xmax2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_12
-            damps(1)=abs(xc(1)-xmax2)
-            damps(2)=0.0d0
-        elseif (xc(2)<ymin2.and.xc(1)>xmin2.and.xc(1)<xmax2) then !region 1_23    
-            damps(1)=0.0d0
-            damps(2)=abs(xc(2)-ymin2)
-        elseif (xc(1)<xmin2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_34    
-            damps(1)=abs(xc(1)-xmin2)
-            damps(2)=0.0d0
-        elseif (xc(2)>ymax2.and.xc(1)>xmin2.and.xc(1)<xmax2) then !region 1_41    
-            damps(1)=0.0d0
-            damps(2)=abs(xc(2)-ymax2)
-        else
-        !Middle area 9 missing previously.
-        !Feb.18.2016/D.Liu
-            damps(1)=0.0d0
-            damps(2)=0.0d0
-        endif
-    elseif (xc(3)>zmin2) then !region 2
-        damps(3)=0.0d0
-        if (xc(1)>xmax2.and.xc(2)>ymax2) then !region 11
-            damps(1)=abs(xc(1)-xmax2)
-            damps(2)=abs(xc(2)-ymax2)            
-        elseif (xc(1)>xmax2.and.xc(2)<ymin2) then !region 12
-            damps(1)=abs(xc(1)-xmax2)
-            damps(2)=abs(xc(2)-ymin2)    
-        elseif (xc(1)<xmin2.and.xc(2)<ymin2) then !region 13
-            damps(1)=abs(xc(1)-xmin2)
-            damps(2)=abs(xc(2)-ymin2)            
-        elseif (xc(1)<xmin2.and.xc(2)>ymax2) then !region 14
-            damps(1)=abs(xc(1)-xmin2)
-            damps(2)=abs(xc(2)-ymax2)
-        elseif (xc(1)>xmax2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_12
-            damps(1)=abs(xc(1)-xmax2)
-            damps(2)=0.0d0
-        elseif (xc(2)<ymin2.and.xc(1)>xmin2.and.xc(1)<xmax2) then !region 1_23    
-            damps(1)=0.0d0
-            damps(2)=abs(xc(2)-ymin2)
-        elseif (xc(1)<xmin2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_34    
-            damps(1)=abs(xc(1)-xmin2)
-            damps(2)=0.0d0
-        elseif (xc(2)>ymax2.and.xc(1)>xmin2.and.xc(1)<xmax2) then !region 1_41    
-            damps(1)=0.0d0
-            damps(2)=abs(xc(2)-ymax2)
-        else
-        !Middle area 9 missing previously.
-        !Feb.18.2016/D.Liu
-            damps(1)=0.0d0
-            damps(2)=0.0d0
-        endif
-    endif
+    call pmlRegionDistance(xc(1), xc(2), xc(3), xmax2, xmin2, ymax2, ymin2, zmin2, .false., damps)
     do i=1,3
         if (i==1) then
         delta=nPML*maxdx
