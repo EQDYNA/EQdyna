@@ -25,6 +25,16 @@ actually runs the command.
 
 **Deferred**: none.
 
+## Goals
+
+- **Python EQdyna (vectorized)** — long-term goal set 2026-09-12: a vectorized
+  Python implementation of EQdyna, developed under `python/` at repo root
+  (ALL Python solver development lives there). Phase 1: feasibility spike —
+  port the hot kernel + time loop for `test.tpv8`, parity-gated against the
+  Fortran `frt.txt` golden gate, with wall-clock comparison (NumPy first,
+  JAX/GPU assessment after). Fortran `src/` remains the production/HPC engine;
+  the Python solver targets test-scale cross-verification first, GPU later.
+
 ## Tasks done
 
 | Date | Task | Ref |
