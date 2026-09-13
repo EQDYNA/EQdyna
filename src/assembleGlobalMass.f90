@@ -161,26 +161,8 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                     
                     ! !Check
         !
-                    if (fltMPI(2*(ixyz-1)+ib)) then
-                        do ix = 1, fltnum(2*(ixyz-1)+ib)
-                            if (ixyz == 1 .and. ib==1) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltl(ix)
-                            elseif (ixyz == 1 .and. ib==2) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltr(ix)
-                            elseif (ixyz == 2 .and. ib == 1) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltf(ix)
-                            elseif (ixyz == 2 .and. ib == 2) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltb(ix)
-                            elseif (ixyz == 3 .and. ib == 1) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltd(ix)
-                            elseif (ixyz == 3 .and. ib == 2) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltu(ix)
-                            endif 
-                            call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, dofCount4MPI)
-                          
-                        enddo
-                    endif
-                
+                    call addFaultBoundaryTerm(ixyz, ib, 1, btmp, rrr, quantArray, dofCount4MPI)
+
                     call mpi_sendrecv(btmp,  rrr, MPI_DOUBLE_PRECISION, dest, sendtag, &
                                       btmp1, rrr, MPI_DOUBLE_PRECISION, source, recvtag, &
                                       MPI_COMM_WORLD, iMPIstatus, iMPIerr)
@@ -210,24 +192,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                         enddo
                     endif 
                     
-                    if (fltMPI(2*(ixyz-1)+ib)) then
-                        do ix=1,fltnum(2*(ixyz-1)+ib)
-                            if (ixyz == 1 .and. ib==1) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltl(ix)
-                            elseif (ixyz == 1 .and. ib==2) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltr(ix)
-                            elseif (ixyz == 2 .and. ib == 1) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltf(ix)
-                            elseif (ixyz == 2 .and. ib == 2) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltb(ix)
-                            elseif (ixyz == 3 .and. ib == 1) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltd(ix)
-                            elseif (ixyz == 3 .and. ib == 2) then 
-                                nodenumtemp = numxyz(1)*numxyz(2)*numxyz(3)+fltu(ix)
-                            endif 
-                            call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, dofCount4MPI) 
-                        enddo
-                    endif
+                    call addFaultBoundaryTerm(ixyz, ib, 2, btmp1, rrr, quantArray, dofCount4MPI)
                     deallocate(btmp, btmp1)
                 endif 
             enddo 
@@ -236,6 +201,35 @@ subroutine MPI4NodalQuant(quantArray, numDof)
     enddo 
     
     MPICommTimeInSeconds = MPICommTimeInSeconds + MPI_WTIME() - startTimeStamp
+contains
+    subroutine addFaultBoundaryTerm(ixyzArg, ibArg, modeArg, arr, rrrArg, quantArr, dofCount)
+    ! Fetch (modeArg=1) or add (modeArg=2) the fault-boundary-node contribution
+    ! for the (ixyzArg, ibArg) MPI interface, shared by the pre- and post-sendrecv passes.
+        integer (kind = 4), intent(in) :: ixyzArg, ibArg, modeArg, rrrArg
+        real (kind = dp), intent(inout) :: arr(rrrArg)
+        real (kind = dp), intent(inout) :: quantArr(totalNumOfEquations)
+        integer (kind = 4), intent(inout) :: dofCount
+        integer (kind = 4) :: j, nodeId, k
+
+        k = 2*(ixyzArg-1)+ibArg
+        if (.not. fltMPI(k)) return
+        do j = 1, fltnum(k)
+            if (ixyzArg == 1 .and. ibArg==1) then
+                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltl(j)
+            elseif (ixyzArg == 1 .and. ibArg==2) then
+                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltr(j)
+            elseif (ixyzArg == 2 .and. ibArg == 1) then
+                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltf(j)
+            elseif (ixyzArg == 2 .and. ibArg == 2) then
+                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltb(j)
+            elseif (ixyzArg == 3 .and. ibArg == 1) then
+                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltd(j)
+            elseif (ixyzArg == 3 .and. ibArg == 2) then
+                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltu(j)
+            endif
+            call processNodalQuantArr(nodeId, numDof, modeArg, arr, rrrArg, quantArr, dofCount)
+        enddo
+    end subroutine addFaultBoundaryTerm
 end subroutine MPI4NodalQuant
 
 subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, quantArray, dofCount4MPI)
