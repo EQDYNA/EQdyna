@@ -94,6 +94,21 @@ subroutine pydump_state
         write(u,'(1x,e24.16e3)') v1(i)
     enddo
     close(u)
+
+    ! Milestone 5 (standalone station matching): anonfs(1:3,1:numOfOnFaultStCount)
+    ! maps on-fault station index i -> (fault-node-seq, xonfs column j, iFault);
+    ! OffFaultStNodeIdIndex(1:2,1:numOfOffFaultStCount) maps off-fault station
+    ! index -> (x4nds column i, matched nodeCount).
+    open(unit=u, file='pydump_stations.txt', status='unknown')
+    write(u,*) numOfOnFaultStCount
+    write(u,*) numOfOffFaultStCount
+    do i = 1, numOfOnFaultStCount
+        write(u,'(3(1x,i10))') anonfs(1,i), anonfs(2,i), anonfs(3,i)
+    enddo
+    do i = 1, numOfOffFaultStCount
+        write(u,'(2(1x,i10))') OffFaultStNodeIdIndex(1,i), OffFaultStNodeIdIndex(2,i)
+    enddo
+    close(u)
 end subroutine pydump_state
 
 ! Per-step checkpoint (nt<=5) for first-divergence diagnosis: end-of-step

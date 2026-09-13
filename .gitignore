@@ -5,7 +5,9 @@ bin/
 __pycache__/
 *.mod
 *.pyc
+src/*.o
 src/eqdyna
+src/eqdyna-pydump
 test/
 test.prev/
 resume_claude.sh

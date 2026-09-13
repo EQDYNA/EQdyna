@@ -58,8 +58,15 @@ def run_e2e():
 
 def run_parity():
     print('\n==== testsys: parity ====')
-    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'parity', 'run_parity.py')],
-                            cwd=REPO_ROOT)
+    rc = subprocess.call([sys.executable, os.path.join(TESTSYS, 'parity', 'run_parity.py')],
+                          cwd=REPO_ROOT)
+    if rc != 0:
+        return rc
+    # Standalone (no-Fortran-in-the-loop) meshgen port, milestones 1+2 --
+    # same fixtures, same regeneration workflow as run_parity.py above.
+    return subprocess.call(
+        [sys.executable, os.path.join(TESTSYS, 'parity', 'test_standalone_meshgen.py')],
+        cwd=REPO_ROOT)
 
 
 def run_perf():
