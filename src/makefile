@@ -46,11 +46,11 @@ endif
 OPT  = -c ${FFLAGS} 
 OPT1 = ${FFLAGS}
 
-OBJ  = eqdyna3d.o  globalvar.o mesh4num.o  meshgen.o   calcLocalShapeFunc.o    \
+OBJ  = eqdyna3d.o  globalvar.o countMeshEntities.o  meshgen.o   calcLocalShapeFunc.o    \
        driver.o    assembleGlobalMass.o     calcGlobalShapeFunc.o                calcB.o      \
-       assembleGlobalKU.o        calcElemMass.o    calcElemKU.o     hrglss.o    fric.o      \
-       faulting.o              comdampv.o  qconstant.o             \
-       readInputFiles.o        thermop.o   library.o   warning.o   \
+       assembleGlobalKU.o        calcElemMass.o    calcElemKU.o     calcHourglassResist.o    fric.o      \
+       faulting.o              computePMLDampingVector.o  calcQAttenuationCoeff.o             \
+       readInputFiles.o        updateThermalPressurization.o   library.o   checkInputConsistency.o   \
        library_degeneration.f90            library_output.o        \
        netcdf_io.o
 
@@ -59,20 +59,20 @@ clean:eqdyna
 
 eqdyna: $(OBJ) 
 	$(FC) $(OPT1) $(OBJ) -o eqdyna ${NETCDF_LIB}
-eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o mesh4num.o \
-            meshgen.o readInputFiles.o warning.o         \
+eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o countMeshEntities.o \
+            meshgen.o readInputFiles.o checkInputConsistency.o         \
             library_output.o netcdf_io.o
-	$(FC) $(OPT) eqdyna3d.f90 
+	$(FC) $(OPT) eqdyna3d.f90
 globalvar.o: globalvar.f90
-	$(FC) $(OPT) globalvar.f90 	
-mesh4num.o: mesh4num.f90 globalvar.o library_degeneration.o
-	$(FC) $(OPT) mesh4num.f90
+	$(FC) $(OPT) globalvar.f90
+countMeshEntities.o: countMeshEntities.f90 globalvar.o library_degeneration.o
+	$(FC) $(OPT) countMeshEntities.f90
 meshgen.o: meshgen.f90 globalvar.o library.o library_degeneration.o
 	$(FC) $(OPT) meshgen.f90
 calcLocalShapeFunc.o: calcLocalShapeFunc.f90 globalvar.o
 	$(FC) $(OPT) calcLocalShapeFunc.f90		
-driver.o: driver.f90 assembleGlobalMass.o assembleGlobalKU.o hrglss.o faulting.o \
-          globalvar.o comdampv.o thermop.o
+driver.o: driver.f90 assembleGlobalMass.o assembleGlobalKU.o calcHourglassResist.o faulting.o \
+          globalvar.o computePMLDampingVector.o updateThermalPressurization.o
 	$(FC) $(OPT) driver.f90
 assembleGlobalMass.o: assembleGlobalMass.f90 calcGlobalShapeFunc.o library.o globalvar.o
 	$(FC) $(OPT) assembleGlobalMass.f90
@@ -84,26 +84,26 @@ assembleGlobalKU.o: assembleGlobalKU.f90 calcElemKU.o globalvar.o
 	$(FC) $(OPT) assembleGlobalKU.f90
 calcElemMass.o: calcElemMass.f90 globalvar.o
 	$(FC) $(OPT) calcElemMass.f90
-calcElemKU.o: calcElemKU.f90 calcB.o qconstant.o globalvar.o
+calcElemKU.o: calcElemKU.f90 calcB.o calcQAttenuationCoeff.o globalvar.o
 	$(FC) $(OPT) calcElemKU.f90
 calcB.o: calcB.f90 globalvar.o
 	$(FC) $(OPT) calcB.f90
-hrglss.o: hrglss.f90 globalvar.o
-	$(FC) $(OPT) hrglss.f90
+calcHourglassResist.o: calcHourglassResist.f90 globalvar.o
+	$(FC) $(OPT) calcHourglassResist.f90
 fric.o: fric.f90 globalvar.o
 	$(FC) $(OPT) fric.f90
 faulting.o: faulting.f90 fric.o globalvar.o
 	$(FC) $(OPT) faulting.f90
-comdampv.o: comdampv.f90
-	$(FC) $(OPT) comdampv.f90
-qconstant.o: qconstant.f90
-	$(FC) $(OPT) qconstant.f90
+computePMLDampingVector.o: computePMLDampingVector.f90
+	$(FC) $(OPT) computePMLDampingVector.f90
+calcQAttenuationCoeff.o: calcQAttenuationCoeff.f90
+	$(FC) $(OPT) calcQAttenuationCoeff.f90
 readInputFiles.o: readInputFiles.f90 globalvar.o
-	$(FC) $(OPT) readInputFiles.f90 
-thermop.o: thermop.f90 globalvar.o
-	$(FC) $(OPT) thermop.f90 
-warning.o: warning.f90 globalvar.o
-	$(FC) $(OPT) warning.f90
+	$(FC) $(OPT) readInputFiles.f90
+updateThermalPressurization.o: updateThermalPressurization.f90 globalvar.o
+	$(FC) $(OPT) updateThermalPressurization.f90
+checkInputConsistency.o: checkInputConsistency.f90 globalvar.o
+	$(FC) $(OPT) checkInputConsistency.f90
 library_degeneration.o: library_degeneration.f90 globalvar.o 
 	$(FC) $(OPT) library_degeneration.f90
 library_output.o: library_output.f90 globalvar.o 

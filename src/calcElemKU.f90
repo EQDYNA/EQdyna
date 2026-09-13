@@ -96,8 +96,8 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
         ir=(xc(3)-(PMLb(5)+dx/2))/dx+1
         k=1+mod(ip,2)+2*mod(iq,2)+4*mod(ir,2)
         ! Modified Day and Bradley(2001) based on Liu(2006) 
-        call qconstant(Qp,taok,wkp,k,cv)
-        call qconstant(Qs,taok,wks,k,cs)
+        call calcQAttenuationCoeff(Qp,taok,wkp,k,cv)
+        call calcQAttenuationCoeff(Qs,taok,wks,k,cs)
         wkp=wkp*8.0d0;
         wks=wks*8.0d0;
         miuu=miu*cs

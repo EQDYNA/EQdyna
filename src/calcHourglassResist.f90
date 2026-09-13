@@ -1,6 +1,6 @@
 ! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
 ! MIT
-subroutine hrglss
+subroutine calcHourglassResist
  
     use globalvar
     implicit none
@@ -93,4 +93,4 @@ subroutine hrglss
         endif
     enddo
     compTimeInSeconds(5) = compTimeInSeconds(5) + MPI_WTIME() - startTimeStamp
-end subroutine hrglss
+end subroutine calcHourglassResist

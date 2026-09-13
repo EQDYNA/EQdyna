@@ -22,9 +22,9 @@ subroutine driver
         nodalForceArr = 0.0d0
         
         call assembleGlobalKU
-        call hrglss   
+        call calcHourglassResist   
         call MPI4NodalQuant(nodalForceArr, 3)
-        if (friclaw == 5) call thermop
+        if (friclaw == 5) call updateThermalPressurization
         call faulting
         nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/nodalMassArr(1:totalNumOfEquations)
 !        if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) then 
@@ -108,7 +108,7 @@ subroutine velDispUpdate
         elseif (numOfDofPerNodeArr(i)==12) then
             eqNumTmp=eqNumIndexArr(eqNumStartIndexLoc(i)+1)
             if (eqNumTmp>0) then
-                call comdampv(meshCoor(1,i), meshCoor(2,i), meshCoor(3,i), dampv)
+                call computePMLDampingVector(meshCoor(1,i), meshCoor(2,i), meshCoor(3,i), dampv)
             endif
             do j = 1, 9
                 eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(i)+j)

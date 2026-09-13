@@ -1,4 +1,4 @@
-subroutine warning
+subroutine checkInputConsistency
 
     use globalvar
     implicit none
@@ -17,4 +17,4 @@ subroutine warning
         write(*,*) 'Now, C_elastic = ', C_elastic
         stop 1003
     endif
-end subroutine warning
+end subroutine checkInputConsistency

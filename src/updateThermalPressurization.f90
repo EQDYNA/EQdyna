@@ -1,4 +1,4 @@
-subroutine thermop
+subroutine updateThermalPressurization
 
 use globalvar
 implicit none
@@ -37,7 +37,7 @@ do ift = 1, ntotft
     enddo   
 enddo
 
-end subroutine thermop
+end subroutine updateThermalPressurization
   
   
     

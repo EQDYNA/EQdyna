@@ -1,6 +1,6 @@
 ! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
 ! MIT
-subroutine mesh4num
+subroutine countMeshEntities
     use globalvar
     implicit none
     include 'mpif.h'
@@ -86,4 +86,4 @@ subroutine mesh4num
     totalNumOfNodes = nodeCount
     totalNumOfElements = elementCount
     totalNumOfEquations = equationNumCount
-end subroutine mesh4num
+end subroutine countMeshEntities

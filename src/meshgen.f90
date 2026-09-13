@@ -413,7 +413,7 @@ subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCou
         stop 2002
     endif
     if(nodeCount/=nx*ny*nz.or.msnode/=totalNumOfNodes.or.elemCount/=totalNumOfElements.or.equationNumCount/=totalNumOfEquations) then
-        write(*,*) 'Inconsistency in node/element/equation/between meshgen and mesh4num: stop!',me
+        write(*,*) 'Inconsistency in node/element/equation/between meshgen and countMeshEntities: stop!',me
         write(*,*) 'nodeCount&totalNumOfNodes=',nodeCount,totalNumOfNodes
         write(*,*) 'elemCount,totalNumOfElements=',elemCount,totalNumOfElements
         write(*,*) 'equationNumCount,totalNumOfEquations=',equationNumCount,totalNumOfEquations
@@ -428,7 +428,7 @@ subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCou
     endif
     do i=1,ntotft
         if(nftnd0(i)/=nftnd(i)) then
-            write(*,*) 'Inconsistency in fault between meshgen and mesh4num: stop!',me,i
+            write(*,*) 'Inconsistency in fault between meshgen and countMeshEntities: stop!',me,i
             stop 2005
         endif
     enddo
