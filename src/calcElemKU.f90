@@ -91,12 +91,6 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
             Qp=100.0d0
         endif
     !For Tianjin
-        ! if (mate(2)<1500)then
-        ! Qs=0.02*mate(2)
-        ! else
-        ! Qs=0.1*mate(2)
-        ! endif
-        ! Qp=1.5*Qs
         ip=(xc(1)-(PMLb(2)+dx/2))/dx+1
         iq=(xc(2)-(PMLb(4)+dx/2))/dx+1
         ir=(xc(3)-(PMLb(5)+dx/2))/dx+1

@@ -81,16 +81,6 @@ real (kind = dp),dimension(9)::dv
             damp(2)=0.0d0 
         endif
     endif    
-!For Double-couple point source. Ma and Liu (2006)     
-    ! if (z>-1000.) then
-    ! vp=2800.
-    ! elseif(z==-1000.)then
-    ! vp=4400.
-    ! else
-    ! vp=6000.
-    ! endif
-!For TPV 8
-!    vp=5716.
 !For TianJin
     do i=1,3
         if (i==1) then

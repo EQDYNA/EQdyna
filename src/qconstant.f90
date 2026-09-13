@@ -19,17 +19,8 @@ subroutine qconstant(Q,rtaok,rwk,k,c1)
     a1    = 1.0d0
     b1    = 0.0d0
     ref   = 2.0d0*pi
-    ! do i=1,8
-        ! a1=a1-kapa*(kapa*alfk(i)+betk(i))/(1+(ref*taok(i))**2)
-        ! b1=b1+kapa*(kapa*alfk(i)+betk(i))*ref*taok(i)/(1+(ref*taok(i))**2)
-    ! enddo
-    ! c1=sqrt(a1**2+b1**2)
     ak0   = 1.0d0-rwk*8.0d0/(1.0d0+(rtaok*ref)**2)
     bk0   = rwk*8.0d0*ref*rtaok/(1.0d0+(rtaok*ref)**2)
     c1    = 0.5d0*(ak0**2+bk0**2)**(-0.5)
     c1    = c1*(1.0d0+ak0*(ak0**2+bk0**2)**(-0.5))
-    ! if (c1>=1.0) then
-    ! write(*,*) 'wrong c1'
-        ! stop 555
-    ! endif
 end subroutine qconstant

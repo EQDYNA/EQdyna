@@ -11,7 +11,6 @@ subroutine readglobal
     
     if (me == 0) then 
         INQUIRE(FILE="bGlobal.txt", EXIST=file_exists)
-        !write(*,*) 'Checking bGlobal.txt by the master procs', me
         if (file_exists .eqv. .FALSE.) then
             write(*,*) 'bGlobal.txt is required but missing ...'
                 
@@ -70,7 +69,6 @@ subroutine readmodelgeometry
     
     if (me == 0) then 
         INQUIRE(FILE="bModelGeometry.txt", EXIST=file_exists)
-        !write(*,*) 'Checking bModel_Geometry.txt by the master procs', me
         if (file_exists .eqv. .FALSE.) then
             write(*,*) 'bModelGeometry.txt is required but missing ...'
                 
@@ -107,7 +105,6 @@ subroutine readfaultgeometry
     
     if (me == 0) then 
         INQUIRE(FILE="bFaultGeometry.txt", EXIST=file_exists)
-        !write(*,*) 'Checking bFault_Geometry.txt by the master procs', me
         if (file_exists .eqv. .FALSE.) then
             write(*,*) 'bFaultGeometry.txt is required but missing ...'
                 
@@ -159,7 +156,6 @@ subroutine readmaterial
     
     if (me == 0) then 
         INQUIRE(FILE="bMaterial.txt", EXIST=file_exists)
-        !write(*,*) 'Checking bMaterial.txt by the master procs', me
         if (file_exists .eqv. .FALSE.) then
             write(*,*) 'bMaterial.txt is required but missing ...'
                 
@@ -198,7 +194,6 @@ subroutine readstations1
     
     if (me == 0) then 
         INQUIRE(FILE="bStations.txt", EXIST=file_exists)
-        !write(*,*) 'Checking bStations.txt by the master procs', me
         if (file_exists .eqv. .FALSE.) then
             write(*,*) 'bStations.txt is required but missing ...'
                 
@@ -230,7 +225,6 @@ subroutine readstations2
     
     if (me == 0) then 
         INQUIRE(FILE="bStations.txt", EXIST=file_exists)
-        !write(*,*) 'Checking bStations.txt by the master procs', me
         if (file_exists .eqv. .FALSE.) then
             write(*,*) 'bStations.txt is required but missing ...'
                 
@@ -277,7 +271,6 @@ subroutine read_fault_rough_geometry
     
     if (me == 0) then 
         INQUIRE(FILE="bFault_Rough_Geometry.txt", EXIST=file_exists)
-        !write(*,*) 'Checking bFault_Rough_Geometry.txt by the master procs', me
         if (file_exists .eqv. .FALSE.) then
             write(*,*) 'bFault_Rough_Geometry.txt is required but missing ...'
                 
