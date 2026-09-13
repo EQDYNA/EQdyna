@@ -19,7 +19,7 @@ without touching the real test/ or test.reference.results/ trees.
 """
 import os, sys
 import numpy as np
-import xarray as xr
+from netCDF4 import Dataset
 
 fileNameList = ['fault.dyna.r.nc', 'frt.txt0', 'frt.txt1', 'frt.txt2', 'frt.txt3']
 refRoot = 'test.reference.results'
@@ -29,27 +29,39 @@ THRESHOLD = 1e-3
 
 def compare_nc_files(fn1, fn2, threshold=THRESHOLD):
     isTheSame = 'SUCCESS ' + fn1 + ' ' + fn2
-    f1 = xr.open_dataset(fn1)
-    f2 = xr.open_dataset(fn2)
+
+    def attrs(obj):
+        return {k: obj.getncattr(k) for k in obj.ncattrs()}
+
+    def attrs_equal(a, b):
+        def val_eq(x, y):
+            try:
+                return np.array_equal(x, y, equal_nan=True)
+            except TypeError:      # non-numeric attrs (strings, mixed)
+                return np.array_equal(x, y)
+        return set(a) == set(b) and all(val_eq(a[k], b[k]) for k in a)
+
+    f1 = Dataset(fn1, 'r')
+    f2 = Dataset(fn2, 'r')
     try:
         # "Metadata" means variable set + attrs, not exact data values --
         # comparing values is the per-variable allclose loop below, gated
-        # by the one calibrated threshold (rule 5). f1.identical(f2) also
-        # requires bit-exact data, which a parallel MPI dynamic-rupture
-        # rerun cannot promise (floating-point reduction order varies run
-        # to run); using it here previously turned ordinary within-
-        # threshold non-determinism into a false "FAIL metadata".
+        # by the one calibrated threshold (rule 5). Bit-exact data equality
+        # is NOT required: a parallel MPI dynamic-rupture rerun cannot
+        # promise it (floating-point reduction order varies run to run).
         metadata_equal = (
             set(f1.variables) == set(f2.variables)
-            and f1.attrs == f2.attrs
-            and all(f1[v].attrs == f2[v].attrs for v in f1.variables)
+            and attrs_equal(attrs(f1), attrs(f2))
+            and all(attrs_equal(attrs(f1.variables[v]), attrs(f2.variables[v]))
+                    for v in f1.variables)
         )
         for var in f1.variables:
-            var1 = f1[var]
-            var2 = f2[var]
-            if var1.dims != var2.dims:
+            var1 = f1.variables[var]
+            var2 = f2.variables[var]
+            if var1.dimensions != var2.dimensions:
                 isTheSame = 'FAIL var dim ' + fn1 + ' ' + fn2
-            elif not np.allclose(var1, var2, rtol=threshold, atol=threshold):
+            elif not np.allclose(np.asarray(var1[:]), np.asarray(var2[:]),
+                                 rtol=threshold, atol=threshold):
                 isTheSame = 'FAIL var numbers ' + fn1 + ' ' + fn2
         if not metadata_equal and isTheSame.startswith('SUCCESS'):
             isTheSame = 'FAIL metadata ' + fn1 + ' ' + fn2

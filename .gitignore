@@ -8,3 +8,5 @@ __pycache__/
 src/eqdyna
 test/
 test.prev/
+resume_claude.sh
+.claude/
