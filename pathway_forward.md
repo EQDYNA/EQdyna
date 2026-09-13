@@ -25,6 +25,8 @@ actually runs the command.
 
 | 12 | ~~fric_tp_h=0 TP bug~~ FIXED (2026-09-13): thermop kernels now use per-node fric(40) (=0.02 m, TPV105-3D spec h=20mm). Verified against clean-room v5.2.0 (the SCEC-verified tag): fixed==v5.2.0, h=0 categorically different (~1 s rupture time, ~2.9 m slip). tpv1053d reference regenerated. Was: `fric_tp_h` (TP shear-zone half-width, denominator in every thermop.f90 kernel) is never assigned in src/ — runs as 0.0 (confirmed by compiled probe). Intended 0.02 is written to on_fault_vars slot 40 (fric(40)) by case.setup but never wired to the global thermop reads. All TP results from this tree used h=0. Fix is gate-moving (tpv1053d reference regen) — needs owner decision | 2 | `src/globalvar.f90` (fric_tp_h), `src/thermop.f90`, `src/netcdf_io.f90` (slot 40) | until fixed | 2026-09-13 | `grep -rn "fric_tp_h" src/` |
 
+| 13 | CHECK (physics decision): PML boundary inclusivity differs between callers — computePMLDampingVector uses >=/<=, calcPMLElemKU uses >/< at region bounds (pre-existing; preserved via boundInclusive flag in func_lib.f90 pmlRegionDistance). Affects only points exactly on a PML bound. Decide one convention or document why both. Also: fric slot 6 is read (faulting.f90) but never written — always 0 | 2 | `src/func_lib.f90`, `src/globalvar.f90` slot map | until decided | 2026-09-13 | `grep -n boundInclusive src/func_lib.f90` |
+
 **Deferred**: none.
 
 ## Goals

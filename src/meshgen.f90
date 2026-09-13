@@ -918,48 +918,7 @@ subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nodeCount, nodeXyzIndex)
     meshCoor(3,nodeCount) = nodeCoor(3) 
 end subroutine createNode
 
-subroutine insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
-    ! This subroutine is to modify ycoor to insert a rough/& dipping fault interface.
-    use globalvar
-    implicit none
-    real (kind = dp) :: nodeCoor(10), peak, ycoort, pfx, pfz, fx1, fx2, fz1
-    integer (kind = 4) :: ixx, izz
-    
-    fx1 = rough_fx_min
-    fx2 = rough_fx_max
-    fz1 = rough_fz_min
-    ! Index (ixx, izz) are counted from the fault corner (rough_fx_min, rough_fz_min)
-    if ((nodeCoor(1) < fx2 + tol) .and. (nodeCoor(1) > fx1 - tol) .and. (nodeCoor(3) > fz1 - tol)) then 
-        ixx = nint((nodeCoor(1) - fx1)/dx) + 1
-        izz = nint((nodeCoor(3) - fz1)/dz) + 1
-    elseif ((nodeCoor(1) < fx1 - tol) .and. (nodeCoor(3) > fz1 - tol) ) then
-        ixx = 1
-        izz = nint((nodeCoor(3) - fz1)/dz) + 1
-    elseif ((nodeCoor(1) > fx2 + tol) .and. (nodeCoor(3) > fz1 - tol)) then 
-        ixx = nnx
-        izz = nint((nodeCoor(3) - fz1)/dz) + 1
-    elseif ((nodeCoor(1) < fx2 + tol) .and. (nodeCoor(1) > fx1 - tol) .and. (nodeCoor(3) < fz1 - tol)) then 
-        ixx = nint((nodeCoor(1) - fx1)/dx) + 1
-        izz = 1
-    elseif ((nodeCoor(1) < fx1 - tol) .and. (nodeCoor(3) < fz1 - tol)) then 
-        ixx = 1
-        izz = 1 
-    elseif ((nodeCoor(1) > fx2 + tol) .and. (nodeCoor(3) < fz1 - tol)) then 
-        ixx = nnx
-        izz = 1
-    endif 
-    
-    peak = rough_geo(1,nnz*(ixx-1)+izz)
-    pfx  = rough_geo(2,nnz*(ixx-1)+izz)
-    pfz  = rough_geo(3,nnz*(ixx-1)+izz)    
-    
-    if (nodeCoor(2) > -tol) then
-        ycoort = nodeCoor(2)*(ymax - peak)/ymax + peak
-    elseif (nodeCoor(2) < -tol) then 
-        ycoort = nodeCoor(2)*(peak - ymin)/(-ymin) + peak 
-    endif 
-    
-end subroutine insertFaultInterface
+! insertFaultInterface moved to func_lib.f90.
 
 subroutine initializeNodeXyzIndex(ix, iy, iz, nx, ny, nz, nodeXyzIndex)
     use globalvar 

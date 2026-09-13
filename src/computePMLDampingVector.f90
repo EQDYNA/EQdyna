@@ -15,72 +15,7 @@ real (kind = dp),dimension(9)::dv
     maxdy=PMLb(7)
     maxdz=PMLb(8)    
     !
-    if (z<=zmin0) then !region 1
-        damp(3)=abs(z-zmin0)        
-        if (x2>=xmax0.and.y>=ymax0) then !region 11
-            damp(1)=abs(x2-xmax0)
-            damp(2)=abs(y-ymax0)            
-        elseif (x2>=xmax0.and.y<=ymin0) then !region 12
-            damp(1)=abs(x2-xmax0)
-            damp(2)=abs(y-ymin0)    
-        elseif (x2<=xmin0.and.y<=ymin0) then !region 13
-            damp(1)=abs(x2-xmin0)
-            damp(2)=abs(y-ymin0)            
-        elseif (x2<=xmin0.and.y>=ymax0) then !region 14
-            damp(1)=abs(x2-xmin0)
-            damp(2)=abs(y-ymax0)
-        elseif (x2>=xmax0.and.y>ymin0.and.y<ymax0) then !region 1_12
-            damp(1)=abs(x2-xmax0)
-            damp(2)=0.0d0
-        elseif (y<=ymin0.and.x2>xmin0.and.x2<xmax0) then !region 1_23    
-            damp(1)=0.0d0
-            damp(2)=abs(y-ymin0)
-        elseif (x2<=xmin0.and.y>ymin0.and.y<ymax0) then !region 1_34    
-            damp(1)=abs(x2-xmin0)
-            damp(2)=0.0d0
-        elseif (y>=ymax0.and.x2>xmin0.and.x2<xmax0) then !region 1_41    
-            damp(1)=0.0d0
-            damp(2)=abs(y-ymax0)
-        else
-        !Middle area 9 missing previously.
-        !Feb.18.2016/D.Liu
-            damp(1)=0.0d0
-            damp(2)=0.0d0 
-        endif
-    elseif (z>zmin0) then !region 2
-        damp(3)=0.0d0
-        if (x2>=xmax0.and.y>=ymax0) then !region 11
-            damp(1)=abs(x2-xmax0)
-            damp(2)=abs(y-ymax0)            
-        elseif (x2>=xmax0.and.y<=ymin0) then !region 12
-            damp(1)=abs(x2-xmax0)
-            damp(2)=abs(y-ymin0)    
-        elseif (x2<=xmin0.and.y<=ymin0) then !region 13
-            damp(1)=abs(x2-xmin0)
-            damp(2)=abs(y-ymin0)            
-        elseif (x2<=xmin0.and.y>=ymax0) then !region 14
-            damp(1)=abs(x2-xmin0)
-            damp(2)=abs(y-ymax0)
-        elseif (x2>=xmax0.and.y>ymin0.and.y<ymax0) then !region 1_12
-            damp(1)=abs(x2-xmax0)
-            damp(2)=0.0d0
-        elseif (y<=ymin0.and.x2>xmin0.and.x2<xmax0) then !region 1_23    
-            damp(1)=0.0d0
-            damp(2)=abs(y-ymin0)
-        elseif (x2<=xmin0.and.y>ymin0.and.y<ymax0) then !region 1_34    
-            damp(1)=abs(x2-xmin0)
-            damp(2)=0.0d0
-        elseif (y>=ymax0.and.x2>xmin0.and.x2<xmax0) then !region 1_41    
-            damp(1)=0.0d0
-            damp(2)=abs(y-ymax0)
-        else 
-        !Middle area 9 missing previously.
-        !Feb.18.2016/D.Liu
-        !Actually this region does not exist
-            damp(1)=0.0d0 
-            damp(2)=0.0d0 
-        endif
-    endif    
+    call pmlRegionDistance(x2, y, z, xmax0, xmin0, ymax0, ymin0, zmin0, .true., damp)
 !For TianJin
     do i=1,3
         if (i==1) then

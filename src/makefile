@@ -50,7 +50,7 @@ OBJ  = eqdyna3d.o  globalvar.o countMeshEntities.o  meshgen.o   calcLocalShapeFu
        driver.o    assembleGlobalMass.o     calcGlobalShapeFunc.o                calcB.o      \
        assembleGlobalKU.o        calcElemMass.o    calcElemKU.o     calcHourglassResist.o    fric.o      \
        faulting.o              computePMLDampingVector.o  calcQAttenuationCoeff.o             \
-       readInputFiles.o        updateThermalPressurization.o   library.o   checkInputConsistency.o   \
+       readInputFiles.o        updateThermalPressurization.o   library.o   func_lib.o   checkInputConsistency.o   \
        library_degeneration.f90            library_output.o        \
        netcdf_io.o
 
@@ -67,20 +67,22 @@ globalvar.o: globalvar.f90
 	$(FC) $(OPT) globalvar.f90
 countMeshEntities.o: countMeshEntities.f90 globalvar.o library_degeneration.o
 	$(FC) $(OPT) countMeshEntities.f90
-meshgen.o: meshgen.f90 globalvar.o library.o library_degeneration.o
+meshgen.o: meshgen.f90 globalvar.o func_lib.o library_degeneration.o
 	$(FC) $(OPT) meshgen.f90
 calcLocalShapeFunc.o: calcLocalShapeFunc.f90 globalvar.o
 	$(FC) $(OPT) calcLocalShapeFunc.f90		
 driver.o: driver.f90 assembleGlobalMass.o assembleGlobalKU.o calcHourglassResist.o faulting.o \
           globalvar.o computePMLDampingVector.o updateThermalPressurization.o
 	$(FC) $(OPT) driver.f90
-assembleGlobalMass.o: assembleGlobalMass.f90 calcGlobalShapeFunc.o library.o globalvar.o
+assembleGlobalMass.o: assembleGlobalMass.f90 calcGlobalShapeFunc.o library.o func_lib.o globalvar.o
 	$(FC) $(OPT) assembleGlobalMass.f90
 calcGlobalShapeFunc.o: calcGlobalShapeFunc.f90 globalvar.o
 	$(FC) $(OPT) calcGlobalShapeFunc.f90
 library.o: library.f90 globalvar.o
 	$(FC) $(OPT) library.f90
-assembleGlobalKU.o: assembleGlobalKU.f90 calcElemKU.o globalvar.o 
+func_lib.o: func_lib.f90 globalvar.o
+	$(FC) $(OPT) func_lib.f90
+assembleGlobalKU.o: assembleGlobalKU.f90 calcElemKU.o globalvar.o func_lib.o
 	$(FC) $(OPT) assembleGlobalKU.f90
 calcElemMass.o: calcElemMass.f90 globalvar.o
 	$(FC) $(OPT) calcElemMass.f90
@@ -94,7 +96,7 @@ fric.o: fric.f90 globalvar.o
 	$(FC) $(OPT) fric.f90
 faulting.o: faulting.f90 fric.o globalvar.o
 	$(FC) $(OPT) faulting.f90
-computePMLDampingVector.o: computePMLDampingVector.f90
+computePMLDampingVector.o: computePMLDampingVector.f90 globalvar.o func_lib.o
 	$(FC) $(OPT) computePMLDampingVector.f90
 calcQAttenuationCoeff.o: calcQAttenuationCoeff.f90
 	$(FC) $(OPT) calcQAttenuationCoeff.f90
