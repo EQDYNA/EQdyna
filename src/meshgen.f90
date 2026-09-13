@@ -212,9 +212,8 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
     implicit none 
     include 'mpif.h'
     
-    integer (kind = 4) :: bndl,bndr,bndf,bndb,bndd,bndu, nx, ny, nz, itmp1, mex, mey, mez
-    integer (kind = 4) :: iMPIstatus(MPI_STATUS_SIZE), iMPIerr, totalNumFaultNode, iFault, i
-    real(kind = dp),allocatable,dimension(:) :: btmp, btmp1
+    integer (kind = 4) :: bndl,bndr,bndf,bndb,bndd,bndu, nx, ny, nz, mex, mey, mez
+    integer (kind = 4) :: totalNumFaultNode, iFault, i
     ! Initialize fltMPI(6) to .false.
     fltMPI=.false.
     
@@ -260,45 +259,13 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         elseif (mex == npx-1) then
             bndr=0
         endif
- 
+
         if (bndl/=0) then
-            if(fltnum(1)>0 ) then  
-                !if(fltnum(1) /= itmp1) stop 'error in fltnum(1)'
-                fltMPI(1)=.true.
-                allocate(btmp(fltnum(1)),btmp1(fltnum(1)))
-                btmp = 0.
-                btmp1 = 0.
-                do i = 1, fltnum(1)
-                    btmp(i)=arn(fltl(i),iFault)
-                enddo
-                call mpi_sendrecv(btmp, fltnum(1), MPI_DOUBLE_PRECISION, me-npy*npz, 1000+me, &
-                    btmp1, fltnum(1), MPI_DOUBLE_PRECISION, me-npy*npz, 1000+me-npy*npz, &
-                    MPI_COMM_WORLD, iMPIstatus, iMPIerr)
-                do i = 1, fltnum(1)
-                    arn(fltl(i),iFault) = arn(fltl(i),iFault) + btmp1(i)
-                enddo
-                deallocate(btmp,btmp1)       
-            endif
+            if(fltnum(1)>0 ) call syncArnBoundary(fltl, fltnum(1), 1, me-npy*npz, 1000, iFault)
         endif !if bhdl/=0
 
         if (bndr/=0) then
-            if(fltnum(2)>0 ) then  
-                !if(fltnum(2) /= itmp1) stop 'error in fltnum(2)'
-                fltMPI(2)=.true.
-                allocate(btmp(fltnum(2)),btmp1(fltnum(2)))
-                btmp  = 0.
-                btmp1 = 0.
-                do i = 1, fltnum(2)
-                    btmp(i)=arn(fltr(i),iFault)
-                enddo
-                call mpi_sendrecv(btmp, fltnum(2), MPI_DOUBLE_PRECISION, me+npy*npz, 1000+me, &
-                    btmp1, fltnum(2), MPI_DOUBLE_PRECISION, me+npy*npz, 1000+me+npy*npz, &
-                    MPI_COMM_WORLD, iMPIstatus, iMPIerr)
-                do i = 1, fltnum(2)
-                    arn(fltr(i),iFault) = arn(fltr(i),iFault) + btmp1(i)
-                enddo
-                deallocate(btmp,btmp1)       
-            endif
+            if(fltnum(2)>0 ) call syncArnBoundary(fltr, fltnum(2), 2, me+npy*npz, 1000, iFault)
         endif !bndr/=0
     endif !npx>1
 !*****************************************************************************************
@@ -312,43 +279,11 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif
 
         if (bndf/=0) then
-            if(fltnum(3)>0) then
-                !if(fltnum(3) /= itmp1) stop 'error in fltnum(3)'
-                fltMPI(3)=.true.
-                allocate(btmp(fltnum(3)),btmp1(fltnum(3)))
-                btmp = 0.
-                btmp1 = 0.
-                do i = 1, fltnum(3)
-                    btmp(i)=arn(fltf(i),iFault)
-                enddo
-                call mpi_sendrecv(btmp, fltnum(3), MPI_DOUBLE_PRECISION, me-npz, 2000+me, &
-                    btmp1, fltnum(3), MPI_DOUBLE_PRECISION, me-npz, 2000+me-npz, &
-                    MPI_COMM_WORLD, iMPIstatus, iMPIerr)
-                do i = 1, fltnum(3)
-                    arn(fltf(i),iFault) = arn(fltf(i),iFault) + btmp1(i)
-                enddo
-                deallocate(btmp,btmp1)       
-            endif
+            if(fltnum(3)>0) call syncArnBoundary(fltf, fltnum(3), 3, me-npz, 2000, iFault)
         endif !bhdf/=0
 
         if (bndb/=0) then
-            if(fltnum(4)>0) then  
-            !   if(fltnum(4) /= itmp1) stop 'error in fltnum(4)'
-                fltMPI(4)=.true.
-                allocate(btmp(fltnum(4)),btmp1(fltnum(4)))
-                btmp  = 0.
-                btmp1 = 0.
-                do i = 1, fltnum(4)
-                    btmp(i)=arn(fltb(i),iFault)
-                enddo
-                call mpi_sendrecv(btmp, fltnum(4), MPI_DOUBLE_PRECISION, me+npz, 2000+me, &
-                    btmp1, fltnum(4), MPI_DOUBLE_PRECISION, me+npz, 2000+me+npz, &
-                    MPI_COMM_WORLD, iMPIstatus, iMPIerr)
-                do i = 1, fltnum(4)
-                    arn(fltb(i),iFault) = arn(fltb(i),iFault) + btmp1(i)
-                enddo
-                deallocate(btmp,btmp1)       
-            endif
+            if(fltnum(4)>0) call syncArnBoundary(fltb, fltnum(4), 4, me+npz, 2000, iFault)
         endif !bndb/=0
      endif !npy>1
 !*****************************************************************************************
@@ -361,45 +296,36 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
             bndu=0
         endif
         if (bndd/=0) then
-            if(fltnum(5)>0) then
-                !if(fltnum(5) /= itmp1) stop 'error in fltnum(5)'
-                fltMPI(5)=.true.
-                allocate(btmp(fltnum(5)),btmp1(fltnum(5)))
-                btmp = 0.
-                btmp1 = 0.
-                do i = 1, fltnum(5)
-                    btmp(i)=arn(fltd(i),iFault)
-                enddo
-                call mpi_sendrecv(btmp, fltnum(5), MPI_DOUBLE_PRECISION, me-1, 3000+me, &
-                    btmp1, fltnum(5), MPI_DOUBLE_PRECISION, me-1, 3000+me-1, &
-                    MPI_COMM_WORLD, iMPIstatus, iMPIerr)
-                do i = 1, fltnum(5)
-                    arn(fltd(i),iFault) = arn(fltd(i),iFault) + btmp1(i)
-                enddo
-                deallocate(btmp,btmp1)       
-            endif
+            if(fltnum(5)>0) call syncArnBoundary(fltd, fltnum(5), 5, me-1, 3000, iFault)
         endif !bhdd/=0
-        
+
         if (bndu/=0) then
-                if(fltnum(6)>0) then  
-                    !if(fltnum(6) /= itmp1) stop 'error in fltnum(6)'
-                    fltMPI(6)=.true.
-                    allocate(btmp(fltnum(6)),btmp1(fltnum(6)))
-                    btmp  = 0.
-                    btmp1 = 0.
-                    do i = 1, fltnum(6)
-                        btmp(i)=arn(fltu(i),iFault)
-                    enddo
-                    call mpi_sendrecv(btmp, fltnum(6), MPI_DOUBLE_PRECISION, me+1, 3000+me, &
-                        btmp1, fltnum(6), MPI_DOUBLE_PRECISION, me+1, 3000+me+1, &
-                        MPI_COMM_WORLD, iMPIstatus, iMPIerr)
-                    do i = 1, fltnum(6)
-                    arn(fltu(i),iFault) = arn(fltu(i),iFault) + btmp1(i)
-                    enddo
-                    deallocate(btmp,btmp1)       
-                endif
+            if(fltnum(6)>0) call syncArnBoundary(fltu, fltnum(6), 6, me+1, 3000, iFault)
         endif !bndu/=0
     endif !npz>1
+contains
+    subroutine syncArnBoundary(idxArr, n, k, neighbor, tagBase, ift)
+    ! Send this rank's arn values for the given boundary's fault nodes to
+    ! neighbor, receive neighbor's values for the same nodes, and accumulate.
+        integer (kind = 4), intent(in) :: idxArr(:), n, k, neighbor, tagBase, ift
+        integer (kind = 4) :: j, jMPIstatus(MPI_STATUS_SIZE), jMPIerr
+        real (kind = dp), allocatable, dimension(:) :: sendBuf, recvBuf
+
+        fltMPI(k)=.true.
+        allocate(sendBuf(n),recvBuf(n))
+        sendBuf = 0.
+        recvBuf = 0.
+        do j = 1, n
+            sendBuf(j)=arn(idxArr(j),ift)
+        enddo
+        call mpi_sendrecv(sendBuf, n, MPI_DOUBLE_PRECISION, neighbor, tagBase+me, &
+            recvBuf, n, MPI_DOUBLE_PRECISION, neighbor, tagBase+neighbor, &
+            MPI_COMM_WORLD, jMPIstatus, jMPIerr)
+        do j = 1, n
+            arn(idxArr(j),ift) = arn(idxArr(j),ift) + recvBuf(j)
+        enddo
+        deallocate(sendBuf,recvBuf)
+    end subroutine syncArnBoundary
 end subroutine MPI4arn 
 
 subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, eqNumIndexArrLocTag, nftnd0)
