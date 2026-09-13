@@ -150,10 +150,10 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, ns
 
     if (C_nuclea==1 .and. iFault==nucFault) call swtwNucleation(iFault, iFaultNodePair, fricCoeff)
 
-    if((nsdTractionVector(1)+fric(FRIC_SLOT_NORM_STRESS_ADD,iFaultNodePair,iFault))>0) then
+    if(nsdTractionVector(1)>0) then
         effectiveNormalStress = 0.0d0
     else
-        effectiveNormalStress = nsdTractionVector(1)+fric(FRIC_SLOT_NORM_STRESS_ADD,iFaultNodePair,iFault)
+        effectiveNormalStress = nsdTractionVector(1)
     endif
     trialShearTraction = fric(FRIC_SLOT_COHESION,iFaultNodePair,iFault) - fricCoeff*effectiveNormalStress
 
@@ -194,7 +194,6 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     if (iFrictionLaw==5) then
         nsdTractionVector(1) = nsdTractionVector(1) + fric(FRIC_SLOT_TP_NORM_TP,iFaultNodePair,iFault)
     else
-        nsdTractionVector(1) = nsdTractionVector(1) + fric(FRIC_SLOT_NORM_STRESS_ADD,iFaultNodePair,iFault)
     endif
 
     ! If non-planar fault geometry and elastic material, enforce normal stress caps.
