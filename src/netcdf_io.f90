@@ -73,36 +73,36 @@ subroutine netcdf_read_on_fault_eqdyna
             zcord          = meshCoor(3, nsmp(1,i,ift))
             ii             = nint((xcord - fxmin(ift))/dx) + 1
             jj             = nint((zcord - fzmin(ift))/dz) + 1
-            fric(1,  i, 1) = on_fault_vars(ii,jj,1) ! sw_fs
-            fric(2,  i, 1) = on_fault_vars(ii,jj,2) ! sw_fd
-            fric(3,  i, 1) = on_fault_vars(ii,jj,3) ! sw_D0
-            fric(9,  i, 1) = on_fault_vars(ii,jj,4) ! rsf_a
-            fric(10, i, 1) = on_fault_vars(ii,jj,5) ! rsf_b
-            fric(11, i, 1) = on_fault_vars(ii,jj,6) ! rsf_Dc
-            fric(12, i, 1) = on_fault_vars(ii,jj,7) ! rsf_v0
-            fric(13, i, 1) = on_fault_vars(ii,jj,8) ! rsf_r0
-            fric(14, i, 1) = on_fault_vars(ii,jj,9) ! rsf_fw
-            fric(15, i, 1) = on_fault_vars(ii,jj,10)! rsf_vw
-            fric(16, i, 1) = on_fault_vars(ii,jj,11)! tp_a_hy
-            fric(17, i, 1) = on_fault_vars(ii,jj,12)! tp_a_th
-            fric(18, i, 1) = on_fault_vars(ii,jj,13)! tp_rouc
-            fric(19, i, 1) = on_fault_vars(ii,jj,14)! tp_lambda
-            fric(40, i, 1) = on_fault_vars(ii,jj,15)! tp_h
-            fric(41, i, 1) = on_fault_vars(ii,jj,16)! tp_Tini 
-            fric(42, i, 1) = on_fault_vars(ii,jj,17)! tp_pini 
-            fric(46, i, 1) = on_fault_vars(ii,jj,18)! creeping slip rate, lower bound
-            fric(8,  i, 1) = on_fault_vars(ii,jj,19)! init_strike_shear
-            fric(7,  i, 1) = on_fault_vars(ii,jj,20)! init_norm
-            fric(20, i, 1) = on_fault_vars(ii,jj,21)! init_state variable
-            fric(47, i, 1) = fric(46, i, 1)         ! peak slip rate
-            fric(25, i, 1) = 0.0d0                  ! vini_norm 
-            fric(26, i, 1) = fric(46, i, 1)         ! vinix
-            fric(27, i, 1) = 0.0d0                  ! viniz
-            fric(5,  i, 1) = on_fault_vars(ii,jj,22)! tw_t0
-            fric(4,  i, 1) = on_fault_vars(ii,jj,23)! cohesion
-            fric(49, i, 1) = on_fault_vars(ii,jj,24)! init_dip_shear
-            
-            fric(23, i, 1) = abs(fric(7, i, 1))     ! initialize theta_pc as abs(normal stress)
+            fric(FRIC_SLOT_SW_FS,  i, 1) = on_fault_vars(ii,jj,1) ! sw_fs
+            fric(FRIC_SLOT_SW_FD,  i, 1) = on_fault_vars(ii,jj,2) ! sw_fd
+            fric(FRIC_SLOT_SW_D0,  i, 1) = on_fault_vars(ii,jj,3) ! sw_D0
+            fric(FRIC_SLOT_RSF_A,  i, 1) = on_fault_vars(ii,jj,4) ! rsf_a
+            fric(FRIC_SLOT_RSF_B, i, 1) = on_fault_vars(ii,jj,5) ! rsf_b
+            fric(FRIC_SLOT_RSF_DC, i, 1) = on_fault_vars(ii,jj,6) ! rsf_Dc
+            fric(FRIC_SLOT_RSF_V0, i, 1) = on_fault_vars(ii,jj,7) ! rsf_v0
+            fric(FRIC_SLOT_RSF_R0, i, 1) = on_fault_vars(ii,jj,8) ! rsf_r0
+            fric(FRIC_SLOT_RSF_FW, i, 1) = on_fault_vars(ii,jj,9) ! rsf_fw
+            fric(FRIC_SLOT_RSF_VW, i, 1) = on_fault_vars(ii,jj,10)! rsf_vw
+            fric(FRIC_SLOT_TP_A_HY, i, 1) = on_fault_vars(ii,jj,11)! tp_a_hy
+            fric(FRIC_SLOT_TP_A_TH, i, 1) = on_fault_vars(ii,jj,12)! tp_a_th
+            fric(FRIC_SLOT_TP_ROUC, i, 1) = on_fault_vars(ii,jj,13)! tp_rouc
+            fric(FRIC_SLOT_TP_LAMBDA, i, 1) = on_fault_vars(ii,jj,14)! tp_lambda
+            fric(FRIC_SLOT_TP_H, i, 1) = on_fault_vars(ii,jj,15)! tp_h
+            fric(FRIC_SLOT_TP_TINI, i, 1) = on_fault_vars(ii,jj,16)! tp_Tini
+            fric(FRIC_SLOT_TP_PINI, i, 1) = on_fault_vars(ii,jj,17)! tp_pini
+            fric(FRIC_SLOT_CREEP_VMIN, i, 1) = on_fault_vars(ii,jj,18)! creeping slip rate, lower bound
+            fric(FRIC_SLOT_INIT_STRIKE_SHEAR,  i, 1) = on_fault_vars(ii,jj,19)! init_strike_shear
+            fric(FRIC_SLOT_INIT_NORM,  i, 1) = on_fault_vars(ii,jj,20)! init_norm
+            fric(FRIC_SLOT_STATE, i, 1) = on_fault_vars(ii,jj,21)! init_state variable
+            fric(FRIC_SLOT_PEAK_SLIPRATE, i, 1) = fric(FRIC_SLOT_CREEP_VMIN, i, 1)         ! peak slip rate
+            fric(FRIC_SLOT_VINI_N, i, 1) = 0.0d0                  ! vini_norm
+            fric(FRIC_SLOT_VINI_X, i, 1) = fric(FRIC_SLOT_CREEP_VMIN, i, 1)         ! vinix
+            fric(FRIC_SLOT_VINI_Z, i, 1) = 0.0d0                  ! viniz
+            fric(FRIC_SLOT_TW_T0,  i, 1) = on_fault_vars(ii,jj,22)! tw_t0
+            fric(FRIC_SLOT_COHESION,  i, 1) = on_fault_vars(ii,jj,23)! cohesion
+            fric(FRIC_SLOT_INIT_DIP_SHEAR, i, 1) = on_fault_vars(ii,jj,24)! init_dip_shear
+
+            fric(FRIC_SLOT_THETA_PC, i, 1) = abs(fric(FRIC_SLOT_INIT_NORM, i, 1))     ! initialize theta_pc as abs(normal stress)
         enddo 
     enddo
     
@@ -162,18 +162,18 @@ subroutine netcdf_read_on_fault_eqdyna_restart
             zcord            = meshCoor(3, nsmp(1,i,ift))
             ii               = nint((xcord - fxmin(ift))/dx) + 1
             jj               = nint((zcord - fzmin(ift))/dz) + 1
-            fric(8,  i, ift) = on_fault_vars(ii,jj, 1) ! tstk0
-            fric(49, i, ift) = on_fault_vars(ii,jj, 2) ! tdip0
-            fric(7,  i, ift) = on_fault_vars(ii,jj, 3) ! tnorm0
-            fric(47, i, ift) = on_fault_vars(ii,jj, 4) ! sliprate
-            fric(20, i, ift) = on_fault_vars(ii,jj, 5) ! state
-            fric(23, i, ift) = on_fault_vars(ii,jj, 6) ! state_normal
-            fric(31, i, ift) = on_fault_vars(ii,jj, 7) ! vxm
-            fric(32, i, ift) = on_fault_vars(ii,jj, 8) ! vym
-            fric(33, i, ift) = on_fault_vars(ii,jj, 9) ! vzm
-            fric(34, i, ift) = on_fault_vars(ii,jj, 10)! vxs
-            fric(35, i, ift) = on_fault_vars(ii,jj, 11)! vys
-            fric(36, i, ift) = on_fault_vars(ii,jj, 12)! vzs
+            fric(FRIC_SLOT_INIT_STRIKE_SHEAR,  i, ift) = on_fault_vars(ii,jj, 1) ! tstk0
+            fric(FRIC_SLOT_INIT_DIP_SHEAR, i, ift) = on_fault_vars(ii,jj, 2) ! tdip0
+            fric(FRIC_SLOT_INIT_NORM,  i, ift) = on_fault_vars(ii,jj, 3) ! tnorm0
+            fric(FRIC_SLOT_PEAK_SLIPRATE, i, ift) = on_fault_vars(ii,jj, 4) ! sliprate
+            fric(FRIC_SLOT_STATE, i, ift) = on_fault_vars(ii,jj, 5) ! state
+            fric(FRIC_SLOT_THETA_PC, i, ift) = on_fault_vars(ii,jj, 6) ! state_normal
+            fric(FRIC_SLOT_VEL_MASTER_X, i, ift) = on_fault_vars(ii,jj, 7) ! vxm
+            fric(FRIC_SLOT_VEL_MASTER_Y, i, ift) = on_fault_vars(ii,jj, 8) ! vym
+            fric(FRIC_SLOT_VEL_MASTER_Z, i, ift) = on_fault_vars(ii,jj, 9) ! vzm
+            fric(FRIC_SLOT_VEL_SLAVE_X, i, ift) = on_fault_vars(ii,jj, 10)! vxs
+            fric(FRIC_SLOT_VEL_SLAVE_Y, i, ift) = on_fault_vars(ii,jj, 11)! vys
+            fric(FRIC_SLOT_VEL_SLAVE_Z, i, ift) = on_fault_vars(ii,jj, 12)! vzs
             !fric(23, (i-1)*nzt+j, 1) = abs(fric(7, (i-1)*nzt+j, 1))! initialize theta_pc as abs(normal stress)
         enddo 
     enddo 
