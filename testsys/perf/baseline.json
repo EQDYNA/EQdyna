@@ -1,0 +1,15 @@
+{
+  "git_sha": "530ae62",
+  "hostname": "cotopaxi",
+  "platform": "Linux-6.8.0-107-generic-x86_64-with-glibc2.35",
+  "load_avg": "15.37 14.00 13.19",
+  "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "pinned_core": "0",
+  "timestamp": "2026-09-13 14:33:57",
+  "ratios": {
+    "numpy_over_fortran": 1.7888596615457375,
+    "jax_over_fortran": 0.6114050051106856
+  },
+  "best_python_over_fortran": 0.6114050051106856,
+  "note": "First pinned run -- this file becomes the baseline. Committed by the reviewer, not auto-committed by this script."
+}

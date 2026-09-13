@@ -1,3 +1,58 @@
+## UPDATE 7: pinned single-core timing (testsys/perf), replaces the threading-uncontrolled numbers above
+
+All prior timing numbers in this file (Updates 1-6, the "1.14x-2.61x
+faster" claims) were measured with **no thread pinning, on a shared,
+variably-loaded 64-core machine** -- NumPy/BLAS/JAX were free to use
+however many threads the runtime felt like, and load average swung
+15-65s on the same Fortran case run minutes apart. Those numbers are kept
+below as a **footnote, explicitly marked "threading uncontrolled"** — they
+are not wrong, they're just not a controlled measurement.
+
+`testsys/perf/run_perf.py` (new; wired as `python3 testsys/run.py perf`)
+pins every engine to the SAME single core (`taskset -c 0`) with
+`OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=NUMEXPR_NUM_THREADS=1`
+and JAX forced single-threaded via `XLA_FLAGS=--xla_cpu_multi_thread_eigen=false`
+plus `JAX_PLATFORMS=cpu`. Pin verified empirically each run (not assumed):
+a subprocess launched under the same `taskset` prints
+`os.sched_getaffinity(0)` and the tier checks it reports exactly the pinned
+core (`[0]`, confirmed both runs below).
+
+### Pinned single-core timing, tpv8, 114 steps, core 0 (two independent runs)
+
+| | Run 1 (14:33:57) | Run 2 (14:38:24) |
+|---|---|---|
+| Fortran (`mpirun -np 1`, pinned) | 67.53 s | 66.35 s |
+| NumPy (solve-only, pinned) | 120.80 s | 124.04 s |
+| JAX-CPU (solve+compile, pinned, 1 thread) | 41.29 s | 42.06 s |
+| NumPy/Fortran ratio | 1.789 | 1.869 |
+| **JAX/Fortran ratio** | **0.611** | **0.634** |
+
+**Pinned to a single core, JAX-CPU is still ~1.6x FASTER than serial
+Fortran** (ratio <1), and consistent run-to-run (0.611 vs 0.634, a 3.7%
+wobble — nothing like the earlier threading-uncontrolled runs' 2-3x
+wall-clock swings). NumPy is genuinely slower than Fortran even pinned
+(ratio ~1.8), consistent with Update 2's finding that NumPy's remaining
+cost is real elementwise/gather FLOP work, not thread-count-inflated
+overhead.
+
+`testsys/perf/baseline.json` (git SHA `530ae62`, host `cotopaxi`, compiler
+`GNU Fortran 11.4.0`, load avg ~13-15) was created from Run 1
+(`best_python_over_fortran: 0.6114`, i.e. JAX). Run 2 gated against it:
+degradation factor 1.037, well under the 1.5x fail threshold —
+**SUCCESS**. The tier fails non-zero if a future run's best python/fortran
+ratio degrades by more than 1.5x versus this baseline; it never gates on
+absolute seconds, per the load-variance evidence above.
+
+### Old numbers (Updates 1-6), threading uncontrolled -- kept for provenance, not for comparison
+
+The 1.14x/2.36x/2.61x-faster-than-Fortran claims and the 34.76-203.7s
+absolute-second ranges earlier in this file were all measured without
+thread pinning on a shared machine at unpredictable, sometimes very high
+(load avg 15-19) contention. Use `testsys/perf`'s numbers above for any
+future comparison; these are retained only so the earlier Updates'
+reasoning (profiling, optimization-pass deltas) remains attributable to
+the numbers that were actually in front of me at the time.
+
 ## UPDATE 6: synced to master (post f21afaf), fric_tp_h fix ported, region_damp fixed too
 
 Master had moved since this worktree branched: `f21afaf` fixes the
