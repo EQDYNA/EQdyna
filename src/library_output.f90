@@ -164,19 +164,20 @@ subroutine output_frt
     use globalvar
     implicit none
     
-    integer (kind = 4) :: i, j     
-    
+    integer (kind = 4) :: i, j
+    integer (kind = 4), parameter :: UNIT_FRT_BASE = 10004
+
     if(nftnd(1) > 0) then
-        open(unit=10004+me,file='frt.txt'//mm,status='unknown')
-        
-        write(10004+me,'(1x,22e18.7e4)')    &
+        open(unit=UNIT_FRT_BASE+me,file='frt.txt'//mm,status='unknown')
+
+        write(UNIT_FRT_BASE+me,'(1x,22e18.7e4)')    &
                 ! 3 coordinates of the fault nodes.
-            ((meshCoor(j,nsmp(1,i,1)), j = 1,3), & 
-                ! rupture time 
-            fnft(i,1),                    & 
+            ((meshCoor(j,nsmp(1,i,1)), j = 1,3), &
+                ! rupture time
+            fnft(i,1),                    &
                 ! 71-73: final slips, slipd, slipn
                 ! 74-76: final sliprates, sliprated, slipraten
-            (fric(j,i,1), j = 71,76),     &
+            (fric(j,i,1), j = FRIC_SLOT_SLIP_STRIKE, FRIC_SLOT_SLIPRATE_MAX),     &
                 ! 47: final slip rate
             fric(FRIC_SLOT_PEAK_SLIPRATE,i,1),                 &
                 ! 78: final effective normal stress, tnrm
@@ -199,8 +200,8 @@ subroutine output_frt
             fric(FRIC_SLOT_THETA_PC,i,1),                 &
                 !
             i=1,nftnd(1)) ! Finish the write(10004,me, ...) line.
-            
-        close(10004+me)
+
+        close(UNIT_FRT_BASE+me)
     endif
 end subroutine output_frt
 
@@ -221,13 +222,14 @@ end subroutine output_timeanalysis
 subroutine output_plastic_strain
     use globalvar
     implicit none
-    integer (kind = 4) :: i, j     
+    integer (kind = 4) :: i, j
+    integer (kind = 4), parameter :: UNIT_PSTR_BASE = 10007
     real (kind = dp) :: sc(3)
-    if (output_plastic == 1) then    
-        
-        do i=1,totalNumOfElements 
-                    if ((pstrain(i)>1.0d-4).and.(abs(meshCoor(1,nodeElemIdRelation(1,i)))<5.0d3).and.(abs(meshCoor(2,nodeElemIdRelation(1,i)))<2.0d3).and.(abs(meshCoor(3,nodeElemIdRelation(1,i)))<8.0d3)) then 
-                open(unit=10007+me,file='pstr.txt'//mm,status='unknown',position='append')
+    if (output_plastic == 1) then
+
+        do i=1,totalNumOfElements
+                    if ((pstrain(i)>1.0d-4).and.(abs(meshCoor(1,nodeElemIdRelation(1,i)))<5.0d3).and.(abs(meshCoor(2,nodeElemIdRelation(1,i)))<2.0d3).and.(abs(meshCoor(3,nodeElemIdRelation(1,i)))<8.0d3)) then
+                open(unit=UNIT_PSTR_BASE+me,file='pstr.txt'//mm,status='unknown',position='append')
                 sc=0.0d0
                 do j=1,8
                     sc(1)=sc(1)+meshCoor(1,nodeElemIdRelation(j,i))
@@ -237,7 +239,7 @@ subroutine output_plastic_strain
                 sc(1)=sc(1)/8.0d0
                 sc(2)=sc(2)/8.0d0
                 sc(3)=sc(3)/8.0d0            
-                write(10007+me,'(1x,16e18.7e4)') sc(1),sc(2),sc(3),pstrain(i),(stressArr(stressCompIndexArr(i)+j),j=1,12)    
+                write(UNIT_PSTR_BASE+me,'(1x,16e18.7e4)') sc(1),sc(2),sc(3),pstrain(i),(stressArr(stressCompIndexArr(i)+j),j=1,12)
             endif
         enddo
     endif
@@ -247,18 +249,20 @@ end subroutine output_plastic_strain
 subroutine find_surfaceNodeIdArr
     use globalvar
     implicit none
-    integer (kind = 4) :: i, j     
+    integer (kind = 4) :: i, j
+    integer (kind = 4), parameter :: UNIT_SURFCOOR_BASE = 10008
+    real (kind = dp), parameter :: STATION_SEARCH_HALFWIDTH_M = 20.0d3 ! along-strike/along-strike-normal search box half-width around the fault trace, m
     real (kind = dp) :: sc(3)
-    if (outputGroundMotion==1 .or. outputFinalSurfDisp==1) then    
+    if (outputGroundMotion==1 .or. outputFinalSurfDisp==1) then
         do i=1,totalNumOfNodes
-            if ((meshCoor(1,i)<fltxyz(2,1,1)+20.0d3) .and. (meshCoor(1,i)>fltxyz(1,1,1)-20.0d3) &
-                    .and. (meshCoor(2,i)<fltxyz(2,2,1)+20.0d3) .and. (meshCoor(2,i)>fltxyz(1,2,1)-20.0d3) &
-                    .and. (abs(meshCoor(3,i))<dx/1000)) then 
+            if ((meshCoor(1,i)<fltxyz(2,1,1)+STATION_SEARCH_HALFWIDTH_M) .and. (meshCoor(1,i)>fltxyz(1,1,1)-STATION_SEARCH_HALFWIDTH_M) &
+                    .and. (meshCoor(2,i)<fltxyz(2,2,1)+STATION_SEARCH_HALFWIDTH_M) .and. (meshCoor(2,i)>fltxyz(1,2,1)-STATION_SEARCH_HALFWIDTH_M) &
+                    .and. (abs(meshCoor(3,i))<dx/1000)) then
                 surface_nnode = surface_nnode + 1
                 surfaceNodeIdArr(surface_nnode) = i
-                open(unit=10008+me,file='surface_coor.txt'//mm,status='unknown',position='append')        
-                    write(10008+me,'(1x,3e18.7e4)') meshCoor(1,i), meshCoor(2,i), meshCoor(3,i)    
-                close(10008+me)
+                open(unit=UNIT_SURFCOOR_BASE+me,file='surface_coor.txt'//mm,status='unknown',position='append')
+                    write(UNIT_SURFCOOR_BASE+me,'(1x,3e18.7e4)') meshCoor(1,i), meshCoor(2,i), meshCoor(3,i)
+                close(UNIT_SURFCOOR_BASE+me)
             endif
         enddo
     endif
@@ -269,14 +273,15 @@ subroutine output_gm
     use globalvar
     implicit none
     integer (kind = 4) :: i, j, nodeId
+    integer (kind = 4), parameter :: UNIT_GM_BASE = 10009
 
-    if (outputGroundMotion == 1 .and. surface_nnode > 0) then    
-        open(unit=10009+me,file='gm'//mm,status='unknown',position='append', access='stream')        
+    if (outputGroundMotion == 1 .and. surface_nnode > 0) then
+        open(unit=UNIT_GM_BASE+me,file='gm'//mm,status='unknown',position='append', access='stream')
             do i=1,surface_nnode
                 nodeId = surfaceNodeIdArr(i)
-                write(10009+me) velArr(1,nodeId), velArr(2,nodeId), velArr(3,nodeId)
+                write(UNIT_GM_BASE+me) velArr(1,nodeId), velArr(2,nodeId), velArr(3,nodeId)
             enddo
-    endif    
+    endif
 end subroutine output_gm
 
 !#8
@@ -284,14 +289,15 @@ subroutine output_finalSurfDisp
     use globalvar
     implicit none
     integer (kind = 4) :: i, j, nodeId
+    integer (kind = 4), parameter :: UNIT_FINALSURFDISP_BASE = 20009
 
-    if (outputFinalSurfDisp == 1 .and. surface_nnode > 0) then    
-        open(unit=20009+me,file='finalSurfDisp.txt'//mm, status='unknown')        
+    if (outputFinalSurfDisp == 1 .and. surface_nnode > 0) then
+        open(unit=UNIT_FINALSURFDISP_BASE+me,file='finalSurfDisp.txt'//mm, status='unknown')
             do i=1,surface_nnode
                 nodeId = surfaceNodeIdArr(i)
-                write(20009+me, '(1x,3e18.7e4)') dispArr(1,nodeId), dispArr(2,nodeId), dispArr(3,nodeId)
+                write(UNIT_FINALSURFDISP_BASE+me, '(1x,3e18.7e4)') dispArr(1,nodeId), dispArr(2,nodeId), dispArr(3,nodeId)
             enddo
-    endif    
+    endif
 end subroutine output_finalSurfDisp
 
 !#9
@@ -301,13 +307,14 @@ subroutine output_src_evol
     use globalvar
     implicit none
     
-    integer (kind = 4) :: i, j, nodeId     
-    
+    integer (kind = 4) :: i, j, nodeId
+    integer (kind = 4), parameter :: UNIT_SRC_EVOL_BASE = 30009
+
     if(nftnd(1) > 0) then
-        open(unit=30009+me,file='src_evol'//mm,position='append', access='stream')
+        open(unit=UNIT_SRC_EVOL_BASE+me,file='src_evol'//mm,position='append', access='stream')
             do i=1,nftnd(1)
-                write(30009+me) fric(FRIC_SLOT_PEAK_SLIPRATE,i,1) ! 47: final slip rate
-            enddo    
-        close(30009+me)
+                write(UNIT_SRC_EVOL_BASE+me) fric(FRIC_SLOT_PEAK_SLIPRATE,i,1) ! 47: final slip rate
+            enddo
+        close(UNIT_SRC_EVOL_BASE+me)
     endif
 end subroutine output_src_evol

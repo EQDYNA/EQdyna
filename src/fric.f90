@@ -8,12 +8,12 @@ subroutine slip_weak(slip,fricsgl,xmu)
   real (kind = dp),dimension(20) :: fricsgl
   !
   if(abs(slip).lt.1.0e-10) then
-    xmu = fricsgl(1)    !xmu is frictional coefficient, node by node on fault
-  elseif(slip < fricsgl(3)) then
-    xmu = fricsgl(1) - (fricsgl(1) - fricsgl(2))*slip/fricsgl(3)
+    xmu = fricsgl(FRIC_SLOT_SW_FS)    !xmu is frictional coefficient, node by node on fault
+  elseif(slip < fricsgl(FRIC_SLOT_SW_D0)) then
+    xmu = fricsgl(FRIC_SLOT_SW_FS) - (fricsgl(FRIC_SLOT_SW_FS) - fricsgl(FRIC_SLOT_SW_FD))*slip/fricsgl(FRIC_SLOT_SW_D0)
   endif
-  if(slip >= fricsgl(3)) then
-    xmu = fricsgl(2)
+  if(slip >= fricsgl(FRIC_SLOT_SW_D0)) then
+    xmu = fricsgl(FRIC_SLOT_SW_FD)
   endif
   !
 end subroutine slip_weak
@@ -27,11 +27,11 @@ subroutine time_weak(trupt,fricsgl,xmu)
     real (kind = dp),dimension(20) :: fricsgl
     
     if(trupt <= 0.0d0) then
-        xmu = fricsgl(1)
-    elseif(trupt < fricsgl(5)) then
-        xmu = fricsgl(1) - (fricsgl(1) - fricsgl(2))*trupt/fricsgl(5)
+        xmu = fricsgl(FRIC_SLOT_SW_FS)
+    elseif(trupt < fricsgl(FRIC_SLOT_TW_T0)) then
+        xmu = fricsgl(FRIC_SLOT_SW_FS) - (fricsgl(FRIC_SLOT_SW_FS) - fricsgl(FRIC_SLOT_SW_FD))*trupt/fricsgl(FRIC_SLOT_TW_T0)
     else
-        xmu = fricsgl(2)
+        xmu = fricsgl(FRIC_SLOT_SW_FD)
     endif
 
 end subroutine time_weak
@@ -46,11 +46,11 @@ subroutine rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   real (kind = dp),dimension(100) :: fricsgl
   real (kind = dp) :: tmp, tmpc
   !
-  A  = fricsgl(9)
-  B  = fricsgl(10)
-  L  = fricsgl(11)
-  f0 = fricsgl(13)
-  V0 = fricsgl(12)
+  A  = fricsgl(FRIC_SLOT_RSF_A)
+  B  = fricsgl(FRIC_SLOT_RSF_B)
+  L  = fricsgl(FRIC_SLOT_RSF_DC)
+  f0 = fricsgl(FRIC_SLOT_RSF_R0)
+  V0 = fricsgl(FRIC_SLOT_RSF_V0)
 
   tmpc = 1.0d0 / (2.0d0 * V0) * dexp((f0 + B * dlog(V0*theta/L)) / A)
   tmp = (V2+1.d-30) * tmpc
@@ -70,13 +70,13 @@ subroutine rate_state_slip_law(V2,psi,fricsgl,xmu,dxmudv)
   real (kind = dp),dimension(100) :: fricsgl
   real (kind = dp) :: tmp, tmpc
   !
-  A  = fricsgl(9)
-  B  = fricsgl(10)
-  L  = fricsgl(11)
-  f0 = fricsgl(13)
-  V0 = fricsgl(12)
-  fw = fricsgl(14)
-  Vw = fricsgl(15)
+  A  = fricsgl(FRIC_SLOT_RSF_A)
+  B  = fricsgl(FRIC_SLOT_RSF_B)
+  L  = fricsgl(FRIC_SLOT_RSF_DC)
+  f0 = fricsgl(FRIC_SLOT_RSF_R0)
+  V0 = fricsgl(FRIC_SLOT_RSF_V0)
+  fw = fricsgl(FRIC_SLOT_RSF_FW)
+  Vw = fricsgl(FRIC_SLOT_RSF_VW)
 
   tmpc = 1.0d0 / (2.0d0 * V0) * dexp(psi/A)
   tmp = (V2+1.d-30) * tmpc

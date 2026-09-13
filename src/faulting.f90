@@ -38,7 +38,7 @@ subroutine rate_state_normal_stress(V2, theta_pc, theta_pc_dot, tnrm, fricsgl)
     real (kind = dp) :: V2, theta_pc, theta_pc_dot, tnrm, L
     real (kind = dp),dimension(100) :: fricsgl
     
-    L  = fricsgl(11) ! Use Dc in RSF as L_pc
+    L  = fricsgl(FRIC_SLOT_RSF_DC) ! Use Dc in RSF as L_pc
     
     theta_pc_dot = - V2/L*(theta_pc - abs(tnrm))
     ! the following eq is to update theta_pc with theta_pc_doc.
@@ -94,14 +94,10 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
         enddo
     enddo
     
-    do j=1,3 !n,s,d
-        nsdSlipVector(j) = nsdNodalQuant(j,2,3) - nsdNodalQuant(j,1,3)
-    enddo
+    nsdSlipVector(1:3) = nsdNodalQuant(1:3,2,3) - nsdNodalQuant(1:3,1,3) !n,s,d
     nsdSlipVector(4) = sqrt(nsdSlipVector(1)**2 + nsdSlipVector(2)**2 + nsdSlipVector(3)**2)
-    
-    do j=1,3 !n,s,d
-        nsdSliprateVector(j) = nsdNodalQuant(j,2,2) - nsdNodalQuant(j,1,2)
-    enddo
+
+    nsdSliprateVector(1:3) = nsdNodalQuant(1:3,2,2) - nsdNodalQuant(1:3,1,2) !n,s,d
     nsdSliprateVector(4) = sqrt(nsdSliprateVector(1)**2 + nsdSliprateVector(2)**2 + nsdSliprateVector(3)**2)
     
     ! keep records
@@ -168,23 +164,19 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, ns
         nsdTractionVector(3) = nsdTractionVector(3)*trialShearTraction/nsdTractionVector(4)
     endif
     
-    do j=1,3 !x,y,z
-        xyzTractionVector(j) = (nsdTractionVector(1)*un(j,iFaultNodePair,iFault) &
-                                + nsdTractionVector(2)*us(j,iFaultNodePair,iFault) &
-                                + nsdTractionVector(3)*ud(j,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault)
-        xyzInitTractionVector(j) = (nsdInitTractionVector(1)*un(j,iFaultNodePair,iFault) &
-                                + nsdInitTractionVector(2)*us(j,iFaultNodePair,iFault) &
-                                + nsdInitTractionVector(3)*ud(j,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault)
-    enddo
-    
+    xyzTractionVector(1:3) = (nsdTractionVector(1)*un(1:3,iFaultNodePair,iFault) &
+                            + nsdTractionVector(2)*us(1:3,iFaultNodePair,iFault) &
+                            + nsdTractionVector(3)*ud(1:3,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault) !x,y,z
+    xyzInitTractionVector(1:3) = (nsdInitTractionVector(1)*un(1:3,iFaultNodePair,iFault) &
+                            + nsdInitTractionVector(2)*us(1:3,iFaultNodePair,iFault) &
+                            + nsdInitTractionVector(3)*ud(1:3,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault) !x,y,z
+
     do j=1,3 !x,y,z
         nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(nsmp(1,iFaultNodePair,iFault))+j)) = nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(nsmp(1,iFaultNodePair,iFault))+j)) + xyzTractionVector(j) - xyzInitTractionVector(j)*C_elastic
         nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(nsmp(2,iFaultNodePair,iFault))+j)) = nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(nsmp(2,iFaultNodePair,iFault))+j)) - xyzTractionVector(j) + xyzInitTractionVector(j)*C_elastic
     enddo
-    
-    do j=1,3 !n,s,d
-        fric(78+j-1,iFaultNodePair,iFault) = nsdTractionVector(j)
-    enddo
+
+    fric(FRIC_SLOT_TRACT_NORM:FRIC_SLOT_TRACT_NORM+2,iFaultNodePair,iFault) = nsdTractionVector(1:3) !n,s,d
 end subroutine solveSWTW
 
 subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSliprateVector, nsdTractionVector)
@@ -221,10 +213,8 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
 
     !-----------------
     ! Add the background slip rate on top. 
-    do j=1,3 !n,s,d
-        nsdSlipVector(j) = nsdSlipVector(j) + fric(25+j-1,iFaultNodePair,iFault)*timeElapsed
-        nsdSliprateVector(j) = nsdSliprateVector(j) + fric(25+j-1,iFaultNodePair,iFault)
-    enddo
+    nsdSlipVector(1:3) = nsdSlipVector(1:3) + fric(FRIC_SLOT_VINI_N:FRIC_SLOT_VINI_N+2,iFaultNodePair,iFault)*timeElapsed !n,s,d
+    nsdSliprateVector(1:3) = nsdSliprateVector(1:3) + fric(FRIC_SLOT_VINI_N:FRIC_SLOT_VINI_N+2,iFaultNodePair,iFault) !n,s,d
     nsdSlipVector(4) = sqrt(nsdSlipVector(2)**2+nsdSlipVector(3)**2)
     nsdSliprateVector(4) = sqrt(nsdSliprateVector(2)**2+nsdSliprateVector(3)**2)
         
@@ -266,24 +256,18 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     T_coeff = arn(iFaultNodePair,iFault)*dt/mr
    
     ! get shear tractions, tstk1 and tdip1, and total shear traction, ttao1, updated.
-    do j=2,3 ! s,d/ tstk1, tdip1
-        trialTractVec(j) = nsdTractionVector(j) - taoc_old*0.5d0*(nsdSliprateVector(j)/nsdSliprateVector(4)) + fric(25+j-1,iFaultNodePair,iFault)/T_coeff
-    enddo
+    trialTractVec(2:3) = nsdTractionVector(2:3) - taoc_old*0.5d0*(nsdSliprateVector(2:3)/nsdSliprateVector(4)) + fric(FRIC_SLOT_VINI_N+1:FRIC_SLOT_VINI_N+2,iFaultNodePair,iFault)/T_coeff !s,d/tstk1, tdip1
     trialTractVec(4) = sqrt(trialTractVec(2)**2 + trialTractVec(3)**2) !ttao1
     
     ! solve sliprate with Newton-Raphson method
     call NewtonRaphson(iFault, iFaultNodePair, v_trial, taoc_new, statetmp, theta_pc_tmp, theta_pc_dot, nsdTractionVector, trialTractVec, T_coeff)
     fric(FRIC_SLOT_STATE,iFaultNodePair,iFault) = statetmp
     fric(FRIC_SLOT_THETA_PC,iFaultNodePair,iFault) = theta_pc_tmp
-    do j=2,3 !s,d
-        nsdTractionVector(j) = taoc_old*0.5d0*(nsdSliprateVector(j)/nsdSliprateVector(4)) + taoc_new*0.5d0*(trialTractVec(j)/trialTractVec(4))
-    enddo
+    nsdTractionVector(2:3) = taoc_old*0.5d0*(nsdSliprateVector(2:3)/nsdSliprateVector(4)) + taoc_new*0.5d0*(trialTractVec(2:3)/trialTractVec(4)) !s,d
 
     ! store tnrm, tstk, tdip ...
     ! [effective normal stress, shear_strike, and shear_dip]
-    do j=1,3 !n,s,d
-        fric(78+j-1,iFaultNodePair,iFault) = nsdTractionVector(j)
-    enddo
+    fric(FRIC_SLOT_TRACT_NORM:FRIC_SLOT_TRACT_NORM+2,iFaultNodePair,iFault) = nsdTractionVector(1:3) !n,s,d
     ! store final slip rate and final total traction ...
     fric(FRIC_SLOT_PEAK_SLIPRATE,iFaultNodePair,iFault) = v_trial
     fric(FRIC_SLOT_SHEAR_MAG,iFaultNodePair,iFault) = sqrt(nsdTractionVector(2)**2 + nsdTractionVector(3)**2)
@@ -310,8 +294,8 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
         nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(nsmp(2,iFaultNodePair,iFault))+j)) = (xyzAccVec(j)  + xyzR(j)/massSlave)*mr ! Acc.Master.x/y/z
         ! store normal velocities for master-slave node pair ...
         ! v(k,nsmp(j,iFaultNodePair,iFault)) - k:xyz, j:slave1,master2
-        fric(31+j-1,iFaultNodePair,iFault) = velArr(j,nsmp(2,iFaultNodePair,iFault)) + (xyzAccVec(j)+xyzR(j)/massSlave)*dt !Velocity.Master.x/y/z
-        fric(34+j-1,iFaultNodePair,iFault) = velArr(j,nsmp(1,iFaultNodePair,iFault)) + (-xyzAccVec(j)+xyzR(j)/massMaster)*dt !Velocity.Slave.x/y/z
+        fric(FRIC_SLOT_VEL_MASTER_X+j-1,iFaultNodePair,iFault) = velArr(j,nsmp(2,iFaultNodePair,iFault)) + (xyzAccVec(j)+xyzR(j)/massSlave)*dt !Velocity.Master.x/y/z
+        fric(FRIC_SLOT_VEL_SLAVE_X+j-1,iFaultNodePair,iFault) = velArr(j,nsmp(1,iFaultNodePair,iFault)) + (-xyzAccVec(j)+xyzR(j)/massMaster)*dt !Velocity.Slave.x/y/z
     enddo
     
 end subroutine solveRSF
@@ -408,7 +392,7 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
     
     tr = 1.0d9 
     if(radius <= nucR) then 
-        if (TPV == 201 .or. TPV==36 .or. TPV==37) tr = (radius+0.081d0*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(0.7d0*3464.d0)
+        if (TPV == 201 .or. TPV==36 .or. TPV==37) tr = (radius+NUC_TAPER_COEF*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(NUC_VR_TO_VS*NUC_VS_FIXED)
         if (TPV == 202) tr = radius/nucRuptVel
     endif
     
