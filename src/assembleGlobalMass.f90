@@ -47,8 +47,6 @@ subroutine assembleGlobalMass
                     stop
             endif 
         !elseif (elemTypeArr(nel)==12) then
-        !    if (nodeElemIdRelation(2,nel) .ne. nodeElemIdRelation(3,nel)) then
-        !            write(*,*) 'Wrongly created wedge above fault; nel is', nel
         !            stop
         !    endif
         endif
@@ -162,10 +160,6 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                     endif 
                     
                     ! !Check
-                    ! if (numcount(3+2*(ixyz-1)+ib)/=dofCount4MPI) then 
-                        ! stop 'rr&dofCount4MPI-assembleGlobalMass-bnd(1)'
-                        ! write(*,*) 'rr=',numcount(3+2*(ixyz-1)+ib),'dofCount4MPI=',dofCount4MPI
-                    ! endif
         !
                     if (fltMPI(2*(ixyz-1)+ib)) then
                         do ix = 1, fltnum(2*(ixyz-1)+ib)

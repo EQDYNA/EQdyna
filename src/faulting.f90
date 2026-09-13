@@ -230,14 +230,6 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     nsdSlipVector(4) = sqrt(nsdSlipVector(2)**2+nsdSlipVector(3)**2)
     nsdSliprateVector(4) = sqrt(nsdSliprateVector(2)**2+nsdSliprateVector(3)**2)
         
-    ! if(fnft(iFaultNodePair,iFault)>600.0d0) then    !fnft should be initialized by >10000
-        ! if (nsdSliprateVector(4) >= slipRateThres) then
-        ! !if(nsdSliprateVector(4) >= 0.001d0 .and. mode==1) then    !first time to reach 1mm/s
-            ! fnft(iFaultNodePair,iFault) = time    !rupture time for the node
-        ! !elseif (nsdSliprateVector(4)>=0.05d0 .and. mode==2) then
-        ! !    fnft(iFaultNodePair,iFault) = time
-        ! endif
-    ! endif
     
     ! Given tractions, state variables, find the sliprate for next time step. 
     v_trial = nsdSliprateVector(4)
@@ -401,13 +393,6 @@ subroutine rsfNucleation(iFault, iFaultNodePair, nsdTractionVector, nsdSliprateV
         dtau = fric(81,iFaultNodePair,iFault)*F*G
     endif
     
-    ! if (radius < 1.d3) then 
-        ! write(*,*) '========='
-        ! write(*,*) x(1,nsmp(1,iFaultNodePair,iFault)), x(2,nsmp(1,iFaultNodePair,iFault)), x(3,nsmp(1,iFaultNodePair,iFault))
-        ! write(*,*) radius
-        ! write(*,*) xsource, ysource, zsource
-        ! write(*,*) F, G, dtau
-    ! endif 
     
     nsdTractionVector(2) = nsdTractionVector(2) + dtau
     
