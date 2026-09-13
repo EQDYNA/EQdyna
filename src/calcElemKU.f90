@@ -10,8 +10,8 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
     real (kind = dp),dimension(nstr) :: strainrate,stressrate,strtemp,strain
     real (kind = dp)::stress(12),anestr(6),anestr1(6)
     real (kind = dp),dimension(nrowsh-1,nen) :: globalShapeFunc
-    real (kind = dp),dimension(nrowb,nee) :: bb	!correspond to b
-    real (kind = dp),dimension(nrowc,nrowc) :: cc	!correspond to c
+    real (kind = dp),dimension(nrowb,nee) :: bb !correspond to b
+    real (kind = dp),dimension(nrowc,nrowc) :: cc   !correspond to c
     !...plasticity vlrables. B.D. 1/5/12
     real (kind = dp) :: strmea,taomax, yield, rjust,pstrmea,pstrmag,xc(3),ex(3,8)
     real (kind = dp),dimension(nstr) :: strdev,pstrinc
@@ -29,7 +29,7 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
     do i=1,3 
         cc(i,i)=lam+2*miu
         cc(i+3,i+3)=miu 
-    enddo	
+    enddo   
     cc(1,2)=lam 
     cc(2,1)=lam 
     cc(1,3)=lam
@@ -39,7 +39,7 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
     !...calcuate b from globalShapeFunc
     call calcB(globalShapeFunc,bb)
 
-    strainrate = 0.0d0	!initialize
+    strainrate = 0.0d0  !initialize
 
     do i=1,nen
         j1 = ned * (i - 1) + 1
@@ -56,7 +56,7 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
         strain(3) = strain(3) + bb(3,j3) * dl(j3)
         strain(4) = strain(4) + bb(4,j2) * dl(j2) + bb(4,j3) * dl(j3)
         strain(5) = strain(5) + bb(5,j1) * dl(j1) + bb(5,j3) * dl(j3)
-        strain(6) = strain(6) + bb(6,j1) * dl(j1) + bb(6,j2) * dl(j2)		
+        strain(6) = strain(6) + bb(6,j1) * dl(j1) + bb(6,j2) * dl(j2)       
     enddo
     !...calculate stressrate
     ! Take into account zero in cc. B.D. 8/20/05
@@ -75,14 +75,14 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
             strdev(i) = stress(i)
         enddo
     elseif (C_Q==1) then
-        xc=0.0d0	
+        xc=0.0d0    
         do i=1,3
             do j=1,8
                 xc(i)=xc(i)+ex(i,j)
             enddo
         enddo
-        xc=xc/8.0d0		
-    !For DCPS		
+        xc=xc/8.0d0     
+    !For DCPS       
         if (xc(3)>-1000.0d0)then
             Qs=10.0d0
             Qp=20.0d0
@@ -101,7 +101,7 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
         iq=(xc(2)-(PMLb(4)+dx/2))/dx+1
         ir=(xc(3)-(PMLb(5)+dx/2))/dx+1
         k=1+mod(ip,2)+2*mod(iq,2)+4*mod(ir,2)
-        ! Modified Day and Bradley(2001) based on Liu(2006)	
+        ! Modified Day and Bradley(2001) based on Liu(2006) 
         call qconstant(Qp,taok,wkp,k,cv)
         call qconstant(Qs,taok,wks,k,cs)
         wkp=wkp*8.0d0;
@@ -111,7 +111,7 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
         vols=strain(1)+strain(2)+strain(3)
         do i=1,6
             anestr1(i)=stress(i+6)
-        enddo	
+        enddo   
         do i=1,3
         anestr(i)=exp(-dt/taok)*anestr1(i)+(1-exp(-dt/taok)) &
              *(2*miuu*strain(i)*wks+(Mu*wkp-2*miuu*wks)*vols)
@@ -119,16 +119,16 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
         do i=4,6
         anestr(i)=exp(-dt/taok)*anestr1(i)+(1-exp(-dt/taok)) &
              *(miuu*strain(i)*wks)
-        enddo	
+        enddo   
         do i=1,6
             stress(i+6)=anestr(i)
         enddo
         stress(1)=2.0d0*miuu*strain(1)+(Mu-2.0d0*miuu)*vols-0.5d0*(anestr(1)+anestr1(1))
-        stress(2)=2.0d0*miuu*strain(2)+(Mu-2.0d0*miuu)*vols-0.5d0*(anestr(2)+anestr1(2))	
-        stress(3)=2.0d0*miuu*strain(3)+(Mu-2.0d0*miuu)*vols-0.5d0*(anestr(3)+anestr1(3))	
-        stress(4)=2.0d0*miuu*strain(4)/2.0d0-0.5d0*(anestr(4)+anestr1(4))	
-        stress(5)=2.0d0*miuu*strain(5)/2.0d0-0.5d0*(anestr(5)+anestr1(5))	
-        stress(6)=2.0d0*miuu*strain(6)/2.0d0-0.5d0*(anestr(6)+anestr1(6))	
+        stress(2)=2.0d0*miuu*strain(2)+(Mu-2.0d0*miuu)*vols-0.5d0*(anestr(2)+anestr1(2))    
+        stress(3)=2.0d0*miuu*strain(3)+(Mu-2.0d0*miuu)*vols-0.5d0*(anestr(3)+anestr1(3))    
+        stress(4)=2.0d0*miuu*strain(4)/2.0d0-0.5d0*(anestr(4)+anestr1(4))   
+        stress(5)=2.0d0*miuu*strain(5)/2.0d0-0.5d0*(anestr(5)+anestr1(5))   
+        stress(6)=2.0d0*miuu*strain(6)/2.0d0-0.5d0*(anestr(6)+anestr1(6))   
     endif!C_Q
     if (C_elastic==0) then
         !...Drucker-Prager plasticity in shear. B.D. 1/5/12
@@ -182,7 +182,7 @@ subroutine calcElemKU(globalShapeFunc,mate,vl,dl,stress,elresf,constk,porep,pstr
                 + bb(6,j2)*strtemp(6)
         work(j3) = bb(3,j3)*strtemp(3) + bb(4,j3)*strtemp(4) &
                 + bb(5,j3)*strtemp(5)
-    enddo		
+    enddo       
 
     do i=1,nee
         elresf(i) = elresf(i) + work(i)

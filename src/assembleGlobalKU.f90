@@ -58,7 +58,7 @@ subroutine assembleGlobalKU
                     eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeElemIdRelation(i,nel))+2)
                     nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+4)+efPML((i-1)*12+5)+efPML((i-1)*12+6)+efPML((i-1)*12+11)
                     eqNumTmp = eqNumIndexArr(eqNumStartIndexLoc(nodeElemIdRelation(i,nel))+3)
-                    nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+7)+efPML((i-1)*12+8)+efPML((i-1)*12+9)+efPML((i-1)*12+12)				
+                    nodalForceArr(eqNumTmp) = nodalForceArr(eqNumTmp)+efPML((i-1)*12+7)+efPML((i-1)*12+8)+efPML((i-1)*12+9)+efPML((i-1)*12+12)              
                 endif
             enddo
         endif
