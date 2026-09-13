@@ -23,6 +23,8 @@ actually runs the command.
 | 10 | BUG (latent, ntotft>=2): `MPI4arn` allocates fltl..fltu from previous fault's counts before zeroing fltnum; re-allocation aborts on fault 2 | 2 | `src/meshgen.f90:220-227` | until fixed | 2026-09-12 | `grep -n "allocate(flt" src/meshgen.f90` |
 | 11 | CHECK: `mesh4num` on-fault tolerance vs `checkIsOnFault` may diverge (counting pass vs allocating pass must agree) | 3 | `src/mesh4num.f90:45-57`, `src/meshgen.f90:768-787` | until verified | 2026-09-12 | `grep -n "distToFault" src/mesh4num.f90 src/meshgen.f90` |
 
+| 12 | BUG (physics, friclaw=5): `fric_tp_h` (TP shear-zone half-width, denominator in every thermop.f90 kernel) is never assigned in src/ — runs as 0.0 (confirmed by compiled probe). Intended 0.02 is written to on_fault_vars slot 40 (fric(40)) by case.setup but never wired to the global thermop reads. All TP results from this tree used h=0. Fix is gate-moving (tpv1053d reference regen) — needs owner decision | 2 | `src/globalvar.f90` (fric_tp_h), `src/thermop.f90`, `src/netcdf_io.f90` (slot 40) | until fixed | 2026-09-13 | `grep -rn "fric_tp_h" src/` |
+
 **Deferred**: none.
 
 ## Goals
