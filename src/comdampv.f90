@@ -26,7 +26,7 @@ real (kind = dp),dimension(9)::dv
         elseif (x2<=xmin0.and.y<=ymin0) then !region 13
             damp(1)=abs(x2-xmin0)
             damp(2)=abs(y-ymin0)            
-        elseif (x2<=xmin0.and.y>=xmax0) then !region 14
+        elseif (x2<=xmin0.and.y>=ymax0) then !region 14
             damp(1)=abs(x2-xmin0)
             damp(2)=abs(y-ymax0)
         elseif (x2>=xmax0.and.y>ymin0.and.y<ymax0) then !region 1_12
@@ -58,7 +58,7 @@ real (kind = dp),dimension(9)::dv
         elseif (x2<=xmin0.and.y<=ymin0) then !region 13
             damp(1)=abs(x2-xmin0)
             damp(2)=abs(y-ymin0)            
-        elseif (x2<=xmin0.and.y>=xmax0) then !region 14
+        elseif (x2<=xmin0.and.y>=ymax0) then !region 14
             damp(1)=abs(x2-xmin0)
             damp(2)=abs(y-ymax0)
         elseif (x2>=xmax0.and.y>ymin0.and.y<ymax0) then !region 1_12

@@ -136,7 +136,7 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,globalShapeFunc,det,nel)
     xc=xc/8
 
     ! Calculate damping profiles.
-    if (xc(3)<zmin2) then !region 1
+    if (xc(3)<=zmin2) then !region 1
         damps(3)=abs(xc(3)-zmin2)        
         if (xc(1)>xmax2.and.xc(2)>ymax2) then !region 11
             damps(1)=abs(xc(1)-xmax2)
@@ -147,7 +147,7 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,globalShapeFunc,det,nel)
         elseif (xc(1)<xmin2.and.xc(2)<ymin2) then !region 13
             damps(1)=abs(xc(1)-xmin2)
             damps(2)=abs(xc(2)-ymin2)            
-        elseif (xc(1)<xmin2.and.xc(2)>xmax2) then !region 14
+        elseif (xc(1)<xmin2.and.xc(2)>ymax2) then !region 14
             damps(1)=abs(xc(1)-xmin2)
             damps(2)=abs(xc(2)-ymax2)
         elseif (xc(1)>xmax2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_12
@@ -179,7 +179,7 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,globalShapeFunc,det,nel)
         elseif (xc(1)<xmin2.and.xc(2)<ymin2) then !region 13
             damps(1)=abs(xc(1)-xmin2)
             damps(2)=abs(xc(2)-ymin2)            
-        elseif (xc(1)<xmin2.and.xc(2)>xmax2) then !region 14
+        elseif (xc(1)<xmin2.and.xc(2)>ymax2) then !region 14
             damps(1)=abs(xc(1)-xmin2)
             damps(2)=abs(xc(2)-ymax2)
         elseif (xc(1)>xmax2.and.xc(2)>ymin2.and.xc(2)<ymax2) then !region 1_12
