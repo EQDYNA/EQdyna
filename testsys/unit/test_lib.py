@@ -6,7 +6,9 @@ documented boundary/symmetry property of the boxcar tapers -- never a copy
 of the function's own output.
 """
 import math
+import types
 
+import numpy as np
 import pytest
 
 import lib
@@ -126,3 +128,70 @@ def test_state_steady_state_friclaw5_matches_hand_computed_value():
                                     friclaw=5)
     expected = math.log(2 * math.sinh(1.0))
     assert math.isclose(state, expected, rel_tol=1e-12)
+
+
+# ---- sort_nicely / alphanum_key: numeric-aware filename ordering ----
+# (moved from scripts/plot_on_fault_vars and plot_on_fault_vars2, which
+#  duplicated these verbatim; plot_on_fault_vars now imports them from lib)
+
+def test_tryint_converts_digits_and_passes_through_other_strings():
+    assert lib.tryint("42") == 42
+    assert lib.tryint("abc") == "abc"
+
+
+def test_sort_nicely_orders_embedded_numbers_numerically_not_lexically():
+    # Plain string sort would put "fault.10.nc" before "fault.2.nc";
+    # sort_nicely must not.
+    names = ["fault.10.nc", "fault.2.nc", "fault.1.nc"]
+    assert lib.sort_nicely(names) == ["fault.1.nc", "fault.2.nc", "fault.10.nc"]
+
+
+def test_sort_nicely_sorts_in_place_and_returns_the_same_list():
+    names = ["b2", "b10", "b1"]
+    result = lib.sort_nicely(names)
+    assert result is names
+    assert result == ["b1", "b2", "b10"]
+
+
+# ---- loadFrtData: frt.txt* loader shared by plotRuptureDynamics/plotSlipAndRPT ----
+
+def _make_par(tmp_path):
+    """Minimal par-like object covering exactly what loadFrtData reads."""
+    fxmin, fxmax, dx = 0.0, 1.0, 1.0
+    fzmin, fzmax, dz = 0.0, 0.0, 1.0
+    na = round((fxmax - fxmin) / dx + 1)  # 2
+    ma = round((fzmax - fzmin) / dz + 1)  # 1
+    return types.SimpleNamespace(
+        nx=1, ny=1, nz=1,
+        fxmin=fxmin, fxmax=fxmax, dx=dx,
+        fzmin=fzmin, fzmax=fzmax, dz=dz,
+        dip=90.0,  # sin(90 deg) == 1, keeps along-dip arithmetic trivial
+        fx=np.linspace(fxmin, fxmax, na),
+        fz=np.linspace(fzmin, fzmax, ma),
+    )
+
+
+def test_loadFrtData_grids_two_nodes_from_a_synthetic_frt_file(tmp_path, monkeypatch):
+    par = _make_par(tmp_path)
+    # Columns (0-indexed, matching lib.loadFrtData's docstring, 1-indexed there):
+    # 0 x, 1 y, 2 z, 3 rupture time, 4 slip_s, 5 slip_d, 6-8 unused,
+    # 9 peak slip rate, 10 final slip rate, 11 normal, 12 shear, 13 dip shear,
+    # 14-19 vxm,vym,vzm,vxs,vys,vzs, 20 state, 21 state_normal.
+    row0 = [0, 0, 0, 1.0, 3.0, 4.0, 0, 0, 0, 5.0, 6.0, 7.0, 8.0, 9.0,
+            10, 11, 12, 13, 14, 15, 16.0, 17.0]
+    row1 = [1, 0, 0, 2.0, 0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0, 0, 0, 0, 0, 0, 0.0, 0.0]
+    monkeypatch.chdir(tmp_path)
+    np.savetxt(tmp_path / "frt.txt0", np.array([row0, row1]))
+
+    xx, zz, rupt, rupt2d, fVarArr, magnitude = lib.loadFrtData(par)
+
+    assert rupt2d.shape == (1, 2, 100)
+    assert fVarArr.shape == (1, 2, 100)
+    assert rupt2d[0, 0, 1] == pytest.approx(5.0)   # slip magnitude = hypot(3,4)
+    assert rupt2d[0, 0, 0] == pytest.approx(1.0)   # rupture time
+    assert fVarArr[0, 0, 4] == pytest.approx(16.0)  # state_variable (col 20)
+    assert fVarArr[0, 0, 5] == pytest.approx(17.0)  # state_normal (col 21)
+    assert rupt[0, 2] == pytest.approx(1.0)         # rupture time for ii=0
+    assert rupt[1, 2] == pytest.approx(2.0)         # rupture time for ii=1
+    assert magnitude != 0.0  # moment accumulated from the non-zero node
