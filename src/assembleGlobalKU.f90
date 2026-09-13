@@ -136,7 +136,7 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,globalShapeFunc,det,nel)
     xc=xc/8
 
     ! Calculate damping profiles.
-    call pmlRegionDistance(xc(1), xc(2), xc(3), xmax2, xmin2, ymax2, ymin2, zmin2, .false., damps)
+    call pmlRegionDistance(xc(1), xc(2), xc(3), xmax2, xmin2, ymax2, ymin2, zmin2, damps)
     do i=1,3
         if (i==1) then
         delta=nPML*maxdx

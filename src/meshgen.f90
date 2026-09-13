@@ -84,6 +84,7 @@ subroutine meshgen
                 ! Create element
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
                     call createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
+                    call checkPMLAlignment(elementCenterCoor)
                     call setElementMaterial(elemCount, elementCenterCoor)
                     
                     if (C_degen > 3.0d0) then 
