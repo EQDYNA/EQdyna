@@ -4,18 +4,19 @@ strong rate weakening + thermal pressurization) time loop. Elastic kernels
 duplicated verbatim from port.py/port_rsf.py (rule 1: tpv8/tpv104 ports stay
 untouched). Only `faulting`+`thermop` differ from port_rsf.py.
 
-CONFIRMED LATENT BUG (empirically verified, not assumed): `fric_tp_h`, the
-fault-zone half-width used in every `thermop.f90` kernel denominator
-(`2.0d0*fric_tp_h**2`), is a bare module-level scalar in globalvar.f90 that
-is NEVER ASSIGNED anywhere in src/*.f90 -- confirmed by compiling a minimal
-program that links only globalvar.f90 and prints it: `fric_tp_h = 0.0`.
-The Python-side `fric_tp_h=0.02` (defaultParameters.py) is written into
-on_fault_vars(...,40) / fric(41) but that per-node value is NEVER READ BY
-thermop.f90, which uses the global scalar instead. This means EQdyna's
-thermal-pressurization kernel currently runs with h=0 for every friclaw=5
-case (tpv1053d included) in this src/ tree. Reproduced here as `h = 0.0`,
-NOT "fixed" to 0.02 -- parity is against the Fortran as it actually runs,
-bugs included. Worth a bug report; out of scope to fix in this spike.
+UPDATE (post fric_tp_h fix, f21afaf, master): the fric_tp_h=0.0 latent bug
+this module originally reproduced (a bare module-level scalar in
+globalvar.f90, never assigned in src/*.f90, confirmed empirically by
+compiling a minimal program linking only globalvar.f90 and printing it --
+see pathway_forward.md item 12 for the finding this port surfaced) is now
+FIXED on master: `updateThermalPressurization.f90` (renamed from
+thermop.f90) reads the per-node `fric(FRIC_SLOT_TP_H,i,ift)` = `fric(40)`
+(0-indexed `fric[:,39]`) instead of the disconnected global. This module
+now reproduces the FIXED semantics -- `fric_tp_h` is `fric[:, 39]`, a
+per-node array, broadcast over the history-array time dimension -- not the
+old h=0.0 behavior. Re-verified against a freshly regenerated serial
+oracle from the fixed binary (not the stale pre-fix one) -- see
+README-parity.md's Update 6 for the before/after parity numbers.
 
 d9a50fa thetaPcTmp fix: confirmed present in this worktree's faulting.f90
 (`git log --oneline -- src/faulting.f90` shows d9a50fa; `grep` confirms the
@@ -95,7 +96,7 @@ def run(S, nsteps=None, verbose=True):
     pml_nodes = np.nonzero(ndof == 12)[0]
     d1n, d2n, d3n = region_damp(S['meshCoor'][pml_nodes, 0], S['meshCoor'][pml_nodes, 1],
                                  S['meshCoor'][pml_nodes, 2], S['PMLb'], S['nPML'],
-                                 S['vmaxPML'], S['R'])
+                                 S['vmaxPML'], S['R'], True)
     dampv_pml = np.zeros((pml_nodes.shape[0], 9))
     for k, dk in enumerate((d1n, d2n, d3n)):
         dampv_pml[:, k] = dk; dampv_pml[:, k + 3] = dk; dampv_pml[:, k + 6] = dk
@@ -117,7 +118,7 @@ def run(S, nsteps=None, verbose=True):
     conn_p = conn[E_pml]
     xc_p = S['meshCoor'][conn_p].mean(axis=1)
     d1p, d2p, d3p = region_damp(xc_p[:, 0], xc_p[:, 1], xc_p[:, 2], S['PMLb'], S['nPML'],
-                                 S['vmaxPML'], S['R'])
+                                 S['vmaxPML'], S['R'], False)
     a1 = 1.0 / dt - d1p / 2.0; b1 = 1.0 / dt + d1p / 2.0
     a2 = 1.0 / dt - d2p / 2.0; b2 = 1.0 / dt + d2p / 2.0
     a3 = 1.0 / dt - d3p / 2.0; b3 = 1.0 / dt + d3p / 2.0
@@ -156,7 +157,7 @@ def run(S, nsteps=None, verbose=True):
     kapa = fric[:, 16]                 # fric(17) = tp_a_th
     rouc = fric[:, 17]                 # fric(18) = tp_rouc
     Tini = fric[:, 40]                 # fric(41) = tp_Tini
-    fric_tp_h = 0.0  # CONFIRMED empirically: never assigned in src/*.f90, stays 0.0 (see module docstring)
+    fric_tp_h = fric[:, 39].copy()  # fric(40) = FRIC_SLOT_TP_H, per-node (post f21afaf fix)
 
     sliprate_hist = np.zeros((nftnd, nsteps))
     shear_hist = np.zeros((nftnd, nsteps))
@@ -294,8 +295,8 @@ def run(S, nsteps=None, verbose=True):
         if jj > 0:
             j_idx = np.arange(jj)
             age = (nt - (j_idx + 1)) * dt  # (nt-j)*dt for j=1..nt-1, 0-indexed j_idx=j-1
-            denom_k = 4.0 * kapa[:, None] * age[None, :] + 2.0 * fric_tp_h ** 2
-            denom_o = 4.0 * omega[:, None] * age[None, :] + 2.0 * fric_tp_h ** 2
+            denom_k = 4.0 * kapa[:, None] * age[None, :] + 2.0 * (fric_tp_h ** 2)[:, None]
+            denom_o = 4.0 * omega[:, None] * age[None, :] + 2.0 * (fric_tp_h ** 2)[:, None]
             ker1 = (-kapa[:, None] / (omega - kapa)[:, None] / np.sqrt(denom_k)
                     + omega[:, None] / (omega - kapa)[:, None] / np.sqrt(denom_o))
             hist_term = np.abs(shear_hist[:, :jj]) * sliprate_hist[:, :jj]

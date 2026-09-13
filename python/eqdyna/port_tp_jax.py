@@ -3,10 +3,11 @@ JAX rewrite of EQdyna's tpv1053d (friclaw=5, RSF slip law + strong rate
 weakening + thermal pressurization) time loop -- phase 4. Elastic kernels
 identical to port_jax.py/port_rsf_jax.py; `faulting`+`thermop` ported from
 port_tp.py's NumPy reference (read/debugged first, per the standing
-discipline) -- see port_tp.py's module docstring for the confirmed
-`fric_tp_h=0.0` latent bug, the d9a50fa thetaPcTmp-fix provenance check,
-and the friclaw==5-specific branches (theta_pc frozen, TPV==105 creeping
--rate floor).
+discipline) -- see port_tp.py's module docstring for the fric_tp_h=0.0
+bug this port originally found and its f21afaf fix on master (now ported
+as the per-node `fric(40)` array), the d9a50fa thetaPcTmp-fix provenance
+check, and the friclaw==5-specific branches (theta_pc frozen, TPV==105
+creeping-rate floor).
 
 thermop's history integral is the real jit/scan structural question: the
 Fortran's inner sum runs over j=1..nt-1 (a DYNAMIC-length slice, since nt
@@ -63,7 +64,7 @@ def make_step(inv, S, nsteps):
     kapa = fric0[:, 16]
     rouc = fric0[:, 17]
     Tini = fric0[:, 40]
-    fric_tp_h = 0.0
+    fric_tp_h = fric0[:, 39]  # fric(40) = FRIC_SLOT_TP_H, per-node (post f21afaf fix)
     nftnd = S['nftnd']
     j_all = jnp.arange(nsteps)  # column index 0..nsteps-1 <-> Fortran history step j=1..nsteps
 
@@ -221,8 +222,8 @@ def make_step(inv, S, nsteps):
         # ---- thermop: full-width sum, future columns are exactly 0 ----
         age = (nt - (j_all + 1)).astype(jnp.float64) * dt  # (nsteps,)
         age = jnp.where(age > 0, age, dt)
-        denom_k = 4.0 * kapa[:, None] * age[None, :] + 2.0 * fric_tp_h ** 2
-        denom_o = 4.0 * omega[:, None] * age[None, :] + 2.0 * fric_tp_h ** 2
+        denom_k = 4.0 * kapa[:, None] * age[None, :] + 2.0 * (fric_tp_h ** 2)[:, None]
+        denom_o = 4.0 * omega[:, None] * age[None, :] + 2.0 * (fric_tp_h ** 2)[:, None]
         ker1 = (-kapa[:, None] / (omega - kapa)[:, None] / jnp.sqrt(denom_k)
                 + omega[:, None] / (omega - kapa)[:, None] / jnp.sqrt(denom_o))
         hist_term = jnp.abs(shear_hist) * sliprate_hist  # (nftnd, nsteps); future cols are exactly 0

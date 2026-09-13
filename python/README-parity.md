@@ -1,3 +1,107 @@
+## UPDATE 6: synced to master (post f21afaf), fric_tp_h fix ported, region_damp fixed too
+
+Master had moved since this worktree branched: `f21afaf` fixes the
+`fric_tp_h=0.0` bug this port found (item 12 in pathway_forward.md,
+logged from this spike's own Update 5 finding); `a844e92` (already in
+master's history, predating f21afaf) fixes the PML region-14 cross-axis
+bug (item 8) this port had been faithfully *reproducing* as a bug; plus
+verb-phrase renames (`thermop.f90`->`updateThermalPressurization.f90`,
+`comdampv.f90`->`computePMLDampingVector.f90`, `hrglss.f90`->
+`calcHourglassResist.f90`, `mesh4num.f90`->`countMeshEntities.f90`,
+`qconstant.f90`->`calcQAttenuationCoeff.f90`, `warning.f90`->
+`checkInputConsistency.f90`), a `globalvar.f90` restructure with named
+`FRIC_SLOT_*` constants, a `func_lib.f90` extraction (shared PML region
+cascade + a few helpers), and an `MPI4arn`/`MPI4NodalQuant` consolidation.
+
+### Merge
+
+`git fetch origin master && git stash -u && git merge origin/master
+--no-edit && git stash pop`. Fast-forwarded cleanly (worktree had no
+unique commits, only uncommitted instrumentation). One real conflict,
+`src/makefile` (my `pydump.o` addition vs master's renamed object list) —
+resolved by keeping master's `OBJ`/dependency list and re-adding
+`pydump.o`'s build rule + its now-renamed dependents
+(`eqdyna3d.o`/`driver.o` still call `pydump_state`/`pydump_step` — those
+two files merged with zero conflict, confirming the coordinator's "renames
+don't touch driver.f90/eqdyna3d.f90" expectation). `python/` merged with
+**zero conflicts and zero diffs** — master's `python/` (commit `6595df3`)
+is byte-identical to this worktree's pre-merge state, confirming an
+external sync had already landed phases 1-4 verbatim.
+
+### Two physics fixes required auditing, not just the one the coordinator named
+
+1. **`fric_tp_h` (f21afaf, the one asked for)**: `updateThermalPressurization.f90`
+   now reads `fric(FRIC_SLOT_TP_H,i,ift)` = `fric(40)` (0-indexed
+   `fric[:,39]`) per node, instead of the disconnected global scalar.
+   Ported in `port_tp.py`/`port_tp_jax.py`: `fric_tp_h` is now a per-node
+   `(nftnd,)` array (confirmed populated at 0.02 from the fresh dump),
+   broadcast against the `(nftnd, nsteps)` history arrays via `[:, None]`.
+2. **PML region-14 (a844e92, not named by the coordinator but present in
+   master's history since before f21afaf, and load-bearing for `region_damp`,
+   which every one of the six port files uses)**: `src/func_lib.f90`'s new
+   `pmlRegionDistance` fixes region 14 to test `y` against `ymax0` (not
+   `xmax0`, the bug this port had been explicitly, deliberately
+   reproducing since Update 1). Also surfaced a **second, previously-unported
+   distinction** while reading the fixed source: `pmlRegionDistance` takes a
+   `boundInclusive` flag that is NOT unified across call sites --
+   `computePMLDampingVector.f90` (node-based, from `velDispUpdate`) always
+   passes `.true.` (`>=`/`<=`); `assembleGlobalKU.f90`'s `calcPMLElemKU`
+   (element-center-based) always passes `.false.` (strict `>`/`<`) -- a
+   genuine pre-existing Fortran difference the refactor explicitly did not
+   unify (per its own comment, citing rule 1). This port's original
+   `region_damp()` used a single (inclusive) comparison set for BOTH call
+   sites -- a real, previously-unflagged port bug, not something the
+   coordinator's brief mentioned, found only by reading the fixed source
+   line-by-line rather than assuming the old reproduction just needed the
+   region-14 line swapped. Fixed in `port.py`'s `region_damp()` (now takes
+   a `bound_inclusive` argument) and both call sites in all four files that
+   call it directly (`port.py`, `port_jax.py`, `port_rsf.py`, `port_tp.py`;
+   `port_rsf_jax.py`/`port_tp_jax.py` inherit it via `port_jax.build()`).
+
+### Rebuild + fresh oracles (all three cases, same fixed binary)
+
+`rm -f src/*.o src/eqdyna && make MACHINE=ubuntu` — clean rebuild (renamed
+files force new object names throughout). Regenerated all three serial
+oracles fresh (rule 4/7: no reused pre-merge oracle) with the rebuilt
+binary: tpv8 (114 steps), tpv104 (120 steps), tpv1053d (24-step truncated,
+same `term=1.0` methodology as Update 5).
+
+### Refreshed parity (all three friction families, post-merge)
+
+| Case | Check | Before merge | After merge (fresh oracle) |
+|---|---|---|---|
+| tpv8 (friclaw=1) | 5-step checkpoint, JAX fault max abs diff | 2.98e-8 | 2.98e-8 (unchanged) |
+| tpv8 | 114-step full run, overall max abs diff (NumPy) | 49.5424162298 | 49.5424162298 (**identical to the printed digit** -- the PML region-14 fix's documented "<=3e-8 shift" for tpv8 doesn't move the frt.txt comparison at this precision) |
+| tpv104 (friclaw=4) | 5-step checkpoint, NumPy/JAX fault max abs diff | 7.45e-9 / 1.49e-8 | 7.45e-9 / 1.49e-8 (unchanged) |
+| tpv1053d (friclaw=5) | 5-step checkpoint, NumPy/JAX accel max abs diff | 1.08e-19 / 7.05e-19 (pre-fix h=0 physics) | 5.63e-13 / 5.63e-13 (**fixed h=0.02 physics** -- larger absolute value is the physics changing, not parity degrading; same-order-of-magnitude relative agreement) |
+| tpv1053d | 24-step truncated full run, overall max abs diff | 4.983447 (pre-fix) | NumPy 4.962068440392613, JAX 4.962068440392613 (**identical between engines, fixed-physics oracle**) |
+
+**Verdict: parity holds across all three friction families against the
+current master, post both physics fixes.** The two ports (`port_tp.py`/
+`port_tp_jax.py`) needed the `fric_tp_h` update; `region_damp()` needed
+both the region-14 fix and the previously-missed `bound_inclusive`
+distinction; nothing else in any of the six port files needed to change
+(the renames are transparent to the ports, which only ever depended on
+`pydump_*` dump file contents and formulas, not Fortran subroutine names).
+
+### Updated file list (this worktree, `python/` at repo root)
+
+```
+python/eqdyna/port.py          -- tpv8 NumPy reference (region_damp fixed here)
+python/eqdyna/port_jax.py       -- tpv8 JAX
+python/eqdyna/port_rsf.py       -- tpv104 NumPy
+python/eqdyna/port_rsf_jax.py   -- tpv104 JAX
+python/eqdyna/port_tp.py        -- tpv1053d NumPy (fric_tp_h fix ported)
+python/eqdyna/port_tp_jax.py    -- tpv1053d JAX (fric_tp_h fix ported)
+python/run_parity.py, run_parity_jax.py, run_parity_rsf.py, run_parity_tp.py
+python/tests/data/               -- tpv8 golden-oracle snapshot + repro config
+python/README-parity.md          -- this file (Updates 1-6)
+```
+`src/pydump.f90` and the two-line hooks in `src/driver.f90`/`src/eqdyna3d.f90`/
+`src/makefile` remain uncommitted in this worktree, spike-only, as before --
+they were not part of the master merge (nothing in master depends on them)
+and re-applied cleanly on top of the renamed files.
+
 ## UPDATE 5: phase 4 — TP case tpv1053d (friclaw=5), thermal pressurization, full term attempted
 
 Extended to `test.tpv1053d` (friclaw=5, RSF slip law + strong rate
