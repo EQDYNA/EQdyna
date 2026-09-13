@@ -5,7 +5,9 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
     python3 testsys/run.py unit          # fast pure-python unit tests (pytest, no MPI/Fortran)
     python3 testsys/run.py regression    # one guard per past incident (rule 10)
     python3 testsys/run.py e2e           # full pipeline vs test.reference.results/ (rule 7)
-    python3 testsys/run.py all           # unit + regression + e2e, in that order (default)
+    python3 testsys/run.py parity        # Python-port (NumPy/JAX) vs Fortran serial oracle (item 14)
+    python3 testsys/run.py perf          # pinned single-core Fortran/NumPy/JAX timing, ratio-guarded
+    python3 testsys/run.py all           # unit + regression + e2e, in that order (default; parity/perf are opt-in, not in "all" -- they need a Fortran build + fixtures a fresh checkout doesn't have yet)
 
 Prints a per-test SUCCESS/FAIL line (from pytest or from each regression
 script's own banner), a per-tier SUMMARY line, and exits non-zero if
@@ -54,13 +56,30 @@ def run_e2e():
                             cwd=REPO_ROOT)
 
 
-RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e}
+def run_parity():
+    print('\n==== testsys: parity ====')
+    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'parity', 'run_parity.py')],
+                            cwd=REPO_ROOT)
+
+
+def run_perf():
+    print('\n==== testsys: perf ====')
+    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'perf', 'run_perf.py')],
+                            cwd=REPO_ROOT)
+
+
+RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
+           'parity': run_parity, 'perf': run_perf}
+# 'all' stays unit+regression+e2e only (TIERS below) -- parity/perf require a
+# Fortran build and generated fixtures/baseline that a fresh checkout does
+# not have; they are opt-in tiers, invoked by name, not swept into 'all'.
+OPTIONAL_TIERS = ('parity', 'perf')
 
 
 def main(argv):
     which = argv[1] if len(argv) > 1 else 'all'
-    if which not in TIERS + ('all',):
-        print(f'usage: python3 testsys/run.py [{"|".join(TIERS)}|all]')
+    if which not in TIERS + OPTIONAL_TIERS + ('all',):
+        print(f'usage: python3 testsys/run.py [{"|".join(TIERS + OPTIONAL_TIERS)}|all]')
         return 2
 
     selected = TIERS if which == 'all' else (which,)

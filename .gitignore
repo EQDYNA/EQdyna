@@ -10,3 +10,4 @@ test/
 test.prev/
 resume_claude.sh
 .claude/
+testsys/parity/fixtures/

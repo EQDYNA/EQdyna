@@ -43,7 +43,32 @@ else ifeq ($(SYSTEM), macos)
     NETCDF_LIB = -L${MACOS_NETCDF_LIB} -lnetcdf -L${MACOS_NETCDFF_LIB} -lnetcdff 
 endif
 
-OPT  = -c ${FFLAGS} 
+# PYDUMP=1 builds a distinct, non-default `eqdyna-pydump` binary that
+# generates the Python-port parity fixtures (testsys/parity/). driver.f90
+# and eqdyna3d.f90 call pydump_step/pydump_state UNCONDITIONALLY (no
+# preprocessor, no #ifdef) -- the seam is at LINK time, not compile time:
+# the default build links pydump_noop.o (empty subroutines, call+return),
+# PYDUMP=1 links pydump.o (the real dump writer). This keeps eqdyna3d.o and
+# driver.o's compiled bytes IDENTICAL between the two builds (verified:
+# `cmp` on both objects after independent compiles). An earlier `#ifdef
+# PYDUMP` + `-cpp` design was tried and rejected: enabling `-cpp`, even
+# with the macro inactive, measurably changed the compiled object's SIZE
+# (not just embedded metadata) for reasons not fully isolated in the time
+# available -- so it was dropped in favor of this cleaner link-time seam,
+# which does not require `-cpp` anywhere. Residual, non-eliminable
+# difference from the true pre-pydump pristine source: two extra
+# unconditional CALL instructions in eqdyna3d.o/driver.o (into an empty
+# subroutine in the default build) -- see testsys/parity/README.md for the
+# functional-equivalence verification (e2e case comparison) that stands in
+# for byte-identity against pristine.
+PYDUMP ?= 0
+ifeq ($(PYDUMP), 1)
+    PYDUMP_OBJ = pydump.o
+else
+    PYDUMP_OBJ = pydump_noop.o
+endif
+
+OPT  = -c ${FFLAGS}
 OPT1 = ${FFLAGS}
 
 OBJ  = eqdyna3d.o  globalvar.o countMeshEntities.o  meshgen.o   calcLocalShapeFunc.o    \
@@ -52,17 +77,24 @@ OBJ  = eqdyna3d.o  globalvar.o countMeshEntities.o  meshgen.o   calcLocalShapeFu
        faulting.o              computePMLDampingVector.o  calcQAttenuationCoeff.o             \
        readInputFiles.o        updateThermalPressurization.o   library.o   func_lib.o   checkInputConsistency.o   \
        library_degeneration.f90            library_output.o        \
-       netcdf_io.o
+       netcdf_io.o             $(PYDUMP_OBJ)
 
 clean:eqdyna
 	rm -r *.o
 
-eqdyna: $(OBJ) 
+eqdyna: $(OBJ)
 	$(FC) $(OPT1) $(OBJ) -o eqdyna ${NETCDF_LIB}
+eqdyna-pydump:
+	$(MAKE) PYDUMP=1 eqdyna
+	mv eqdyna eqdyna-pydump
 eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o countMeshEntities.o \
             meshgen.o readInputFiles.o checkInputConsistency.o         \
-            library_output.o netcdf_io.o
+            library_output.o netcdf_io.o $(PYDUMP_OBJ)
 	$(FC) $(OPT) eqdyna3d.f90
+pydump.o: pydump.f90 globalvar.o
+	$(FC) $(OPT) pydump.f90
+pydump_noop.o: pydump_noop.f90
+	$(FC) $(OPT) pydump_noop.f90
 globalvar.o: globalvar.f90
 	$(FC) $(OPT) globalvar.f90
 countMeshEntities.o: countMeshEntities.f90 globalvar.o library_degeneration.o
@@ -110,5 +142,7 @@ library_degeneration.o: library_degeneration.f90 globalvar.o
 	$(FC) $(OPT) library_degeneration.f90
 library_output.o: library_output.f90 globalvar.o 
 	$(FC) $(OPT) library_output.f90
-netcdf_io.o: netcdf_io.f90 globalvar.o 
+netcdf_io.o: netcdf_io.f90 globalvar.o
 	$(FC) $(OPT) netcdf_io.f90 ${NETCDF_INC}
+pydump.o: pydump.f90 globalvar.o
+	$(FC) $(OPT) pydump.f90
