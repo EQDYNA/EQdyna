@@ -8,10 +8,14 @@ EXISTING, already-parity-verified NumPy time-stepping kernel
 velDispUpdate + assembleGlobalKU + hrglss + faulting), then writes
 frt.txt via frt_writer.write_frt.
 
-Scope: friclaw==1 (slip-weakening, tpv8-style), single planar fault
-(ntotft==1), C_degen==0, insertFaultType==0, npx==npy==npz==1 (serial) --
-the exact scope every standalone milestone (M1-M7.5) has targeted. Raises
-loudly if a case violates any of these (no silent partial run).
+Scope: friclaw in {1, 4, 5} (slip-weakening/tpv8, rate-and-state/tpv104,
+thermal-pressurization/tpv1053d -- dispatched to port.py/port_rsf.py/
+port_tp.py respectively, see _NUMPY_SOLVER_BY_FRICLAW/_JAX_MODULE_BY_FRICLAW
+below), single planar
+fault (ntotft==1), C_degen==0, insertFaultType==0, npx==npy==npz==1
+(serial) -- the exact scope every standalone milestone (M1-M7.5) has
+targeted. Raises loudly if a case violates any of these (no silent
+partial run).
 
 S-dict field-by-field provenance (every key python/eqdyna/loading.py's
 `load()` reads from a pydump_* file, this module instead computes from
@@ -60,14 +64,18 @@ port.py need ZERO changes to consume it):
                                      because a future case where mode==2 or
                                      fric(31:36)!=0 WOULD need this wired in.
 
-Verified: testsys/parity/fixtures/test_tpv8_serial's fresh serial (nx=ny=
-nz=1) Fortran oracle IS this module's own parity baseline (same case, same
-domain decomposition -- so node ORDER matches, unlike the 4-rank
-test.reference.results/test.tpv8 tree, which uses a different domain
-decomposition and therefore a different frt.txt node order that a flat
-positional text diff cannot meaningfully compare against a serial run).
-See testsys/parity/test_standalone_e2e.py for the acceptance check.
+Verified (tpv8, friclaw==1): coordinate-aligned comparison vs the
+committed 4-rank test.reference.results/test.tpv8 references (frt.txt0 +
+frt.txt2, deduped by rounded coordinates and lexsorted against this
+module's serial output, since the 4-rank references use a different
+domain decomposition and therefore a different frt.txt node order than a
+serial run -- a flat positional text diff cannot compare the two
+directly). See the M7.5/M8 landing commit message for the exact
+methodology and numbers; extended to tpv104 (friclaw==4) and tpv1053d
+(friclaw==5) the same way, same-session follow-on.
 """
+import argparse
+import importlib
 import os
 import sys
 
@@ -75,7 +83,53 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from eqdyna.standalone import meshgen, native_input, mass_assembly, frt_writer  # noqa: E402
-from eqdyna import port  # noqa: E402
+from eqdyna import port, port_rsf, port_tp  # noqa: E402
+
+# friclaw -> the NumPy solver module whose run(S, nsteps, verbose) consumes
+# this module's S dict. All three modules were independently verified
+# (README-parity.md) to need the EXACT SAME S-dict keys (port_rsf.py/
+# port_tp.py only add nucleation-parameter reads and, for TP, an internally
+# -owned onFaultTPHist scan-carry -- neither needs a NEW key from S beyond
+# what build_solver_state already provides for tpv8, confirmed by grepping
+# each module's `S[...]` accesses before wiring this dispatch) -- so
+# build_solver_state below is friclaw-agnostic; only the solver CALLED
+# differs.
+_NUMPY_SOLVER_BY_FRICLAW = {1: port, 4: port_rsf, 5: port_tp}
+
+# JAX counterparts, same S-dict, same run(S, nsteps, verbose) signature,
+# same parity-verified formulas (README-parity.md Updates 3/4/5) -- 2-2.6x
+# faster than serial Fortran on this hardware (testsys/perf/baseline.json).
+# Imported LAZILY (module names, not modules) so a numpy-only environment
+# with no jaxlib installed never pays an ImportError just for choosing
+# --backend numpy; each jax module itself does
+# `jax.config.update("jax_enable_x64", True)` as the FIRST line after
+# `import jax`, before `import jax.numpy` -- that ordering guarantee is
+# preserved here because this file never imports jax/jax.numpy directly,
+# only these modules, lazily, on first actual use.
+_JAX_MODULE_BY_FRICLAW = {1: 'eqdyna.port_jax', 4: 'eqdyna.port_rsf_jax', 5: 'eqdyna.port_tp_jax'}
+
+DEFAULT_BACKEND = 'jax'
+
+
+def _resolve_solver(friclaw, backend):
+    """Returns the run()-providing module for `friclaw` under `backend`
+    ('jax' or 'numpy'). backend='jax' (the default) falls back to numpy
+    with an explicit printed notice -- never silently -- if jaxlib isn't
+    importable in this environment."""
+    if friclaw not in _NUMPY_SOLVER_BY_FRICLAW:
+        raise NotImplementedError('_resolve_solver: friclaw=%d has no wired standalone solver '
+                                   '(wired: %r)' % (friclaw, sorted(_NUMPY_SOLVER_BY_FRICLAW)))
+    if backend == 'numpy':
+        return _NUMPY_SOLVER_BY_FRICLAW[friclaw]
+    if backend != 'jax':
+        raise ValueError("_resolve_solver: backend must be 'jax' or 'numpy' (got %r)" % backend)
+    try:
+        return importlib.import_module(_JAX_MODULE_BY_FRICLAW[friclaw])
+    except ImportError as e:
+        print('NOTICE: --backend jax requested (the default) but %s is not importable (%s) -- '
+              'falling back to the NumPy solver for friclaw=%d.'
+              % (_JAX_MODULE_BY_FRICLAW[friclaw], e, friclaw), file=sys.stderr)
+        return _NUMPY_SOLVER_BY_FRICLAW[friclaw]
 
 
 def build_solver_state(case_dir):
@@ -91,9 +145,9 @@ def build_solver_state(case_dir):
     if g['ntotft'] != 1:
         raise NotImplementedError('build_solver_state: only ntotft==1 is supported (got %d)'
                                    % g['ntotft'])
-    if g['friclaw'] != 1:
-        raise NotImplementedError('build_solver_state: only friclaw==1 (slip-weakening) is '
-                                   'wired to python/eqdyna/port.py (got friclaw=%d)' % g['friclaw'])
+    if g['friclaw'] not in _NUMPY_SOLVER_BY_FRICLAW:
+        raise NotImplementedError('build_solver_state: friclaw=%d has no wired standalone '
+                                   'solver (wired: %r)' % (g['friclaw'], sorted(_NUMPY_SOLVER_BY_FRICLAW)))
     if (g['npx'], g['npy'], g['npz']) != (1, 1, 1):
         raise NotImplementedError('build_solver_state: only serial (npx=npy=npz=1) is supported '
                                    '(got %r)' % ((g['npx'], g['npy'], g['npz']),))
@@ -156,12 +210,16 @@ def build_solver_state(case_dir):
     return S, mesh
 
 
-def run_case(case_dir, nsteps=None, verbose=True):
-    """Builds S (zero pydump reads), runs port.run(), writes frt.txt0 via
+def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND):
+    """Builds S (zero pydump reads), dispatches to the friclaw-appropriate
+    solver's run() under the requested `backend` ('jax', the default, or
+    'numpy') -- port.py/port_jax.py friclaw==1, port_rsf.py/port_rsf_jax.py
+    friclaw==4, port_tp.py/port_tp_jax.py friclaw==5 -- writes frt.txt0 via
     frt_writer.write_frt (byte-exact Fortran E18.7E4 format). Returns the
     path written."""
     S, mesh = build_solver_state(case_dir)
-    out = port.run(S, nsteps=nsteps, verbose=verbose)
+    solver = _resolve_solver(S['friclaw'], backend)
+    out = solver.run(S, nsteps=nsteps, verbose=verbose)
 
     nftnd = S['nftnd']
     fric_1idx = np.zeros((nftnd + 1, 101))
@@ -175,11 +233,14 @@ def run_case(case_dir, nsteps=None, verbose=True):
 
 
 def main():
-    if len(sys.argv) < 2:
-        raise SystemExit('usage: python3 -m eqdyna.standalone <case_dir> [nsteps]')
-    case_dir = sys.argv[1]
-    nsteps = int(sys.argv[2]) if len(sys.argv) > 2 else None
-    path = run_case(case_dir, nsteps=nsteps)
+    ap = argparse.ArgumentParser(prog='python3 -m eqdyna.standalone')
+    ap.add_argument('case_dir')
+    ap.add_argument('nsteps', nargs='?', type=int, default=None)
+    ap.add_argument('--backend', choices=('jax', 'numpy'), default=DEFAULT_BACKEND,
+                     help="solver backend (default: %(default)s; falls back to numpy "
+                          "with a printed notice if jaxlib isn't importable)")
+    args = ap.parse_args()
+    path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend)
     print('wrote', path)
 
 
