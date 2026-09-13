@@ -72,6 +72,15 @@ MODULE globalvar
         FRIC_SLOT_NUC_DTAU0         = 81     ! nucleation stress-perturbation amplitude, Pa
 
     !=====================================================================
+    ! swtwNucleation forced-rupture-time constants (faulting.f90).
+    ! TPV201/36/37 hardcode a fixed Vs here; a real case should derive
+    ! this from the local material model instead.
+    !=====================================================================
+    real (kind = dp), parameter :: NUC_VS_FIXED   = 3464.d0 ! fixed shear-wave speed used by the TPV201/36/37 nucleation-time formula (also readInputFiles.f90's tv init), m/s
+    real (kind = dp), parameter :: NUC_TAPER_COEF = 0.081d0 ! TPV201/36/37 nucleation rupture-time taper coefficient
+    real (kind = dp), parameter :: NUC_VR_TO_VS   = 0.7d0   ! TPV201/36/37 nucleation rupture-speed-to-Vs ratio
+
+    !=====================================================================
     ! Character / string identifiers
     !=====================================================================
     character(len=30) :: mm                    ! MPI-rank suffix appended to per-process output file names
@@ -143,14 +152,6 @@ MODULE globalvar
     real (kind = dp) :: fdip, fstrike              ! fault dip / strike angles, degrees
     real (kind = dp) :: max_norm = -40.0d6         ! upper normal-stress cap enforced on non-planar/elastic faults, Pa
     real (kind = dp) :: min_norm = -10.0d6         ! lower normal-stress cap enforced on non-planar/elastic faults, Pa
-    ! Scalar defaults mirrored per-node into fric(); see fric() slot map above.
-    ! Currently unused as scalars in src/ (kept: not part of this refactor's deletion scope).
-    real (kind = dp) :: fric_sw_fs, fric_sw_fd, fric_sw_D0
-    real (kind = dp) :: fric_rsf_a, fric_rsf_deltaa0, fric_rsf_b, fric_rsf_Dc
-    real (kind = dp) :: fric_rsf_r0, fric_rsf_v0, fric_rsf_vinix, fric_rsf_viniz
-    real (kind = dp) :: fric_rsf_fw, fric_rsf_vw, fric_rsf_deltavw0
-    real (kind = dp) :: fric_tp_a_th, fric_tp_pini, fric_tp_Tini
-    real (kind = dp) :: fric_ww, fric_w, fric_ini_sliprate
 
     !=====================================================================
     ! Plasticity / off-fault material response

@@ -127,7 +127,7 @@ subroutine readmaterial
     sinphi  = dsin(atan(bulk))
     nstep   = idnint(totalSimuTime/dt)
     rdampk  = rdampk*dt    
-    tv      = 2.0d0*dz/3464.0d0
+    tv      = 2.0d0*dz/NUC_VS_FIXED
 end subroutine readmaterial
 
 ! #6 readstations --------------------------------------------------------
