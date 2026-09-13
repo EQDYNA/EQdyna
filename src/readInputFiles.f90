@@ -9,20 +9,7 @@ subroutine readglobal
     integer(kind=4):: i 
     
     
-    if (me == 0) then 
-        INQUIRE(FILE="bGlobal.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bGlobal.txt is required but missing ...'
-                
-        endif 
-    endif 
-    if (me == 0) then 
-        INQUIRE(FILE="bGlobal.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bGlobal.txt is still missing, so exiting EQdyna'
-            stop
-        endif 
-    endif     
+    call requireInputFile("bGlobal.txt")
     
     open(unit = 1001, file = 'bGlobal.txt', form = 'formatted', status = 'old')
         read(1001,*) mode
@@ -67,20 +54,7 @@ subroutine readmodelgeometry
 
     logical::file_exists
     
-    if (me == 0) then 
-        INQUIRE(FILE="bModelGeometry.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bModelGeometry.txt is required but missing ...'
-                
-        endif 
-    endif 
-    if (me == 0) then 
-        INQUIRE(FILE="bModelGeometry.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bModelGeometry.txt is still missing, so exiting EQdyna'
-            stop
-        endif 
-    endif     
+    call requireInputFile("bModelGeometry.txt")
     
     open(unit = 1002, file = 'bModelGeometry.txt', form = 'formatted', status = 'old')
         read(1002,*) xmin, xmax
@@ -103,20 +77,7 @@ subroutine readfaultgeometry
     logical::file_exists
     integer(kind=4)::i
     
-    if (me == 0) then 
-        INQUIRE(FILE="bFaultGeometry.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bFaultGeometry.txt is required but missing ...'
-                
-        endif 
-    endif 
-    if (me == 0) then 
-        INQUIRE(FILE="bFaultGeometry.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bFaultGeometry.txt is still missing, so exiting EQdyna'
-            stop
-        endif 
-    endif     
+    call requireInputFile("bFaultGeometry.txt")
     
     open(unit = 1003, file = 'bFaultGeometry.txt', form = 'formatted', status = 'old')
         do i = 1, ntotft
@@ -154,20 +115,7 @@ subroutine readmaterial
     logical::file_exists
     integer(kind=4):: i, j 
     
-    if (me == 0) then 
-        INQUIRE(FILE="bMaterial.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bMaterial.txt is required but missing ...'
-                
-        endif 
-    endif 
-    if (me == 0) then 
-        INQUIRE(FILE="bMaterial.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bMaterial.txt is still missing, so exiting EQdyna'
-            stop
-        endif 
-    endif     
+    call requireInputFile("bMaterial.txt")
     
     open(unit = 1004, file = 'bMaterial.txt', form = 'formatted', status = 'old')
         do i = 1, nmat
@@ -192,20 +140,7 @@ subroutine readstations1
     logical::file_exists
     integer(kind=4):: i, j 
     
-    if (me == 0) then 
-        INQUIRE(FILE="bStations.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bStations.txt is required but missing ...'
-                
-        endif 
-    endif 
-    if (me == 0) then 
-        INQUIRE(FILE="bStations.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bStations.txt is still missing, so exiting EQdyna'
-            stop
-        endif 
-    endif     
+    call requireInputFile("bStations.txt")
     
     open(unit = 1006, file = 'bStations.txt', form = 'formatted', status = 'old')
         read(1006,*) totalNumOfOffSt
@@ -223,20 +158,7 @@ subroutine readstations2
     logical::file_exists
     integer(kind=4):: i, j 
     
-    if (me == 0) then 
-        INQUIRE(FILE="bStations.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bStations.txt is required but missing ...'
-                
-        endif 
-    endif 
-    if (me == 0) then 
-        INQUIRE(FILE="bStations.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bStations.txt is still missing, so exiting EQdyna'
-            stop
-        endif 
-    endif     
+    call requireInputFile("bStations.txt")
     
     open(unit = 1006, file = 'bStations.txt', form = 'formatted', status = 'old')
         read(1006,*) 
@@ -269,20 +191,7 @@ subroutine read_fault_rough_geometry
     logical::file_exists
     integer(kind=4):: i, j
     
-    if (me == 0) then 
-        INQUIRE(FILE="bFault_Rough_Geometry.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bFault_Rough_Geometry.txt is required but missing ...'
-                
-        endif 
-    endif 
-    if (me == 0) then 
-        INQUIRE(FILE="bFault_Rough_Geometry.txt", EXIST=file_exists)
-        if (file_exists .eqv. .FALSE.) then
-            write(*,*) 'bFault_Rough_Geometry.txt is still missing, so exiting EQdyna'
-            stop
-        endif 
-    endif     
+    call requireInputFile("bFault_Rough_Geometry.txt")
     
     open(unit = 1008, file = 'bFault_Rough_Geometry.txt', form = 'formatted', status = 'old')
         read(1008,*) nnxTmp, nnzTmp
@@ -303,3 +212,20 @@ subroutine read_fault_rough_geometry
     close(1008)    
         
 end subroutine read_fault_rough_geometry
+
+subroutine requireInputFile(fileName)
+! Stop with a clear message if a required input file is missing.
+    use globalvar
+    implicit none
+    include 'mpif.h'
+    character (len=*) :: fileName
+    logical :: file_exists
+
+    if (me == 0) then
+        INQUIRE(FILE=fileName, EXIST=file_exists)
+        if (file_exists .eqv. .FALSE.) then
+            write(*,*) fileName, ' is required but missing, so exiting EQdyna'
+            stop
+        endif
+    endif
+end subroutine requireInputFile
