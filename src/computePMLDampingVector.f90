@@ -15,7 +15,7 @@ real (kind = dp),dimension(9)::dv
     maxdy=PMLb(7)
     maxdz=PMLb(8)    
     !
-    call pmlRegionDistance(x2, y, z, xmax0, xmin0, ymax0, ymin0, zmin0, .true., damp)
+    call pmlRegionDistance(x2, y, z, xmax0, xmin0, ymax0, ymin0, zmin0, damp)
 !For TianJin
     do i=1,3
         if (i==1) then

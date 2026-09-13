@@ -11,38 +11,29 @@
 ! #6 vlm
 
 ! #1 pmlRegionDistance
-subroutine pmlRegionDistance(x, y, z, xmax0, xmin0, ymax0, ymin0, zmin0, boundInclusive, damp)
+subroutine pmlRegionDistance(x, y, z, xmax0, xmin0, ymax0, ymin0, zmin0, damp)
     ! Classifies a point (x,y,z) into the PML region cascade and returns the
     ! raw (undamped) distances damp(1:3) to the xmax0/xmin0, ymax0/ymin0, and
     ! zmin0 boundaries. Consolidates the four identical region-cascade copies
     ! previously duplicated in computePMLDampingVector.f90 (twice) and
     ! assembleGlobalKU.f90's calcPMLElemKU (twice).
     !
-    ! boundInclusive selects the comparison operator used for the primary x/y
-    ! boundary tests (regions 11-14 and the first condition of each 1_XX edge
-    ! region): computePMLDampingVector.f90 has always used >=/<= there, while
-    ! assembleGlobalKU.f90 has always used strict >/< there. This is a
-    ! pre-existing difference between the two call sites (not introduced or
-    ! corrected by this refactor -- see PROJECT_RULES.md rule 1) and is
-    ! reproduced exactly via this flag rather than silently unified.
+    ! Boundary tests are INCLUSIVE (>=/<=), standardized 2026-09-13
+    ! (pathway_forward item 13): a point exactly on a PML bound classifies
+    ! into the region with zero damping distance (harmless) instead of
+    ! falling out of the cascade. Element centers additionally may never
+    ! lie exactly on a PML bound -- enforced at mesh time by
+    ! checkPMLAlignment (called from meshgen).
     use globalvar
     implicit none
     real (kind = dp) :: x, y, z, xmax0, xmin0, ymax0, ymin0, zmin0
-    logical :: boundInclusive
     real (kind = dp), dimension(3) :: damp
     logical :: xHi, xLo, yHi, yLo
 
-    if (boundInclusive) then
-        xHi = (x>=xmax0)
-        xLo = (x<=xmin0)
-        yHi = (y>=ymax0)
-        yLo = (y<=ymin0)
-    else
-        xHi = (x>xmax0)
-        xLo = (x<xmin0)
-        yHi = (y>ymax0)
-        yLo = (y<ymin0)
-    endif
+    xHi = (x>=xmax0)
+    xLo = (x<=xmin0)
+    yHi = (y>=ymax0)
+    yLo = (y<=ymin0)
 
     if (z<=zmin0) then
         damp(3) = abs(z-zmin0)
@@ -216,3 +207,24 @@ subroutine vlm(xl,volume)
     volume = volume/12.0d0
     !  
 end subroutine vlm
+
+subroutine checkPMLAlignment(elemCenter)
+    ! Mesh-time precheck (PROJECT_RULES.md rule 2; pathway_forward item 13):
+    ! the PML region cascade assumes no element center lies exactly on a PML
+    ! boundary plane. This held by construction on structured meshes but was
+    ! never enforced; a stretched or degenerated mesh could violate it
+    ! silently. Fail loudly at mesh time instead.
+    use globalvar
+    implicit none
+    real (kind = dp) :: elemCenter(3)
+
+    if (nPML <= 0) return
+    if (elemCenter(1) == PMLb(1) .or. elemCenter(1) == PMLb(2) .or. &
+        elemCenter(2) == PMLb(3) .or. elemCenter(2) == PMLb(4) .or. &
+        elemCenter(3) == PMLb(5)) then
+        write(*,*) 'checkPMLAlignment: element center exactly on a PML bound at', &
+            elemCenter(1), elemCenter(2), elemCenter(3)
+        write(*,*) 'PML region classification would be ambiguous; adjust mesh/nPML.'
+        stop 'checkPMLAlignment failed'
+    endif
+end subroutine checkPMLAlignment
