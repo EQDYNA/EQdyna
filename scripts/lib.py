@@ -6,7 +6,6 @@ import re
 from os.path import exists
 
 import numpy as np
-import imageio
 
 # functions are defined in lib.py under scripts/
 # function lists:
@@ -176,6 +175,7 @@ def sort_nicely(l):
     return l
 
 def generate_gif():
+  import imageio  # lazy: optional dependency, only needed for GIF generation
   filenames = glob.glob('.//*.png')
   filenames = sort_nicely(filenames)
   with imageio.get_writer('./on_fault_vars.gif', mode='I') as writer:
