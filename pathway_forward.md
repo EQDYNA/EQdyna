@@ -32,6 +32,8 @@ actually runs the command.
 
 | 16 | QUEUED: revive dormant compsets into the gate — (a) add test.meng2023a / test.meng2023cb to testNameList.py (golden references already exist in test.reference.results/ but are ungated); (b) freeze tpv36/tpv37 references from a fresh verified run (SCEC-verified v5.3.3-era, exercise C_degen wedge degeneration which no gated case covers). Sequenced after the standalone-5/5 extension and v5.4.0 re-cut | 3, 10 | `testNameList.py`, `test.reference.results/` | queued 2026-09-13 | `grep -c meng testNameList.py` |
 
+| 17 | QUEUED (user-prioritized): multi-fault support campaign — fix the four known ntotft>=2 bugs (item 7 netcdf_io hardcoded fault index; item 9 output_onfault_st unit-51; item 10 MPI4arn stale-count allocation; item 11 mesh4num/checkIsOnFault tolerance check), using EQquasi's step-over (bp1002) multi-fault implementation as the design reference (/home/staff/dliu/0.Dunyu/EQquasi, its fix is recent and battle-tested; manuscripts 20260812_eqquasi_stepover). Ship with a two-fault step-over regression case + frozen reference (rule 10). Coupling note: fric slot 6 (pore pressure) is dormant-zero in BOTH codes — if EQquasi re-enables it, EQdyna's retired slot-6 reads (e90ca03) must be restored. Sequenced after item 16 | 2, 10 | `src/netcdf_io.f90`, `src/library_output.f90`, `src/meshgen.f90` | queued 2026-09-13 | `grep -n "i, 1) = on_fault_vars" src/netcdf_io.f90` |
+
 **Deferred**: none.
 
 ## Goals
