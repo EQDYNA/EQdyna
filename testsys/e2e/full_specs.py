@@ -21,6 +21,13 @@ does not invent a separate decomposition scheme).
 
 # case -> {dx (m), term (s), (nx,ny,nz), citation}
 FULL_SPECS = {
+    'test.tpv29': dict(
+        dx=50.0, term=20.0, decomp=(4, 1, 4),
+        source=("TPV29_30_Description_v06, Part 8: 50 m preferred / 100 m "
+                "acceptable; 0-20 s. NOTE: 50 m is ~119 M elements — an HPC "
+                "job (bundle at scratch/tpv29/hpc50m, 1024 ranks ~0.7 h). "
+                "ny=1 keeps the fault plane off MPI partitions."),
+    ),
     'test.tpv8': dict(
         dx=100., term=15., nx=4, ny=2, nz=2,
         citation=(

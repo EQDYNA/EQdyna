@@ -150,6 +150,17 @@ def _main_func(description):
     nz           = par.nfz
     dx           = par.dx
     dz           = par.dz
+
+    # insertFaultType 1 (planar dipping) and 2 (generated fractal) are the
+    # geometries this script builds. Anything else means the case supplies its
+    # own fault surface (e.g. TPV29's official SCEC roughness file), so exit
+    # cleanly and leave bFault_Rough_Geometry.txt untouched rather than
+    # overwriting it -- or, as previously, dying on an undefined variable.
+    if isRoughFault not in (1, 2):
+        print('generateFaultInterface: par.insertFaultType =', isRoughFault,
+              '- the case supplies its own fault geometry; nothing generated.')
+        return
+
     generateFaultInterface(nx, nz, dx, dz, isRoughFault, dipAngle, seedId=1)
 
 if __name__ == "__main__":

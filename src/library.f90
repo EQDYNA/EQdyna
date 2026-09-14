@@ -12,11 +12,19 @@ subroutine memory_estimate
     implicit none
     
     real(kind = dp) :: memory = 0.0d0 ! in bytes
+    integer (kind = 4) :: nranks
     
     if (me == 0) then
-        !write(*,*) memory, 'GB memory would be used on me=0'
-        ! An estimate of 2GB/million elements memory is needed; 
-        ! Test done on Ubuntu docker for test.drv.a6 with 4 cores;
-        write(*,*) 1.54d0*totalNumOfElements/1.0e6*npx*npy*npz, ' GB memory is expected for EQdyna ... ...'
+        ! 1.54 GB per million elements, measured on Ubuntu docker for
+        ! test.drv.a6 with 4 cores. totalNumOfElements is THIS rank's count,
+        ! so the job total is that times the rank count. Both are reported
+        ! because sizing a job needs the total while judging per-step cost
+        ! needs the per-rank figure (performance scales with cells per rank).
+        nranks = npx*npy*npz
+        write(*,'(A,I12)')    ' Cells per rank (rank 0)     : ', totalNumOfElements
+        write(*,'(A,I12)')    ' Cells total (all ranks)     : ', totalNumOfElements*nranks
+        write(*,'(A,I12)')    ' MPI ranks (npx*npy*npz)     : ', nranks
+        write(*,'(A,F12.3,A)')' Memory per rank             : ', 1.54d0*totalNumOfElements/1.0d6, ' GB'
+        write(*,'(A,F12.3,A)')' Memory total (all ranks)    : ', 1.54d0*totalNumOfElements/1.0d6*nranks, ' GB'
     endif
 end subroutine memory_estimate
