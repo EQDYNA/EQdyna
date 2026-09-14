@@ -237,12 +237,17 @@ def compute_element_shape(xl):
     eleshp = np.einsum('erc,ck->erk', cof_rows, _LOCAL_DERIV) / det[:, None, None]
 
     # xs (Fortran's OUTPUT xs, reshape((/cof11,cof12,cof13,cof21,...,cof33/),(3,3))/det):
-    # column-major reshape -> xs(1,1)=cof11,xs(2,1)=cof12,xs(3,1)=cof13,
-    # xs(1,2)=cof21,xs(2,2)=cof22,xs(3,2)=cof23,xs(1,3)=cof31,xs(2,3)=cof32,xs(3,3)=cof33.
+    # column-major reshape -> xs(:,1)=[cof11,cof12,cof13], xs(:,2)=[cof21,cof22,cof23],
+    # xs(:,3)=[cof31,cof32,cof33] (each triple is one COLUMN, not one row --
+    # a previous version of this line stacked them as rows, transposing the
+    # result; invisible on every axis-aligned mesh tried so far because the
+    # off-diagonal cofactors are then exactly 0 on both sides, and only
+    # exposed by tpv10's genuinely skewed dipping-fault elements, where
+    # ss(2)/(3)/(5) showed a real ~25% relative miss, not roundoff).
     xs_out = np.stack([
-        np.stack([cof11, cof21, cof31], axis=1),
-        np.stack([cof12, cof22, cof32], axis=1),
-        np.stack([cof13, cof23, cof33], axis=1),
+        np.stack([cof11, cof12, cof13], axis=1),  # column 0
+        np.stack([cof21, cof22, cof23], axis=1),  # column 1
+        np.stack([cof31, cof32, cof33], axis=1),  # column 2
     ], axis=2) / det[:, None, None]  # (E,3,3): xs_out[e,row,col]
 
     return det, eleshp, xs_out

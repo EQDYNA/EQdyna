@@ -63,6 +63,18 @@ def run(S, nsteps=None, verbose=True):
     mass_full = np.concatenate(([1.0], S['nodalMassArr']))
     inv_mass_full = np.where(mass_full > 0, 1.0 / np.where(mass_full > 0, mass_full, 1.0), 0.0)
 
+    # faulting.f90 solveRSF, line ~201: "if (insertFaultType>0 .and.
+    # C_elastic==1)" clamp on the normal traction for non-planar/elastic
+    # faults. min_norm/max_norm are globalvar.f90 module-level constants
+    # (-10.0d6/-40.0d6 Pa), NOT case parameters -- reproduced verbatim,
+    # including the non-clamping gap between them (min_norm > max_norm, so
+    # the two branches are mutually exclusive and values strictly between
+    # max_norm and min_norm pass through untouched, exactly like the
+    # Fortran if/elseif).
+    insertFaultType = S.get('insertFaultType', 0)
+    min_norm = -10.0e6
+    max_norm = -40.0e6
+
     nftnd = S['nftnd']; nsmp1 = S['nsmp1']; nsmp2 = S['nsmp2']
     un = S['un']; us = S['us']; ud = S['ud']; arn = S['arn']
     fric = S['fric_init'].copy()
@@ -149,6 +161,9 @@ def run(S, nsteps=None, verbose=True):
 
         # ---- solveRSF ----
         tnrm = Tn + fric[:, 5]  # friclaw==4<5 -> += fric(6)
+        if insertFaultType > 0 and C_elastic == 1:
+            tnrm = np.where(tnrm >= min_norm, min_norm,
+                            np.where(tnrm <= max_norm, max_norm, tnrm))
         tnrm = np.where(tnrm > 0.0, 0.0, tnrm)
 
         slipN = slipN0 + fric[:, 24] * timeElapsed

@@ -11,11 +11,15 @@ frt.txt via frt_writer.write_frt.
 Scope: friclaw in {1, 4, 5} (slip-weakening/tpv8, rate-and-state/tpv104,
 thermal-pressurization/tpv1053d -- dispatched to port.py/port_rsf.py/
 port_tp.py respectively, see _NUMPY_SOLVER_BY_FRICLAW/_JAX_MODULE_BY_FRICLAW
-below), single planar
-fault (ntotft==1), C_degen==0, insertFaultType==0, npx==npy==npz==1
-(serial) -- the exact scope every standalone milestone (M1-M7.5) has
-targeted. Raises loudly if a case violates any of these (no silent
-partial run).
+below), single planar or dipping/rough fault (ntotft==1), C_degen==0,
+npx==npy==npz==1 (serial). insertFaultType>0 (tpv10 dipping, drv.a6
+fractal-rough -- Milestone 9, meshgen.py's insert_fault_interface +
+build_fault_geometry's pfx/pfz un/us/ud branch) is verified combined with
+friclaw==1 (tpv10) and friclaw==4 (drv.a6, faulting.f90's min_norm/max_norm
+normal-stress clamp ported into port_rsf.py/port_rsf_jax.py); friclaw==5
+(TP) with insertFaultType>0 still needs that same clamp ported into
+port_tp.py/port_tp_jax.py, not done yet (see the guard below).
+Raises loudly if a case violates any of these (no silent partial run).
 
 S-dict field-by-field provenance (every key python/eqdyna/loading.py's
 `load()` reads from a pydump_* file, this module instead computes from
@@ -151,13 +155,28 @@ def build_solver_state(case_dir):
     if (g['npx'], g['npy'], g['npz']) != (1, 1, 1):
         raise NotImplementedError('build_solver_state: only serial (npx=npy=npz=1) is supported '
                                    '(got %r)' % ((g['npx'], g['npy'], g['npz']),))
+    if g['insertFaultType'] != 0 and g['friclaw'] not in (1, 4):
+        # Milestone 9 (dipping/rough fault, meshgen.py's insert_fault_interface
+        # + build_fault_geometry's pfx/pfz un/us/ud branch) ported and
+        # verified for friclaw==1 (tpv10). friclaw==4 (RSF, drv.a6) is now
+        # also verified: faulting.f90's solveRSF has its own
+        # min_norm/max_norm normal-stress clamp (line ~201, "if
+        # (insertFaultType>0 .and. C_elastic==1)"), ported verbatim into
+        # port_rsf.py/port_rsf_jax.py (see S['insertFaultType'] below).
+        # friclaw==5 (TP, port_tp.py/port_tp_jax.py) hits the SAME clamp in
+        # the Fortran but has NOT had it ported -- still guarded loudly.
+        raise NotImplementedError(
+            'build_solver_state: insertFaultType=%d combined with friclaw=%d is not yet '
+            'ported -- verified combinations are friclaw==1 (tpv10) and friclaw==4 (drv.a6); '
+            'friclaw==5 additionally needs faulting.f90\'s min_norm/max_norm clamp ported '
+            'into port_tp.py/port_tp_jax.py' % (g['insertFaultType'], g['friclaw']))
 
     material = native_input.read_bmaterial(
         os.path.join(case_dir, 'bMaterial.txt'), g['nmat'], g['n2mat'])
 
     xline, yline, zline, pmlb, _ = meshgen.build_grid_lines(params)
     meshCoor, nftnd, nsmp = meshgen.build_node_coordinates(xline, yline, zline, params)
-    conn, elem_type, mat = meshgen.build_elements(xline, yline, zline, params, pmlb, nsmp, material)
+    conn, elem_type, mat = meshgen.build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
     num_dof, eq_start, eq_nums, total_eqs = meshgen.build_equation_numbers(
         xline, yline, zline, params, pmlb)
     un, us, ud, arn = meshgen.build_fault_geometry(xline, yline, zline, params, nsmp)
@@ -197,7 +216,7 @@ def build_solver_state(case_dir):
         gamar=g['gamar'], slipRateThres=g['slipRateThres'], xsource=g['xsource'],
         ysource=g['ysource'], zsource=g['zsource'], nucR=g['nucR'], nucRuptVel=g['nucRuptVel'],
         nucdtau0=g['nucdtau0'], nucT=g['nucT'], TPV=g['TPV'], C_nuclea=g['C_nuclea'],
-        nucfault=g['nucfault'], friclaw=g['friclaw'],
+        nucfault=g['nucfault'], friclaw=g['friclaw'], insertFaultType=g['insertFaultType'],
         meshCoor=meshCoor[1:], conn=conn - 1, elemType=elem_type, mat=mat,
         eledet=det, eleshp=np.transpose(eleshp3, (0, 2, 1)), ss=ss,
         phi=np.transpose(phi48, (0, 2, 1)),

@@ -36,6 +36,12 @@ def make_step(inv, S):
     radius = jnp.sqrt((coor_s[:, 0] - xsource) ** 2 + (coor_s[:, 1] - ysource) ** 2 +
                        (coor_s[:, 2] - zsource) ** 2)
     slipRateThres = S['slipRateThres']; C_elastic = S['C_elastic']
+    # faulting.f90 solveRSF min_norm/max_norm clamp (see port_rsf.py's
+    # comment) -- insertFaultType/C_elastic are static (Python int) at
+    # trace time, so this `if` is resolved once, not per-node.
+    insertFaultType = S.get('insertFaultType', 0)
+    min_norm = -10.0e6
+    max_norm = -40.0e6
     idxF_s = [jnp.asarray(S['eq_ids'][nsmp1, d]) for d in range(3)]
     idxF_m = [jnp.asarray(S['eq_ids'][nsmp2, d]) for d in range(3)]
 
@@ -106,6 +112,9 @@ def make_step(inv, S):
 
         # ---- solveRSF ----
         tnrm = Tn + fric[:, 5]
+        if insertFaultType > 0 and C_elastic == 1:
+            tnrm = jnp.where(tnrm >= min_norm, min_norm,
+                              jnp.where(tnrm <= max_norm, max_norm, tnrm))
         tnrm = jnp.where(tnrm > 0.0, 0.0, tnrm)
 
         slipN = slipN0 + fric[:, 24] * timeElapsed

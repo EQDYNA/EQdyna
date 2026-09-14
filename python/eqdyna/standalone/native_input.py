@@ -173,6 +173,48 @@ def read_bstations(path):
     return xonfs * 1000.0, x4nds * 1000.0
 
 
+def _fortran_nint(x):
+    """Fortran's nint(): round-half-away-from-zero (not Python round()'s or
+    np.round()'s round-half-to-even). Shared verbatim formula, same as
+    read_on_fault_vars's local helper above."""
+    return int(np.sign(x) * np.floor(np.abs(x) + 0.5)) if x != 0 else 0
+
+
+def read_fault_rough_geometry(path):
+    """Port of readInputFiles.f90's read_fault_rough_geometry: reads
+    bFault_Rough_Geometry.txt (nx, nz header; dx, fx_min, fz_min header;
+    then nx*nz rows of [y, dy/dx, dy/dz], z-fastest -- i.e. row index
+    nz*(ix-1)+iz, 1-indexed, matching func_lib.f90's insertFaultInterface
+    lookup `rough_geo(1, nnz*(ixx-1)+izz)`).
+
+    This file is written by the case's own `generateFaultInterface` Python
+    script (scripts/generateFaultInterface) at case-setup time -- NOT by
+    any Fortran binary -- so reading it here keeps the standalone solver
+    path Fortran-free even for insertFaultType>0 cases (tpv10, drv.a6).
+
+    Returns a dict: nnx, nnz (int), dx (the file's own grid spacing,
+    used only to derive fx_max -- NOT the model's dx/dz, which
+    insertFaultInterface's index math uses instead, per the Fortran
+    source), fx_min, fz_min, fx_max, rough_geo (3, nnx*nnz) float array,
+    1-indexed-by-column convention preserved via rough_geo[:, col-1].
+    """
+    with open(path) as f:
+        lines = f.readlines()
+    # Fortran's list-directed `read(unit,*) nnxTmp, nnzTmp` reads only the
+    # first 2 tokens off the line, silently ignoring any extra trailing
+    # value(s) -- this file's header line 1 sometimes carries a 3rd,
+    # unused column; sliced here to match, not an assumption.
+    nnx, nnz = (int(round(float(v))) for v in lines[0].split()[:2])
+    dx_file, fx_min, fz_min = (float(v) for v in lines[1].split()[:3])
+    fx_max = (nnx - 1) * dx_file + fx_min
+    rough_geo = np.zeros((3, nnx * nnz))
+    for i in range(nnx * nnz):
+        vals = [float(v) for v in lines[2 + i].split()]
+        rough_geo[:, i] = vals[:3]
+    return dict(nnx=nnx, nnz=nnz, dx=dx_file, fx_min=fx_min, fz_min=fz_min,
+                fx_max=fx_max, rough_geo=rough_geo)
+
+
 def build_params(case_dir):
     """Convenience wrapper: reads bGlobal.txt/bModelGeometry.txt/
     bFaultGeometry.txt from `case_dir` and returns (params, globals_dict)
@@ -191,6 +233,13 @@ def build_params(case_dir):
     Fortran globalvar.f90 PARAMETER constants (compile-time, not case
     input), reproduced verbatim here (see globalvar.f90's `nPML = 6`,
     `tol = 1.0d-5`, `R = 0.01d0`).
+
+    If g['insertFaultType'] > 0 (tpv10 dipping / drv.a6 rough fault),
+    also reads bFault_Rough_Geometry.txt (via read_fault_rough_geometry)
+    and stores it under params['rough'] -- meshgen.py's
+    build_node_coordinates/build_fault_geometry use this to apply
+    func_lib.f90's insertFaultInterface y-morph. params['rough'] is None
+    for insertFaultType==0 (the planar-fault milestones' unchanged path).
     """
     import os
     g = read_bglobal(os.path.join(case_dir, 'bGlobal.txt'))
@@ -200,6 +249,9 @@ def build_params(case_dir):
     mg = read_bmodelgeometry(os.path.join(case_dir, 'bModelGeometry.txt'))
     faults = read_bfaultgeometry(os.path.join(case_dir, 'bFaultGeometry.txt'), g['ntotft'])
     fg = faults[0]
+    rough = None
+    if g['insertFaultType'] > 0:
+        rough = read_fault_rough_geometry(os.path.join(case_dir, 'bFault_Rough_Geometry.txt'))
     params = dict(
         dx=mg['dx'], dy=mg['dy'], dz=mg['dz'],
         fxmin=fg['fxmin'], fxmax=fg['fxmax'], fzmin=fg['fzmin'], fzmax=fg['fzmax'],
@@ -209,6 +261,7 @@ def build_params(case_dir):
         zmin=mg['zmin'], zmax=mg['zmax'],
         rat=mg['rat'], nPML=6, tol=1.0e-5, R=0.01,
         fstrike=g['fstrike'], C_degen=g['C_degen'],
+        insertFaultType=g['insertFaultType'], rough=rough,
     )
     return params, g
 
