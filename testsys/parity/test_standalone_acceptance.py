@@ -444,6 +444,9 @@ def main():
     return 0
 
 
+_PLATFORM = os.environ.get('EQDYNA_ACCEPT_PLATFORM', 'cpu')  # accept tier is CPU-deterministic; gpu tier overrides
+os.environ['JAX_PLATFORMS'] = _PLATFORM
+
 _sub = os.environ.get('EQDYNA_ACCEPT_CASES')
 if _sub:
     _keep = set(x.strip() for x in _sub.split(','))
