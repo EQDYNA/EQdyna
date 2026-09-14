@@ -1,7 +1,9 @@
 # News in 2026
-* 20260913 v5.4.0 release notes
-  * New - python/eqdyna/standalone: a fully standalone Python EQdyna (zero Fortran involved), covering slip-weakening, rate-and-state, and thermal-pressurization friction, acceptance-tested against committed references (`testsys/run.py accept`).
-  * Add - testsys/ parity, accept, and perf tiers: Python-port parity vs Fortran (NumPy + JAX), standalone acceptance at roundoff-level agreement, and a pinned single-core performance ratio guard.
+* 20260914 v5.4.0 release notes
+  * New - python/eqdyna/standalone: a fully standalone Python EQdyna (zero Fortran involved), now covering all five gated cases (tpv8, tpv104, tpv1053d, tpv10, drv.a6) with a committed acceptance tier (`testsys/run.py accept`) — four at roundoff-level agreement, drv.a6 under a documented chaos-aware criterion for its rupture-arrest bistability.
+  * New - Drucker-Prager viscoplasticity ported to the standalone solver (test.drv.a6).
+  * New - optional GPU execution (JAX/CUDA), verified via `testsys/run.py gpu`.
+  * Add - testsys/ parity, accept, gpu, perf, and scaling tiers.
   * Fix - PML boundary tests standardized to inclusive bounds; mesh-time checkPMLAlignment guard added.
   * Fix - retired dead fric slot 6 (unused surface-pore-pressure reads).
   * Refactor - root cleanup: netCDF4 replaces xarray in check.test.py; orphaned testNameListWhole.py removed; shared loading/kernels modules factored out of the Python port.
