@@ -104,6 +104,24 @@ def run_accept():
         cwd=REPO_ROOT)
 
 
+def run_scaling():
+    print('\n==== testsys: scaling ====')
+    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'perf', 'run_scaling.py')], cwd=REPO_ROOT)
+
+def run_gpu():
+    print('\n==== testsys: gpu ====')
+    import importlib.util
+    try:
+        import jax
+        devs = [d for d in jax.devices() if 'cuda' in str(d).lower() or 'gpu' in str(d).lower()]
+    except Exception as e:
+        print(f'SKIP gpu: jax not importable ({e})'); return 0
+    if not devs:
+        print('SKIP gpu: no CUDA device/plugin (pip install "jax[cuda12]" on a GPU box)'); return 0
+    env = dict(os.environ, EQDYNA_ACCEPT_CASES='test.tpv8')
+    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'parity', 'test_standalone_acceptance.py')],
+                           cwd=REPO_ROOT, env=env)
+
 def run_perf():
     print('\n==== testsys: perf ====')
     return subprocess.call([sys.executable, os.path.join(TESTSYS, 'perf', 'run_perf.py')],
@@ -111,12 +129,13 @@ def run_perf():
 
 
 RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
-           'parity': run_parity, 'accept': run_accept, 'perf': run_perf}
+           'parity': run_parity, 'accept': run_accept, 'perf': run_perf,
+           'gpu': run_gpu, 'scaling': run_scaling}
 # 'all' stays unit+regression+e2e only (TIERS below) -- parity/accept/perf
 # require a Fortran build and generated fixtures/baseline (accept also
 # needs the committed test.reference.results/ trees) that a fresh checkout
 # does not have; they are opt-in tiers, invoked by name, not swept into 'all'.
-OPTIONAL_TIERS = ('parity', 'accept', 'perf')
+OPTIONAL_TIERS = ('parity', 'accept', 'perf', 'gpu', 'scaling')
 
 
 def main(argv):

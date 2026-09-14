@@ -28,6 +28,8 @@ Other features include
 *```EQdyna```* is also part of the fully dynamic earthquake cycle simulator *```EQsimu```* [(*Liu et al., 2020, GJI*)](https://www.researchgate.net/publication/346814142_EQsimu_a_3-D_finite_element_dynamic_earthquake_simulator_for_multicycle_dynamics_of_geometrically_complex_faults_governed_by_rate-_and_state-dependent_friction).
 
 # Environment
+*Optional (Python solver on GPU)*: `pip install "jax[cuda12]"` — the standalone Python solver (`python -m eqdyna.standalone`) then runs on NVIDIA GPUs; verify with `python3 testsys/run.py gpu`.
+
 *```EQdyna```* requires <br/>
   - FORTRAN compiler (gfortran/intel FORTRAN)
   - MPI (mpich/intel MPI)

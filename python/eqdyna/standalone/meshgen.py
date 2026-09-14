@@ -341,11 +341,17 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
         `meshCoor(j,nodeElemIdRelation(i,elemCount))`), not the grid lines
         directly, so insertFaultType>0's y-morph is correctly reflected.
 
-    Returns (conn, elem_type, mat) where conn is (E,8) 1-indexed node ids in
-    the Fortran nodeElemIdRelation column order (0-unused row NOT included --
-    conn is 0-indexed by element, elements 1..E map to rows 0..E-1), elem_type
-    is (E,) int (1=interior/hourglass-controlled, 2=PML), mat is (E,5)
-    [vp,vs,rho,lambda,mu].
+    Returns (conn, elem_type, mat, depth) where conn is (E,8) 1-indexed node
+    ids in the Fortran nodeElemIdRelation column order (0-unused row NOT
+    included -- conn is 0-indexed by element, elements 1..E map to rows
+    0..E-1), elem_type is (E,) int (1=interior/hourglass-controlled, 2=PML),
+    mat is (E,5) [vp,vs,rho,lambda,mu], and depth (E,) is
+    `-0.5*(zline[iz]+zline[iz-1]) + 7.3215` (meshgen.f90:103's argument to
+    setPlasticStress, verbatim including the 7.3215 magic-number shift --
+    ALWAYS computed, harmless when C_elastic==1 since no caller reads it
+    then; consumed by main.py's build_solver_state only when C_elastic==0,
+    to seed each interior/PML element's lithostatic pre-stress -- Milestone
+    10, drv.a6's Drucker-Prager viscoplasticity).
     """
     p = params
     nx, ny, nz = len(xline), len(yline), len(zline)
@@ -396,6 +402,7 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
         return np.array([vp, vs, rho, lam, mu])
 
     mat = np.zeros((n_elem, 5))
+    depth = np.zeros(n_elem)
 
     # plane1/plane2: (ny+1) x nz, row ny (0-indexed) is the ntotft==1 master row.
     plane1 = np.zeros((ny + 1, nz), dtype=np.int64)
@@ -464,11 +471,17 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
                     conn[elem_count] = c
                     elem_type[elem_count] = etype
                     mat[elem_count] = material_for(cz)
+                    # meshgen.f90:103 `setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1))
+                    # + 7.3215d0, elemCount)` -- python's `iz`/`zline` here are the
+                    # SAME running loop variable/array Fortran uses (both 0-indexed
+                    # consistently, see build_elements' docstring math), so this is
+                    # the identical expression, not a re-derivation.
+                    depth[elem_count] = -0.5 * (zline[iz] + zline[iz - 1]) + 7.3215
                     elem_count += 1
         plane1 = plane2.copy()
 
     assert elem_count == n_elem, (elem_count, n_elem)
-    return conn, elem_type, mat
+    return conn, elem_type, mat, depth
 
 
 def build_equation_numbers(xline, yline, zline, params, pmlb):

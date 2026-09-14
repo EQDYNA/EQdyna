@@ -16,6 +16,14 @@ arguments, never the carry tuple itself. Stops right after the
 post-hourglass force scrub (`force.at[0].set(0.0)`), matching
 kernels_numpy.py's elastic_step -- friction-specific force overwrite and
 the final mass multiply stay in each port's own step().
+
+Milestone 10 (drv.a6, C_elastic==0, friclaw==4): mirrors kernels_numpy.py's
+gravity body-force term and Drucker-Prager return-mapping EXACTLY, statement
+for statement (see that module's top docstring for the full derivation/
+no-op proof) -- `inv['C_elastic']` is a static Python int at trace time
+(never a jnp array, see port_jax.py's build()), so `if inv['C_elastic']==0:`
+is resolved once at trace time, identical to kernels_numpy.py's runtime
+branch: skipped entirely, not merely masked, for every C_elastic==1 caller.
 """
 import jax.numpy as jnp
 
@@ -72,6 +80,31 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
     stress_i = stress_i.at[:, 0].add(strr1 * dt); stress_i = stress_i.at[:, 1].add(strr2 * dt)
     stress_i = stress_i.at[:, 2].add(strr3 * dt); stress_i = stress_i.at[:, 3].add(strr4 * dt)
     stress_i = stress_i.at[:, 4].add(strr5 * dt); stress_i = stress_i.at[:, 5].add(strr6 * dt)
+
+    if inv['C_elastic'] == 0:
+        # calcElemKU.f90:127-161, mirrors kernels_numpy.py's elastic_step
+        # statement for statement (see that module's docstring).
+        ccosphi = inv['ccosphi']; sinphi = inv['sinphi']; tv = inv['tv']
+        strmea = (stress_i[:, 0] + stress_i[:, 1] + stress_i[:, 2]) / 3.0
+        strdev0 = stress_i[:, 0] - strmea
+        strdev1 = stress_i[:, 1] - strmea
+        strdev2 = stress_i[:, 2] - strmea
+        strdev3 = stress_i[:, 3]; strdev4 = stress_i[:, 4]; strdev5 = stress_i[:, 5]
+        taomax = jnp.sqrt(0.5 * (strdev0 ** 2 + strdev1 ** 2 + strdev2 ** 2)
+                           + strdev3 ** 2 + strdev4 ** 2 + strdev5 ** 2)
+        porep = 0.0  # eleporep is provably always exactly 0.0 -- see kernels_numpy.py.
+        yld = jnp.maximum(ccosphi - sinphi * (strmea + porep), 0.0)
+        mask = taomax > yld
+        safe_tao = jnp.where(mask, taomax, 1.0)
+        ratio = yld / safe_tao
+        rjust = jnp.where(mask, ratio + (1.0 - ratio) * jnp.exp(-dt / tv), 1.0)
+        stress_i = stress_i.at[:, 0].set(strdev0 * rjust + strmea)
+        stress_i = stress_i.at[:, 1].set(strdev1 * rjust + strmea)
+        stress_i = stress_i.at[:, 2].set(strdev2 * rjust + strmea)
+        stress_i = stress_i.at[:, 3].set(strdev3 * rjust)
+        stress_i = stress_i.at[:, 4].set(strdev4 * rjust)
+        stress_i = stress_i.at[:, 5].set(strdev5 * rjust)
+
     st1 = constk_w_i * (stress_i[:, 0] + rdampk * strr1)
     st2 = constk_w_i * (stress_i[:, 1] + rdampk * strr2)
     st3 = constk_w_i * (stress_i[:, 2] + rdampk * strr3)
@@ -81,6 +114,7 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
     Fx = dNx_i * st1[:, None] + dNz_i * st5[:, None] + dNy_i * st6[:, None]
     Fy = dNy_i * st2[:, None] + dNz_i * st4[:, None] + dNx_i * st6[:, None]
     Fz = dNz_i * st3[:, None] + dNy_i * st4[:, None] + dNx_i * st5[:, None]
+    Fz = Fz - (inv['m_e_i'] * inv['grav_const'])[:, None]
     scat_idx += [inv['idxIx'], inv['idxIy'], inv['idxIz']]
     scat_val += [Fx.ravel(), Fy.ravel(), Fz.ravel()]
 
@@ -123,7 +157,7 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
         syy = s_p[:, 3] + s_p[:, 4] + s_p[:, 5]
         szz = s_p[:, 6] + s_p[:, 7] + s_p[:, 8]
         sxy = s_p[:, 9] + s_p[:, 10]; sxz = s_p[:, 11] + s_p[:, 12]; syz = s_p[:, 13] + s_p[:, 14]
-        s0 = [rdampk * srate[k] for k in range(6)]
+        s0 = [rdampk * srate[k] + inv['pml_init6'][:, k] for k in range(6)]
         f1 = -det_w_p[:, None] * dNx_p * sxx[:, None]
         f2 = -det_w_p[:, None] * dNy_p * sxy[:, None]
         f3v = -det_w_p[:, None] * dNz_p * sxz[:, None]
@@ -139,9 +173,10 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
         efPML12 = [f1, f2, f3v, f4, f5, f6, f7, f8, f9v, f10, f11, f12]
         for j in range(12):
             scat_idx.append(inv['idxP12'][j]); scat_val.append(efPML12[j].ravel())
+        grav_p = (inv['m_e_p'] * inv['grav_const'])[:, None]
         grp_sums = [efPML12[0] + efPML12[1] + efPML12[2] + efPML12[9],
                     efPML12[3] + efPML12[4] + efPML12[5] + efPML12[10],
-                    efPML12[6] + efPML12[7] + efPML12[8] + efPML12[11]]
+                    efPML12[6] + efPML12[7] + efPML12[8] + efPML12[11] - grav_p]
         for g in range(3):
             scat_idx.append(inv['idxP3'][g]); scat_val.append(grp_sums[g].ravel())
 

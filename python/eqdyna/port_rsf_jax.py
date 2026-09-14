@@ -11,6 +11,12 @@ fallback (that node's v_trial DOES get the 20th update applied, matching
 Fortran's `do` loop running its full body on iv==ivmax).
 
 float64 enabled first, before any other jax import.
+
+Milestone 10 (drv.a6, TPV==2802, C_elastic==0): faulting.f90:363-374's
+rsfNucleation TPV==2802 branch mirrors port_rsf.py's nt==1 special case
+(see that module's docstring/step function for the full derivation) --
+detected here via `timeElapsed == dt` since this scan's carry has no
+explicit step counter.
 """
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -107,7 +113,33 @@ def make_step(inv, S):
         F = jnp.where(radius < nucR, jnp.exp(radius ** 2 / (radius ** 2 - nucR ** 2)), 0.0)
         G = jnp.where(timeElapsed <= nucT,
                       jnp.exp((timeElapsed - nucT) ** 2 / (timeElapsed * (timeElapsed - 2.0 * nucT))), 1.0)
-        dtau_nuc = (nucdtau0 * F * G) if (TPV == 104.0 or TPV == 105.0) else (0.0 * F)
+        if TPV == 104.0 or TPV == 105.0:
+            dtau_nuc = nucdtau0 * F * G
+        elif TPV == 2802.0:
+            # faulting.f90:363-374 (drv.a6, C_elastic==0/plastic) -- mirrors
+            # port_rsf.py's nt==1 special case exactly (see that module's
+            # docstring for the derivation/why-it-matters), except `nt==1`
+            # is detected via `timeElapsed == dt` (a traced comparison,
+            # since there is no explicit step counter in this scan's carry)
+            # -- `0.0 + dt == dt` exactly in IEEE754, so this is bit-exact,
+            # not an approximation. `TPV==2802.0` is resolved at TRACE time
+            # (a static Python float), so this whole branch (including the
+            # is_step1 jnp.where machinery) is compiled in ONLY for this
+            # case -- zero-cost/absent for TPV==104/105 (port_rsf_jax.py's
+            # only other caller).
+            is_step1 = (timeElapsed == dt)
+            ttao = jnp.sqrt(Ts ** 2 + Td ** 2)
+            backSliprate = jnp.sqrt((srS0 + fric[:, 25]) ** 2 + (srD0 + fric[:, 26]) ** 2)
+            rsf_a0 = fric[:, 8]; rsf_v0_0 = fric[:, 11]
+            state_step1 = rsf_a0 * jnp.log(2.0 * rsf_v0_0 / backSliprate
+                                             * jnp.sinh(ttao / jnp.abs(Tn) / rsf_a0))
+            thetapc_step1 = jnp.abs(Tn)
+            fric = fric.at[:, 19].set(jnp.where(is_step1, state_step1, fric[:, 19]))
+            fric = fric.at[:, 22].set(jnp.where(is_step1, thetapc_step1, fric[:, 22]))
+            fric = fric.at[:, 80].set(jnp.where(is_step1, nucdtau0, fric[:, 80]))
+            dtau_nuc = fric[:, 80] * F * G
+        else:
+            dtau_nuc = 0.0 * F
         Ts = Ts + dtau_nuc
 
         # ---- solveRSF ----
@@ -209,7 +241,8 @@ def run(S, nsteps=None, verbose=True):
     velArr = jnp.zeros((N, 3), dtype=jnp.float64)
     dispArr = jnp.zeros((N, 3), dtype=jnp.float64)
     force = jnp.zeros(NEQ + 1, dtype=jnp.float64)
-    stress_i = jnp.zeros((inv['Ei'], 6), dtype=jnp.float64)
+    stress_i = inv['stress_i0']  # zeros for C_elastic==1; lithostatic pre-stress otherwise
+    # (Milestone 10, drv.a6 -- see port_jax.py's build(), shared by this module).
     s_p = jnp.zeros((inv['Ep'], 15), dtype=jnp.float64)
     fric = jnp.asarray(S['fric_init'].copy())
     fnft = jnp.full(nftnd, 99999.0, dtype=jnp.float64)

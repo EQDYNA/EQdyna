@@ -68,6 +68,31 @@ port.py need ZERO changes to consume it):
                                      because a future case where mode==2 or
                                      fric(31:36)!=0 WOULD need this wired in.
 
+Milestone 10 (drv.a6, C_elastic==0, friclaw==4): wires
+src/calcElemKU.f90:127-161's Drucker-Prager viscoplastic return-mapping
+(deviatoric projection to a cohesion/friction-angle yield surface, tv-scale
+viscoplastic relaxation) and src/assembleGlobalKU.f90:16's
+`(1-C_elastic)*grav*(roumax-(gamar+1)*rhow)/roumax` gravity body-force term
+into kernels_numpy.py/kernels_jax.py's shared elastic_step (gated behind a
+static `if S['C_elastic']==0:` branch -- an exact, zero-cost no-op for every
+other case: the gravity term's own `(1-C_elastic)` factor is EXACTLY 0.0 for
+C_elastic==1, and the plasticity block is skipped entirely, not merely
+masked, so tpv8/tpv104/tpv1053d/tpv10 parity is provably untouched -- see
+kernels_numpy.py's build()/elastic_step docstrings for the derivation of why
+the gravity term reduces to `-nodalMassArr[z-eq]*const` and why
+src/meshgen.f90:103's setPlasticStress lithostatic pre-stress is
+precomputed once here (`ccosphi`/`sinphi`/`tv`/`init_stress`) rather than
+per-step). eleporep (pore pressure) is hardcoded 0.0 in the plasticity
+kernel: confirmed by grep that src/meshgen.f90's setPlasticStress and
+src/eqdyna3d.f90's zero-init are the ONLY writes to `eleporep` in all of
+src/*.f90 -- the lithostatic pore-pressure formula is commented out in the
+Fortran itself, so eleporep is provably always exactly 0.0, not an
+assumption. pstrain (the plastic-strain accumulator) is explicitly NOT
+ported: test.reference.results/test.drv.a6 has no pstr.txt* output to gate
+against (only frt.txt1/frt.txt3), and pstrain is write-only (never read back
+by any downstream physics), so computing it would be unverifiable, silent
+scope creep -- flagged here, not silently included.
+
 Verified (tpv8, friclaw==1): coordinate-aligned comparison vs the
 committed 4-rank test.reference.results/test.tpv8 references (frt.txt0 +
 frt.txt2, deduped by rounded coordinates and lexsorted against this
@@ -176,7 +201,8 @@ def build_solver_state(case_dir):
 
     xline, yline, zline, pmlb, _ = meshgen.build_grid_lines(params)
     meshCoor, nftnd, nsmp = meshgen.build_node_coordinates(xline, yline, zline, params)
-    conn, elem_type, mat = meshgen.build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
+    conn, elem_type, mat, elem_depth = meshgen.build_elements(
+        xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
     num_dof, eq_start, eq_nums, total_eqs = meshgen.build_equation_numbers(
         xline, yline, zline, params, pmlb)
     un, us, ud, arn = meshgen.build_fault_geometry(xline, yline, zline, params, nsmp)
@@ -194,6 +220,37 @@ def build_solver_state(case_dir):
 
     N = meshCoor.shape[0] - 1  # drop the unused row-0
     E = conn.shape[0]
+
+    # Milestone 10 (drv.a6, C_elastic==0): readInputFiles.f90's readmaterial
+    # computes ccosphi/sinphi/tv AFTER bMaterial.txt is read (needs dz, read
+    # earlier in readmodelgeometry) but BEFORE the time loop -- reproduced
+    # here, verbatim formula, NUC_VS_FIXED=3464.0 (globalvar.f90's own
+    # comment: "fixed shear-wave speed ... also readInputFiles.f90's tv
+    # init"). g['bulk']/g['coheplas'] are read unconditionally by
+    # native_input.read_bglobal regardless of C_elastic (same bGlobal.txt
+    # line for every case) -- always computed here too, harmless for
+    # C_elastic==1 cases since kernels_numpy/kernels_jax gate their USE on
+    # C_elastic==0 (see those modules' build()).
+    _NUC_VS_FIXED = 3464.0
+    ccosphi = g['coheplas'] * np.cos(np.arctan(g['bulk']))
+    sinphi = np.sin(np.arctan(g['bulk']))
+    tv = 2.0 * params['dz'] / _NUC_VS_FIXED
+
+    # meshgen.f90:103's setPlasticStress (called for EVERY element, both
+    # interior and PML, only when C_elastic==0): lithostatic per-element
+    # pre-stress, Voigt order [xx,yy,zz,yz,xz,xy] (calcB.f90's b(4,*)/
+    # b(5,*)/b(6,*) confirm 4=yz,5=xz,6=xy) -- ALWAYS computed (cheap,
+    # harmless when unused) so kernels_numpy.build/kernels_jax's build can
+    # raise loudly (not silently default) if C_elastic==0 but this key is
+    # somehow missing, rather than silently zero-initializing plastic runs.
+    strVert = -(g['roumax'] - g['rhow'] * (g['gamar'] + 1.0)) * elem_depth * 9.8
+    devStr = np.abs(strVert) * g['devStrToStrVertRatio']
+    theta2 = 2.0 * g['str1ToFaultAngle']
+    init_stress = np.zeros((E, 6))
+    init_stress[:, 0] = strVert - devStr * np.cos(theta2)  # xx
+    init_stress[:, 1] = strVert + devStr * np.cos(theta2)  # yy
+    init_stress[:, 2] = strVert  # zz
+    init_stress[:, 5] = devStr * np.sin(theta2)  # xy
 
     # ---- convert to loading.load()'s 0-indexed convention ----
     eq_ids = np.zeros((N, 12), dtype=np.int64)
@@ -224,6 +281,7 @@ def build_solver_state(case_dir):
         ndof=ndof0, eq_ids=eq_ids,
         nsmp1=nsmp[:, 0] - 1, nsmp2=nsmp[:, 1] - 1,
         un=un[1:], us=us[1:], ud=ud[1:], arn=arn[1:], fric_init=fric[1:, 1:101],
+        ccosphi=ccosphi, sinphi=sinphi, tv=tv, init_stress=init_stress,
     )
     mesh = dict(meshCoor=meshCoor, nsmp=nsmp)
     return S, mesh
