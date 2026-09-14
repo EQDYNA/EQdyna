@@ -126,4 +126,12 @@ def main():
 
 
 if __name__ == '__main__':
+    if '--full' in sys.argv:
+        # Delegate to the full tier (SCEC spec resolution/duration, 16
+        # ranks, report-only). See run_e2e_full.py's module docstring for
+        # why this is a separate script rather than a branch in main()
+        # above: different gate shape (report-only vs bit-compare), and
+        # never runs by default under `python3 testsys/run.py e2e`.
+        from run_e2e_full import main as main_full
+        sys.exit(main_full())
     sys.exit(main())

@@ -5,6 +5,7 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
     python3 testsys/run.py unit          # fast pure-python unit tests (pytest, no MPI/Fortran)
     python3 testsys/run.py regression    # one guard per past incident (rule 10)
     python3 testsys/run.py e2e           # full pipeline vs test.reference.results/ (rule 7)
+    python3 testsys/run.py e2e-full      # SCEC cases at spec dx/term, 16 ranks, report-only (opt-in; hours)
     python3 testsys/run.py parity        # Python-port (NumPy/JAX) vs Fortran serial oracle (item 14)
     python3 testsys/run.py accept        # standalone (no-Fortran-in-the-loop) solver vs committed 4-rank references
     python3 testsys/run.py perf          # pinned single-core Fortran/NumPy/JAX timing, ratio-guarded
@@ -55,6 +56,13 @@ def run_e2e():
     print('\n==== testsys: e2e ====')
     return subprocess.call([sys.executable, os.path.join(TESTSYS, 'e2e', 'run_e2e.py')],
                             cwd=REPO_ROOT)
+
+
+def run_e2e_full():
+    print('\n==== testsys: e2e-full ====')
+    return subprocess.call(
+        [sys.executable, os.path.join(TESTSYS, 'e2e', 'run_e2e.py'), '--full'],
+        cwd=REPO_ROOT)
 
 
 def run_parity():
@@ -130,12 +138,15 @@ def run_perf():
 
 RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
            'parity': run_parity, 'accept': run_accept, 'perf': run_perf,
-           'gpu': run_gpu, 'scaling': run_scaling}
+           'gpu': run_gpu, 'scaling': run_scaling, 'e2e-full': run_e2e_full}
 # 'all' stays unit+regression+e2e only (TIERS below) -- parity/accept/perf
 # require a Fortran build and generated fixtures/baseline (accept also
 # needs the committed test.reference.results/ trees) that a fresh checkout
 # does not have; they are opt-in tiers, invoked by name, not swept into 'all'.
-OPTIONAL_TIERS = ('parity', 'accept', 'perf', 'gpu', 'scaling')
+# e2e-full additionally needs EQDYNA_FULL_LAUNCH=yes-hours (see
+# testsys/e2e/run_e2e_full.py) -- spec-resolution SCEC runs are hours long
+# and user-scheduled, never automatic.
+OPTIONAL_TIERS = ('parity', 'accept', 'perf', 'gpu', 'scaling', 'e2e-full')
 
 
 def main(argv):
