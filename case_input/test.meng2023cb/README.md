@@ -6,6 +6,9 @@ patches instead of one central patch. Verifies heterogeneous-material
 handling under a different nucleation geometry (`pastReleaseNotes.md`:
 "test system now supports ... meng2023a, meng2023cb").
 
+
+![reference result at fast-tier resolution](cRuptureDynamics.png)
+
 | tier | dx (m) | term (s) | ranks (decomp) | ~cells | wall time | reference |
 |---|---|---|---|---|---|---|
 | fast (gate) | 400 | 5 | 4 (2,2,1) | 510k | ~48s (suite-aggregate, not case-isolated) | frozen golden, `test.reference.results/test.meng2023cb/` |

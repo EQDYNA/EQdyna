@@ -5,6 +5,9 @@ a homogeneous elastic halfspace, slip-weakening friction, verifies the
 basic dynamic-rupture solver (mesh/FE kernel, fault traction update,
 nucleation) against the cross-code SCEC reference solutions.
 
+
+![reference result at fast-tier resolution](cRuptureDynamics.png)
+
 | tier | dx (m) | term (s) | ranks (decomp) | ~cells | wall time | reference |
 |---|---|---|---|---|---|---|
 | fast (gate) | 500 | 5 | 4 (2,2,1) | 77.4k | ~48s (suite-aggregate, not case-isolated) | frozen golden, `test.reference.results/test.tpv8/` |

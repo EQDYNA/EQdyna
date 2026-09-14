@@ -6,6 +6,9 @@ used for deterministic ground-motion studies. Verifies the plasticity +
 PML + rough-fault path (`pastReleaseNotes.md`: "a fractal fault plastic
 model for ground motion application").
 
+
+![reference result at fast-tier resolution](cRuptureDynamics.png)
+
 | tier | dx (m) | term (s) | ranks (decomp) | ~cells | wall time | reference |
 |---|---|---|---|---|---|---|
 | fast (gate) | 500 | 5 | 4 (2,2,1) | 256k | ~48s (suite-aggregate, not case-isolated) | chaos-aware gate, `test.reference.results/test.drv.a6/` (rupture-front bistability tolerated, see `testsys/parity/test_standalone_acceptance.py`) |

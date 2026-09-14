@@ -5,6 +5,9 @@ velocity-weakening friction plus thermal pressurization (shear heating
 raises pore pressure, weakening the fault), verifies the TP module against
 the cross-code SCEC reference solutions.
 
+
+![reference result at fast-tier resolution](cRuptureDynamics.png)
+
 | tier | dx (m) | term (s) | ranks (decomp) | ~cells | wall time | reference |
 |---|---|---|---|---|---|---|
 | fast (gate) | 500 | 5 | 4 (2,2,1) | 282k | ~48s (suite-aggregate, not case-isolated) | frozen golden, `test.reference.results/test.tpv1053d/` |

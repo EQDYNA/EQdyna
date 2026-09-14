@@ -5,6 +5,9 @@ halfspace with rate-and-state (ageing law) friction, verifies the RSF
 implementation (state-variable evolution, velocity-dependent friction)
 against the cross-code SCEC reference solutions.
 
+
+![reference result at fast-tier resolution](cRuptureDynamics.png)
+
 | tier | dx (m) | term (s) | ranks (decomp) | ~cells | wall time | reference |
 |---|---|---|---|---|---|---|
 | fast (gate) | 500 | 5 | 4 (2,2,1) | 231k | ~48s (suite-aggregate, not case-isolated) | frozen golden, `test.reference.results/test.tpv104/` |
