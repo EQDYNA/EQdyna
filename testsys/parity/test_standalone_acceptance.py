@@ -158,6 +158,18 @@ to make C's 391 pass; C was measured in the same session, after A and B,
 and landed under 450 on its own). See DRV_A6_MEDIAN_FNFT_BOUND/
 DRV_A6_PHYS_MAX_BOUND/DRV_A6_TOTAL_FLIP_BOUND below and drv_a6_gate()
 for the implementation. Tier is 5/5 as of this closure.
+
+Item 21 (release audit, 2026-09-14): the A/B/C flip counts above (and the
+gpu tier's timing comparison) were docstring/commit-message-only, not
+reproducible from a committed script. Both are now regenerated on demand
+by `testsys/parity/evidence_drv_a6_chaos.py` (report-only, never a gate --
+run it by hand per its own module docstring; it imports
+load_coordinate_aligned/align_two_frt_files/flip_decomposition/
+drv_a6_gate from THIS module rather than duplicating the comparison
+logic, rule 1). Re-running it produces a fresh CHAOTIC SAMPLE, not a
+byte-identical reproduction of 372/439/391 above -- see that script's own
+output for why -- and the bounds here are never adjusted to chase a new
+sample.
 """
 import glob
 import os
@@ -263,6 +275,50 @@ PER_CASE_ABS_BOUND = {
 }
 
 
+def _dedupe_by_coords(arr):
+    """Dedupe rows by rounded (x,y,z) -- handles multi-rank reference files
+    where partition-boundary nodes are written by more than one rank. A
+    no-op for genuinely single-rank output (no duplicate coordinates)."""
+    key = np.round(arr[:, :3], 6)
+    _, idx = np.unique(key, axis=0, return_index=True)
+    return arr[np.sort(idx)]
+
+
+def _lexsort_by_xyz(arr):
+    return arr[np.lexsort((arr[:, 2], arr[:, 1], arr[:, 0]))]
+
+
+def _align_and_check(a, b, label_a, label_b):
+    """Dedupe+lexsort BOTH arrays by (x,y,z), then assert they line up.
+    Raises loudly if shapes/coordinates don't align after lexsort -- never
+    a silent skip. COORD_TOL: for a planar fault (tpv8/104/1053d), node
+    coordinates are exact multiples of the grid spacing on both sides and
+    match to 0.0 exactly. For a dipping/rough fault (tpv10/drv.a6),
+    coordinates are the OUTPUT of a real floating-point computation
+    (insertFaultInterface's y-blend) done independently by Fortran and
+    this port -- a few ULPs of difference (~1e-12, the same floor M1's
+    meshCoor check already uses, 1e-9) is expected roundoff, not a
+    misalignment. A genuine node-to-node misalignment would show a diff on
+    the order of the actual grid spacing (meters), many orders of
+    magnitude above this floor -- so a small, fixed tolerance here cannot
+    mask a real alignment bug. Shared by load_coordinate_aligned (reference
+    vs python-port) and align_two_frt_files (any two frt-format runs, e.g.
+    fresh-serial-Fortran vs standalone-python -- see
+    evidence_drv_a6_chaos.py) -- one alignment implementation, every
+    caller."""
+    a_s = _lexsort_by_xyz(_dedupe_by_coords(a))
+    b_s = _lexsort_by_xyz(_dedupe_by_coords(b))
+    if a_s.shape != b_s.shape:
+        raise AssertionError(f'{label_a} vs {label_b}: shape mismatch after dedupe/lexsort -- '
+                              f'{label_a} {a_s.shape} vs {label_b} {b_s.shape}')
+    coord_diff = np.max(np.abs(a_s[:, :3] - b_s[:, :3]))
+    if coord_diff > 1e-9:
+        raise AssertionError(f'{label_a} vs {label_b}: node-coordinate mismatch after lexsort '
+                              f'(max abs diff {coord_diff:e}) -- alignment failed, '
+                              f'this is not a numeric-tolerance issue')
+    return a_s, b_s
+
+
 def load_coordinate_aligned(case_name, py_frt_path):
     """dedupe test.reference.results/<case>'s reference frt.txt files
     (globbed per-case, NOT hardcoded to frt.txt0/2 -- e.g. drv.a6's
@@ -277,40 +333,21 @@ def load_coordinate_aligned(case_name, py_frt_path):
     ref_files = sorted(glob.glob(os.path.join(ref_dir, 'frt.txt*')))
     if not ref_files:
         raise FileNotFoundError(f'no frt.txt* reference files found under {ref_dir}')
-
     ref = np.vstack([np.loadtxt(p) for p in ref_files])
-    key = np.round(ref[:, :3], 6)
-    _, idx = np.unique(key, axis=0, return_index=True)
-    ref_deduped = ref[np.sort(idx)]
-
     py = np.loadtxt(py_frt_path)
+    return _align_and_check(ref, py, f'{case_name} reference', 'python')
 
-    def lexsort_by_xyz(a):
-        return a[np.lexsort((a[:, 2], a[:, 1], a[:, 0]))]
 
-    ref_s = lexsort_by_xyz(ref_deduped)
-    py_s = lexsort_by_xyz(py)
-
-    if ref_s.shape != py_s.shape:
-        raise AssertionError(f'{case_name}: shape mismatch after dedupe/lexsort -- '
-                              f'reference {ref_s.shape} vs python {py_s.shape} '
-                              f'(reference files used: {[os.path.basename(p) for p in ref_files]})')
-    # COORD_TOL: for a planar fault (tpv8/104/1053d), node coordinates are
-    # exact multiples of the grid spacing on both sides and match to 0.0
-    # exactly. For a dipping/rough fault (tpv10/drv.a6), coordinates are the
-    # OUTPUT of a real floating-point computation (insertFaultInterface's
-    # y-blend) done independently by Fortran and this port -- a few ULPs of
-    # difference (~1e-12, the same floor M1's meshCoor check already uses,
-    # 1e-9) is expected roundoff, not a misalignment. A genuine node-to-
-    # node misalignment would show a diff on the order of the actual grid
-    # spacing (meters), many orders of magnitude above this floor -- so a
-    # small, fixed tolerance here cannot mask a real alignment bug.
-    coord_diff = np.max(np.abs(ref_s[:, :3] - py_s[:, :3]))
-    if coord_diff > 1e-9:
-        raise AssertionError(f'{case_name}: node-coordinate mismatch after lexsort '
-                              f'(max abs diff {coord_diff:e}) -- alignment failed, '
-                              f'this is not a numeric-tolerance issue')
-    return ref_s, py_s
+def align_two_frt_files(path_a, path_b, label_a='a', label_b='b'):
+    """Generic version of load_coordinate_aligned's alignment step for TWO
+    arbitrary frt-format files, NEITHER of which has to be the committed
+    test.reference.results/ tree -- e.g. (fresh-serial-Fortran,
+    standalone-python) or (committed-reference, fresh-serial-Fortran).
+    Used by evidence_drv_a6_chaos.py so it can reuse this module's
+    alignment/decomposition logic instead of duplicating it (rule 1)."""
+    a = np.loadtxt(path_a)
+    b = np.loadtxt(path_b)
+    return _align_and_check(a, b, label_a, label_b)
 
 
 def coordinate_aligned_diff(case_name, py_frt_path):
@@ -334,21 +371,24 @@ def coordinate_aligned_diff(case_name, py_frt_path):
     return max_abs_diff, ok
 
 
-def drv_a6_gate(py_frt_path):
-    """test.drv.a6's case-specific two-part criterion vs the committed
-    4-rank reference (frt.txt1+frt.txt3) -- see the module docstring's
-    "Milestone 10 CLOSURE" section for the three-way experiment that
-    derived DRV_A6_MEDIAN_FNFT_BOUND / DRV_A6_PHYS_MAX_BOUND /
-    DRV_A6_TOTAL_FLIP_BOUND. A single scalar max-abs-diff (coordinate_
-    aligned_diff's gate) cannot distinguish "391 nodes flipped rupture
-    arrival, everything else matched" from "everything drifted a little"
-    -- this case needs both a bulk-agreement check AND an explicit,
-    bounded flip-count budget, not a scalar tolerance.
+def flip_decomposition(ref_s, py_s):
+    """Existence-flip + timing-shift + bulk-agreement decomposition on TWO
+    ALREADY dedupe/lexsort-aligned (nftnd, 22) frt arrays (see
+    _align_and_check / load_coordinate_aligned / align_two_frt_files) --
+    the reusable core of drv_a6_gate, factored out so
+    evidence_drv_a6_chaos.py can compute the SAME A/B/C decomposition for
+    pairs that are NOT (committed-reference, standalone-python) -- e.g.
+    (committed-reference, fresh-serial-Fortran) for A, or
+    (fresh-serial-Fortran, standalone-python) for B -- without duplicating
+    this logic (rule 1). Neither argument name implies which side is "the
+    reference"; the decomposition is symmetric in ref_s/py_s except for
+    which side is called "only_ref" vs "only_py" in the returned dict.
 
-    Returns (ok, diagnostics_dict) -- diagnostics_dict always has enough
-    fields to print a full report even on failure, never a bare bool."""
-    ref_s, py_s = load_coordinate_aligned('test.drv.a6', py_frt_path)
-
+    Returns a diagnostics dict (n_ruptured_both, n_matched_arrival,
+    n_only_ref, n_only_py, n_existence_flips, n_timing_shifts, total_flips,
+    median_fnft_diff, phys_max_diff, ok_median, ok_phys, ok_flips) -- always
+    enough fields to print a full report even on failure, never a bare
+    bool."""
     ruptured_ref = ref_s[:, DRV_A6_FNFT_COL] < DRV_A6_RUPTURE_SENTINEL
     ruptured_py = py_s[:, DRV_A6_FNFT_COL] < DRV_A6_RUPTURE_SENTINEL
     both = ruptured_ref & ruptured_py
@@ -356,7 +396,7 @@ def drv_a6_gate(py_frt_path):
     only_py = ruptured_py & ~ruptured_ref
     n_both = int(both.sum())
     if n_both == 0:
-        raise AssertionError('drv_a6_gate: zero fault nodes ruptured in BOTH runs -- '
+        raise AssertionError('flip_decomposition: zero fault nodes ruptured in BOTH runs -- '
                               'either run failed to nucleate, not a flip-count question')
 
     fnft_diff_both = np.abs(ref_s[both, DRV_A6_FNFT_COL] - py_s[both, DRV_A6_FNFT_COL])
@@ -379,14 +419,41 @@ def drv_a6_gate(py_frt_path):
     ok_median = median_fnft_diff <= DRV_A6_MEDIAN_FNFT_BOUND
     ok_phys = phys_max_diff <= DRV_A6_PHYS_MAX_BOUND
     ok_flips = total_flips <= DRV_A6_TOTAL_FLIP_BOUND
-    ok = bool(ok_median and ok_phys and ok_flips)
 
-    diag = dict(n_ruptured_both=n_both, n_matched_arrival=int(matched.sum()),
+    # Per-node flip mask (existence flip OR timing shift), row-aligned to
+    # ref_s/py_s -- lets a caller (e.g. evidence_drv_a6_chaos.py) compute
+    # SET OVERLAP between two independent flip_decomposition() calls (e.g.
+    # A's ref-vs-fortran flips intersected with B's fortran-vs-python
+    # flips) without re-deriving this boolean logic itself (rule 1).
+    flip_mask = only_ref | only_py
+    flip_mask[both] |= timing_shift
+
+    return dict(n_ruptured_both=n_both, n_matched_arrival=int(matched.sum()),
                 n_only_ref=int(only_ref.sum()), n_only_py=int(only_py.sum()),
                 n_existence_flips=n_existence_flips, n_timing_shifts=n_timing_shifts,
                 total_flips=total_flips, median_fnft_diff=median_fnft_diff,
                 phys_max_diff=phys_max_diff, ok_median=ok_median, ok_phys=ok_phys,
-                ok_flips=ok_flips)
+                ok_flips=ok_flips, flip_mask=flip_mask)
+
+
+def drv_a6_gate(py_frt_path):
+    """test.drv.a6's case-specific two-part criterion vs the committed
+    4-rank reference (frt.txt1+frt.txt3) -- see the module docstring's
+    "Milestone 10 CLOSURE" section for the three-way experiment that
+    derived DRV_A6_MEDIAN_FNFT_BOUND / DRV_A6_PHYS_MAX_BOUND /
+    DRV_A6_TOTAL_FLIP_BOUND, and testsys/parity/evidence_drv_a6_chaos.py
+    for the committed, re-runnable regeneration of those three numbers
+    (A/B/C flip counts, set overlap, median). A single scalar max-abs-diff
+    (coordinate_aligned_diff's gate) cannot distinguish "391 nodes flipped
+    rupture arrival, everything else matched" from "everything drifted a
+    little" -- this case needs both a bulk-agreement check AND an
+    explicit, bounded flip-count budget, not a scalar tolerance.
+
+    Returns (ok, diagnostics_dict) -- diagnostics_dict always has enough
+    fields to print a full report even on failure, never a bare bool."""
+    ref_s, py_s = load_coordinate_aligned('test.drv.a6', py_frt_path)
+    diag = flip_decomposition(ref_s, py_s)
+    ok = bool(diag['ok_median'] and diag['ok_phys'] and diag['ok_flips'])
     return ok, diag
 
 
