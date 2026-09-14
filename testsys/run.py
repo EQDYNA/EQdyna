@@ -118,7 +118,7 @@ def run_gpu():
         print(f'SKIP gpu: jax not importable ({e})'); return 0
     if not devs:
         print('SKIP gpu: no CUDA device/plugin (pip install "jax[cuda12]" on a GPU box)'); return 0
-    env = dict(os.environ, EQDYNA_ACCEPT_CASES='test.tpv8')
+    env = dict(os.environ, EQDYNA_ACCEPT_CASES='test.tpv8', EQDYNA_ACCEPT_PLATFORM='cuda')
     return subprocess.call([sys.executable, os.path.join(TESTSYS, 'parity', 'test_standalone_acceptance.py')],
                            cwd=REPO_ROOT, env=env)
 
