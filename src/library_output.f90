@@ -24,9 +24,16 @@ subroutine output_onfault_st
         do i=1,numOfOnFaultStCount
             j=anonfs(3,i)
             if(j==1)  then  !main fault stations
-                sttmp = '   '
+                sttmp = '    '
                 dptmp = '   '
-                write(sttmp,'(i3.3)') nint(xonfs(1,anonfs(2,i),j)/100.d0) 
+                ! Sign-aware strike field (item 22): (i3.3) overflowed to '***'
+                ! for negative-x stations, colliding half of e.g. TPV29's list.
+                ! SCEC convention: signed strike distance, zero-padded magnitude.
+                if (nint(xonfs(1,anonfs(2,i),j)/100.d0) < 0) then
+                    write(sttmp,'(a1,i3.3)') '-', abs(nint(xonfs(1,anonfs(2,i),j)/100.d0))
+                else
+                    write(sttmp,'(i3.3)') nint(xonfs(1,anonfs(2,i),j)/100.d0)
+                endif
                 write(dptmp,'(i3.3)') nint(abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,1))/100.d0) 
                 open(51,file='faultst'//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
 
