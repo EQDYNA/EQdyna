@@ -52,6 +52,16 @@ actually runs the command.
 
 **Deferred**: none.
 
+## Historical SCEC submissions
+
+`scec_archive/` (gitignored, at repo root) holds EQdyna's own SCEC/USGS code-
+verification submissions in raw upload format, one directory per
+benchmark/version/resolution — e.g. `scec_archive/tpv29/eqdyna-v3.1-100m-2015/`
+(the published `dliu` entry; its cplot verified byte-identical to the copy the
+cvws public area serves). Treated as read-only historical reference for
+comparing new runs against past published standing. Not tracked by git and not
+reproducible from the repo — back it up independently.
+
 ## Release roadmap
 
 Work is grouped into release campaigns; each ships only when its own gate is
