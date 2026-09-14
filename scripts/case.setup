@@ -324,7 +324,13 @@ def _main_func(description):
     create_station_input_file()
     estimate_HPC_resource()
     netcdf_write_on_fault_vars()
-    if par.insertFaultType>0:
+    # Types 1 and 2 are generated here; type 3 means the case supplies its own
+    # fault surface, so the generator is not called at all (it would otherwise
+    # have to be told to do nothing).
+    if par.insertFaultType in (1, 2):
         os.system('./generateFaultInterface')
+    elif par.insertFaultType == 3:
+        print('insertFaultType=3: using the fault geometry supplied by the case '
+              '(bFault_Rough_Geometry.txt); not generating one.')
 if __name__ == "__main__":
     _main_func(__doc__)
