@@ -29,6 +29,25 @@ Other features include
 
 *```EQdyna```* is also part of the fully dynamic earthquake cycle simulator *```EQsimu```* [(*Liu et al., 2020, GJI*)](https://www.researchgate.net/publication/346814142_EQsimu_a_3-D_finite_element_dynamic_earthquake_simulator_for_multicycle_dynamics_of_geometrically_complex_faults_governed_by_rate-_and_state-dependent_friction).
 
+# Verification & Benchmarks
+
+EQdyna is verified against SCEC/USGS Spontaneous Rupture Code Verification
+benchmarks (https://strike.scec.org/cvws/). The fast tier gates every
+commit at coarse resolution against frozen references
+(`python3 testsys/run.py e2e`); the full tier reproduces each gated
+benchmark at its official spec resolution and duration, report-only, on
+16 ranks (`python3 testsys/run.py e2e-full`).
+
+| case | physics | SCEC benchmark | fast tier (dx/cores/~time) | full-tier spec (dx/term) |
+|---|---|---|---|---|
+| [test.tpv8](case_input/test.tpv8/README.md) | strike-slip, slip-weakening | [TPV8](https://strike.scec.org/cvws/tpv89docs.html) | 500m/4/~48s | 100m/15s |
+| [test.tpv10](case_input/test.tpv10/README.md) | dipping normal fault | [TPV10](https://strike.scec.org/cvws/tpv10_11docs.html) | 500m/4/~48s | 100m/15s |
+| [test.tpv104](case_input/test.tpv104/README.md) | strike-slip, rate-and-state | [TPV104](https://strike.scec.org/cvws/tpv103_104docs.html) | 500m/4/~48s | 50m/12s |
+| [test.tpv1053d](case_input/test.tpv1053d/README.md) | RSF + thermal pressurization | [TPV105-3D](https://strike.scec.org/cvws/tpv105_3D_docs.html) | 500m/4/~48s | excluded (no spec dx) |
+| [test.drv.a6](case_input/test.drv.a6/README.md) | fractal fault + plasticity | internal | 500m/4/~48s | excluded (no published spec) |
+| [test.meng2023a](case_input/test.meng2023a/README.md) | layered velocity structure | internal | 400m/4/~48s | excluded (no published spec) |
+| [test.meng2023cb](case_input/test.meng2023cb/README.md) | layered velocity, multi-patch | internal | 400m/4/~48s | excluded (no published spec) |
+
 # Environment
 *Optional (Python solver on GPU)*: `pip install "jax[cuda12]"` — the standalone Python solver (`python -m eqdyna.standalone`) then runs on NVIDIA GPUs; verify with `python3 testsys/run.py gpu`.
 
