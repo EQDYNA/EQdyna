@@ -157,6 +157,10 @@ def _main_func(description):
     # cleanly and leave bFault_Rough_Geometry.txt untouched rather than
     # overwriting it -- or, as previously, dying on an undefined variable.
     if isRoughFault not in (1, 2):
+        # Type 3 (case-supplied geometry) and anything else: generate nothing
+        # and leave bFault_Rough_Geometry.txt untouched. case.setup does not
+        # normally call this script for those, so reaching here is harmless
+        # but worth reporting.
         print('generateFaultInterface: par.insertFaultType =', isRoughFault,
               '- the case supplies its own fault geometry; nothing generated.')
         return
