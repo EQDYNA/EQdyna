@@ -21,6 +21,10 @@ not pass silently because "the builders were already proven".
 
 Run: python3 testsys/parity/make_fixtures.py   (fresh fixtures first, rule 4)
      python3 testsys/parity/test_standalone_meshgen.py
+     python3 testsys/parity/test_standalone_meshgen.py test_drv_a6_serial   (or any other
+     testsys/parity/fixtures/<name> directory make_fixtures.py --case <case> produced --
+     optional positional arg, defaults to test_tpv8_serial for the wired-into-`parity`-tier
+     invocation above)
 
 Raises loudly (non-zero exit) on any mismatch or missing fixture -- no
 silent pass, per PROJECT_RULES rule 2/3.
@@ -43,7 +47,8 @@ from eqdyna.standalone.mass_assembly import (
     compute_element_det, assemble_mass, compute_element_shape, compute_hourglass, init_vel)
 from eqdyna.standalone.frt_writer import read_frt, format_frt_row
 
-FIXTURE = os.path.join(TESTSYS, 'fixtures', 'test_tpv8_serial')
+FIXTURE = os.path.join(TESTSYS, 'fixtures',
+                        sys.argv[1] if len(sys.argv) > 1 else 'test_tpv8_serial')
 
 # ---- M6: everything below is read NATIVELY from the case-input files ----
 PARAMS, GLOBALS = build_params(FIXTURE)
@@ -142,7 +147,7 @@ def main():
         raise AssertionError('M1 meshCoor parity FAILED: max abs diff %e' % m1_diff)
 
     # ---- M2: element connectivity + material ----
-    conn, elem_type, mat = build_elements(xline, yline, zline, PARAMS, pmlb, nsmp, MATERIAL)
+    conn, elem_type, mat = build_elements(xline, yline, zline, PARAMS, pmlb, nsmp, MATERIAL, meshCoor)
     if conn.shape[0] != n_elem_fortran:
         raise AssertionError('M2 element count mismatch: python %d vs Fortran %d'
                               % (conn.shape[0], n_elem_fortran))
@@ -151,10 +156,19 @@ def main():
 
     conn_mismatches = np.sum(np.any(conn != fconn, axis=1))
     etype_mismatches = np.sum(elem_type != fetype)
-    mat_diff = np.max(np.abs(mat - fmat))
+    # mat's 5 columns span wildly different scales depending on the case's
+    # velocity model (tpv8: vp/vs/rho ~1e3; drv.a6's per-layer moduli columns
+    # ~1e10) -- an absolute tolerance calibrated against tpv8's scale is
+    # meaningless for drv.a6's (same audit pattern already applied to
+    # M6.5's nodalMassArr/fnms and M7.5's ss below: relative diff, not
+    # absolute, for a scale-dependent quantity).
+    mat_absdiff = np.abs(mat - fmat)
+    mat_reldiff = mat_absdiff / np.where(np.abs(fmat) > 0, np.abs(fmat), 1.0)
+    mat_diff = np.max(mat_absdiff)
+    mat_reldiff_max = np.max(mat_reldiff)
     print('M2 conn mismatched elements: %d / %d' % (conn_mismatches, n_elem_fortran))
     print('M2 elemType mismatched elements: %d / %d' % (etype_mismatches, n_elem_fortran))
-    print('M2 mat max abs diff: %e' % mat_diff)
+    print('M2 mat max abs/rel diff: %e / %e' % (mat_diff, mat_reldiff_max))
 
     if conn_mismatches:
         bad = np.argmax(np.any(conn != fconn, axis=1))
@@ -164,8 +178,10 @@ def main():
         bad = np.argmax(elem_type != fetype)
         raise AssertionError('M2 elemType parity FAILED at element %d: '
                               'python=%d fortran=%d' % (bad, elem_type[bad], fetype[bad]))
-    if mat_diff > 1e-6:
-        raise AssertionError('M2 material parity FAILED: max abs diff %e' % mat_diff)
+    if mat_reldiff_max > 1e-9:
+        bad = np.unravel_index(np.argmax(mat_reldiff), fmat.shape)
+        raise AssertionError('M2 material parity FAILED at element %d slot %d: '
+                              'python=%r fortran=%r' % (bad[0], bad[1], mat[bad], fmat[bad]))
 
     # ---- M3: equation numbering ----
     num_dof, eq_start, eq_nums, total_eqs = build_equation_numbers(xline, yline, zline, PARAMS, pmlb)

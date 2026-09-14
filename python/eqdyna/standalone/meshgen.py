@@ -183,6 +183,73 @@ def is_on_fault(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax, tol, c_degen=
     return in_box and y == 0.0
 
 
+def _fortran_nint(x):
+    """Fortran nint(): round-half-away-from-zero. Same formula as
+    native_input.py's helper of the same purpose (kept local here to avoid
+    a cross-module dependency for a two-line function)."""
+    return int(np.sign(x) * np.floor(np.abs(x) + 0.5)) if x != 0 else 0
+
+
+def insert_fault_interface(x, y, z, rough, dx, dz, ymin, ymax, tol):
+    """Port of func_lib.f90's insertFaultInterface (Milestone 9): given a
+    node's UNDISTORTED (x, y, z) -- the same coordinates checkIsOnFault
+    tests against, per the Fortran calling this from meshgen's loop BEFORE
+    checkIsOnFault runs on the same nodeCoor -- looks up the local fault-
+    surface height `peak` and its along-strike/along-dip slopes (pfx, pfz)
+    from `rough` (native_input.read_fault_rough_geometry's dict), then
+    returns the MORPHED y-coordinate `ycoort` via meshgen.f90's linear
+    blend between the fault surface and the model's ymin/ymax planes.
+
+    NOTE (verbatim, not "fixed"): the column-index math (ixx, izz) uses
+    the MODEL's dx/dz (bModelGeometry.txt), NOT the rough-geometry file's
+    own grid spacing (rough['dx'], used only to derive rough_fx_max) --
+    this is what src/func_lib.f90 actually does (bare `dx`/`dz` module
+    globals inside insertFaultInterface), and is only correct because
+    these benchmark cases' rough-geometry sampling grid is generated at
+    the same spacing as the model mesh; reproduced as-is per this
+    discipline's rule against silently "fixing" behavior it doesn't
+    understand outside its ported scope.
+
+    Returns (ycoort, pfx, pfz) -- pfx/pfz are also needed by
+    build_fault_geometry's insertFaultType>0 un/us/ud branch.
+    """
+    fx1, fx2, fz1 = rough['fx_min'], rough['fx_max'], rough['fz_min']
+    nnx, nnz, rough_geo = rough['nnx'], rough['nnz'], rough['rough_geo']
+
+    if fx1 - tol < x < fx2 + tol and z > fz1 - tol:
+        ixx = _fortran_nint((x - fx1) / dx) + 1
+        izz = _fortran_nint((z - fz1) / dz) + 1
+    elif x < fx1 - tol and z > fz1 - tol:
+        ixx = 1
+        izz = _fortran_nint((z - fz1) / dz) + 1
+    elif x > fx2 + tol and z > fz1 - tol:
+        ixx = nnx
+        izz = _fortran_nint((z - fz1) / dz) + 1
+    elif fx1 - tol < x < fx2 + tol and z < fz1 - tol:
+        ixx = _fortran_nint((x - fx1) / dx) + 1
+        izz = 1
+    elif x < fx1 - tol and z < fz1 - tol:
+        ixx, izz = 1, 1
+    elif x > fx2 + tol and z < fz1 - tol:
+        ixx, izz = nnx, 1
+    else:
+        raise ValueError('insert_fault_interface: (x=%r, z=%r) matched none of the six '
+                          'Fortran if/elseif branches (exactly on a boundary?)' % (x, z))
+
+    col = nnz * (ixx - 1) + izz  # 1-indexed, Fortran rough_geo(:, nnz*(ixx-1)+izz)
+    peak, pfx, pfz = rough_geo[0, col - 1], rough_geo[1, col - 1], rough_geo[2, col - 1]
+
+    if y > -tol:
+        ycoort = y * (ymax - peak) / ymax + peak
+    elif y < -tol:
+        ycoort = y * (peak - ymin) / (-ymin) + peak
+    else:
+        raise ValueError('insert_fault_interface: y=%r is within tol of 0 without being '
+                          '> -tol or < -tol (exact-tie edge case Fortran leaves undefined)' % y)
+
+    return ycoort, pfx, pfz
+
+
 def build_node_coordinates(xline, yline, zline, params):
     """Port of countMeshEntities/meshgen's node-creation loop (do ix; do iz;
     do iy) for a SINGLE planar fault (ntotft==1, C_degen==0). Returns
@@ -207,6 +274,8 @@ def build_node_coordinates(xline, yline, zline, params):
     p = params
     nx, ny, nz = len(xline), len(yline), len(zline)
     tol = p['tol']
+    rough = p.get('rough')
+    insert_fault_type = p.get('insertFaultType', 0)
     regular = []
     master = []
     nsmp = []  # (slave_node_id, master_node_id), both 1-indexed, in fault-encounter order
@@ -216,11 +285,24 @@ def build_node_coordinates(xline, yline, zline, params):
             zcoor = zline[iz]
             for iy in range(ny):
                 ycoor = yline[iy]
-                regular.append((xcoor, ycoor, zcoor))
+                # checkIsOnFault (via is_on_fault below) always tests the
+                # UNDISTORTED ycoor -- meshgen.f90 calls insertFaultInterface
+                # only to get ycoort for STORAGE, never mutates nodeCoor
+                # itself before the fault test runs.
+                is_fault = is_on_fault(xcoor, ycoor, zcoor, p['fxmin'], p['fxmax'],
+                                        p['fymin'], p['fymax'], p['fzmin'], p['fzmax'], tol)
+                y_store = ycoor
+                if insert_fault_type > 0:
+                    # ymin/ymax here MUST be the grid-derived bounds (yline[0]/
+                    # yline[-1]), not params['ymin']/['ymax'] (the requested
+                    # input bounds) -- same trap M3's build_equation_numbers
+                    # docstring already flags for xmin/xmax/zmin.
+                    y_store, _, _ = insert_fault_interface(
+                        xcoor, ycoor, zcoor, rough, p['dx'], p['dz'], yline[0], yline[-1], tol)
+                regular.append((xcoor, y_store, zcoor))
                 slave_id = len(regular)  # 1-indexed nodeCount at this point
-                if is_on_fault(xcoor, ycoor, zcoor, p['fxmin'], p['fxmax'],
-                                p['fymin'], p['fymax'], p['fzmin'], p['fzmax'], tol):
-                    master.append((xcoor, ycoor, zcoor))
+                if is_fault:
+                    master.append((xcoor, y_store, zcoor))
                     master_id = nx * ny * nz + len(master)  # msnode = nx*ny*nz + nftnd0
                     nsmp.append((slave_id, master_id))
     nftnd = len(master)
@@ -231,7 +313,7 @@ def build_node_coordinates(xline, yline, zline, params):
     nsmp = np.array(nsmp, dtype=np.int64)  # (nftnd, 2)
     return meshCoor, nftnd, nsmp
 
-def build_elements(xline, yline, zline, params, pmlb, nsmp, material):
+def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     """Milestone 2: port of meshgen.f90's createElement + setElementMaterial +
     replaceSlaveWithMasterNode, single planar fault (ntotft==1, C_degen==0),
     homogeneous or 1D-layered material (setElementMaterial's two branches).
@@ -253,6 +335,11 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material):
     nsmp: (nftnd,2) int64 [slave_id, master_id], from build_node_coordinates.
     material: (nmat, n2mat) array (n2mat==3: homogeneous [vp,vs,rho];
         n2mat==4: 1D layered [depth_bottom,vp,vs,rho], see setElementMaterial).
+    meshCoor: (N+1,3) from build_node_coordinates -- Milestone 9 addition:
+        element-center classification (PML alignment/type, material depth)
+        reads the ACTUAL node coordinates here (matching createElement.f90's
+        `meshCoor(j,nodeElemIdRelation(i,elemCount))`), not the grid lines
+        directly, so insertFaultType>0's y-morph is correctly reflected.
 
     Returns (conn, elem_type, mat) where conn is (E,8) 1-indexed node ids in
     the Fortran nodeElemIdRelation column order (0-unused row NOT included --
@@ -340,17 +427,17 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material):
                         plane2[iy, iz], plane1[iy, iz],
                     ], dtype=np.int64)
 
-                    # elementCenterCoor = mean of the 8 corner coords
-                    # (meshCoor-equivalent grid-line lookup per corner).
-                    xs = [xline[ix - 1], xline[ix], xline[ix], xline[ix - 1],
-                          xline[ix - 1], xline[ix], xline[ix], xline[ix - 1]]
-                    ys = [yline[iy - 1], yline[iy - 1], yline[iy], yline[iy],
-                          yline[iy - 1], yline[iy - 1], yline[iy], yline[iy]]
-                    zs = [zline[iz - 1], zline[iz - 1], zline[iz - 1], zline[iz - 1],
-                          zline[iz], zline[iz], zline[iz], zline[iz]]
-                    cx = sum(xs) / 8.0
-                    cy = sum(ys) / 8.0
-                    cz = sum(zs) / 8.0
+                    # elementCenterCoor = mean of the 8 corner coords, from
+                    # meshCoor(j, nodeElemIdRelation(i,elemCount)) per
+                    # createElement.f90 -- for insertFaultType==0 this is
+                    # bit-identical to the grid-line lookup (meshCoor's y IS
+                    # yline's y there), but for insertFaultType>0 the actual
+                    # y is the MORPHED value build_node_coordinates already
+                    # stored (per-node, not per-grid-line), so this MUST come
+                    # from meshCoor, not yline -- PML classification below
+                    # depends on the true (warped) element center.
+                    corners = meshCoor[c]  # (8,3)
+                    cx, cy, cz = corners.mean(axis=0)
 
                     if cx == xmax0 or cx == xmin0 or cy == ymax0 or cy == ymin0 or cz == zmin0:
                         raise ValueError(
@@ -508,12 +595,20 @@ def build_equation_numbers(xline, yline, zline, params, pmlb):
 
 
 def build_fault_geometry(xline, yline, zline, params, nsmp):
-    """Milestone 4: port of meshgen.f90's split-node unit-vector assignment
-    (`createMasterNode`'s un/us/ud writes, the C_degen<=3/insertFaultType==0
-    planar branch only -- tpv8/tpv104 both use this branch, matching this
-    milestone's scope) and the on-fault quadrilateral-area accumulation onto
+    """Milestone 4 (+ Milestone 9's insertFaultType>0 extension): port of
+    meshgen.f90's split-node unit-vector assignment (`createMasterNode`'s
+    un/us/ud writes) and the on-fault quadrilateral-area accumulation onto
     `arn` (meshgen's main-loop area block after the ix/iy/iz node loop),
-    for a single (ntotft==1) fully rectangular planar fault.
+    for a single (ntotft==1) fully rectangular fault -- planar
+    (C_degen<=3, insertFaultType==0: angle-based un/us/ud, tpv8/tpv104's
+    branch) OR dipping/rough (insertFaultType>0: pfx/pfz-derived un/us/ud
+    from func_lib.f90's insertFaultInterface via meshgen.f90:804-817,
+    tpv10/drv.a6's branch -- ud = us x un, matching the Fortran's explicit
+    cross-product component formulas exactly). For insertFaultType>0, the
+    fault surface's actual y-coordinate is `peak` (from
+    insert_fault_interface), not 0 -- used for arn's corner-distance
+    formula below, matching what build_node_coordinates already stored
+    into meshCoor for these same nodes.
 
     un/us/ud depend only on the fault's strike/dip angles (`fltxyz(:,4,1)`
     in Fortran, read from bGlobal.txt as fstrike/fdip and converted:
@@ -551,6 +646,8 @@ def build_fault_geometry(xline, yline, zline, params, nsmp):
     nx, ny, nz = len(xline), len(yline), len(zline)
     tol = p['tol']
     nftnd = nsmp.shape[0]
+    rough = p.get('rough')
+    insert_fault_type = p.get('insertFaultType', 0)
 
     fstrike = p['fstrike'] * np.pi / 180.0
     fdip = (p['C_degen'] * np.pi / 180.0) if p['C_degen'] > 3.0 else (90.0 * np.pi / 180.0)
@@ -586,7 +683,28 @@ def build_fault_geometry(xline, yline, zline, params, nsmp):
                         izfi = iz_f
                     ifs = ix_f - ixfi + 1
                     ifd = iz_f - izfi + 1
-                    grid[(ifs, ifd)] = (seq, (xcoor, ycoor, zcoor))
+                    y_geo = ycoor  # planar branch: the fault's actual y IS 0 here.
+                    if insert_fault_type > 0:
+                        # insertFaultType>0: createMasterNode's un/us/ud
+                        # branch (meshgen.f90:804-817) OVERWRITES the
+                        # angle-based un/us/ud above with pfx/pfz-derived
+                        # values, per fault node -- and the fault's actual
+                        # (warped) y-coordinate is `peak`, not 0, which
+                        # matters for arn's corner-distance formula below
+                        # (meshCoor already stores this same `peak` value,
+                        # per build_node_coordinates' y-morph of fault
+                        # nodes -- recomputed here rather than re-reading
+                        # meshCoor, since is_on_fault's traversal order is
+                        # independently re-walked in every M-builder).
+                        y_geo, pfx, pfz = insert_fault_interface(
+                            xcoor, ycoor, zcoor, rough, p['dx'], p['dz'],
+                            yline[0], yline[-1], tol)
+                        denom = (pfx ** 2 + 1.0 + pfz ** 2) ** 0.5
+                        un[seq] = (-pfx / denom, 1.0 / denom, -pfz / denom)
+                        us_denom = (1.0 + pfx ** 2) ** 0.5
+                        us[seq] = (1.0 / us_denom, pfx / us_denom, 0.0)
+                        ud[seq] = np.cross(us[seq], un[seq])
+                    grid[(ifs, ifd)] = (seq, (xcoor, y_geo, zcoor))
     assert seq == nftnd, (seq, nftnd)
     ns = max(k[0] for k in grid)
     nd = max(k[1] for k in grid)
