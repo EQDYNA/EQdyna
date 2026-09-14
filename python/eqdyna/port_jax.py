@@ -82,6 +82,26 @@ def build(S):
     mass_full = np.concatenate(([1.0], S['nodalMassArr']))
     inv_mass_full = np.where(mass_full > 0, 1.0 / np.where(mass_full > 0, mass_full, 1.0), 0.0)
 
+    # Milestone 10 (drv.a6, C_elastic==0) -- see kernels_numpy.py's top
+    # docstring for the full derivation; EXACTLY 0.0-valued/no-op for every
+    # C_elastic==1 caller (port_jax.py/port_tp_jax.py, and port_rsf_jax.py
+    # for tpv104/tpv10).
+    C_elastic_static = S['C_elastic']
+    grav_const = ((1.0 - C_elastic_static) * S['grav']
+                  * (S['roumax'] - (S['gamar'] + 1.0) * S['rhow']) / S['roumax'])
+    m_e_all = mat[:, 2] * eledet
+    m_e_i = m_e_all[E_int]
+    m_e_p = m_e_all[E_pml]
+    if C_elastic_static == 0:
+        init_stress = S['init_stress']  # (E,6); raises (KeyError) loudly if missing.
+        stress_i0 = init_stress[E_int].copy()
+        pml_init6 = init_stress[E_pml].copy()
+        ccosphi = S['ccosphi']; sinphi = S['sinphi']; tv = S['tv']
+    else:
+        stress_i0 = np.zeros((E_int.shape[0], 6))
+        pml_init6 = np.zeros((E_pml.shape[0], 6))
+        ccosphi = sinphi = tv = 0.0
+
     j = jnp.asarray
     inv = dict(
         N=N, dt=dt, rdampk=rdampk, NEQ1=NEQ + 1,
@@ -98,6 +118,9 @@ def build(S):
         idxF_s=[j(x) for x in idxF_s], idxF_m=[j(x) for x in idxF_m],
         inv_mass_full=j(inv_mass_full), slipRateThres=S['slipRateThres'], C_elastic=S['C_elastic'],
         Ei=E_int.shape[0], Ep=E_pml.shape[0], E=conn.shape[0],
+        grav_const=grav_const, m_e_i=j(m_e_i), m_e_p=j(m_e_p),
+        stress_i0=j(stress_i0), pml_init6=j(pml_init6),
+        ccosphi=ccosphi, sinphi=sinphi, tv=tv,
     )
     return inv
 
@@ -212,7 +235,7 @@ def run(S, nsteps=None, verbose=True):
     velArr = jnp.zeros((N, 3), dtype=jnp.float64)
     dispArr = jnp.zeros((N, 3), dtype=jnp.float64)
     force = jnp.zeros(NEQ + 1, dtype=jnp.float64)
-    stress_i = jnp.zeros((inv['Ei'], 6), dtype=jnp.float64)
+    stress_i = inv['stress_i0']  # zeros for C_elastic==1; lithostatic pre-stress otherwise.
     s_p = jnp.zeros((inv['Ep'], 15), dtype=jnp.float64)
     fric = jnp.asarray(S['fric_init'].copy())
     fnft = jnp.full(nftnd, 99999.0, dtype=jnp.float64)

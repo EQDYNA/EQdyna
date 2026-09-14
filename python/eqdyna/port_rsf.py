@@ -33,6 +33,13 @@ RSF-specific subtleties reproduced exactly (see faulting.f90/fric.f90):
     solveSWTW) with an acceleration-consistent value derived from the
     Newton-converged slip rate.
 
+Milestone 10 (drv.a6, TPV==2802, C_elastic==0): faulting.f90:363-374's
+rsfNucleation TPV==2802 branch (a one-time, nt==1-only re-derivation of the
+RSF state/theta_pc slots from the actual post-elastic-solve traction, plus
+a persistent nucdtau0 slot) is ported alongside the TPV==104/105 branch --
+see the `for nt in range(1, nsteps+1):` loop's rsfNucleation block for the
+full derivation and why omitting it stalls rupture nucleation entirely.
+
 Newton-Raphson: reproduced as a fixed 20-iteration loop with a per-node
 "converged" mask. Because state/theta_pc/xmu/taoc_new/rsfeq/drsfeqdv are
 PURE functions of (v_trial, the frozen state0/thetaPc0 baseline, and the
@@ -154,7 +161,35 @@ def run(S, nsteps=None, verbose=True):
         F = np.where(radius < nucR, np.exp(radius ** 2 / (radius ** 2 - nucR ** 2)), 0.0)
         G = np.where(timeElapsed <= nucT,
                      np.exp((timeElapsed - nucT) ** 2 / (timeElapsed * (timeElapsed - 2.0 * nucT))), 1.0)
-        dtau_nuc = nucdtau0 * F * G if (TPV == 104 or TPV == 105) else 0.0 * F
+        if TPV == 104 or TPV == 105:
+            dtau_nuc = nucdtau0 * F * G
+        elif TPV == 2802:
+            # faulting.f90:363-374 (drv.a6, C_elastic==0/plastic): on the
+            # VERY FIRST step, re-derive the RSF state variable (fric slot
+            # 20, python idx 19) and theta_pc (slot 23, idx 22) from the
+            # ACTUAL post-elastic-solve traction/sliprate -- the netCDF
+            # on_fault_vars_input.nc's initial STATE/THETA_PC values are
+            # NOT consistent with C_elastic==0's absolute-stress convention
+            # (they're set up for the C_elastic==1 perturbation convention),
+            # so without this one-time correction the friction law starts
+            # from the wrong operating point and rupture never nucleates
+            # (found via direct Fortran-vs-python cross-check on this exact
+            # case: identical Tn/Ts/Td at step 1, but python's rupture
+            # stalls thereafter while Fortran's propagates -- this missing
+            # branch was the divergence). `fric[:, 80]` (NUC_DTAU0, slot 81)
+            # then holds nucdtau0 constant for every subsequent step,
+            # matching the Fortran's own persistent-slot storage exactly.
+            if nt == 1:
+                ttao = np.sqrt(Ts ** 2 + Td ** 2)
+                backSliprate = np.sqrt((srS0 + fric[:, 25]) ** 2 + (srD0 + fric[:, 26]) ** 2)
+                rsf_a0 = fric[:, 8]; rsf_v0_0 = fric[:, 11]
+                fric[:, 19] = rsf_a0 * np.log(2.0 * rsf_v0_0 / backSliprate
+                                                * np.sinh(ttao / np.abs(Tn) / rsf_a0))
+                fric[:, 22] = np.abs(Tn)
+                fric[:, 80] = nucdtau0
+            dtau_nuc = fric[:, 80] * F * G
+        else:
+            dtau_nuc = 0.0 * F
         Ts = Ts + dtau_nuc
 
         Tmag = np.sqrt(Ts ** 2 + Td ** 2)  # shear magnitude AFTER nucleation perturbation

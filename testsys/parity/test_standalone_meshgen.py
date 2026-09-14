@@ -147,7 +147,7 @@ def main():
         raise AssertionError('M1 meshCoor parity FAILED: max abs diff %e' % m1_diff)
 
     # ---- M2: element connectivity + material ----
-    conn, elem_type, mat = build_elements(xline, yline, zline, PARAMS, pmlb, nsmp, MATERIAL, meshCoor)
+    conn, elem_type, mat, _depth = build_elements(xline, yline, zline, PARAMS, pmlb, nsmp, MATERIAL, meshCoor)
     if conn.shape[0] != n_elem_fortran:
         raise AssertionError('M2 element count mismatch: python %d vs Fortran %d'
                               % (conn.shape[0], n_elem_fortran))

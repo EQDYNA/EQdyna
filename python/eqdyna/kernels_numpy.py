@@ -12,6 +12,51 @@ mass divide) stays in each port's own `run()`, because port.py divides
 precomputed reciprocal (`inv_mass_full`) -- NOT bit-identical in floating
 point, and a genuine pre-existing difference between the ports that this
 refactor does not unify.
+
+Milestone 10 (drv.a6, C_elastic==0, friclaw==4) adds two C_elastic-gated
+terms, both PROVABLE no-ops for every C_elastic==1 caller (port.py/
+port_tp.py, and port_rsf.py for tpv104/tpv10):
+
+  - Gravity body force (src/assembleGlobalKU.f90:16 al(3,:) fed through
+    src/calcElemMass.f90 into elresf, BEFORE calcElemKU's stress-based
+    `work` is added on top of it -- floating-point addition being
+    commutative, adding this constant term into Fz/the PML z-group BEFORE
+    the same single per-element scatter this kernel already does
+    reproduces the combined elresf, at worst a few-ULP reduction-order
+    difference from Fortran's own per-element grouping, well inside the
+    roundoff already tolerated by every existing per-case ABS_BOUND).
+    `grav_const = (1-C_elastic)*grav*(roumax-(gamar+1)*rhow)/roumax` is
+    EXACTLY 0.0 (bitwise) when C_elastic==1, so the term added is `x - 0.0
+    == x` exactly -- not merely small, IDENTICAL.
+    Derivation of `-m_e*grav_const` (not a per-element/per-node loop):
+    assembleGlobalMass.f90's assembleElementMassDetShg adds the SAME
+    per-element lumped mass `elementMass(3*(i-1)+ixyz)` into nodalMassArr
+    at ALL 12 dof slots for a PML node (including the vhg group, ixyz+9)
+    or all 3 for an interior node -- so nodalMassArr at any node's
+    z-type equation slot already equals sum-over-touching-elements of
+    that same per-element mass `m_e` (`contm`'s `constm*det`, identical
+    for every node/direction of an element) -- meaning the gravity
+    contribution at that slot is just `-nodalMassArr[slot]*grav_const`;
+    this kernel instead adds the PER-ELEMENT `-m_e*grav_const` before the
+    scatter (matching Fortran's per-element accumulation order), which
+    sums to the identical total.
+  - Drucker-Prager viscoplastic return-mapping (src/calcElemKU.f90:127-161,
+    interior elements only -- PML elements never go through calcElemKU),
+    applied to `stress_i` right after the elastic trial-stress increment,
+    gated by a plain Python `if C_elastic == 0:` (a static per-run scalar,
+    never a per-element array) -- for C_elastic==1 this entire block does
+    not execute, not merely masked to a no-op array-wise, so it cannot
+    perturb any previously-verified case even at the ULP level.
+    `porep` (pore pressure) is hardcoded 0.0: src/meshgen.f90's
+    setPlasticStress and src/eqdyna3d.f90's zero-init are the ONLY writes
+    to Fortran's `eleporep` anywhere in src/*.f90 (grep-verified) -- the
+    lithostatic pore-pressure formula is commented out in the Fortran
+    itself, so eleporep is provably always exactly 0.0, not assumed.
+    `pstrain`/`pstrinc` (the plastic-strain accumulator) is NOT computed:
+    it is write-only (never read back by any downstream physics) and
+    test.reference.results/test.drv.a6 has no pstr.txt* output to gate
+    against (only frt.txt1/frt.txt3) -- computing it would be unverifiable
+    scope creep, flagged here rather than silently added.
 """
 import numpy as np
 
@@ -80,6 +125,27 @@ def build(S):
     idxH1 = np.take_along_axis(eq_ids[conn], slot1[:, :, None], axis=2)[:, :, 0].ravel()
     idxH2 = np.take_along_axis(eq_ids[conn], slot2[:, :, None], axis=2)[:, :, 0].ravel()
 
+    # ---- Milestone 10 (drv.a6, C_elastic==0): gravity + Drucker-Prager ----
+    # grav_const is EXACTLY 0.0 (bitwise) whenever C_elastic==1 -- see this
+    # module's top docstring for the no-op proof and the nodalMassArr
+    # derivation.
+    C_elastic = S['C_elastic']
+    grav_const = ((1.0 - C_elastic) * S['grav']
+                  * (S['roumax'] - (S['gamar'] + 1.0) * S['rhow']) / S['roumax'])
+    m_e_all = mat[:, 2] * eledet  # contm's per-element lumped mass (same for every node/direction)
+    m_e_i = m_e_all[E_int]
+    m_e_p = m_e_all[E_pml]
+
+    if C_elastic == 0:
+        init_stress = S['init_stress']  # (E,6), main.py's setPlasticStress port -- raises
+        stress_i0 = init_stress[E_int].copy()  # (KeyError) loudly if missing, never a silent zero.
+        pml_init6 = init_stress[E_pml].copy()
+        ccosphi = S['ccosphi']; sinphi = S['sinphi']; tv = S['tv']
+    else:
+        stress_i0 = np.zeros((E_int.shape[0], 6))
+        pml_init6 = np.zeros((E_pml.shape[0], 6))
+        ccosphi = sinphi = tv = 0.0
+
     return dict(
         N=N, dt=dt, w=w, NEQ=NEQ, NEQ1=NEQ + 1, conn=conn, phi=phi, ss=ss,
         int_nodes=int_nodes, idx3_v=idx3_v, pml_nodes=pml_nodes, idx12_v=idx12_v,
@@ -89,16 +155,22 @@ def build(S):
         E_pml=E_pml, lam_p=lam_p, miu_p=miu_p, dNx_p=dNx_p, dNy_p=dNy_p, dNz_p=dNz_p,
         det_w_p=det_w_p, conn_p=conn_p, a1=a1, b1=b1, a2=a2, b2=b2, a3=a3, b3=b3,
         idxP12=idxP12, idxP3=idxP3, idxH0=idxH0, idxH1=idxH1, idxH2=idxH2,
+        C_elastic=C_elastic, grav_const=grav_const, m_e_i=m_e_i, m_e_p=m_e_p,
+        stress_i0=stress_i0, pml_init6=pml_init6, ccosphi=ccosphi, sinphi=sinphi, tv=tv,
     )
 
 
 def init_state(inv, E_int_count, E_pml_count):
-    """Fresh zero-valued step state for a new run."""
+    """Fresh step state for a new run: velArr/dispArr/v1/force/s_p start at
+    zero; `stress_i` starts at `inv['stress_i0']` -- exactly zeros for
+    C_elastic==1 (unchanged behavior for every existing caller), or
+    meshgen.f90's setPlasticStress lithostatic pre-stress for C_elastic==0
+    (Milestone 10, see kernels_numpy.py's build())."""
     N = inv['N']; NEQ1 = inv['NEQ1']
     velArr = np.zeros((N, 3)); dispArr = np.zeros((N, 3))
     v1 = np.zeros(NEQ1)
     force = np.zeros(NEQ1)
-    stress_i = np.zeros((E_int_count, 6))
+    stress_i = inv['stress_i0'].copy()
     s_p = np.zeros((E_pml_count, 15))
     return v1, velArr, dispArr, force, stress_i, s_p
 
@@ -155,6 +227,38 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
     strr4 = miu_i * sr4; strr5 = miu_i * sr5; strr6 = miu_i * sr6
     stress_i[:, 0] += strr1 * dt; stress_i[:, 1] += strr2 * dt; stress_i[:, 2] += strr3 * dt
     stress_i[:, 3] += strr4 * dt; stress_i[:, 4] += strr5 * dt; stress_i[:, 5] += strr6 * dt
+
+    if inv['C_elastic'] == 0:
+        # calcElemKU.f90:127-161 Drucker-Prager viscoplastic return-mapping.
+        # Static Python `if` (not a per-element mask): this entire block is
+        # SKIPPED, not merely a no-op array-wise, for every C_elastic==1
+        # caller -- see build()'s docstring note.
+        ccosphi = inv['ccosphi']; sinphi = inv['sinphi']; tv = inv['tv']
+        strmea = (stress_i[:, 0] + stress_i[:, 1] + stress_i[:, 2]) / 3.0
+        strdev0 = stress_i[:, 0] - strmea
+        strdev1 = stress_i[:, 1] - strmea
+        strdev2 = stress_i[:, 2] - strmea
+        strdev3 = stress_i[:, 3]; strdev4 = stress_i[:, 4]; strdev5 = stress_i[:, 5]
+        taomax = np.sqrt(0.5 * (strdev0 ** 2 + strdev1 ** 2 + strdev2 ** 2)
+                          + strdev3 ** 2 + strdev4 ** 2 + strdev5 ** 2)
+        porep = 0.0  # eleporep is provably always exactly 0.0 -- see build()'s docstring.
+        yld = ccosphi - sinphi * (strmea + porep)
+        yld = np.maximum(yld, 0.0)
+        mask = taomax > yld
+        safe_tao = np.where(mask, taomax, 1.0)  # avoid 0/0 on non-yielding elements
+        ratio = yld / safe_tao
+        # rjust==1.0 where not yielding reproduces Fortran's "stress
+        # unchanged" branch EXACTLY (strdev*1+strmea == the pre-correction
+        # stress for i<=3; strdev*1 == it for i=4,5), so no separate
+        # np.where is needed on the stress-assignment lines below.
+        rjust = np.where(mask, ratio + (1.0 - ratio) * np.exp(-dt / tv), 1.0)
+        stress_i[:, 0] = strdev0 * rjust + strmea
+        stress_i[:, 1] = strdev1 * rjust + strmea
+        stress_i[:, 2] = strdev2 * rjust + strmea
+        stress_i[:, 3] = strdev3 * rjust
+        stress_i[:, 4] = strdev4 * rjust
+        stress_i[:, 5] = strdev5 * rjust
+
     st1 = constk_w_i * (stress_i[:, 0] + rdampk * strr1)
     st2 = constk_w_i * (stress_i[:, 1] + rdampk * strr2)
     st3 = constk_w_i * (stress_i[:, 2] + rdampk * strr3)
@@ -164,6 +268,10 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
     Fx = dNx_i * st1[:, None] + dNz_i * st5[:, None] + dNy_i * st6[:, None]
     Fy = dNy_i * st2[:, None] + dNz_i * st4[:, None] + dNx_i * st6[:, None]
     Fz = dNz_i * st3[:, None] + dNy_i * st4[:, None] + dNx_i * st5[:, None]
+    # calcElemMass's gravity body force (al(3,:), z-direction only) -- see
+    # build()'s docstring for the -m_e*grav_const derivation; EXACTLY 0.0
+    # when C_elastic==1.
+    Fz = Fz - (inv['m_e_i'] * inv['grav_const'])[:, None]
     scat_idx += [inv['idxIx'], inv['idxIy'], inv['idxIz']]
     scat_val += [Fx.ravel(), Fy.ravel(), Fz.ravel()]
 
@@ -209,7 +317,13 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
         sxy = s_p[:, 9] + s_p[:, 10]
         sxz = s_p[:, 11] + s_p[:, 12]
         syz = s_p[:, 13] + s_p[:, 14]
-        s0 = [rdampk * srate[k] for k in range(6)]
+        # s0(1:6) == Fortran's s(16:21): setPlasticStress's lithostatic
+        # pre-stress, a CONSTANT never reassigned inside calcPMLElemKU
+        # itself (confirmed by reading assembleGlobalKU.f90's
+        # calcPMLElemKU -- it only ever READS s(16:21), added to
+        # rdampk*stressrate) -- exactly 0 for C_elastic==1 (pml_init6 is
+        # all-zero then, see build()).
+        s0 = [rdampk * srate[k] + inv['pml_init6'][:, k] for k in range(6)]
 
         f1 = -det_w_p[:, None] * dNx_p * sxx[:, None]
         f2 = -det_w_p[:, None] * dNy_p * sxy[:, None]
@@ -227,9 +341,14 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
 
         for j in range(12):
             scat_idx.append(inv['idxP12'][j]); scat_val.append(efPML12[j].ravel())
+        # calcElemMass's gravity body force lands in the z ("vhg_z") slot
+        # (efPML12[11]) BEFORE calcPMLElemKU subtracts from it -- added
+        # here to the z group sum instead (addition is commutative);
+        # EXACTLY 0.0 when C_elastic==1.
+        grav_p = (inv['m_e_p'] * inv['grav_const'])[:, None]
         grp_sums = [efPML12[0] + efPML12[1] + efPML12[2] + efPML12[9],
                     efPML12[3] + efPML12[4] + efPML12[5] + efPML12[10],
-                    efPML12[6] + efPML12[7] + efPML12[8] + efPML12[11]]
+                    efPML12[6] + efPML12[7] + efPML12[8] + efPML12[11] - grav_p]
         for g in range(3):
             scat_idx.append(inv['idxP3'][g]); scat_val.append(grp_sums[g].ravel())
 

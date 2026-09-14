@@ -109,6 +109,33 @@ subroutine pydump_state
         write(u,'(2(1x,i10))') OffFaultStNodeIdIndex(1,i), OffFaultStNodeIdIndex(2,i)
     enddo
     close(u)
+
+    ! Milestone 10 debug-only dump (drv.a6, C_elastic==0): first 20 interior
+    ! elements' initial stressArr(1:6) (setPlasticStress's lithostatic
+    ! pre-stress) + ccosphi/sinphi/tv, for scalar checkpoint comparison
+    ! against main.py's init_stress -- NOT part of the M6-M9 fixture set,
+    ! scratch instrumentation for this milestone's debugging only.
+    open(unit=u, file='pydump_plastic_debug.txt', status='unknown')
+    write(u,*) ccosphi, sinphi, tv
+    k = 0
+    do i = 1, totalNumOfElements
+        if (elemTypeArr(i) == 1) then
+            k = k + 1
+            write(u,'(1x,i8,1x,i3,21(1x,e24.16e3))') i, elemTypeArr(i), &
+                (stressArr(stressCompIndexArr(i)+j), j=1,21)
+            if (k >= 20) exit
+        endif
+    enddo
+    k = 0
+    do i = 1, totalNumOfElements
+        if (elemTypeArr(i) == 2) then
+            k = k + 1
+            write(u,'(1x,i8,1x,i3,21(1x,e24.16e3))') i, elemTypeArr(i), &
+                (stressArr(stressCompIndexArr(i)+j), j=1,21)
+            if (k >= 20) exit
+        endif
+    enddo
+    close(u)
 end subroutine pydump_state
 
 ! Per-step checkpoint (nt<=5) for first-divergence diagnosis: end-of-step
