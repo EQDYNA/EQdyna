@@ -1,6 +1,13 @@
 # Past release notes\
 
 # News in 2026
+* 20260913 v5.3.6 release notes
+  * Bug - PML region-14 corner damping used an x-bound for the y coordinate; fixed in all 4 sites. test.drv.a6 shear traction moved up to ~29 MPa; reference regenerated; guarded by a regression test.
+  * Bug - thermal pressurization ran with shear-zone half-width h=0 since 2022 (fric_tp_h never assigned); now reads per-node fric(40)=0.02 m per the TPV105-3D spec. Verified against a clean-room rebuild of the SCEC-verified v5.2.0. tpv1053d reference regenerated.
+  * Refactor - output-neutral cleanup, bit-gated: misc/ deleted; tabs to spaces; dead code removed; requireInputFile(); 6 files/subroutines renamed to verb-phrase names; globalvar.f90 restructured with a named FRIC_SLOT_* fric() slot map; func_lib.f90 shared helpers; MPI sendrecv consolidation; Python plotting dedup (~2,600 net lines removed).
+  * New - python/: vectorized Python EQdyna (NumPy + JAX) covering slip-weakening, rate-and-state, and thermal-pressurization friction; parity and timing documented in python/README-parity.md (JAX-CPU 1.1-2.6x faster than serial Fortran).
+  * New - tiered testing system testsys/ (unit, regression, e2e); CI gates on real exit codes.
+
 * 20260909 v5.3.5 release notes
   * Add - `testsys/`, a tiered test system (unit/regression/e2e) with a single entry point `testsys/run.py [unit|regression|e2e|all]`; `testAll.py` is now a thin wrapper delegating to `testsys/e2e/run_e2e.py` (PROJECT_RULES.md rule 3). Gate: `python3 testsys/run.py unit` (33 tests, pure Python, no MPI/Fortran, <1s) then `regression` (2 guards, one per past incident, rule 10) then `e2e` (full create.newcase -> case.setup -> mpirun -> plotRuptureDynamics -> check.test.py pipeline against test.reference.results/, rule 7).
   * Fix - `scripts/lib.py`: `B2`/`B3`'s negative-`y` guard called `sys.exit()`, but the file did `from sys import *`, which does not bind the name `sys` -- the guard raised `NameError` instead of exiting. Changed to `import sys`. Covered by new unit tests `test_B2_negative_y_exits_cleanly_not_with_nameerror` / `test_B3_...` in `testsys/unit/test_lib.py`.
