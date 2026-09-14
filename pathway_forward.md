@@ -52,6 +52,22 @@ actually runs the command.
 
 **Deferred**: none.
 
+## Release roadmap
+
+Work is grouped into release campaigns; each ships only when its own gate is
+green (fast tiers + e2e + CI) and its claims are test-backed.
+
+| Release | Theme | Contents |
+|---|---|---|
+| v5.5.0 | TPV29 revival | item 26 (serial-vs-parallel traction question) resolved; item 25 (TPV29 gated at dx=500, FULL_SPECS at 50 m, reference frozen, compset README, ls6 50 m bundle + public-metrics scoring) |
+| v5.6.0 | Viscoplastic path | item 24 (Tv input slot, setPlasticStress depth taper, the +7.3215 constant, lib.py rho, plastic-output window), item 23 (Drucker-Prager kernel unit test), then TPV30 promoted and gated |
+| v5.7.0 | Cycle + archaeology | item 16b (mode-2 restart gate coverage - the EQsimu hand-off path has none today), item 19 (TPV2802_50_a6 gating; TPV2800/2801 dead-branch decision) |
+| v6.0.0 | Multi-fault | items 17 and 7/9/10/11, with EQquasi's step-over as the design reference; a cross-repo campaign (EQdyna / ~/seas_bp10_eqquasi / ~/eqsimu) with a written interface contract and matched tags - major bump, coordinated release |
+
+Not on the roadmap (external or idle-window): strong-scaling measurement
+(`testsys/run.py scaling`, needs an idle machine), spec-resolution
+verification runs on HPC, TPV38 (awaiting SCEC's TSurf release).
+
 ## Goals
 
 - **Python EQdyna (vectorized)** — long-term goal set 2026-09-12: a vectorized
