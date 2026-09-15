@@ -3,6 +3,7 @@
 subroutine driver
 
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
 
@@ -47,6 +48,7 @@ end subroutine driver
 
 subroutine doubleCouplePointSource
     use globalvar 
+    use errorCodes
     implicit none
     integer (kind = 4) :: i
     
@@ -98,6 +100,7 @@ end subroutine doubleCouplePointSource
 
 subroutine velDispUpdate
     use globalvar
+    use errorCodes
     implicit none 
     include 'mpif.h'
     
@@ -158,7 +161,8 @@ subroutine velDispUpdate
             write(*,*) 'Velocity NaN at point ', meshCoor(1,i), meshCoor(2,i), meshCoor(3,i), ' at time step ', nt
             write(*,*) 'brhs at this node are', nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i))+1)
             write(*,*) 'alhs at this node are', nodalMassArr(eqNumIndexArr(eqNumStartIndexLoc(i))+1:eqNumIndexArr(eqNumStartIndexLoc(i))+3)
-            stop
+            call abortRun(ERR_NUM_VELOCITY_NAN, &
+                'Velocity became NaN during time stepping (node coordinates and time step printed above).')
         endif
     enddo
     compTimeInSeconds(3) = compTimeInSeconds(3) + MPI_WTIME() - startTimeStamp
@@ -166,6 +170,7 @@ end subroutine velDispUpdate
 
 subroutine storeOffFaultStData
     use globalvar
+    use errorCodes
     implicit none
     
     integer (kind = 4) :: i, nodeId, quantType, k, eqNum

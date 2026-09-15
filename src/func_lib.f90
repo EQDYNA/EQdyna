@@ -25,6 +25,7 @@ subroutine pmlRegionDistance(x, y, z, xmax0, xmin0, ymax0, ymin0, zmin0, damp)
     ! lie exactly on a PML bound -- enforced at mesh time by
     ! checkPMLAlignment (called from meshgen).
     use globalvar
+    use errorCodes
     implicit none
     real (kind = dp) :: x, y, z, xmax0, xmin0, ymax0, ymin0, zmin0
     real (kind = dp), dimension(3) :: damp
@@ -77,6 +78,7 @@ end subroutine pmlRegionDistance
 subroutine insertFaultInterface(nodeCoor, ycoort, pfx, pfz)
     ! This subroutine is to modify ycoor to insert a rough/& dipping fault interface.
     use globalvar
+    use errorCodes
     implicit none
     real (kind = dp) :: nodeCoor(10), peak, ycoort, pfx, pfz, fx1, fx2, fz1
     integer (kind = 4) :: ixx, izz
@@ -120,6 +122,7 @@ end subroutine insertFaultInterface
 ! #3 fb1
 subroutine fb1(xtmp,ww,wtmp,res)
     use globalvar
+    use errorCodes
     implicit none
     real (kind = dp) :: xtmp, ww, wtmp, res
     ! ww == W;
@@ -135,12 +138,13 @@ end subroutine fb1
 ! #4 fb2
 subroutine fb2(ytmp,ww,wtmp,res)
     use globalvar
+    use errorCodes
     implicit none
     real (kind = dp) :: ytmp, ww, wtmp, res
     ! ww == W;  
     if (ytmp<0.0d0) then
-        write(*,*) 'z coordinates should be positive for B3'
-        stop
+        call abortRun(ERR_NUM_NEGATIVE_DEPTH, &
+            'Negative depth passed to fb2; z coordinates must be positive here.')
     endif   
     if (ytmp<=wtmp) then 
         res = 0.5d0*(1.0d0 + dtanh(wtmp/(wtmp-ytmp) - wtmp/ytmp))
@@ -156,12 +160,13 @@ end subroutine fb2
 ! #5 fb3
 subroutine fb3(ytmp,ww,wtmp,res)
     use globalvar
+    use errorCodes
     implicit none
     real (kind = dp) :: ytmp, ww, wtmp, res
     ! ww == W;  
     if (ytmp<0.0d0) then
-        write(*,*) 'z coordinates should be positive for B3'
-        stop
+        call abortRun(ERR_NUM_NEGATIVE_DEPTH, &
+            'Negative depth passed to fb3; z coordinates must be positive here.')
     endif 
     if (ytmp<=ww) then 
         res = 1.0d0 
@@ -175,6 +180,7 @@ end subroutine fb3
 ! #6 vlm
 subroutine vlm(xl,volume)
     use globalvar
+    use errorCodes
     implicit none
     !
     !...program to calculate volume of a hexlahedron from
@@ -215,6 +221,7 @@ subroutine checkPMLAlignment(elemCenter)
     ! never enforced; a stretched or degenerated mesh could violate it
     ! silently. Fail loudly at mesh time instead.
     use globalvar
+    use errorCodes
     implicit none
     real (kind = dp) :: elemCenter(3)
 
@@ -224,7 +231,7 @@ subroutine checkPMLAlignment(elemCenter)
         elemCenter(3) == PMLb(5)) then
         write(*,*) 'checkPMLAlignment: element center exactly on a PML bound at', &
             elemCenter(1), elemCenter(2), elemCenter(3)
-        write(*,*) 'PML region classification would be ambiguous; adjust mesh/nPML.'
-        stop 'checkPMLAlignment failed'
+        call abortRun(ERR_NUM_PML_ALIGNMENT, &
+            'An element centre lies exactly on a PML bound, making region classification ambiguous. Adjust the mesh or nPML.')
     endif
 end subroutine checkPMLAlignment

@@ -64,6 +64,7 @@ Element counts recomputed with `elem_per_rank.py` — the previous "44 M" for
 | 200 | 16 | 4,2,2 | 6.48 M | 410,625 | — | 11.6 min |
 | 100 | 16 | 4,1,4 | 28.1 M | 1,780,920 | 0.173 | 1.93 h (projected from 21% at 23.8 min) |
 | 100 | 48 | 8,1,6 | 28.1 M | 593,640 | 0.573 | **34.9 min (measured)** |
+| 50 | 48 | 8,1,6 | 119.1 M | 2,481,156 | 0.529 | **5.04 h (projected from 914 of 4800 steps)** |
 | 50 | 1024 | 16,8,8 | 119.1 M | 119,164 | — | ~0.7 h (estimate, LS6, unrun) |
 
 The 100 m / 48-rank row is now a real run: `scratch/tpv29/ny48_dx100`,
@@ -73,6 +74,42 @@ independent case (rough fault, a different compset, timed with nothing but
 `date` and the step counter) landing inside the 1467–1881 ns/elem band the
 `test.tpv8` 48-rank rows below give — a useful confirmation that the 48-rank
 penalty is a property of the machine, not of `test.tpv8`.
+
+The 50 m / 48-rank row is `scratch/tpv29/spec50m`, started 19:36:48 and stopped
+by hand at 20:34:23 on 2026-09-14 after 914 of 4800 steps (the run was ended to
+free the node, not because it failed): 3455 s / 914 steps = **3.780 s/step** at
+2,481,156 elem/rank = **1524 ns per element per timestep**. Memory was 3.82 GB
+per rank, 183 GB across the 48 ranks. The last ~1 min of the 57 overlapped an
+e2e run starting; at 1/57 of the wall that is below the resolution of this
+measurement.
+
+### The cleanest test of the linear claim: hold the rank count fixed
+
+The two TPV29 rows above are the same case, same binary, same node, same 48-rank
+decomposition (8,1,6) — the *only* thing that changes is resolution, and hence
+elements per rank. That isolates the variable the claim is actually about, which
+the `test.tpv8` sweep below could not do (there, rank count and per-rank size
+move together with the machine's bandwidth behaviour).
+
+| dx | mean elem/rank | s/step | ns/elem/step |
+|---|---|---|---|
+| 100 m | 584,918 | 0.873 | 1492 |
+| 50 m | 2,481,156 | 3.780 | 1524 |
+
+**4.242× the elements per rank costs 4.330× the time — +2.1% off proportional**,
+and the per-element rate moves by 2.1% across a 4.2× range in per-rank size.
+
+This is the strongest support the claim has: *at fixed rank count*, wall time per
+step really is a linear function of elements per rank, to about 2%. It does not
+contradict the refutation below, which is about a different variable — there, the
+rank count changes and the fitted slope moves 1.48× with it. Stated precisely:
+
+> The slope is constant in elements-per-rank (±2%), but the slope itself is a
+> function of how many ranks share the node (±48%).
+
+So "cells per np" predicts cost well when you are choosing a resolution for a
+fixed job size, and predicts it badly when you are choosing how many ranks to
+run on one node.
 
 Note the 500 m and 200 m rows predate the fault-on-MPI-boundary fix and used
 `ny=2` with a symmetric y-domain, so their *results* are not comparable — their

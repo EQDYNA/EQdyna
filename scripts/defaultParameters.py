@@ -91,15 +91,37 @@ class parameters:
     #    scripts/generateFaultInterface at case.setup time;
     # 2: 1 + activate fractal fault (needs par.seedId);
     # 3: rough fault whose surface is SUPPLIED by the case, not generated --
-    #    the case ships bFault_Rough_Geometry.txt (or writes it from its own
-    #    tooling on import, as test.tpv29 does with the official SCEC file).
+    #    the case ships bFault_Rough_Geometry.txt, or hands case.setup a
+    #    par.faultGeometryWriter that derives it from a shipped source (as
+    #    test.tpv29 does with the official SCEC surface).
     #    The Fortran treats any value > 0 identically: read the file and morph
     #    the mesh onto it. Only the case.setup-time generator distinguishes
-    #    1/2 (generate) from 3 (leave the supplied file alone).
+    #    1/2 (generate) from 3 (use the case's own surface).
     
     print('If insertFaultType==2, an integer seedId to generate fractal fault is needed;')
     print('Please assign par.seedId accordingly.')
     seedId = 1
+
+    # Native node spacing (m) of the fault surface a compset SHIPS, when it
+    # ships one (insertFaultType 3).  A supplied surface is one fixed sampling
+    # of one random realisation: it can be coarsened exactly, never refined,
+    # so par.dx must be an integer multiple of this.  Declaring it here lets
+    # lib.requireFaultGeometryResolution give the same actionable verdict for
+    # every compset instead of each one's tooling failing its own way; leave it
+    # None when the geometry is generated (types 1/2) or absent (type 0).
+    # faultGeometrySourceName names the file in that message.
+    faultGeometrySourceDx   = None
+    faultGeometrySourceName = 'the fault-geometry source this compset ships'
+    # Every spacing the compset can actually serve, for the rejection message.
+    faultGeometrySourceAvailableDx = None
+    # A callable taking one argument, the output path, that (re)writes
+    # bFault_Rough_Geometry.txt for THIS case. case.setup calls it only when
+    # the file on disk is missing or does not match the case, so a correct file
+    # is never overwritten and case.setup is idempotent. Compsets set this
+    # instead of writing the geometry as an import side effect -- writing at
+    # import clobbers whatever the case author put there, which is how a
+    # correct hand-built 50 m TPV29 surface got silently replaced.
+    faultGeometryWriter = None
         
     nt_out      = 20 # Every nt_out time steps, disp of the whole model and on-fault variables will be written out in netCDF format.
     tpv         = 105 

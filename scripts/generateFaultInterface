@@ -7,6 +7,7 @@ from math import cos,sin,tan,pi
 from numpy.fft import fft2, ifft2
 import matplotlib.pyplot as plt
 from user_defined_params import par
+from lib import writeFaultGeometryProvenance
 
 def generateFractalSurface(lx, hurst_exponent, seed=None):
     np.random.seed(seed)
@@ -114,6 +115,20 @@ def generateFaultInterface(nx, nz, dx, dz, isRoughFault, dipAngle, seedId=None):
             ntmp = ntmp + 1
 
     np.savetxt('bFault_Rough_Geometry.txt', result, fmt='%f', delimiter='\t')
+
+    # Provenance sidecar (advisory; EQdyna never reads it): says what this
+    # surface is, so a file copied between cases or machines can be identified
+    # without guessing. Deterministic -- no timestamps -- so regenerating gives
+    # byte-identical output.
+    writeFaultGeometryProvenance('bFault_Rough_Geometry.txt', dict(
+        tool='scripts/generateFaultInterface',
+        source=('generated: planar dipping fault' if isRoughFault == 1 else
+                f'generated: synthetic fractal surface, Hurst 1, '
+                f'seedId={seedId}'),
+        sourceDx=f'{dx:.12g}',
+        insertFaultType=str(isRoughFault), dipAngle=f'{dipAngle:.12g}',
+        dx=f'{dx:.12g}', nnx=str(nx), nnz=str(nz),
+        fxmin=f'{par.fxmin:.12g}', fzmin=f'{par.fzmin:.12g}'))
 
     print('Peak roughness of the fractal surface is ', np.max(subSurface),' m')
     print('Dip of the fault is ', dipAngle)

@@ -1,10 +1,14 @@
 # News in 2026
-* 20260914 v5.5.0 release notes
-  * New - test.tpv29 (SCEC TPV29, official 25 m rough-fault geometry) gated as the 8th benchmark case: fast tier at dx=500 m/4 ranks (2,1,2)/~3 min, full-tier spec entry at dx=50 m/term=20 s; frozen reference in test.reference.results/test.tpv29.
-  * Fix - fault-on-MPI-boundary bug: arn (fault nodal area) was double-counted whenever an MPI partition boundary coincided with the fault plane (symmetric y-domains), halving every on-fault traction term; fixed, with a hard-stop guard (checkFaultMPIAlignment) and a decomposition-invariance regression test.
-  * Add - insertFaultType=3 (case-supplied fault geometry, e.g. TPV29's official surface) documented as a first-class mode; case.setup no longer invokes the geometry generator for it.
-  * Fix - memory_estimate now reports cells/rank, cells total, ranks, and both memory figures separately (previously multiplied rank 0's count by the rank count, so it looked rank-invariant).
-  * Full details: the v5.5.0 GitHub Release, git tag message, and pathway_forward.md.
+* 20260914 v5.6.0 release notes
+  * New - supplied fault geometry (insertFaultType=3) is validated before use: grid, spacing, origin, row count, NaN/Inf, derivative columns and per-cell element-tangling offset, in Python at case.setup and again in Fortran at read time.
+  * New - scripts/convertFaultGeometry resamples a supplied (x, z, y) surface onto a case's fault grid and validates its own output.
+  * New - test.tpv29 ships the official surface at 50 m as well as 100 m, so the full-resolution tier runs from a clean checkout with no download.
+  * Fix - refusing a run now actually fails: bare `stop` and `stop 'message'` both exit 0 under gfortran, and 13 sites used one of them, including the two mesh-alignment gates. All fatal paths go through src/errorCodes.f90 with named codes (1-125) and MPI_Abort, so a bad run ends instead of hanging other ranks.
+  * Fix - the full-resolution tier raised KeyError before running any case; its TPV29 entry used the wrong key names.
+  * Fix - geometry validator missed a globally rescaled surface (units error) and local corruption up to 3000x tolerance; both now caught or warned.
+  * Change - no silent fallbacks (rule 2): par.dy is required rather than standing in as dx, and a fault grid too small to check is refused rather than checked weakly.
+  * Docs - README carries a generated exit-code table that cannot drift from the source; measured TPV29 speeds at 100 m and 50 m on 48 ranks.
+  * Full details: the v5.6.0 GitHub Release, git tag message, and pathway_forward.md.
   * For past release notes, please refer to pastReleaseNotes.md.
 
 # Introduction to *```EQdyna```*
@@ -105,6 +109,87 @@ For a customized case, please choose the most relevant predefined compset and mo
 # Benchmark computational performance and resource
 * TPV36 & 37: 4.7 hours for 50 m resolution using 512 CPUs on Lonestar6 at TACC. <br/>
 * TPV104: 0.4 hours for 15-sec simulation (1875 time steps) using 40 CPUs on Lonestar6.  <br/>
+
+# Exit codes
+<!-- BEGIN EXIT CODES (generated from src/errorCodes.f90; do not edit by hand) -->
+
+When a run is refused or fails, EQdyna prints a `FATAL` block naming the code
+and the reason, and exits with that code. Codes are kept in 1-125 so the number
+in the source is the number the shell reports (a status above 255 wraps).
+
+How faithfully the number survives depends on the launcher. `mpirun` (Open MPI,
+hydra) reports it directly. `srun` reports the **maximum** status across tasks,
+so a straggler killed while `MPI_Abort` tears the job down yields 137 or 143 and
+masks the code; `sbatch` reports the wrapper script's status unless the script
+ends with `exit $?`. On ls6 and grace the launcher is `ibrun` -> `srun`. So treat
+a **non-zero status** as the reliable signal and the printed `FATAL` block as
+authoritative; the specific number is advisory under `srun`.
+
+**Generic** (1-9)
+
+| code | name | meaning |
+|-----:|------|---------|
+| 1 | `ERR_GENERIC` | unclassified fatal error |
+
+**Configuration and parameters** (11-19)
+
+| code | name | meaning |
+|-----:|------|---------|
+| 11 | `ERR_CFG_Q_NEEDS_ELASTIC` | C_Q=1 requires C_elastic=1 |
+| 12 | `ERR_CFG_Q_NEEDS_UNIFORM` | C_Q=1 requires rat=1.0 (uniform elements) |
+| 13 | `ERR_CFG_PLASTIC_OUTPUT` | output_plastic=1 requires C_elastic=0 |
+
+**Input files** (21-29)
+
+| code | name | meaning |
+|-----:|------|---------|
+| 21 | `ERR_INPUT_FILE_MISSING` | a required FE_*.txt / data file is absent |
+
+**Fault geometry** (31-39)
+
+| code | name | meaning |
+|-----:|------|---------|
+| 31 | `ERR_GEOM_ROUGH_INVALID` | bFault_Rough_Geometry.txt does not match this mesh |
+
+**Mesh generation and element quality** (41-49)
+
+| code | name | meaning |
+|-----:|------|---------|
+| 41 | `ERR_MESH_STRESS_ARR_SMALL` | sizeOfStressDofIndexArr exceeds 5*sizeOfEqNumIndexArr |
+| 42 | `ERR_MESH_COUNT_MISMATCH` | meshgen's node/element/equation tallies disagree |
+| 43 | `ERR_MESH_EQNUM_MISMATCH` | eqNumIndexArrLocTag /= sizeOfEqNumIndexArr |
+| 44 | `ERR_MESH_FAULT_MISMATCH` | nftnd0 /= nftnd (meshgen vs countMeshEntities) |
+| 45 | `ERR_MESH_MULTIFAULT_MSNODE` | master-node construction cannot handle ntotft>1 |
+| 46 | `ERR_MESH_BAD_WEDGE` | degenerate wedge built with unequal node ids |
+| 47 | `ERR_MESH_BAD_JACOBIAN` | non-positive Jacobian determinant (inverted element) |
+| 48 | `ERR_MESH_MATERIAL_UNSET` | an element has no material property assigned |
+
+**MPI and domain decomposition** (51-59)
+
+| code | name | meaning |
+|-----:|------|---------|
+| 51 | `ERR_MPI_FAULT_ALIGNMENT` | a rank boundary in y coincides with the fault plane |
+
+**Numerics and runtime state** (61-69)
+
+| code | name | meaning |
+|-----:|------|---------|
+| 61 | `ERR_NUM_PML_ALIGNMENT` | element centre lies exactly on a PML bound |
+| 62 | `ERR_NUM_PML_DAMPING` | negative PML damping vector component |
+| 63 | `ERR_NUM_VELOCITY_NAN` | NaN velocity during time stepping |
+| 64 | `ERR_NUM_NEGATIVE_DEPTH` | negative depth passed to a B-function |
+
+**External libraries** (71-79)
+
+| code | name | meaning |
+|-----:|------|---------|
+| 71 | `ERR_NETCDF` | a NetCDF call returned an error |
+
+Exit status 0 means the run completed. Every fatal path goes through
+`abortRun` in `src/errorCodes.f90`, which calls `MPI_Abort` so the whole job
+ends instead of one rank stopping while the others block in a collective.
+
+<!-- END EXIT CODES -->
 
 # Collaboration
 We try our best to make *```EQdyna```* easy to use but doing great science is our priority. We welcome collaborations, comments and suggestions. Please reach out to Drs Benchun Duan (bduan@tamu.edu) and Dunyu Liu (dliu@ig.utexas.edu).

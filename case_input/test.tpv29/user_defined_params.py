@@ -5,10 +5,10 @@
 #
 # Fault: 40 km x 20 km, reaches the surface, with the OFFICIAL randomly
 # generated roughness (Hurst exponent 1) shipped in
-# bFault_Rough_Geometry.tpv29.100m.txt (exact 4:1 decimation of the official
-# 25 m data file; see tpv29GeometryTools.py for the frame mapping and
-# provenance).  Hypocenter 15 km from the left fault edge (x = -5 km),
-# 10 km deep.
+# bFault_Rough_Geometry.tpv29.50m.txt.gz (exact 2:1 decimation of the official
+# 25 m data file, at the 50 m SPEC resolution; see tpv29GeometryTools.py for
+# the frame mapping and provenance).  Hypocenter 15 km from the left fault
+# edge (x = -5 km), 10 km deep.
 #
 # Spec parameters encoded here:
 #   material          rho 2670, Vs 3464, Vp 6000 (defaults in
@@ -26,17 +26,27 @@
 #                     resolved onto the LOCAL rough-fault normal at every
 #                     fault grid point (see loop below); gravity 9.8 exactly
 #   run time          0 - 20 s
-#   resolution        spec standard is 50 m (100 m acceptable); this case is
-#                     built at par.dx = 100 m.  For coarser trials edit
-#                     par.dx (must be a multiple of 100 that divides 40/20 km)
+#   resolution        spec standard is 50 m (100 m acceptable). par.dx below
+#                     is the fast-gate value; the full tier runs the 50 m spec.
+#                     Any par.dx that is a multiple of the shipped 50 m source
+#                     and divides 40/20 km works; anything else is refused by
+#                     lib.requireFaultGeometryResolution with the reason.
 #
 # insertFaultType = 3: any value > 0 activates EQdyna's rough-fault machinery
 # (read_fault_rough_geometry + insertFaultInterface + per-node normals).
 # Values 1/2 would make scripts/generateFaultInterface (invoked at the end of
 # case.setup) OVERWRITE bFault_Rough_Geometry.txt with a planar/synthetic
-# fractal surface; with 3 that script aborts without writing, and the official
-# TPV29 geometry written below (at import, from the shipped official file) is
-# what EQdyna reads.
+# fractal surface; with 3 that script is not called at all, and the official
+# TPV29 surface is what EQdyna reads.
+#
+# This module does NOT write bFault_Rough_Geometry.txt. It computes the surface
+# it needs in memory (for the hypocenter and the per-node stress resolution) and
+# hands case.setup a WRITER (par.faultGeometryWriter) instead. Writing at import
+# made every import of this file -- case.setup, plotRuptureDynamics, any tool --
+# clobber whatever geometry file was on disk, which silently replaced a
+# deliberately placed 50 m surface with the default one, and made case.setup
+# non-idempotent. case.setup now keeps an already-correct file untouched and
+# calls the writer only when the file is missing or does not match the case.
 
 from defaultParameters import *
 from math import *
@@ -92,11 +102,22 @@ par.nfz = round((par.fzmax - par.fzmin)/par.dz + 1)
 par.fx  = np.linspace(par.fxmin, par.fxmax, par.nfx)
 par.fz  = np.linspace(par.fzmin, par.fzmax, par.nfz)
 
-# Official rough geometry on the case grid ([iz, ix], iz=0 at fzmin), and
-# regenerate bFault_Rough_Geometry.txt for the current par.dx so the file
-# EQdyna reads always matches the mesh spacing.
+# The compset ships the official surface at 50 m (the spec resolution), so
+# par.dx must be an integer multiple of 50 m; declaring the source spacing here
+# lets scripts/case.setup make the same check for any case that supplies its
+# own geometry (lib.requireFaultGeometryResolution).
+par.faultGeometrySourceDx   = geoTools.SHIPPED_DX
+par.faultGeometrySourceName = geoTools.SHIPPED_NAME
+par.faultGeometrySourceAvailableDx = [d for d, _ in geoTools.SHIPPED_SOURCES]
+
+# Official rough geometry on the case grid ([iz, ix], iz=0 at fzmin). Needed
+# here in memory for the hypocenter y and the per-node stress resolution below.
 fY, fDydx, fDydz = geoTools.faultGridForCase(par.dx)
-geoTools.writeBFault(fY, fDydx, fDydz, par.dx)
+
+# How case.setup (re)writes bFault_Rough_Geometry.txt when it has to. Not
+# called here: see the note at the top of this file.
+par.faultGeometryWriter = lambda out: geoTools.writeBFault(
+    fY, fDydx, fDydz, par.dx, out=out)
 
 # Hypocenter: x = -5 km along strike, 10 km deep, ON the rough surface.
 par.xsource, par.zsource = -5.0e3, -10.0e3

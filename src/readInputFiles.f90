@@ -2,6 +2,7 @@
 subroutine readglobal
 ! This subroutine is read information from bglobal.txt
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
 
@@ -49,6 +50,7 @@ end subroutine readglobal
 subroutine readmodelgeometry
 ! This subroutine is read information from bglobal.txt
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
 
@@ -71,6 +73,7 @@ end subroutine readmodelgeometry
 subroutine readfaultgeometry
 ! This subroutine is read information from bFault_Geometry.txt
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
 
@@ -109,6 +112,7 @@ end subroutine readfaultgeometry
 subroutine readmaterial
 ! This subroutine is read information from bMaterial.txt
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
 
@@ -134,6 +138,7 @@ end subroutine readmaterial
 subroutine readstations1
 ! This subroutine is read information from bStations.txt
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
 
@@ -152,6 +157,7 @@ end subroutine readstations1
 subroutine readstations2
 ! This subroutine is read information from bStations.txt
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
 
@@ -183,39 +189,165 @@ end subroutine readstations2
 ! #8 read_rough_geometry ------------------------------------------------
 subroutine read_fault_rough_geometry
 ! This subroutine is read information from bFault_Rough_Geometry.txt
+!
+! The header/row checks below are defense in depth behind the case.setup-time
+! validator (scripts/lib.py:validateFaultRoughGeometry, called from
+! scripts/case.setup for every insertFaultType > 0). They are not redundant:
+! these files get hand-edited, and a case is routinely set up on one machine
+! and copied to an HPC where case.setup never runs again. Until v5.6.0 this
+! reader took the header entirely on faith -- it read nnx/nnz, allocated
+! rough_geo(3,nnx*nnz) and read exactly that many rows -- so a file that was
+! short, or whose header disagreed with the mesh being built, either read past
+! the end of the file or silently morphed every node onto the wrong surface.
+! PROJECT_RULES.md rule 2: fail loudly instead.
+!
+! What the mesh actually requires (src/func_lib.f90:insertFaultInterface):
+!   ixx = nint((x - rough_fx_min)/dx) + 1,  1 <= ixx <= nnx
+!   izz = nint((z - rough_fz_min)/dz) + 1,  1 <= izz <= nnz
+! i.e. the file's grid must BE the fault grid of the mesh being built: same
+! corner, same spacing, same node counts. Note the indexing uses the MESH dx/dz
+! while rough_fx_max is derived from the HEADER's dx, so a spacing mismatch is
+! invisible at read time and stretches the surface at mesh time.
     use globalvar
+    use errorCodes
     implicit none
-    real (kind = dp) :: nnxTmp, nnzTmp
+    real (kind = dp) :: nnxTmp, nnzTmp, spanx, spanz, extraTmp
     include 'mpif.h'
 
     logical::file_exists
-    integer(kind=4):: i, j
-    
+    integer(kind=4):: i, j, ios, nnxExpect, nnzExpect
+
     call requireInputFile("bFault_Rough_Geometry.txt")
-    
+
     open(unit = 1008, file = 'bFault_Rough_Geometry.txt', form = 'formatted', status = 'old')
-        read(1008,*) nnxTmp, nnzTmp
-        read(1008,*) dxtmp, rough_fx_min, rough_fz_min 
+        read(1008,*,iostat=ios) nnxTmp, nnzTmp
+        if (ios /= 0) call stopRoughGeometry('header row 1 must read "nnx nnz" but is missing or non-numeric.')
+        read(1008,*,iostat=ios) dxtmp, rough_fx_min, rough_fz_min
+        if (ios /= 0) call stopRoughGeometry('header row 2 must read "dx fxmin fzmin" but is missing or non-numeric.')
     close(1008)
     nnx = nint(nnxTmp)
     nnz = nint(nnzTmp)
+
+    if (abs(nnxTmp - nnx) > tol .or. abs(nnzTmp - nnz) > tol .or. nnx < 2 .or. nnz < 2) then
+        if (me == masterProcsId) write(*,*) 'header nnx, nnz read as ', nnxTmp, nnzTmp
+        call stopRoughGeometry('header nnx and nnz must be integers >= 2.')
+    endif
+
+    ! spacing: the header's dx must be the mesh's dx, because insertFaultInterface
+    ! indexes the rough grid with the mesh dx/dz.
+    if (abs(dxtmp - dx) > tol) then
+        if (me == masterProcsId) write(*,*) 'file dx = ', dxtmp, ' but the mesh dx = ', dx
+        call stopRoughGeometry('the rough-geometry file was sampled at a different cell size than this mesh.')
+    endif
+
+    ! corner: every index is counted from (rough_fx_min, rough_fz_min).
+    if (abs(rough_fx_min - fltxyz(1,1,1)) > tol .or. abs(rough_fz_min - fltxyz(1,3,1)) > tol) then
+        if (me == masterProcsId) then
+            write(*,*) 'file corner (fxmin, fzmin) = ', rough_fx_min, rough_fz_min
+            write(*,*) 'mesh fault corner          = ', fltxyz(1,1,1), fltxyz(1,3,1)
+        endif
+        call stopRoughGeometry('the rough-geometry file starts at a different fault corner than this mesh.')
+    endif
+
+    ! node counts: the fault must land on a whole number of cells, and the file
+    ! must carry exactly that many nodes.
+    spanx = (fltxyz(2,1,1) - fltxyz(1,1,1))/dx
+    spanz = (fltxyz(2,3,1) - fltxyz(1,3,1))/dz
+    if (abs(spanx - nint(spanx)) > tol .or. abs(spanz - nint(spanz)) > tol) then
+        if (me == masterProcsId) write(*,*) 'fault extent / cell size = ', spanx, spanz, ' (both must be whole numbers)'
+        call stopRoughGeometry('the fault edges do not land on rough-geometry nodes for this dx/dz.')
+    endif
+    nnxExpect = nint(spanx) + 1
+    nnzExpect = nint(spanz) + 1
+    if (nnx /= nnxExpect .or. nnz /= nnzExpect) then
+        if (me == masterProcsId) then
+            write(*,*) 'file   nnx, nnz = ', nnx, nnz
+            write(*,*) 'mesh   nnx, nnz = ', nnxExpect, nnzExpect, ' from the fault extent and dx, dz = ', dx, dz
+        endif
+        call stopRoughGeometry('the rough-geometry grid is not the fault grid of the mesh being built.')
+    endif
+
     rough_fx_max = (nnx - 1)*dxtmp + rough_fx_min
-    
+
     allocate(rough_geo(3,nnx*nnz))
-    
+
     open(unit = 1008, file = 'bFault_Rough_Geometry.txt', form = 'formatted', status = 'old')
         read(1008,*)
         read(1008,*)
         do i = 1, nnx*nnz
-            read(1008,*) rough_geo(1,i), rough_geo(2,i), rough_geo(3,i)
+            read(1008,*,iostat=ios) rough_geo(1,i), rough_geo(2,i), rough_geo(3,i)
+            if (ios /= 0) then
+                if (me == masterProcsId) then
+                    write(*,*) 'stopped at data row ', i, ' of ', nnx*nnz, ' (file row ', i+2, ')'
+                endif
+                call stopRoughGeometry('the file is short of, or has a malformed, "y dy/dx dy/dz" data row.')
+            endif
+            ! NaN/Inf here propagates straight into the mesh coordinates, where
+            ! it is far harder to trace back to this file.
+            do j = 1, 3
+                if (rough_geo(j,i) /= rough_geo(j,i) .or. abs(rough_geo(j,i)) > 1.0d30) then
+                    if (me == masterProcsId) write(*,*) 'non-finite value in column ', j, ' of data row ', i
+                    call stopRoughGeometry('the rough-geometry file holds a NaN or Inf.')
+                endif
+            enddo
         enddo
-    close(1008)    
-        
+        ! Per-cell fault-normal offset: the surface climbs |dy/dx|*dx from one
+        ! x column to the next and |dy/dz|*dz from one z row to the next, while
+        ! the nearest off-fault node layer is dy away. At an offset of one full
+        ! cell a column's fault node passes its neighbour's first off-fault
+        ! layer and insertFaultInterface tangles the elements. Checked on the
+        ! RATIO, not the raw slope: a planar fault dipping at 45 degrees has
+        ! dy/dz = cot(45) = 1 exactly while its true offset is dx*cos(45) < dy,
+        ! so a raw-slope test would refuse every fault dipping 45 degrees or
+        ! less (test.tpv10 dips 60 and carries |dy/dz| = 0.577).
+        if (max(maxval(abs(rough_geo(2,:)))*dx/dy, &
+                maxval(abs(rough_geo(3,:)))*dz/dy) >= 1.0d0) then
+            if (me == masterProcsId) then
+                write(*,*) 'max |dy/dx|*dx/dy = ', maxval(abs(rough_geo(2,:)))*dx/dy
+                write(*,*) 'max |dy/dz|*dz/dy = ', maxval(abs(rough_geo(3,:)))*dz/dy
+                write(*,*) 'dx, dy, dz = ', dx, dy, dz
+            endif
+            call stopRoughGeometry('the fault surface climbs a full fault-normal cell or more between adjacent fault nodes; the inserted elements would tangle.')
+        endif
+
+        ! A file with MORE rows than the header advertises was written for a
+        ! different grid; the tail would be silently ignored.
+        read(1008,*,iostat=ios) extraTmp
+        if (ios == 0) then
+            if (me == masterProcsId) write(*,*) 'expected exactly ', nnx*nnz, ' data rows after the 2 header rows'
+            call stopRoughGeometry('the rough-geometry file has more data rows than its header declares.')
+        endif
+    close(1008)
+
 end subroutine read_fault_rough_geometry
+
+subroutine stopRoughGeometry(reason)
+! Stop loudly on a bad bFault_Rough_Geometry.txt, naming the file, the reason
+! and the fix (PROJECT_RULES.md rule 2). Every rank reads the same file and so
+! reaches the same verdict; only the master prints, then all ranks stop.
+    use globalvar
+    use errorCodes
+    implicit none
+    include 'mpif.h'
+    character (len=*) :: reason
+    integer (kind = 4) :: iMPIerr
+
+    if (me == masterProcsId) then
+        write(*,*) 'read_fault_rough_geometry: bFault_Rough_Geometry.txt is not usable for this mesh.'
+        write(*,*) '  ', reason
+        write(*,*) '  Regenerate it for this case (case.setup, which validates it, or'
+        write(*,*) '  scripts/convertFaultGeometry for a supplied surface), or fix par so'
+        write(*,*) '  the fault grid matches the file.'
+    endif
+    call MPI_Barrier(MPI_COMM_WORLD, iMPIerr)
+    call abortRun(ERR_GEOM_ROUGH_INVALID, &
+        'bFault_Rough_Geometry.txt is not usable for this mesh: '//trim(reason))
+end subroutine stopRoughGeometry
 
 subroutine requireInputFile(fileName)
 ! Stop with a clear message if a required input file is missing.
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
     character (len=*) :: fileName
@@ -224,8 +356,8 @@ subroutine requireInputFile(fileName)
     if (me == 0) then
         INQUIRE(FILE=fileName, EXIST=file_exists)
         if (file_exists .eqv. .FALSE.) then
-            write(*,*) fileName, ' is required but missing, so exiting EQdyna'
-            stop
+            call abortRun(ERR_INPUT_FILE_MISSING, &
+                trim(fileName)//' is required but missing. Run case.setup in this directory.')
         endif
     endif
 end subroutine requireInputFile

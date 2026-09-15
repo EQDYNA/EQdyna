@@ -3,6 +3,7 @@
 Script to setup the case via user_defined_params.py.
 """
 from user_defined_params import par
+from lib import ensureFaultRoughGeometryForCase
 import netCDF4 as nc
 import numpy as np
 import os
@@ -328,9 +329,25 @@ def _main_func(description):
     # fault surface, so the generator is not called at all (it would otherwise
     # have to be told to do nothing).
     if par.insertFaultType in (1, 2):
-        os.system('./generateFaultInterface')
+        rc = os.system('./generateFaultInterface')
+        if rc != 0:
+            raise RuntimeError(
+                f'generateFaultInterface failed (exit {rc}); '
+                f'bFault_Rough_Geometry.txt was not generated.')
     elif par.insertFaultType == 3:
-        print('insertFaultType=3: using the fault geometry supplied by the case '
-              '(bFault_Rough_Geometry.txt); not generating one.')
+        print('insertFaultType=3: the case supplies its own fault geometry; '
+              'scripts/generateFaultInterface is not called. '
+              'bFault_Rough_Geometry.txt is handled below.')
+    # Every insertFaultType > 0 reads bFault_Rough_Geometry.txt in the Fortran
+    # (eqdyna3d.f90: `if (insertFaultType > 0) call read_fault_rough_geometry`),
+    # so every insertFaultType > 0 goes through here -- generated files
+    # included, so the generator is held to the same contract as a supplied
+    # one. ensureFaultRoughGeometryForCase keeps an already-correct file byte
+    # for byte (idempotent re-setup, and no clobbering a deliberately placed
+    # surface), regenerates via par.faultGeometryWriter when the compset
+    # supplies one, and validates whatever ends up on disk. Raises
+    # FaultGeometryError, which stops case.setup (rule 2).
+    if par.insertFaultType > 0:
+        ensureFaultRoughGeometryForCase(par)
 if __name__ == "__main__":
     _main_func(__doc__)

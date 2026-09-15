@@ -1,0 +1,282 @@
+#! /usr/bin/env python3
+"""
+Turn an arbitrary supplied fault surface into a valid bFault_Rough_Geometry.txt.
+
+EQdyna's rough-fault path needs the surface on EXACTLY the fault grid of the
+case: y(x, z) sampled at the mesh dx/dz, on nfx x nfz nodes counted from the
+fault corner (fxmin, fzmin), with the two derivative columns dy/dx and dy/dz
+alongside it (see scripts/lib.py for the format and why it has to be exact).
+Supplied surfaces almost never arrive that way -- SCEC ships TPV29/30 on a
+25 m grid in its own frame, a field or synthetic surface may be scattered
+points, and a case may want a dx the surface was never sampled at.
+
+This utility takes a table of (x, z, y) points -- gridded or scattered, in
+EQdyna's frame, metres -- resamples it onto the required regular grid at a
+requested dx, computes the derivative columns from the resampled surface, and
+then runs the case.setup validator (lib.validateFaultRoughGeometry) on its own
+output, so it cannot emit a file EQdyna would reject.
+
+    convertFaultGeometry surface.txt --dx 100
+    convertFaultGeometry surface.csv --dx 100 --cols 0,2,1 --delimiter ,
+    convertFaultGeometry surface.txt --dx 50 \
+        --fxmin -20000 --fxmax 20000 --fzmin -20000 --fzmax 0 --dz 50
+    convertFaultGeometry surface.txt --dx 500 --from-case   # extents from par
+
+Resampling:
+  * If the input is already a regular grid whose nodes include every target
+    node, the target values are taken EXACTLY from it (decimation, no
+    interpolation) -- the same thing case_input/test.tpv29/tpv29GeometryTools.py
+    does for the official SCEC surface, and the reason that tool still exists:
+    it also carries SCEC's ANALYTIC derivative columns, which cannot be
+    recovered from the surface alone. Use it for TPV29/30.
+  * Otherwise the surface is interpolated: bilinear for gridded input, Clough-
+    Tocher (scipy.interpolate.griddata, 'cubic') for scattered input. A target
+    node outside the convex hull of the input is an error, not a fill value
+    (PROJECT_RULES.md rule 2).
+
+Derivative columns are always np.gradient of the RESAMPLED surface at the
+target spacing -- second-order central inside, one-sided on the boundary lines
+-- the same convention as scripts/generateFaultInterface, so the file is
+self-consistent by construction.
+"""
+import argparse
+import sys
+
+import numpy as np
+
+from lib import (FaultGeometryError, validateFaultRoughGeometry,
+                 writeFaultRoughGeometry, FAULT_ROUGH_GEOMETRY_FILE)
+
+
+def loadSurfacePoints(fname, cols=(0, 1, 2), delimiter=None, skiprows=0):
+    """Read (x, z, y) columns, in metres, from a text table."""
+    data = np.loadtxt(fname, delimiter=delimiter, skiprows=skiprows, ndmin=2)
+    if max(cols) >= data.shape[1]:
+        raise FaultGeometryError(
+            f'{fname}: asked for columns {cols} but the file has only '
+            f'{data.shape[1]}.')
+    x, z, y = (data[:, cols[0]].astype(float),
+               data[:, cols[1]].astype(float),
+               data[:, cols[2]].astype(float))
+    if not (np.isfinite(x).all() and np.isfinite(z).all()
+            and np.isfinite(y).all()):
+        raise FaultGeometryError(
+            f'{fname}: input points contain NaN or Inf; clean them before '
+            f'converting (a NaN here becomes a NaN mesh coordinate).')
+    if x.size < 4:
+        raise FaultGeometryError(f'{fname}: only {x.size} point(s) supplied.')
+    return x, z, y
+
+
+def _asRegularGrid(x, z, y):
+    """If the points are a complete regular grid, return (xs, zs, Y) with Y
+    shaped (nz, nx) indexed [iz, ix]; otherwise return None."""
+    xs, zs = np.unique(x), np.unique(z)
+    if xs.size < 2 or zs.size < 2 or xs.size*zs.size != x.size:
+        return None
+    for s in (xs, zs):
+        d = np.diff(s)
+        if np.ptp(d) > 1.0e-6*max(1.0, abs(d[0])):
+            return None
+    Y = np.full((zs.size, xs.size), np.nan)
+    ix = np.searchsorted(xs, x)
+    iz = np.searchsorted(zs, z)
+    Y[iz, ix] = y
+    if not np.isfinite(Y).all():
+        return None   # duplicated points left a hole
+    return xs, zs, Y
+
+
+def resampleSurface(x, z, y, xt, zt):
+    """Resample a supplied surface onto the target node coordinates xt, zt.
+
+    Returns (Y, how) with Y shaped (len(zt), len(xt)) indexed [iz, ix] and
+    `how` naming the path taken, for the record the caller prints.
+    """
+    grid = _asRegularGrid(x, z, y)
+    if grid is not None:
+        xs, zs, Y = grid
+        ixSel = _exactIndex(xs, xt)
+        izSel = _exactIndex(zs, zt)
+        if ixSel is not None and izSel is not None:
+            return Y[np.ix_(izSel, ixSel)].copy(), (
+                f'exact resampling from the supplied {xs.size} x {zs.size} '
+                f'grid (no interpolation)')
+        _requireInside(xt, zt, xs.min(), xs.max(), zs.min(), zs.max())
+        from scipy.interpolate import RegularGridInterpolator
+        interp = RegularGridInterpolator((zs, xs), Y, method='linear',
+                                         bounds_error=True)
+        ZZ, XX = np.meshgrid(zt, xt, indexing='ij')
+        return interp(np.column_stack([ZZ.ravel(), XX.ravel()])
+                      ).reshape(ZZ.shape), (
+            f'bilinear interpolation from the supplied {xs.size} x {zs.size} '
+            f'grid')
+
+    _requireInside(xt, zt, x.min(), x.max(), z.min(), z.max())
+    from scipy.interpolate import griddata
+    ZZ, XX = np.meshgrid(zt, xt, indexing='ij')
+    Y = griddata(np.column_stack([x, z]), y,
+                 np.column_stack([XX.ravel(), ZZ.ravel()]), method='cubic')
+    Y = Y.reshape(ZZ.shape)
+    if not np.isfinite(Y).all():
+        n = int((~np.isfinite(Y)).sum())
+        raise FaultGeometryError(
+            f'{n} of {Y.size} target nodes fall outside the convex hull of the '
+            f'supplied scattered points, so the surface there is unknown. '
+            f'Supply points covering the whole fault, or shrink '
+            f'fxmin/fxmax/fzmin/fzmax.')
+    return Y, f'cubic interpolation from {x.size} scattered points'
+
+
+def _exactIndex(src, target):
+    """Indices of `target` in `src` when every target node is a source node
+    (to 1e-6 m); None otherwise."""
+    idx = np.searchsorted(src, target)
+    idx = np.clip(idx, 0, src.size - 1)
+    for cand in (idx, np.clip(idx - 1, 0, src.size - 1)):
+        if np.all(np.abs(src[cand] - target) <= 1.0e-6):
+            return cand
+    return None
+
+
+def _requireInside(xt, zt, xlo, xhi, zlo, zhi):
+    if xt.min() < xlo - 1.0e-6 or xt.max() > xhi + 1.0e-6 or \
+       zt.min() < zlo - 1.0e-6 or zt.max() > zhi + 1.0e-6:
+        raise FaultGeometryError(
+            f'the requested fault grid x in [{xt.min()}, {xt.max()}], z in '
+            f'[{zt.min()}, {zt.max()}] m reaches outside the supplied surface '
+            f'x in [{xlo}, {xhi}], z in [{zlo}, {zhi}] m. Extrapolating a '
+            f'rough surface is not meaningful; supply a larger surface or a '
+            f'smaller fault.')
+
+
+def convertFaultGeometry(inputFile, dx, dz=None, dy=None,
+                         fxmin=None, fxmax=None, fzmin=None, fzmax=None,
+                         ymin=None, ymax=None,
+                         cols=(0, 1, 2), delimiter=None, skiprows=0,
+                         out=FAULT_ROUGH_GEOMETRY_FILE, verbose=True):
+    """Convert a supplied surface into a validated bFault_Rough_Geometry.txt.
+
+    Returns the diagnostics dict from the validator run on the written file.
+    """
+    dz = dx if dz is None else dz
+    # dy is REQUIRED, never defaulted to dx (rule 2). It sets the units of the
+    # per-cell fault-normal offset -- the only check that catches element
+    # tangling -- so substituting dx silently changes what the threshold means
+    # and lets this utility emit a file it has not actually cleared.
+    if dy is None:
+        raise FaultGeometryError(
+            'dy (the fault-normal cell size, m) is required: it is what the '
+            'element-tangling check counts in. Pass --dy, or --from-case to '
+            'take it from user_defined_params.py.')
+    x, z, y = loadSurfacePoints(inputFile, cols, delimiter, skiprows)
+
+    fxmin = float(x.min()) if fxmin is None else float(fxmin)
+    fxmax = float(x.max()) if fxmax is None else float(fxmax)
+    fzmin = float(z.min()) if fzmin is None else float(fzmin)
+    fzmax = float(z.max()) if fzmax is None else float(fzmax)
+
+    nnx = _nodeCount(fxmin, fxmax, dx, 'x (strike)')
+    nnz = _nodeCount(fzmin, fzmax, dz, 'z (dip)')
+    xt = fxmin + dx*np.arange(nnx)
+    zt = fzmin + dz*np.arange(nnz)
+
+    Y, how = resampleSurface(x, z, y, xt, zt)
+    dydx = np.gradient(Y, dx, axis=1)
+    dydz = np.gradient(Y, dz, axis=0)
+
+    writeFaultRoughGeometry(Y, dydx, dydz, dx, fxmin, fzmin, fname=out,
+                            provenance=dict(
+                                tool='scripts/convertFaultGeometry',
+                                source=inputFile, sourceDx=f'{dx:.12g}',
+                                method=how))
+    if verbose:
+        print(f'convertFaultGeometry: {inputFile} -> {out}')
+        print(f'  {how}')
+        print(f'  fault grid {nnx} x {nnz} nodes, dx={dx} m, dz={dz} m, '
+              f'corner=({fxmin}, {fzmin}) m')
+    # Validate what was just written -- the utility is not allowed to emit a
+    # file the case.setup validator would reject.
+    return validateFaultRoughGeometry(out, dx=dx, dz=dz, dy=dy,
+                                      fxmin=fxmin, fxmax=fxmax,
+                                      fzmin=fzmin, fzmax=fzmax,
+                                      ymin=ymin, ymax=ymax, verbose=verbose)
+
+
+def _nodeCount(lo, hi, h, axis):
+    if h <= 0.0:
+        raise FaultGeometryError(f'spacing along {axis} must be positive, got {h}')
+    span = (hi - lo)/h
+    if abs(span - round(span)) > 1.0e-6:
+        raise FaultGeometryError(
+            f'the fault extent along {axis}, {hi} - {lo} = {hi - lo} m, is not '
+            f'a whole number of {h} m cells ({span} of them). Pick a dx that '
+            f'divides the extent, or set the extent explicitly.')
+    return int(round(span)) + 1
+
+
+def _main_func(description):
+    p = argparse.ArgumentParser(
+        description='Resample a supplied fault surface onto EQdyna\'s fault '
+                    'grid and write a validated bFault_Rough_Geometry.txt.',
+        epilog='Columns are x (strike, m), z (up, negative down, m), y '
+               '(fault-normal, m) in EQdyna\'s frame.')
+    p.add_argument('input', help='text table of surface points')
+    p.add_argument('--dx', type=float, help='target cell size along strike, m')
+    p.add_argument('--dz', type=float, default=None,
+                   help='target cell size along dip, m (default: --dx)')
+    p.add_argument('--dy', type=float, default=None,
+                   help='fault-normal cell size, m. REQUIRED (or use '
+                        '--from-case): it sets the units of the '
+                        'element-tangling check and is never defaulted.')
+    p.add_argument('--fxmin', type=float, default=None)
+    p.add_argument('--fxmax', type=float, default=None)
+    p.add_argument('--fzmin', type=float, default=None)
+    p.add_argument('--fzmax', type=float, default=None)
+    p.add_argument('--ymin', type=float, default=None,
+                   help='model domain ymin, m; enables the "surface stays '
+                        'inside the domain" check')
+    p.add_argument('--ymax', type=float, default=None)
+    p.add_argument('--from-case', action='store_true',
+                   help='take dx, dz, fxmin/fxmax/fzmin/fzmax, ymin/ymax from '
+                        'user_defined_params.py in the current directory '
+                        '(command-line values still win)')
+    p.add_argument('--cols', default='0,1,2',
+                   help='zero-based x,z,y column indices (default 0,1,2)')
+    p.add_argument('--delimiter', default=None,
+                   help='column delimiter (default: any whitespace)')
+    p.add_argument('--skiprows', type=int, default=0)
+    p.add_argument('-o', '--out', default=FAULT_ROUGH_GEOMETRY_FILE)
+    args = p.parse_args()
+
+    kw = dict(dx=args.dx, dz=args.dz, dy=args.dy,
+              fxmin=args.fxmin, fxmax=args.fxmax,
+              fzmin=args.fzmin, fzmax=args.fzmax,
+              ymin=args.ymin, ymax=args.ymax)
+    if args.from_case:
+        from user_defined_params import par
+        for name, val in (('dx', par.dx), ('dz', par.dz),
+                          ('dy', par.dy),
+                          ('fxmin', par.fxmin), ('fxmax', par.fxmax),
+                          ('fzmin', par.fzmin), ('fzmax', par.fzmax),
+                          ('ymin', par.ymin), ('ymax', par.ymax)):
+            if kw[name] is None:
+                kw[name] = val
+    if kw['dx'] is None:
+        p.error('--dx is required (or use --from-case)')
+
+    cols = tuple(int(c) for c in args.cols.split(','))
+    if len(cols) != 3:
+        p.error('--cols needs exactly three indices, e.g. 0,1,2')
+
+    try:
+        convertFaultGeometry(args.input, cols=cols, delimiter=args.delimiter,
+                             skiprows=args.skiprows, out=args.out, **kw)
+    except FaultGeometryError as exc:
+        print(f'convertFaultGeometry: FAILED - {exc}', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(_main_func(__doc__))

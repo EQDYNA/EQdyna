@@ -2,6 +2,7 @@
 ! MIT
 subroutine assembleGlobalMass
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
 
@@ -43,8 +44,9 @@ subroutine assembleGlobalMass
     do nel = 1, totalNumOfElements
         if (elemTypeArr(nel)>=11 .and. elemTypeArr(nel)<=12) then ! wedge below fault
             if (nodeElemIdRelation(3,nel) .ne. nodeElemIdRelation(4,nel)) then 
-                    write(*,*) 'Wrongly created wedge; nel is',nel, 'elemType is', elemTypeArr(nel)
-                    stop
+                    write(*,*) 'nel is',nel, 'elemType is', elemTypeArr(nel)
+                    call abortRun(ERR_MESH_BAD_WEDGE, &
+                        'A degenerate wedge element was built with unequal node ids (nodes 3 and 4 must coincide).')
             endif 
         !elseif (elemTypeArr(nel)==12) then
         !            stop
@@ -56,6 +58,7 @@ end subroutine assembleGlobalMass
 subroutine MPI4NodalQuant(quantArray, numDof)
     ! handle MPI communication for Nodal quantities - nodal force and nodal mass.
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
     integer (kind = 4) ::  iMPIerr, iMPIstatus(MPI_STATUS_SIZE), i, ixyz, numDof, rrr, &
@@ -234,6 +237,7 @@ end subroutine MPI4NodalQuant
 
 subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, quantArray, dofCount4MPI)
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: nodeID, numDof, iDof, dofCount4MPI, resArrSize, operation
     real(kind = dp) :: resArr(resArrSize), quantArray(totalNumOfEquations)
@@ -270,6 +274,7 @@ end subroutine processNodalQuantArr
 
 subroutine assembleElementMassDetShg(elemID, elementMass, det, globalShapeFunc)
     use globalvar 
+    use errorCodes
     implicit none 
     integer (kind = 4) :: i, j, eqNumTmp, nodeID, ixyz, elemID
     real (kind = dp) :: elementMass(nee), det, globalShapeFunc(nrowsh, nen)
@@ -315,6 +320,7 @@ end subroutine assembleElementMassDetShg
 
 subroutine calcSSPhi4Hrgls(elemID, xl, xs, globalShapeFunc)
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: elemID, i, j, k
     integer (kind = 4), dimension(8,4) :: ha = reshape((/ &
@@ -363,6 +369,7 @@ end subroutine calcSSPhi4Hrgls
 
 subroutine contm(globalShapeFunc,det,elmass,constm)
     use globalvar
+    use errorCodes
     implicit none     
     ! to calc lumped mass for an element
     integer (kind=4) :: j,n,k

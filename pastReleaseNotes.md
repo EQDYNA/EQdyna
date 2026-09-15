@@ -1,6 +1,12 @@
 # Past release notes\
 
 # News in 2026
+* 20260914 v5.5.0 release notes
+  * New - test.tpv29 (SCEC TPV29, official 25 m rough-fault geometry) gated as the 8th benchmark case: fast tier at dx=500 m/4 ranks (2,1,2)/~3 min, full-tier spec entry at dx=50 m/term=20 s; frozen reference in test.reference.results/test.tpv29.
+  * Fix - fault-on-MPI-boundary bug: arn (fault nodal area) was double-counted whenever an MPI partition boundary coincided with the fault plane (symmetric y-domains), halving every on-fault traction term; fixed, with a hard-stop guard (checkFaultMPIAlignment) and a decomposition-invariance regression test.
+  * Add - insertFaultType=3 (case-supplied fault geometry, e.g. TPV29's official surface) documented as a first-class mode; case.setup no longer invokes the geometry generator for it.
+  * Fix - memory_estimate now reports cells/rank, cells total, ranks, and both memory figures separately (previously multiplied rank 0's count by the rank count, so it looked rank-invariant).
+  * Full details: the v5.5.0 GitHub Release, git tag message, and pathway_forward.md.
 * 20260914 v5.4.0 release notes
   * New - python/eqdyna/standalone: a fully standalone Python EQdyna (zero Fortran involved), now covering all five gated cases (tpv8, tpv104, tpv1053d, tpv10, drv.a6) with a committed acceptance tier (`testsys/run.py accept`) — four at roundoff-level agreement, drv.a6 under a documented chaos-aware criterion for its rupture-arrest bistability.
   * New - Drucker-Prager viscoplasticity ported to the standalone solver (test.drv.a6).

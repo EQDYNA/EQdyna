@@ -22,11 +22,21 @@ does not invent a separate decomposition scheme).
 # case -> {dx (m), term (s), (nx,ny,nz), citation}
 FULL_SPECS = {
     'test.tpv29': dict(
-        dx=50.0, term=20.0, decomp=(4, 1, 4),
-        source=("TPV29_30_Description_v06, Part 8: 50 m preferred / 100 m "
+        # Keys must be nx/ny/nz and citation -- run_e2e_full.py reads
+        # spec['nx'], spec['ny'], spec['nz'] and spec['citation'] directly.
+        # This entry used decomp=(...)/source=(...) and, being first in the
+        # dict, made the whole full tier die with KeyError before any case
+        # launched.
+        dx=50.0, term=20.0, nx=4, ny=1, nz=4,
+        citation=("TPV29_30_Description_v06, Part 8: 50 m preferred / 100 m "
                 "acceptable; 0-20 s. NOTE: 50 m is ~119 M elements — an HPC "
                 "job (bundle at scratch/tpv29/hpc50m, 1024 ranks ~0.7 h). "
-                "ny=1 keeps the fault plane off MPI partitions."),
+                "ny=1 keeps the fault plane off MPI partitions. Geometry at "
+                "this dx comes from the compset's shipped 50 m surface "
+                "(bFault_Rough_Geometry.tpv29.50m.txt, an exact decimation of "
+                "the official 25 m data); no download step is needed. Before "
+                "v5.6.0 only a 100 m surface shipped and this entry could not "
+                "be set up at all."),
     ),
     'test.tpv8': dict(
         dx=100., term=15., nx=4, ny=2, nz=2,
