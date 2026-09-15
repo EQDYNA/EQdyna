@@ -48,6 +48,20 @@ jobs:
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
         set -o pipefail
+        # The python/jax backend inside e2e is memory-heavy. Measured peak RSS
+        # per case, full length, on this repo's accept tier:
+        #     test.tpv8    3.59 GB   34 s
+        #     test.tpv104 10.42 GB   85 s
+        # A GitHub ubuntu-22.04 runner has 7 GB and is already holding the
+        # Fortran build, so tpv8 is the ONLY case that fits. Running all five
+        # got the job SIGTERM'd with no output (exit 143) -- a resource kill,
+        # not a test failure.
+        #
+        # So CI gates ONE case, and says so: e2e prints the case list, and
+        # "green" therefore states its own coverage rather than implying five.
+        # The remaining four run locally (leave this unset) or on a bigger
+        # runner. Widening this needs a memory measurement first, not a guess.
+        export EQDYNA_ACCEPT_CASES=test.tpv8
         python3 testsys/run.py all 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt

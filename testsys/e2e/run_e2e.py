@@ -155,6 +155,15 @@ def main():
     # silently, and never demoted to the numpy backend, which would report
     # "jax passed" for a run that was not jax (rule 2, and the reason
     # --backend jax stopped falling back in v5.6.2).
+    #
+    # CASE SUBSET, and why it is not a silent skip. One case at 20 steps peaks
+    # at 3.6 GB RSS (measured); a GitHub ubuntu-22.04 runner has 7 GB and is
+    # already holding the Fortran build. Running all five at full length got
+    # the job SIGTERM'd (exit 143, no output -- the runner killed it), which is
+    # a resource limit, not a test result. So CI gates a REAL subset rather
+    # than pretending to gate everything: EQDYNA_ACCEPT_CASES names which. The
+    # tier prints which cases it ran, so "green" always says what it covered.
+    # The full five-case run stays available by leaving the variable unset.
     py_rc = 0
     if os.environ.get('EQDYNA_E2E_SKIP_PYTHON') == '1':
         print('e2e: python/jax backend SKIPPED (EQDYNA_E2E_SKIP_PYTHON=1)')
@@ -165,7 +174,15 @@ def main():
             py_rc = 1
         else:
             print('\n-- e2e: python/jax backend (standalone, serial) --')
-            py_rc = subprocess.call([sys.executable, accept], cwd=REPO_ROOT, env=env)
+            # -u: unbuffered. When the runner SIGTERM'd this child, Python's
+            # block buffering meant ZERO output survived, so the log showed a
+            # 7-minute silence and an exit code. Unbuffered output makes a
+            # resource kill diagnosable instead of mute.
+            py_env = dict(env, PYTHONUNBUFFERED='1')
+            sub = os.environ.get('EQDYNA_ACCEPT_CASES')
+            print(f'   cases: {sub if sub else "all (EQDYNA_ACCEPT_CASES unset)"}')
+            py_rc = subprocess.call([sys.executable, '-u', accept],
+                                    cwd=REPO_ROOT, env=py_env)
             if py_rc != 0:
                 print(f'e2e: FAIL - python/jax backend exited {py_rc}')
 
