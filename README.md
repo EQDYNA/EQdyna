@@ -37,6 +37,14 @@ commit at coarse resolution against frozen references
 benchmark at its official spec resolution and duration, report-only, on
 16 ranks (`python3 testsys/run.py e2e-full`).
 
+The fast tier is a single sweep over `case x backend`: each case below is run
+on the Fortran solver (MPI) and on the standalone Python solver (NumPy and
+JAX), and every cell is compared against the same committed reference for that
+case, at that case's one tolerance. The run prints which cells it covered and
+which it did not, so a green result states its own scope. CI runs the subset
+that fits a 7 GB runner (`python3 testsys/run.py unit regression e2e-ci`);
+`python3 testsys/run.py all` runs the whole sweep.
+
 | case | physics | SCEC benchmark | fast tier (dx/cores/~time) | full-tier spec (dx/term) |
 |---|---|---|---|---|
 | [test.tpv8](case_input/test.tpv8/README.md) | strike-slip, slip-weakening | [TPV8](https://strike.scec.org/cvws/tpv89docs.html) | 500m/4/~48s | 100m/15s |
@@ -75,7 +83,10 @@ chmod 755 install-eqdyna.sh
 ./install-eqdyna.sh -m ubuntu # ubuntu/ls6/macos
 export EQDYNAROOT=$(pwd)
 PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-python3 testAll.py # quick testing of multiple examples with 4 cores; take ~180 s.
+python3 testsys/run.py all # the sweep: 8 cases x 3 backends (fortran, python-numpy,
+                           # python-jax) against one canonical reference each.
+                           # Cells run concurrently; ~730 s on a 64-core box.
+                           # It prints which cells it ran, so a pass states its scope.
 ```
 For bash, please insert the following lines in .bashrc
 ```
