@@ -22,6 +22,12 @@ import numpy as np
 import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# BOTH: this file imports `port_jax` as a top-level module (python/eqdyna on
+# the path), while port_jax itself does `from eqdyna import nucleation` --
+# the shared swtwNucleation, deliberately not duplicated per backend. That
+# needs python/ on the path too. The refactor collapses this inconsistency;
+# until then both entries are required.
+sys.path.insert(0, os.path.join(REPO_ROOT, 'python'))
 sys.path.insert(0, os.path.join(REPO_ROOT, 'python', 'eqdyna'))
 
 jax = pytest.importorskip('jax', reason='port_jax.py is the JAX backend; without '
@@ -95,6 +101,41 @@ def test_time_loop_step_count_is_traced_not_baked():
     want = jax.jit(lambda c: jax.lax.scan(build_step(inv), c, xs=None, length=6)[0])(c0)
     for g, w in zip(got, want):
         assert jnp.array_equal(g, w)
+
+
+def test_time_loop_passes_the_1_based_step_number():
+    """time_loop hands the step its 1-BASED step number, and for port_tp_jax
+    that value IS physics, not bookkeeping: thermop writes the history column
+    `nt-1` and evaluates its convolution kernel at age `(nt-j)*dt`
+    (src/updateThermalPressurization.f90:22-33). It must be exactly the
+    sequence `lax.scan(step, c, xs=jnp.arange(1, nsteps+1))` used to deliver
+    before all three JAX ports were put on this one loop -- an off-by-one here
+    would shift every past term's weight by one step and read as a physics
+    change, not as a bug."""
+    def build_step(inv):
+        def step(carry, nt):
+            seen, = carry
+            return (seen.at[nt - 1].set(nt.astype(seen.dtype)),), None
+        return step
+
+    n = 5
+    got, = port_jax.time_loop(build_step, _toy_inv(), (jnp.zeros(n),), n)
+    assert jnp.array_equal(got, jnp.arange(1.0, n + 1)), \
+        'time_loop delivered %r, not the 1..nsteps lax.scan delivered' % (got,)
+
+
+def test_split_inv_promotes_int32_index_arrays_too():
+    """port_jax.build() hands every index array to the device as int32 now
+    (~660 MB of addressing on test.tpv104, halved). split_inv classifies on
+    dtype KIND, not width, so int32 must still land in `dyn` -- if a narrower
+    index fell through to `static` it would become an HLO literal again and the
+    footprint win would silently revert, with every gate still green."""
+    dyn, sta = port_jax.split_inv(dict(
+        idxIx=jnp.asarray([0, 2, 1], dtype=jnp.int32),
+        idxP3=[np.asarray([1, 0, 2], dtype=np.int32)],
+        det_w_p=jnp.asarray([0.5, 1.0, 1.5]), dt=0.125))
+    assert 'idxIx' in dyn and 'idxP3' in dyn, 'int32 index arrays must be promoted'
+    assert 'det_w_p' in sta
 
 
 def test_split_inv_is_a_partition():

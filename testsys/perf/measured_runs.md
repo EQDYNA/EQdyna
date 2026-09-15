@@ -1,5 +1,19 @@
 # Measured run speeds
 
+> **The element-scaling harness that produced §"Element scaling" was removed
+> on 2026-09-15** — `run_elem_scaling.py`, `analyze_elem_scaling.py` and
+> `elem_per_rank.py`. Nothing invoked them (they were not wired into
+> `testsys/run.py` or CI, only into each other), and `run_elem_scaling.py`
+> carried a rationale that had already been shown false: its `--max-others`
+> flag claimed sibling jobs "do not contend for cores", but `CORE_BASE` was
+> dead, the mpirun line had no `--cpu-set`, and the script's own notes record
+> that Open MPI ignores such pinning anyway (pathway_forward item 29b).
+> The MEASUREMENTS below are kept — they are evidence and rule 4 says a number
+> travels with its provenance — but the commands quoted in that section no
+> longer resolve. Recover the scripts from git history if the study is redone;
+> do not re-create them from the quoted invocations, which encode the false
+> pinning claim.
+
 Real timings from actual runs, kept because per-step speed is how we size jobs
 and judge scaling. Every row carries its provenance (rule 6). Rates are
 **simulated seconds per wall minute** — the quantity that scales with rank
