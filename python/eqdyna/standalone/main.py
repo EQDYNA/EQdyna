@@ -104,9 +104,11 @@ methodology and numbers; extended to tpv104 (friclaw==4) and tpv1053d
 (friclaw==5) the same way, same-session follow-on.
 """
 import argparse
+import contextlib
 import importlib
 import os
 import sys
+import time
 
 import numpy as np
 
@@ -313,16 +315,86 @@ def build_solver_state(case_dir):
     return S, mesh
 
 
-def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND):
+class Profile(dict):
+    """Wall-clock per phase. Measured, never estimated.
+
+    Why this exists: reasoning about where a run spends its time produced two
+    wrong answers in a row (a threading claim built on a knob that does not
+    work, and a memory-bandwidth claim contradicted by the achieved bandwidth).
+    The phases below are the ones that can actually be confused for each other
+    -- one-time setup vs one-time XLA compile vs the per-step loop -- and a
+    single total hides all three.
+
+    JAX dispatches asynchronously, so every phase boundary that follows device
+    work calls block_until_ready; without it a phase records queue-submission
+    latency and the next phase inherits the real cost.
+    """
+
+    def __init__(self, backend):
+        super().__init__()
+        self.backend = backend
+        self.nelem = 0
+
+    def _sync(self):
+        if self.backend != 'jax':
+            return
+        try:
+            import jax
+        except ImportError:
+            return
+        for d in jax.devices():
+            try:
+                d.synchronize_all_activity()
+            except AttributeError:
+                pass
+
+    @contextlib.contextmanager
+    def phase(self, name):
+        self._sync()
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            self._sync()
+            self[name] = self.get(name, 0.0) + time.perf_counter() - t0
+
+    def report(self, nsteps=None, nelem=None, stream=None):
+        out = stream or sys.stderr
+        total = sum(self.values())
+        print('  --- profile (%s) ---' % self.backend, file=out)
+        for k, v in self.items():
+            share = 100.0*v/total if total else 0.0
+            print('  %-22s %9.3f s  %5.1f%%' % (k, v, share), file=out)
+        print('  %-22s %9.3f s' % ('TOTAL', total), file=out)
+        step = self.get('solve')
+        if step is not None and nsteps:
+            per = step/nsteps
+            line = '  %-22s %9.3f ms/step' % ('solve', per*1e3)
+            if nelem:
+                line += '   %8.0f ns/element/step' % (per/nelem*1e9)
+            print(line, file=out)
+        return self
+
+
+def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
+             profile=None):
     """Builds S (zero pydump reads), dispatches to the friclaw-appropriate
     solver's run() under the requested `backend` ('jax', the default, or
     'numpy') -- port.py/port_jax.py friclaw==1, port_rsf.py/port_rsf_jax.py
     friclaw==4, port_tp.py/port_tp_jax.py friclaw==5 -- writes frt.txt0 via
     frt_writer.write_frt (byte-exact Fortran E18.7E4 format). Returns the
-    path written."""
-    S, mesh = build_solver_state(case_dir)
-    solver = _resolve_solver(S['friclaw'], backend)
-    out = solver.run(S, nsteps=nsteps, verbose=verbose)
+    path written.
+
+    `profile` is an optional Profile; when given, each phase is timed
+    separately so setup, solve and output cannot be confused for one another.
+    """
+    prof = profile if profile is not None else Profile(backend)
+    with prof.phase('setup (mesh+input)'):
+        S, mesh = build_solver_state(case_dir)
+    with prof.phase('resolve solver'):
+        solver = _resolve_solver(S['friclaw'], backend)
+    with prof.phase('solve'):
+        out = solver.run(S, nsteps=nsteps, verbose=verbose)
 
     nftnd = S['nftnd']
     fric_1idx = np.zeros((nftnd + 1, 101))
@@ -331,7 +403,10 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND):
     fnft_1idx[1:] = out['fnft']
 
     frt_path = os.path.join(case_dir, 'frt.txt0')
-    frt_writer.write_frt(frt_path, mesh['meshCoor'], mesh['nsmp'], fnft_1idx, fric_1idx)
+    with prof.phase('write frt'):
+        frt_writer.write_frt(frt_path, mesh['meshCoor'], mesh['nsmp'],
+                             fnft_1idx, fric_1idx)
+    prof.nelem = S.get('totalNumOfElements') or 0
     return frt_path
 
 
@@ -371,14 +446,24 @@ def main():
                      help='JAX platform (default: auto = whatever JAX picks). '
                           'Only meaningful with --backend jax. No fallback: '
                           'gpu with no GPU is an error.')
+    ap.add_argument('--profile', action='store_true',
+                     help='print wall-clock per phase (setup / solve / write) '
+                          'so one-time cost and per-step cost cannot be '
+                          'confused. JAX phases are synchronised, so the '
+                          'numbers are compute, not queue submission.')
     args = ap.parse_args()
     if args.backend == 'jax':
         _select_device(args.device)
     elif args.device != 'auto':
         raise SystemExit('--device %s is meaningless with --backend numpy'
                          % args.device)
-    path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend)
+    prof = Profile(args.backend)
+    path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend,
+                    profile=prof)
     print('backend=%s device=%s' % (args.backend, active_device(args.backend)))
+    if args.profile:
+        prof.report(nsteps=args.nsteps, nelem=prof.nelem or None,
+                    stream=sys.stdout)
     print('wrote', path)
 
 
