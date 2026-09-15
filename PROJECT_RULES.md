@@ -288,11 +288,29 @@ The release workflow, in order:
    into `pastReleaseNotes.md` under its year heading, dropping the pointer
    line.
 4. Add a Tasks-done row to `pathway_forward.md` (rule 14).
-5. Commit everything above together; annotated tag `vX.Y.Z` on that commit.
-6. Push only on explicit approval from the maintainer.
-7. With the push, publish the GitHub Release for the tag
+5. Commit everything above together.
+6. Push the COMMIT and wait for CI to go green. Do not tag yet.
+7. Tag `vX.Y.Z` and publish the GitHub Release only after CI is green on that
+   commit.
+
+   **Why the tag comes after CI, not before.** A local gate cannot model the
+   runner. v5.7.0 was gated green locally through CI's own entry point, tagged,
+   published -- and CI went red because a GitHub runner has 7 GB and the
+   Python backend needed 10.4 GB for one case. The development box has 64 cores
+   and far more memory, so the constraint was invisible to any local run. That
+   was the fourth CI red in one sequence with the same shape, each time a local
+   green that did not transfer: v5.6.0 *what* was committed (partial git add),
+   v5.6.1 *how* the gate was invoked (tiers directly, not install-eqdyna.sh),
+   v5.6.2 *what environment* it ran in (scipy undeclared), v5.7.0 *what
+   resources* it had. Rule 16 closed the first three by making the local gate
+   more faithful. Resources cannot be closed that way -- only by ordering.
+
+   A released tag that points at a red commit is worse than a late tag: the
+   Releases page becomes the authoritative wrong answer.
+8. Push only on explicit approval from the maintainer.
+9. Publish the GitHub Release for the tag
    (`gh release create vX.Y.Z --title vX.Y.Z --notes-file <notes> --latest`)
-   so the Releases page always shows the current version.
+   so the Releases page always shows the current version -- after step 7.
 
 **Rationale**: v5.3.4 (2026-09-09) was cut with its notes appended to
 `pastReleaseNotes.md` instead of leading `README.md`, because the

@@ -1,6 +1,13 @@
 # Past release notes\
 
 # News in 2026
+* 20260915 v5.7.0 release notes
+  * Perf - Python setup 14.0 s -> 1.46 s (9.6x), byte-identical: mass assembly, element build, equation numbering and coordinate/fault builders vectorized with order-preserving reductions, each keeping its scalar loop as a named oracle.
+  * Perf - JAX solver 2.1x end-to-end: the jit was rebuilt inside run(), so every call paid a full ~14 s XLA compile (GPU utilisation measured at 1.6%). Now a traced trip count plus a persistent compilation cache; hourglass modes pre-summed before the scatter (-16% exec).
+  * Perf - NumPy solver 1.90x (1042 -> 550 ms/step), bit-identical: duplicate contractions eliminated, loop-invariant products hoisted, the two 300 MB/step concatenates removed.
+  * New - e2e is backend-parameterized: the same gated cases run through Fortran and through the Python/JAX standalone, against the same references. jax added to CI.
+  * Note - the JAX GPU path is nondeterministic run-to-run (XLA lowers the duplicate-index scatter-add to atomics); measured 8.9e-08 between identical runs of unmodified code. jax-cpu is exactly reproducible. Bit-identity is not available on GPU and no gate should assume it.
+  * Known gap - the accept tier has never exercised the NumPy backend; it runs the default (jax). Forcing --backend numpy gives 4/5, drv.a6 at 461 flips against a 450 bound. Pre-existing, unresolved.
 * 20260915 v5.6.2 release notes
   * Fix - scipy was used by scripts/convertFaultGeometry but never added to CI's pip install, so the unit tier passed locally and failed in CI. scipy added; its absence now raises a message naming it and pointing at the exact-decimation path, which needs no scipy.
   * New - testsys/regression/test_ci_dependencies.py: every third-party import under scripts/ and testsys/ must be installed in CI, or be lazy AND guarded. Reads the package list out of the workflow file so the two cannot drift. It immediately found a second instance (imageio), now guarded.
