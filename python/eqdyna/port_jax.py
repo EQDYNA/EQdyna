@@ -12,6 +12,8 @@ break parity against the double-precision Fortran/NumPy reference.
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
+
+from eqdyna import nucleation
 import numpy as np
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -200,15 +202,28 @@ def time_loop(build_step, inv, carry0, nsteps):
     the step's `inv` lookups resolve against jit ARGUMENTS rather than
     closed-over constants -- see split_inv() for the measured reason.
 
-    Callers whose carry shapes depend on nsteps (port_tp_jax.py's history
-    arrays) cannot use this; they keep a static length by necessity (and do
-    the same split_inv() themselves).
+    The step is called as `step(carry, nt)` with nt the 1-BASED step number,
+    the same value `lax.scan(step, c, xs=jnp.arange(1, nsteps+1))` used to
+    deliver -- port_jax/port_rsf_jax ignore it, port_tp_jax needs it (it indexes
+    the thermal-pressurization history column and evaluates the convolution
+    kernel's age at `nt - j`). Passing it here is what lets ALL THREE JAX ports
+    share this one loop, which is the point: the Fortran has exactly one time
+    loop (driver.f90:10) with the friclaw branch INSIDE it (faulting.f90:17-18),
+    and every place this port grew a second loop instead is a place a fix has to
+    be made, and verified, twice.
+
+    A caller whose carry contains an array shaped by nsteps (port_tp_jax.py's
+    (nftnd, nsteps) history) still recompiles per step count -- the SHAPE is in
+    the cache key even though the trip count is not -- and must pass a trip
+    count no larger than that width, since `.at[:, nt-1].set()` would otherwise
+    CLAMP silently. port_tp_jax allocates the history from the same `nsteps` it
+    passes here, so the two cannot disagree; see the assertion there.
     """
     dyn, sta = split_inv(inv)
 
     def body(dyn_arrays, c, n):
         step = build_step({**sta, **dyn_arrays})
-        return jax.lax.fori_loop(0, n, lambda _i, cc: step(cc, None)[0], c)
+        return jax.lax.fori_loop(0, n, lambda i, cc: step(cc, i + 1)[0], c)
 
     return jax.jit(body)(dyn, carry0, nsteps)
 
@@ -297,29 +312,81 @@ def build(S):
         ccosphi = sinphi = tv = 0.0
 
     j = jnp.asarray
+
+    # Every array below that is an INDEX (mesh connectivity, equation ids, the
+    # element-force scatter targets, the fault node lists) goes to the device as
+    # int32 rather than int64. There are a lot of them -- on test.tpv104
+    # (735,000 elements, 763,537 nodes) conn/conn_i/conn_p + idxIx/idxIy/idxIz +
+    # the twelve idxP12 + idxP3 + idxH0/1/2 + idx12_v/idx3_v come to ~660 MB as
+    # int64 -- and they are pure addressing: every one of them is consumed by a
+    # gather or a scatter, never by float arithmetic, so a narrower index type
+    # cannot change a single rounding. Halving them removes ~330 MB from `inv`
+    # (which split_inv then passes as jit ARGUMENTS, so this is 330 MB off both
+    # the host arrays and the device buffers) and halves the bytes each gather/
+    # scatter has to read to find its targets. Verified end-to-end, sha256 over
+    # tobytes() of the full velArr/dispArr/force/fric/fnft at full step count:
+    # digests UNCHANGED on test.tpv8 and test.tpv104, jax-cpu.
+    #
+    # NO SILENT TRUNCATION (rule 2/3): int32 addresses up to 2**31-1, and a mesh
+    # big enough to exceed that in equation count or node count would wrap
+    # around into a valid-looking but WRONG index -- a silently corrupted
+    # scatter, the worst possible failure here. It is checked, once, loudly,
+    # right here instead.
+    _I32_MAX = 2 ** 31 - 1
+    _biggest = max(NEQ + 1, N, conn.shape[0] * 8)
+    if _biggest > _I32_MAX:
+        raise OverflowError(
+            'port_jax.build: this mesh needs more than int32 indices (max index '
+            'magnitude %d > %d: NEQ+1=%d, N=%d, E*8=%d). The index arrays below are '
+            'int32 to halve their footprint; widen them back to int64 for a mesh '
+            'this size rather than letting the cast wrap around silently.'
+            % (_biggest, _I32_MAX, NEQ + 1, N, conn.shape[0] * 8))
+
+    def ji(x):
+        """Index array -> int32 on device. Pure addressing, never arithmetic."""
+        return jnp.asarray(x, dtype=jnp.int32)
+
     inv = dict(
         N=N, dt=dt, rdampk=rdampk, NEQ1=NEQ + 1,
-        conn=j(conn), phi=j(phi), ss=j(ss),
-        int_nodes_idx=j(int_nodes_idx), idx3_v=j(idx3_v),
-        pml_nodes_idx=j(pml_nodes_idx), idx12_v=j(idx12_v), a9=j(a9), b9=j(b9),
+        conn=ji(conn), phi=j(phi), ss=j(ss),
+        int_nodes_idx=ji(int_nodes_idx), idx3_v=ji(idx3_v),
+        pml_nodes_idx=ji(pml_nodes_idx), idx12_v=ji(idx12_v), a9=j(a9), b9=j(b9),
         lam_i=j(lam_i), miu_i=j(miu_i), dNx_i=j(dNx_i), dNy_i=j(dNy_i), dNz_i=j(dNz_i),
-        constk_w_i=j(constk_w_i), conn_i=j(conn_i), idxIx=j(idxIx), idxIy=j(idxIy), idxIz=j(idxIz),
+        constk_w_i=j(constk_w_i), conn_i=ji(conn_i), idxIx=ji(idxIx), idxIy=ji(idxIy),
+        idxIz=ji(idxIz),
         lam_p=j(lam_p), miu_p=j(miu_p), dNx_p=j(dNx_p), dNy_p=j(dNy_p), dNz_p=j(dNz_p),
         det_w_p=j(det_w_p), a1=j(a1), b1=j(b1), a2=j(a2), b2=j(b2), a3=j(a3), b3=j(b3),
-        idxP12=[j(x) for x in idxP12], idxP3=[j(x) for x in idxP3],
-        idxH0=j(idxH0), idxH1=j(idxH1), idxH2=j(idxH2),
-        nsmp1=j(nsmp1), nsmp2=j(nsmp2), un=j(S['un']), us=j(S['us']), ud=j(S['ud']), arn=j(S['arn']),
-        idxF_s=[j(x) for x in idxF_s], idxF_m=[j(x) for x in idxF_m],
+        idxP12=[ji(x) for x in idxP12], idxP3=[ji(x) for x in idxP3],
+        idxH0=ji(idxH0), idxH1=ji(idxH1), idxH2=ji(idxH2),
+        nsmp1=ji(nsmp1), nsmp2=ji(nsmp2), un=j(S['un']), us=j(S['us']), ud=j(S['ud']),
+        arn=j(S['arn']),
+        idxF_s=[ji(x) for x in idxF_s], idxF_m=[ji(x) for x in idxF_m],
         inv_mass_full=j(inv_mass_full), slipRateThres=S['slipRateThres'], C_elastic=S['C_elastic'],
         Ei=E_int.shape[0], Ep=E_pml.shape[0], E=conn.shape[0],
         grav_const=grav_const, m_e_i=j(m_e_i), m_e_p=j(m_e_p),
         stress_i0=j(stress_i0), pml_init6=j(pml_init6),
         ccosphi=ccosphi, sinphi=sinphi, tv=tv,
     )
+    # swtwNucleation's forced-rupture time: geometry only, so it belongs
+    # with the other loop invariants. None when this case does no forced
+    # nucleation, which make_step branches on at TRACE time.
+    if nucleation.enabled(S):
+        import numpy as _np
+        _r = nucleation.source_radius(_np, S['meshCoor'][S['nsmp1']],
+                                      S['xsource'], S['ysource'], S['zsource'])
+        inv['nuc_tr'] = jnp.asarray(nucleation.forced_rupture_time(
+            _np, _r, S.get('TPV', 0), S.get('nucR', 0.0),
+            S.get('nucRuptVel', 0.0)))
+    else:
+        inv['nuc_tr'] = None
+
     return inv
 
 
 def make_step(inv):
+    # Forced-rupture time is geometry-only, so it is computed ONCE here rather
+    # than per step. None means this case does no forced nucleation.
+    nuc_tr = inv.get('nuc_tr')
     dt = inv['dt']; rdampk = inv['rdampk']
 
     def step(carry, _):
@@ -377,7 +444,14 @@ def make_step(inv):
         slip = fric[:, 76]
         fricCoeff = jnp.where(jnp.abs(slip) < 1.0e-10, fs, fs - (fs - fd) * slip / D0)
         fricCoeff = jnp.where(slip >= D0, fd, fricCoeff)
-        fricCoeff = jnp.minimum(fs, fricCoeff)  # swtwNucleation no-op for TPV==8
+        # swtwNucleation -- the SAME code path numpy uses (eqdyna.nucleation),
+        # not a second copy. Absent entirely until now, which is why
+        # test.tpv29 nucleated 0 of 3321 nodes: see nucleation.py's docstring.
+        if nuc_tr is None:
+            fricCoeff = jnp.minimum(fs, fricCoeff)
+        else:
+            fricCoeff = nucleation.apply(jnp, fricCoeff, fs, fd,
+                                         fric[:, 4], nuc_tr, timeElapsed)
 
         effNorm = jnp.where((Tn + fric[:, 5]) > 0.0, 0.0, Tn + fric[:, 5])
         trialShear = fric[:, 3] - fricCoeff * effNorm

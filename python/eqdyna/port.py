@@ -44,6 +44,24 @@ def run(S, nsteps=None, verbose=True):
     fnft = np.full(nftnd, 99999.0)
     timeElapsed = 0.0
     slipRateThres = S['slipRateThres']; C_elastic = S['C_elastic']
+    # swtwNucleation constants (globalvar.f90:79-81) and the per-node source
+    # distance, both loop-invariant: radius uses the SLAVE node coordinate,
+    # matching faulting.f90:388's meshCoor(:, nsmp(1,...)).
+    NUC_VS_FIXED, NUC_TAPER_COEF, NUC_VR_TO_VS = 3464.0, 0.081, 0.7
+    TPV = S.get('TPV', 0)
+    nucR = S.get('nucR', 0.0)
+    nucRuptVel = S.get('nucRuptVel', 0.0)
+    nuc_on = (S.get('C_nuclea', 0) == 1 and S.get('nucfault', 1) == 1
+              and nucR > 0.0)
+    if nuc_on:
+        mc = S['meshCoor']
+        _c = mc[nsmp1]
+        nuc_radius = np.sqrt((_c[:, 0] - S['xsource']) ** 2
+                             + (_c[:, 1] - S['ysource']) ** 2
+                             + (_c[:, 2] - S['zsource']) ** 2)
+    else:
+        nuc_radius = None
+
     idxF_s = [eq_ids[nsmp1, d] for d in range(3)]
     idxF_m = [eq_ids[nsmp2, d] for d in range(3)]
 
@@ -95,7 +113,38 @@ def run(S, nsteps=None, verbose=True):
         fricCoeff = np.where(np.abs(slip) < 1.0e-10, fs, fs - (fs - fd) * slip / D0)
         fricCoeff = np.where(slip >= D0, fd, fricCoeff)
 
-        fricCoeff = np.minimum(fs, fricCoeff)  # swtwNucleation no-op for TPV==8 (tr default 1e9)
+        # ---- swtwNucleation (faulting.f90:382-406) ----
+        # Called for friclaw 1 AND 2 whenever C_nuclea==1 and this is nucfault.
+        # Previously this was `np.minimum(fs, fricCoeff)` -- the DEGENERATE case
+        # where tr stays at its 1e9 default, which is correct only for
+        # TPV not in {29, 36, 37, 201, 202}. test.tpv29 is the SOURCE of this
+        # formula (spec Part 6) and now declares par.tpv = 29; the no-op meant the
+        # forced rupture never fired: measured 0 of 3321 nodes ruptured against
+        # the reference's 2974. Not a tolerance question -- nothing nucleated.
+        if nuc_on:
+            tr = np.full(nftnd, 1.0e9)
+            inside = nuc_radius <= nucR
+            if TPV in (201, 36, 37, 29):
+                # tr = (r + 0.081*nucR*(1/(1-(r/nucR)^2) - 1)) / (0.7*3464)
+                # At r == nucR exactly the bracket divides by zero and Fortran
+                # yields +Inf, i.e. that node never forces -- reproduced here
+                # rather than guarded, so the edge matches (errstate keeps numpy
+                # from warning on a division Fortran performs silently).
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    ratio = np.where(inside, nuc_radius / nucR, 0.0)
+                    taper = 1.0 / (1.0 - ratio ** 2) - 1.0
+                    trv = (nuc_radius + NUC_TAPER_COEF * nucR * taper) / (
+                        NUC_VR_TO_VS * NUC_VS_FIXED)
+                tr = np.where(inside, trv, tr)
+            elif TPV == 202:
+                tr = np.where(inside, nuc_radius / nucRuptVel, tr)
+            tw_t0 = fric[:, 4]                      # FRIC_SLOT_TW_T0 = 5
+            tc = np.where(timeElapsed < tr, 0.0,
+                          np.where(timeElapsed < tr + tw_t0,
+                                   (timeElapsed - tr) / tw_t0, 1.0))
+            fricCoeff = np.minimum(fs + (fd - fs) * tc, fricCoeff)
+        else:
+            fricCoeff = np.minimum(fs, fricCoeff)
 
         effNorm = np.where((Tn + fric[:, 5]) > 0.0, 0.0, Tn + fric[:, 5])
         trialShear = fric[:, 3] - fricCoeff * effNorm

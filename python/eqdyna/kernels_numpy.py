@@ -154,37 +154,87 @@ def build(S):
     idxH1 = np.take_along_axis(eq_ids[conn], slot1[:, :, None], axis=2)[:, :, 0].ravel()
     idxH2 = np.take_along_axis(eq_ids[conn], slot2[:, :, None], axis=2)[:, :, 0].ravel()
 
-    # ---- PERF (2026-09-14): persistent scatter staging ----
-    # `elastic_step` ends by scattering every element force contribution into
-    # `force` with one `np.bincount`. It used to build BOTH the index array and
-    # the value array with a fresh `np.concatenate` every step -- here that is
-    # 37.5 M entries, i.e. ~300 MB of index copying plus ~300 MB of value
-    # copying per step, on top of the per-block temporaries the values were
-    # copied FROM.
+    # ---- PERF (2026-09-15): in-place block scatter, no staged function space ----
+    # `elastic_step` accumulates every element force contribution into `force`.
+    # Two earlier shapes of this, both replaced here:
+    #   (a) build the index array AND the value array with a fresh
+    #       `np.concatenate` every step, then one `np.bincount`;
+    #   (b) (2026-09-14) hoist the concatenated index array to build() and
+    #       stage the values in one persistent buffer written through with
+    #       `out=`, still one `np.bincount`.
+    # Both MATERIALISE THE WHOLE FUNCTION SPACE: 148 scatter entries per
+    # element (interior force 3x8, hourglass 4 modes x 3 x 8, PML 15 x 8 on
+    # PML elements only), i.e. on test.tpv104 (735,000 elements) 109,214,784
+    # int64 indices (874 MB) plus 109,214,784 float64 values (874 MB) -- and
+    # the index concatenation is pure DUPLICATION, because the individual
+    # blocks it concatenates (idxIx/idxIy/idxIz, idxP12, idxP3, idxH0/1/2) are
+    # kept anyway, and the four hourglass modes all reuse the same three.
     #
-    # The index array is loop-invariant (it is pure mesh connectivity), so it is
-    # built once, here. The value array cannot be loop-invariant, but it can be
-    # allocated once and written IN PLACE: every force block below takes a
-    # `reshape(-1, 8)` view into its own slice of `scat_val` and writes through
-    # it with `out=`, so the concatenate disappears entirely and each block's
-    # temporary disappears with it.
+    # `np.add.at` accumulates into `force` IN PLACE, one block at a time, so
+    # neither array is needed: no concatenated index, no staged value space.
+    # The only value buffers that must exist are the ones that have to be LIVE
+    # AT THE SAME TIME -- the three PML group sums (they accumulate across all
+    # twelve PML f-blocks) plus one in-flight block -- because every other
+    # block is consumed by its scatter the moment it is built. What is left is
+    # `stage` (one (E,8) block, reused by the interior and hourglass blocks in
+    # turn) and `stage_p` (4 x (E_pml,8)).
     #
-    # `scat_off[k]:scat_off[k+1]` is group k, in the SAME order the old
-    # `scat_idx`/`scat_val` lists were appended in -- that order is load-bearing,
-    # because `np.bincount` accumulates in array order and float addition is not
-    # associative. Group order: interior Fx/Fy/Fz, then (PML only) f1..f12 and
-    # the three PML group sums, then hourglass mode 0..3 x direction 0..2.
-    # Every group is fully overwritten each step (each one's first write is an
-    # `out=` store, never a read-modify-write), so no stale value can survive.
-    scat_groups = [idxIx, idxIy, idxIz]
-    scat_pml0 = len(scat_groups)   # first PML group (f1); f1..f12 then the 3 group sums
-    if E_pml.shape[0]:
-        scat_groups = scat_groups + idxP12 + idxP3
-    scat_hg0 = len(scat_groups)    # first hourglass group (mode 0, direction 0)
-    scat_groups = scat_groups + [idxH0, idxH1, idxH2] * 4
-    scat_idx = np.concatenate(scat_groups)
-    scat_off = np.concatenate(([0], np.cumsum([g.size for g in scat_groups])))
-    scat_val = np.empty(scat_idx.size)
+    # MEASURED, full-length serial runs, peak RSS (/usr/bin/time -v's number):
+    #     test.tpv8    (E=235008, 114 steps)   1.389 GB -> 0.855 GB  (-38%)
+    #     test.tpv104  (E=735000, 120 steps)   3.968 GB -> 2.406 GB  (-39%)
+    # and ms/step 543.40 -> 527.60 and 1691.42 -> 1660.95 respectively, i.e.
+    # the footprint is not bought with time -- it is slightly cheaper too.
+    #
+    # BIT-IDENTITY -- the reason this is a legal substitution and not merely a
+    # cheaper one. `np.bincount` accumulates in ARRAY order: block by block in
+    # concatenation order and, within a block, in (element, node) order.
+    # `np.add.at` accumulates in INDEX-ARRAY order. Calling it once per block,
+    # in the SAME block order, therefore performs exactly the same additions
+    # on exactly the same partial sums for every target equation. That
+    # equivalence is load-bearing rather than cosmetic: float addition is not
+    # associative, so ANY regrouping (per-block `np.bincount` calls, summing
+    # the four hourglass modes before the scatter, reordering the blocks)
+    # changes the answer in the last bits. Block order is therefore fixed:
+    # interior Fx/Fy/Fz, then (PML elements only) f1..f12 and the three PML
+    # group sums, then hourglass mode 0..3 x direction 0..2. `force` is zeroed
+    # before the first block and `0.0 + x == x` exactly (including x == -0.0,
+    # which bincount's own zero-initialised accumulator also renders +0.0), so
+    # dropping bincount's separate output array changes nothing either.
+    # Verified end-to-end, sha256 over tobytes() of the full velArr/dispArr/
+    # force/fric/fnft at full step count: test.tpv8 (114 steps, 235,008
+    # elements) and test.tpv104 (120 steps, 735,000 elements) digests
+    # UNCHANGED against the bincount form.
+    #
+    # `np.add.at` used to be the slow path it is still remembered as (an
+    # unbuffered per-element ufunc loop); NumPy 1.25's ufunc.at fast path
+    # removed that, and on this box (NumPy 2.2.6) it is also FASTER than the
+    # bincount form it replaces. Timed in ISOLATION on test.tpv8's real index
+    # arrays (30 blocks, 37,552,896 entries, one core), best of 3:
+    #     np.add.at, block at a time                    91.5 ms
+    #     prebuilt index + staged values + bincount    136.8 ms
+    #     concatenate index AND values + bincount      179.5 ms
+    # -- and byte-identical output across all three. A previous measurement
+    # reporting add.at 1.35x SLOWER does not reproduce on this NumPy; the
+    # cross-check is testsys/unit/test_kernels_numpy_scatter.py, which pins the
+    # ORDERING (not the speed), since that is what bit-identity depends on.
+    #
+    # THE ENTRY COUNT is the lever this does NOT pull, priced here so the next
+    # reader does not have to re-derive it. 96 of the 148 entries per element
+    # are hourglass (4 modes x 3 directions x 8 nodes), and all four modes
+    # scatter through the SAME three index arrays, so summing the modes per
+    # (element, node) first would take the whole scatter from 148 to 76 entries
+    # per element. Timed the same way on test.tpv8: 91.5 ms -> 59.1 ms, i.e.
+    # -32 ms of a 528 ms step (-6%), and now that nothing is staged it costs no
+    # memory to do. It is still not done, because it is NOT bit-identical: for
+    # a given equation the contributions currently arrive mode-major
+    # (mode 0's eight elements, then mode 1's, ...) and fusing makes them
+    # element-major, which is a different association of the same sum. The JAX
+    # kernel DOES fuse the modes (kernels_jax.py's hourglass note, where the
+    # accepted deviation is documented and gated against that port's own
+    # nondeterminism floor); this one is the reference the JAX port is measured
+    # against, so it keeps the Fortran-order association.
+    stage = np.empty((conn.shape[0], 8))        # interior blocks use rows [:E_int]
+    stage_p = np.empty((4, E_pml.shape[0], 8))  # PML group sums g0/g1/g2 + in-flight f
 
     # -(phi*r) == (-phi)*r exactly in IEEE 754 (negation only flips the sign
     # bit; multiplication's rounding is sign-symmetric), so folding the sign
@@ -192,6 +242,26 @@ def build(S):
     # with no negation pass and no temporary. Bit-identical, not approximate.
     neg_phi = -phi
     neg_det_w_p = -det_w_p[:, None]
+    # MEASURED AND DROPPED (2026-09-15), recorded so it is not re-attempted on
+    # the strength of the same plausible-but-wrong hypothesis: `phi` as handed
+    # in by main.py/loading.py is `np.transpose(phi48,(0,2,1))`, a VIEW, so the
+    # per-mode einsum operand `phi[:, m, :]` has an inner stride of 4 doubles
+    # -- one useful double per 32 bytes, exactly the pattern the
+    # dNx_i/dNy_i/dNz_i contiguous copies above exist to avoid -- and that
+    # einsum is 89.5 ms/step of test.tpv8's 528 (second only to the scatter, by
+    # cProfile). Contracting against `neg_phi` instead (a fresh array, hence
+    # C-contiguous) with the sign carried by a negated `ss` is bit-identical --
+    # verified, full-length digests unchanged on test.tpv8 and test.tpv104,
+    # since (-ss).(-phid) == +(ss.phid) term by term in IEEE -- and it is
+    # WORTHLESS: 528.81 vs 527.91 ms/step on test.tpv8, 1656.30 vs 1660.95 on
+    # test.tpv104, i.e. inside run-to-run spread, while costing the extra (E,6)
+    # `neg_ss` array (+33 MB on test.tpv104). The stride is not what that
+    # einsum is spending its time on; np.einsum's 'ei,eij->ej' inner loop is
+    # scalar either way (~250 M mul-add/s here, far below this core's
+    # bandwidth). Reverted. A real win there needs a different reduction, and
+    # every faster reduction tried (stacked matmul, contiguous-axis reduce) is
+    # a DIFFERENT accumulation order -- see the matmul/FMA note at the einsum
+    # itself.
 
     # ---- Milestone 10 (drv.a6, C_elastic==0): gravity + Drucker-Prager ----
     # grav_const is EXACTLY 0.0 (bitwise) whenever C_elastic==1 -- see this
@@ -224,8 +294,7 @@ def build(S):
         det_w_p=det_w_p, wx_p=wx_p, wy_p=wy_p, wz_p=wz_p,
         conn_p=conn_p, a1=a1, b1=b1, a2=a2, b2=b2, a3=a3, b3=b3,
         idxP12=idxP12, idxP3=idxP3, idxH0=idxH0, idxH1=idxH1, idxH2=idxH2,
-        scat_idx=scat_idx, scat_off=scat_off, scat_val=scat_val,
-        scat_pml0=scat_pml0, scat_hg0=scat_hg0,
+        stage=stage, stage_p=stage_p,
         neg_phi=neg_phi, neg_det_w_p=neg_det_w_p,
         C_elastic=C_elastic, grav_const=grav_const, m_e_i=m_e_i, m_e_p=m_e_p,
         stress_i0=stress_i0, pml_init6=pml_init6, ccosphi=ccosphi, sinphi=sinphi, tv=tv,
@@ -292,13 +361,14 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
         dispArr[pml_nodes, 1] = np.where(has_eq, dispArr[pml_nodes, 1] + vB * dt, 0.0)
         dispArr[pml_nodes, 2] = np.where(has_eq, dispArr[pml_nodes, 2] + vC * dt, 0.0)
 
+    # `force` is accumulated BLOCK BY BLOCK from here on, with `np.add.at` and
+    # in the fixed block order build() documents -- zeroed first, so the first
+    # contribution to any equation lands on an exact 0.0 exactly as
+    # `np.bincount`'s own accumulator did. `blk` is the single reusable
+    # (E,8) value buffer; nothing stages the whole 148-entries-per-element
+    # function space any more (see build()).
     force[:] = 0.0
-    # `sv` is build()'s persistent staging buffer; `_grp(k)` is group k's own
-    # (n,8) window into it. Nothing is concatenated any more -- see build().
-    sv = inv['scat_val']; so = inv['scat_off']
-
-    def _grp(k):
-        return sv[so[k]:so[k + 1]].reshape(-1, 8)
+    blk = inv['stage']
 
     # ---- assembleGlobalKU: interior elements ----
     conn_i = inv['conn_i']; dNx_i, dNy_i, dNz_i = inv['dNx_i'], inv['dNy_i'], inv['dNz_i']
@@ -362,15 +432,21 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
     st6 = constk_w_i * (stress_i[:, 5] + rdampk * strr6)
     # `a + b + c` is left-associative, so `x = a; x += b; x += c` performs the
     # same two additions on the same two roundings -- the only thing that
-    # changes is that the sum lands straight in the scatter buffer.
-    Fx = _grp(0); Fy = _grp(1); Fz = _grp(2)
-    np.multiply(dNx_i, st1[:, None], out=Fx); Fx += dNz_i * st5[:, None]; Fx += dNy_i * st6[:, None]
-    np.multiply(dNy_i, st2[:, None], out=Fy); Fy += dNz_i * st4[:, None]; Fy += dNx_i * st6[:, None]
-    np.multiply(dNz_i, st3[:, None], out=Fz); Fz += dNy_i * st4[:, None]; Fz += dNx_i * st5[:, None]
+    # changes is that the sum lands in the reusable block buffer.
+    # Each block is scattered the moment it is complete, so ONE (E_int,8)
+    # buffer serves all three: Fy's store is an `out=` overwrite, never a
+    # read-modify-write, so no part of Fx can survive into it.
+    F = blk[:conn_i.shape[0]]
+    np.multiply(dNx_i, st1[:, None], out=F); F += dNz_i * st5[:, None]; F += dNy_i * st6[:, None]
+    np.add.at(force, inv['idxIx'], F.ravel())
+    np.multiply(dNy_i, st2[:, None], out=F); F += dNz_i * st4[:, None]; F += dNx_i * st6[:, None]
+    np.add.at(force, inv['idxIy'], F.ravel())
+    np.multiply(dNz_i, st3[:, None], out=F); F += dNy_i * st4[:, None]; F += dNx_i * st5[:, None]
     # calcElemMass's gravity body force (al(3,:), z-direction only) -- see
     # build()'s docstring for the -m_e*grav_const derivation; EXACTLY 0.0
     # when C_elastic==1.
-    Fz -= (inv['m_e_i'] * inv['grav_const'])[:, None]
+    F -= (inv['m_e_i'] * inv['grav_const'])[:, None]
+    np.add.at(force, inv['idxIz'], F.ravel())
 
     # ---- assembleGlobalKU: PML elements ----
     E_pml = inv['E_pml']
@@ -432,42 +508,52 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
         s0 = [rdampk * srate[k] + inv['pml_init6'][:, k] for k in range(6)]
 
         wx_p, wy_p, wz_p = inv['wx_p'], inv['wy_p'], inv['wz_p']  # == -det_w_p[:,None]*dN?_p, hoisted
-        p0 = inv['scat_pml0']
-        efPML12 = [_grp(p0 + j) for j in range(12)]
-        f1, f2, f3v, f4, f5, f6, f7, f8, f9v, f10, f11, f12 = efPML12
-        np.multiply(wx_p, sxx[:, None], out=f1)
-        np.multiply(wy_p, sxy[:, None], out=f2)
-        np.multiply(wz_p, sxz[:, None], out=f3v)
-        np.multiply(wx_p, sxy[:, None], out=f4)
-        np.multiply(wy_p, syy[:, None], out=f5)
-        np.multiply(wz_p, syz[:, None], out=f6)
-        np.multiply(wx_p, sxz[:, None], out=f7)
-        np.multiply(wy_p, syz[:, None], out=f8)
-        np.multiply(wz_p, szz[:, None], out=f9v)
+        # The twelve PML f-blocks are built ONE AT A TIME in `t` and scattered
+        # immediately; only the three group sums g0/g1/g2 have to stay live,
+        # because each accumulates four of the f-blocks (f1+f2+f3v+f10,
+        # f4+f5+f6+f11, f7+f8+f9v+f12). Accumulating them incrementally --
+        # `g = f1; g += f2; g += f3v; g += f10` -- is the SAME left-associative
+        # sum `np.add(f1,f2,out=g); g += f3v; g += f10` performed, on the same
+        # two-at-a-time roundings, so the group sums are bit-identical while
+        # only 4 blocks of (E_pml,8) exist instead of 15.
+        sp_ = inv['stage_p']; g0 = sp_[0]; g1 = sp_[1]; g2 = sp_[2]; t = sp_[3]
+        ip12 = inv['idxP12']; ip3 = inv['idxP3']
+        np.multiply(wx_p, sxx[:, None], out=t); np.copyto(g0, t); np.add.at(force, ip12[0], t.ravel())
+        np.multiply(wy_p, sxy[:, None], out=t); g0 += t; np.add.at(force, ip12[1], t.ravel())
+        np.multiply(wz_p, sxz[:, None], out=t); g0 += t; np.add.at(force, ip12[2], t.ravel())
+        np.multiply(wx_p, sxy[:, None], out=t); np.copyto(g1, t); np.add.at(force, ip12[3], t.ravel())
+        np.multiply(wy_p, syy[:, None], out=t); g1 += t; np.add.at(force, ip12[4], t.ravel())
+        np.multiply(wz_p, syz[:, None], out=t); g1 += t; np.add.at(force, ip12[5], t.ravel())
+        np.multiply(wx_p, sxz[:, None], out=t); np.copyto(g2, t); np.add.at(force, ip12[6], t.ravel())
+        np.multiply(wy_p, syz[:, None], out=t); g2 += t; np.add.at(force, ip12[7], t.ravel())
+        np.multiply(wz_p, szz[:, None], out=t); g2 += t; np.add.at(force, ip12[8], t.ravel())
         # f10..f12 multiply det_w_p into a SUM of three terms, so they cannot
         # reuse wx_p/wy_p/wz_p. `t *= neg_det_w_p` instead of `neg_det_w_p * t`
         # is the same product -- IEEE multiplication is commutative exactly.
         ndw = inv['neg_det_w_p']
-        np.multiply(dNx_p, s0[0][:, None], out=f10); f10 += dNz_p * s0[4][:, None]
-        f10 += dNy_p * s0[5][:, None]; f10 *= ndw
-        np.multiply(dNy_p, s0[1][:, None], out=f11); f11 += dNz_p * s0[3][:, None]
-        f11 += dNx_p * s0[5][:, None]; f11 *= ndw
-        np.multiply(dNz_p, s0[2][:, None], out=f12); f12 += dNy_p * s0[3][:, None]
-        f12 += dNx_p * s0[4][:, None]; f12 *= ndw
+        np.multiply(dNx_p, s0[0][:, None], out=t); t += dNz_p * s0[4][:, None]
+        t += dNy_p * s0[5][:, None]; t *= ndw
+        g0 += t; np.add.at(force, ip12[9], t.ravel())
+        np.multiply(dNy_p, s0[1][:, None], out=t); t += dNz_p * s0[3][:, None]
+        t += dNx_p * s0[5][:, None]; t *= ndw
+        g1 += t; np.add.at(force, ip12[10], t.ravel())
+        np.multiply(dNz_p, s0[2][:, None], out=t); t += dNy_p * s0[3][:, None]
+        t += dNx_p * s0[4][:, None]; t *= ndw
+        g2 += t; np.add.at(force, ip12[11], t.ravel())
 
         # calcElemMass's gravity body force lands in the z ("vhg_z") slot
-        # (efPML12[11]) BEFORE calcPMLElemKU subtracts from it -- added
-        # here to the z group sum instead (addition is commutative);
+        # (efPML12[11]) BEFORE calcPMLElemKU subtracts from it -- subtracted
+        # here from the z group sum instead (addition is commutative);
         # EXACTLY 0.0 when C_elastic==1.
-        grav_p = (inv['m_e_p'] * inv['grav_const'])[:, None]
-        g0 = _grp(p0 + 12); g1 = _grp(p0 + 13); g2 = _grp(p0 + 14)
-        np.add(f1, f2, out=g0); g0 += f3v; g0 += f10
-        np.add(f4, f5, out=g1); g1 += f6; g1 += f11
-        np.add(f7, f8, out=g2); g2 += f9v; g2 += f12; g2 -= grav_p
+        g2 -= (inv['m_e_p'] * inv['grav_const'])[:, None]
+        np.add.at(force, ip3[0], g0.ravel())
+        np.add.at(force, ip3[1], g1.ravel())
+        np.add.at(force, ip3[2], g2.ravel())
 
     # ---- hrglss (C_hg==1, all elements) ----
     conn = inv['conn']; phi = inv['phi']; ss = inv['ss']
-    neg_phi = inv['neg_phi']; hg0 = inv['scat_hg0']
+    neg_phi = inv['neg_phi']
+    idxH0 = inv['idxH0']; idxH1 = inv['idxH1']; idxH2 = inv['idxH2']
     # PERF (2026-09-14): combine at NODE level, then gather once. The old form
     # gathered both (N,3) arrays up to (E,8,3) -- 45 MB each here -- and did the
     # arithmetic on the expanded copies, recomputing the same node value once
@@ -475,28 +561,32 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
     # the identical expression evaluated on the 6 MB node arrays instead, and a
     # gather reproduces values exactly, so `dl_all` is bit-identical.
     dl_all = (dispArr + rdampk * velArr)[conn]
-    # PERF (2026-09-14): all four hourglass modes contract against the SAME
-    # dl_all, so `phi @ dl_all` -- a stacked (E,4,8)@(E,8,3) matmul -- replaces
-    # four separate `(phi[:,m,:,None]*dl_all).sum(axis=1)` passes, each of which
-    # materialised a full (E,8,3) product temporary (45 MB here) only to reduce
-    # it away. Measured BITWISE-IDENTICAL to the four-pass form on the real
-    # tpv8 arrays (E=235008): NumPy's stacked-matmul inner loop accumulates the
-    # 8-term dot sequentially in the same i-order as a reduce over a strided
-    # axis, and it does not dispatch these 4x8x3 blocks to BLAS. That identity
-    # is a property of the shapes, not of the data -- but it IS a property of
-    # this NumPy build, so testsys/unit/test_kernels_numpy_perf.py asserts it
-    # directly rather than leaving it to the end-to-end parity gate to notice.
+    # PERF (2026-09-14): each mode's contraction against dl_all is ONE
+    # `np.einsum('ei,eij->ej', ...)` -- a reduce over the 8 nodes -- rather than
+    # `(phi[:,m,:,None]*dl_all).sum(axis=1)`, which materialised a full (E,8,3)
+    # product temporary (45 MB here) only to reduce it away. NOT replaced by a
+    # stacked (E,4,8)@(E,8,3) `matmul`: matmul is free to contract with FMA,
+    # which changes the answer in the last bits (an FMA contraction inside a
+    # matmul is exactly how an earlier change here looked bit-identical across
+    # 2.8M values and then diverged at step 5).
+    # `phi[:, m, :]` is a STRIDED slice (phi is a transposed view); switching
+    # the operand to the contiguous `neg_phi` was tried, is bit-identical, and
+    # buys nothing -- see build()'s "MEASURED AND DROPPED" note.
     for m in range(4):
         phid = np.einsum('ei,eij->ej', phi[:, m, :], dl_all)
         r0 = ss[:, 0] * phid[:, 0] + ss[:, 1] * phid[:, 1] + ss[:, 2] * phid[:, 2]
         r1 = ss[:, 1] * phid[:, 0] + ss[:, 3] * phid[:, 1] + ss[:, 4] * phid[:, 2]
         r2 = ss[:, 2] * phid[:, 0] + ss[:, 4] * phid[:, 1] + ss[:, 5] * phid[:, 2]
-        h = hg0 + 3 * m
-        np.multiply(neg_phi[:, m, :], r0[:, None], out=_grp(h))
-        np.multiply(neg_phi[:, m, :], r1[:, None], out=_grp(h + 1))
-        np.multiply(neg_phi[:, m, :], r2[:, None], out=_grp(h + 2))
+        # Each mode's three direction blocks are scattered as they are built,
+        # through the same reusable buffer. The four modes are NOT summed per
+        # (element, node) first: that would be a cheaper scatter (24 entries
+        # per element instead of 96) but a DIFFERENT association -- see the
+        # measured tradeoff in build()'s note -- and this path is gated on
+        # bit-identity.
+        np.multiply(neg_phi[:, m, :], r0[:, None], out=blk); np.add.at(force, idxH0, blk.ravel())
+        np.multiply(neg_phi[:, m, :], r1[:, None], out=blk); np.add.at(force, idxH1, blk.ravel())
+        np.multiply(neg_phi[:, m, :], r2[:, None], out=blk); np.add.at(force, idxH2, blk.ravel())
 
-    force += np.bincount(inv['scat_idx'], weights=sv, minlength=inv['NEQ1'])
-    force[0] = 0.0  # scrub sink again (bincount may have accumulated masked-out contributions there)
+    force[0] = 0.0  # scrub sink again (the scatter accumulated masked-out contributions there)
 
     return v1, velArr, dispArr, force, stress_i, s_p
