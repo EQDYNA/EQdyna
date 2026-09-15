@@ -17,9 +17,8 @@
 #   frictional        C0 = 0.4 MPa + 0.0002 MPa/m * (4000 m - depth) above
 #   cohesion          4 km depth; 0.4 MPa below
 #   nucleation        smoothed forced rupture, r_crit 4000 m, t0 0.5 s;
-#                     par.tpv = 36 selects the forced-rupture-time formula in
-#                     faulting.f90:swtwNucleation, which is exactly the
-#                     TPV29 spec formula T(r) = (r + 0.081*r_crit*
+#                     faulting.f90:swtwNucleation implements the spec formula
+#                     T(r) = (r + 0.081*r_crit*
 #                     (1/(1-(r/r_crit)^2)-1)) / (0.7*Vs) with Vs fixed at
 #                     3464 m/s (NUC_* constants in globalvar.f90)
 #   initial stress    depth-dependent effective stress tensor (spec p.12-13)
@@ -77,7 +76,9 @@ par.C_elastic = 1
 par.C_nuclea  = 1
 par.insertFaultType = 3   # >0: rough fault; 3 (not 1/2): keep official geometry
 par.friclaw = 1
-par.tpv = 36              # selects the TPV29-spec forced-rupture-time formula
+par.tpv = 29              # this case IS TPV29; faulting.f90:swtwNucleation
+                          # selects the spec's smoothed forced-rupture formula
+                          # for TPV 29/36/37/201 (they share it -- see Part 6)
 par.nucR = 4.0e3          # r_crit, m
 
 par.dt = 0.5*par.dx/par.vp

@@ -61,7 +61,36 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
     dispArr = dispArr.at[pnodes, 1].set(jnp.where(has_eq, dispArr[pnodes, 1] + vB * dt, 0.0))
     dispArr = dispArr.at[pnodes, 2].set(jnp.where(has_eq, dispArr[pnodes, 2] + vC * dt, 0.0))
 
-    scat_idx = []; scat_val = []
+    # ---- element-force scatter, BLOCK AT A TIME (2026-09-15) ----
+    # `force` is rebuilt from zero here, and each element-force block is
+    # accumulated into it with its OWN `.at[].add()` as soon as it is built.
+    # It used to collect all 21 (index, value) blocks in two Python lists and
+    # `jnp.concatenate` each list into one index and one value array for a
+    # SINGLE scatter. Those two concatenations are in-graph, inside the step,
+    # so XLA materialises both every iteration: on test.tpv104 (735,000
+    # elements, 76 scatter entries per element) that is 448 MB of index plus
+    # 448 MB of value of pure temporary, which is most of the loop's reported
+    # temp allocation. Concatenating only to scatter is work that exists to
+    # serve the shape of the call, not the physics.
+    #
+    # The accumulation ORDER is unchanged, which is what makes this a legal
+    # substitution: XLA's CPU scatter applies a duplicate index list in array
+    # order, and each `.at[].add()` here consumes the previous one's result,
+    # so every target equation still sees its contributions in block order and
+    # then in (element, node) order -- exactly the sequence the single
+    # concatenated scatter applied. (`force` starts at exactly 0.0 and
+    # `0.0 + x == x`, so dropping the separate zero-init of the concatenated
+    # form changes nothing.) Verified end-to-end on jax-cpu, sha256 over
+    # tobytes() of the full velArr/dispArr/force/fric/fnft at full step count:
+    # test.tpv8 (114 steps) and test.tpv104 (120 steps) digests UNCHANGED.
+    #
+    # NOTE this is NOT the same question as port_jax.split_inv's: there the
+    # concern was mesh constants captured as HLO literals (peak RSS at COMPILE
+    # time); here it is a per-iteration temporary (peak RSS at RUN time), and
+    # unlike the host-side index hoisting that split_inv's docstring records as
+    # rejected, this one neither needs the index as one contiguous buffer nor
+    # changes the reduction order.
+    force = jnp.zeros(inv['NEQ1'], dtype=jnp.float64)
 
     # ---- assembleGlobalKU: interior elements ----
     conn_i = inv['conn_i']
@@ -115,8 +144,9 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
     Fy = dNy_i * st2[:, None] + dNz_i * st4[:, None] + dNx_i * st6[:, None]
     Fz = dNz_i * st3[:, None] + dNy_i * st4[:, None] + dNx_i * st5[:, None]
     Fz = Fz - (inv['m_e_i'] * inv['grav_const'])[:, None]
-    scat_idx += [inv['idxIx'], inv['idxIy'], inv['idxIz']]
-    scat_val += [Fx.ravel(), Fy.ravel(), Fz.ravel()]
+    force = force.at[inv['idxIx']].add(Fx.ravel())
+    force = force.at[inv['idxIy']].add(Fy.ravel())
+    force = force.at[inv['idxIz']].add(Fz.ravel())
 
     # ---- assembleGlobalKU: PML elements ----
     if inv['Ep'] > 0:
@@ -172,17 +202,26 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
         f12 = -det_w_p[:, None] * (dNz_p * s0[2][:, None] + dNy_p * s0[3][:, None] + dNx_p * s0[4][:, None])
         efPML12 = [f1, f2, f3v, f4, f5, f6, f7, f8, f9v, f10, f11, f12]
         for j in range(12):
-            scat_idx.append(inv['idxP12'][j]); scat_val.append(efPML12[j].ravel())
+            force = force.at[inv['idxP12'][j]].add(efPML12[j].ravel())
         grav_p = (inv['m_e_p'] * inv['grav_const'])[:, None]
         grp_sums = [efPML12[0] + efPML12[1] + efPML12[2] + efPML12[9],
                     efPML12[3] + efPML12[4] + efPML12[5] + efPML12[10],
                     efPML12[6] + efPML12[7] + efPML12[8] + efPML12[11] - grav_p]
         for g in range(3):
-            scat_idx.append(inv['idxP3'][g]); scat_val.append(grp_sums[g].ravel())
+            force = force.at[inv['idxP3'][g]].add(grp_sums[g].ravel())
 
     # ---- hrglss (C_hg==1, all elements) ----
     conn = inv['conn']; phi = inv['phi']; ss = inv['ss']
-    dl_all = dispArr[conn] + rdampk * velArr[conn]
+    # Combine at NODE level, then gather ONCE -- kernels_numpy.py's elastic_step
+    # already does this (its 2026-09-14 PERF note). The old form gathered BOTH
+    # (N,3) arrays up to (E,8,3) and did the arithmetic on the expanded copies,
+    # recomputing each node's value once per element that touches it (8x over):
+    # on test.tpv104 that is two 141 MB gathers instead of one, plus 8x the
+    # multiply-adds. `dispArr + rdampk*velArr` is the identical expression
+    # evaluated on the 18 MB node arrays instead, and a gather reproduces values
+    # exactly, so every element of dl_all is the same float64 -- bit-identical,
+    # verified end-to-end (digests unchanged, test.tpv8/test.tpv104, jax-cpu).
+    dl_all = (dispArr + rdampk * velArr)[conn]
     # The 4 hourglass modes all scatter to the SAME idxH0/idxH1/idxH2, so their
     # contributions are summed per (element, node) HERE rather than handed to
     # the scatter as 4 separate blocks. Same sum, re-associated: grouped by
@@ -221,12 +260,9 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
         fh0 = m0 if fh0 is None else fh0 + m0
         fh1 = m1 if fh1 is None else fh1 + m1
         fh2 = m2 if fh2 is None else fh2 + m2
-    scat_idx += [inv['idxH0'], inv['idxH1'], inv['idxH2']]
-    scat_val += [fh0.ravel(), fh1.ravel(), fh2.ravel()]
-
-    all_idx = jnp.concatenate(scat_idx)
-    all_val = jnp.concatenate(scat_val)
-    force = jnp.zeros(inv['NEQ1'], dtype=jnp.float64).at[all_idx].add(all_val)
+    force = force.at[inv['idxH0']].add(fh0.ravel())
+    force = force.at[inv['idxH1']].add(fh1.ravel())
+    force = force.at[inv['idxH2']].add(fh2.ravel())
     force = force.at[0].set(0.0)
 
     return v1, velArr, dispArr, force, stress_i, s_p

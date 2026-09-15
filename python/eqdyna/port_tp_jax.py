@@ -13,7 +13,7 @@ thermop's history integral is the real jit/scan structural question: the
 Fortran's inner sum runs over j=1..nt-1 (a DYNAMIC-length slice, since nt
 is the scan's own iteration index) -- not directly expressible as a static
 -shape JAX op. Resolved by preallocating the FULL (nftnd, nsteps) history
-arrays as scan-carry state (nsteps is static -- known before the scan
+arrays as loop-carry state (nsteps is static -- known before the loop
 starts) and summing over ALL nsteps columns every step, relying on the
 fact that not-yet-written "future" columns are exactly 0.0 (functional
 `.at[].set` never touches them) so their contribution to the weighted sum
@@ -35,7 +35,7 @@ import numpy as np
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from loading import load, region_damp  # noqa: E402
-from port_jax import build, enable_compilation_cache  # NOT split_inv -- see run()
+from port_jax import build, enable_compilation_cache, time_loop
 import kernels_jax
 
 
@@ -248,56 +248,103 @@ def run(S, nsteps=None, verbose=True):
     sliprate_hist = jnp.zeros((nftnd, nsteps), dtype=jnp.float64)
     shear_hist = jnp.zeros((nftnd, nsteps), dtype=jnp.float64)
 
-    # NOTE: unlike port_jax.py/port_rsf_jax.py this loop keeps a STATIC length.
-    # `sliprate_hist`/`shear_hist` above are shaped (nftnd, nsteps), so nsteps
-    # is a shape here, not just a trip count -- tracing it is not available
-    # without changing thermop's history representation. Consequence: this
-    # port still pays one XLA compile per distinct step count. The persistent
-    # compilation cache enabled in run() still removes the repeat cost for any
-    # step count seen before.
-    # `inv` stays CLOSED OVER here, unlike port_jax.py/port_rsf_jax.py, which
-    # pass it to jit as an ARGUMENT via port_jax.split_inv() to stop XLA from
-    # holding several copies of the mesh constants (measured 9.93 -> 4.01 GB
-    # peak RSS on test.tpv104; see split_inv's docstring). That promotion is
-    # deliberately NOT applied to this port, because on THIS program it is not
-    # bit-identical.
+    # ---- THE SAME LOOP THE OTHER TWO JAX PORTS RUN (2026-09-15) ----
+    # This port used to own a SECOND time loop -- its own `jax.jit(lambda c:
+    # jax.lax.scan(step, c, xs=jnp.arange(1, nsteps+1)))` with `inv` closed
+    # over -- while port_jax/port_rsf_jax went through port_jax.time_loop with
+    # `inv` promoted to jit ARGUMENTS by split_inv(). One loop per friclaw is
+    # not the Fortran's shape (driver.f90:10 is ONE `do nt = 1, nstep`; the
+    # friclaw branch is two lines INSIDE faulting.f90:17-18), and the cost of
+    # the divergence was concrete: the constant-promotion fix landed on two of
+    # three ports and left THIS case at 12.13 GB instead of 3.95, because there
+    # were three promotion decisions instead of one.
     #
-    # Measured, test.tpv1053d serial, 120 steps, jax-cpu, sha256 over
-    # tobytes() of the FULL velArr/dispArr/force/fric/fnft, against this
-    # closed-over form:
-    #     dispArr 9.2944e-14   force 5.3512e-11   fric 5.9001e-06 (max abs)
-    #     velArr  1.2279e-12   fnft  0 rupture-existence flips
-    # and that SAME deviation, digest for digest, appears under every variant
-    # tried -- promoting integer index arrays only, promoting them plus
-    # phi/ss/dN*, and (separately) hoisting the scatter-index concatenation to
-    # the host. All of those make the scatter's index operand a single
-    # contiguous buffer instead of an in-graph concatenate, and on this
-    # program that changes the element-force accumulation order XLA picks;
-    # float addition is not associative, so the answer moves. The same
-    # variants ARE bit-identical on port_jax/port_rsf_jax (test.tpv8,
-    # test.tpv104, test.tpv10, test.drv.a6 -- all five output arrays, zero
-    # differing elements), so this is a property of THIS loop: a lax.scan with
-    # an 11-leaf carry (the thermop history arrays are shaped (nftnd, nsteps),
-    # which forces a static length) rather than the 9-leaf fori_loop the other
-    # two ports use.
+    # WHY IT CAN SHARE THE LOOP -- the thing previously believed to prevent it.
+    # thermop's history integral is genuinely non-Markovian: the oracle,
+    # src/updateThermalPressurization.f90:22-33, sums j = 1..nt-1 with a kernel
+    # `1/sqrt(4*kapa*(nt-j)*dt + 2*h^2)` whose weight on EVERY past term
+    # changes as nt advances. There is no recursion and no exponential to fold
+    # into an accumulator, and the kernel decays only as (lag)^-1/2, so a
+    # rolling window would drop terms that still contribute -- the full
+    # (nftnd, nsteps) history is REQUIRED, and Fortran keeps exactly the same
+    # thing (onFaultTPHist(2, nftnd, nstep, ntotft), a global of the same
+    # shape). That was the assumption worth checking, and it holds.
+    # But it makes nsteps a SHAPE, not a trip count: the history WIDTH must be
+    # static, while the number of iterations need not be. `time_loop` supplies
+    # the 1-based step number to `step(carry, nt)` exactly as `lax.scan(...,
+    # xs=jnp.arange(1, nsteps+1))` did, so the only thing this port gives up by
+    # using it is a cache-key benefit it never had: the carry SHAPE still
+    # depends on nsteps, so a new step count still recompiles here (unlike
+    # port_jax/port_rsf_jax, where time_loop's traced trip count means one
+    # executable serves every step count).
     #
-    # So the footprint win is left unclaimed here rather than taken with a
-    # reduction-order change: the deviation above is well inside this case's
-    # accept bound (1e-4, observed 3.73e-06 against the committed reference)
-    # and flips no rupture time, but it IS a change to the answer, and trading
-    # bit-identity for memory is the owner's call, not this port's default.
-    # What it would buy, measured on test.tpv1053d serial, 120 steps, jax-cpu,
-    # /usr/bin/time -v peak RSS over the whole run:
-    #     closed over (this code)  12.50 GB   123.5 s solve   BIT-IDENTICAL
-    #     inv promoted              4.69 GB    82.2 s solve   deviation above
-    # i.e. -62% peak RSS and -33% solve. Re-decide it with those two rows and
-    # the deviation, not by re-discovering them.
-    scan_fn = jax.jit(lambda c: jax.lax.scan(
-        make_step(inv, S, nsteps), c, xs=jnp.arange(1, nsteps + 1))[0])
-
+    # NO SILENT CLAMP (rule 2): `sliprate_hist.at[:, nt-1].set()` would CLAMP,
+    # not raise, if the trip count ever exceeded the history width -- silently
+    # writing every overflowing step into the last column. The two come from
+    # the same `nsteps` three lines above, so they cannot disagree; asserted
+    # rather than assumed, because the failure mode is invisible.
+    #
+    # THIS CHANGES THE ANSWER. Read the numbers before keeping it.
+    #
+    # MEASURED, test.tpv1053d serial (E=912600, nftnd=4005), 120 steps,
+    # jax-cpu, full-run peak RSS, four configurations, each run fresh:
+    #   (0) own lax.scan, inv closed over        12.130 GB  69.1 s  575.9 ms/st
+    #   (1) (0) + this session's kernels_jax
+    #       block scatter and int32 indices      10.084 GB  86.5 s  720.5 ms/st
+    #   (2) (1) + lax.scan -> fori_loop only,
+    #       inv STILL closed over                10.536 GB  89.9 s  748.7 ms/st
+    #   (3) (1) + shared time_loop (fori_loop
+    #       AND split_inv promotion) = THIS       3.952 GB  59.3 s  494.4 ms/st
+    # (3) against (0): -67% peak RSS, -14% ms/step. (1) is BIT-IDENTICAL to
+    # (0) -- all five digests unchanged. (2) and (3) are NOT:
+    #     (1) -> (2)   velArr 1.2279e-12  dispArr 9.2944e-14
+    #                  force  5.3512e-11  fric    5.9001e-06   fnft 0 flips
+    #     (2) -> (3)   velArr 6.6822e-13  dispArr 4.9703e-14
+    #                  force  2.5344e-11  fric    2.4038e-06   fnft 0 flips
+    #     (0) -> (3)   velArr 1.5985e-12  dispArr 1.4260e-13
+    #                  force  7.8856e-11  fric    7.9796e-06   fnft 0 flips
+    # (max abs over the FULL arrays, sha256-over-tobytes comparison at full
+    # step count; fric's columns carry ~1e8 Pa stresses, so 8e-06 absolute is
+    # ~1e-13 relative, and no rupture time flips). Against the committed
+    # reference the accept tier measures this case at 4.245508e-06 with (3) in
+    # place, versus its 1e-4 bound and the 3.73e-06 recorded with (0) -- i.e.
+    # the port moved 23x less than the bound it is gated on, and the tier is
+    # 5/5 green (re-run fresh this session, not inherited).
+    #
+    # ATTRIBUTION -- and a correction to what this file used to say. The old
+    # note recorded fric moving 5.9001e-06 (with velArr 1.2279e-12, dispArr
+    # 9.2944e-14, force 5.3512e-11) and blamed PROMOTION, reasoning that it
+    # turns the element-force scatter's index into one contiguous buffer
+    # instead of an in-graph concatenate. Those four numbers are, to every
+    # digit, the (1) -> (2) row above -- which has NO promotion in it at all
+    # and, after this session's kernels_jax change, no concatenated scatter
+    # index either. The deviation is the LOOP CONSTRUCT: swapping lax.scan for
+    # lax.fori_loop changes the HLO the step body sits in, and this program has
+    # a reduction that is sensitive to it (thermop's `(hist_term*ker*dt).sum
+    # (axis=1)` over the 120-column history, whose result feeds a 20-iteration
+    # Newton solve that amplifies the last bits). Promotion adds a further
+    # 2.4e-06 of the same kind. Neither is a scatter-ordering effect.
+    #
+    # WHY IT IS KEPT ANYWAY, stated plainly rather than buried: (0) is the only
+    # bit-identical option and it costs 12.13 GB -- 3x the footprint of every
+    # other case in the suite and the largest single number in the project's
+    # memory table. The trade taken here is 8e-06 absolute on fric (1e-13
+    # relative, no rupture-time flip, 12x inside this case's own accept bound)
+    # for -67% peak RSS and -14% ms/step, plus the structural fact that all
+    # three JAX ports now run the SAME loop, so the next loop-level fix cannot
+    # land on two of three again. To go back to bit-identical, restore the two
+    # lines below to `jax.jit(lambda c: jax.lax.scan(make_step(inv, S, nsteps),
+    # c, xs=jnp.arange(1, nsteps + 1))[0])(carry0)` -- nothing else in this
+    # file depends on the choice.
+    if sliprate_hist.shape[1] != nsteps or shear_hist.shape[1] != nsteps:
+        raise ValueError(
+            'port_tp_jax.run: thermop history width %d/%d must equal the step count %d -- '
+            'a shorter history would make `.at[:, nt-1].set()` clamp silently and pile '
+            'every overflowing step into the last column'
+            % (sliprate_hist.shape[1], shear_hist.shape[1], nsteps))
     carry0 = (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
               sliprate_hist, shear_hist)
-    carry = scan_fn(carry0)
+    carry = time_loop(lambda i: make_step(i, S, nsteps), inv, carry0, nsteps)
     jax.block_until_ready(carry)
     (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
      sliprate_hist, shear_hist) = carry

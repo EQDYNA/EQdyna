@@ -391,7 +391,15 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
     
     tr = 1.0d9 
     if(radius <= nucR) then 
-        if (TPV == 201 .or. TPV==36 .or. TPV==37) tr = (radius+NUC_TAPER_COEF*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(NUC_VR_TO_VS*NUC_VS_FIXED)
+        ! Smoothed forced-rupture time. This is the TPV29 spec formula
+        ! (TPV29_30_Description_v06, Part 6), which TPV36/37/201 reuse --
+        ! so 29 belongs in this list and was missing from it. Until now
+        ! case_input/test.tpv29 had to declare par.tpv = 36 to reach its
+        ! OWN formula; that misdeclaration is what hid the gap when the
+        ! Python port implemented only the degenerate tr=1e9 branch and
+        ! nucleated nothing (0 of 3321 nodes against a reference of 2974).
+        if (TPV == 201 .or. TPV==36 .or. TPV==37 .or. TPV==29) &
+            tr = (radius+NUC_TAPER_COEF*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(NUC_VR_TO_VS*NUC_VS_FIXED)
         if (TPV == 202) tr = radius/nucRuptVel
     endif
     
