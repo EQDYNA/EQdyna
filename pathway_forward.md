@@ -58,6 +58,8 @@ actually runs the command.
 
 | 30 | BUG (instrumentation, found by the scaling study): `compTimeInSeconds(2)` is corrupted — `assembleGlobalMass` -> `MPI4NodalQuant` resets the shared global `startTimeStamp` (assembleGlobalMass.f90:67), so eqdyna3d.f90:69 times only the tail of the call. <=1% bias, harmless for physics, but the timing instrumentation cannot be trusted for that slot. Fix: use a local timer in MPI4NodalQuant, or save/restore startTimeStamp | 2 | `src/assembleGlobalMass.f90:67`, `src/eqdyna3d.f90:69` | until fixed | 2026-09-15 | `grep -n startTimeStamp src/assembleGlobalMass.f90` |
 
+| 31 | BUG (shipped in v5.5.0): `case_input/test.tpv29` ships only the 100 m geometry and `tpv29GeometryTools.decimateToDx` cannot produce a FINER grid, so the FULL_SPECS 50 m entry fails at case.setup with "dx=50.0 is not an integer multiple of the shipped geometry spacing 100.0 m". The full tier for TPV29 is therefore unrunnable as shipped. Options: ship the 50 m file (~15 MB), have the compset derive from the official 25 m download when present (66 MB, gitignored in scratch/tpv29/downloads), or document the manual step in the README and have the tool say so actionably. Worked around for the running spec job by generating the 50 m surface via convertOfficial25m and loading it in the case | 2, 3 | `case_input/test.tpv29/`, `testsys/e2e/full_specs.py` | until fixed | 2026-09-15 | `python3 -c "import sys;sys.path.insert(0,'case_input/test.tpv29');import tpv29GeometryTools as g;g.faultGridForCase(50.0)"` |
+
 **Deferred**: none.
 
 ## Historical SCEC submissions
