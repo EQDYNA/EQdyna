@@ -108,6 +108,9 @@ on HPC, TPV38 (awaiting SCEC's TSurf release).
 
 | Date | Task | Ref |
 |---|---|---|
+| 2026-09-15 | v5.6.2: scipy used but never declared to CI -- third CI red in a row from the gate being green for a reason that did not hold in CI (v5.6.0 what was committed, v5.6.1 how the gate was invoked, v5.6.2 what environment it ran in). test_ci_dependencies.py closes the class; it found imageio unguarded on its first run | v5.6.2 |
+| 2026-09-15 | Backend fallbacks removed from python/eqdyna/standalone: --backend jax no longer demotes to numpy, new --device auto/cpu/gpu,each run records the device it actually used. A numpy run had been labelling itself with an A100 it never touched | v5.6.2 |
+| 2026-09-15 | Corrected a bad measurement: OMP_NUM_THREADS does not control XLA's CPU thread pool, so an earlier '1.17x on 16 threads, bandwidth-bound' claim measured nothing. With taskset pinning, JAX CPU scales 2.00x/3.96x/7.48x on 2/4/8 cores when compute-bound, plateauing ~2.5x when memory-bound | testsys/perf |
 | 2026-09-15 | v5.6.1: bare `make` built nothing after the v5.6.0 clean-target fix removed the accidental `clean:eqdyna` dependency that install-eqdyna.sh relied on. `.DEFAULT_GOAL` pinned + regression guard. Rule 16 extended: gate with CI's own entry point, not a convenient subset -- v5.6.0 was committed complete, tree clean, commit re-verified in a worktree, and still went red because the gate never ran `install-eqdyna.sh` | v5.6.1 |
 | 2026-09-14 | v5.6.0: fault-geometry validation (Python at case.setup + Fortran at read time), `scripts/convertFaultGeometry`, TPV29 50 m surface shipped | v5.6.0 |
 | 2026-09-14 | v5.6.0: error-code system -- `src/errorCodes.f90`, 20 named codes 1-125, `abortRun` + `MPI_Abort`; 13 sites that exited 0 on refusal converted. Verified live: empty case under `mpirun -np 2` exits 21, no hang | v5.6.0 |

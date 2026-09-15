@@ -141,10 +141,17 @@ DEFAULT_BACKEND = 'jax'
 
 
 def _resolve_solver(friclaw, backend):
-    """Returns the run()-providing module for `friclaw` under `backend`
-    ('jax' or 'numpy'). backend='jax' (the default) falls back to numpy
-    with an explicit printed notice -- never silently -- if jaxlib isn't
-    importable in this environment."""
+    """Returns the run()-providing module for `friclaw` under `backend`.
+
+    NO FALLBACK (PROJECT_RULES rule 2). backend='jax' with jaxlib missing is a
+    hard failure, not a quiet demotion to NumPy.
+
+    This used to print a NOTICE and return the NumPy solver. That is fatal the
+    moment backends are compared: a run labelled `jax` would BE numpy, and a
+    "JAX is no faster than NumPy" result would be NumPy measured twice. A
+    printed notice does not help either -- it scrolls past in a log while the
+    number it invalidates is what gets recorded.
+    """
     if friclaw not in _NUMPY_SOLVER_BY_FRICLAW:
         raise NotImplementedError('_resolve_solver: friclaw=%d has no wired standalone solver '
                                    '(wired: %r)' % (friclaw, sorted(_NUMPY_SOLVER_BY_FRICLAW)))
@@ -155,10 +162,29 @@ def _resolve_solver(friclaw, backend):
     try:
         return importlib.import_module(_JAX_MODULE_BY_FRICLAW[friclaw])
     except ImportError as e:
-        print('NOTICE: --backend jax requested (the default) but %s is not importable (%s) -- '
-              'falling back to the NumPy solver for friclaw=%d.'
-              % (_JAX_MODULE_BY_FRICLAW[friclaw], e, friclaw), file=sys.stderr)
-        return _NUMPY_SOLVER_BY_FRICLAW[friclaw]
+        raise RuntimeError(
+            "backend 'jax' was requested but %s is not importable (%s). "
+            "Install jaxlib, or pass --backend numpy explicitly. This does NOT "
+            "fall back: a run reported as jax must have been jax."
+            % (_JAX_MODULE_BY_FRICLAW[friclaw], e))
+
+
+def active_device(backend):
+    """What actually ran -- recorded, never inferred from the request.
+
+    A backend matrix that prints the REQUESTED device is worthless: JAX_PLATFORMS
+    can be overridden, a GPU can be busy or invisible, and a run asking for gpu
+    can legitimately land on cpu. Every timing row must carry what actually ran.
+
+    `backend` is required: reporting jax.devices()[0] for a NUMPY run named a
+    GPU that the run never touched -- observed, and exactly the kind of label
+    that would put a bogus device into a perf table.
+    """
+    if backend == 'numpy':
+        return 'host CPU (numpy; jax not used)'
+    import jax
+    d = jax.devices()[0]
+    return '%s:%d (%s)' % (d.platform, d.id, getattr(d, 'device_kind', '?'))
 
 
 def build_solver_state(case_dir):
@@ -309,15 +335,50 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND):
     return frt_path
 
 
+def _select_device(device):
+    """Pin the JAX platform BEFORE jax is imported anywhere. No fallback.
+
+    JAX_PLATFORMS is read by jax at import time, so this must run before the
+    first `import jax` -- which is why this module never imports jax at module
+    level (see the note above _JAX_MODULE_BY_FRICLAW).
+
+    `--device gpu` with no GPU is a hard failure: silently running on CPU would
+    put a row labelled gpu into a backend comparison whose whole purpose is to
+    tell cpu and gpu apart (rule 2).
+    """
+    if device == 'auto':
+        return
+    os.environ['JAX_PLATFORMS'] = {'cpu': 'cpu', 'gpu': 'cuda'}[device]
+    import jax
+    got = jax.devices()[0].platform
+    want = 'gpu' if device == 'gpu' else 'cpu'
+    if got != want:
+        raise RuntimeError(
+            '--device %s was requested but JAX resolved to %r (devices: %r). '
+            'This does NOT fall back: a run reported as %s must have run on %s.'
+            % (device, got, jax.devices(), device, device))
+
+
 def main():
     ap = argparse.ArgumentParser(prog='python3 -m eqdyna.standalone')
     ap.add_argument('case_dir')
     ap.add_argument('nsteps', nargs='?', type=int, default=None)
     ap.add_argument('--backend', choices=('jax', 'numpy'), default=DEFAULT_BACKEND,
-                     help="solver backend (default: %(default)s; falls back to numpy "
-                          "with a printed notice if jaxlib isn't importable)")
+                     help='solver backend (default: %(default)s). No fallback: '
+                          'jax with jaxlib missing is an error, not a demotion '
+                          'to numpy.')
+    ap.add_argument('--device', choices=('auto', 'cpu', 'gpu'), default='auto',
+                     help='JAX platform (default: auto = whatever JAX picks). '
+                          'Only meaningful with --backend jax. No fallback: '
+                          'gpu with no GPU is an error.')
     args = ap.parse_args()
+    if args.backend == 'jax':
+        _select_device(args.device)
+    elif args.device != 'auto':
+        raise SystemExit('--device %s is meaningless with --backend numpy'
+                         % args.device)
     path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend)
+    print('backend=%s device=%s' % (args.backend, active_device(args.backend)))
     print('wrote', path)
 
 

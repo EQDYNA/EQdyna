@@ -183,7 +183,16 @@ def sort_nicely(l):
     return l
 
 def generate_gif():
-  import imageio  # lazy: optional dependency, only needed for GIF generation
+  # Lazy AND guarded: imageio is optional and not installed in CI. Every
+  # other plot is already written by the time this runs, so the GIF is the
+  # only thing lost -- say that instead of raising a bare ImportError.
+  try:
+      import imageio
+  except ImportError:
+      raise RuntimeError(
+          'writing the animated GIF needs imageio, which is not installed. '
+          'Install imageio, or just use the PNG frames already written in '
+          'this directory -- no other output is affected.')
   filenames = glob.glob('.//*.png')
   filenames = sort_nicely(filenames)
   with imageio.get_writer('./on_fault_vars.gif', mode='I') as writer:
