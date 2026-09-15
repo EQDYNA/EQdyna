@@ -43,6 +43,14 @@ import time
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
+# Coordination hatch: when a concurrent long HPC job elsewhere on this box
+# depends on bin/eqdyna staying untouched (e.g. an in-flight spec-resolution
+# run), set EQDYNA_E2E_BIN to a pre-built, explicit binary path -- e2e then
+# skips the bin/ rm+rebuild entirely and mpirun's that binary directly.
+# Caller is responsible for that binary being a fresh, clean build (rule 4);
+# this is the same "build src/eqdyna, never touch bin/eqdyna" pattern already
+# used by testsys/regression/test_fault_mpi_boundary_arn.py.
+BIN_OVERRIDE = os.environ.get('EQDYNA_E2E_BIN')
 
 sys.path.insert(0, REPO_ROOT)
 
@@ -62,16 +70,24 @@ def main():
         return 1
 
     # Gate 2 - fresh build (never trust a binary left over from a previous run).
-    bin_exe = os.path.join(REPO_ROOT, 'bin', 'eqdyna')
-    if os.path.exists(bin_exe):
-        os.remove(bin_exe)
-    build_rc = subprocess.call(['./install-eqdyna.sh', '-m', MACHINE], cwd=REPO_ROOT)
-    if build_rc != 0:
-        print(f'e2e: FAIL - ./install-eqdyna.sh -m {MACHINE} exited {build_rc}')
-        return 1
-    if not os.path.exists(bin_exe):
-        print('e2e: FAIL - build finished but bin/eqdyna does not exist')
-        return 1
+    if BIN_OVERRIDE:
+        eqdyna_cmd = os.path.abspath(BIN_OVERRIDE)
+        if not os.path.exists(eqdyna_cmd):
+            print(f'e2e: FAIL - EQDYNA_E2E_BIN={BIN_OVERRIDE} does not exist')
+            return 1
+        print(f'e2e: EQDYNA_E2E_BIN set - skipping bin/eqdyna rebuild, using {eqdyna_cmd}')
+    else:
+        bin_exe = os.path.join(REPO_ROOT, 'bin', 'eqdyna')
+        if os.path.exists(bin_exe):
+            os.remove(bin_exe)
+        build_rc = subprocess.call(['./install-eqdyna.sh', '-m', MACHINE], cwd=REPO_ROOT)
+        if build_rc != 0:
+            print(f'e2e: FAIL - ./install-eqdyna.sh -m {MACHINE} exited {build_rc}')
+            return 1
+        if not os.path.exists(bin_exe):
+            print('e2e: FAIL - build finished but bin/eqdyna does not exist')
+            return 1
+        eqdyna_cmd = 'eqdyna'
 
     # Rule 8 - preserve, never delete, the previous run's evidence.
     test_dir = os.path.join(REPO_ROOT, 'test')
@@ -98,7 +114,7 @@ def main():
         steps = [
             (['create.newcase', testName, testName], test_dir),
             (['./case.setup'], case_dir),
-            ([MPIRUN, '-np', str(coreNum), 'eqdyna'], case_dir),
+            ([MPIRUN, '-np', str(coreNum), eqdyna_cmd], case_dir),
             ([sys.executable, 'plotRuptureDynamics'], case_dir),
         ]
         for cmd, cwd in steps:

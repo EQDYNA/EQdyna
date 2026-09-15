@@ -1,14 +1,10 @@
 # News in 2026
-* 20260914 v5.4.0 release notes
-  * New - python/eqdyna/standalone: a fully standalone Python EQdyna (zero Fortran involved), now covering all five gated cases (tpv8, tpv104, tpv1053d, tpv10, drv.a6) with a committed acceptance tier (`testsys/run.py accept`) — four at roundoff-level agreement, drv.a6 under a documented chaos-aware criterion for its rupture-arrest bistability.
-  * New - Drucker-Prager viscoplasticity ported to the standalone solver (test.drv.a6).
-  * New - optional GPU execution (JAX/CUDA), verified via `testsys/run.py gpu`.
-  * Add - testsys/ parity, accept, gpu, perf, and scaling tiers.
-  * Fix - PML boundary tests standardized to inclusive bounds; mesh-time checkPMLAlignment guard added.
-  * Fix - retired dead fric slot 6 (unused surface-pore-pressure reads).
-  * Refactor - root cleanup: netCDF4 replaces xarray in check.test.py; orphaned testNameListWhole.py removed; shared loading/kernels modules factored out of the Python port.
-  * Fix - scripts/lib.py: lazy imageio import, guarded optional dependencies.
-  * Full details: the v5.4.0 GitHub Release, git tag message, and pathway_forward.md.
+* 20260914 v5.5.0 release notes
+  * New - test.tpv29 (SCEC TPV29, official 25 m rough-fault geometry) gated as the 8th benchmark case: fast tier at dx=500 m/4 ranks (2,1,2)/~3 min, full-tier spec entry at dx=50 m/term=20 s; frozen reference in test.reference.results/test.tpv29.
+  * Fix - fault-on-MPI-boundary bug: arn (fault nodal area) was double-counted whenever an MPI partition boundary coincided with the fault plane (symmetric y-domains), halving every on-fault traction term; fixed, with a hard-stop guard (checkFaultMPIAlignment) and a decomposition-invariance regression test.
+  * Add - insertFaultType=3 (case-supplied fault geometry, e.g. TPV29's official surface) documented as a first-class mode; case.setup no longer invokes the geometry generator for it.
+  * Fix - memory_estimate now reports cells/rank, cells total, ranks, and both memory figures separately (previously multiplied rank 0's count by the rank count, so it looked rank-invariant).
+  * Full details: the v5.5.0 GitHub Release, git tag message, and pathway_forward.md.
   * For past release notes, please refer to pastReleaseNotes.md.
 
 # Introduction to *```EQdyna```*
@@ -47,6 +43,7 @@ benchmark at its official spec resolution and duration, report-only, on
 | [test.drv.a6](case_input/test.drv.a6/README.md) | fractal fault + plasticity | internal | 500m/4/~48s | excluded (no published spec) |
 | [test.meng2023a](case_input/test.meng2023a/README.md) | layered velocity structure | internal | 400m/4/~48s | excluded (no published spec) |
 | [test.meng2023cb](case_input/test.meng2023cb/README.md) | layered velocity, multi-patch | internal | 400m/4/~48s | excluded (no published spec) |
+| [test.tpv29](case_input/test.tpv29/README.md) | strike-slip, fractal rough fault | [TPV29](https://strike.scec.org/cvws/tpv29_30docs.html) | 500m/4/~3 min | 50m/20s |
 
 # Environment
 *Optional (Python solver on GPU)*: `pip install "jax[cuda12]"` — the standalone Python solver (`python -m eqdyna.standalone`) then runs on NVIDIA GPUs; verify with `python3 testsys/run.py gpu`.
@@ -99,7 +96,8 @@ Replace $predefinedCompset with one of the following supported compsets <br/>
 * test.tpv36
 * test.tpv37
 * test.tpv104
-* test.tpv1053d <br/>
+* test.tpv1053d
+* test.tpv29 <br/>
 [TPV+number is the naming convention of [SCEC/USGS Spontaneous Rupture Code Verification Excercise](https://strike.scec.org/cvws/).] <br/>
 
 For a customized case, please choose the most relevant predefined compset and modify ```user_defined_param.py``` accordingly. <br/>

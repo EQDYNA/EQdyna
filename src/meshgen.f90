@@ -252,6 +252,36 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
             fltu(fltnum(6)) = i
         endif
     enddo
+    ! FIX (pathway_forward.md, "fault-plane-on-MPI-boundary halving"): arn is
+    ! accumulated per fault node from the LOCAL ifs x ifd quad grid (lines
+    ! ~115-152 above), independent of y -- so whenever this rank's boundary
+    ! in a direction the fault has ZERO nominal extent in (per fltxyz; always
+    ! y for EQdyna's x-z-plane faults) carries fault nodes, this rank has
+    ! already built the FULL local fault-node arn there (both ranks rebuild
+    ! the whole ifs x ifd grid identically), so summing across that boundary
+    ! DUPLICATES rather than DIVIDES the area. Directions the fault has real
+    ! extent in (x, z -- or any future non-degenerate direction) are genuine
+    ! divisions: each rank only owns a slice of the fault there, and summing
+    ! is correct (verified: scratch/mira_faultmpi_guard, x-split and z-split
+    ! reproduce the serial arn exactly; y-split alone doubled it before this
+    ! fix, matched after).
+    !
+    ! A prior attempt skipped the ENTIRE `call syncArnBoundary` for such
+    ! directions and was reverted: fltMPI(k) is set at the top of
+    ! syncArnBoundary and is ALSO the gate `addFaultBoundaryTerm`
+    ! (assembleGlobalMass.f90) uses to decide whether fnms/nodalMassArr need
+    ! a cross-rank correction on that same boundary -- skipping the whole
+    ! call silently skipped that correction too and broke a rough-fault
+    ! 2,2,1 run (zero mass / NaN velocity). This fix instead still calls
+    ! syncArnBoundary (fltMPI(k) still gets set, the exchange still happens,
+    ! fnms/nodalMassArr's correction is untouched) and only skips arn's OWN
+    ! add-back when the direction is degenerate (see syncArnBoundary below).
+    ! Direct evidence fnms is NOT affected by this bug (unlike arn): dumped
+    ! fnms at the same physical fault node is bit-identical between serial
+    ! and a fault-splitting decomposition (scratch/mira_faultmpi_guard) --
+    ! fnms's volume-element accumulation is genuinely owned exclusively by
+    ! one side's rank per split-node copy, so its cross-rank correction on
+    ! this boundary is a no-op there in the cases checked; left unchanged.
     if (npx > 1) then
         bndl=1  !left boundary
         bndr=nx ! right boundary
@@ -262,11 +292,11 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif
 
         if (bndl/=0) then
-            if(fltnum(1)>0 ) call syncArnBoundary(fltl, fltnum(1), 1, me-npy*npz, 1000, iFault)
+            if(fltnum(1)>0 ) call syncArnBoundary(fltl, fltnum(1), 1, me-npy*npz, 1000, iFault, 1)
         endif !if bhdl/=0
 
         if (bndr/=0) then
-            if(fltnum(2)>0 ) call syncArnBoundary(fltr, fltnum(2), 2, me+npy*npz, 1000, iFault)
+            if(fltnum(2)>0 ) call syncArnBoundary(fltr, fltnum(2), 2, me+npy*npz, 1000, iFault, 1)
         endif !bndr/=0
     endif !npx>1
 !*****************************************************************************************
@@ -280,11 +310,11 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif
 
         if (bndf/=0) then
-            if(fltnum(3)>0) call syncArnBoundary(fltf, fltnum(3), 3, me-npz, 2000, iFault)
+            if(fltnum(3)>0) call syncArnBoundary(fltf, fltnum(3), 3, me-npz, 2000, iFault, 2)
         endif !bhdf/=0
 
         if (bndb/=0) then
-            if(fltnum(4)>0) call syncArnBoundary(fltb, fltnum(4), 4, me+npz, 2000, iFault)
+            if(fltnum(4)>0) call syncArnBoundary(fltb, fltnum(4), 4, me+npz, 2000, iFault, 2)
         endif !bndb/=0
      endif !npy>1
 !*****************************************************************************************
@@ -297,18 +327,26 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
             bndu=0
         endif
         if (bndd/=0) then
-            if(fltnum(5)>0) call syncArnBoundary(fltd, fltnum(5), 5, me-1, 3000, iFault)
+            if(fltnum(5)>0) call syncArnBoundary(fltd, fltnum(5), 5, me-1, 3000, iFault, 3)
         endif !bhdd/=0
 
         if (bndu/=0) then
-            if(fltnum(6)>0) call syncArnBoundary(fltu, fltnum(6), 6, me+1, 3000, iFault)
+            if(fltnum(6)>0) call syncArnBoundary(fltu, fltnum(6), 6, me+1, 3000, iFault, 3)
         endif !bndu/=0
     endif !npz>1
 contains
-    subroutine syncArnBoundary(idxArr, n, k, neighbor, tagBase, ift)
+    subroutine syncArnBoundary(idxArr, n, k, neighbor, tagBase, ift, dimId)
     ! Send this rank's arn values for the given boundary's fault nodes to
-    ! neighbor, receive neighbor's values for the same nodes, and accumulate.
-        integer (kind = 4), intent(in) :: idxArr(:), n, k, neighbor, tagBase, ift
+    ! neighbor, receive neighbor's values for the same nodes, and accumulate
+    ! -- UNLESS the fault has zero nominal extent in the physical dimension
+    ! (dimId: 1=x, 2=y, 3=z) this boundary lies along, in which case this
+    ! rank's local arn is already the fault's full local contribution and
+    ! the neighbor's value is a duplicate, not a partial sum (see the NOTE
+    ! above MPI4arn's npx/npy/npz blocks). fltMPI(k) is still set and the
+    ! exchange still happens either way: addFaultBoundaryTerm
+    ! (assembleGlobalMass.f90) depends on fltMPI(k)/the send-recv having run,
+    ! independent of what this subroutine does with arn.
+        integer (kind = 4), intent(in) :: idxArr(:), n, k, neighbor, tagBase, ift, dimId
         integer (kind = 4) :: j, jMPIstatus(MPI_STATUS_SIZE), jMPIerr
         real (kind = dp), allocatable, dimension(:) :: sendBuf, recvBuf
 
@@ -322,12 +360,14 @@ contains
         call mpi_sendrecv(sendBuf, n, MPI_DOUBLE_PRECISION, neighbor, tagBase+me, &
             recvBuf, n, MPI_DOUBLE_PRECISION, neighbor, tagBase+neighbor, &
             MPI_COMM_WORLD, jMPIstatus, jMPIerr)
-        do j = 1, n
-            arn(idxArr(j),ift) = arn(idxArr(j),ift) + recvBuf(j)
-        enddo
+        if (fltxyz(2,dimId,ift) /= fltxyz(1,dimId,ift)) then
+            do j = 1, n
+                arn(idxArr(j),ift) = arn(idxArr(j),ift) + recvBuf(j)
+            enddo
+        endif
         deallocate(sendBuf,recvBuf)
     end subroutine syncArnBoundary
-end subroutine MPI4arn 
+end subroutine MPI4arn
 
 subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, eqNumIndexArrLocTag, nftnd0)
 ! Check consistency between mesh4 and meshgen

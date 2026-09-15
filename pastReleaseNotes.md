@@ -1,6 +1,17 @@
 # Past release notes\
 
 # News in 2026
+* 20260914 v5.4.0 release notes
+  * New - python/eqdyna/standalone: a fully standalone Python EQdyna (zero Fortran involved), now covering all five gated cases (tpv8, tpv104, tpv1053d, tpv10, drv.a6) with a committed acceptance tier (`testsys/run.py accept`) — four at roundoff-level agreement, drv.a6 under a documented chaos-aware criterion for its rupture-arrest bistability.
+  * New - Drucker-Prager viscoplasticity ported to the standalone solver (test.drv.a6).
+  * New - optional GPU execution (JAX/CUDA), verified via `testsys/run.py gpu`.
+  * Add - testsys/ parity, accept, gpu, perf, and scaling tiers.
+  * Fix - PML boundary tests standardized to inclusive bounds; mesh-time checkPMLAlignment guard added.
+  * Fix - retired dead fric slot 6 (unused surface-pore-pressure reads).
+  * Refactor - root cleanup: netCDF4 replaces xarray in check.test.py; orphaned testNameListWhole.py removed; shared loading/kernels modules factored out of the Python port.
+  * Fix - scripts/lib.py: lazy imageio import, guarded optional dependencies.
+  * Full details: the v5.4.0 GitHub Release, git tag message, and pathway_forward.md.
+
 * 20260913 v5.3.6 release notes
   * Bug - PML region-14 corner damping used an x-bound for the y coordinate; fixed in all 4 sites. test.drv.a6 shear traction moved up to ~29 MPa; reference regenerated; guarded by a regression test.
   * Bug - thermal pressurization ran with shear-zone half-width h=0 since 2022 (fric_tp_h never assigned); now reads per-node fric(40)=0.02 m per the TPV105-3D spec. Verified against a clean-room rebuild of the SCEC-verified v5.2.0. tpv1053d reference regenerated.

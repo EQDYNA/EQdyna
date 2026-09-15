@@ -15,3 +15,5 @@ resume_claude.sh
 testsys/parity/fixtures/
 testsys/parity/evidence_output/
 scec_archive/
+relnotes_v*.md
+testsys/perf/elem_scaling_last.json

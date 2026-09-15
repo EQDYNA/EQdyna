@@ -46,7 +46,25 @@ Asserts:
      invariance is what actually proves the fix landed, not just the gate
      staying quiet.
 
-Cheap (rule 9): ~6x6x3-cell mesh, term = 5 dt, well under a second per run
+CI investigation (v5.5.0 release audit, 2026-09-14): CI (mpich) failed this
+exact-equality check on commits 12c8274/e6ad307 -- ysplit's shear traction
+3.791069 MPa vs serial 3.791525 MPa (diff 4.56e-4, rel 1.2e-4). Root cause
+was NOT residual floating-point non-determinism or an over-tight
+comparison: those two commits added this test and the pathway_forward.md
+"FIXED" claim, but never actually committed the source fix itself
+(`git show 12c8274:src/meshgen.f90` / `e6ad307:...` both lack the `dimId`
+parameter and `checkFaultMPIAlignment` -- confirmed directly). CI was
+correctly running the UNFIXED source and correctly failing. Reproduced
+locally: reverting src/meshgen.f90+src/eqdyna3d.f90 to HEAD and rebuilding
+from clean gives ysplit=3.791069, serial=3.791525 on THIS box too -- an
+exact match to CI's numbers. With the actual fix in place (restored,
+verified below), serial==ysplit==3.791525 exactly, reproduced at 8x this
+test's term (40 dt, not just 5) with zero difference at every duration
+tried -- so EXACT equality is the correct, achievable gate; the v5.5.0
+release commit is what finally lands the source fix these two commits only
+described.
+
+Cheap (rule 9): ~12x12x6-cell mesh, term = 5 dt, well under a second per run
 once src/eqdyna is built. Builds ONLY src/eqdyna (never bin/eqdyna -- other
 processes on this box may be running bin/eqdyna concurrently).
 Fails loudly (rule 2) if mpif90/mpirun/the src/ build are unavailable --
