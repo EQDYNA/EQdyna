@@ -35,7 +35,7 @@ import numpy as np
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from loading import load, region_damp  # noqa: E402
-from port_jax import build
+from port_jax import build, enable_compilation_cache
 import kernels_jax
 
 
@@ -229,6 +229,7 @@ def make_step(inv, S, nsteps):
 
 def run(S, nsteps=None, verbose=True):
     nsteps = nsteps or S['nstep']
+    enable_compilation_cache()
     inv = build(S)
     conn = S['conn']; elemType = S['elemType']
     E_pml = np.nonzero(elemType == 2)[0]
@@ -248,6 +249,13 @@ def run(S, nsteps=None, verbose=True):
     shear_hist = jnp.zeros((nftnd, nsteps), dtype=jnp.float64)
 
     step = make_step(inv, S, nsteps)
+    # NOTE: unlike port_jax.py/port_rsf_jax.py this loop keeps a STATIC length.
+    # `sliprate_hist`/`shear_hist` above are shaped (nftnd, nsteps), so nsteps
+    # is a shape here, not just a trip count -- tracing it is not available
+    # without changing thermop's history representation. Consequence: this
+    # port still pays one XLA compile per distinct step count. The persistent
+    # compilation cache enabled in run() still removes the repeat cost for any
+    # step count seen before.
     scan_fn = jax.jit(lambda c: jax.lax.scan(step, c, xs=jnp.arange(1, nsteps + 1))[0])
 
     carry0 = (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,

@@ -281,14 +281,9 @@ def build_solver_state(case_dir):
     init_stress[:, 5] = devStr * np.sin(theta2)  # xy
 
     # ---- convert to loading.load()'s 0-indexed convention ----
-    eq_ids = np.zeros((N, 12), dtype=np.int64)
-    ndof0 = np.zeros(N, dtype=np.int64)
-    for node in range(1, N + 1):
-        nd = int(num_dof[node])
-        ndof0[node - 1] = nd
-        eqs = np.array(eq_nums[node], dtype=np.int64)
-        eqs = np.where(eqs > 0, eqs, 0)  # -1 fixed-boundary sentinel -> sink 0
-        eq_ids[node - 1, :nd] = eqs
+    # -1 fixed-boundary sentinel -> sink 0; see meshgen.pack_eq_ids (a
+    # vectorized, all-integer repack of the per-node loop this replaced).
+    ndof0, eq_ids = meshgen.pack_eq_ids(num_dof, eq_nums, N, ncols=12)
 
     PMLb = np.array([pmlb['xmax0'], pmlb['xmin0'], pmlb['ymax0'], pmlb['ymin0'], pmlb['zmin0'],
                       pmlb['maxdx'], pmlb['maxdy'], pmlb['maxdz']])
