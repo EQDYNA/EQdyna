@@ -28,15 +28,6 @@ subroutine driver
         if (friclaw == 5) call updateThermalPressurization
         call faulting
         nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/nodalMassArr(1:totalNumOfEquations)
-        if (nt <= 5) call pydump_step(nt) ! Python-port parity-fixture checkpoint hook.
-        ! Default build (PYDUMP=0, the production build) links pydump_noop.o here:
-        ! pydump_step is an empty subroutine, so this call is a call+immediate-return,
-        ! executed at most 5 times per run regardless of nstep -- see testsys/parity/README.md
-        ! for the default-build-neutrality verification (empirically, #ifdef/-cpp gating
-        ! was tried first and rejected: it measurably changed compiled .o *size*, not just
-        ! metadata, for reasons not fully isolated in the time available -- the no-op-stub
-        ! link-time seam used here keeps eqdyna3d.o/driver.o's compiled bytes IDENTICAL
-        ! between the default and PYDUMP=1 builds; only which pydump_*.o gets linked differs).
 !        if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) then
          if (outputGroundMotion == 1) then
             call output_gm

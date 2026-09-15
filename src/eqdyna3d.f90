@@ -71,8 +71,6 @@ program EQdyna
 
     call init_vel ! Initiate on-fault node velocities
 
-    call pydump_state ! Python-port parity-fixture static-state dump hook (see driver.f90's comment).
-
     call driver
     
     startTimeStamp = MPI_WTIME()
