@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 """
 Milestone 1 + 2 + 3 + 4 + 5 + 6 + 6.5 + 7 + 7.5 parity check for
-python/eqdyna/standalone/{meshgen,native_input,mass_assembly,frt_writer}.py
+python/eqdyna/standalone/{meshgen,readInputFiles,assembleGlobalMass,library_output}.py
 against the fresh tpv8 serial fixtures in
 testsys/parity/fixtures/test_tpv8_serial/ (pydump_meshCoor.txt,
 pydump_conn.txt, pydump_nodeinfo.txt, pydump_fault.txt,
@@ -14,9 +14,9 @@ on_fault_vars_input.nc). M7.5 adds eledet/eleshp/ss/phi
 Milestone 6 changes WHERE the case parameters/material/station tables/
 initial fric array come from: instead of a hand-transcribed PARAMS dict
 (as M1-M5 used), everything is read natively from the case-input files via
-python/eqdyna/standalone/native_input.py -- the SAME M1-M5 builders and
+python/eqdyna/standalone/readInputFiles.py -- the SAME M1-M5 builders and
 fixtures are then re-run/re-checked against these natively-read inputs, so
-a bug in native_input.py's parsing would show up as an M1-M5 regression,
+a bug in readInputFiles.py's parsing would show up as an M1-M5 regression,
 not pass silently because "the builders were already proven".
 
 Run: python3 testsys/parity/make_fixtures.py   (fresh fixtures first, rule 4)
@@ -38,14 +38,14 @@ TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
 sys.path.insert(0, os.path.join(REPO_ROOT, 'python'))
 
-from eqdyna.standalone.meshgen import (
+from eqdyna.eqdyna3d.meshgen import (
     build_grid_lines, build_node_coordinates, build_elements, build_equation_numbers,
     build_fault_geometry, build_station_matching)
-from eqdyna.standalone.native_input import (
+from eqdyna.eqdyna3d.readInputFiles import (
     build_params, read_bmaterial, read_bstations, read_on_fault_vars)
-from eqdyna.standalone.mass_assembly import (
+from eqdyna.eqdyna3d.assembleGlobalMass import (
     compute_element_det, assemble_mass, compute_element_shape, compute_hourglass, init_vel)
-from eqdyna.standalone.frt_writer import read_frt, format_frt_row
+from eqdyna.eqdyna3d.library_output import read_frt, format_frt_row
 
 FIXTURE = os.path.join(TESTSYS, 'fixtures',
                         sys.argv[1] if len(sys.argv) > 1 else 'test_tpv8_serial')

@@ -1,126 +1,100 @@
 #!/usr/bin/env python3
 """
-Compares a completed test/ run against the golden test.reference.results/
-tree (PROJECT_RULES.md rules 2, 3, 4, 5, 7).
+Compare an ALREADY-COMPLETED Fortran run tree against test.reference.results/
+(PROJECT_RULES.md rules 2, 3, 5, 7).
 
-"Pass" means every comparison below prints SUCCESS and the process exits 0.
-A printed FAIL, a missing test file, or zero comparisons run is a hard
-failure (rule 2) -- nothing here is allowed to fail silently or leave a
-false-green exit code on screen.
+This is the fortran column of the e2e sweep's comparison, for a tree that has
+already been run -- `python3 check.test.py` after a by-hand mpirun, without
+re-running anything. It is NOT a second comparison implementation: it calls
+testsys/compare.py's compare_cell, the same function testsys/e2e/run_e2e.py
+calls for every cell of the sweep. One implementation, two entry points.
 
-threshold=1e-3 is the one calibrated tolerance (rule 5), used by both
-compare_nc_files and compare_txt_files. scripts/compareTwoNc.py is a
-separate ad hoc diff utility and is not held to this threshold.
+WHAT CHANGED, AND WHY IT MATTERED
+This file used to carry
 
-compare_nc_files/compare_txt_files are plain functions with no import-time
-side effects; the comparison loop itself only runs under __main__ so this
-file can be imported by tests (see testsys/unit/test_check_comparisons.py)
-without touching the real test/ or test.reference.results/ trees.
+    fileNameList = ['fault.dyna.r.nc','frt.txt0','frt.txt1','frt.txt2','frt.txt3']
+
+-- a gate whose file list was a statement about npx*npy*npz. It also skipped
+(`continue`) any file absent from the reference, so a case whose reference had
+2 rank files was silently compared on 2 of the 4 names and a case with 4 on all
+4, with no line saying which. frt is now compared in its canonical,
+decomposition-independent form (testsys/frt_canonical.py): ONE reference file
+per case, one row per fault node, ordered by position. A serial run, a 2-rank
+run and a 4-rank run are all compared the same way, to the same artifact.
+
+fault.dyna.r.nc is still compared, deliberately. It is lossy relative to frt
+(12 resampled dip x strike variables against 18 physics columns at native node
+resolution), so it adds no physics coverage -- but it is the only thing that
+exercises scripts/plotRuptureDynamics, which would otherwise be gated by
+nothing. See matrix.ARTIFACTS.
+
+"Pass" means every selected case compared clean and the process exits 0. A
+FAIL, a missing artifact, or zero comparisons run is a non-zero exit (rule 2).
 """
-import os, sys
-import numpy as np
-from netCDF4 import Dataset
+import argparse
+import os
+import sys
 
-fileNameList = ['fault.dyna.r.nc', 'frt.txt0', 'frt.txt1', 'frt.txt2', 'frt.txt3']
-refRoot = 'test.reference.results'
-testRoot = 'test'
-THRESHOLD = 1e-3
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
+from testsys import compare, matrix  # noqa: E402
 
-def compare_nc_files(fn1, fn2, threshold=THRESHOLD):
-    isTheSame = 'SUCCESS ' + fn1 + ' ' + fn2
-
-    def attrs(obj):
-        return {k: obj.getncattr(k) for k in obj.ncattrs()}
-
-    def attrs_equal(a, b):
-        def val_eq(x, y):
-            try:
-                return np.array_equal(x, y, equal_nan=True)
-            except TypeError:      # non-numeric attrs (strings, mixed)
-                return np.array_equal(x, y)
-        return set(a) == set(b) and all(val_eq(a[k], b[k]) for k in a)
-
-    f1 = Dataset(fn1, 'r')
-    f2 = Dataset(fn2, 'r')
-    try:
-        # "Metadata" means variable set + attrs, not exact data values --
-        # comparing values is the per-variable allclose loop below, gated
-        # by the one calibrated threshold (rule 5). Bit-exact data equality
-        # is NOT required: a parallel MPI dynamic-rupture rerun cannot
-        # promise it (floating-point reduction order varies run to run).
-        metadata_equal = (
-            set(f1.variables) == set(f2.variables)
-            and attrs_equal(attrs(f1), attrs(f2))
-            and all(attrs_equal(attrs(f1.variables[v]), attrs(f2.variables[v]))
-                    for v in f1.variables)
-        )
-        for var in f1.variables:
-            var1 = f1.variables[var]
-            var2 = f2.variables[var]
-            if var1.dimensions != var2.dimensions:
-                isTheSame = 'FAIL var dim ' + fn1 + ' ' + fn2
-            elif not np.allclose(np.asarray(var1[:]), np.asarray(var2[:]),
-                                 rtol=threshold, atol=threshold):
-                isTheSame = 'FAIL var numbers ' + fn1 + ' ' + fn2
-        if not metadata_equal and isTheSame.startswith('SUCCESS'):
-            isTheSame = 'FAIL metadata ' + fn1 + ' ' + fn2
-    finally:
-        f1.close()
-        f2.close()
-    print(isTheSame)
-    return isTheSame
+THRESHOLD = matrix.THRESHOLD  # rule 5's one outer sanity bound, defined once.
 
 
-def compare_txt_files(fn1, fn2, threshold=THRESHOLD):
-    with open(fn1, 'r') as f1, open(fn2, 'r') as f2:
-        result1 = f1.read().split()
-        result2 = f2.read().split()
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    ap.add_argument('--test-root', default='test',
+                    help='tree holding the completed run(s) (default: test)')
+    ap.add_argument('--cases', help='comma-separated subset of the case axis '
+                                    '(default: every gated case)')
+    args = ap.parse_args(argv)
 
-    if len(result1) != len(result2):
-        isTheSame = f'FAIL length mismatch ({len(result1)} vs {len(result2)}) {fn1} {fn2}'
-        print(isTheSame)
-        return isTheSame
-
-    isTheSame = 'SUCCESS ' + fn1 + ' ' + fn2
-    for num1, num2 in zip(result1, result2):
-        fnum1, fnum2 = float(num1), float(num2)
-        if abs(fnum1 - fnum2) > threshold:
-            isTheSame = 'FAIL ' + fn1 + ' ' + fn2
-            break
-    print(isTheSame)
-    return isTheSame
-
-
-def main():
-    from testNameList import nameList
-
-    results = []
-    for testid in nameList:
-        print(' ')
-        for filename in fileNameList:
-            refPath = refRoot + '/' + testid + '/' + filename
-            testPath = testRoot + '/' + testid + '/' + filename
-            if not os.path.exists(refPath):
-                continue
-            if not os.path.exists(testPath):
-                msg = 'FAIL missing ' + testPath
-                print(msg)
-                results.append(msg)
-            elif 'nc' in filename:
-                results.append(compare_nc_files(refPath, testPath, THRESHOLD))
-            elif 'frt' in filename:
-                results.append(compare_txt_files(refPath, testPath, THRESHOLD))
-
-    failures = [r for r in results if r.startswith('FAIL')]
-    print(' ')
-    if not results:
-        print('check.test.py: FAIL - no comparisons were run '
-              '(missing test.reference.results/ or test/ trees?)')
+    cases = args.cases.split(',') if args.cases else list(matrix.CASES)
+    unknown = [c for c in cases if c not in matrix.CASES]
+    if unknown:
+        print('check.test.py: FAIL - unknown case(s) %s; gated cases are %s'
+              % (unknown, ', '.join(matrix.CASES)))
         return 1
-    print(f'check.test.py: {len(results) - len(failures)}/{len(results)} comparisons SUCCESS')
+
+    print('check.test.py: comparing %d case(s) of the fortran column against '
+          '%s: %s' % (len(cases), compare.REFERENCE_ROOT, ', '.join(cases)))
+    print('check.test.py: artifacts=%s, one bound per case (rule 5), outer '
+          'sanity threshold=%.0e' % ('+'.join(matrix.ARTIFACTS['fortran']),
+                                     THRESHOLD))
+
+    failures = []
+    for case in cases:
+        run_dir = os.path.join(args.test_root, case)
+        print(' ')
+        print('-- %s (%s, gate: %s) --'
+              % (case, run_dir, matrix.gate_description(case)))
+        if not os.path.isdir(run_dir):
+            print('FAIL missing run directory %s' % run_dir)
+            failures.append(case)
+            continue
+        try:
+            ok, lines = compare.compare_cell(case, 'fortran', run_dir)
+        except Exception as exc:            # noqa: BLE001 - reported, not swallowed
+            ok, lines = False, ['%s: %s' % (type(exc).__name__, exc)]
+        for line in lines:
+            print('   ' + line)
+        print('%s %s' % ('SUCCESS' if ok else 'FAIL', case))
+        if not ok:
+            failures.append(case)
+
+    print(' ')
+    if not cases:
+        print('check.test.py: FAIL - no comparisons were run; a check that '
+              'compared nothing must never exit green')
+        return 1
+    print('check.test.py: %d/%d case(s) SUCCESS'
+          % (len(cases) - len(failures), len(cases)))
     if failures:
-        print('check.test.py: FAIL -', len(failures), 'comparison(s) failed')
+        print('check.test.py: FAIL -', len(failures), 'case(s) failed:',
+              ', '.join(failures))
         return 1
     print('check.test.py: SUCCESS')
     return 0

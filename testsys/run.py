@@ -4,12 +4,22 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
 
     python3 testsys/run.py unit          # fast pure-python unit tests (pytest, no MPI/Fortran)
     python3 testsys/run.py regression    # one guard per past incident (rule 10)
-    python3 testsys/run.py e2e           # full pipeline vs test.reference.results/ (rule 7)
+    python3 testsys/run.py e2e           # THE test: the case x backend sweep vs test.reference.results/ (rule 7)
+    python3 testsys/run.py e2e-ci        # the same sweep, restricted to the declared, memory-measured CI cell list
     python3 testsys/run.py e2e-full      # SCEC cases at spec dx/term, 16 ranks, report-only (opt-in; hours)
-    python3 testsys/run.py parity        # Python-port (NumPy/JAX) vs Fortran serial oracle (item 14)
-    python3 testsys/run.py accept        # standalone (no-Fortran-in-the-loop) solver vs committed 4-rank references
+    python3 testsys/run.py parity        # Python-port (NumPy/JAX) vs Fortran serial oracle, per-step (item 14)
+    python3 testsys/run.py gpu           # the sweep's python-jax column on CUDA (one cell; needs a GPU)
     python3 testsys/run.py perf          # pinned single-core Fortran/NumPy/JAX timing, ratio-guarded
-    python3 testsys/run.py all           # unit + regression + e2e, in that order (default; parity/accept/perf are opt-in, not in "all" -- they need a Fortran build + fixtures a fresh checkout doesn't have yet)
+    python3 testsys/run.py all           # unit + regression + e2e, in that order (default; parity/perf are opt-in, not in "all" -- they need a Fortran build + fixtures a fresh checkout doesn't have yet)
+
+There is ONE test here -- e2e -- and backend is an axis of it, not a tier. The
+former `accept` tier is gone: it was the same solver against the same
+references with a second comparison implementation over a shorter case list.
+`parity` stays, invoked by name, because it answers a DIFFERENT question:
+e2e asks "does the final answer match?", parity asks "at which step does it
+start to diverge?" by loading Fortran's internal per-step state. That is what
+root-caused the missing rsfNucleation branch, and it needs the eqdyna-pydump
+build anyway.
 
 Prints a per-test SUCCESS/FAIL line (from pytest or from each regression
 script's own banner), a per-tier SUMMARY line, and exits non-zero if
@@ -24,6 +34,12 @@ import sys
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(TESTSYS)
 TIERS = ('unit', 'regression', 'e2e')
+
+# Line-buffered: redirected to a log (CI pipes this through `tee`), Python
+# block-buffers this script's own prints while the children write straight to
+# the fd, so the tier banners and the SUMMARY would land out of order, and
+# would vanish entirely if the job were killed.
+sys.stdout.reconfigure(line_buffering=True)
 
 
 def run_unit():
@@ -52,10 +68,46 @@ def run_regression():
     return overall
 
 
+def _e2e(*args):
+    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'e2e', 'run_e2e.py')]
+                           + list(args), cwd=REPO_ROOT)
+
+
 def run_e2e():
     print('\n==== testsys: e2e ====')
-    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'e2e', 'run_e2e.py')],
-                            cwd=REPO_ROOT)
+    return _e2e()
+
+
+def run_e2e_ci():
+    """The sweep restricted to matrix.CI_CELLS -- the cell list chosen against
+    a measured 7 GB runner, with the per-cell memory numbers printed next to
+    it. This is a declared selection, not a magic env var: the run prints
+    which cells it covered and which it did not."""
+    print('\n==== testsys: e2e-ci ====')
+    return _e2e('--ci')
+
+
+def run_gpu():
+    """The sweep's python-jax column on CUDA. A selection of the one sweep,
+    not a tier of its own: JAX_PLATFORMS=cuda, same cases, same references,
+    same per-case bounds. Fails loudly if there is no CUDA device -- "no GPU
+    here" and "the GPU column passed" must not share an exit code (rule 2)."""
+    print('\n==== testsys: gpu ====')
+    try:
+        import jax
+    except Exception as exc:                        # noqa: BLE001
+        print('FAIL gpu: jax is not importable (%s) -- this selection cannot '
+              'be gated on this machine' % exc)
+        return 1
+    devs = [d for d in jax.devices() if 'cuda' in str(d).lower() or 'gpu' in str(d).lower()]
+    if not devs:
+        print('FAIL gpu: no CUDA device/plugin visible to jax (pip install '
+              '"jax[cuda12]" on a GPU box). Reporting this as a failure, not a '
+              'skip: a green line here would claim GPU coverage that did not '
+              'happen.')
+        return 1
+    return _e2e('--backends', 'python-jax', '--cases', 'test.tpv8',
+                '--device', 'cuda')
 
 
 def run_e2e_full():
@@ -114,30 +166,10 @@ def run_functional_neutrality_check():
     return 0
 
 
-def run_accept():
-    print('\n==== testsys: accept ====')
-    return subprocess.call(
-        [sys.executable, os.path.join(TESTSYS, 'parity', 'test_standalone_acceptance.py')],
-        cwd=REPO_ROOT)
-
-
 def run_scaling():
     print('\n==== testsys: scaling ====')
     return subprocess.call([sys.executable, os.path.join(TESTSYS, 'perf', 'run_scaling.py')], cwd=REPO_ROOT)
 
-def run_gpu():
-    print('\n==== testsys: gpu ====')
-    import importlib.util
-    try:
-        import jax
-        devs = [d for d in jax.devices() if 'cuda' in str(d).lower() or 'gpu' in str(d).lower()]
-    except Exception as e:
-        print(f'SKIP gpu: jax not importable ({e})'); return 0
-    if not devs:
-        print('SKIP gpu: no CUDA device/plugin (pip install "jax[cuda12]" on a GPU box)'); return 0
-    env = dict(os.environ, EQDYNA_ACCEPT_CASES='test.tpv8', EQDYNA_ACCEPT_PLATFORM='cuda')
-    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'parity', 'test_standalone_acceptance.py')],
-                           cwd=REPO_ROOT, env=env)
 
 def run_perf():
     print('\n==== testsys: perf ====')
@@ -146,28 +178,40 @@ def run_perf():
 
 
 RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
-           'parity': run_parity, 'accept': run_accept, 'perf': run_perf,
+           'e2e-ci': run_e2e_ci, 'parity': run_parity, 'perf': run_perf,
            'gpu': run_gpu, 'scaling': run_scaling, 'e2e-full': run_e2e_full}
-# 'all' stays unit+regression+e2e only (TIERS below) -- parity/accept/perf
-# require a Fortran build and generated fixtures/baseline (accept also
-# needs the committed test.reference.results/ trees) that a fresh checkout
-# does not have; they are opt-in tiers, invoked by name, not swept into 'all'.
+# 'all' stays unit+regression+e2e only (TIERS below) -- parity/perf require a
+# Fortran pydump build and generated fixtures/baselines that a fresh checkout
+# does not have; they are opt-in, invoked by name, not swept into 'all'.
+# e2e-ci and gpu are SELECTIONS of e2e, not tiers: 'all' runs the full sweep,
+# and CI runs e2e-ci, whose narrower coverage the sweep itself prints.
 # e2e-full additionally needs EQDYNA_FULL_LAUNCH=yes-hours (see
 # testsys/e2e/run_e2e_full.py) -- spec-resolution SCEC runs are hours long
 # and user-scheduled, never automatic.
-OPTIONAL_TIERS = ('parity', 'accept', 'perf', 'gpu', 'scaling', 'e2e-full')
+OPTIONAL_TIERS = ('e2e-ci', 'parity', 'perf', 'gpu', 'scaling', 'e2e-full')
 
 
 def main(argv):
-    which = argv[1] if len(argv) > 1 else 'all'
-    if which not in TIERS + OPTIONAL_TIERS + ('all',):
-        print(f'usage: python3 testsys/run.py [{"|".join(TIERS + OPTIONAL_TIERS)}|all]')
+    # Several tiers may be named in one invocation, in the order given --
+    # that is how CI asks for "unit regression e2e-ci" without a second
+    # entry point and without an env var deciding coverage behind its back.
+    requested = argv[1:] or ['all']
+    unknown = [t for t in requested if t not in TIERS + OPTIONAL_TIERS + ('all',)]
+    if unknown:
+        print(f'unknown tier(s) {unknown}')
+        print(f'usage: python3 testsys/run.py [{"|".join(TIERS + OPTIONAL_TIERS)}|all] ...')
         return 2
 
-    selected = TIERS if which == 'all' else (which,)
+    selected = []
+    for tier in requested:
+        for t in (TIERS if tier == 'all' else (tier,)):
+            if t not in selected:
+                selected.append(t)
+
     results = {tier: RUNNERS[tier]() for tier in selected}
 
     print('\n==== testsys: SUMMARY ====')
+    print('tiers run: %s' % ', '.join(selected))
     overall = 0
     for tier in selected:
         rc = results[tier]

@@ -92,21 +92,28 @@ def main():
     if not os.path.exists(golden_path):
         raise SystemExit(f'FAIL: golden oracle missing: {golden_path}')
 
-    from eqdyna.port import load  # noqa: E402 -- import after sys.path setup
+    from eqdyna.pydump import load  # noqa: E402 -- import after sys.path setup
     S = load(FIXTURE_CASE)
     golden = np.loadtxt(golden_path)
     nsteps = S['nstep']
 
     results = {}
-    from eqdyna import port
-    results['numpy'] = check_engine('numpy', port.run, S, golden, nsteps)
+    from eqdyna import eqdyna3d
+    results['numpy'] = check_engine(
+        'numpy', lambda S, nsteps, verbose: eqdyna3d.run(
+            S, nsteps=nsteps, verbose=verbose, backend='numpy'),
+        S, golden, nsteps)
 
     try:
-        from eqdyna import port_jax
+        from eqdyna import backend as _b
+        _b.array_module('jax')
     except ImportError as e:
         print(f'SKIP parity:jax -- jax not importable ({e}); numpy result alone gates this tier.')
     else:
-        results['jax'] = check_engine('jax', port_jax.run, S, golden, nsteps)
+        results['jax'] = check_engine(
+            'jax', lambda S, nsteps, verbose: eqdyna3d.run(
+                S, nsteps=nsteps, verbose=verbose, backend='jax'),
+            S, golden, nsteps)
 
     overall = 0 if all(results.values()) else 1
     print(f'\n{"SUCCESS" if overall == 0 else "FAIL"} parity (engines checked: {list(results)})')
