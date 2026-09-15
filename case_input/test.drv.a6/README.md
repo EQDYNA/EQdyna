@@ -11,7 +11,8 @@ model for ground motion application").
 
 | tier | dx (m) | term (s) | ranks (decomp) | ~cells | wall time | reference |
 |---|---|---|---|---|---|---|
-| fast (gate) | 500 | 5 | 4 (2,2,1) | 256k | ~48s (suite-aggregate, not case-isolated) | chaos-aware gate, `test.reference.results/test.drv.a6/` (rupture-front bistability tolerated, see `testsys/parity/test_standalone_acceptance.py`) |
+| fast (gate) | 500 | 5 | 4 (2,2,1) | 256k | ~48s (suite-aggregate, not case-isolated) | chaos-aware gate, `test.reference.results/test.drv.a6/` (rupture-front bistability tolerated, see `testsys/matrix.py`'s `DRV_A6` bounds and `testsys/compare.py`'s
+`flip_budget_gate`) |
 | full | -- | -- | -- | -- | -- | EXCLUDED: no published full-resolution run in README.md/pastReleaseNotes.md beyond this test config |
 
 Provenance: SHA 5e76e8e, cotopaxi, Ubuntu 22.04/gfortran 11.4.0/OpenMPI

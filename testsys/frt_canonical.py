@@ -38,6 +38,25 @@ So the key cannot merge distinct nodes and cannot fail to merge duplicates.
 
 This module does NOT compare. It only produces the canonical array, so the
 tolerance policy lives in one place with the caller and not in here.
+
+PROVENANCE OF THE COMMITTED REFERENCES
+
+`test.reference.results/<case>/frt.canonical.txt` is the committed reference
+the gate compares against. Each one was produced by this module, verbatim,
+from the per-rank `frt.txt*` files that the same directory used to hold:
+
+    python3 -m testsys.frt_canonical test.reference.results/<case>
+
+Those per-rank files were deleted in the same change, deliberately: keeping
+both would have stored the same numbers twice and left the gate a choice of
+two references. The transform is lossless here and that was checked rather
+than assumed -- across all eight cases, 358 duplicate groups, the duplicate
+rows agreed to 0.000e+00 in every one of the 22 columns (canonicalize() now
+refuses to proceed if they ever do not). The row counts before and after were
+tpv8 1922->1891, tpv10 1922->1891, tpv104 2738->2701, tpv1053d 4050->4005,
+drv.a6 5202->5151, tpv29 3444->3321, meng2023a 672->651, meng2023cb 672->651.
+Regenerating a reference is still a deliberate, reviewed commit (rule 7); the
+git history holds the per-rank originals.
 """
 import glob
 import os
@@ -96,12 +115,37 @@ def canonicalize(arr):
     index, and the subsequent lexsort fixes the order completely, so the output
     does not depend on how many ranks wrote the input or in what order they
     were concatenated.
+
+    Dropping a duplicate is only lossless if the duplicates AGREE, so that is
+    checked, not assumed: if two ranks wrote different values for the same
+    fault node, "keep the first" would be a silent choice between two answers
+    (rule 2), and it raises instead. Measured on all eight committed
+    references (358 duplicate groups, every one of the 22 columns): max
+    intra-duplicate spread 0.000e+00 -- fault-node quantities are synchronised
+    across ranks, so exact equality is the right test and this cannot fire on
+    ordinary floating-point noise.
     """
     if arr.ndim != 2 or arr.shape[1] != FRT_COLUMNS:
         raise ValueError('canonicalize: expected (N, %d), got %r'
                          % (FRT_COLUMNS, arr.shape))
     key = np.round(arr[:, :3], COORD_DECIMALS)
-    _, first = np.unique(key, axis=0, return_index=True)
+    _, first, inverse, counts = np.unique(key, axis=0, return_index=True,
+                                          return_inverse=True,
+                                          return_counts=True)
+    inverse = inverse.reshape(-1)
+    for group in np.flatnonzero(counts > 1):
+        rows = arr[inverse == group]
+        spread = np.abs(rows.max(axis=0) - rows.min(axis=0))
+        if spread.max() > 0.0:
+            col = int(spread.argmax())
+            raise ValueError(
+                'canonicalize: the fault node at (%.6f, %.6f, %.6f) was written '
+                '%d times with DIFFERENT values -- max spread %.6e at column '
+                '%d. Deduping would silently keep one of them. Rank-shared '
+                'fault-node quantities are supposed to be identical; this is a '
+                'finding, not a tolerance question.'
+                % (rows[0, 0], rows[0, 1], rows[0, 2], rows.shape[0],
+                   spread.max(), col))
     kept = arr[np.sort(first)]
     order = np.lexsort((kept[:, 2], kept[:, 1], kept[:, 0]))
     return kept[order]

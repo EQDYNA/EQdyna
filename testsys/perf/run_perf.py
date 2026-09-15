@@ -85,11 +85,11 @@ def time_fortran(nsteps):
 def time_python(engine, nsteps):
     script = (
         f"import sys; sys.path.insert(0, {PYTHON_PKG!r}); sys.path.insert(0, {os.path.join(PYTHON_PKG, 'eqdyna')!r})\n"
-        f"from eqdyna.port import load\n"
-        f"from eqdyna import {'port' if engine == 'numpy' else 'port_jax'} as mod\n"
+        f"from eqdyna.pydump import load\n"
+        f"from eqdyna import eqdyna3d\n"
         f"S = load({FIXTURE_CASE!r})\n"
         f"import time; t0 = time.time()\n"
-        f"out = mod.run(S, nsteps={nsteps}, verbose=False)\n"
+        f"out = eqdyna3d.run(S, nsteps={nsteps}, verbose=False, backend={engine!r})\n"
         f"print('PERF_WALL', time.time() - t0)\n"
     )
     t0 = time.time()
@@ -133,7 +133,7 @@ def main():
 
     sys.path.insert(0, PYTHON_PKG)
     sys.path.insert(0, os.path.join(PYTHON_PKG, 'eqdyna'))
-    from eqdyna.port import load  # noqa: E402
+    from eqdyna.pydump import load  # noqa: E402
     S = load(FIXTURE_CASE)
     nsteps = S['nstep']
 

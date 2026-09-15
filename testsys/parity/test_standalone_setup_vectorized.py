@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 """Bit-for-bit oracle test for the VECTORIZED standalone setup path.
 
-The setup builders in python/eqdyna/standalone/{meshgen,mass_assembly}.py
+The setup builders in python/eqdyna/standalone/{meshgen,assembleGlobalMass}.py
 were originally verbatim scalar ports of the Fortran and are now vectorized
 for speed. Each vectorized builder keeps its original scalar loop alongside
 it (`_build_elements_scalar`, `_build_equation_numbers_scalar`,
@@ -26,8 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(REPO_ROOT, 'python'))
 
-from eqdyna.standalone import meshgen, mass_assembly
-from eqdyna.standalone.native_input import build_params, read_bmaterial
+from eqdyna import meshgen, assembleGlobalMass
+from eqdyna.eqdyna3d.readInputFiles import build_params, read_bmaterial
 
 FIXTURE_NAME = sys.argv[1] if len(sys.argv) > 1 else 'test_tpv8_serial'
 FIXTURE = os.path.join(HERE, 'fixtures', FIXTURE_NAME)
@@ -113,11 +113,11 @@ def main():
 
     # ---- assemble_mass ----
     xl = meshCoor[conn]
-    det = mass_assembly.compute_element_det(xl)
+    det = assembleGlobalMass.compute_element_det(xl)
     n_nodes = meshCoor.shape[0] - 1
-    nm, fn = mass_assembly.assemble_mass(conn, mat, det, num_dof, eq_start, eq_nums,
+    nm, fn = assembleGlobalMass.assemble_mass(conn, mat, det, num_dof, eq_start, eq_nums,
                                           total_eqs, n_nodes)
-    s_nm, s_fn = mass_assembly._assemble_mass_scalar(
+    s_nm, s_fn = assembleGlobalMass._assemble_mass_scalar(
         s_conn, s_mat, det, s_num_dof, s_eq_start, s_eq_nums, s_total, n_nodes)
     same_bytes('fnms', fn, s_fn)
     same_bytes('nodalMassArr', nm, s_nm)
