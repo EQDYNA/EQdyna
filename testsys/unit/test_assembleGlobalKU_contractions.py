@@ -1,6 +1,6 @@
 """Guards for the float64 identities the NumPy solver's speed depends on.
 
-python/eqdyna/kernels_numpy.py's `elastic_step` was rewritten (2026-09-14) to
+python/eqdyna/assembleGlobalKU.py's `elastic_step` was rewritten (2026-09-14) to
 cut its per-step cost roughly in half. Every rewrite was chosen so the output
 stays BIT-IDENTICAL, not merely close: the standalone port is gated against
 Fortran at PER_CASE_ABS_BOUND['test.tpv8'] == 1e-8 while the observed diff is
@@ -26,7 +26,7 @@ parity tier to notice:
      force be written straight into the scatter buffer with `out=`.
 
 A failure here does not mean the solver is wrong; it means a NumPy upgrade has
-changed a reduction order, and kernels_numpy.py's bit-identity claims (and the
+changed a reduction order, and assembleGlobalKU.py's bit-identity claims (and the
 comments asserting them) must be re-verified before shipping.
 """
 import os
@@ -37,8 +37,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    'python', 'eqdyna'))
-import kernels_numpy  # noqa: E402
+    'python'))
+from eqdyna import assembleGlobalKU  # noqa: E402
 
 
 def _operands(seed, n=20000):
@@ -67,7 +67,7 @@ def test_hourglass_einsum_matches_broadcast_reduce_bitwise(seed):
     ndiff = int((reference != fast).sum())
     assert ndiff == 0, (
         'np.einsum no longer reduces in the same order as the broadcast-multiply'
-        '/axis-1 sum it replaced in kernels_numpy.elastic_step: %d of %d values '
+        '/axis-1 sum it replaced in assembleGlobalKU.assembleGlobalKU: %d of %d values '
         'differ, max abs %.3e. The hourglass contraction is no longer '
         'bit-identical -- re-verify the port against Fortran before shipping.'
         % (ndiff, reference.size, np.abs(reference - fast).max()))
@@ -94,8 +94,8 @@ def test_c_contraction_is_layout_independent(seed):
     blk_dn = rng.standard_normal((30000, 8, 3))
     blk_v = rng.standard_normal((30000, 8, 3))
     for k in range(3):
-        strided = kernels_numpy._c(blk_dn[:, :, k], blk_v[:, :, k])
-        contiguous = kernels_numpy._c(np.ascontiguousarray(blk_dn[:, :, k]),
+        strided = assembleGlobalKU._c(np, blk_dn[:, :, k], blk_v[:, :, k])
+        contiguous = assembleGlobalKU._c(np, np.ascontiguousarray(blk_dn[:, :, k]),
                                       np.ascontiguousarray(blk_v[:, :, k]))
         assert np.array_equal(strided, contiguous)
 
@@ -117,4 +117,4 @@ def test_c_is_not_interchangeable_with_einsum():
     n = 200000
     dN = rng.standard_normal((n, 8))
     v = rng.standard_normal((n, 8)) * 1e-13 + np.tile([1.0, -1.0], 4)[None, :]
-    assert not np.array_equal(kernels_numpy._c(dN, v), np.einsum('ei,ei->e', dN, v))
+    assert not np.array_equal(assembleGlobalKU._c(np, dN, v), np.einsum('ei,ei->e', dN, v))

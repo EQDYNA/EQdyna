@@ -8,7 +8,7 @@ Milestone 1 (node coordinates), Milestone 2 (element connectivity +
 per-element material), Milestone 3 (equation numbering), Milestone 4
 (split-node fault geometry: un/us/ud unit vectors + arn nodal area),
 Milestone 5 (on-/off-fault station node matching), and Milestone 6
-(native case-input reading -- see native_input.py, which replaces every
+(native case-input reading -- see readInputFiles.py, which replaces every
 hand-transcribed PARAMS/MATERIAL/station value M1-M5 previously used) of
 the standalone-phase spec are ported and verified against
 `testsys/parity/fixtures/test_tpv8_serial/pydump_meshCoor.txt` /
@@ -27,7 +27,7 @@ on-fault and 11/15 matched off-fault stations; M6 re-runs M1-M5 against
 NATIVELY-READ inputs (unchanged results, confirming the readers) plus a new
 initial-fric-state check (netCDF4 read of on_fault_vars_input.nc) at max
 abs diff 7.45e-9 across all 1,891 fault nodes x 100 friction slots; M6.5
-(see mass_assembly.py) ports assembleGlobalMass.f90's lumped-mass
+(see assembleGlobalMass.py) ports assembleGlobalMass.f90's lumped-mass
 integration, verified against pydump_nodalmass.txt/pydump_fnms.txt at max
 relative diff 8.2e-16 (true roundoff) across 1,425,873 equations / 249,047
 nodes.
@@ -41,7 +41,7 @@ reaches or passes the requested bound. Using the input bounds silently
 inflated totalNumOfEquations by ~230k (too few nodes classified fixed).
 See `build_equation_numbers`'s docstring/comment for the fix.
 
-Milestone 7.5 (see mass_assembly.py) closes the assembly gap this
+Milestone 7.5 (see assembleGlobalMass.py) closes the assembly gap this
 docstring used to flag as "not yet ported": `compute_element_shape` now
 ports eledet/eleshp (calcGlobalShapeFunc's full output -- spatial shape-
 function derivatives dNx/dNy/dNz -- for both interior and PML elements,
@@ -216,7 +216,7 @@ def on_fault_grid_mask(xline, yline, zline, params):
 
 def _fortran_nint(x):
     """Fortran nint(): round-half-away-from-zero. Same formula as
-    native_input.py's helper of the same purpose (kept local here to avoid
+    readInputFiles.py's helper of the same purpose (kept local here to avoid
     a cross-module dependency for a two-line function)."""
     return int(np.sign(x) * np.floor(np.abs(x) + 0.5)) if x != 0 else 0
 
@@ -227,7 +227,7 @@ def insert_fault_interface(x, y, z, rough, dx, dz, ymin, ymax, tol):
     tests against, per the Fortran calling this from meshgen's loop BEFORE
     checkIsOnFault runs on the same nodeCoor -- looks up the local fault-
     surface height `peak` and its along-strike/along-dip slopes (pfx, pfz)
-    from `rough` (native_input.read_fault_rough_geometry's dict), then
+    from `rough` (readInputFiles.read_fault_rough_geometry's dict), then
     returns the MORPHED y-coordinate `ycoort` via meshgen.f90's linear
     blend between the fault surface and the model's ymin/ymax planes.
 
@@ -1170,11 +1170,11 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
 # ---- TODO for the next milestones (explicitly not done here) ----
 # - M7: frt.txt writer, '(1x,22e18.7e4)' Fortran exponent-width format.
 # - eledet/eleshp/ss/phi (assembleGlobalKU's FEM-kernel inputs, beyond the
-#   Jacobian determinant M6.5/mass_assembly.py already ports) -- needed
+#   Jacobian determinant M6.5/assembleGlobalMass.py already ports) -- needed
 #   whenever a future milestone ports the stiffness assembly itself.
-# native_input.py (M6) ports bGlobal/bModelGeometry/bFaultGeometry/
+# readInputFiles.py (M6) ports bGlobal/bModelGeometry/bFaultGeometry/
 # bMaterial/bStations reading + netCDF4 on_fault_vars_input.nc -> fric.
-# mass_assembly.py (M6.5) ports assembleGlobalMass's lumped-mass
+# assembleGlobalMass.py (M6.5) ports assembleGlobalMass's lumped-mass
 # integration (nodalMassArr, fnms) -- standalone solver path must call
 # this at runtime, NOT read pydump_fnms.txt/pydump_nodalmass.txt (those
 # stay oracle-only, see M8 provenance note in this module's top docstring

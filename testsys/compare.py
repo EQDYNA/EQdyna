@@ -33,11 +33,7 @@ kinds of backend:
                   the printed number IS the gated number.
   flip-budget  -- test.drv.a6 only: bulk agreement plus an explicit rupture-
                   flip budget, because that case's rupture arrivals are
-                  genuinely bistable (see matrix.DRV_A6). NO CASE IS GATED ON
-                  IT TODAY -- drv.a6 is matrix.REFERENCE_ONLY pending the
-                  numerics question, and this implementation is kept live for
-                  testsys/parity/evidence_drv_a6_chaos.py and for the case's
-                  return.
+                  genuinely bistable (see matrix.DRV_A6).
 
 Nothing in here skips. A missing reference, a missing run artifact, a node-set
 mismatch and an out-of-bound diff are all failures, and each says which it was.
@@ -237,13 +233,6 @@ def compare_frt(case, run):
     """(ok, lines) for one cell's canonical frt output, at the CASE's gate --
     the same gate for every backend, which is what makes the sweep's columns
     comparable to each other."""
-    if case in matrix.REFERENCE_ONLY:
-        # Reached only if a caller bypassed matrix.cells(). Say which state the
-        # case is in rather than dying on a KeyError three frames down.
-        raise KeyError(
-            '%s is matrix.REFERENCE_ONLY -- kept as reference, not gated, so '
-            'there is no gate to compare it at.\n  %s'
-            % (case, matrix.REFERENCE_ONLY[case]))
     ref_a, run_a = load_coordinate_aligned(case, run)
     if matrix.GATE[case] == 'abs-max':
         return abs_max_gate(case, ref_a, run_a)

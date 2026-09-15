@@ -27,54 +27,25 @@ def test_no_case_bound_is_looser_than_the_outer_threshold():
     assert looser == {}
 
 
-def test_a_withdrawn_case_is_withdrawn_from_the_gated_table():
-    # test.drv.a6 is REFERENCE_ONLY: kept, not gated. The two states are
-    # exclusive -- carrying a bound as well would let the table say both
-    # "not covered" and "covered at this bound".
-    assert 'test.drv.a6' in matrix.REFERENCE_ONLY
-    assert 'test.drv.a6' in matrix.ALL_CASES
-    assert 'test.drv.a6' not in matrix.CASES
-    for c in matrix.REFERENCE_ONLY:
-        assert c not in matrix.CASE_BOUND and c not in matrix.GATE
+def test_drv_a6_is_gated_on_a_flip_budget_not_a_scalar():
+    # The bistable case is gated on bulk agreement PLUS an explicit flip
+    # budget. A scalar max-abs bound cannot distinguish "a few hundred marginal
+    # nodes flipped" from "everything drifted", so acquiring one here would be
+    # a regression, and so would quietly widening the budget.
+    assert matrix.CASE_BOUND['test.drv.a6'] is None
+    assert matrix.GATE['test.drv.a6'] == 'flip-budget'
+    assert matrix.DRV_A6['total_flip_bound'] == 450
 
 
-def test_the_reference_of_a_withdrawn_case_is_kept():
-    # The whole point of withdrawing rather than deleting. matrix.py enforces
-    # this at import; stated here where a reader looks for the contract, so
-    # that "unused, delete it" cannot quietly turn a withdrawal into a
-    # deletion.
+def test_every_gated_case_has_a_committed_reference():
+    # matrix.py enforces this at import; stated here where a reader looks for
+    # the contract. A gated case with no reference cannot be compared, and
+    # "could not compare" must never read as "passed".
     import os
-    for c in matrix.REFERENCE_ONLY:
+    for c in matrix.CASES:
         ref = os.path.join(matrix.REPO_ROOT, 'test.reference.results', c,
                            'frt.canonical.txt')
-        assert os.path.isfile(ref), '%s must keep its reference' % c
-
-
-def test_asking_the_sweep_for_a_withdrawn_case_fails_loudly():
-    # Rule 2: "I could not check this" must not be able to look like "this is
-    # fine". Selecting a withdrawn case must raise, not return an empty-but-
-    # green selection.
-    with pytest.raises(ValueError, match='REFERENCE_ONLY'):
-        matrix.cells(cases=['test.drv.a6'])
-
-
-def test_the_withdrawn_gate_is_kept_wired_to_its_evidence():
-    # Withdrawal is not a verdict that the gate was wrong; the flip budget and
-    # its measured constants stay, so the case can come back to them.
-    assert matrix.DRV_A6['total_flip_bound'] == 450
-    assert matrix.is_reference_only('test.drv.a6')
-    assert 'pathway_forward' in matrix.reference_only_reason('test.drv.a6')
-    with pytest.raises(KeyError):
-        matrix.reference_only_reason('test.tpv8')
-
-
-def test_coverage_report_always_names_the_withdrawn_cases():
-    # Printed on EVERY run, selection or not: a green sweep must never read as
-    # covering a case it has withdrawn.
-    text = '\n'.join(matrix.coverage_report(*matrix.cells(), 'full sweep'))
-    assert 'REFERENCE ONLY' in text
-    for c in matrix.REFERENCE_ONLY:
-        assert c in text
+        assert os.path.isfile(ref), '%s is gated but has no reference' % c
 
 
 def test_default_selection_accounts_for_every_cell_in_the_table():
@@ -82,14 +53,37 @@ def test_default_selection_accounts_for_every_cell_in_the_table():
     assert len(runnable) + len(unsupported) == len(matrix.CASES) * len(matrix.BACKENDS)
 
 
-def test_unsupported_cell_is_declared_not_dropped():
-    runnable, unsupported = matrix.cells(cases=['test.meng2023a'],
+def test_unsupported_table_is_empty_but_the_mechanism_still_works(monkeypatch):
+    """UNSUPPORTED is EMPTY now -- friclaw=2 was the last gap, and closing it
+    made test.meng2023a/test.meng2023cb runnable on both python backends for
+    the first time. So this pins the MECHANISM against a synthetic entry
+    rather than against whichever real gap happens to be open.
+
+    Pinning a regression test to a real gap is how it dies the moment the gap
+    is fixed: the previous version asserted `runnable == []` for
+    test.meng2023a x python-jax and would now fail because that cell works.
+    """
+    assert matrix.UNSUPPORTED == {}, \
+        'a newly declared-unsupported cell needs its reason reviewed here'
+
+    monkeypatch.setitem(matrix.UNSUPPORTED, ('test.tpv8', 'python-jax'),
+                        'synthetic reason for this test')
+    runnable, unsupported = matrix.cells(cases=['test.tpv8'],
                                          backends=['python-jax'])
     assert runnable == []
     assert len(unsupported) == 1
     case, backend, reason = unsupported[0]
-    assert (case, backend) == ('test.meng2023a', 'python-jax')
-    assert 'friclaw=2' in reason
+    assert (case, backend) == ('test.tpv8', 'python-jax')
+    assert reason == 'synthetic reason for this test'
+
+
+def test_every_gated_cell_runs_now_that_nothing_is_unsupported():
+    """The sweep covers every cell of the gated table. Recorded as an
+    assertion so losing coverage requires deleting a test, not just quietly
+    editing a table."""
+    runnable, unsupported = matrix.cells()
+    assert unsupported == []
+    assert len(runnable) == len(matrix.CASES) * len(matrix.BACKENDS)
 
 
 def test_unsupported_reason_raises_for_a_supported_cell():

@@ -83,7 +83,7 @@ def build_frt_rows(meshCoor, nsmp, fnft, fric):
     nsmp: (nftnd,2) int64 [slave_id, master_id], 1-indexed.
     fnft: (nftnd+1,) rupture time per fault node, 1-indexed (row 0 unused).
     fric: (nftnd+1,101) friction-state array, 1-indexed rows AND columns
-        (row/col 0 unused), matching native_input.read_on_fault_vars's
+        (row/col 0 unused), matching readInputFiles.read_on_fault_vars's
         convention.
 
     Returns a list of nftnd lists, each 22 floats.
