@@ -35,7 +35,7 @@ import numpy as np
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from loading import load, region_damp  # noqa: E402
-from port_jax import build, enable_compilation_cache
+from port_jax import build, enable_compilation_cache  # NOT split_inv -- see run()
 import kernels_jax
 
 
@@ -248,7 +248,6 @@ def run(S, nsteps=None, verbose=True):
     sliprate_hist = jnp.zeros((nftnd, nsteps), dtype=jnp.float64)
     shear_hist = jnp.zeros((nftnd, nsteps), dtype=jnp.float64)
 
-    step = make_step(inv, S, nsteps)
     # NOTE: unlike port_jax.py/port_rsf_jax.py this loop keeps a STATIC length.
     # `sliprate_hist`/`shear_hist` above are shaped (nftnd, nsteps), so nsteps
     # is a shape here, not just a trip count -- tracing it is not available
@@ -256,7 +255,45 @@ def run(S, nsteps=None, verbose=True):
     # port still pays one XLA compile per distinct step count. The persistent
     # compilation cache enabled in run() still removes the repeat cost for any
     # step count seen before.
-    scan_fn = jax.jit(lambda c: jax.lax.scan(step, c, xs=jnp.arange(1, nsteps + 1))[0])
+    # `inv` stays CLOSED OVER here, unlike port_jax.py/port_rsf_jax.py, which
+    # pass it to jit as an ARGUMENT via port_jax.split_inv() to stop XLA from
+    # holding several copies of the mesh constants (measured 9.93 -> 4.01 GB
+    # peak RSS on test.tpv104; see split_inv's docstring). That promotion is
+    # deliberately NOT applied to this port, because on THIS program it is not
+    # bit-identical.
+    #
+    # Measured, test.tpv1053d serial, 120 steps, jax-cpu, sha256 over
+    # tobytes() of the FULL velArr/dispArr/force/fric/fnft, against this
+    # closed-over form:
+    #     dispArr 9.2944e-14   force 5.3512e-11   fric 5.9001e-06 (max abs)
+    #     velArr  1.2279e-12   fnft  0 rupture-existence flips
+    # and that SAME deviation, digest for digest, appears under every variant
+    # tried -- promoting integer index arrays only, promoting them plus
+    # phi/ss/dN*, and (separately) hoisting the scatter-index concatenation to
+    # the host. All of those make the scatter's index operand a single
+    # contiguous buffer instead of an in-graph concatenate, and on this
+    # program that changes the element-force accumulation order XLA picks;
+    # float addition is not associative, so the answer moves. The same
+    # variants ARE bit-identical on port_jax/port_rsf_jax (test.tpv8,
+    # test.tpv104, test.tpv10, test.drv.a6 -- all five output arrays, zero
+    # differing elements), so this is a property of THIS loop: a lax.scan with
+    # an 11-leaf carry (the thermop history arrays are shaped (nftnd, nsteps),
+    # which forces a static length) rather than the 9-leaf fori_loop the other
+    # two ports use.
+    #
+    # So the footprint win is left unclaimed here rather than taken with a
+    # reduction-order change: the deviation above is well inside this case's
+    # accept bound (1e-4, observed 3.73e-06 against the committed reference)
+    # and flips no rupture time, but it IS a change to the answer, and trading
+    # bit-identity for memory is the owner's call, not this port's default.
+    # What it would buy, measured on test.tpv1053d serial, 120 steps, jax-cpu,
+    # /usr/bin/time -v peak RSS over the whole run:
+    #     closed over (this code)  12.50 GB   123.5 s solve   BIT-IDENTICAL
+    #     inv promoted              4.69 GB    82.2 s solve   deviation above
+    # i.e. -62% peak RSS and -33% solve. Re-decide it with those two rows and
+    # the deviation, not by re-discovering them.
+    scan_fn = jax.jit(lambda c: jax.lax.scan(
+        make_step(inv, S, nsteps), c, xs=jnp.arange(1, nsteps + 1))[0])
 
     carry0 = (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
               sliprate_hist, shear_hist)

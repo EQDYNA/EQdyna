@@ -70,8 +70,122 @@ def enable_compilation_cache():
     _cache_enabled = True
 
 
-def time_loop(step, carry0, nsteps):
-    """Run `step` `nsteps` times, with `nsteps` TRACED rather than baked in.
+# Loop-invariant float arrays promoted from HLO constant to jit ARGUMENT by
+# split_inv(). Promotion is NOT applied to float arrays wholesale: it is
+# applied to exactly this set, because exactly this set was VERIFIED
+# bit-identical end-to-end (see split_inv's docstring for the measurement and
+# for the counter-example that stops the list here).
+_PROMOTED_FLOAT = ('phi', 'ss', 'dNx_i', 'dNy_i', 'dNz_i', 'dNx_p', 'dNy_p', 'dNz_p')
+
+
+def split_inv(inv):
+    """Split build()'s `inv` into (dynamic, static) for jit.
+
+    dynamic -- handed to `jax.jit` as an ARGUMENT, so XLA sees a PARAMETER and
+    the array stays exactly one device buffer:
+      * every INTEGER array (and list of integer arrays, e.g. idxP12): mesh
+        connectivity, equation ids, the element-force scatter index. These
+        feed gathers and a scatter, never float arithmetic, so promoting them
+        cannot re-associate a floating-point expression.
+      * the large float mesh arrays in _PROMOTED_FLOAT above.
+    static -- stays closed over: every Python/NumPy scalar (N, NEQ1, dt,
+    rdampk, Ei/Ep/E, C_elastic, grav_const, slipRateThres, ccosphi/sinphi/tv),
+    which the kernels branch on at TRACE time (`if inv['C_elastic'] == 0:`,
+    `if inv['Ep'] > 0:`), plus every remaining per-element/per-node
+    coefficient array (lam/miu, constk_w_i, det_w_p, the PML damping ratios
+    a1..b3/a9/b9, inv_mass_full, un/us/ud/arn, m_e_*, stress_i0, pml_init6).
+
+    WHY promote at all (2026-09-15, peak-RSS work): an array CLOSED OVER by a
+    jitted function becomes an HLO *literal*, and a literal is paid for many
+    times over -- once in the traced jaxpr's consts, again rendered into the
+    lowered MLIR module, again when XLA parses and constant-folds it, and once
+    more in the executable, which then holds its OWN copy alongside the
+    caller's still-live original. An isolated repro: 600 MB of closed-over
+    arrays produced a 1200 MB module text and a 5.0 GB compile high-water,
+    against 1.2 GB total when the same arrays were passed as arguments.
+    Measured on test.tpv104 serial (E=735000, NEQ=3818583, jax-cpu; `inv` is
+    1.03 GB of arrays), closing ALL of it over cost:
+        module text    1200 MB
+        jit lower      +810 MB resident
+        XLA compile    RSS 3.25 -> 7.09 GB, high-water 10.17 GB, 5.9 s
+        after execute  jax.live_arrays() 1.15 GB -> 2.31 GB (the duplicate)
+    while XLA's own memory_analysis() for this loop reports only arg 0.141 +
+    out 0.141 + temp 1.072 = 1.35 GB. The peak-RSS gap was the COMPILER
+    holding copies of mesh constants, not the solver holding state.
+
+    With this split, same case, same machine:
+        module text          1200 MB  ->   171.5 MB
+        XLA compile          10.18 GB high-water, 6.01 s -> 3.04 GB, 2.87 s
+        peak RSS, full run    9.93 GB ->  4.01 GB   (/usr/bin/time -v, 120
+                              steps, serial, incl. setup and frt write)
+        solve                 90.4 s  ->  64.1 s
+        ms/step, compile excl  569.2  ->  530.8     (-6.8%)
+    It is a win on BOTH axes: nothing was traded for the footprint. Same
+    change on test.tpv8 1.81 GB (was 3.43) / 229.0 ms/step (was 269.7),
+    test.tpv10 3.98 GB (was 10.18), test.drv.a6 9.10 GB (was 23.77).
+
+    WHY THE LIST STOPS WHERE IT DOES -- this is the load-bearing part.
+    Promoting an array removes XLA's opportunity to fold it into the
+    expressions it feeds (and, for the scatter index, to schedule the
+    duplicate-index element-force accumulation the way it does when the index
+    is a literal). Neither folding nor that schedule is guaranteed
+    association-preserving, and float addition is not associative, so every
+    promotion is a potential bit-identity change and was gated on a
+    full-output end-to-end check -- sha256 over tobytes() of the WHOLE
+    velArr/dispArr/force/fric/fnft, full step count, jax-cpu, never a spot
+    check and never allclose:
+      * integers + _PROMOTED_FLOAT -> BIT-IDENTICAL on every case this
+        split serves: test.tpv8 (114 steps), test.tpv104, test.tpv10,
+        test.drv.a6 (120/132/120 steps) -- all five arrays, ZERO differing
+        elements, 0 fnft rupture-time flips. This is the landed configuration.
+      * EVERY array promoted -> NOT bit-identical: velArr 1.53e-14, dispArr
+        1.11e-15, force 3.36e-13, fric 2.09e-07 max abs, 0 fnft flips
+        (test.tpv8). That is inside this port's own documented
+        nondeterminism floor -- see kernels_jax.py's hourglass-fusion note,
+        whose accepted fric figure is the same 2.09e-07 -- but it is a real
+        change to the answer, and it is not taken, because the configuration
+        above gets the memory without it.
+      * everything except a1..b3/a9/b9/det_w_p -> also NOT bit-identical, so
+        the responsible constant is one of the remaining small coefficient
+        arrays, not the PML damping divisors; not narrowed further, because
+        the bit-identical configuration above already meets the footprint
+        target.
+    A new array added to `inv` therefore defaults to STATIC (constant). To
+    promote it, add it here and re-run that end-to-end digest check -- never
+    on the strength of a spot check or an allclose.
+
+    ALSO TRIED AND DROPPED (2026-09-15), recorded so it is not re-attempted
+    blind: hoisting kernels_jax's per-step `jnp.concatenate` of the 18
+    scatter-index blocks into build() as one host-side array. It is
+    bit-identical on port_jax/port_rsf_jax, but it was MEMORY-NEUTRAL
+    (test.tpv104 arg/temp unchanged, run peak 3.92 vs 3.97 GB -- the 18
+    blocks and their concatenation are the same total bytes), and it is NOT
+    bit-identical on port_tp_jax (see that module's run()). A change that
+    buys no memory and costs bit-identity on one of five cases is not worth
+    its diff.
+
+    A scalar is never silently promoted to a traced array: it lands in
+    `static`, and if a kernel then tries to branch on a traced value JAX
+    raises TracerBoolConversionError -- loud, at the line, never a silent
+    re-interpretation.
+    """
+    def _isint(x):
+        return isinstance(x, (jax.Array, np.ndarray)) and x.dtype.kind in 'iu'
+
+    dyn, sta = {}, {}
+    for k, v in inv.items():
+        if _isint(v) or (k in _PROMOTED_FLOAT and isinstance(v, (jax.Array, np.ndarray))):
+            dyn[k] = v
+        elif isinstance(v, (list, tuple)) and len(v) and all(_isint(x) for x in v):
+            dyn[k] = list(v)
+        else:
+            sta[k] = v
+    return dyn, sta
+
+
+def time_loop(build_step, inv, carry0, nsteps):
+    """Run `build_step(inv)`'s step `nsteps` times, with `nsteps` TRACED
+    rather than baked in.
 
     `lax.scan` needs a static `length`, which put the step count into the
     compiled executable's cache key: every distinct step count paid a full
@@ -82,12 +196,21 @@ def time_loop(step, carry0, nsteps):
     executable now serves every nsteps (verified: n=500 reused the n=120 cache
     entry, 7.15 s vs 13.9 s cold).
 
+    Takes the step FACTORY (not an already-built closure) plus `inv`, so that
+    the step's `inv` lookups resolve against jit ARGUMENTS rather than
+    closed-over constants -- see split_inv() for the measured reason.
+
     Callers whose carry shapes depend on nsteps (port_tp_jax.py's history
-    arrays) cannot use this; they keep a static length by necessity.
+    arrays) cannot use this; they keep a static length by necessity (and do
+    the same split_inv() themselves).
     """
-    loop = jax.jit(lambda c, n: jax.lax.fori_loop(
-        0, n, lambda _i, cc: step(cc, None)[0], c))
-    return loop(carry0, nsteps)
+    dyn, sta = split_inv(inv)
+
+    def body(dyn_arrays, c, n):
+        step = build_step({**sta, **dyn_arrays})
+        return jax.lax.fori_loop(0, n, lambda _i, cc: step(cc, None)[0], c)
+
+    return jax.jit(body)(dyn, carry0, nsteps)
 
 
 def build(S):
@@ -313,9 +436,8 @@ def run(S, nsteps=None, verbose=True):
     fnft = jnp.full(nftnd, 99999.0, dtype=jnp.float64)
     timeElapsed = jnp.asarray(0.0, dtype=jnp.float64)
 
-    step = make_step(inv)
     carry0 = (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed)
-    carry = time_loop(step, carry0, nsteps)
+    carry = time_loop(make_step, inv, carry0, nsteps)
     jax.block_until_ready(carry)
     v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed = carry
     return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr), fnft=np.asarray(fnft),

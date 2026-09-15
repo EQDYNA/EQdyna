@@ -1,18 +1,24 @@
-"""Unit cover for the two Py-only mechanisms port_jax.py wraps the time loop in:
-`time_loop` (traced step count) and `enable_compilation_cache`.
+"""Unit cover for the three Py-only mechanisms port_jax.py wraps the time loop
+in: `time_loop` (traced step count), `split_inv` (loop-invariant arrays passed
+to jit as ARGUMENTS rather than closed-over HLO constants) and
+`enable_compilation_cache`.
 
-Neither is covered by testsys/parity or testsys/accept. Those tiers gate the
-NUMBERS the solver produces, and both mechanisms here are designed to leave
-the numbers untouched -- so a regression in either is invisible to them:
-`time_loop` running the wrong number of steps would look like a physics
-change, and the cache switch degrading to uncached would just make every
-process pay ~14 s of XLA compile again with nothing to attribute it to.
-PROJECT_RULES rule 2 is the reason the second one must raise rather than
-carry on.
+None is covered by testsys/parity or testsys/accept. Those tiers gate the
+NUMBERS the solver produces, and all three mechanisms here are designed to
+leave the numbers untouched -- so a regression in any of them is invisible to
+them: `time_loop` running the wrong number of steps would look like a physics
+change, the cache switch degrading to uncached would just make every process
+pay ~14 s of XLA compile again with nothing to attribute it to, and
+`split_inv` silently moving one more array into the promoted set would be a
+peak-RSS win that quietly costs bit-identity (measured: promoting every array
+moves test.tpv8's fric by 2.09e-07 -- far inside every accept bound, i.e.
+exactly the kind of drift a tolerance gate cannot see). PROJECT_RULES rule 2
+is the reason the cache switch must raise rather than carry on.
 """
 import os
 import sys
 
+import numpy as np
 import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,25 +30,50 @@ import jax.numpy as jnp  # noqa: E402
 import port_jax  # noqa: E402
 
 
-def _toy_step():
-    """A multi-leaf carry whose update depends on the previous value, so a
-    wrong trip count or a dropped carry leaf cannot pass by coincidence."""
-    def step(carry, _):
-        a, b, t = carry
-        a = a * 1.5 + b
-        b = b + jnp.sum(a)
-        t = t + 1.0
-        return (a, b, t), None
-    return step
+def _toy_inv():
+    """An `inv`-shaped dict covering all three classes split_inv sorts on: an
+    integer index array, a float array named in _PROMOTED_FLOAT, a float array
+    that is NOT, a list of integer arrays, and plain Python scalars."""
+    return dict(
+        idxIx=jnp.asarray([0, 2, 1, 2]),
+        phi=jnp.asarray([1.5, 2.5, 3.5, 4.5]),        # in _PROMOTED_FLOAT
+        det_w_p=jnp.asarray([0.25, 0.5, 0.75, 1.0]),  # NOT in _PROMOTED_FLOAT
+        idxP3=[jnp.asarray([1, 0, 2, 1]), jnp.asarray([2, 2, 0, 0])],
+        NEQ1=3, dt=0.125, C_elastic=1,
+    )
+
+
+def _toy_build_step():
+    """Factory (not a pre-built closure) -- the shape time_loop now takes, so
+    the step's `inv` lookups resolve against jit arguments. The carry update
+    reads every class of inv entry and depends on the previous value, so a
+    wrong trip count, a dropped carry leaf, or an inv entry lost by the
+    dyn/sta split cannot pass by coincidence."""
+    def build_step(inv):
+        def step(carry, _):
+            a, b, t = carry
+            a = a * 1.5 + b + inv['phi'] * inv['dt'] + inv['det_w_p']
+            a = a + jnp.zeros(inv['NEQ1']).at[inv['idxIx']].add(inv['phi'])[inv['idxP3'][0]]
+            b = b + jnp.sum(a) * inv['C_elastic']
+            t = t + 1.0
+            return (a, b, t), None
+        return step
+    return build_step
+
+
+def _toy_carry():
+    return (jnp.arange(4.0), jnp.asarray(0.25), jnp.asarray(0.0))
 
 
 @pytest.mark.parametrize('nsteps', [0, 1, 2, 17])
 def test_time_loop_matches_scan(nsteps):
-    """time_loop must be indistinguishable from the lax.scan it replaced."""
-    step = _toy_step()
-    c0 = (jnp.arange(5.0), jnp.asarray(0.25), jnp.asarray(0.0))
-    want = jax.jit(lambda c: jax.lax.scan(step, c, xs=None, length=nsteps)[0])(c0)
-    got = port_jax.time_loop(step, c0, nsteps)
+    """time_loop must be indistinguishable from the lax.scan it replaced --
+    including now that `inv` crosses the jit boundary as an argument."""
+    build_step = _toy_build_step()
+    inv = _toy_inv()
+    c0 = _toy_carry()
+    want = jax.jit(lambda c: jax.lax.scan(build_step(inv), c, xs=None, length=nsteps)[0])(c0)
+    got = port_jax.time_loop(build_step, inv, c0, nsteps)
     assert len(got) == len(want)
     for g, w in zip(got, want):
         assert jnp.array_equal(g, w), 'time_loop diverged from lax.scan at nsteps=%d' % nsteps
@@ -56,13 +87,66 @@ def test_time_loop_step_count_is_traced_not_baked():
     That regression would silently reintroduce one full XLA compile per
     distinct step count (13.9 s on an A100 for test.tpv8 serial, measured).
     """
-    step = _toy_step()
-    c0 = (jnp.arange(5.0), jnp.asarray(0.25), jnp.asarray(0.0))
-    outer = jax.jit(lambda n: port_jax.time_loop(step, c0, n))
+    build_step = _toy_build_step()
+    inv = _toy_inv()
+    c0 = _toy_carry()
+    outer = jax.jit(lambda n: port_jax.time_loop(build_step, inv, c0, n))
     got = outer(6)
-    want = jax.jit(lambda c: jax.lax.scan(step, c, xs=None, length=6)[0])(c0)
+    want = jax.jit(lambda c: jax.lax.scan(build_step(inv), c, xs=None, length=6)[0])(c0)
     for g, w in zip(got, want):
         assert jnp.array_equal(g, w)
+
+
+def test_split_inv_is_a_partition():
+    """Every `inv` key must land in exactly one side. A key dropped by the
+    split surfaces as a loud KeyError in the kernel, but a key that MOVES from
+    static to dynamic is the silent case: it changes what XLA may fold and can
+    move the answer in the last bits with every gate still green."""
+    inv = _toy_inv()
+    dyn, sta = port_jax.split_inv(inv)
+    assert set(dyn) | set(sta) == set(inv)
+    assert not (set(dyn) & set(sta))
+
+
+def test_split_inv_promotes_only_the_verified_set():
+    """The promoted set is an ALLOWLIST established by end-to-end digest
+    comparison (see split_inv's docstring), not "every array". Integer index
+    arrays and lists of them are promoted; a float array outside
+    _PROMOTED_FLOAT stays a constant, precisely so its folding -- which
+    test.tpv8/tpv104/tpv10/drv.a6 bit-identity was verified WITH -- is
+    preserved."""
+    inv = _toy_inv()
+    dyn, sta = port_jax.split_inv(inv)
+    assert 'idxIx' in dyn and 'idxP3' in dyn, 'integer index arrays must be promoted'
+    assert 'phi' in dyn, 'phi is in the verified _PROMOTED_FLOAT set'
+    assert 'det_w_p' in sta, \
+        'a float array outside _PROMOTED_FLOAT must stay a constant -- promoting it ' \
+        'is a bit-identity change that needs its own end-to-end digest check first'
+    assert 'det_w_p' not in port_jax._PROMOTED_FLOAT
+
+
+def test_split_inv_keeps_scalars_static_for_trace_time_branching():
+    """The kernels branch on `inv['C_elastic']`/`inv['Ep']` with a plain
+    Python `if` at trace time. A scalar promoted into the argument pytree
+    would become a tracer and raise TracerBoolConversionError -- so scalars
+    must stay static, and this pins that."""
+    inv = _toy_inv()
+    dyn, sta = port_jax.split_inv(inv)
+    for k in ('NEQ1', 'dt', 'C_elastic'):
+        assert k in sta and not isinstance(sta[k], (jax.Array, np.ndarray))
+    invd = {**sta, **dyn}
+    assert bool(invd['C_elastic'] == 1), 'a static scalar must remain usable in a Python if'
+
+
+def test_split_inv_accepts_numpy_and_jax_arrays_alike():
+    """build() hands over jnp arrays, but the same dict is built from NumPy
+    upstream; both must classify identically or the promoted set would depend
+    on where the array came from."""
+    dyn_j, sta_j = port_jax.split_inv(dict(idxIx=jnp.asarray([0, 1]), phi=jnp.asarray([1.0]),
+                                            det_w_p=jnp.asarray([2.0]), dt=0.5))
+    dyn_n, sta_n = port_jax.split_inv(dict(idxIx=np.asarray([0, 1]), phi=np.asarray([1.0]),
+                                            det_w_p=np.asarray([2.0]), dt=0.5))
+    assert set(dyn_j) == set(dyn_n) and set(sta_j) == set(sta_n)
 
 
 @pytest.fixture(autouse=True)
