@@ -324,8 +324,29 @@ working tree had it; CI built the commit, which did not. The test was correct
 and caught exactly what it was written to catch. Two commits shipped a claim
 the code did not support.
 
+**Second incident, v5.6.0**: the commit was complete, the tree was clean, and
+the commit itself was re-verified in a fresh worktree — and CI still went red.
+The gate had been run by invoking the tiers directly (`testsys/run.py e2e` with
+`EQDYNA_E2E_BIN=src/eqdyna`, and `make eqdyna` by name), while CI runs
+`./install-eqdyna.sh -m ubuntu` and then `testsys/run.py all`. A change to
+`src/makefile` made a BARE `make` stop producing a binary, which only the
+install path exercises. Testing the right commit is not enough if you invoke it
+differently than CI does.
+
 **How to apply**: `git status --porcelain` after every commit, before every
 push; treat any remaining modified tracked file as a reason to stop and check
 whether the gate you ran still describes the commit. Prefer `git add <paths>`
 with the full list read back from the diff, or `git add -u` scoped to the
 directories the change touched.
+
+Before pushing a release, run CI's own entry point, not a convenient subset of
+it — read `.github/workflows/test.yml` and reproduce the commands verbatim:
+
+    ./install-eqdyna.sh -m ubuntu
+    export EQDYNAROOT=$(pwd); export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+    python3 testsys/run.py all
+
+Shortcuts like `EQDYNA_E2E_BIN=src/eqdyna` exist to keep a gate from disturbing
+a running job; they skip the build-and-install path, so a green run under them
+says nothing about it. If you used one, say so, and run the real entry point
+before the tag.

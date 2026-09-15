@@ -1,15 +1,8 @@
 # News in 2026
-* 20260914 v5.6.0 release notes
-  * New - supplied fault geometry (insertFaultType=3) is validated before use: grid, spacing, origin, row count, NaN/Inf, derivative columns and per-cell element-tangling offset, in Python at case.setup and again in Fortran at read time.
-  * New - scripts/convertFaultGeometry resamples a supplied (x, z, y) surface onto a case's fault grid and validates its own output.
-  * New - test.tpv29 ships the official surface at 50 m as well as 100 m, so the full-resolution tier runs from a clean checkout with no download.
-  * Fix - refusing a run now actually fails: bare `stop` and `stop 'message'` both exit 0 under gfortran, and 13 sites used one of them, including the two mesh-alignment gates. All fatal paths go through src/errorCodes.f90 with named codes (1-125) and MPI_Abort, so a bad run ends instead of hanging other ranks.
-  * Fix - the full-resolution tier raised KeyError before running any case; its TPV29 entry used the wrong key names.
-  * Fix - geometry validator missed a globally rescaled surface (units error) and local corruption up to 3000x tolerance; both now caught or warned.
-  * Change - no silent fallbacks (rule 2): par.dy is required rather than standing in as dx, and a fault grid too small to check is refused rather than checked weakly.
-  * Docs - README carries a generated exit-code table that cannot drift from the source; measured TPV29 speeds at 100 m and 50 m on 48 ranks.
-  * Full details: the v5.6.0 GitHub Release, git tag message, and pathway_forward.md.
+* 20260915 v5.6.1 release notes
+  * Fix - a bare `make` built nothing, so `install-eqdyna.sh` produced no binary and every tier needing one failed. v5.6.0 fixed the `clean` target, which had accidentally been the thing making bare `make` build (`clean:eqdyna`, no space, made clean depend on eqdyna). Default goal is now pinned explicitly.
   * For past release notes, please refer to pastReleaseNotes.md.
+
 
 # Introduction to *```EQdyna```*
 
