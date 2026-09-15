@@ -249,9 +249,11 @@ def run(S, nsteps=None, verbose=True):
     fnft = jnp.full(nftnd, 99999.0, dtype=jnp.float64)
     timeElapsed = jnp.asarray(0.0, dtype=jnp.float64)
 
-    step = make_step(inv, S)
     carry0 = (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed)
-    carry = time_loop(step, carry0, nsteps)   # traced nsteps -- see port_jax.time_loop
+    # `inv` goes in as a jit ARGUMENT, not a closure constant -- hence the
+    # factory (lambda i: make_step(i, S)) rather than a pre-built step; see
+    # port_jax.split_inv() for the measured peak-RSS reason. nsteps traced.
+    carry = time_loop(lambda i: make_step(i, S), inv, carry0, nsteps)
     jax.block_until_ready(carry)
     v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed = carry
     return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr), fnft=np.asarray(fnft),
