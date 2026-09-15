@@ -20,8 +20,16 @@ Design decisions and why:
   every rank with MPI_WTIME totals:
       1 setup+mesh, 2 mass assembly, 3 velDispUpdate, 4 assembleGlobalKU,
       5 calcHourglassResist, 6 faulting, 8 output, 9 whole program
-  so the time-stepping loop is 9 - 1 - 2 - 8, and per-step = that / nstep.
-  Wall time is recorded alongside as an independent cross-check.
+  so the time-stepping loop is 9 - 1 - 8 (comp(2) is NOT subtracted: it is
+  corrupted -- see the comment at the `loop =` line), and per-step is that
+  over nstep. `kernel` (comp 3..6, accumulated only inside driver.f90's loop)
+  and `halo` (MPICommTime) are recorded separately, which is what separates
+  element-proportional work from rank-count-dependent overhead. Wall time is
+  recorded alongside as an independent cross-check, as is the last
+  `TimeElapsed (s)` value the run printed -- it equals `term` when nstep steps
+  ran. (The NUMBER of those lines is not the step count:
+  faulting.f90:showSourceDynamics fires once per fault node pair matching the
+  hypocentre, which is 1, 2 or 4 pairs depending on dx.)
   This needs `writeCompTime = 1` (globalvar.f90:109), which is off in the
   default build -- point --bin at a build that has it on.
 * Elements per rank comes from the same `compTime<me>` files (each rank
@@ -30,11 +38,14 @@ Design decisions and why:
   nor case.setup's estimate is a per-rank element count -- see elem_per_rank.py.
 
 Machine courtesy: one configuration at a time, and each launch waits for the
-box to be free of other eqdyna processes and for the load average to drop.
+box to be free of other eqdyna processes and for the load average to drop
+(--max-others / --load-ceiling). Every row records the load it started under,
+whether another eqdyna job appeared, and the max/min spread of per-rank loop
+time -- a row measured while a core was shared shows up in that spread.
 
 Usage:
   python3 testsys/perf/run_elem_scaling.py --bin <eqdyna> --work <dir> [--out f.json]
-  python3 testsys/perf/run_elem_scaling.py ... --only 500:16,250:16
+  python3 testsys/perf/run_elem_scaling.py ... --grid 500:16,250:5x1x1,125:5x1x5
 """
 import argparse
 import json
@@ -67,14 +78,22 @@ def others_running():
     return int(r.stdout.strip() or 0)
 
 
-def wait_for_idle(need_ranks, poll=60, load_ceiling=12.0, skip=False):
-    """Block until no other eqdyna process is up and the 1-min load has decayed."""
+def wait_for_idle(need_ranks, poll=60, load_ceiling=12.0, skip=False,
+                  max_others=0):
+    """Block until the box is quiet enough to measure on.
+
+    `max_others` is normally 0. It exists because this box is shared: other
+    agents run short 4-rank cases here, and a strict zero can stay closed
+    indefinitely. Raising it trades a guaranteed-quiet box for a flagged one --
+    every row records `contended` and `loop_spread`, and a row whose ranks
+    actually had to share cores shows a large `loop_spread`.
+    """
     if skip:
         return os.getloadavg()[0]
     clear = 0
     while True:
         n, load = others_running(), os.getloadavg()[0]
-        if n == 0 and load < load_ceiling:
+        if n <= max_others and load < load_ceiling:
             clear += 1
             # two consecutive clear polls: the owner's queue can start the next
             # job seconds after the previous one exits, and a single clear
@@ -84,8 +103,8 @@ def wait_for_idle(need_ranks, poll=60, load_ceiling=12.0, skip=False):
             print(f'  [wait] clear ({load:.1f}); confirming in {poll}s', flush=True)
         else:
             clear = 0
-            print(f'  [wait] {n} eqdyna proc(s), load {load:.1f}; need 0 procs and '
-                  f'load < {load_ceiling}', flush=True)
+            print(f'  [wait] {n} eqdyna proc(s), load {load:.1f}; need <= '
+                  f'{max_others} procs and load < {load_ceiling}', flush=True)
         time.sleep(poll)
 
 
@@ -132,7 +151,7 @@ def parse_cfg(tok):
 
 
 def run_one(work, dx, dec, nstep, binary, extra_mpi='', skip_wait=False,
-            load_ceiling=12.0):
+            load_ceiling=12.0, max_others=0):
     npx, npy, npz = dec
     nranks = npx * npy * npz
     d = os.path.join(work, f'dx{dx}_np{nranks}_{npx}x{npy}x{npz}')
@@ -143,8 +162,17 @@ def run_one(work, dx, dec, nstep, binary, extra_mpi='', skip_wait=False,
     print(f'         predicted elem/rank max {pred["elem_max"]:,} mean {pred["elem_mean"]:,.0f}',
           flush=True)
 
-    load_before = wait_for_idle(nranks, load_ceiling=load_ceiling, skip=skip_wait)
+    load_before = wait_for_idle(nranks, load_ceiling=load_ceiling, skip=skip_wait,
+                                max_others=max_others)
     env = dict(os.environ, OMP_NUM_THREADS='1', EQDYNAROOT=ROOT)
+    # Hard 1:1 pin, ranks on cores 0..nranks-1, the same policy for every
+    # configuration so NUMA locality is a known function of rank count only.
+    # Verified on this box (Open MPI 4.1.1, checked with Cpus_allowed_list in
+    # the children): `--cpu-set` alone confines all ranks to the set but does
+    # NOT pin them 1:1; a `taskset` mask on mpirun is simply overridden (Open
+    # MPI calls sched_setaffinity itself and lands on cores 0..n-1 anyway);
+    # and `--cpu-set` with `--map-by core` is rejected outright ("Conflicting
+    # directives for mapping policy"). Only this form gives one rank per core.
     cmd = (f'mpirun --bind-to core --map-by core --report-bindings '
            f'{extra_mpi} -np {nranks} {binary}')
     t0 = time.time()
@@ -192,7 +220,13 @@ def run_one(work, dx, dec, nstep, binary, extra_mpi='', skip_wait=False,
         t_setup_max=max(x['comp'][0] for x in rows),
         t_mass_max=max(x['comp'][1] for x in rows),
         t_output_max=max(x['comp'][7] for x in rows),
-        t_loop_max=max(loop), t_loop_mean=sum(loop) / nranks,
+        t_loop_max=max(loop), t_loop_min=min(loop),
+        t_loop_mean=sum(loop) / nranks,
+        # loop_spread >> elem_spread means a rank lost time it should not have
+        # (a core shared with someone else's job, or OS jitter) -- the check
+        # that a row measured on a shared box is still usable.
+        loop_spread=max(loop) / min(loop) - 1.0,
+        elem_spread=max(q['nelem'] for q in rows) / min(q['nelem'] for q in rows) - 1.0,
         t_kernel_max=max(kernel),
         sec_per_step=max(loop) / nstep_actual,
         sec_per_step_kernel=max(kernel) / nstep_actual,
@@ -213,7 +247,8 @@ def run_one(work, dx, dec, nstep, binary, extra_mpi='', skip_wait=False,
     print(f'[done  ] elem/rank {rec["elem_max"]:,} (max)  loop {rec["t_loop_max"]:.2f}s / '
           f'{nstep_actual} steps = {rec["sec_per_step"]*1e3:.2f} ms/step  '
           f'(wall {wall:.1f}s)  replica-match={rec["pred_per_rank_match"]}'
-          + ('  *** CONTENDED ***' if contended else ''), flush=True)
+          + f'  spread {rec["loop_spread"]:+.1%} (elem {rec["elem_spread"]:+.1%})'
+          + ('  *** OTHER EQDYNA RUNNING ***' if contended else ''), flush=True)
     # keep only the small text outputs; the case tree is regenerable
     for junk in ('on_fault_vars_input.nc',):
         f = os.path.join(d, junk)
@@ -255,6 +290,11 @@ def main():
                     help='max 1-min load average to launch at. This box also '
                          'runs two long GNS/PyTorch trainings that hold the '
                          'idle load near 7, so a lower ceiling never opens.')
+    ap.add_argument('--max-others', type=int, default=0,
+                    help='how many other eqdyna processes may already be on the '
+                         'box at launch (default 0). Raise it only to coexist '
+                         'with small sibling jobs; every row still records '
+                         'contended/loop_spread so a spoilt row is visible.')
     ap.add_argument('--smoke', action='store_true',
                     help='harness self-check only: skip the machine-courtesy wait '
                          '(use ONLY for a 1-rank, few-step validation run)')
@@ -287,7 +327,8 @@ def main():
             print(f'[skip  ] dx={dx} ranks={nranks} already in {a.out}', flush=True)
             continue
         rec = run_one(a.work, dx, dec, override.get((dx, nranks), a.nstep),
-                      a.bin, skip_wait=a.smoke, load_ceiling=a.load_ceiling)
+                      a.bin, skip_wait=a.smoke, load_ceiling=a.load_ceiling,
+                      max_others=a.max_others)
         recs.append(rec)
         json.dump(dict(provenance=prov, rows=recs), open(a.out, 'w'), indent=1)
     print(f'wrote {a.out} ({len(recs)} rows)')

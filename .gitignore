@@ -16,4 +16,4 @@ testsys/parity/fixtures/
 testsys/parity/evidence_output/
 scec_archive/
 relnotes_v*.md
-testsys/perf/elem_scaling_last.json
+# testsys/perf/elem_scaling_last.json tracked: raw evidence behind measured_runs.md

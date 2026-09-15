@@ -146,7 +146,7 @@ def main():
         m = ranks == n
         if m.sum() >= 2:
             if m.sum() == 2:
-                bb = float(np.diff(y[m]) / np.diff(x[m]))
+                bb = float((y[m][1] - y[m][0]) / (x[m][1] - x[m][0]))
                 aa = float(y[m][0] - bb * x[m][0])
                 rr2 = float('nan')
             else:
@@ -198,9 +198,15 @@ def main():
                       f'cost/elem x{(y[j]/x[j])/(y[i]/x[i]):.2f}')
 
     # ---------------- plot ----------------
-    colors = {1: '#1b6ca8', 4: '#2e9e5b', 16: '#e08214', 48: '#b2182b'}
-    marks = {500: 'o', 250: 's', 125: '^'}
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.5, 4.9))
+    # colour by rank count (any set of rank counts), marker by resolution
+    palette = ['#1f6fb4', '#2e9e5b', '#7b3294', '#e6a010', '#e8601c', '#a50f15',
+               '#000000', '#8c510a']
+    uranks = sorted(set(ranks.tolist()))
+    colors = {n: palette[i % len(palette)] for i, n in enumerate(uranks)}
+    shapes = ['o', 's', '^', 'D', 'v', 'P']
+    udx = sorted(set(dxs.tolist()), reverse=True)
+    marks = {v: shapes[i % len(shapes)] for i, v in enumerate(udx)}
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(16.2, 5.2))
 
     xs = np.logspace(np.log10(x.min() * 0.6), np.log10(x.max() * 1.6), 200)
     ax1.plot(xs, a0 + b * xs, '-', color='0.35', lw=1.3,
@@ -240,23 +246,48 @@ def main():
     ax2.set_ylabel('ns per element per timestep')
     ax2.set_title('Normalised cost: flat iff strictly proportional')
     ax2.grid(True, which='both', alpha=0.25, lw=0.5)
-    ax2.margins(x=0.08, y=0.16)
+    ax2.margins(x=0.10, y=0.14)
+
+    # Panel 3: where the deviation comes from. The per-element compute kernel
+    # (comp 3..6) against the halo exchange (MPICommTime), both per element.
+    kern = np.array([r['sec_per_step_kernel'] / r['elem_max'] * 1e9 for r in rows])
+    halo = np.array([r['sec_per_step_mpi'] / r['elem_max'] * 1e9 for r in rows])
+    jit = {n: 1.0 + 0.06 * (i - len(uranks) / 2) for i, n in enumerate(uranks)}
+    for r, rk, hl in zip(rows, kern, halo):
+        xr = r['ranks'] * jit[r['ranks']]
+        ax3.plot(xr, rk, marks[r['dx']], color=colors[r['ranks']], ms=8,
+                 mec='k', mew=0.6, zorder=3)
+        ax3.plot(xr, max(hl, 1.0), marks[r['dx']], color=colors[r['ranks']],
+                 ms=8, mec='k', mew=0.6, alpha=0.45, zorder=3, mfc='none')
+    lo = [k for r, k in zip(rows, kern) if r['ranks'] <= 25]
+    ax3.axhspan(min(lo), max(lo), color='0.80', alpha=0.55, zorder=1)
+    ax3.text(0.02, 0.965, f'compute kernel, 1-25 ranks: {min(lo):.0f}-{max(lo):.0f} '
+             f'ns/elem (spread {max(lo)/min(lo)-1:+.1%})\n'
+             f'halo plotted at 1 ns where it is 0 (single rank: no exchange)',
+             transform=ax3.transAxes, fontsize=8, color='0.25', va='top')
+    ax3.set_xscale('log'); ax3.set_yscale('log')
+    ax3.set_xticks(uranks); ax3.set_xticklabels([str(n) for n in uranks])
+    ax3.set_xlabel('MPI ranks (all on one 64-core node)')
+    ax3.set_ylabel('ns per element per timestep')
+    ax3.set_title('Mechanism: filled = kernel, open = halo')
+    ax3.grid(True, which='both', alpha=0.25, lw=0.5)
+    ax3.margins(x=0.12)
+    ax3.set_ylim(0.6, 4000)
 
     from matplotlib.lines import Line2D
     h = [Line2D([], [], ls='', marker='o', ms=8, mec='k', mew=0.6,
                 color=colors[n], label=f'{n} rank' + ('s' if n > 1 else ''))
-         for n in sorted(colors) if n in set(ranks.tolist())]
+         for n in uranks]
     h += [Line2D([], [], ls='', marker=marks[v], ms=8, color='0.7', mec='k',
-                 mew=0.6, label=f'dx = {v} m') for v in sorted(set(dxs.tolist()), reverse=True)]
-    ax2.legend(handles=h + [Line2D([], [], color='0.35', lw=1.3,
-                                   label=f'OLS slope {b*1e9:.1f}')],
-               loc='lower left', fontsize=8, ncol=2, framealpha=0.9,
-               bbox_to_anchor=(0.0, 0.0))
+                 mew=0.6, label=f'dx = {v:.0f} m') for v in udx]
+    h += [Line2D([], [], color='0.35', lw=1.3, label=f'OLS slope {b*1e9:.0f} ns')]
+    fig.legend(handles=h, loc='lower center', fontsize=8.5, ncol=len(h),
+               frameon=False, bbox_to_anchor=(0.5, 0.0))
 
     fig.suptitle(f"EQdyna {prov['case']} @ {prov['sha']} -- {prov['host']}, "
                  f"{prov['cpu'].strip()}, {prov['fc'].split('(')[0].strip()}, "
-                 f"{prov['mpi']}, {prov['date'][:10]}", fontsize=8.5, y=0.995)
-    fig.tight_layout(rect=(0, 0, 1, 0.965))
+                 f"{prov['mpi']}, {prov['date'][:10]}", fontsize=9, y=0.995)
+    fig.tight_layout(rect=(0, 0.075, 1, 0.955))
     fig.savefig(a.png, dpi=150)
     print(f'\nwrote {a.png}')
 
