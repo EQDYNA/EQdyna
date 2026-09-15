@@ -78,6 +78,15 @@ def run_parity():
         cwd=REPO_ROOT)
     if rc != 0:
         return rc
+    # The setup builders above are vectorized; each keeps its original
+    # verbatim scalar loop as an oracle. This asserts the two are BYTE
+    # identical on the same real mesh -- it catches vectorization drift,
+    # which the Fortran-anchored check above tolerates inside its tolerance.
+    rc = subprocess.call(
+        [sys.executable, os.path.join(TESTSYS, 'parity', 'test_standalone_setup_vectorized.py')],
+        cwd=REPO_ROOT)
+    if rc != 0:
+        return rc
     return run_functional_neutrality_check()
 
 

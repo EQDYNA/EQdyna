@@ -183,6 +183,37 @@ def is_on_fault(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax, tol, c_degen=
     return in_box and y == 0.0
 
 
+def on_fault_grid_mask(xline, yline, zline, params):
+    """Vectorized `is_on_fault` over the whole (ix, iz, iy) grid, in the
+    traversal order every builder in this module uses (ix outer, iz middle,
+    iy inner).
+
+    This is the same predicate as `is_on_fault`, term for term -- an
+    axis-separable box test AND `y == 0.0` -- evaluated once for the grid
+    instead of once per node per builder (the scalar helper was being called
+    nx*ny*nz times by each of five builders). `testsys/unit/
+    test_meshgen_vectorized.py` asserts it agrees with `is_on_fault` on
+    every node of a real mesh, not on a sample.
+
+    Every caller in this module invokes `is_on_fault` with its `c_degen`
+    argument at its 0.0 default (checked: all five call sites pass only the
+    box bounds and tol), so the scalar helper's C_degen!=0 guard is
+    unreachable from here and is deliberately not duplicated -- mirroring it
+    off `params['C_degen']` instead would WRONGLY reject the dipping-fault
+    cases (tpv10/drv.a6 carry C_degen>3 while still taking this planar
+    fault-node test).
+
+    Returns a (nx*nz*ny,) bool array in traversal order.
+    """
+    p = params
+    tol = p['tol']
+    X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
+    mx = (X >= p['fxmin'] - tol) & (X <= p['fxmax'] + tol)
+    my = (Y >= p['fymin'] - tol) & (Y <= p['fymax'] + tol) & (Y == 0.0)
+    mz = (Z >= p['fzmin'] - tol) & (Z <= p['fzmax'] + tol)
+    return (mx[:, None, None] & mz[None, :, None] & my[None, None, :]).ravel()
+
+
 def _fortran_nint(x):
     """Fortran nint(): round-half-away-from-zero. Same formula as
     native_input.py's helper of the same purpose (kept local here to avoid
@@ -276,6 +307,30 @@ def build_node_coordinates(xline, yline, zline, params):
     tol = p['tol']
     rough = p.get('rough')
     insert_fault_type = p.get('insertFaultType', 0)
+
+    if insert_fault_type == 0:
+        # PERFORMANCE: insertFaultType==0 means y_store IS ycoor for every
+        # node (insert_fault_interface is never called), so the whole triple
+        # loop collapses to the traversal-order outer product. Bit-identical
+        # by construction: the stored values are the grid-line doubles
+        # themselves, copied, with no arithmetic. The insertFaultType>0 path
+        # below is left as the verbatim scalar loop because its y-morph is
+        # per-node and branch-heavy; both paths are covered by
+        # testsys/unit/test_meshgen_vectorized.py.
+        X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
+        n_reg = nx * ny * nz
+        fault = on_fault_grid_mask(X, Y, Z, p)
+        nftnd = int(fault.sum())
+        meshCoor = np.zeros((n_reg + nftnd + 1, 3))  # index 0 unused
+        meshCoor[1:n_reg + 1, 0] = np.repeat(X, nz * ny)
+        meshCoor[1:n_reg + 1, 1] = np.tile(Y, nx * nz)
+        meshCoor[1:n_reg + 1, 2] = np.tile(np.repeat(Z, ny), nx)
+        slave_ids = np.nonzero(fault)[0] + 1  # 1-indexed, fault-encounter order
+        meshCoor[n_reg + 1:] = meshCoor[slave_ids]
+        master_ids = n_reg + 1 + np.arange(nftnd, dtype=np.int64)
+        nsmp = np.stack([slave_ids.astype(np.int64), master_ids], axis=1)
+        return meshCoor, nftnd, nsmp
+
     regular = []
     master = []
     nsmp = []  # (slave_node_id, master_node_id), both 1-indexed, in fault-encounter order
@@ -322,13 +377,35 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     (nodeElemIdRelation + elemTypeArr + mat(1:5) for every element, dumped by
     src/pydump.f90) -- see testsys/parity/test_standalone_meshgen.py.
 
-    Reproduces the Fortran plane1/plane2 sliding-column bookkeeping exactly
-    (scalar loop, not vectorized -- Phase B of the port workflow: verbatim
-    first, vectorize only after this checkpoint passes) because the master-
-    node overwrite into plane2's extra row (row index ny, 0-indexed, one row
-    beyond the ny regular rows) has to land in the SAME column-shift timing
-    as Fortran's `plane1 = plane2` at the end of each ix iteration, or
-    elements adjacent to the fault silently get the wrong corner node.
+    PERFORMANCE NOTE (vectorized; the verbatim scalar loop this replaced is
+    kept as `_build_elements_scalar` below and is the bit-for-bit oracle
+    `testsys/unit/test_meshgen_vectorized.py` checks this against):
+
+    The scalar version's plane1/plane2 sliding-column bookkeeping is
+    reproducible in closed form, and this was established by reading the
+    loop, not assumed. Two facts make it exact:
+
+      (a) The inner (iz, iy) loops visit EVERY (iy<ny, iz) slot of plane2 on
+          every ix pass, so after `plane1 = plane2.copy()` the regular rows
+          of plane1/plane2 are exactly the running node counter's value at
+          that grid point:
+              plane2[iy, iz] == ix*nz*ny + iz*ny + iy + 1
+              plane1[iy, iz] == (ix-1)*nz*ny + iz*ny + iy + 1
+          (traversal is ix outer, iz middle, iy inner, so node ids run in
+          that order).
+      (b) The master-node overwrite targets ROW INDEX ny -- one row past the
+          ny regular rows -- while the 8-corner `c` vector only ever reads
+          rows iy-1 and iy with iy <= ny-1. Row ny is therefore WRITTEN and
+          NEVER READ anywhere in this function; the sliding-column timing
+          the original docstring flagged as load-bearing has no observable
+          effect on `conn`. Fault-adjacent corner substitution is done
+          entirely by replaceSlaveWithMasterNode's slave->master lookup
+          below, which is order-independent. (Kept as an explicit note so a
+          future reader who adds a row-ny read knows this derivation stops
+          holding.)
+
+    Element order is unchanged: ix outer, iz middle, iy inner, over
+    ix,iz,iy >= 1 -- elemIndex = (ix-1)*(nz-1)*(ny-1) + (iz-1)*(ny-1) + (iy-1).
 
     params: same dict as build_grid_lines.
     pmlb: dict from build_grid_lines (xmax0/xmin0/ymax0/ymin0/zmin0 keys).
@@ -360,6 +437,111 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     fxmin, fxmax, fzmin = p['fxmin'], p['fxmax'], p['fzmin']
 
     # PMLb per getLocalOneDimCoorArrAndSize's mapping (build_grid_lines' pmlb dict).
+    xmax0, xmin0 = pmlb['xmax0'], pmlb['xmin0']
+    ymax0, ymin0 = pmlb['ymax0'], pmlb['ymin0']
+    zmin0 = pmlb['zmin0']
+
+    n_elem = (nx - 1) * (ny - 1) * (nz - 1)
+
+    # ---- corner connectivity, from the closed form derived in the docstring ----
+    # (IX,IZ,IY) in element order: ix outer, iz middle, iy inner, all >= 1.
+    IX, IZ, IY = np.meshgrid(np.arange(1, nx, dtype=np.int64),
+                              np.arange(1, nz, dtype=np.int64),
+                              np.arange(1, ny, dtype=np.int64), indexing='ij')
+    IX, IZ, IY = IX.ravel(), IZ.ravel(), IY.ravel()
+
+    def nid(ixv, izv, iyv):
+        return ixv * (nz * ny) + izv * ny + iyv + 1
+
+    conn = np.empty((n_elem, 8), dtype=np.int64)
+    conn[:, 0] = nid(IX - 1, IZ - 1, IY - 1)
+    conn[:, 1] = nid(IX, IZ - 1, IY - 1)
+    conn[:, 2] = nid(IX, IZ - 1, IY)
+    conn[:, 3] = nid(IX - 1, IZ - 1, IY)
+    conn[:, 4] = nid(IX - 1, IZ, IY - 1)
+    conn[:, 5] = nid(IX, IZ, IY - 1)
+    conn[:, 6] = nid(IX, IZ, IY)
+    conn[:, 7] = nid(IX - 1, IZ, IY)
+
+    # ---- element centers: mean of the 8 corner coords, from meshCoor ----
+    # (for insertFaultType>0 the y stored in meshCoor is the MORPHED value,
+    # so this MUST read meshCoor, not the grid lines -- see below.)
+    centers = meshCoor[conn].mean(axis=1)  # (E,3)
+    cx, cy, cz = centers[:, 0], centers[:, 1], centers[:, 2]
+
+    on_bound = ((cx == xmax0) | (cx == xmin0) | (cy == ymax0) | (cy == ymin0) |
+                (cz == zmin0))
+    if on_bound.any():
+        b = int(np.argmax(on_bound))
+        raise ValueError('checkPMLAlignment: element center exactly on a '
+                          'PML bound at (%r,%r,%r) (element %d)'
+                          % (cx[b], cy[b], cz[b], b))
+
+    elem_type = np.where((cx > xmax0) | (cx < xmin0) | (cy > ymax0) | (cy < ymin0) |
+                          (cz < zmin0), 2, 1).astype(np.int64)
+
+    # ---- replaceSlaveWithMasterNode (C_degen==0, elemTypeArr==1 branch) ----
+    # Test uses the element's "top" node coords (this ix,iy,iz), matching
+    # Fortran's `nodeCoor` at the point createElement/replaceSlave... run.
+    xcoor, ycoor, zcoor = xline[IX], yline[IY], zline[IZ]
+    replace = ((elem_type == 1) & (xcoor > fxmin - tol) & (xcoor < fxmax + dx + tol) &
+               (zcoor > fzmin - tol) & (ycoor > 0.0) & (np.abs(ycoor - dy) < tol))
+    if replace.any():
+        lut = np.arange(meshCoor.shape[0], dtype=np.int64)
+        lut[nsmp[:, 0]] = nsmp[:, 1]
+        conn[replace] = lut[conn[replace]]
+
+    # ---- setElementMaterial ----
+    nmat, n2mat = material.shape
+    mat = np.empty((n_elem, 5))
+    if nmat == 1 and n2mat == 3:
+        vp, vs, rho = material[0, 0], material[0, 1], material[0, 2]
+        mu = vs * vs * rho
+        lam = vp * vp * rho - 2.0 * mu
+        mat[:] = np.array([vp, vs, rho, lam, mu])
+    elif nmat > 1 and n2mat == 4:
+        edges = material[:, 0]
+        if np.any(np.diff(edges) <= 0.0):
+            raise ValueError('setElementMaterial: bMaterial.txt layer bottoms '
+                              'are not strictly ascending (%r) -- the scalar '
+                              'first-match-wins layer search this replaces is '
+                              'only reproducible for an ascending table' % (edges.tolist(),))
+        d = np.abs(cz)
+        # scalar equivalent: row 0 if d < edges[0]; else the unique i>=1 with
+        # edges[i-1] <= d < edges[i]; else (d >= edges[-1]) a loud failure.
+        row = np.searchsorted(edges, d, side='right')
+        bad = np.nonzero(row >= nmat)[0]
+        if bad.size:
+            raise ValueError('setElementMaterial: depth %r (element %d) not covered '
+                              'by any material layer' % (d[bad[0]], int(bad[0])))
+        vp, vs, rho = material[row, 1], material[row, 2], material[row, 3]
+        mu = vs * vs * rho
+        lam = vp * vp * rho - 2.0 * mu
+        mat[:, 0], mat[:, 1], mat[:, 2], mat[:, 3], mat[:, 4] = vp, vs, rho, lam, mu
+    else:
+        raise NotImplementedError('setElementMaterial: only nmat==1/n2mat==3 '
+                                   '(homogeneous) or nmat>1/n2mat==4 (1D '
+                                   'layered) branches are ported')
+
+    # meshgen.f90:103 `setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0,
+    # elemCount)` -- same expression, same operand order, evaluated per element.
+    depth = -0.5 * (zline[IZ] + zline[IZ - 1]) + 7.3215
+
+    return conn, elem_type, mat, depth
+
+
+def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
+    """The original verbatim scalar port of createElement/setElementMaterial/
+    replaceSlaveWithMasterNode, kept as the bit-for-bit ORACLE for
+    `build_elements`' vectorization (see that function's docstring). Not used
+    on any production path -- `testsys/unit/test_meshgen_vectorized.py`
+    asserts byte-equality of the two on a real mesh.
+    """
+    p = params
+    nx, ny, nz = len(xline), len(yline), len(zline)
+    tol = p['tol']
+    dx, dy = p['dx'], p['dy']
+    fxmin, fxmax, fzmin = p['fxmin'], p['fxmax'], p['fzmin']
     xmax0, xmin0 = pmlb['xmax0'], pmlb['xmin0']
     ymax0, ymin0 = pmlb['ymax0'], pmlb['ymin0']
     zmin0 = pmlb['zmin0']
@@ -434,15 +616,6 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
                         plane2[iy, iz], plane1[iy, iz],
                     ], dtype=np.int64)
 
-                    # elementCenterCoor = mean of the 8 corner coords, from
-                    # meshCoor(j, nodeElemIdRelation(i,elemCount)) per
-                    # createElement.f90 -- for insertFaultType==0 this is
-                    # bit-identical to the grid-line lookup (meshCoor's y IS
-                    # yline's y there), but for insertFaultType>0 the actual
-                    # y is the MORPHED value build_node_coordinates already
-                    # stored (per-node, not per-grid-line), so this MUST come
-                    # from meshCoor, not yline -- PML classification below
-                    # depends on the true (warped) element center.
                     corners = meshCoor[c]  # (8,3)
                     cx, cy, cz = corners.mean(axis=0)
 
@@ -455,11 +628,6 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
                     if cx > xmax0 or cx < xmin0 or cy > ymax0 or cy < ymin0 or cz < zmin0:
                         etype = 2
 
-                    # replaceSlaveWithMasterNode: only the C_degen==0,
-                    # elemTypeArr==1 branch applies here (12/13 come from the
-                    # wedge()/C_degen>3 branch, out of scope). Test uses the
-                    # top node's coords (this ix,iy,iz), matching Fortran's
-                    # `nodeCoor` at the point createElement/replaceSlave... run.
                     if etype == 1 and (xcoor > fxmin - tol and xcoor < fxmax + dx + tol
                                        and zcoor > fzmin - tol and ycoor > 0.0
                                        and abs(ycoor - dy) < tol):
@@ -471,11 +639,6 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
                     conn[elem_count] = c
                     elem_type[elem_count] = etype
                     mat[elem_count] = material_for(cz)
-                    # meshgen.f90:103 `setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1))
-                    # + 7.3215d0, elemCount)` -- python's `iz`/`zline` here are the
-                    # SAME running loop variable/array Fortran uses (both 0-indexed
-                    # consistently, see build_elements' docstring math), so this is
-                    # the identical expression, not a re-derivation.
                     depth[elem_count] = -0.5 * (zline[iz] + zline[iz - 1]) + 7.3215
                     elem_count += 1
         plane1 = plane2.copy()
@@ -516,6 +679,19 @@ def build_equation_numbers(xline, yline, zline, params, pmlb):
     unused) holding this node's assigned equation numbers (positive) or -1
     (fixed-boundary sentinel) per dof slot, and total_num_of_equations is
     the final equationNumCount (== totalNumOfEquations).
+
+    PERFORMANCE NOTE (vectorized; `_build_equation_numbers_scalar` below is
+    the verbatim original and the bit-for-bit oracle
+    `testsys/unit/test_meshgen_vectorized.py` checks this against): every
+    quantity here is an EXACT INTEGER prefix sum over the traversal, so the
+    vectorization carries no floating-point reassociation risk at all --
+    `tag` and `equationNumCount` are running counters whose per-node
+    increments (`ndpn` + 3*on_fault, and 0-if-fixed-else-`ndpn` + 3*on_fault
+    respectively) depend only on that node's own coordinates. The
+    interleaving the original docstring flags as load-bearing (regular
+    node's slots, THEN its master node's 3 slots, before moving on) is
+    reproduced by putting the master block inside the same per-grid-node
+    block, not by appending masters at the end.
     """
     p = params
     nx, ny, nz = len(xline), len(yline), len(zline)
@@ -527,6 +703,89 @@ def build_equation_numbers(xline, yline, zline, params, pmlb):
     # or exceeds the requested bound, so the two differ by design). Using
     # the input params here (an earlier version of this function did) undercounts
     # fixed-boundary nodes and silently inflates totalNumOfEquations.
+    X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
+    xmin, xmax = X[0], X[-1]
+    ymin, ymax = Y[0], Y[-1]
+    zmin = Z[0]
+    xmax0, xmin0 = pmlb['xmax0'], pmlb['xmin0']
+    ymax0, ymin0 = pmlb['ymax0'], pmlb['ymin0']
+    zmin0 = pmlb['zmin0']
+    ndof = 3
+
+    N_regular = nx * ny * nz
+
+    # ---- per-grid-node predicates, in traversal order (ix, iz, iy) ----
+    # is_fixed_boundary: zmax (free surface) deliberately excluded.
+    fx = (np.abs(X - xmin) < tol) | (np.abs(X - xmax) < tol)
+    fy = (np.abs(Y - ymin) < tol) | (np.abs(Y - ymax) < tol)
+    fz = np.abs(Z - zmin) < tol
+    fixed = (fx[:, None, None] | fz[None, :, None] | fy[None, None, :]).ravel()
+
+    # num_dof_for: 12 in the PML shell, 3 otherwise.
+    px = (X > xmax0) | (X < xmin0)
+    py = (Y > ymax0) | (Y < ymin0)
+    pz = Z < zmin0
+    is_pml = (px[:, None, None] | pz[None, :, None] | py[None, None, :]).ravel()
+    ndpn = np.where(is_pml, 12, 3).astype(np.int64)
+
+    fault = on_fault_grid_mask(X, Y, Z, p)
+    nftnd = int(fault.sum())
+    N_total = N_regular + nftnd
+
+    # ---- running counters as exact integer prefix sums ----
+    # tag advances by ndpn (regular block) + 3 (master block, if any).
+    tags_per_node = ndpn + 3 * fault
+    tag_before = np.zeros(N_regular, dtype=np.int64)
+    np.cumsum(tags_per_node[:-1], out=tag_before[1:])
+    total_tags = int(tag_before[-1] + tags_per_node[-1])
+
+    # equationNumCount advances only for non-fixed regular slots, plus the
+    # master node's 3 slots (master nodes are never fixed-boundary).
+    eq_regular = np.where(fixed, 0, ndpn)
+    eqs_per_node = eq_regular + 3 * fault
+    eq_before = np.zeros(N_regular, dtype=np.int64)
+    np.cumsum(eqs_per_node[:-1], out=eq_before[1:])
+    eq_count = int(eq_before[-1] + eqs_per_node[-1])
+
+    # ---- the flat eqNumIndexArr, laid out in tag order ----
+    slot_node = np.repeat(np.arange(N_regular, dtype=np.int64), tags_per_node)
+    offset = np.arange(total_tags, dtype=np.int64) - tag_before[slot_node]
+    ndpn_s = ndpn[slot_node]
+    is_master_slot = offset >= ndpn_s
+    flat_slots = np.where(
+        is_master_slot,
+        eq_before[slot_node] + eq_regular[slot_node] + (offset - ndpn_s) + 1,
+        np.where(fixed[slot_node], -1, eq_before[slot_node] + offset + 1))
+
+    # ---- per-node-id views (node ids 1..N_regular regular, then masters) ----
+    fault_idx = np.nonzero(fault)[0]
+    num_dof = np.zeros(N_total + 1, dtype=np.int64)
+    eq_start = np.zeros(N_total + 1, dtype=np.int64)
+    num_dof[1:N_regular + 1] = ndpn
+    num_dof[N_regular + 1:] = ndof
+    eq_start[1:N_regular + 1] = tag_before
+    eq_start[N_regular + 1:] = tag_before[fault_idx] + ndpn[fault_idx]
+
+    starts = eq_start.tolist()
+    counts = num_dof.tolist()
+    eq_nums = [None] * (N_total + 1)
+    for n in range(1, N_total + 1):
+        s = starts[n]
+        eq_nums[n] = flat_slots[s:s + counts[n]]
+
+    return num_dof, eq_start, eq_nums, eq_count
+
+
+def _build_equation_numbers_scalar(xline, yline, zline, params, pmlb):
+    """The original verbatim scalar port of setNumDof/setEquationNumber/
+    createMasterNode's equation-number half, kept as the bit-for-bit ORACLE
+    for `build_equation_numbers`' vectorization. Not used on any production
+    path -- `testsys/unit/test_meshgen_vectorized.py` asserts equality of the
+    two on a real mesh.
+    """
+    p = params
+    nx, ny, nz = len(xline), len(yline), len(zline)
+    tol = p['tol']
     xmin, xmax = xline[0], xline[-1]
     ymin, ymax = yline[0], yline[-1]
     zmin = zline[0]
@@ -547,17 +806,10 @@ def build_equation_numbers(xline, yline, zline, params, pmlb):
             return 12
         return 3
 
-    # Node ids are NOT visited in id order (master ids, N_regular+k, are only
-    # reached when a fault node is encountered mid-traversal, long before
-    # node_count reaches N_regular) -- index by node id via dict/array
-    # assignment, not list-append, to avoid corrupting the append position
-    # for subsequent regular nodes.
     tag = 0
     eq_count = 0
     node_count = 0
     master_count = 0
-    # nftnd is discoverable ahead of time cheaply (same predicate as below);
-    # count first so num_dof/eq_start can be preallocated by node id.
     nftnd = sum(
         1 for ix in range(nx) for iz in range(nz) for iy in range(ny)
         if is_on_fault(xline[ix], yline[iy], zline[iz], p['fxmin'], p['fxmax'],
@@ -605,6 +857,36 @@ def build_equation_numbers(xline, yline, zline, params, pmlb):
     assert node_count == N_regular, (node_count, N_regular)
     assert master_count == nftnd, (master_count, nftnd)
     return num_dof, eq_start, eq_nums, eq_count
+
+
+def pack_eq_ids(num_dof, eq_nums, n_nodes, ncols=12):
+    """Pack `build_equation_numbers`' per-node equation-number arrays into
+    the dense (n_nodes, ncols) 0-indexed table `loading.load()` expects,
+    with the -1 fixed-boundary sentinel mapped to the 0 sink slot.
+
+    Exactly the loop main.py's build_solver_state used to run per node:
+        eqs = np.array(eq_nums[node]); eq_ids[node-1, :nd] = where(eqs>0, eqs, 0)
+    All-integer, so there is nothing to reassociate -- this is a layout
+    change only. Returns (ndof0, eq_ids), both 0-indexed by node.
+    """
+    nd = np.asarray(num_dof[1:n_nodes + 1], dtype=np.int64)
+    if nd.size != n_nodes:
+        raise ValueError('pack_eq_ids: num_dof holds %d node entries, expected %d'
+                          % (nd.size, n_nodes))
+    if nd.size and int(nd.max()) > ncols:
+        raise ValueError('pack_eq_ids: node with %d dof exceeds ncols=%d'
+                          % (int(nd.max()), ncols))
+    eq_flat = np.concatenate(eq_nums[1:n_nodes + 1]).astype(np.int64, copy=False)
+    if eq_flat.size != int(nd.sum()):
+        raise ValueError('pack_eq_ids: eq_nums slot count %d disagrees with '
+                          'num_dof total %d' % (eq_flat.size, int(nd.sum())))
+    row = np.repeat(np.arange(n_nodes, dtype=np.int64), nd)
+    starts = np.zeros(n_nodes, dtype=np.int64)
+    np.cumsum(nd[:-1], out=starts[1:])
+    col = np.arange(eq_flat.size, dtype=np.int64) - starts[row]
+    eq_ids = np.zeros((n_nodes, ncols), dtype=np.int64)
+    eq_ids[row, col] = np.where(eq_flat > 0, eq_flat, 0)
+    return nd, eq_ids
 
 
 def build_fault_geometry(xline, yline, zline, params, nsmp):
@@ -677,47 +959,50 @@ def build_fault_geometry(xline, yline, zline, params, nsmp):
     # traversal (not reset per ix), then ifs/ifd are offsets from those --
     # same traversal order as build_node_coordinates, so `seq` here lines up
     # 1:1 with nsmp's row order.
+    # PERFORMANCE: the original walked all nx*ny*nz grid points calling the
+    # scalar `is_on_fault` just to reach the ~1e3 fault nodes. The mask gives
+    # the same nodes in the same traversal order (ix outer, iz middle, iy
+    # inner -- the flat index IS that order), so `seq` still lines up 1:1
+    # with nsmp's rows; the per-fault-node body below is unchanged.
+    fault_flat = np.nonzero(on_fault_grid_mask(xline, yline, zline, p))[0]
+    ix_of = fault_flat // (nz * ny)
+    iz_of = (fault_flat % (nz * ny)) // ny
+    iy_of = fault_flat % ny
+
     grid = {}
     ixfi = izfi = None
     seq = 0
-    for ix in range(nx):
-        xcoor = xline[ix]
-        for iz in range(nz):
-            zcoor = zline[iz]
-            for iy in range(ny):
-                ycoor = yline[iy]
-                if is_on_fault(xcoor, ycoor, zcoor, p['fxmin'], p['fxmax'],
-                                p['fymin'], p['fymax'], p['fzmin'], p['fzmax'], tol):
-                    seq += 1
-                    ix_f, iz_f = ix + 1, iz + 1
-                    if ixfi is None:
-                        ixfi = ix_f
-                    if izfi is None:
-                        izfi = iz_f
-                    ifs = ix_f - ixfi + 1
-                    ifd = iz_f - izfi + 1
-                    y_geo = ycoor  # planar branch: the fault's actual y IS 0 here.
-                    if insert_fault_type > 0:
-                        # insertFaultType>0: createMasterNode's un/us/ud
-                        # branch (meshgen.f90:804-817) OVERWRITES the
-                        # angle-based un/us/ud above with pfx/pfz-derived
-                        # values, per fault node -- and the fault's actual
-                        # (warped) y-coordinate is `peak`, not 0, which
-                        # matters for arn's corner-distance formula below
-                        # (meshCoor already stores this same `peak` value,
-                        # per build_node_coordinates' y-morph of fault
-                        # nodes -- recomputed here rather than re-reading
-                        # meshCoor, since is_on_fault's traversal order is
-                        # independently re-walked in every M-builder).
-                        y_geo, pfx, pfz = insert_fault_interface(
-                            xcoor, ycoor, zcoor, rough, p['dx'], p['dz'],
-                            yline[0], yline[-1], tol)
-                        denom = (pfx ** 2 + 1.0 + pfz ** 2) ** 0.5
-                        un[seq] = (-pfx / denom, 1.0 / denom, -pfz / denom)
-                        us_denom = (1.0 + pfx ** 2) ** 0.5
-                        us[seq] = (1.0 / us_denom, pfx / us_denom, 0.0)
-                        ud[seq] = np.cross(us[seq], un[seq])
-                    grid[(ifs, ifd)] = (seq, (xcoor, y_geo, zcoor))
+    for _f in range(fault_flat.size):
+        ix, iz, iy = int(ix_of[_f]), int(iz_of[_f]), int(iy_of[_f])
+        xcoor, zcoor, ycoor = xline[ix], zline[iz], yline[iy]
+        seq += 1
+        ix_f, iz_f = ix + 1, iz + 1
+        if ixfi is None:
+            ixfi = ix_f
+        if izfi is None:
+            izfi = iz_f
+        ifs = ix_f - ixfi + 1
+        ifd = iz_f - izfi + 1
+        y_geo = ycoor  # planar branch: the fault's actual y IS 0 here.
+        if insert_fault_type > 0:
+            # insertFaultType>0: createMasterNode's un/us/ud branch
+            # (meshgen.f90:804-817) OVERWRITES the angle-based un/us/ud
+            # above with pfx/pfz-derived values, per fault node -- and the
+            # fault's actual (warped) y-coordinate is `peak`, not 0, which
+            # matters for arn's corner-distance formula below (meshCoor
+            # already stores this same `peak` value, per
+            # build_node_coordinates' y-morph of fault nodes -- recomputed
+            # here rather than re-reading meshCoor, since the fault-node
+            # traversal order is independently re-walked in every M-builder).
+            y_geo, pfx, pfz = insert_fault_interface(
+                xcoor, ycoor, zcoor, rough, p['dx'], p['dz'],
+                yline[0], yline[-1], tol)
+            denom = (pfx ** 2 + 1.0 + pfz ** 2) ** 0.5
+            un[seq] = (-pfx / denom, 1.0 / denom, -pfz / denom)
+            us_denom = (1.0 + pfx ** 2) ** 0.5
+            us[seq] = (1.0 / us_denom, pfx / us_denom, 0.0)
+            ud[seq] = np.cross(us[seq], un[seq])
+        grid[(ifs, ifd)] = (seq, (xcoor, y_geo, zcoor))
     assert seq == nftnd, (seq, nftnd)
     ns = max(k[0] for k in grid)
     nd = max(k[1] for k in grid)

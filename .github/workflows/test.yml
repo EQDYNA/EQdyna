@@ -26,8 +26,18 @@ jobs:
         # (RegularGridInterpolator, griddata). Imported lazily there, so the
         # exact-decimation path works without it -- but the unit tier exercises
         # interpolation, and its absence is what turned v5.6.1's CI red.
+        #
+        # jax: the `accept` tier runs python/eqdyna/standalone on its DEFAULT
+        # backend, which is jax. Since the no-fallback change (v5.6.2) a
+        # missing jaxlib is a hard failure rather than a quiet demotion to
+        # numpy -- which is the point: CI must not report "jax passed" while
+        # having run numpy. CPU wheel only; the runner has no GPU, so this
+        # exercises the XLA CPU path.
         pip install numpy scipy netCDF4 matplotlib xarray pytest
         pip install --upgrade numpy
+        # jax LAST: it pins a numpy range, and `--upgrade numpy` above would
+        # otherwise move numpy out from under it after the fact.
+        pip install jax
 
     # Exec bits are tracked in git (PROJECT_RULES.md rule 13) and guarded by
     # testsys/regression/test_create_newcase.py — no chmod here. Exit codes

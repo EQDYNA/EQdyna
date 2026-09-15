@@ -18,6 +18,77 @@ sys.path.insert(0, os.path.dirname(__file__))
 from loading import load, region_damp  # noqa: E402  (must follow the x64 config line)
 import kernels_jax
 
+_CACHE_ENV = 'EQDYNA_JAX_CACHE_DIR'
+_cache_enabled = False
+
+
+def enable_compilation_cache():
+    """Point JAX's persistent (on-disk) compilation cache at a real directory.
+
+    Measured on test.tpv8 serial, 120 steps, jax 0.6.2, A100-SXM4-40GB pinned
+    via CUDA_VISIBLE_DEVICES, 64-core EPYC 7532: XLA backend compilation of
+    this time loop costs 13.9 s on the GPU and 4.7 s on the CPU, against
+    13.0 ms/step (GPU) of actual compute. A 120-step run therefore spends 90%
+    of its "solve" inside the compiler. With this cache warm, backend compile
+    drops to 6.5 s (GPU) / 2.8 s (CPU) for every process after the first.
+
+    Directory: $EQDYNA_JAX_CACHE_DIR, else ~/.cache/eqdyna-jax. Set
+    EQDYNA_JAX_CACHE_DIR=off to run uncached (e.g. to time a cold compile).
+
+    NO silent fallback (PROJECT_RULES rule 2): if a directory is named but
+    cannot be created or written, this raises. Quietly running uncached would
+    report a compile time nobody could account for -- exactly the confusion
+    that made the 143 ms/step baseline unreadable in the first place.
+
+    Cache entries are keyed by XLA on the lowered HLO, the backend and the
+    jaxlib version, so a code change cannot be served a stale executable.
+    """
+    global _cache_enabled
+    if _cache_enabled:
+        return
+    want = os.environ.get(_CACHE_ENV)
+    if want == 'off':
+        _cache_enabled = True
+        return
+    path = want or os.path.join(os.path.expanduser('~'), '.cache', 'eqdyna-jax')
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, '.eqdyna-write-probe')
+        with open(probe, 'w') as fh:
+            fh.write('')
+        os.remove(probe)
+    except OSError as exc:
+        raise OSError(
+            'JAX persistent compilation cache directory %r is unusable (%s). '
+            'Point %s at a writable directory, or set %s=off to run uncached. '
+            '(No fallback: running uncached without saying so would add ~14 s '
+            'of XLA compile to the solve phase with nothing to attribute it to.)'
+            % (path, exc, _CACHE_ENV, _CACHE_ENV))
+    jax.config.update('jax_compilation_cache_dir', path)
+    jax.config.update('jax_persistent_cache_min_compile_time_secs', 0.5)
+    jax.config.update('jax_persistent_cache_min_entry_size_bytes', 0)
+    _cache_enabled = True
+
+
+def time_loop(step, carry0, nsteps):
+    """Run `step` `nsteps` times, with `nsteps` TRACED rather than baked in.
+
+    `lax.scan` needs a static `length`, which put the step count into the
+    compiled executable's cache key: every distinct step count paid a full
+    XLA compile, and no on-disk cache entry could ever be reused across runs
+    of different length. `lax.fori_loop` with a traced trip count lowers to
+    the same XLA while-loop and measured identical per step -- 12.905 ms/step
+    (scan) vs 12.965 ms/step (fori), GPU, tpv8 serial, 120 steps -- while one
+    executable now serves every nsteps (verified: n=500 reused the n=120 cache
+    entry, 7.15 s vs 13.9 s cold).
+
+    Callers whose carry shapes depend on nsteps (port_tp_jax.py's history
+    arrays) cannot use this; they keep a static length by necessity.
+    """
+    loop = jax.jit(lambda c, n: jax.lax.fori_loop(
+        0, n, lambda _i, cc: step(cc, None)[0], c))
+    return loop(carry0, nsteps)
+
 
 def build(S):
     """Precompute every loop-invariant array ONCE (Python/NumPy side, static
@@ -222,6 +293,7 @@ def make_step(inv):
 
 def run(S, nsteps=None, verbose=True):
     nsteps = nsteps or S['nstep']
+    enable_compilation_cache()
     inv = build(S)
     # a few arrays didn't fit the flat dict-literal above; attach them here.
     conn = S['conn']; elemType = S['elemType']
@@ -242,10 +314,8 @@ def run(S, nsteps=None, verbose=True):
     timeElapsed = jnp.asarray(0.0, dtype=jnp.float64)
 
     step = make_step(inv)
-    scan_fn = jax.jit(lambda c: jax.lax.scan(step, c, xs=None, length=nsteps)[0])
-
     carry0 = (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed)
-    carry = scan_fn(carry0)
+    carry = time_loop(step, carry0, nsteps)
     jax.block_until_ready(carry)
     v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed = carry
     return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr), fnft=np.asarray(fnft),

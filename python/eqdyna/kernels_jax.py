@@ -183,16 +183,46 @@ def elastic_step(inv, v1, velArr, dispArr, force, stress_i, s_p, dt, rdampk):
     # ---- hrglss (C_hg==1, all elements) ----
     conn = inv['conn']; phi = inv['phi']; ss = inv['ss']
     dl_all = dispArr[conn] + rdampk * velArr[conn]
+    # The 4 hourglass modes all scatter to the SAME idxH0/idxH1/idxH2, so their
+    # contributions are summed per (element, node) HERE rather than handed to
+    # the scatter as 4 separate blocks. Same sum, re-associated: grouped by
+    # (element, node) instead of by mode. That takes the single scatter-add
+    # from 37.55M to 20.63M entries (-45%) and materialises 45 MB of mode
+    # contributions instead of 180 MB.
+    #
+    # Measured, tpv8 serial, 120 steps, A100-SXM4-40GB pinned via
+    # CUDA_VISIBLE_DEVICES=3, jax 0.6.2, compile excluded:
+    #     12.903 ms/step -> 10.844 ms/step  (-16.0%)
+    # (base measured twice at 12.903 / 12.902 ms/step, so this is far outside
+    # run-to-run spread.)
+    #
+    # Re-associating a floating-point sum is not bit-preserving, so it was
+    # gated on magnitude, not on argument. Against an unmodified re-run of the
+    # same code on the same input (the port's OWN nondeterminism floor -- XLA
+    # lowers this duplicate-index scatter-add to atomics, so it is already not
+    # bit-reproducible on GPU):
+    #     field     base vs base re-run     base vs this
+    #     velArr    1.889e-14               1.674e-14
+    #     dispArr   1.332e-15               1.180e-15
+    #     force     4.398e-13               4.350e-13
+    #     fric      2.235e-07               2.086e-07
+    #     fnft      0                       0     (no rupture-time flips)
+    # i.e. this change moves the answer LESS than re-running the unmodified
+    # code does. testsys parity and accept (5/5) re-run green after it.
+    fh0 = fh1 = fh2 = None
     for m in range(4):
         phid = (phi[:, m, :, None] * dl_all).sum(axis=1)
         r0 = ss[:, 0] * phid[:, 0] + ss[:, 1] * phid[:, 1] + ss[:, 2] * phid[:, 2]
         r1 = ss[:, 1] * phid[:, 0] + ss[:, 3] * phid[:, 1] + ss[:, 4] * phid[:, 2]
         r2 = ss[:, 2] * phid[:, 0] + ss[:, 4] * phid[:, 1] + ss[:, 5] * phid[:, 2]
-        fh0 = -(phi[:, m, :] * r0[:, None]).ravel()
-        fh1 = -(phi[:, m, :] * r1[:, None]).ravel()
-        fh2 = -(phi[:, m, :] * r2[:, None]).ravel()
-        scat_idx += [inv['idxH0'], inv['idxH1'], inv['idxH2']]
-        scat_val += [fh0, fh1, fh2]
+        m0 = -(phi[:, m, :] * r0[:, None])
+        m1 = -(phi[:, m, :] * r1[:, None])
+        m2 = -(phi[:, m, :] * r2[:, None])
+        fh0 = m0 if fh0 is None else fh0 + m0
+        fh1 = m1 if fh1 is None else fh1 + m1
+        fh2 = m2 if fh2 is None else fh2 + m2
+    scat_idx += [inv['idxH0'], inv['idxH1'], inv['idxH2']]
+    scat_val += [fh0.ravel(), fh1.ravel(), fh2.ravel()]
 
     all_idx = jnp.concatenate(scat_idx)
     all_val = jnp.concatenate(scat_val)

@@ -135,10 +135,36 @@ def contm(det, constm):
 def assemble_mass(conn, mat, det, num_dof, eq_start, eq_nums, n_equations, n_nodes):
     """Port of assembleElementMassDetShg's nodalMassArr/fnms scatter
     (mass-only slice -- eledet/eleshp writes are out of scope, see module
-    docstring), verbatim element-major/local-node-minor loop order (Phase
-    B of the port workflow: scalar first, matching build_elements'
-    documented precedent of NOT vectorizing a scatter whose accumulation
-    order affects bit-for-bit output).
+    docstring), in the verbatim element-major/local-node-minor accumulation
+    ORDER of the Fortran (and of this function's original scalar loop).
+
+    PERFORMANCE NOTE (order-preserving vectorization, replacing the original
+    triple scalar loop -- the scalar version is kept below as
+    `_assemble_mass_scalar` and is the bit-for-bit oracle the unit test
+    `testsys/unit/test_mass_assembly_vectorized.py` checks this against):
+    the original docstring's constraint -- "NOT vectorizing a scatter whose
+    accumulation order affects bit-for-bit output" -- is respected here
+    exactly, NOT relaxed. `np.add.at`/`np.bincount` are deliberately NOT
+    used: both would reassociate the per-target summation. Instead:
+
+      1. Every (element, local-node) contribution is bucketed by its target
+         node id with a STABLE sort, so within each node the contributions
+         stay in increasing `e*8 + k` order -- the same order the scalar
+         loop visits them.
+      2. Those buckets are laid out as a dense (n_nodes+1, kmax) matrix,
+         zero-padded AT THE TAIL, and summed by `kmax` sequential
+         whole-column adds. Column j adds exactly the j-th contribution of
+         every node, so each node sees the identical left-to-right addition
+         chain the scalar loop performs; the tail padding contributes
+         `x + 0.0`, which is exact in IEEE-754 for every x this function
+         can produce (all contributions are strictly positive -- `constm`
+         and `det` are both > 0, det checked by compute_element_det).
+      3. `nodalMassArr` is then NOT accumulated separately: the scalar loop
+         adds the SAME value, in the SAME order, to every positive equation
+         slot of a node as it adds to `fnms[node]`, so
+         `nodalMassArr[eq] == fnms[node]` bit-for-bit by construction, for
+         every eq>0 in eq_nums[node]. This is a re-derivation of the scalar
+         loop's own invariant, not an approximation of it.
 
     Both the numOfDofPerNodeArr==12 (PML) and ==3 (interior/exterior)
     Fortran branches turn out to add the SAME scalar `m_e[e]` to every
@@ -165,6 +191,56 @@ def assemble_mass(conn, mat, det, num_dof, eq_start, eq_nums, n_equations, n_nod
 
     Returns (nodalMassArr, fnms): 1-indexed float arrays (row 0 unused),
     sizes (n_equations+1,) and (n_nodes+1,).
+    """
+    m_e = contm(det, mat[:, 2])
+
+    # (1) one contribution per (element, local node), in the scalar loop's
+    # own visit order: flat index p = e*8 + k.
+    flat = np.ascontiguousarray(conn).ravel()
+    if flat.size and (flat.min() < 1 or flat.max() > n_nodes):
+        raise ValueError('assemble_mass: conn references node id(s) outside '
+                          '1..%d (min=%d, max=%d)'
+                          % (n_nodes, int(flat.min()), int(flat.max())))
+    vals = np.repeat(m_e, 8)
+
+    # (2) stable bucket-by-node, then dense (node, occurrence) layout.
+    order = np.argsort(flat, kind='stable')
+    sorted_nodes = flat[order]
+    counts = np.bincount(flat, minlength=n_nodes + 1)
+    kmax = int(counts.max()) if counts.size else 0
+    starts = np.zeros(n_nodes + 1, dtype=np.int64)
+    np.cumsum(counts[:-1], out=starts[1:])
+    rank = np.arange(sorted_nodes.size, dtype=np.int64) - starts[sorted_nodes]
+
+    contrib = np.zeros((n_nodes + 1, kmax))
+    contrib[sorted_nodes, rank] = vals[order]
+
+    # (3) sequential left-to-right accumulation, one column at a time.
+    fnms = np.zeros(n_nodes + 1)
+    for j in range(kmax):
+        fnms += contrib[:, j]
+
+    # (4) nodalMassArr[eq] == fnms[node] for every positive eq of that node
+    # (identical value, identical order -- see docstring).
+    nd = np.asarray(num_dof[1:], dtype=np.int64)
+    eq_flat = np.concatenate(eq_nums[1:]).astype(np.int64, copy=False)
+    if eq_flat.size != int(nd.sum()):
+        raise ValueError('assemble_mass: eq_nums slot count %d disagrees with '
+                          'num_dof total %d' % (eq_flat.size, int(nd.sum())))
+    node_of_slot = np.repeat(np.arange(1, n_nodes + 1, dtype=np.int64), nd)
+    live = eq_flat > 0
+    nodalMassArr = np.zeros(n_equations + 1)
+    nodalMassArr[eq_flat[live]] = fnms[node_of_slot[live]]
+
+    return nodalMassArr, fnms
+
+
+def _assemble_mass_scalar(conn, mat, det, num_dof, eq_start, eq_nums, n_equations, n_nodes):
+    """The original verbatim scalar port of assembleElementMassDetShg's
+    scatter, kept as the bit-for-bit ORACLE for `assemble_mass`'s
+    order-preserving vectorization (see that function's docstring). Not
+    used on any production path -- `testsys/unit/test_mass_assembly_vectorized.py`
+    asserts byte-equality of the two on a real mesh.
     """
     E = conn.shape[0]
     m_e = contm(det, mat[:, 2])
@@ -277,18 +353,22 @@ def compute_element_volume(xl):
     z = xl[:, :, 2]  # xl(3,k)
     x = xl[:, :, 0]  # xl(1,k)
 
-    def col(arr, k):  # Fortran it(k,i) is 1-indexed; arr indexed [:, node-1].
-        # _VLM_IT[i-1, k-1] == it(k,i) (each hardcoded row above is one
-        # COLUMN of Fortran's column-major reshape) -- so for fixed k,
-        # varying i=1..8, the node-id sequence is _VLM_IT[:, k-1].
-        return arr[:, _VLM_IT[:, k - 1]]  # (E,8): one value per i=1..8
+    # _VLM_IT[i-1, k-1] == Fortran it(k,i) (each hardcoded row above is one
+    # COLUMN of Fortran's column-major reshape) -- so for fixed k, varying
+    # i=1..8, the node-id sequence is _VLM_IT[:, k-1].
+    # PERFORMANCE: the formula below re-reads only k in {2,3,4,5,6,8}, but
+    # 24 times; gather each (E,8) column block ONCE. Pure gather, no
+    # arithmetic touched, so the sum below is bit-for-bit what it was.
+    _KS = (2, 3, 4, 5, 6, 8)
+    ycol = {k: y[:, _VLM_IT[:, k - 1]] for k in _KS}
+    zcol = {k: z[:, _VLM_IT[:, k - 1]] for k in _KS}
 
-    bb = (col(y, 2) * (col(z, 6) - col(z, 3) + col(z, 5) - col(z, 4)) +
-          col(y, 3) * (col(z, 2) - col(z, 4)) +
-          col(y, 4) * (col(z, 3) - col(z, 8) + col(z, 2) - col(z, 5)) +
-          col(y, 5) * (col(z, 8) - col(z, 6) + col(z, 4) - col(z, 2)) +
-          col(y, 6) * (col(z, 5) - col(z, 2)) +
-          col(y, 8) * (col(z, 4) - col(z, 5)))  # (E,8): bb(i)
+    bb = (ycol[2] * (zcol[6] - zcol[3] + zcol[5] - zcol[4]) +
+          ycol[3] * (zcol[2] - zcol[4]) +
+          ycol[4] * (zcol[3] - zcol[8] + zcol[2] - zcol[5]) +
+          ycol[5] * (zcol[8] - zcol[6] + zcol[4] - zcol[2]) +
+          ycol[6] * (zcol[5] - zcol[2]) +
+          ycol[8] * (zcol[4] - zcol[5]))  # (E,8): bb(i)
 
     volume = np.sum(x * bb, axis=1) / 12.0
     return volume

@@ -40,6 +40,7 @@ import subprocess
 import sys
 import time
 
+TESTSYS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
@@ -135,9 +136,43 @@ def main():
     if check_rc != 0:
         print(f'e2e: FAIL - check.test.py reported comparison failures (exit {check_rc})')
 
-    if run_failures or check_rc != 0:
+    # Gate 5 - the SAME cases through the Python/JAX backend.
+    #
+    # e2e is backend-parameterised rather than having a parallel `accept` tier:
+    # one case list, one reference tree, one place a regression shows up. The
+    # Fortran pipeline above runs all 8 gated cases at 4 ranks; the standalone
+    # runs the 5 it supports (tpv8, tpv104, tpv1053d, tpv10, drv.a6) SERIALLY,
+    # because build_solver_state refuses npx*npy*npz > 1.
+    #
+    # This delegates to test_standalone_acceptance.py rather than reimplementing
+    # its comparison (rule 1). That comparison is not a plain diff: the
+    # standalone writes ONE whole-domain frt.txt0 while the reference is split
+    # across per-rank frt.txt* files, so it dedupes the combined reference by
+    # rounded (x,y,z) and lexsorts both sides before comparing. Duplicating that
+    # would be two things to keep in step.
+    #
+    # Skipped, loudly and with a non-zero-able reason, if jax is absent -- never
+    # silently, and never demoted to the numpy backend, which would report
+    # "jax passed" for a run that was not jax (rule 2, and the reason
+    # --backend jax stopped falling back in v5.6.2).
+    py_rc = 0
+    if os.environ.get('EQDYNA_E2E_SKIP_PYTHON') == '1':
+        print('e2e: python/jax backend SKIPPED (EQDYNA_E2E_SKIP_PYTHON=1)')
+    else:
+        accept = os.path.join(TESTSYS, 'parity', 'test_standalone_acceptance.py')
+        if not os.path.exists(accept):
+            print(f'e2e: FAIL - {accept} is missing; the python backend cannot be gated')
+            py_rc = 1
+        else:
+            print('\n-- e2e: python/jax backend (standalone, serial) --')
+            py_rc = subprocess.call([sys.executable, accept], cwd=REPO_ROOT, env=env)
+            if py_rc != 0:
+                print(f'e2e: FAIL - python/jax backend exited {py_rc}')
+
+    if run_failures or check_rc != 0 or py_rc != 0:
         return 1
-    print('e2e: SUCCESS - all cases ran and matched test.reference.results/')
+    print('e2e: SUCCESS - all cases ran and matched test.reference.results/, '
+          'fortran and python/jax')
     return 0
 
 

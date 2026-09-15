@@ -25,7 +25,7 @@ import numpy as np
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from loading import load, region_damp  # noqa: E402
-from port_jax import build  # elastic-kernel invariants: identical for any friclaw
+from port_jax import build, enable_compilation_cache, time_loop  # elastic-kernel invariants: identical for any friclaw
 import kernels_jax
 
 
@@ -231,6 +231,7 @@ def make_step(inv, S):
 
 def run(S, nsteps=None, verbose=True):
     nsteps = nsteps or S['nstep']
+    enable_compilation_cache()
     inv = build(S)
     conn = S['conn']; elemType = S['elemType']
     E_pml = np.nonzero(elemType == 2)[0]
@@ -249,10 +250,8 @@ def run(S, nsteps=None, verbose=True):
     timeElapsed = jnp.asarray(0.0, dtype=jnp.float64)
 
     step = make_step(inv, S)
-    scan_fn = jax.jit(lambda c: jax.lax.scan(step, c, xs=None, length=nsteps)[0])
-
     carry0 = (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed)
-    carry = scan_fn(carry0)
+    carry = time_loop(step, carry0, nsteps)   # traced nsteps -- see port_jax.time_loop
     jax.block_until_ready(carry)
     v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed = carry
     return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr), fnft=np.asarray(fnft),
