@@ -7,8 +7,9 @@ docstrings/commit messages, with no committed script to reproduce them
 performance number carries its provenance"):
 
   (a) drv.a6 decomposition-chaos evidence behind Milestone 10's two-part
-      acceptance criterion (test_standalone_acceptance.py's "Milestone 10
-      CLOSURE" docstring): the A/B/C existence-flip + timing-shift decomposition --
+      acceptance criterion (testsys/matrix.py's DRV_A6 bounds; full
+      derivation in pathway_forward.md item 18): the A/B/C existence-flip +
+      timing-shift decomposition --
         A: fresh serial Fortran        vs committed 4-rank reference
         B: standalone Python (JAX)     vs that SAME fresh serial Fortran run
         C: standalone Python (JAX)     vs committed 4-rank reference
@@ -20,21 +21,23 @@ performance number carries its provenance"):
       nvidia-smi contention caveat printed at the start.
 
 REPORT-ONLY. This script is never a gate and is never wired into
-testsys/run.py's unit/regression/e2e/accept/gpu tiers -- it is invoked
-BY HAND, exactly like testsys/parity/make_fixtures.py. It imports (does
-NOT duplicate) make_serial_case / run_standalone / sh /
-load_coordinate_aligned / align_two_frt_files / flip_decomposition /
-drv_a6_gate / coordinate_aligned_diff / the DRV_A6_* constants from
-testsys/parity/test_standalone_acceptance.py (rule 1) -- one
-implementation of "how do two frt.txt runs compare", every consumer.
+testsys/run.py's unit/regression/e2e tiers -- it is invoked BY HAND,
+exactly like testsys/parity/make_fixtures.py. It imports (does NOT
+duplicate) make_serial_case / run_standalone from testsys/e2e/run_e2e.py
+and load_coordinate_aligned / align_two_frt_files / flip_decomposition /
+drv_a6_gate / abs_max_diff from testsys/compare.py, with the bounds from
+testsys/matrix.py (rule 1) -- one implementation of "how do two frt runs
+compare", every consumer. Those helpers used to live in
+testsys/parity/test_standalone_acceptance.py, the separate `accept` tier
+that has since been folded into the e2e sweep as a backend column.
 
 THE NUMBERS BELOW WILL NOT MATCH 372/439/391 EXACTLY, and that is
-expected, not a bug: test_standalone_acceptance.py's own docstring
-documents that drv.a6's rupture-front arrival is genuinely
+expected, not a bug: matrix.py's DRV_A6 comments and pathway_forward.md
+item 18 document that drv.a6's rupture-front arrival is genuinely
 decomposition/reduction-order-sensitive (a PURE-Fortran, same-binary,
 same-algorithm run flips ~7% of fault nodes' rupture arrival on a mere
 MPI-decomposition change). The recorded 372/439/391 are ONE sample from
-one session; DRV_A6_TOTAL_FLIP_BOUND=450 in test_standalone_acceptance.py
+one session; matrix.DRV_A6['total_flip_bound']=450
 is calibrated WITH HEADROOM above that sample, not an exact target this
 script's re-run must reproduce. Do NOT edit DRV_A6_TOTAL_FLIP_BOUND (or
 any other committed bound) to make a new sample from this script "match" --
@@ -50,8 +53,8 @@ frt.txt0 / frt.txt0.fortran artifacts already exist on disk from a prior
 invocation instead, and say so explicitly in your report rather than
 adding load to a busy shared machine. Never run drv.a6's Fortran and
 Python legs concurrently with each other or with any other tier
-(run_parity.py / make_fixtures.py / test_standalone_acceptance.py already
-document this same one-at-a-time constraint).
+(run_parity.py / make_fixtures.py / the e2e sweep already document this
+same one-at-a-time constraint).
 
 Run:
     python3 testsys/parity/evidence_drv_a6_chaos.py            # part (a) only
@@ -79,8 +82,15 @@ TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
 OUT_DIR = os.path.join(TESTSYS, 'evidence_output')
 
-sys.path.insert(0, TESTSYS)
-import test_standalone_acceptance as accept  # rule 1: reuse, don't duplicate
+sys.path.insert(0, REPO_ROOT)
+sys.path.insert(0, os.path.join(REPO_ROOT, 'testsys', 'e2e'))
+from testsys import compare, matrix  # rule 1: reuse, don't duplicate
+import run_e2e                       # the sweep's cell runners (same rule)
+
+# CPU-pinned by default for part (a), exactly as the old accept tier was: a
+# run labelled jax-on-cpu that silently landed on a contended GPU is a
+# different measurement under the same name. Part (b) overrides per leg.
+PLATFORM = os.environ.get('JAX_PLATFORMS', 'cpu')
 
 
 # ---------------------------------------------------------------- provenance
@@ -167,7 +177,7 @@ def regenerate_drv_a6_chaos():
     tmp = tempfile.mkdtemp(prefix='evidence_drv_a6_')
     try:
         case_dir = os.path.join(tmp, case_name)
-        accept.make_serial_case(case_name, case_dir)
+        run_e2e.make_serial_case(case_name, case_dir, run_e2e.base_env())
 
         binary = build_serial_fortran_binary()
         fortran_frt, fortran_elapsed = run_fortran_serial(binary, case_dir)
@@ -175,22 +185,22 @@ def regenerate_drv_a6_chaos():
         shutil.copy(fortran_frt, fortran_frt_saved)  # preserve before python overwrites frt.txt0
 
         t0 = time.time()
-        py_frt = accept.run_standalone(case_dir)  # overwrites frt.txt0 with the python output
+        # overwrites frt.txt0 with the python output
+        py_frt = run_e2e.run_standalone(case_dir, 'python-jax', device=PLATFORM)
         python_elapsed = time.time() - t0
-        print(f'standalone Python (JAX, JAX_PLATFORMS={os.environ.get("JAX_PLATFORMS")}) '
+        print(f'standalone Python (JAX, JAX_PLATFORMS={PLATFORM}) '
               f'test.drv.a6 run: {python_elapsed:.1f}s')
 
-        # A: fresh serial Fortran vs committed 4-rank reference.
-        ok_a, diag_a = accept.drv_a6_gate(fortran_frt_saved)
-        # C: standalone Python vs committed 4-rank reference (same pair
-        # test.drv.a6's accept-tier case gates on).
-        ok_c, diag_c = accept.drv_a6_gate(py_frt)
+        # A: fresh serial Fortran vs committed reference.
+        ok_a, diag_a = compare.drv_a6_gate(fortran_frt_saved)
+        # C: standalone Python vs committed reference (the pair the sweep's
+        # test.drv.a6 python cells gate on).
+        ok_c, diag_c = compare.drv_a6_gate(py_frt)
         # B: standalone Python vs fresh serial Fortran -- NEITHER side is
         # the committed reference, so this needs align_two_frt_files, not
         # load_coordinate_aligned (which always loads test.reference.results/).
-        ref_s_b, py_s_b = accept.align_two_frt_files(
-            fortran_frt_saved, py_frt, 'fresh-serial-Fortran', 'standalone-python')
-        diag_b = accept.flip_decomposition(ref_s_b, py_s_b)
+        ref_s_b, py_s_b = compare.align_two_frt_files(fortran_frt_saved, py_frt)
+        diag_b = compare.flip_decomposition(ref_s_b, py_s_b)
         ok_b = bool(diag_b['ok_median'] and diag_b['ok_phys'] and diag_b['ok_flips'])
 
         overlap_ab, union_ab = _flip_overlap(diag_a['flip_mask'], diag_b['flip_mask'])
@@ -220,23 +230,24 @@ def print_drv_a6_table(r):
           f'{"timing_shifts":>14} {"ruptured_both":>14} {"median|d fnft|":>15} {"phys_max_diff":>14}')
     for key in ('A', 'B', 'C'):
         d = r[key]
-        print(f'  {key:<3} {d["total_flips"]:>12d} {"/" + str(accept.DRV_A6_TOTAL_FLIP_BOUND):>7} '
-              f'{d["n_only_ref"]:>9d} {d["n_only_py"]:>8d} {d["n_timing_shifts"]:>14d} '
+        print(f'  {key:<3} {d["total_flips"]:>12d} '
+              f'{"/" + str(matrix.DRV_A6["total_flip_bound"]):>7} '
+              f'{d["n_only_ref"]:>9d} {d["n_only_run"]:>8d} {d["n_timing_shifts"]:>14d} '
               f'{d["n_ruptured_both"]:>14d} {d["median_fnft_diff"]:>15.4f} {d["phys_max_diff"]:>14.4e}'
               f'   [{d["label"]}]')
     print(f'  A-intersect-B (flip-set overlap) = {r["overlap_A_and_B"]}; '
           f'A-union-B = {r["union_A_or_B"]}')
     print('  NOTE: these are CHAOTIC-SAMPLE quantities (see module docstring) -- the '
-          'recorded values in test_standalone_acceptance.py (A=372, B=439, C=391, '
-          'overlap=212, union=599, median 0.0417s in all three) are ONE sample; '
-          'DRV_A6_TOTAL_FLIP_BOUND=450 is calibrated WITH HEADROOM above them, not an '
-          'exact target this run is expected to reproduce.')
+          'recorded values (A=372, B=439, C=391, overlap=212, union=599, median '
+          '0.0417s in all three; pathway_forward.md item 18) are ONE sample; '
+          'matrix.DRV_A6["total_flip_bound"]=450 is calibrated WITH HEADROOM above '
+          'them, not an exact target this run is expected to reproduce.')
     for key in ('A', 'B', 'C'):
         d = r[key]
-        balance = 'balanced' if d['n_only_ref'] == 0 and d['n_only_py'] == 0 else (
-            'balanced' if 0.3 <= (d['n_only_ref'] + 1) / (d['n_only_py'] + 1) <= 3.3
+        balance = 'balanced' if d['n_only_ref'] == 0 and d['n_only_run'] == 0 else (
+            'balanced' if 0.3 <= (d['n_only_ref'] + 1) / (d['n_only_run'] + 1) <= 3.3
             else 'ONE-SIDED (worth a second look)')
-        print(f'  {key}: only_ref={d["n_only_ref"]} vs only_py={d["n_only_py"]} -> {balance}')
+        print(f'  {key}: only_ref={d["n_only_ref"]} vs only_run={d["n_only_run"]} -> {balance}')
 
 
 # ---------------------------------------------------------------- part (b)
@@ -264,19 +275,12 @@ def regenerate_gpu_timing():
         tmp = tempfile.mkdtemp(prefix=f'evidence_gpu_{platform}_')
         try:
             case_dir = os.path.join(tmp, case_name)
-            accept.make_serial_case(case_name, case_dir)
-            env = dict(os.environ, EQDYNAROOT=REPO_ROOT,
-                       PYTHONPATH=os.path.join(REPO_ROOT, 'python'),
-                       JAX_PLATFORMS=platform)
+            run_e2e.make_serial_case(case_name, case_dir, run_e2e.base_env())
             t0 = time.time()
-            r = subprocess.run([sys.executable, '-m', 'eqdyna.standalone', case_dir],
-                                cwd=REPO_ROOT, env=env, capture_output=True, text=True)
+            frt = run_e2e.run_standalone(case_dir, 'python-jax', device=platform)
             elapsed = time.time() - t0
-            if r.returncode != 0:
-                print(r.stdout[-4000:]); print(r.stderr[-4000:])
-                raise SystemExit(f'FAIL: standalone eqdyna ({platform}) exited {r.returncode}')
-            frt = os.path.join(case_dir, 'frt.txt0')
-            max_abs_diff, ok = accept.coordinate_aligned_diff(case_name, frt)
+            ref_a, run_a = compare.load_coordinate_aligned(case_name, frt)
+            max_abs_diff, ok, _ = compare.abs_max_diff(case_name, ref_a, run_a)
             return elapsed, max_abs_diff, ok
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -295,7 +299,7 @@ def regenerate_gpu_timing():
 def print_gpu_table(r):
     print('\n==== part (b): gpu vs cpu timing (FRESH SAMPLE, CONTEMPORANEOUS) ====')
     print(f'  {"platform":<10} {"wall_s":>10} {"max_abs_diff":>14} {"pass_bound":>10}')
-    bound = accept.PER_CASE_ABS_BOUND.get('test.tpv8', accept.THRESHOLD)
+    bound = matrix.CASE_BOUND['test.tpv8']
     print(f'  {"gpu":<10} {r["gpu_elapsed_s"]:>10.2f} {r["gpu_max_abs_diff"]:>14.4e} '
           f'{"ok" if r["gpu_ok"] else "FAIL":>10} (bound {bound:e})')
     print(f'  {"cpu":<10} {r["cpu_elapsed_s"]:>10.2f} {r["cpu_max_abs_diff"]:>14.4e} '

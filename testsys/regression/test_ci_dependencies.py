@@ -115,10 +115,12 @@ def scan():
     offenders = []
     for d in SCAN_DIRS:
         for root, _, files in os.walk(os.path.join(ROOT, d)):
-            # Frozen parity fixtures are snapshots of past source, kept
-            # byte-stable on purpose (testsys/parity/README.md). They are not
-            # live code and must not be edited to satisfy a lint.
-            if '__pycache__' in root or 'parity/fixtures' in root.replace(os.sep, '/'):
+            # The parity/fixtures exemption that used to live here is gone with
+            # the fixtures: they were frozen copies of scripts/ that had drifted
+            # badly (lib.py stuck at 187 lines against the live 949), and the
+            # only thing keeping them lint-clean was this exemption. Every
+            # remaining .py under testsys/ is live code and is scanned.
+            if '__pycache__' in root:
                 continue
             for fn in sorted(files):
                 path = os.path.join(root, fn)
