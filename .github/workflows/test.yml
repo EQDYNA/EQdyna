@@ -27,12 +27,11 @@ jobs:
         # exact-decimation path works without it -- but the unit tier exercises
         # interpolation, and its absence is what turned v5.6.1's CI red.
         #
-        # jax: the `accept` tier runs python/eqdyna/standalone on its DEFAULT
-        # backend, which is jax. Since the no-fallback change (v5.6.2) a
-        # missing jaxlib is a hard failure rather than a quiet demotion to
-        # numpy -- which is the point: CI must not report "jax passed" while
-        # having run numpy. CPU wheel only; the runner has no GPU, so this
-        # exercises the XLA CPU path.
+        # jax: the e2e sweep's python-jax column. Since the no-fallback change
+        # (v5.6.2) a missing jaxlib is a hard failure rather than a quiet
+        # demotion to numpy -- which is the point: CI must not report "jax
+        # passed" while having run numpy. CPU wheel only; the runner has no
+        # GPU, so this exercises the XLA CPU path.
         pip install numpy scipy netCDF4 matplotlib xarray pytest
         pip install --upgrade numpy
         # jax LAST: it pins a numpy range, and `--upgrade numpy` above would
@@ -48,21 +47,21 @@ jobs:
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
         set -o pipefail
-        # The python/jax backend inside e2e is memory-heavy. Measured peak RSS
-        # per case, full length, on this repo's accept tier:
-        #     test.tpv8    3.59 GB   34 s
-        #     test.tpv104 10.42 GB   85 s
-        # A GitHub ubuntu-22.04 runner has 7 GB and is already holding the
-        # Fortran build, so tpv8 is the ONLY case that fits. Running all five
-        # got the job SIGTERM'd with no output (exit 143) -- a resource kill,
-        # not a test failure.
+        # e2e-ci runs testsys/matrix.py's CI_CELLS: every case on the fortran
+        # backend, plus test.tpv8 on BOTH python backends. Which cells, and
+        # why, is declared in that table with the measured peak RSS next to
+        # each one -- not in an env var here. A GitHub ubuntu-22.04 runner has
+        # 7 GB and is already holding the Fortran build; the python/jax column
+        # peaks at 3.2-7.4 GB for the other cases, and running them all once
+        # got the job SIGTERM'd with no output (exit 143), which is a resource
+        # kill, not a test result.
         #
-        # So CI gates ONE case, and says so: e2e prints the case list, and
-        # "green" therefore states its own coverage rather than implying five.
-        # The remaining four run locally (leave this unset) or on a bigger
-        # runner. Widening this needs a memory measurement first, not a guess.
-        export EQDYNA_ACCEPT_CASES=test.tpv8
-        python3 testsys/run.py all 2>&1 | tee -a testRunLog.txt
+        # The sweep prints the cells it ran and the cells it did not, so a
+        # green CI run states its own coverage instead of implying the full
+        # 24-cell table. The full sweep is `python3 testsys/run.py all`, run
+        # locally or on a bigger runner. Widening CI_CELLS needs a memory
+        # measurement first, not a guess.
+        python3 testsys/run.py unit regression e2e-ci 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt
       if: always()
