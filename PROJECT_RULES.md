@@ -83,7 +83,8 @@ fail, they were testing the fallback.
 Named commands, named pass criteria:
 
 - Build: `cd src && make` (via `./install-eqdyna.sh -m <machine>`) must exit 0.
-- Test: `python3 testAll.py` then `python3 check.test.py` — pass means every
+- Test: `python3 testsys/run.py all` — the sweep (8 cases x 3 backends).
+  Pass means every
   printed line for every `testid` in `testNameList.nameList` reads `SUCCESS`,
   with **no** `FAIL` string, for every file in `fileNameList`.
 
