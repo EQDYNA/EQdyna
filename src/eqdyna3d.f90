@@ -54,6 +54,7 @@ program EQdyna
     call allocInit
     call memory_estimate
     call meshgen
+    call checkFaultMPIAlignment
     call checkMeshMaterial
     !call checkArrSize  ! disabled for productive runs
     call netcdf_read_on_fault_eqdyna
@@ -212,6 +213,61 @@ subroutine init_vel
         enddo
     enddo
 end subroutine init_vel
+
+subroutine checkFaultMPIAlignment
+    ! Mesh-time postcheck (PROJECT_RULES.md rule 2; pathway_forward "fault-plane
+    ! coincides with MPI partition boundary" item). Background: when an MPI
+    ! partition plane coincides with the fault plane, arn (fault-node tributary
+    ! area, meshgen.f90 MPI4arn) used to get summed across that boundary as
+    ! though it divided the fault surface between the two ranks, when the
+    ! boundary actually duplicated the fault's full extent there instead --
+    ! this doubled arn and halved every on-fault traction (confirmed by direct
+    ! instrumented dump: arn = 2x the serial/non-splitting value at an
+    ! identical physical fault node; see pathway_forward.md and
+    ! scratch/mira_faultmpi_guard).
+    !
+    ! FIXED: MPI4arn's syncArnBoundary (meshgen.f90) now conditions its arn
+    ! add-back on fltxyz -- it skips the add-back (leaving this rank's already-
+    ! complete local arn alone) whenever the fault has zero nominal extent in
+    ! that boundary's physical direction, which is the DUPLICATE case, and
+    ! still adds when the fault has real extent there (the DIVIDE case, e.g.
+    ! x/z splits, verified unaffected: scratch/mira_faultmpi_guard). fnms
+    ! (assembleGlobalMass.f90's MPI4NodalQuant/addFaultBoundaryTerm, gated by
+    ! the SAME fltMPI(k) this subroutine still sets/exchanges regardless of
+    ! the arn decision) is untouched by this fix and was confirmed unaffected
+    ! by the original bug (dumped fnms is bit-identical serial vs. a
+    ! fault-splitting decomposition) -- only arn needed the change.
+    !
+    ! This subroutine now stops only for the residual case the fix above does
+    ! NOT reason about: a y-direction MPI boundary carrying fault nodes for a
+    ! fault whose NOMINAL y-extent is non-degenerate (fltxyz(2,2,*) /=
+    ! fltxyz(1,2,*)) -- not producible by any case in this codebase today
+    ! (every fault is defined in the x-z plane, fymin==fymax==0, per
+    ! defaultParameters.py), but a real hazard class if that assumption is
+    ! ever relaxed, since the divide-vs-duplicate reasoning above has not been
+    ! audited for it. Uses fltxyz(:,2,ntotft) because fltnum (populated by
+    ! MPI4arn, called once per fault inside meshgen's ift loop) reflects only
+    ! the LAST fault processed -- a pre-existing ntotft>=2 limitation shared
+    ! with pathway_forward.md items 7/9/10/17, not introduced here.
+    use globalvar
+    implicit none
+    include 'mpif.h'
+    integer (kind = 4) :: iMPIerr
+    logical :: hitHere, hitAnywhere
+
+    hitHere = (fltnum(3) > 0 .or. fltnum(4) > 0) &
+        .and. (fltxyz(2,2,ntotft) /= fltxyz(1,2,ntotft))
+    call MPI_Allreduce(hitHere, hitAnywhere, 1, MPI_LOGICAL, MPI_LOR, MPI_COMM_WORLD, iMPIerr)
+
+    if (hitAnywhere) then
+        if (me == masterProcsId) then
+            write(*,*) 'checkFaultMPIAlignment: an MPI partition boundary in y coincides with a fault of non-degenerate y-extent.'
+            write(*,*) 'MPI4arn''s divide-vs-duplicate fix has not been audited for this case. Set par.ymax /= -par.ymin (asymmetric y-domain) so the fault is offset from rank boundaries.'
+        endif
+        call MPI_Barrier(MPI_COMM_WORLD, iMPIerr)
+        stop 'checkFaultMPIAlignment failed'
+    endif
+end subroutine checkFaultMPIAlignment
 
 subroutine checkMeshMaterial
     use globalvar
