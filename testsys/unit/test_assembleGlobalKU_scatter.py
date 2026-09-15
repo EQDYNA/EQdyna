@@ -1,4 +1,4 @@
-"""Unit cover for the element-force SCATTER invariants kernels_numpy.py's
+"""Unit cover for the element-force SCATTER invariants assembleGlobalKU.py's
 memory footprint now rests on (2026-09-15).
 
 `elastic_step` used to stage the WHOLE element-force function space -- one
@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(REPO_ROOT, 'python', 'eqdyna'))
+sys.path.insert(0, os.path.join(REPO_ROOT, 'python'))
 
 
 def _blocks(seed, nblk=6, nrow=97, ntarget=41):
@@ -82,7 +82,7 @@ def test_per_block_bincount_is_NOT_interchangeable(seed):
 
     assert not np.array_equal(per_block, want), \
         'per-block bincount happened to match here; the ordering argument in ' \
-        'kernels_numpy.build() needs re-deriving if this is no longer a real difference'
+        'assembleGlobalKU.build() needs re-deriving if this is no longer a real difference'
 
 
 @pytest.mark.parametrize('seed', [0, 3])
@@ -113,9 +113,9 @@ def test_build_exposes_no_staged_function_space():
     Those two keys were 1.75 GB on test.tpv104; a future refactor that
     reintroduces them would be a silent 2x on peak RSS for large meshes, and
     nothing else in the suite measures memory."""
-    import kernels_numpy
-    src = open(kernels_numpy.__file__).read()
+    from eqdyna import assembleGlobalKU
+    src = open(assembleGlobalKU.__file__).read()
     for gone in ("scat_idx=", "scat_val=", "scat_off="):
         assert gone not in src, \
-            'kernels_numpy.build() is staging the element-force function space again ' \
+            'assembleGlobalKU.build() is staging the element-force function space again ' \
             '(%s) -- see its in-place block-scatter note for why that costs 1.75 GB' % gone

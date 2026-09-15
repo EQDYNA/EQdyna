@@ -1,120 +1,65 @@
-"""
-Milestone 8: the standalone entry point. Assembles the solver state dict
-`S` ENTIRELY from python/eqdyna/standalone/{native_input,meshgen,
-mass_assembly}.py -- ZERO pydump_*.txt reads (grep this file for
-'pydump': there are none outside this docstring) -- and hands it to the
-EXISTING, already-parity-verified NumPy time-stepping kernel
-(python/eqdyna/port.py's `run()`, which wraps kernels_numpy.py's
-velDispUpdate + assembleGlobalKU + hrglss + faulting), then writes
-frt.txt via frt_writer.write_frt.
+"""eqdyna3d.py <- src/eqdyna3d.f90. The main entry point.
 
-Scope: friclaw in {1, 4, 5} (slip-weakening/tpv8, rate-and-state/tpv104,
-thermal-pressurization/tpv1053d -- dispatched to port.py/port_rsf.py/
-port_tp.py respectively, see _NUMPY_SOLVER_BY_FRICLAW/_JAX_MODULE_BY_FRICLAW
-below), single planar or dipping/rough fault (ntotft==1), C_degen==0,
-npx==npy==npz==1 (serial). insertFaultType>0 (tpv10 dipping, drv.a6
-fractal-rough -- Milestone 9, meshgen.py's insert_fault_interface +
-build_fault_geometry's pfx/pfz un/us/ud branch) is verified combined with
-friclaw==1 (tpv10) and friclaw==4 (drv.a6, faulting.f90's min_norm/max_norm
-normal-stress clamp ported into port_rsf.py/port_rsf_jax.py); friclaw==5
-(TP) with insertFaultType>0 still needs that same clamp ported into
-port_tp.py/port_tp_jax.py, not done yet (see the guard below).
-Raises loudly if a case violates any of these (no silent partial run).
+Builds the solver state `S` ENTIRELY from the case inputs -- bGlobal.txt,
+bModelGeometry.txt, bFaultGeometry.txt, bMaterial.txt,
+on_fault_vars_input.nc -- via readInputFiles.py, then meshgen.py and
+assembleGlobalMass.py, hands it to driver.py, and writes frt.txt0 through
+library_output.py. No Fortran is in the loop: there are ZERO pydump_*.txt
+reads here (pydump.py exists only for run_parity.py's per-step diagnostic).
 
-S-dict field-by-field provenance (every key python/eqdyna/loading.py's
-`load()` reads from a pydump_* file, this module instead computes from
-the M1-M7.5 builders -- same shapes/conventions, so kernels_numpy.py/
-port.py need ZERO changes to consume it):
+`backend` is the one argument eqdyna3d.f90 does not have. It selects numpy
+or jax.numpy and is threaded down to a SINGLE driver/faulting/fric/
+assembleGlobalKU implementation; there is no per-backend and no per-friclaw
+solver module to dispatch between.
 
-  N, E, NEQ, nen, ned            -- meshgen.py M1-M3 (nen=8, ned=3: the
-                                     Fortran globalvar.f90 hex-element/
-                                     dof-per-node constants, never
-                                     case-input, reproduced verbatim)
+SCOPE, enforced by loud refusals in build_solver_state rather than by silent
+partial runs: ntotft==1, C_degen==0, serial (npx==npy==npz==1). friclaw 1-5
+are all implemented.
+
+S-dict provenance, field by field:
+  N, E, NEQ, nen, ned            -- meshgen.py M1-M3 (nen=8, ned=3 are the
+                                    globalvar.f90 hex-element/dof-per-node
+                                    constants, never case input)
   dt, w, rdampk, rdampm, kapa_hg,
   R, nPML, vmaxPML, PMLb, grav,
   C_elastic, roumax, rhow, gamar,
   slipRateThres, xsource, ysource,
   zsource, nucR, nucRuptVel,
   nucdtau0, nucT, TPV, C_nuclea,
-  nucfault, friclaw, nstep         -- native_input.read_bglobal (bGlobal.txt)
-                                     + globalvar.f90 PARAMETER constants
-                                     (w=8.0 calcLocalShapeFunc.f90; rdampm=0.0,
-                                     kapa_hg=0.1, R=0.01, nPML=6, grav=9.8 --
-                                     see native_input.build_params/this
-                                     module for where each lives)
-  meshCoor, conn, elemType, mat    -- meshgen.py M1/M2 (build_node_coordinates/
-                                     build_elements), converted from this
-                                     port's 1-indexed convention to
-                                     loading.load()'s 0-indexed convention
-  eledet, eleshp, ss, phi          -- mass_assembly.py M7.5
-                                     (compute_element_shape/compute_hourglass)
-  nodalMassArr, fnms               -- mass_assembly.py M6.5 (assemble_mass)
-  ndof, eq_ids                     -- meshgen.py M3 (build_equation_numbers)
-  nsmp1, nsmp2, un, us, ud, arn    -- meshgen.py M4 (build_fault_geometry)
-  fric_init                        -- native_input.py M6 (read_on_fault_vars)
-  v1_init                          -- mass_assembly.py M7.5 (init_vel) --
-                                     NOTE (pre-existing, not introduced
-                                     here): port.py's run() calls
-                                     kernels_numpy.init_state, which
-                                     zero-inits v1 and never reads
-                                     S['v1_init'] -- the SAME gap exists in
-                                     loading.load() (it computes v1_init
-                                     but run() ignores it). For friclaw==1/
-                                     mode==1 this is a documented no-op
-                                     (fric(31:36) are exactly 0.0, verified
-                                     by M7.5's init_vel parity check), so it
-                                     does not affect tpv8's result -- flagged
-                                     here, not silently worked around,
-                                     because a future case where mode==2 or
-                                     fric(31:36)!=0 WOULD need this wired in.
+  nucfault, friclaw, nstep       -- readInputFiles.read_bglobal + the
+                                    globalvar.f90 PARAMETER constants
+  meshCoor, conn, elemType, mat  -- meshgen.py M1/M2, converted from this
+                                    port's 1-indexed convention to 0-indexed
+  eledet, eleshp, ss, phi        -- assembleGlobalMass.py M7.5
+  nodalMassArr, fnms             -- assembleGlobalMass.py M6.5
+  ndof, eq_ids                   -- meshgen.py M3
+  nsmp1, nsmp2, un, us, ud, arn  -- meshgen.py M4
+  fric_init                      -- readInputFiles.read_on_fault_vars
+  v1_init                        -- assembleGlobalMass.init_vel. NOTE
+                                    (pre-existing): driver.run zero-inits v1
+                                    and never reads this. For mode==1 with
+                                    fric(31:36) identically 0.0 that is a
+                                    verified no-op; a case with mode==2 or
+                                    nonzero fric(31:36) WOULD need it wired
+                                    in. Flagged, not silently worked around.
 
-Milestone 10 (drv.a6, C_elastic==0, friclaw==4): wires
-src/calcElemKU.f90:127-161's Drucker-Prager viscoplastic return-mapping
-(deviatoric projection to a cohesion/friction-angle yield surface, tv-scale
-viscoplastic relaxation) and src/assembleGlobalKU.f90:16's
-`(1-C_elastic)*grav*(roumax-(gamar+1)*rhow)/roumax` gravity body-force term
-into kernels_numpy.py/kernels_jax.py's shared elastic_step (gated behind a
-static `if S['C_elastic']==0:` branch -- an exact, zero-cost no-op for every
-other case: the gravity term's own `(1-C_elastic)` factor is EXACTLY 0.0 for
-C_elastic==1, and the plasticity block is skipped entirely, not merely
-masked, so tpv8/tpv104/tpv1053d/tpv10 parity is provably untouched -- see
-kernels_numpy.py's build()/elastic_step docstrings for the derivation of why
-the gravity term reduces to `-nodalMassArr[z-eq]*const` and why
-src/meshgen.f90:103's setPlasticStress lithostatic pre-stress is
-precomputed once here (`ccosphi`/`sinphi`/`tv`/`init_stress`) rather than
-per-step). eleporep (pore pressure) is hardcoded 0.0 in the plasticity
-kernel: confirmed by grep that src/meshgen.f90's setPlasticStress and
-src/eqdyna3d.f90's zero-init are the ONLY writes to `eleporep` in all of
-src/*.f90 -- the lithostatic pore-pressure formula is commented out in the
-Fortran itself, so eleporep is provably always exactly 0.0, not an
-assumption. pstrain (the plastic-strain accumulator) is explicitly NOT
-ported: test.reference.results/test.drv.a6 has no pstr.txt* output to gate
-against (only frt.txt1/frt.txt3), and pstrain is write-only (never read back
-by any downstream physics), so computing it would be unverifiable, silent
-scope creep -- flagged here, not silently included.
-
-Verified (tpv8, friclaw==1): coordinate-aligned comparison vs the
-committed 4-rank test.reference.results/test.tpv8 references (frt.txt0 +
-frt.txt2, deduped by rounded coordinates and lexsorted against this
-module's serial output, since the 4-rank references use a different
-domain decomposition and therefore a different frt.txt node order than a
-serial run -- a flat positional text diff cannot compare the two
-directly). See the M7.5/M8 landing commit message for the exact
-methodology and numbers; extended to tpv104 (friclaw==4) and tpv1053d
-(friclaw==5) the same way, same-session follow-on.
+C_elastic==0 (test.drv.a6) additionally needs ccosphi/sinphi/tv
+(readInputFiles.f90's readmaterial) and init_stress (meshgen.f90:103's
+setPlasticStress lithostatic pre-stress). Both are computed here, once,
+before the loop, exactly as the Fortran does; assembleGlobalKU.build gates
+their USE on C_elastic==0 and raises loudly if they are missing rather than
+silently zero-initialising a plastic run.
 """
 import argparse
 import contextlib
-import importlib
 import os
 import sys
 import time
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from eqdyna.standalone import meshgen, native_input, mass_assembly, frt_writer  # noqa: E402
-from eqdyna import port, port_rsf, port_tp  # noqa: E402
+from . import assembleGlobalMass, driver, library_output, meshgen, readInputFiles
+from . import backend as _backend
 
 # friclaw -> the NumPy solver module whose run(S, nsteps, verbose) consumes
 # this module's S dict. All three modules were independently verified
@@ -125,19 +70,14 @@ from eqdyna import port, port_rsf, port_tp  # noqa: E402
 # each module's `S[...]` accesses before wiring this dispatch) -- so
 # build_solver_state below is friclaw-agnostic; only the solver CALLED
 # differs.
-_NUMPY_SOLVER_BY_FRICLAW = {1: port, 4: port_rsf, 5: port_tp}
-
-# JAX counterparts, same S-dict, same run(S, nsteps, verbose) signature,
-# same parity-verified formulas (README-parity.md Updates 3/4/5) -- 2-2.6x
-# faster than serial Fortran on this hardware (testsys/perf/baseline.json).
-# Imported LAZILY (module names, not modules) so a numpy-only environment
-# with no jaxlib installed never pays an ImportError just for choosing
-# --backend numpy; each jax module itself does
-# `jax.config.update("jax_enable_x64", True)` as the FIRST line after
-# `import jax`, before `import jax.numpy` -- that ordering guarantee is
-# preserved here because this file never imports jax/jax.numpy directly,
-# only these modules, lazily, on first actual use.
-_JAX_MODULE_BY_FRICLAW = {1: 'eqdyna.port_jax', 4: 'eqdyna.port_rsf_jax', 5: 'eqdyna.port_tp_jax'}
+# The friction laws this port implements. EVERY one of them is served by the
+# SAME code -- eqdyna/{driver,faulting,fric,assembleGlobalKU,backend}.py --
+# with the friclaw dispatch inside faulting.py exactly where faulting.f90:17-18
+# puts it, and with the backend as an argument rather than a second module.
+#
+# This used to be two tables of three modules each: driver.py
+# time loop. They are deleted.
+SUPPORTED_FRICLAW = (1, 2, 3, 4, 5)
 
 DEFAULT_BACKEND = 'jax'
 
@@ -154,21 +94,13 @@ def _resolve_solver(friclaw, backend):
     printed notice does not help either -- it scrolls past in a log while the
     number it invalidates is what gets recorded.
     """
-    if friclaw not in _NUMPY_SOLVER_BY_FRICLAW:
-        raise NotImplementedError('_resolve_solver: friclaw=%d has no wired standalone solver '
-                                   '(wired: %r)' % (friclaw, sorted(_NUMPY_SOLVER_BY_FRICLAW)))
-    if backend == 'numpy':
-        return _NUMPY_SOLVER_BY_FRICLAW[friclaw]
-    if backend != 'jax':
+    if friclaw not in SUPPORTED_FRICLAW:
+        raise NotImplementedError('_resolve_solver: friclaw=%d is not implemented '
+                                   '(implemented: %r)' % (friclaw, list(SUPPORTED_FRICLAW)))
+    if backend not in ('numpy', 'jax'):
         raise ValueError("_resolve_solver: backend must be 'jax' or 'numpy' (got %r)" % backend)
-    try:
-        return importlib.import_module(_JAX_MODULE_BY_FRICLAW[friclaw])
-    except ImportError as e:
-        raise RuntimeError(
-            "backend 'jax' was requested but %s is not importable (%s). "
-            "Install jaxlib, or pass --backend numpy explicitly. This does NOT "
-            "fall back: a run reported as jax must have been jax."
-            % (_JAX_MODULE_BY_FRICLAW[friclaw], e))
+    return lambda S, nsteps=None, verbose=True: run(
+        S, nsteps=nsteps, verbose=verbose, backend=backend)
 
 
 def active_device(backend):
@@ -190,41 +122,32 @@ def active_device(backend):
 
 
 def build_solver_state(case_dir):
-    """Builds the full `S` dict python/eqdyna/port.py's `run()` expects,
+    """Builds the full `S` dict eqdyna/driver.py's `run()` expects,
     reading ONLY case-input files (bGlobal.txt/bModelGeometry.txt/
     bFaultGeometry.txt/bMaterial.txt/on_fault_vars_input.nc) via
-    native_input.py, then meshgen.py/mass_assembly.py -- no pydump_*.txt
+    readInputFiles.py, then meshgen.py/assembleGlobalMass.py -- no pydump_*.txt
     anywhere. Returns (S, mesh) where mesh is a dict of the raw 1-indexed
-    builder outputs (meshCoor, nsmp, eq_nums, ...) frt_writer needs later
+    builder outputs (meshCoor, nsmp, eq_nums, ...) library_output needs later
     (S itself is converted to loading.load()'s 0-indexed convention).
     """
-    params, g = native_input.build_params(case_dir)
+    params, g = readInputFiles.build_params(case_dir)
     if g['ntotft'] != 1:
         raise NotImplementedError('build_solver_state: only ntotft==1 is supported (got %d)'
                                    % g['ntotft'])
-    if g['friclaw'] not in _NUMPY_SOLVER_BY_FRICLAW:
-        raise NotImplementedError('build_solver_state: friclaw=%d has no wired standalone '
-                                   'solver (wired: %r)' % (g['friclaw'], sorted(_NUMPY_SOLVER_BY_FRICLAW)))
+    if g['friclaw'] not in SUPPORTED_FRICLAW:
+        raise NotImplementedError('build_solver_state: friclaw=%d is not implemented '
+                                   '(implemented: %r)' % (g['friclaw'], list(SUPPORTED_FRICLAW)))
     if (g['npx'], g['npy'], g['npz']) != (1, 1, 1):
         raise NotImplementedError('build_solver_state: only serial (npx=npy=npz=1) is supported '
                                    '(got %r)' % ((g['npx'], g['npy'], g['npz']),))
-    if g['insertFaultType'] != 0 and g['friclaw'] not in (1, 4):
-        # Milestone 9 (dipping/rough fault, meshgen.py's insert_fault_interface
-        # + build_fault_geometry's pfx/pfz un/us/ud branch) ported and
-        # verified for friclaw==1 (tpv10). friclaw==4 (RSF, drv.a6) is now
-        # also verified: faulting.f90's solveRSF has its own
-        # min_norm/max_norm normal-stress clamp (line ~201, "if
-        # (insertFaultType>0 .and. C_elastic==1)"), ported verbatim into
-        # port_rsf.py/port_rsf_jax.py (see S['insertFaultType'] below).
-        # friclaw==5 (TP, port_tp.py/port_tp_jax.py) hits the SAME clamp in
-        # the Fortran but has NOT had it ported -- still guarded loudly.
-        raise NotImplementedError(
-            'build_solver_state: insertFaultType=%d combined with friclaw=%d is not yet '
-            'ported -- verified combinations are friclaw==1 (tpv10) and friclaw==4 (drv.a6); '
-            'friclaw==5 additionally needs faulting.f90\'s min_norm/max_norm clamp ported '
-            'into port_tp.py/port_tp_jax.py' % (g['insertFaultType'], g['friclaw']))
+    # (The insertFaultType>0 x friclaw==5 refusal that stood here is GONE, and
+    # not by relaxing it: faulting.f90:201-208's min_norm/max_norm clamp was
+    # ported in port_rsf.py and missing from port_tp.py, so the combination was
+    # genuinely unimplemented. There is now one solveRSF, the clamp is in it,
+    # and every friclaw reaches the same code -- so there is nothing left to
+    # refuse.)
 
-    material = native_input.read_bmaterial(
+    material = readInputFiles.read_bmaterial(
         os.path.join(case_dir, 'bMaterial.txt'), g['nmat'], g['n2mat'])
 
     xline, yline, zline, pmlb, _ = meshgen.build_grid_lines(params)
@@ -235,16 +158,16 @@ def build_solver_state(case_dir):
         xline, yline, zline, params, pmlb)
     un, us, ud, arn = meshgen.build_fault_geometry(xline, yline, zline, params, nsmp)
 
-    fric = native_input.read_on_fault_vars(
+    fric = readInputFiles.read_on_fault_vars(
         os.path.join(case_dir, 'on_fault_vars_input.nc'), params['fxmin'], params['fzmin'],
         params['dx'], params['dz'], meshCoor, nsmp)
 
     xl = meshCoor[conn]
-    det, eleshp3, xs = mass_assembly.compute_element_shape(xl)
-    ss, phi48 = mass_assembly.compute_hourglass(xl, xs, mat, eleshp3)
-    nodalMassArr, fnms = mass_assembly.assemble_mass(
+    det, eleshp3, xs = assembleGlobalMass.compute_element_shape(xl)
+    ss, phi48 = assembleGlobalMass.compute_hourglass(xl, xs, mat, eleshp3)
+    nodalMassArr, fnms = assembleGlobalMass.assemble_mass(
         conn, mat, det, num_dof, eq_start, eq_nums, total_eqs, meshCoor.shape[0] - 1)
-    v1 = mass_assembly.init_vel(nsmp, eq_nums, fric, total_eqs)
+    v1 = assembleGlobalMass.init_vel(nsmp, eq_nums, fric, total_eqs)
 
     N = meshCoor.shape[0] - 1  # drop the unused row-0
     E = conn.shape[0]
@@ -255,9 +178,9 @@ def build_solver_state(case_dir):
     # here, verbatim formula, NUC_VS_FIXED=3464.0 (globalvar.f90's own
     # comment: "fixed shear-wave speed ... also readInputFiles.f90's tv
     # init"). g['bulk']/g['coheplas'] are read unconditionally by
-    # native_input.read_bglobal regardless of C_elastic (same bGlobal.txt
+    # readInputFiles.read_bglobal regardless of C_elastic (same bGlobal.txt
     # line for every case) -- always computed here too, harmless for
-    # C_elastic==1 cases since kernels_numpy/kernels_jax gate their USE on
+    # C_elastic==1 cases since assembleGlobalKU gates its USE on
     # C_elastic==0 (see those modules' build()).
     _NUC_VS_FIXED = 3464.0
     ccosphi = g['coheplas'] * np.cos(np.arctan(g['bulk']))
@@ -268,7 +191,7 @@ def build_solver_state(case_dir):
     # interior and PML, only when C_elastic==0): lithostatic per-element
     # pre-stress, Voigt order [xx,yy,zz,yz,xz,xy] (calcB.f90's b(4,*)/
     # b(5,*)/b(6,*) confirm 4=yz,5=xz,6=xy) -- ALWAYS computed (cheap,
-    # harmless when unused) so kernels_numpy.build/kernels_jax's build can
+    # harmless when unused) so assembleGlobalKU.build can
     # raise loudly (not silently default) if C_elastic==0 but this key is
     # somehow missing, rather than silently zero-initializing plastic runs.
     strVert = -(g['roumax'] - g['rhow'] * (g['gamar'] + 1.0)) * elem_depth * 9.8
@@ -290,7 +213,7 @@ def build_solver_state(case_dir):
 
     S = dict(
         N=N, E=E, NEQ=total_eqs, nen=8, ned=3, nftnd=nftnd, ntotft=1,
-        nstep=g['nstep'], dt=g['dt'], w=mass_assembly._W, rdampk=g['rdampk'], rdampm=0.0,
+        nstep=g['nstep'], dt=g['dt'], w=assembleGlobalMass._W, rdampk=g['rdampk'], rdampm=0.0,
         kapa_hg=0.1, R=params['R'], nPML=params['nPML'], vmaxPML=g['vmaxPML'], PMLb=PMLb,
         grav=9.8, C_elastic=g['C_elastic'], roumax=g['roumax'], rhow=g['rhow'],
         gamar=g['gamar'], slipRateThres=g['slipRateThres'], xsource=g['xsource'],
@@ -377,7 +300,7 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     solver's run() under the requested `backend` ('jax', the default, or
     'numpy') -- port.py/port_jax.py friclaw==1, port_rsf.py/port_rsf_jax.py
     friclaw==4, port_tp.py/port_tp_jax.py friclaw==5 -- writes frt.txt0 via
-    frt_writer.write_frt (byte-exact Fortran E18.7E4 format). Returns the
+    library_output.write_frt (byte-exact Fortran E18.7E4 format). Returns the
     path written.
 
     `profile` is an optional Profile; when given, each phase is timed
@@ -389,7 +312,7 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     with prof.phase('resolve solver'):
         solver = _resolve_solver(S['friclaw'], backend)
     with prof.phase('solve'):
-        out = solver.run(S, nsteps=nsteps, verbose=verbose)
+        out = solver(S, nsteps=nsteps, verbose=verbose)
 
     nftnd = S['nftnd']
     fric_1idx = np.zeros((nftnd + 1, 101))
@@ -399,7 +322,7 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
 
     frt_path = os.path.join(case_dir, 'frt.txt0')
     with prof.phase('write frt'):
-        frt_writer.write_frt(frt_path, mesh['meshCoor'], mesh['nsmp'],
+        library_output.write_frt(frt_path, mesh['meshCoor'], mesh['nsmp'],
                              fnft_1idx, fric_1idx)
     prof.nelem = S.get('totalNumOfElements') or 0
     return frt_path
@@ -430,7 +353,7 @@ def _select_device(device):
 
 
 def main():
-    ap = argparse.ArgumentParser(prog='python3 -m eqdyna.standalone')
+    ap = argparse.ArgumentParser(prog='python3 -m eqdyna')
     ap.add_argument('case_dir')
     ap.add_argument('nsteps', nargs='?', type=int, default=None)
     ap.add_argument('--backend', choices=('jax', 'numpy'), default=DEFAULT_BACKEND,
@@ -464,3 +387,16 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+def run(S, nsteps=None, verbose=True, backend='numpy'):
+    """Step the solve on `backend` ('numpy' or 'jax').
+
+    This is eqdyna3d.f90's call to driver, with the ONE argument the Fortran
+    does not have. There is no per-backend and no per-friclaw solver module
+    to pick between any more: driver.py is the single time loop and
+    faulting.py dispatches friclaw inside it, exactly as faulting.f90:17-18
+    does.
+    """
+    return driver.run(S, nsteps=nsteps, verbose=verbose,
+                      xp=_backend.array_module(backend))

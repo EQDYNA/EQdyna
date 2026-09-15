@@ -130,7 +130,7 @@ def make_serial_case(case_name, case_dir, env):
 
 
 def run_standalone(case_dir, backend, device='cpu', env=None):
-    """`python3 -m eqdyna.standalone <case_dir> --backend <numpy|jax>` -- the
+    """`python3 -m eqdyna <case_dir> --backend <numpy|jax>` -- the
     exact command a user would type, with the backend ALWAYS named.
 
     It used to be invoked with no --backend at all, which silently meant the
@@ -144,15 +144,15 @@ def run_standalone(case_dir, backend, device='cpu', env=None):
     # JAX_PLATFORMS pins the device: a run labelled jax-on-cpu that silently
     # landed on a contended GPU is a different measurement under the same name.
     env['JAX_PLATFORMS'] = device
-    rc = subprocess.call([sys.executable, '-u', '-m', 'eqdyna.standalone',
+    rc = subprocess.call([sys.executable, '-u', '-m', 'eqdyna',
                           case_dir, '--backend', solver],
                          cwd=REPO_ROOT, env=env)
     if rc != 0:
-        raise RuntimeError('eqdyna.standalone %s --backend %s exited %d'
+        raise RuntimeError('eqdyna.eqdyna3d %s --backend %s exited %d'
                            % (os.path.basename(case_dir), solver, rc))
     frt = os.path.join(case_dir, 'frt.txt0')
     if not os.path.isfile(frt):
-        raise RuntimeError('%s was not written by eqdyna.standalone' % frt)
+        raise RuntimeError('%s was not written by eqdyna.eqdyna3d' % frt)
     return frt
 
 

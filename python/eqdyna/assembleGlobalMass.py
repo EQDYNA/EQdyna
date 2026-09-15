@@ -141,7 +141,7 @@ def assemble_mass(conn, mat, det, num_dof, eq_start, eq_nums, n_equations, n_nod
     PERFORMANCE NOTE (order-preserving vectorization, replacing the original
     triple scalar loop -- the scalar version is kept below as
     `_assemble_mass_scalar` and is the bit-for-bit oracle the unit test
-    `testsys/unit/test_mass_assembly_vectorized.py` checks this against):
+    `testsys/unit/test_assembleGlobalMass_vectorized.py` checks this against):
     the original docstring's constraint -- "NOT vectorizing a scatter whose
     accumulation order affects bit-for-bit output" -- is respected here
     exactly, NOT relaxed. `np.add.at`/`np.bincount` are deliberately NOT
@@ -175,7 +175,7 @@ def assemble_mass(conn, mat, det, num_dof, eq_start, eq_nums, n_equations, n_nod
     branches; the two are provably identical in the VALUES they add, only
     Fortran's 12-dof branch has the `eq>0` guard the 3-dof branch omits
     (safe by construction there: 3-dof nodes are never at the model's
-    fixed outer boundary, see native_input.py/meshgen.py's PML-vs-interior
+    fixed outer boundary, see readInputFiles.py/meshgen.py's PML-vs-interior
     classification) -- this port applies the `eq>0` guard universally,
     which is a no-op for 3-dof nodes and correct for 12-dof nodes.
 
@@ -239,7 +239,7 @@ def _assemble_mass_scalar(conn, mat, det, num_dof, eq_start, eq_nums, n_equation
     """The original verbatim scalar port of assembleElementMassDetShg's
     scatter, kept as the bit-for-bit ORACLE for `assemble_mass`'s
     order-preserving vectorization (see that function's docstring). Not
-    used on any production path -- `testsys/unit/test_mass_assembly_vectorized.py`
+    used on any production path -- `testsys/unit/test_assembleGlobalMass_vectorized.py`
     asserts byte-equality of the two on a real mesh.
     """
     E = conn.shape[0]
@@ -432,7 +432,7 @@ def init_vel(nsmp, eq_nums, fric, n_equations):
     Seeds the 1D solver-state velocity vector v1 at fault-node equations
     from fric(31:36) (FRIC_SLOT_VEL_MASTER_X/Y/Z=31/32/33,
     FRIC_SLOT_VEL_SLAVE_X/Y/Z=34/35/36) via the equation-number map -- for
-    mode==1 these fric slots are exactly 0.0 (native_input.read_on_fault_vars
+    mode==1 these fric slots are exactly 0.0 (readInputFiles.read_on_fault_vars
     never writes them, matching Fortran's fric=0.0d0 zero-init that is never
     overwritten for mode==1), so this reproduces Fortran's actual observed
     behavior (a documented no-op for this case), not an assumption.

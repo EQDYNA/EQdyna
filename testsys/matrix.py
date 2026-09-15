@@ -47,33 +47,10 @@ if REPO_ROOT not in sys.path:
 
 from testNameList import nameList as _NAME_LIST, coreNumList as _CORE_NUM_LIST
 
-# CASES WITHDRAWN FROM THE SWEEP, kept as reference.
-#
-# A case listed here is NOT gated: the sweep does not run it, and a green sweep
-# does not speak for it. It is not deleted either -- its committed reference
-# stays, the unit tier keeps exercising it, and the open question is written
-# down where work gets picked up (pathway_forward.md). "Withdrawn with a
-# recorded reason and a live reference" is a third declared state, not a skip:
-# the coverage report prints it on every run, and naming it explicitly is a
-# hard failure (see cells()), so it cannot quietly become forgotten coverage.
-REFERENCE_ONLY = {
-    'test.drv.a6':
-        'Withdrawn 2026-09-15 pending a numerics answer, not a gate answer. '
-        'Fortran compared against its OWN 4-rank reference, changing NOTHING '
-        'but the decomposition, gives 329 arrival flips of 5151 and a 2.12e7 '
-        'max difference. A case whose Fortran-vs-Fortran floor is that high '
-        'cannot say anything about a backend until we know whether that is '
-        'genuine bistability or dx=500 under-resolution with friclaw=4. Its '
-        'reference, its flip-budget gate (DRV_A6 below) and the evidence '
-        'script all stay; see pathway_forward.md "drv.a6 decomposition '
-        'sensitivity" for the two experiments that decide it.',
-}
-
 # The case list is testNameList.py's, not a second copy of it (rule 1). A case
 # added there with no entry below is a hard import-time failure, not a silently
 # ungated case -- see the consistency block at the bottom of this module.
-ALL_CASES = tuple(_NAME_LIST)               # every case the repo has a case for
-CASES = tuple(c for c in _NAME_LIST if c not in REFERENCE_ONLY)   # gated ones
+CASES = tuple(_NAME_LIST)
 FORTRAN_RANKS = dict(zip(_NAME_LIST, _CORE_NUM_LIST))
 
 BACKENDS = ('fortran', 'python-numpy', 'python-jax')
@@ -108,6 +85,7 @@ CASE_BOUND = {
     'test.meng2023cb': THRESHOLD,  # ever been measured for these, so they carry
     'test.tpv29': THRESHOLD,       # the outer bound EXPLICITLY rather than a
                                    # tighter number nobody has observed.
+    'test.drv.a6': None,      # chaotically bistable -- flip-budget gate, below.
 }
 
 GATE = {
@@ -118,21 +96,17 @@ GATE = {
     'test.meng2023a': 'abs-max',
     'test.meng2023cb': 'abs-max',
     'test.tpv29': 'abs-max',
-    # test.drv.a6 was gated 'flip-budget' here until 2026-09-15; it is now in
-    # REFERENCE_ONLY and therefore has no entry. The gate itself is kept below
-    # and still implemented in compare.py -- withdrawing the case is not a
-    # verdict that the gate was wrong, and whichever way the numerics question
-    # resolves, this is what it comes back as.
+    # test.drv.a6 (C_elastic==0 viscoplastic, friclaw==4, fractal-rough, long
+    # duration) has genuinely bistable rupture arrivals, so a scalar max-abs
+    # bound cannot distinguish "a few hundred marginal nodes flipped" from
+    # "everything drifted a little". Gated on bulk agreement PLUS an explicit
+    # flip budget instead.
+    'test.drv.a6': 'flip-budget',
 }
 
-# test.drv.a6's flip-budget gate. NOT WIRED INTO THE SWEEP -- see
-# REFERENCE_ONLY. Still live for testsys/parity/evidence_drv_a6_chaos.py, which
-# is how these numbers are regenerated; they are measured, not chosen, and must
-# not be changed without re-running it fresh (rule 4).
-#
-# A scalar max-abs bound cannot distinguish "a few hundred marginal nodes
-# flipped" from "everything drifted a little", which is why this case was given
-# bulk agreement PLUS an explicit flip budget rather than a looser threshold.
+# test.drv.a6's flip-budget gate. These numbers are measured, not chosen;
+# testsys/parity/evidence_drv_a6_chaos.py regenerates them and they must not be
+# changed without re-running it fresh (rule 4).
 DRV_A6 = {
     'fnft_col': 3,               # canonical frt column layout: x, y, z, fnft, ...
     'rupture_sentinel': 1.0e4,   # fnft sentinel is 99999.0 in Fortran
@@ -168,16 +142,26 @@ DRV_A6 = {
 # Absence from this table means "supported"; presence means the sweep refuses
 # to pretend it covered the cell.
 UNSUPPORTED = {
-    ('test.meng2023a', 'python-numpy'):
-        'friclaw=2 (slip-weakening + time-weakening). Fortran dispatches it at '
-        'faulting.f90:17, "if (friclaw<=2) call solveSWTW"; the Python port has '
-        'no solveSWTW path, so the case cannot run on this backend at all.',
-    ('test.meng2023a', 'python-jax'):
-        'friclaw=2, same as python-numpy -- no solveSWTW in the port.',
-    ('test.meng2023cb', 'python-numpy'):
-        'friclaw=2, same as test.meng2023a -- no solveSWTW in the port.',
-    ('test.meng2023cb', 'python-jax'):
-        'friclaw=2, same as test.meng2023a -- no solveSWTW in the port.',
+    # EMPTY, and that is a measured statement, not an oversight.
+    #
+    # It held four cells -- test.meng2023a and test.meng2023cb on both python
+    # backends -- with the reason "the Python port has no solveSWTW path".
+    # That reason is now FALSE: eqdyna/faulting.py has solveSWTW, dispatched at
+    # `if friclaw <= 2` exactly where faulting.f90:17 dispatches it, and
+    # eqdyna/fric.py has time_weak (slip_weak with slip/SW_D0 replaced by
+    # trupt/TW_T0; trupt = timeElapsed - fnft, and the 99999.0 sentinel makes
+    # trupt negative for an unruptured node so the fs arm fires with no special
+    # case). Leaving a stale entry here would be a lie about coverage.
+    #
+    # First python runs these two cases have ever had, against their 1e-3
+    # bound -- NOT tightened here; a bound is calibrated in its own commit,
+    # never in the change that first makes the cell green:
+    #     meng2023a  x python-numpy  4.628301e-09
+    #     meng2023a  x python-jax    3.150106e-09
+    #     meng2023cb x python-numpy  5.054473e-09
+    #     meng2023cb x python-jax    5.042553e-09
+    # Both cases also set par.tpv = 201, so they exercise swtwNucleation's
+    # smoothed forced-rupture branch at the same time.
 }
 
 # Cells CI runs, and the measured reason the rest are left out. A GitHub
@@ -207,36 +191,24 @@ CI_CELLS = (
     tuple((c, 'fortran') for c in CASES)
     + (('test.tpv8', 'python-numpy'), ('test.tpv8', 'python-jax'))
 )
-# WHAT THIS LIST LEAVES OUT, AND WHY -- said here rather than implied:
+# WHAT THIS LIST LEAVES OUT, AND WHY -- said here rather than implied. Every
+# exclusion below is a MEASURED memory decision; none is a case that fails.
 #   * python cells for tpv10/tpv104/tpv1053d: measured 3.2-4.0 GB above,
-#     against a 7 GB runner already holding the Fortran build. A resource kill.
-#   * python cells for tpv29: these FAIL today (both backends, identical
-#     max|diff|=7.10e7 -- see the measured sweep). They are not omitted for
-#     memory, they are omitted because CI would be permanently red on a known
-#     solver gap, and a permanently red gate stops being read. The full sweep
-#     (`testsys/run.py e2e`) runs them and fails, which is where that failure
-#     is supposed to be visible. Moving a bound to make them pass is not an
-#     option (rule 5).
-#   * every drv.a6 cell, including the fortran one: the case is in
-#     REFERENCE_ONLY, so it is out of CASES and out of this list with it.
-# A green CI run therefore means 9 of 21 cells, and says so.
+#     against a 7 GB runner already holding the Fortran build. A resource kill
+#     (SIGTERM, exit 143, no output) is not a test result.
+#   * python cells for drv.a6: 9.57 GB measured, the largest cell in the table.
+#   * python cells for tpv29: peak RSS has never been measured for them. That
+#     is the whole reason -- rule 6 says the number travels with the decision,
+#     so a cell whose cost is unknown is not added to a 7 GB runner on a guess.
+#     They PASS in the full sweep (both backends; the case's forced-rupture
+#     nucleation gap was fixed -- see src/faulting.f90's swtwNucleation), so
+#     measuring them is the only thing standing between here and wider CI.
+# A green CI run therefore means 10 of 24 cells, and says so.
 
 
 def is_supported(case, backend):
     return (case, backend) not in UNSUPPORTED
 
-
-def is_reference_only(case):
-    """True for a case kept as reference but withdrawn from the sweep."""
-    return case in REFERENCE_ONLY
-
-
-def reference_only_reason(case):
-    """Why a case was withdrawn. Raises for a gated case: asking why a gated
-    case was skipped is itself a bug (rule 2)."""
-    if case not in REFERENCE_ONLY:
-        raise KeyError('%s is gated -- it has no reference-only reason' % case)
-    return REFERENCE_ONLY[case]
 
 
 def unsupported_reason(case, backend):
@@ -273,14 +245,6 @@ def cells(cases=None, backends=None):
     sel_cases = tuple(cases) if cases else CASES
     sel_backends = tuple(backends) if backends else BACKENDS
     for c in sel_cases:
-        if c in REFERENCE_ONLY:
-            # Naming a withdrawn case is a hard failure, not a quiet drop: the
-            # caller asked for coverage this table does not provide, and
-            # returning an empty-but-green selection would answer "this is
-            # fine" to the question "did you check it" (rule 2).
-            raise ValueError(
-                '%s is REFERENCE_ONLY -- it is kept as reference but not gated,'
-                ' so the sweep cannot run it.\n  %s' % (c, REFERENCE_ONLY[c]))
         if c not in CASES:
             raise ValueError('unknown case %r -- known cases: %s' % (c, ', '.join(CASES)))
     for b in sel_backends:
@@ -324,43 +288,22 @@ def coverage_report(runnable, declared_unsupported, selection_label):
                  % (len(not_selected),
                     (': ' + ', '.join('%s x %s' % cb for cb in not_selected))
                     if not_selected else ''))
-    # Printed on EVERY run, selection or not: a withdrawn case is coverage this
-    # sweep does not have, and the output has to say so out loud or a green
-    # result quietly widens over time.
-    lines.append('REFERENCE ONLY, withdrawn from the sweep, %d case(s) x %d '
-                 'backend(s) = %d cell(s) NOT covered by any result below:'
-                 % (len(REFERENCE_ONLY), len(BACKENDS),
-                    len(REFERENCE_ONLY) * len(BACKENDS)))
-    for c, reason in sorted(REFERENCE_ONLY.items()):
-        lines.append('  %-16s %s' % (c, reason))
     return lines
 
 
 # --- consistency, enforced at import time -------------------------------------
 # A case added to testNameList.py with no entry here would otherwise run ungated
 # or crash mid-sweep. Fail at import, naming the case.
-_unknown_withheld = [c for c in REFERENCE_ONLY if c not in ALL_CASES]
-if _unknown_withheld:
-    raise RuntimeError('REFERENCE_ONLY names cases testNameList.py does not '
-                       'have: %r' % _unknown_withheld)
-# A withdrawn case must not ALSO carry a gate -- one state per case, or the
-# table says both "not covered" and "covered at this bound".
-_double_declared = [c for c in REFERENCE_ONLY if c in CASE_BOUND or c in GATE]
-if _double_declared:
-    raise RuntimeError('%r are REFERENCE_ONLY but still carry a bound or a '
-                       'gate -- a case is gated or it is not' % _double_declared)
-# "Kept as reference" is enforced, not assumed: the whole point of withdrawing
-# rather than deleting is that the committed reference survives. If it is ever
-# removed as unused, that is a hard failure naming the file.
-for _c in REFERENCE_ONLY:
+# Every gated case must have a committed reference. Absent = broken checkout,
+# and a checkout that cannot compare must not be able to report a pass.
+for _c in CASES:
     _ref = os.path.join(REPO_ROOT, 'test.reference.results', _c,
                         'frt.canonical.txt')
     if not os.path.isfile(_ref):
         raise RuntimeError(
-            '%s is REFERENCE_ONLY -- withdrawn from the sweep precisely so its '
-            'reference is KEPT -- but %s is missing. Restore it from git; a '
-            'withdrawn case with no reference is just a deleted case.'
-            % (_c, _ref))
+            '%s is gated but %s is missing -- restore it from git. A gated case '
+            'with no reference cannot be compared, and "could not compare" must '
+            'never read as "passed" (rule 2).' % (_c, _ref))
 
 _missing_bound = [c for c in CASES if c not in CASE_BOUND]
 _missing_gate = [c for c in CASES if c not in GATE]
@@ -379,14 +322,10 @@ for _c, _g in GATE.items():
     if _g == 'flip-budget' and CASE_BOUND[_c] is not None:
         raise RuntimeError('%s is gated flip-budget but also carries a scalar '
                            'bound -- one gate per case' % _c)
-# UNSUPPORTED and CI_CELLS are statements about the SWEPT table, so they are
-# checked against CASES. MEASURED_PEAK_RSS_GB is a record of measurements taken,
-# including on a case since withdrawn, so it is checked against ALL_CASES --
-# deleting a measurement because the case left the sweep would discard evidence.
 for (_c, _b) in list(UNSUPPORTED) + list(CI_CELLS):
     if _c not in CASES or _b not in BACKENDS:
         raise RuntimeError('table entry for unknown or ungated cell %r x %r'
                            % (_c, _b))
 for (_c, _b) in list(MEASURED_PEAK_RSS_GB):
-    if _c not in ALL_CASES or _b not in BACKENDS:
+    if _c not in CASES or _b not in BACKENDS:
         raise RuntimeError('measurement for unknown cell %r x %r' % (_c, _b))

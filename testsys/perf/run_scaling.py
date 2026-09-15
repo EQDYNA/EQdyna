@@ -65,7 +65,7 @@ def run_python(work, threads):
     env['OMP_NUM_THREADS'] = str(threads)
     cores = ','.join(str(c) for c in range(threads))
     t0 = time.time()
-    r = subprocess.run(f'taskset -c {cores} python3 -m eqdyna.standalone .',
+    r = subprocess.run(f'taskset -c {cores} python3 -m eqdyna .',
                        shell=True, cwd=d, env=env, text=True, capture_output=True)
     if r.returncode != 0:
         raise RuntimeError(f'python run failed:\n{r.stderr[-800:]}')

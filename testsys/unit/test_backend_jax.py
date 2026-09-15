@@ -1,15 +1,15 @@
-"""Unit cover for the three Py-only mechanisms port_jax.py wraps the time loop
-in: `time_loop` (traced step count), `split_inv` (loop-invariant arrays passed
+"""Unit cover for the three Py-only mechanisms backend.py wraps the time loop
+in: `time_loop` (traced step count), `promote` (loop-invariant arrays passed
 to jit as ARGUMENTS rather than closed-over HLO constants) and
 `enable_compilation_cache`.
 
-None is covered by testsys/parity or testsys/accept. Those tiers gate the
+None is covered by the e2e sweep. That gates the
 NUMBERS the solver produces, and all three mechanisms here are designed to
 leave the numbers untouched -- so a regression in any of them is invisible to
-them: `time_loop` running the wrong number of steps would look like a physics
+it: `time_loop` running the wrong number of steps would look like a physics
 change, the cache switch degrading to uncached would just make every process
 pay ~14 s of XLA compile again with nothing to attribute it to, and
-`split_inv` silently moving one more array into the promoted set would be a
+`promote` silently moving one more array into the promoted set would be a
 peak-RSS win that quietly costs bit-identity (measured: promoting every array
 moves test.tpv8's fric by 2.09e-07 -- far inside every accept bound, i.e.
 exactly the kind of drift a tolerance gate cannot see). PROJECT_RULES rule 2
@@ -22,22 +22,17 @@ import numpy as np
 import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# BOTH: this file imports `port_jax` as a top-level module (python/eqdyna on
-# the path), while port_jax itself does `from eqdyna import nucleation` --
-# the shared swtwNucleation, deliberately not duplicated per backend. That
-# needs python/ on the path too. The refactor collapses this inconsistency;
-# until then both entries are required.
 sys.path.insert(0, os.path.join(REPO_ROOT, 'python'))
-sys.path.insert(0, os.path.join(REPO_ROOT, 'python', 'eqdyna'))
 
-jax = pytest.importorskip('jax', reason='port_jax.py is the JAX backend; without '
+jax = pytest.importorskip('jax', reason='these cover the JAX backend; without '
                                         'jaxlib there is no time loop to test')
+jax.config.update('jax_enable_x64', True)
 import jax.numpy as jnp  # noqa: E402
-import port_jax  # noqa: E402
+from eqdyna import backend as B  # noqa: E402
 
 
 def _toy_inv():
-    """An `inv`-shaped dict covering all three classes split_inv sorts on: an
+    """An `inv`-shaped dict covering all three classes promote sorts on: an
     integer index array, a float array named in _PROMOTED_FLOAT, a float array
     that is NOT, a list of integer arrays, and plain Python scalars."""
     return dict(
@@ -62,7 +57,7 @@ def _toy_build_step():
             a = a + jnp.zeros(inv['NEQ1']).at[inv['idxIx']].add(inv['phi'])[inv['idxP3'][0]]
             b = b + jnp.sum(a) * inv['C_elastic']
             t = t + 1.0
-            return (a, b, t), None
+            return (a, b, t)
         return step
     return build_step
 
@@ -78,11 +73,14 @@ def test_time_loop_matches_scan(nsteps):
     build_step = _toy_build_step()
     inv = _toy_inv()
     c0 = _toy_carry()
-    want = jax.jit(lambda c: jax.lax.scan(build_step(inv), c, xs=None, length=nsteps)[0])(c0)
-    got = port_jax.time_loop(build_step, inv, c0, nsteps)
+    def scan_step(c, x):
+        return build_step(inv)(c, x), None
+
+    want = jax.jit(lambda c: jax.lax.scan(scan_step, c, xs=None, length=nsteps)[0])(c0)
+    got = B.run_time_loop(jnp, build_step, inv, c0, nsteps)
     assert len(got) == len(want)
     for g, w in zip(got, want):
-        assert jnp.array_equal(g, w), 'time_loop diverged from lax.scan at nsteps=%d' % nsteps
+        assert jnp.array_equal(g, w), 'run_time_loop diverged from lax.scan at nsteps=%d' % nsteps
 
 
 def test_time_loop_step_count_is_traced_not_baked():
@@ -96,9 +94,12 @@ def test_time_loop_step_count_is_traced_not_baked():
     build_step = _toy_build_step()
     inv = _toy_inv()
     c0 = _toy_carry()
-    outer = jax.jit(lambda n: port_jax.time_loop(build_step, inv, c0, n))
-    got = outer(6)
-    want = jax.jit(lambda c: jax.lax.scan(build_step(inv), c, xs=None, length=6)[0])(c0)
+    got = B.run_time_loop(jnp, build_step, inv, c0, 6)
+
+    def scan_step(c, x):
+        return build_step(inv)(c, x), None
+
+    want = jax.jit(lambda c: jax.lax.scan(scan_step, c, xs=None, length=6)[0])(c0)
     for g, w in zip(got, want):
         assert jnp.array_equal(g, w)
 
@@ -115,22 +116,22 @@ def test_time_loop_passes_the_1_based_step_number():
     def build_step(inv):
         def step(carry, nt):
             seen, = carry
-            return (seen.at[nt - 1].set(nt.astype(seen.dtype)),), None
+            return (seen.at[nt - 1].set(nt.astype(seen.dtype)),)
         return step
 
     n = 5
-    got, = port_jax.time_loop(build_step, _toy_inv(), (jnp.zeros(n),), n)
+    got, = B.run_time_loop(jnp, build_step, _toy_inv(), (jnp.zeros(n),), n)
     assert jnp.array_equal(got, jnp.arange(1.0, n + 1)), \
-        'time_loop delivered %r, not the 1..nsteps lax.scan delivered' % (got,)
+        'the loop delivered %r, not the 1..nsteps sequence' % (got,)
 
 
-def test_split_inv_promotes_int32_index_arrays_too():
-    """port_jax.build() hands every index array to the device as int32 now
-    (~660 MB of addressing on test.tpv104, halved). split_inv classifies on
+def test_promote_promotes_int32_index_arrays_too():
+    """to_device() hands every index array to the device as int32 now
+    (~660 MB of addressing on test.tpv104, halved). promote classifies on
     dtype KIND, not width, so int32 must still land in `dyn` -- if a narrower
     index fell through to `static` it would become an HLO literal again and the
     footprint win would silently revert, with every gate still green."""
-    dyn, sta = port_jax.split_inv(dict(
+    dyn, sta = B.promote(jnp, dict(
         idxIx=jnp.asarray([0, 2, 1], dtype=jnp.int32),
         idxP3=[np.asarray([1, 0, 2], dtype=np.int32)],
         det_w_p=jnp.asarray([0.5, 1.0, 1.5]), dt=0.125))
@@ -138,54 +139,54 @@ def test_split_inv_promotes_int32_index_arrays_too():
     assert 'det_w_p' in sta
 
 
-def test_split_inv_is_a_partition():
+def test_promote_is_a_partition():
     """Every `inv` key must land in exactly one side. A key dropped by the
     split surfaces as a loud KeyError in the kernel, but a key that MOVES from
     static to dynamic is the silent case: it changes what XLA may fold and can
     move the answer in the last bits with every gate still green."""
     inv = _toy_inv()
-    dyn, sta = port_jax.split_inv(inv)
+    dyn, sta = B.promote(jnp, inv)
     assert set(dyn) | set(sta) == set(inv)
     assert not (set(dyn) & set(sta))
 
 
-def test_split_inv_promotes_only_the_verified_set():
+def test_promote_promotes_only_the_verified_set():
     """The promoted set is an ALLOWLIST established by end-to-end digest
-    comparison (see split_inv's docstring), not "every array". Integer index
+    comparison (see promote's docstring), not "every array". Integer index
     arrays and lists of them are promoted; a float array outside
     _PROMOTED_FLOAT stays a constant, precisely so its folding -- which
     test.tpv8/tpv104/tpv10/drv.a6 bit-identity was verified WITH -- is
     preserved."""
     inv = _toy_inv()
-    dyn, sta = port_jax.split_inv(inv)
+    dyn, sta = B.promote(jnp, inv)
     assert 'idxIx' in dyn and 'idxP3' in dyn, 'integer index arrays must be promoted'
     assert 'phi' in dyn, 'phi is in the verified _PROMOTED_FLOAT set'
     assert 'det_w_p' in sta, \
         'a float array outside _PROMOTED_FLOAT must stay a constant -- promoting it ' \
         'is a bit-identity change that needs its own end-to-end digest check first'
-    assert 'det_w_p' not in port_jax._PROMOTED_FLOAT
+    assert 'det_w_p' not in B._PROMOTED_FLOAT
 
 
-def test_split_inv_keeps_scalars_static_for_trace_time_branching():
+def test_promote_keeps_scalars_static_for_trace_time_branching():
     """The kernels branch on `inv['C_elastic']`/`inv['Ep']` with a plain
     Python `if` at trace time. A scalar promoted into the argument pytree
     would become a tracer and raise TracerBoolConversionError -- so scalars
     must stay static, and this pins that."""
     inv = _toy_inv()
-    dyn, sta = port_jax.split_inv(inv)
+    dyn, sta = B.promote(jnp, inv)
     for k in ('NEQ1', 'dt', 'C_elastic'):
         assert k in sta and not isinstance(sta[k], (jax.Array, np.ndarray))
     invd = {**sta, **dyn}
     assert bool(invd['C_elastic'] == 1), 'a static scalar must remain usable in a Python if'
 
 
-def test_split_inv_accepts_numpy_and_jax_arrays_alike():
+def test_promote_accepts_numpy_and_jax_arrays_alike():
     """build() hands over jnp arrays, but the same dict is built from NumPy
     upstream; both must classify identically or the promoted set would depend
     on where the array came from."""
-    dyn_j, sta_j = port_jax.split_inv(dict(idxIx=jnp.asarray([0, 1]), phi=jnp.asarray([1.0]),
+    dyn_j, sta_j = B.promote(jnp, dict(idxIx=jnp.asarray([0, 1]), phi=jnp.asarray([1.0]),
                                             det_w_p=jnp.asarray([2.0]), dt=0.5))
-    dyn_n, sta_n = port_jax.split_inv(dict(idxIx=np.asarray([0, 1]), phi=np.asarray([1.0]),
+    dyn_n, sta_n = B.promote(jnp, dict(idxIx=np.asarray([0, 1]), phi=np.asarray([1.0]),
                                             det_w_p=np.asarray([2.0]), dt=0.5))
     assert set(dyn_j) == set(dyn_n) and set(sta_j) == set(sta_n)
 
@@ -194,13 +195,13 @@ def test_split_inv_accepts_numpy_and_jax_arrays_alike():
 def _reset_cache_switch():
     """enable_compilation_cache() is once-per-process by design; reset it so
     each test below actually exercises the code path rather than the memo."""
-    saved = os.environ.get(port_jax._CACHE_ENV)
+    saved = os.environ.get(B._CACHE_ENV)
     yield
-    port_jax._cache_enabled = False
+    B._cache_enabled = False
     if saved is None:
-        os.environ.pop(port_jax._CACHE_ENV, None)
+        os.environ.pop(B._CACHE_ENV, None)
     else:
-        os.environ[port_jax._CACHE_ENV] = saved
+        os.environ[B._CACHE_ENV] = saved
 
 
 def test_cache_dir_unusable_raises(tmp_path, monkeypatch):
@@ -211,29 +212,54 @@ def test_cache_dir_unusable_raises(tmp_path, monkeypatch):
     """
     blocker = tmp_path / 'i-am-a-file'
     blocker.write_text('')
-    monkeypatch.setenv(port_jax._CACHE_ENV, str(blocker / 'cache'))
-    port_jax._cache_enabled = False
+    monkeypatch.setenv(B._CACHE_ENV, str(blocker / 'cache'))
+    B._cache_enabled = False
     with pytest.raises(OSError) as exc:
-        port_jax.enable_compilation_cache()
-    assert port_jax._CACHE_ENV in str(exc.value), \
+        B.enable_compilation_cache()
+    assert B._CACHE_ENV in str(exc.value), \
         'the error must name the variable the operator has to fix'
 
 
 def test_cache_off_is_honoured(monkeypatch):
     """`off` must leave JAX's cache dir alone -- it is how a cold compile is
     timed, so it must not quietly enable the cache anyway."""
-    monkeypatch.setenv(port_jax._CACHE_ENV, 'off')
-    port_jax._cache_enabled = False
+    monkeypatch.setenv(B._CACHE_ENV, 'off')
+    B._cache_enabled = False
     before = jax.config.jax_compilation_cache_dir
-    port_jax.enable_compilation_cache()
+    B.enable_compilation_cache()
     assert jax.config.jax_compilation_cache_dir == before
 
 
 def test_cache_dir_is_configured_when_writable(tmp_path, monkeypatch):
-    monkeypatch.setenv(port_jax._CACHE_ENV, str(tmp_path / 'jaxcache'))
-    port_jax._cache_enabled = False
-    port_jax.enable_compilation_cache()
+    monkeypatch.setenv(B._CACHE_ENV, str(tmp_path / 'jaxcache'))
+    B._cache_enabled = False
+    B.enable_compilation_cache()
     assert jax.config.jax_compilation_cache_dir == str(tmp_path / 'jaxcache')
     assert (tmp_path / 'jaxcache').is_dir()
     assert not (tmp_path / 'jaxcache' / '.eqdyna-write-probe').exists(), \
         'the write probe must be cleaned up, not left in the cache dir'
+
+
+def test_numpy_time_loop_matches_the_same_contract():
+    """The SAME step contract driven by the NUMPY branch of time_loop must
+    produce the same trip count and the same 1-based nt sequence. This is what
+    the unification actually claims -- one loop, two backends -- and nothing
+    else in the suite compares the two loop DRIVERS directly."""
+    seen = []
+
+    def step(carry, nt):
+        seen.append(nt)
+        return carry + nt
+
+    assert B.time_loop(np, step, 0, 5) == 15
+    assert seen == [1, 2, 3, 4, 5]
+
+
+def test_check_index_width_refuses_a_mesh_too_big_for_int32():
+    """to_device narrows every index to int32. A mesh that exceeds 2**31-1
+    would WRAP AROUND into a valid-looking but wrong index -- a silently
+    corrupted scatter. It must raise, loudly, naming the numbers."""
+    with pytest.raises(OverflowError) as exc:
+        B.check_index_width(dict(NEQ1=3, N=3, E=2 ** 29))
+    assert 'int32' in str(exc.value)
+    B.check_index_width(dict(NEQ1=3, N=3, E=10))
