@@ -1,6 +1,8 @@
 # Past release notes\
 
 # News in 2026
+* 20260915 v5.6.1 release notes
+  * Fix - a bare `make` built nothing, so `install-eqdyna.sh` produced no binary and every tier needing one failed. v5.6.0 fixed the `clean` target, which had accidentally been the thing making bare `make` build (`clean:eqdyna`, no space, made clean depend on eqdyna). Default goal is now pinned explicitly.
 * 20260914 v5.6.0 release notes
   * New - supplied fault geometry (insertFaultType=3) is validated before use: grid, spacing, origin, row count, NaN/Inf, derivative columns and per-cell element-tangling offset, in Python at case.setup and again in Fortran at read time.
   * New - scripts/convertFaultGeometry resamples a supplied (x, z, y) surface onto a case's fault grid and validates its own output.

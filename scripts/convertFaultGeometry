@@ -103,7 +103,15 @@ def resampleSurface(x, z, y, xt, zt):
                 f'exact resampling from the supplied {xs.size} x {zs.size} '
                 f'grid (no interpolation)')
         _requireInside(xt, zt, xs.min(), xs.max(), zs.min(), zs.max())
-        from scipy.interpolate import RegularGridInterpolator
+        try:
+            from scipy.interpolate import RegularGridInterpolator
+        except ImportError:
+            raise FaultGeometryError(
+                'this input needs interpolation onto the target grid, which '
+                'requires scipy (not installed). Install scipy, or supply a '
+                'surface whose nodes are a superset of the target grid so '
+                'exact decimation can be used instead -- that path has no '
+                'scipy dependency.')
         interp = RegularGridInterpolator((zs, xs), Y, method='linear',
                                          bounds_error=True)
         ZZ, XX = np.meshgrid(zt, xt, indexing='ij')
@@ -113,7 +121,12 @@ def resampleSurface(x, z, y, xt, zt):
             f'grid')
 
     _requireInside(xt, zt, x.min(), x.max(), z.min(), z.max())
-    from scipy.interpolate import griddata
+    try:
+        from scipy.interpolate import griddata
+    except ImportError:
+        raise FaultGeometryError(
+            'scattered input requires scipy for Clough-Tocher interpolation '
+            '(not installed). Install scipy, or grid the input first.')
     ZZ, XX = np.meshgrid(zt, xt, indexing='ij')
     Y = griddata(np.column_stack([x, z]), y,
                  np.column_stack([XX.ravel(), ZZ.ravel()]), method='cubic')

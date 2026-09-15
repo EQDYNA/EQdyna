@@ -1,7 +1,10 @@
 # News in 2026
-* 20260915 v5.6.1 release notes
-  * Fix - a bare `make` built nothing, so `install-eqdyna.sh` produced no binary and every tier needing one failed. v5.6.0 fixed the `clean` target, which had accidentally been the thing making bare `make` build (`clean:eqdyna`, no space, made clean depend on eqdyna). Default goal is now pinned explicitly.
+* 20260915 v5.6.2 release notes
+  * Fix - scipy was used by scripts/convertFaultGeometry but never added to CI's pip install, so the unit tier passed locally and failed in CI. scipy added; its absence now raises a message naming it and pointing at the exact-decimation path, which needs no scipy.
+  * New - testsys/regression/test_ci_dependencies.py: every third-party import under scripts/ and testsys/ must be installed in CI, or be lazy AND guarded. Reads the package list out of the workflow file so the two cannot drift. It immediately found a second instance (imageio), now guarded.
+  * Change - python/eqdyna/standalone: `--backend jax` no longer falls back to numpy, and a new `--device auto|cpu|gpu` pins the JAX platform. Neither falls back (rule 2): a run reported as jax-on-gpu must have been that. Each run now prints the device it actually used.
   * For past release notes, please refer to pastReleaseNotes.md.
+
 
 
 # Introduction to *```EQdyna```*

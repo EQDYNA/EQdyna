@@ -22,7 +22,11 @@ jobs:
         sudo apt-get install git vim make mpich
         sudo apt-get install libnetcdf-dev libnetcdff-dev
         sudo apt-get install python3 python3-pip
-        pip install numpy netCDF4 matplotlib xarray pytest
+        # scipy: scripts/convertFaultGeometry's interpolation paths
+        # (RegularGridInterpolator, griddata). Imported lazily there, so the
+        # exact-decimation path works without it -- but the unit tier exercises
+        # interpolation, and its absence is what turned v5.6.1's CI red.
+        pip install numpy scipy netCDF4 matplotlib xarray pytest
         pip install --upgrade numpy
 
     # Exec bits are tracked in git (PROJECT_RULES.md rule 13) and guarded by
