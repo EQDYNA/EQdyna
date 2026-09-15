@@ -1,5 +1,6 @@
 subroutine calcGlobalShapeFunc(xl,det,globalShapeFunc,nel,xs,lcubic)
   use globalvar
+  use errorCodes
   implicit none
   ! calculate global derivatives of shape function and
   ! Jacobian determinant for a reduced order hexahedral element.
@@ -50,10 +51,10 @@ subroutine calcGlobalShapeFunc(xl,det,globalShapeFunc,nel,xs,lcubic)
   det   = xs(1,1)*cof11 + xs(1,2)*cof12 + xs(1,3)*cof13
   
   if (det <= 0.0d0) then
-    write(*,*) 'Non-positive determinant; stop the code.'
     write(*,*) 'Element id is ', nel
     write(*,*) 'det=', det
-    stop
+    call abortRun(ERR_MESH_BAD_JACOBIAN, &
+        'Non-positive Jacobian determinant: the element is inverted or degenerate.')
   endif
   
   !Calculate derivatives of global shape function

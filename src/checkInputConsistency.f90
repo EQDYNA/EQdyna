@@ -1,20 +1,20 @@
 subroutine checkInputConsistency
 
     use globalvar
+    use errorCodes
     implicit none
-    
+
     if (C_elastic==0.and.C_Q==1) then
-        write(*,*) 'Q model can only work with elastic code'
-        stop 1001 
+        call abortRun(ERR_CFG_Q_NEEDS_ELASTIC, &
+            'Q model (C_Q=1) can only work with the elastic code (C_elastic=1). Set C_Q=0 or C_elastic=1.')
     endif
     if (C_Q==1.and.rat>1) then
-        write(*,*) 'Q model can only work with uniform element size'
-        write(*,*) 'rat should be 1.0'
-        stop 1002
-    endif   
+        call abortRun(ERR_CFG_Q_NEEDS_UNIFORM, &
+            'Q model (C_Q=1) can only work with uniform element size; rat must be 1.0.')
+    endif
     if (output_plastic == 1 .and. C_elastic/=0) then
-        write(*,*) 'Only output plastric strains for C_elastic == 0.'
         write(*,*) 'Now, C_elastic = ', C_elastic
-        stop 1003
+        call abortRun(ERR_CFG_PLASTIC_OUTPUT, &
+            'Plastic strains are only output for C_elastic=0. Set output_plastic=0 or C_elastic=0.')
     endif
 end subroutine checkInputConsistency

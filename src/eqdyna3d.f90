@@ -2,6 +2,7 @@
 ! MIT
 program EQdyna
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
         
@@ -13,7 +14,7 @@ program EQdyna
 
     if (me == masterProcsId) then 
         write(*,*) '====================================================================='
-        write(*,*) '==================   Welcome to EQdyna 5.3.3  ======================='
+        write(*,*) '==================   Welcome to EQdyna 5.6.0  ======================='
         write(*,*) '===== Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>           ====' 
         write(*,*) '====    & Dunyu Liu <dliu@ig.utexas.edu> under MIT License.      ===='
         write(*,*) '============== https://github.com/EQDYNA/EQdyna.git   ==============='
@@ -87,12 +88,13 @@ program EQdyna
     if (writeCompTime == 1) call output_timeanalysis
     
     call MPI_Finalize(iMPIerr)
-    stop
-    
+    stop ! NORMAL-EXIT: the successful end of the run; exit status 0 is correct here.
+
 end program EQdyna
 
 subroutine allocInit
     use globalvar 
+    use errorCodes
     implicit none
     
     write(mm,'(i6)') me
@@ -155,6 +157,7 @@ end subroutine allocInit
 
 subroutine allocInitAfterMeshGen
     use globalvar 
+    use errorCodes
     implicit none 
     integer (kind = 4) :: iSt, iDof, dispOrVel, rowCount, nodeId
     if(numOfOnFaultStCount<=0) numOfOnFaultStCount=1 
@@ -197,6 +200,7 @@ subroutine init_vel
     !    the restart file.
     ! if mode==1, fric(31-36,i) will be zeros.
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: i, ift, tmp
 
@@ -250,6 +254,7 @@ subroutine checkFaultMPIAlignment
     ! the LAST fault processed -- a pre-existing ntotft>=2 limitation shared
     ! with pathway_forward.md items 7/9/10/17, not introduced here.
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
     integer (kind = 4) :: iMPIerr
@@ -265,24 +270,29 @@ subroutine checkFaultMPIAlignment
             write(*,*) 'MPI4arn''s divide-vs-duplicate fix has not been audited for this case. Set par.ymax /= -par.ymin (asymmetric y-domain) so the fault is offset from rank boundaries.'
         endif
         call MPI_Barrier(MPI_COMM_WORLD, iMPIerr)
-        stop 'checkFaultMPIAlignment failed'
+        call abortRun(ERR_MPI_FAULT_ALIGNMENT, &
+            'An MPI partition boundary in y coincides with a fault of non-degenerate y-extent. Set par.ymax /= -par.ymin.')
     endif
 end subroutine checkFaultMPIAlignment
 
 subroutine checkMeshMaterial
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: i
     do i = 1, totalNumOfElements
         if (mat(i,1) == 0.0d3 .or. mat(i,2) == 0.0d3 .or. mat(i,3) == 0.0d3) then
-            write(*,*) 'Element ', i, ' is not assigned material property. Exiting ... ...'
-            stop 
+            write(*,*) 'Element ', i, ' has no material property.'
+            call abortRun(ERR_MESH_MATERIAL_UNSET, &
+                'An element was never assigned a material property; check the material block in user_defined_params.py.')
+            
         endif 
     enddo 
 end subroutine checkMeshMaterial
 
 subroutine checkArrSize
     use globalvar
+    use errorCodes
     implicit none
 
     write(*,*) 'EqNumIndexArr size is ', sizeOfEqNumIndexArr

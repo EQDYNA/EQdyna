@@ -47,13 +47,34 @@ else "for reference."
 A missing input file, undefined parameter, or failed comparison fails loudly.
 No substituted default, no skipped step, no result printed but not acted on.
 
-**Rationale**: `check.test.py:30-38` calls `xr.testing.assert_allclose(f1,f2)`
-inside a `try/except AssertionError`, prints the exception, and moves on —
-the mismatch is visible in the log but never turns into a failing exit code.
+**This includes a check that degrades instead of refusing.** If a validator
+cannot perform a check — a required parameter is absent, the grid is too small
+for the stencil, the data does not support the test — it must FAIL, not run a
+weaker version and report a pass, and not emit a warning and continue. A pass
+must mean the check ran. "I could not check this" and "this is fine" are
+different answers and must produce different exit codes.
+
+**Rationale**: two separate incidents.
+`check.test.py:30-38` called `xr.testing.assert_allclose(f1,f2)` inside a
+`try/except AssertionError`, printed the exception, and moved on — the mismatch
+was visible in the log but never turned into a failing exit code.
+Then in v5.6.0, `lib.validateFaultRoughGeometry` did it twice more: it
+substituted `dx` for a missing `dy` in the per-cell offset check (silently
+changing the units of the quantity compared against 1.0), and it fell back to a
+weaker derivative bound on grids too small for the 4-point stencil — a bound
+derived from the very column under test, so a corrupted derivative set its own
+tolerance. The `dy` substitution had been masking its own test coverage: when
+the fallback was removed, a unit test failed and revealed that the fixture had
+never passed `dy` at all, so every offset assertion in the suite had been
+exercising the fallback rather than the check.
 
 **How to apply**: any comparison that can fail must either raise past the
 caller or set a variable checked by `testAll.py`'s exit path — printing to
-stdout is not a gate (see rule 3).
+stdout is not a gate (see rule 3). A validator that cannot evaluate a check
+appends a problem, never a warning. Reserve warnings for input that is legal
+but unusual (a rough surface, a steep dip) — never for a check that did not
+run. When you remove a fallback, re-run the tests that covered it: if any now
+fail, they were testing the fallback.
 
 ---
 

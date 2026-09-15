@@ -188,10 +188,10 @@ end subroutine netcdf_read_on_fault_eqdyna_restart
 ! #A1
 subroutine check(status)
     use netcdf
+    use errorCodes
     integer, intent ( in) :: status
-    
+
     if(status /= nf90_noerr) then 
-      print *, nf90_strerror(status)
-      stop "Stopped"
+      call abortRun(ERR_NETCDF, 'NetCDF: '//trim(nf90_strerror(status)))
     end if
 end subroutine check  

@@ -71,23 +71,27 @@ endif
 OPT  = -c ${FFLAGS}
 OPT1 = ${FFLAGS}
 
-OBJ  = eqdyna3d.o  globalvar.o countMeshEntities.o  meshgen.o   calcLocalShapeFunc.o    \
+OBJ  = eqdyna3d.o  globalvar.o errorCodes.o countMeshEntities.o  meshgen.o   calcLocalShapeFunc.o    \
        driver.o    assembleGlobalMass.o     calcGlobalShapeFunc.o                calcB.o      \
        assembleGlobalKU.o        calcElemMass.o    calcElemKU.o     calcHourglassResist.o    fric.o      \
        faulting.o              computePMLDampingVector.o  calcQAttenuationCoeff.o             \
        readInputFiles.o        updateThermalPressurization.o   library.o   func_lib.o   checkInputConsistency.o   \
-       library_degeneration.f90            library_output.o        \
+       library_degeneration.o              library_output.o        \
        netcdf_io.o             $(PYDUMP_OBJ)
 
-clean:eqdyna
-	rm -r *.o
+# `clean:eqdyna` (no space) made clean DEPEND on eqdyna, so `make clean` built
+# the binary before deleting the objects. Nothing in the repo invokes it, which
+# is why it went unnoticed. Also removes .mod files, which were never cleaned.
+.PHONY: clean
+clean:
+	rm -f *.o *.mod
 
 eqdyna: $(OBJ)
 	$(FC) $(OPT1) $(OBJ) -o eqdyna ${NETCDF_LIB}
 eqdyna-pydump:
 	$(MAKE) PYDUMP=1 eqdyna
 	mv eqdyna eqdyna-pydump
-eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o countMeshEntities.o \
+eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o countMeshEntities.o errorCodes.o \
             meshgen.o readInputFiles.o checkInputConsistency.o         \
             library_output.o netcdf_io.o $(PYDUMP_OBJ)
 	$(FC) $(OPT) eqdyna3d.f90
@@ -97,22 +101,24 @@ pydump_noop.o: pydump_noop.f90
 	$(FC) $(OPT) pydump_noop.f90
 globalvar.o: globalvar.f90
 	$(FC) $(OPT) globalvar.f90
+errorCodes.o: errorCodes.f90
+	$(FC) $(OPT) errorCodes.f90
 countMeshEntities.o: countMeshEntities.f90 globalvar.o library_degeneration.o
 	$(FC) $(OPT) countMeshEntities.f90
-meshgen.o: meshgen.f90 globalvar.o func_lib.o library_degeneration.o
+meshgen.o: meshgen.f90 globalvar.o func_lib.o library_degeneration.o errorCodes.o
 	$(FC) $(OPT) meshgen.f90
 calcLocalShapeFunc.o: calcLocalShapeFunc.f90 globalvar.o
 	$(FC) $(OPT) calcLocalShapeFunc.f90		
-driver.o: driver.f90 assembleGlobalMass.o assembleGlobalKU.o calcHourglassResist.o faulting.o \
+driver.o: driver.f90 assembleGlobalMass.o assembleGlobalKU.o calcHourglassResist.o faulting.o errorCodes.o \
           globalvar.o computePMLDampingVector.o updateThermalPressurization.o
 	$(FC) $(OPT) driver.f90
-assembleGlobalMass.o: assembleGlobalMass.f90 calcGlobalShapeFunc.o library.o func_lib.o globalvar.o
+assembleGlobalMass.o: assembleGlobalMass.f90 calcGlobalShapeFunc.o library.o func_lib.o globalvar.o errorCodes.o
 	$(FC) $(OPT) assembleGlobalMass.f90
-calcGlobalShapeFunc.o: calcGlobalShapeFunc.f90 globalvar.o
+calcGlobalShapeFunc.o: calcGlobalShapeFunc.f90 globalvar.o errorCodes.o
 	$(FC) $(OPT) calcGlobalShapeFunc.f90
 library.o: library.f90 globalvar.o
 	$(FC) $(OPT) library.f90
-func_lib.o: func_lib.f90 globalvar.o
+func_lib.o: func_lib.f90 globalvar.o errorCodes.o
 	$(FC) $(OPT) func_lib.f90
 assembleGlobalKU.o: assembleGlobalKU.f90 calcElemKU.o globalvar.o func_lib.o
 	$(FC) $(OPT) assembleGlobalKU.f90
@@ -128,19 +134,19 @@ fric.o: fric.f90 globalvar.o
 	$(FC) $(OPT) fric.f90
 faulting.o: faulting.f90 fric.o globalvar.o
 	$(FC) $(OPT) faulting.f90
-computePMLDampingVector.o: computePMLDampingVector.f90 globalvar.o func_lib.o
+computePMLDampingVector.o: computePMLDampingVector.f90 globalvar.o func_lib.o errorCodes.o
 	$(FC) $(OPT) computePMLDampingVector.f90
 calcQAttenuationCoeff.o: calcQAttenuationCoeff.f90
 	$(FC) $(OPT) calcQAttenuationCoeff.f90
-readInputFiles.o: readInputFiles.f90 globalvar.o
+readInputFiles.o: readInputFiles.f90 globalvar.o errorCodes.o
 	$(FC) $(OPT) readInputFiles.f90
 updateThermalPressurization.o: updateThermalPressurization.f90 globalvar.o
 	$(FC) $(OPT) updateThermalPressurization.f90
-checkInputConsistency.o: checkInputConsistency.f90 globalvar.o
+checkInputConsistency.o: checkInputConsistency.f90 globalvar.o errorCodes.o
 	$(FC) $(OPT) checkInputConsistency.f90
 library_degeneration.o: library_degeneration.f90 globalvar.o 
 	$(FC) $(OPT) library_degeneration.f90
 library_output.o: library_output.f90 globalvar.o 
 	$(FC) $(OPT) library_output.f90
-netcdf_io.o: netcdf_io.f90 globalvar.o
+netcdf_io.o: netcdf_io.f90 globalvar.o errorCodes.o
 	$(FC) $(OPT) netcdf_io.f90 ${NETCDF_INC}

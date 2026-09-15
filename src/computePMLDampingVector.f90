@@ -1,5 +1,6 @@
 subroutine computePMLDampingVector(x2,y,z,dv)
 use globalvar
+use errorCodes
 implicit none
 integer(kind=4)::i
 real (kind = dp) :: x2,y,z,xmax0,xmin0,ymax0,ymin0,zmin0,delta,maxdx,maxdy,maxdz
@@ -38,8 +39,8 @@ real (kind = dp),dimension(9)::dv
     dv(9)=damp(3)
     do i=1,9
         if (dv(i)<0.0d0) then
-            write(*,*) 'wrong dv'
-            stop
+            call abortRun(ERR_NUM_PML_DAMPING, &
+                'Negative PML damping vector component; the element lies outside the PML region cascade.')
         endif
     enddo
 end subroutine computePMLDampingVector

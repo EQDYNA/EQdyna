@@ -7,6 +7,7 @@ subroutine meshgen
     ! Set material propertiesa, initial stress, and other element-wise properties. 
     
     use globalvar
+    use errorCodes
     implicit none
     include 'mpif.h'
     ! incremental variables 
@@ -165,6 +166,7 @@ subroutine setElementMaterial(elemCount, elementCenterCoor)
 !   case input file user_defined_param.py.
 
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: elemCount, i
     real (kind = dp) :: elementCenterCoor(3), vptmp, vstmp, rhotmp
@@ -210,6 +212,7 @@ end subroutine setElementMaterial
 subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
 ! Add up arn from neighbor MPI blocks.
     use globalvar
+    use errorCodes
     implicit none 
     include 'mpif.h'
     
@@ -372,12 +375,14 @@ end subroutine MPI4arn
 subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, eqNumIndexArrLocTag, nftnd0)
 ! Check consistency between mesh4 and meshgen
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, nftnd0(ntotft), eqNumIndexArrLocTag
     integer (kind = 4) :: i
     if (sizeOfStressDofIndexArr>=(5*sizeOfEqNumIndexArr)) then
         write(*,*) '5*sizeOfEqNumIndexArr',sizeOfEqNumIndexArr,'is not enough for sizeOfStressDofIndexArr',sizeOfStressDofIndexArr
-        stop 2002
+        call abortRun(ERR_MESH_STRESS_ARR_SMALL, &
+            'stressArr is too small for this mesh; 5*sizeOfEqNumIndexArr does not cover sizeOfStressDofIndexArr.')
     endif
     if(nodeCount/=nx*ny*nz.or.msnode/=totalNumOfNodes.or.elemCount/=totalNumOfElements.or.equationNumCount/=totalNumOfEquations) then
         write(*,*) 'Inconsistency in node/element/equation/between meshgen and countMeshEntities: stop!',me
@@ -386,23 +391,27 @@ subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCou
         write(*,*) 'equationNumCount,totalNumOfEquations=',equationNumCount,totalNumOfEquations
         write(*,*) 'nodeCount,nx,ny,nz',nodeCount,nx,ny,nz
         write(*,*) 'msnode,totalNumOfNodes',msnode,totalNumOfNodes
-        stop 2003
+        call abortRun(ERR_MESH_COUNT_MISMATCH, &
+            'meshgen node/element/equation tallies disagree with countMeshEntities (counts printed above).')
     endif
     if(eqNumIndexArrLocTag/=sizeOfEqNumIndexArr) then
         write(*,*) 'Inconsistency in eqNumIndexArrLocTag and sizeOfEqNumIndexArr: stop!',me
         write(*,*) eqNumIndexArrLocTag,sizeOfEqNumIndexArr
-        stop 2004
+        call abortRun(ERR_MESH_EQNUM_MISMATCH, &
+            'eqNumIndexArrLocTag /= sizeOfEqNumIndexArr (values printed above).')
     endif
     do i=1,ntotft
         if(nftnd0(i)/=nftnd(i)) then
-            write(*,*) 'Inconsistency in fault between meshgen and countMeshEntities: stop!',me,i
-            stop 2005
+            write(*,*) 'Inconsistency in fault between meshgen and countMeshEntities:',me,i
+            call abortRun(ERR_MESH_FAULT_MISMATCH, &
+                'nftnd0 from meshgen disagrees with nftnd from countMeshEntities (rank and fault printed above).')
         endif
     enddo
 end subroutine meshGenError
 
 subroutine calcXyzMPIId(mex, mey, mez)
     use globalvar 
+    use errorCodes
     implicit none
     integer (kind = 4) :: mex, mey, mez
      
@@ -414,6 +423,7 @@ end subroutine calcXyzMPIId
 subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithUniformGridsize, &
     frontEdgeNodeId, MPIXyzId, localOneDimCoorArrSize, localOneDimCoorArr, modelBoundCoor, dimId)
     use globalvar
+    use errorCodes
     implicit none 
     integer (kind = 4) :: globalOneDimCoorArrSize, numOfNodesWithUniformGridsize, dimId
     integer (kind = 4) :: frontEdgeNodeId, localOneDimCoorArrSize, MPIXyzId
@@ -528,6 +538,7 @@ end subroutine getLocalOneDimCoorArrAndSize
 
 subroutine setNumDof(nodeCoor, numOfDofPerNodeTmp)
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: numOfDofPerNodeTmp
     real (kind = dp) :: nodeCoor(10)
@@ -540,6 +551,7 @@ end subroutine setNumDof
 
 subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: nodeXyzIndex(10), ix, iy, nodeCount, i
     real (kind = dp) :: nodeCoor(10), xline(nodeXyzIndex(4)), yline(nodeXyzIndex(5))
@@ -626,6 +638,7 @@ end subroutine setSurfaceStation
 
 subroutine setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equationNumCount, numOfDofPerNodeTmp)
     use globalvar 
+    use errorCodes
     implicit none
     integer (kind = 4) :: iDof, numOfDofPerNodeTmp, eqNumIndexArrLocTag, equationNumCount, nodeXyzIndex(10)
     real (kind = dp) :: nodeCoor(10)
@@ -668,6 +681,7 @@ end subroutine setEquationNumber
 
 subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: elemCount, stressDofCount, iy, iz, i, j 
     real (kind = dp) :: elementCenterCoor(3)
@@ -709,6 +723,7 @@ end subroutine createElement
 
  subroutine replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
     use globalvar 
+    use errorCodes
     implicit none
     integer (kind = 4) :: elemCount, iFault, iFaultNodePair, nftnd0(ntotft), k
     real (kind = dp) :: nodeCoor(10)
@@ -734,6 +749,7 @@ end subroutine replaceSlaveWithMasterNode
 
 subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: isOnFault, iFault
     real (kind = dp) :: nodeCoor(10), distToFault
@@ -756,6 +772,7 @@ end subroutine checkIsOnFault
 subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCount, msnode, nftnd0, equationNumCount, eqNumIndexArrLocTag,&
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
 use globalvar 
+use errorCodes
 implicit none
 integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nodeCount, msnode, nftnd0(ntotft), equationNumCount, i, nxuni, nzuni, eqNumIndexArrLocTag
 integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft), nodeXyzIndex(10)
@@ -770,7 +787,11 @@ do iFault = 1, ntotft
         nftnd0(iFault)                = nftnd0(iFault) + 1 ! # of split-node pairs + 1
         nsmp(1,nftnd0(iFault),iFault) = nodeCount              ! set Slave node nodeID to nsmp  
         msnode                        = nodeXyzIndex(4)*nodeXyzIndex(5)*nodeXyzIndex(6) + nftnd0(iFault) ! create Master node at the end of regular grids
-        if (iFault>1) stop 'msnode cannot handle iFault>1'
+        if (iFault>1) then
+            write(*,*) 'meshgen: got iFault =', iFault
+            call abortRun(ERR_MESH_MULTIFAULT_MSNODE, &
+                'master-node construction cannot handle more than one fault (ntotft>1).')
+        endif
         
         eqNumStartIndexLoc(msnode) = eqNumIndexArrLocTag
         numOfDofPerNodeArr(msnode) = 3         
@@ -870,6 +891,7 @@ end subroutine createMasterNode
 
 subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nodeCount, nodeXyzIndex)
     use globalvar
+    use errorCodes
     implicit none
     integer (kind = 4) :: nodeCount, nodeXyzIndex(10), iy, iz
     real (kind = dp) :: nodeCoor(10), xcoor, ycoor, zcoor
@@ -889,6 +911,7 @@ end subroutine createNode
 
 subroutine initializeNodeXyzIndex(ix, iy, iz, nx, ny, nz, nodeXyzIndex)
     use globalvar 
+    use errorCodes
     implicit none 
     integer (kind = 4) :: ix, iy, iz, nx, ny, nz, nodeXyzIndex(10)
     nodeXyzIndex(1) = ix
@@ -901,6 +924,7 @@ end subroutine initializeNodeXyzIndex
 
 subroutine setPlasticStress(depth, elemCount)
     use globalvar
+    use errorCodes
     implicit none
     
     real(kind = dp) :: depth, vstmp, vptmp, routmp, strVert, devStr
