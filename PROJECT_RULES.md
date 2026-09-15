@@ -17,6 +17,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 13. File permission changes are reviewed individually, never bulk-applied.
 14. A living status board, re-checked on a schedule.
 15. Releases follow the documented workflow, notes lead the README.
+16. Test what you commit, not what is in your working tree.
 
 ---
 
@@ -284,3 +285,26 @@ the annotated tag message, and `pathway_forward.md`.
 **How to apply**: at release time, `head README.md` must show the version
 being released; `pastReleaseNotes.md` must contain every prior version and
 not the current one.
+
+---
+
+## 16. Test what you commit, not what is in your working tree
+
+After committing, the working tree must contain nothing that the tests
+depended on. Before pushing a change whose gate you ran locally, confirm
+`git status --porcelain` shows no modified tracked files, or re-run the gate
+from a clean checkout of the commit itself (`git stash` / a fresh worktree).
+
+**Rationale**: v5.5.0's fault-on-MPI-boundary fix was gated green locally, and
+CI went red on the same commit. The commit contained the regression test and a
+"FIXED" note but not `src/meshgen.f90` / `src/eqdyna3d.f90` -- a partial
+`git add` left the actual fix uncommitted. The local gate passed because the
+working tree had it; CI built the commit, which did not. The test was correct
+and caught exactly what it was written to catch. Two commits shipped a claim
+the code did not support.
+
+**How to apply**: `git status --porcelain` after every commit, before every
+push; treat any remaining modified tracked file as a reason to stop and check
+whether the gate you ran still describes the commit. Prefer `git add <paths>`
+with the full list read back from the diff, or `git add -u` scoped to the
+directories the change touched.
