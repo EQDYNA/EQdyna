@@ -79,9 +79,19 @@ OBJ  = eqdyna3d.o  globalvar.o errorCodes.o countMeshEntities.o  meshgen.o   cal
        library_degeneration.o              library_output.o        \
        netcdf_io.o             $(PYDUMP_OBJ)
 
+# The default goal is stated explicitly and must stay that way. `clean` is the
+# first target in this file, and make builds the FIRST target when invoked with
+# no arguments -- so a bare `make` (which is what install-eqdyna.sh:99 runs)
+# would run `clean` and produce no binary. That is exactly what happened in
+# v5.6.0: the old `clean:eqdyna` (no space) made clean depend on eqdyna, so a
+# bare `make` accidentally built the binary and then deleted the objects.
+# Fixing the clean target removed that accident and broke the install path.
+# testsys/regression/test_make_default_goal.py guards this.
+.DEFAULT_GOAL := eqdyna
+
 # `clean:eqdyna` (no space) made clean DEPEND on eqdyna, so `make clean` built
-# the binary before deleting the objects. Nothing in the repo invokes it, which
-# is why it went unnoticed. Also removes .mod files, which were never cleaned.
+# the binary before deleting the objects. Also removes .mod files, which were
+# never cleaned.
 .PHONY: clean
 clean:
 	rm -f *.o *.mod

@@ -108,6 +108,7 @@ on HPC, TPV38 (awaiting SCEC's TSurf release).
 
 | Date | Task | Ref |
 |---|---|---|
+| 2026-09-15 | v5.6.1: bare `make` built nothing after the v5.6.0 clean-target fix removed the accidental `clean:eqdyna` dependency that install-eqdyna.sh relied on. `.DEFAULT_GOAL` pinned + regression guard. Rule 16 extended: gate with CI's own entry point, not a convenient subset -- v5.6.0 was committed complete, tree clean, commit re-verified in a worktree, and still went red because the gate never ran `install-eqdyna.sh` | v5.6.1 |
 | 2026-09-14 | v5.6.0: fault-geometry validation (Python at case.setup + Fortran at read time), `scripts/convertFaultGeometry`, TPV29 50 m surface shipped | v5.6.0 |
 | 2026-09-14 | v5.6.0: error-code system -- `src/errorCodes.f90`, 20 named codes 1-125, `abortRun` + `MPI_Abort`; 13 sites that exited 0 on refusal converted. Verified live: empty case under `mpirun -np 2` exits 21, no hang | v5.6.0 |
 | 2026-09-14 | v5.6.0 pre-tag audit: 3 Criticals found and fixed -- full tier `KeyError` (unexercised since the fast tier never imports `full_specs.py`), validator blind to a global rescale, validator hiding local corruption up to 3000x tolerance | v5.6.0 |
