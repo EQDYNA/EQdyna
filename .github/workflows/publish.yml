@@ -41,14 +41,21 @@ jobs:
     # pytest/scipy are installed here, not in the Dockerfile: they are a
     # CI-only overlay (test.yml does the same on top of install-eqdyna.sh's
     # own deps), not a production dependency this image should carry --
-    # mirrors the deliberate jax exclusion already documented there.
+    # mirrors the deliberate jax exclusion already documented there. No
+    # --break-system-packages: the base image is ubuntu:22.04, whose stock
+    # pip3 (22.0.2) predates that flag (pip 23.0.1+, PEP 668) -- the same
+    # bug the Dockerfile itself had, and this occurrence was NOT caught by
+    # the first fix because that fix addressed the failing log line, not
+    # the pattern (a `grep -rn` for the flag across the repo at the time
+    # would have caught this AND the verify-published-image copy below in
+    # one pass -- v5.8.4 still shipped both of them broken).
     # A failing gate stops the job here; the push step below never runs.
     - name: Gate the image on the repo's own test tiers (not a --version smoke test)
       run: |
         TAG="${GITHUB_REF_NAME}"
         docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
           set -e
-          pip3 install --break-system-packages pytest scipy
+          pip3 install pytest scipy
           cd /opt/eqdyna
           python3 testsys/run.py unit regression
           python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran
@@ -79,9 +86,11 @@ jobs:
     - name: Re-run the gate against the pulled image
       run: |
         TAG="${GITHUB_REF_NAME}"
+        # No --break-system-packages here either -- same reasoning as the
+        # build-and-push job's identical gate step above.
         docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
           set -e
-          pip3 install --break-system-packages pytest scipy
+          pip3 install pytest scipy
           cd /opt/eqdyna
           python3 testsys/run.py unit regression
           python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran
