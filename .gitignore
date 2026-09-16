@@ -5,8 +5,8 @@ bin/
 __pycache__/
 *.mod
 *.pyc
-src/*.o
-src/eqdyna
+src/fortran/*.o
+src/fortran/eqdyna
 
 test/
 test.prev/

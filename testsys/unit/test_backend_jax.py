@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(REPO_ROOT, 'python'))
+sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
 
 jax = pytest.importorskip('jax', reason='these cover the JAX backend; without '
                                         'jaxlib there is no time loop to test')

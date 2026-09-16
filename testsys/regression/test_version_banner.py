@@ -19,7 +19,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 VERSION_FILE = os.path.join(ROOT, 'VERSION')
-BANNER_FILE = os.path.join(ROOT, 'src', 'eqdyna3d.f90')
+BANNER_FILE = os.path.join(ROOT, 'src', 'fortran', 'eqdyna3d.f90')
 BANNER_RE = re.compile(r'Welcome to EQdyna\s+([0-9]+\.[0-9]+\.[0-9]+)')
 
 
