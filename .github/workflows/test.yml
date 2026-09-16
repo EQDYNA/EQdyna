@@ -40,7 +40,7 @@ jobs:
 
     # Exec bits are tracked in git (PROJECT_RULES.md rule 13) and guarded by
     # testsys/regression/test_create_newcase.py — no chmod here. Exit codes
-    # gate directly: testsys/run.py and testAll.py exit non-zero on failure.
+    # gate directly: testsys/run.py exits non-zero on failure.
     - name: Run tests
       run: |
         ./install-eqdyna.sh -m ubuntu 2>&1 | tee -a testRunLog.txt
