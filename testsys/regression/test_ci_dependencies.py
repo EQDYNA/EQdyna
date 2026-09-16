@@ -33,7 +33,14 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WORKFLOW = os.path.join(ROOT, '.github', 'workflows', 'test.yml')
 
-SCAN_DIRS = ('scripts', 'testsys')
+# src/python is the SOLVER PACKAGE -- the code this repo actually ships and
+# the code CI runs. It was never scanned: first_party() below special-cases it
+# as a sys.path root (so the author knew it was there), but SCAN_DIRS stopped
+# at scripts/ and testsys/, which made this guard's own docstring -- "every
+# third-party import must be installed in CI" -- false for the one package
+# that matters most. Harmless so far only because every import in it is numpy,
+# jax or relative, and both are declared; that is luck, not coverage.
+SCAN_DIRS = ('scripts', 'testsys', os.path.join('src', 'python'))
 
 # pip name -> import name, where they differ.
 PIP_TO_IMPORT = {

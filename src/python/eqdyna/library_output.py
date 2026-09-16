@@ -31,7 +31,7 @@ Verified via ROUND-TRIP against `testsys/parity/fixtures/test_tpv8_serial/
 frt.txt0` (a real Fortran-written file, not synthetic): parse every row's
 22 floats back out, re-format them with THIS module's writer, and assert
 the reproduced text is byte-identical to the original file, via
-testsys/parity/test_standalone_meshgen.py. This tests the FORMATTER only
+the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15). This tests the FORMATTER only
 (bit-exact reproduction of Fortran's own quantization) -- the actual
 fnft/fric VALUES come from the time-stepping solver (Milestone 8), not
 this milestone; M8's acceptance test is where the writer is exercised

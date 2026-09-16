@@ -69,7 +69,8 @@ never passed `dy` at all, so every offset assertion in the suite had been
 exercising the fallback rather than the check.
 
 **How to apply**: any comparison that can fail must either raise past the
-caller or set a variable checked by `testAll.py`'s exit path — printing to
+caller or set a variable checked by the runner's exit path (then `testAll.py`,
+today `testsys/run.py`) — printing to
 stdout is not a gate (see rule 3). A validator that cannot evaluate a check
 appends a problem, never a warning. Reserve warnings for input that is legal
 but unusual (a rough surface, a steep dip) — never for a check that did not
@@ -82,7 +83,7 @@ fail, they were testing the fallback.
 
 Named commands, named pass criteria:
 
-- Build: `cd src && make` (via `./install-eqdyna.sh -m <machine>`) must exit 0.
+- Build: `cd src/fortran && make` (via `./install-eqdyna.sh -m <machine>`) must exit 0.
 - Test: `python3 testsys/run.py all` — the sweep (8 cases x 3 backends).
   Pass means every
   printed line for every `testid` in `testNameList.nameList` reads `SUCCESS`,
@@ -123,7 +124,9 @@ utility outside the test harness — if it carries its own tolerance, that
 tolerance must be reconciled with `1e-3`, not treated as an independent
 "looks close enough" check.
 
-**How to apply**: any new comparison script cites `check.test.py`'s threshold
+**How to apply**: any new comparison script cites the single calibrated
+threshold (then `check.test.py`'s, today `testsys/matrix.py`'s `THRESHOLD`
+and per-case `CASE_BOUND`)
 or explains in writing why it differs; it never reports "pass" against an
 ad hoc number.
 
@@ -146,8 +149,9 @@ unfalsifiable against the current `src/`.
 ## 7. Reference data is read-only
 
 `test.reference.results/` (`test.drv.a6`, `test.meng2023a`, `test.meng2023cb`,
-`test.tpv10`, `test.tpv104`, `test.tpv1053d`, `test.tpv8`) is ground truth.
-Nothing writes through it — not `testAll.py`, not a debug run, not manually.
+`test.tpv10`, `test.tpv104`, `test.tpv1053d`, `test.tpv29`, `test.tpv8` — one
+`frt.canonical.txt` per case) is ground truth. Nothing writes through it —
+not the sweep, not a debug run, not manually.
 
 **Rationale**: `check.test.py` sets `refRoot='test.reference.results'` and
 `testRoot='test'` as two distinct trees precisely so a run's scratch output
@@ -162,16 +166,22 @@ commit to `test.reference.results/`, never a side effect of running tests.
 
 ## 8. Never delete evidence unless the result is a confirmed pass
 
-`testAll.py` runs `os.system('rm -rf test')` before every invocation,
-unconditionally, before the new run's results have even been compared.
+A failed run's output is the only record of what actually happened. Deleting
+it to "try again" destroys the evidence before anyone has read it.
 
-**Rationale**: if a run fails, the failing `test/` tree — the only record of
-what actually happened — is deleted the next time anyone runs `testAll.py`,
-including a `testAll.py` invoked just to "try again."
+**Rationale**: the original offender was `testAll.py`, which ran
+`os.system('rm -rf test')` unconditionally at the start of every invocation —
+before the new run's results had even been compared. That file is gone, and
+the behaviour is now the opposite: `testsys/e2e/run_e2e.py` ROTATES the
+previous `test/` to `test.prev/` instead of deleting it, so one level of
+history survives by construction. Every python cell's output also stays on
+disk under `test/`; the deleted accept tier used to run them in a tempfile
+directory and remove it, so a failure destroyed its own evidence.
 
-**How to apply**: do not re-run `testAll.py` over a failed `test/` directory
-without first copying it aside (`cp -r test test.failed.<date>`) if the
-failure hasn't been root-caused yet.
+**How to apply**: the rotation keeps ONE level. If a failure is not yet
+root-caused and you are about to run the sweep twice more, copy the tree
+aside first (`cp -r test test.failed.<date>`) — the second run's rotation
+will otherwise overwrite `test.prev/`.
 
 ---
 
@@ -179,15 +189,19 @@ failure hasn't been root-caused yet.
 
 `testNameList.py` already sequences small, fast, low-core cases
 (`test.drv.a6`, `test.tpv8`, `test.tpv10`, `test.tpv104`, `test.tpv1053d`,
-4 cores each) ahead of any HPC-scale allocation.
+`test.meng2023a`, `test.meng2023cb`, `test.tpv29` — 4 ranks each) ahead of any
+HPC-scale allocation.
 
 **Rationale**: a TPV36-class run at 512 cores on Lonestar6 costs hours of
 allocation; a mesh, friction-law, or I/O regression is almost always visible
 in one of the existing 4-core cases first.
 
-**How to apply**: `python3 testAll.py` (or the specific failing case via
-`create.newcase` + `case.setup`) must pass locally before requesting a
-large-core-count HPC job for the same change.
+**How to apply**: `python3 testsys/run.py unit regression` (seconds), then the
+sweep or a single cell of it (`testsys/e2e/run_e2e.py --cases <case>
+--backends <backend>`) must pass locally before requesting a
+large-core-count HPC job for the same change. `run_e2e.py` enforces
+cheap-first structurally: its Gate 1 is
+`testsys/regression/test_create_newcase.py`, before any build or any case.
 
 ---
 
@@ -279,8 +293,9 @@ first, and re-run the cited command rather than trusting the recorded line.
 
 The release workflow, in order:
 
-1. Green gate first (rule 3): `make` exits 0 and `python3 testAll.py`
-   prints SUCCESS for every reference comparison. Never tag over a red gate.
+1. Green gate first (rule 3): `./install-eqdyna.sh -m ubuntu` exits 0 and
+   `python3 testsys/run.py all` reports 24/24 cells SUCCESS. Never tag over a
+   red gate, and never tag before CI is green on the pushed commit (rule 15).
 2. Bump `VERSION`.
 3. Release notes: add a `* YYYYMMDD vX.Y.Z release notes` block under a
    `# News in <year>` heading at the TOP of `README.md`, ending with the
@@ -347,7 +362,8 @@ the code did not support.
 the commit itself was re-verified in a fresh worktree — and CI still went red.
 The gate had been run by invoking the tiers directly (`testsys/run.py e2e` with
 `EQDYNA_E2E_BIN=src/eqdyna`, and `make eqdyna` by name), while CI runs
-`./install-eqdyna.sh -m ubuntu` and then `testsys/run.py all`. A change to
+`./install-eqdyna.sh -m ubuntu` and then `testsys/run.py unit regression e2e-ci`.
+A change to
 `src/makefile` made a BARE `make` stop producing a binary, which only the
 install path exercises. Testing the right commit is not enough if you invoke it
 differently than CI does.
@@ -363,7 +379,15 @@ it — read `.github/workflows/test.yml` and reproduce the commands verbatim:
 
     ./install-eqdyna.sh -m ubuntu
     export EQDYNAROOT=$(pwd); export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-    python3 testsys/run.py all
+    python3 testsys/run.py unit regression e2e-ci
+
+That last line is what `.github/workflows/test.yml:64` actually runs, and it
+is NARROWER than `run.py all`: `e2e-ci` runs `matrix.CI_CELLS`, 10 of the 24
+cells, because the rest do not fit a 7 GB runner. Run `run.py all` too — it is
+the wider local gate and the one that speaks for the whole table — but do not
+mistake it for a reproduction of CI. This rule was itself wrong about this
+until 2026-09-16, telling the reader to reproduce CI with a command CI does
+not run: the exact substitution it exists to forbid.
 
 Shortcuts like `EQDYNA_E2E_BIN=src/eqdyna` exist to keep a gate from disturbing
 a running job; they skip the build-and-install path, so a green run under them

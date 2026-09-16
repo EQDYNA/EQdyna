@@ -32,9 +32,9 @@ particular:
 
 Verified against `testsys/parity/fixtures/test_tpv8_serial/
 pydump_nodalmass.txt` / `pydump_fnms.txt` via
-testsys/parity/test_standalone_meshgen.py -- these fixtures are the
+the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15) -- these fixtures are the
 PARITY ORACLE ONLY. Per the explicit provenance decision recorded for M8
-(README-parity.md / meshgen.py's top docstring): the standalone solver
+(meshgen.py's top docstring): the standalone solver
 path this milestone eventually feeds must call THIS port at runtime, and
 must never read pydump_nodalmass.txt/pydump_fnms.txt in production --
 those files only exist because a Fortran binary with pydump instrumentation
@@ -60,7 +60,7 @@ a restart netCDF this port does not read, out of scope).
 Verified against `testsys/parity/fixtures/test_tpv8_serial/
 pydump_elemgeo.txt` (eledet/eleshp/ss/phi per element) and
 `pydump_v1.txt` (the full v1 array) via
-testsys/parity/test_standalone_meshgen.py -- ORACLE ONLY, same runtime-vs-
+the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15) -- ORACLE ONLY, same runtime-vs-
 -oracle rule as above: the standalone solver must call these ports, never
 read the pydump files.
 """

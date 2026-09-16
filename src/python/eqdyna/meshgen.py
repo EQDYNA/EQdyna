@@ -14,7 +14,7 @@ the standalone-phase spec are ported and verified against
 `testsys/parity/fixtures/test_tpv8_serial/pydump_meshCoor.txt` /
 `pydump_conn.txt` / `pydump_nodeinfo.txt` / `pydump_fault.txt` /
 `pydump_stations.txt` (the Fortran ground truth, dumped by
-`src/pydump.f90`), via `testsys/parity/test_standalone_meshgen.py` (wired
+the removed pydump dumper (src/pydump.f90, deleted 2026-09-15)), via `the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15)` (wired
 into `testsys/run.py parity`): M1 max abs diff 3.6e-12 across 249,047
 nodes; M2 zero mismatched elements (connectivity, elemType, material)
 across 235,008 elements; M3 zero mismatches (numOfDofPerNodeArr,
@@ -50,7 +50,7 @@ since C_degen==0 means neither ever takes the wedge-degeneration branch),
 tensors, including func_lib.f90's vlm volume formula), and `init_vel`
 ports eqdyna3d.f90's fault-node velocity seeding of v1 from fric(31-36)
 via the equation map (mode==1 only). Verified against
-pydump_elemgeo.txt/pydump_v1.txt via test_standalone_meshgen.py.
+pydump_elemgeo.txt/pydump_v1.txt via the removed parity tier.
 
 NOT YET PORTED (explicitly, not silently deferred): assembleGlobalKU (the
 FEM stiffness/internal-force kernel itself), hrglss's per-step hourglass
@@ -375,7 +375,7 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
 
     Verified against `testsys/parity/fixtures/test_tpv8_serial/pydump_conn.txt`
     (nodeElemIdRelation + elemTypeArr + mat(1:5) for every element, dumped by
-    src/pydump.f90) -- see testsys/parity/test_standalone_meshgen.py.
+    src/pydump.f90) -- see the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15).
 
     PERFORMANCE NOTE (vectorized; the verbatim scalar loop this replaced is
     kept as `_build_elements_scalar` below and is the bit-for-bit oracle
@@ -669,7 +669,7 @@ def build_equation_numbers(xline, yline, zline, params, pmlb):
     Verified against `testsys/parity/fixtures/test_tpv8_serial/pydump_nodeinfo.txt`
     (dumped per Fortran node id 1..totalNumOfNodes: numOfDofPerNodeArr(i),
     eqNumStartIndexLoc(i), eqNumIndexArr(start+1..start+dof)) via
-    testsys/parity/test_standalone_meshgen.py.
+    the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15).
 
     Returns (num_dof, eq_start, eq_nums, total_num_of_equations) where
     num_dof is (N+1,) int (3 or 12, row 0 unused), eq_start is (N+1,) int
@@ -912,7 +912,7 @@ def build_fault_geometry(xline, yline, zline, params, nsmp):
     position, for this planar branch. Verified against
     `testsys/parity/fixtures/test_tpv8_serial/pydump_fault.txt` columns
     3-11 (un,us,ud) and column 12 (arn) via
-    testsys/parity/test_standalone_meshgen.py.
+    the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15).
 
     `MPI4arn`'s neighbor-boundary exchange (meshgen.f90's call right after
     the area-accumulation block) is entirely guarded behind `if (npx>1)` /
@@ -1060,8 +1060,8 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
     `build_node_coordinates`'s nsmp), first match wins.
 
     Verified against `testsys/parity/fixtures/test_tpv8_serial/
-    pydump_stations.txt` (dumped by src/pydump.f90's new station-matching
-    block) via testsys/parity/test_standalone_meshgen.py: numOfOnFaultStCount
+    pydump_stations.txt` (dumped by the removed pydump dumper's station-matching
+    block) via the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15): numOfOnFaultStCount
     and numOfOffFaultStCount match exactly, and every matched (station,node)
     pair matches Fortran's `anonfs`/`OffFaultStNodeIdIndex` in the SAME
     match order (not just as a set) -- Fortran's arrays are indexed by
@@ -1178,4 +1178,4 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
 # integration (nodalMassArr, fnms) -- standalone solver path must call
 # this at runtime, NOT read pydump_fnms.txt/pydump_nodalmass.txt (those
 # stay oracle-only, see M8 provenance note in this module's top docstring
-# and README-parity.md).
+# and the removed parity tier).

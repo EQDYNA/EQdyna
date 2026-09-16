@@ -19,7 +19,8 @@ faulting.f90:17-18 puts it -- inside faulting -- and because friclaw is a
 static Python int it is resolved at TRACE time under jit and costs nothing.
 
 MPI is absent by construction: this port is serial (npx=npy=npz=1, enforced
-by standalone/main.py), so driver.f90:27's MPI4NodalQuant has no work to do.
+by eqdyna3d.build_solver_state, which raises NotImplementedError otherwise),
+so driver.f90:27's MPI4NodalQuant has no work to do.
 That is a scope limit, not an omission that could silently mislead -- a
 multi-rank case is refused before it reaches here.
 """
@@ -135,7 +136,7 @@ def run(S, nsteps=None, verbose=True, xp=np):
     """The whole solve. `xp` selects the backend: numpy or jax.numpy.
 
     Returns the same dict the six modules this replaces returned, so
-    standalone/main.py and the frt writer need no change.
+    eqdyna3d.run_case and library_output's frt writer need no change.
     """
     nsteps = nsteps or S['nstep']
 

@@ -59,7 +59,7 @@ def run_python(work, threads):
     d = os.path.join(work, f'p{threads}')
     make_case(d, 1, 1, 1)
     env = os.environ.copy()
-    env['PYTHONPATH'] = f'{ROOT}/python'
+    env['PYTHONPATH'] = os.path.join(ROOT, 'src', 'python')
     env['XLA_FLAGS'] = (f'--xla_cpu_multi_thread_eigen={"true" if threads > 1 else "false"} '
                         f'intra_op_parallelism_threads={threads}')
     env['OMP_NUM_THREADS'] = str(threads)
