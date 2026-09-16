@@ -33,8 +33,56 @@ jobs:
           -t ghcr.io/eqdyna/eqdyna:latest \
           .
 
+    # Gate BEFORE push: a `--version`-only smoke test proves the binary
+    # linked, not that the shipped image runs EQdyna correctly. Run the
+    # repo's own unit+regression tiers and one real e2e case (fortran
+    # backend -- the image deliberately excludes jax, same rationale as
+    # the Dockerfile's jax-exclusion note) INSIDE the just-built image.
+    # pytest/scipy are installed here, not in the Dockerfile: they are a
+    # CI-only overlay (test.yml does the same on top of install-eqdyna.sh's
+    # own deps), not a production dependency this image should carry --
+    # mirrors the deliberate jax exclusion already documented there.
+    # A failing gate stops the job here; the push step below never runs.
+    - name: Gate the image on the repo's own test tiers (not a --version smoke test)
+      run: |
+        TAG="${GITHUB_REF_NAME}"
+        docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
+          set -e
+          pip3 install --break-system-packages pytest scipy
+          cd /opt/eqdyna
+          python3 testsys/run.py unit regression
+          python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran
+        '
+
     - name: Push image
       run: |
         TAG="${GITHUB_REF_NAME}"
         docker push ghcr.io/eqdyna/eqdyna:"${TAG}"
         docker push ghcr.io/eqdyna/eqdyna:latest
+
+  # Separate job -> a FRESH runner with no local build cache and nothing
+  # this workflow built still in memory. Pulls the image the job above just
+  # pushed and re-runs the same gate, so a registry-roundtrip-only failure
+  # (wrong manifest, layer squashing, auth) is caught the same way a human
+  # pulling `ghcr.io/eqdyna/eqdyna:vX.Y.Z` into an empty directory would hit
+  # it -- the check the previous version of this workflow never did.
+  verify-published-image:
+    needs: build-and-push
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Log in to ghcr.io
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+    - name: Pull the just-published image fresh
+      run: docker pull ghcr.io/eqdyna/eqdyna:"${GITHUB_REF_NAME}"
+
+    - name: Re-run the gate against the pulled image
+      run: |
+        TAG="${GITHUB_REF_NAME}"
+        docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
+          set -e
+          pip3 install --break-system-packages pytest scipy
+          cd /opt/eqdyna
+          python3 testsys/run.py unit regression
+          python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran
+        '
