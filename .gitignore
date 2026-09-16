@@ -20,7 +20,15 @@ testsys/parity/evidence_output/
 # the CI-dependency lint to keep it quiet.
 testsys/perf/perf_case/
 testsys/parity/probe_case/
-scec_archive/          # 484 MB of fetched submissions; the TOOLING is tracked at scripts/scec/
+# 484 MB of fetched submissions; the TOOLING is tracked at scripts/scec/.
+# NOTE (2026-09-16, v5.8.2 audit): a trailing inline comment on this pattern's
+# own line previously made the whole line -- including the comment text --
+# the literal (unmatchable) gitignore pattern, so scec_archive/ was NOT
+# ignored despite every doc in this repo saying it is. 693 files / ~1.16 GB
+# were tracked by f2c9851 as a result. Untracked going forward in the same
+# commit that fixed this pattern; the blobs remain in git history until a
+# deliberate, owner-approved history rewrite (out of scope for a release).
+scec_archive/
 relnotes_v*.md
 # testsys/perf/elem_scaling_last.json tracked: raw evidence behind measured_runs.md
 # (its harness was removed 2026-09-15 -- see that file's header)

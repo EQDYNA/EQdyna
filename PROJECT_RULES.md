@@ -18,6 +18,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 14. A living status board, re-checked on a schedule.
 15. Releases follow the documented workflow, notes lead the README.
 16. Test what you commit, not what is in your working tree.
+17. Reviving or adding a TPV benchmark.
 
 ---
 

@@ -81,7 +81,7 @@ MODULE errorCodes
     integer, parameter :: ERR_MESH_MATERIAL_UNSET    = 48  ! an element has no material property assigned
 
     ! --- 51-59 MPI and domain decomposition ---------------------------
-    integer, parameter :: ERR_MPI_FAULT_ALIGNMENT    = 51  ! a rank boundary in y coincides with the fault plane
+    integer, parameter :: ERR_MPI_FAULT_ALIGNMENT    = 51  ! a rank boundary in y coincides with the fault plane (not raised as of v5.8.2; downgraded to a NOTICE, see syncArnBoundary)
     integer, parameter :: ERR_MPI_BAD_NEIGHBOR       = 52  ! point-to-point exchange with a rank outside 0..npx*npy*npz-1
 
     ! --- 61-69 numerics and runtime state -----------------------------
