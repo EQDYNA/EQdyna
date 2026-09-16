@@ -484,7 +484,7 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
         # min_norm pass through UNTOUCHED. That gap is the Fortran's, kept.
         #
         # This clamp was present in the friclaw-4 port and MISSING from the
-        # friclaw-5 one, which is why standalone/main.py refused
+        # friclaw-5 one, which is why the pre-restructure entry point refused
         # insertFaultType>0 combined with friclaw==5. Unifying solveRSF
         # closes that gap by construction rather than by a second edit.
         tnrm = xp.where(tnrm >= gv.MIN_NORM, gv.MIN_NORM,

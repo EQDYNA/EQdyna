@@ -16,7 +16,7 @@ here -- out of scope, not silently approximated.
 Verified against `testsys/parity/fixtures/test_tpv8_serial/`'s
 bGlobal.txt/bModelGeometry.txt/bFaultGeometry.txt/bMaterial.txt/
 bStations.txt/on_fault_vars_input.nc via
-testsys/parity/test_standalone_meshgen.py: the resulting PARAMS dict,
+the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15): the resulting PARAMS dict,
 material array, xonfs/x4nds station arrays, and initial fric array are fed
 straight into meshgen.py's M1-M5 builders and `read_on_fault_vars` below,
 and the M1-M5 parity checks (already gated against pydump_meshCoor.txt/

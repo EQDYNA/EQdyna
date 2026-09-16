@@ -63,7 +63,8 @@ from . import backend as _backend
 
 # friclaw -> the NumPy solver module whose run(S, nsteps, verbose) consumes
 # this module's S dict. All three modules were independently verified
-# (README-parity.md) to need the EXACT SAME S-dict keys (port_rsf.py/
+# (by the removed parity tier) to need the EXACT SAME S-dict keys (the
+# per-friclaw modules
 # port_tp.py only add nucleation-parameter reads and, for TP, an internally
 # -owned onFaultTPHist scan-carry -- neither needs a NEW key from S beyond
 # what build_solver_state already provides for tpv8, confirmed by grepping
