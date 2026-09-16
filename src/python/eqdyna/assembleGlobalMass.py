@@ -29,6 +29,15 @@ particular:
     note) -- `globalShapeFunc == localShapeFunc` going into the Jacobian
     for every element, exactly Fortran's own unconditional
     `globalShapeFunc = localShapeFunc` copy for this case.
+    STILL TRUE as of the C_degen>3 (tpv36/tpv37) mesh port (meshgen.py's
+    build_elements/library_degeneration.f90 wedge()/reorder()): this
+    module's `compute_element_shape`/`compute_hourglass`/`contm` were NOT
+    extended with calcGlobalShapeFunc.f90:22-28's elemTypeArr==11/12
+    shape-function-merge branch -- left explicitly REFUSING, not silently
+    wrong: eqdyna3d.py's `build_solver_state` raises NotImplementedError
+    before calling into this module whenever the mesh contains any
+    elemTypeArr 11/12 element, rather than feeding them through this
+    module's generic (non-degenerate) formulas.
 
 Verified against `testsys/parity/fixtures/test_tpv8_serial/
 pydump_nodalmass.txt` / `pydump_fnms.txt` via

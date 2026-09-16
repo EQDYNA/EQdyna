@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 src/fortran/*.o
 src/fortran/eqdyna
+src/fortran/_probe_wedge_mesh
 
 test/
 test.prev/
