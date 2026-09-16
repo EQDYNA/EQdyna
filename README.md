@@ -1,11 +1,6 @@
 # News in 2026
-* 20260916 v5.8.3 release notes
-  * Fix - item 23 (Drucker-Prager viscoplastic kernel, `calcElemKU.f90:127-161`, friclaw 4) had zero isolated test; `testsys/regression/test_drucker_prager_kernel.py` now compiles the real, unmodified Fortran routine and diffs it against the Python port on 4 synthetic stress states, no MPI/case/mesh required.
-  * Fix - item 28's TPV29 cross-code comparison is now a committed, reproducible script (`testsys/parity/evidence_tpv29_scec_comparison.py`), not prose. Running it found a real error in the previously recorded claim: Mw 7.45 has no reproducible provenance and is physically impossible for this run (Kanamori relation puts it at 4.7x the run's actual seismic moment); corrected to 7.034, derivation left inline.
-  * New - `src/python/eqdyna/meshgen.py` ports `C_degen` wedge-degeneration MESH generation (the fault-adjacent hex-to-2-wedge split), verified an exact element/node-count match against a fresh Fortran build on test.tpv36. Its DYNAMICS remain explicitly refused (not silently wrong) -- test.tpv36/test.tpv37 stay ungated pending that further port.
-  * New - `Dockerfile` + `.github/workflows/publish.yml`: a tagged release now builds and publishes `ghcr.io/eqdyna/eqdyna:<tag>`. The published image is gated on the repo's own `unit`+`regression`+one real `e2e` cell running inside the built container before it is pushed, and a second CI job re-pulls the just-published image fresh on a clean runner and re-runs the same gate -- not a `--version` smoke test.
-  * New - `scripts/scec/` tracks a sha256 manifest (`CHECKSUMS.sha256`) of the 693-file SCEC archive plus an `organize.py --verify` mode, so the archive's integrity is checkable without re-fetching 484 MB.
-  * Housekeeping - `git gc` reclaimed loose-object bloat (307 MiB loose -> 1.85 MiB loose; 283.57 MiB stays packed, since the 693 blobs a prior `.gitignore` bug tracked are still reachable through history -- a real fix needs an owner-approved history rewrite, not done here).
+* 20260916 v5.8.4 release notes
+  * Fix - the Dockerfile added in v5.8.3 could not actually build: `ubuntu:22.04`'s stock pip3 (22.0.2) does not support the `--break-system-packages` flag (added in pip 23.0.1), so `RUN pip3 install --break-system-packages ...` failed with exit 2 on the very first real build v5.8.3's tag push triggered. Flag removed (22.04's system Python has no PEP 668 externally-managed-environment marker, so none is needed). `ghcr.io/eqdyna/eqdyna:v5.8.4` and `:latest` are the first images this pipeline has actually published; v5.8.3's images were never pushed (its Release notes are corrected to say so). No solver or test changes in this release -- Dockerfile only.
   * For past release notes, please refer to pastReleaseNotes.md.
 
 

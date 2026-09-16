@@ -14,7 +14,7 @@ program EQdyna
 
     if (me == masterProcsId) then 
         write(*,*) '====================================================================='
-        write(*,*) '==================   Welcome to EQdyna 5.8.3  ======================='
+        write(*,*) '==================   Welcome to EQdyna 5.8.4  ======================='
         write(*,*) '===== Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>           ====' 
         write(*,*) '====    & Dunyu Liu <dliu@ig.utexas.edu> under MIT License.      ===='
         write(*,*) '============== https://github.com/EQDYNA/EQdyna.git   ==============='
