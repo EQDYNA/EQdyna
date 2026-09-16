@@ -194,15 +194,35 @@ def run_cell(case, backend, test_dir, eqdyna_cmd, env, device):
 def select(args):
     """(runnable, declared_unsupported, label, explicit) for this invocation."""
     if args.ci:
+        # --backends/--cases, WHEN COMBINED WITH --ci, filter matrix.CI_CELLS
+        # itself rather than switching to matrix.cells() -- this is what lets
+        # a CI matrix job ask for "the fortran slice of CI_CELLS" or "the
+        # python slice of CI_CELLS" while matrix.CI_CELLS stays the ONE
+        # declared, memory-measured source of truth (rule 6). The workflow
+        # never spells out a cell list of its own; it only names an axis
+        # subset, so widening CI_CELLS in matrix.py widens every job that
+        # asks for 'all' on that axis with no workflow edit needed.
+        wanted = list(matrix.CI_CELLS)
+        if args.cases:
+            want_cases = set(args.cases.split(','))
+            wanted = [c for c in wanted if c[0] in want_cases]
+        if args.backends:
+            want_backends = set(args.backends.split(','))
+            wanted = [c for c in wanted if c[1] in want_backends]
         runnable, unsupported = [], []
-        for cell in matrix.CI_CELLS:
+        for cell in wanted:
             if matrix.is_supported(*cell):
                 runnable.append(cell)
             else:
                 unsupported.append(cell + (matrix.unsupported_reason(*cell),))
+        filt = ''
+        if args.cases or args.backends:
+            filt = (', filtered to cases=%s backends=%s'
+                    % (args.cases or 'all', args.backends or 'all'))
         return (runnable, unsupported,
                 'CI (declared cell list, chosen against a measured %.0f GB '
-                'runner -- matrix.CI_CELLS)' % matrix.CI_RUNNER_RAM_GB, True)
+                'runner -- matrix.CI_CELLS%s)' % (matrix.CI_RUNNER_RAM_GB, filt),
+                True)
     cases = args.cases.split(',') if args.cases else None
     backends = args.backends.split(',') if args.backends else None
     runnable, unsupported = matrix.cells(cases, backends)
