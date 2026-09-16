@@ -260,6 +260,7 @@ authoritative; the specific number is advisory under `srun`.
 | code | name | meaning |
 |-----:|------|---------|
 | 51 | `ERR_MPI_FAULT_ALIGNMENT` | a rank boundary in y coincides with the fault plane |
+| 52 | `ERR_MPI_BAD_NEIGHBOR` | point-to-point exchange with a rank outside 0..npx*npy*npz-1 |
 
 **Numerics and runtime state** (61-69)
 

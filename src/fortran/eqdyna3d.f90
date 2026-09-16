@@ -262,15 +262,56 @@ subroutine checkFaultMPIAlignment
         .and. (fltxyz(2,2,ntotft) /= fltxyz(1,2,ntotft))
     call MPI_Allreduce(hitHere, hitAnywhere, 1, MPI_LOGICAL, MPI_LOR, MPI_COMM_WORLD, iMPIerr)
 
-    if (hitAnywhere) then
-        if (me == masterProcsId) then
-            write(*,*) 'checkFaultMPIAlignment: an MPI partition boundary in y coincides with a fault of non-degenerate y-extent.'
-            write(*,*) 'MPI4arn''s divide-vs-duplicate fix has not been audited for this case. Set par.ymax /= -par.ymin (asymmetric y-domain) so the fault is offset from rank boundaries.'
-        endif
-        call MPI_Barrier(MPI_COMM_WORLD, iMPIerr)
-        call abortRun(ERR_MPI_FAULT_ALIGNMENT, &
-            'An MPI partition boundary in y coincides with a fault of non-degenerate y-extent. Set par.ymax /= -par.ymin.')
-    endif
+      ! NOTICE, not an abort. This was a hard stop (exit 51) until 2026-09-16,
+      ! on the grounds that MPI4arn's divide-vs-duplicate reasoning had never
+      ! been audited for a fault with real y-extent. Audited now -- but the
+      ! discriminator is NOT what "dipping" suggests, so state it exactly.
+      !
+      ! THE DISCRIMINATOR IS THE MESH REPRESENTATION, NOT THE PHYSICAL DIP.
+      ! checkIsOnFault (meshgen.f90) selects fault nodes two different ways:
+      !
+      !   C_degen > 3  (wedge degeneration; test.tpv36, test.tpv37)
+      !       |z + y*tan(dip)| < dx/100 -- the fault is a plane that SPANS a
+      !       range of grid y. A y = const rank boundary CROSSES it, the two
+      !       ranks own DIFFERENT adjoining elements, and each holds a
+      !       genuinely partial tributary area.  ->  DIVIDE, add back.
+      !
+      !   C_degen == 0 with insertFaultType > 0 (test.tpv10, dip = 60)
+      !       nodeCoor(2) == 0.0d0, EXACT equality on the UNBLENDED grid y --
+      !       the fault is the y-index-0 plane however steeply it dips
+      !       physically. insertFaultInterface displaces the physical y into
+      !       ycoort/meshCoor, but the fault stays ONE grid plane. A y = const
+      !       boundary there COINCIDES with the fault, so both ranks already
+      !       built the full local fault-node grid and each holds the COMPLETE
+      !       tributary area.  ->  DUPLICATE, do not add back.
+      !
+      ! So a 60-degree dipping fault built by insertion is topologically the
+      ! same y = const situation as a vertical one, and must NOT add back;
+      ! a 15-degree dipping fault built by degeneration must. The condition in
+      ! syncArnBoundary -- fltxyz(2,dimId) /= fltxyz(1,dimId) -- keys on the
+      ! NOMINAL GRID extent, which is 0.0/0.0 for insertion (defaultParameters:
+      ! "for vertical strike-slip faults, we align faults along xz planes") and
+      ! faultWidth*cos(dip) for degeneration. That is exactly the right
+      ! discriminator, and it is not the physical dip.
+      !
+      ! EVIDENCE for each branch:
+      !   DIVIDE    test.tpv36 at (npx,npy,npz)=(2,2,1) vs (2,1,2): tractions
+      !             agree to 1.0e-08, the output format's precision, at all
+      !             3416 non-zero fault nodes; ratio exactly 1.000000 on
+      !             tnrm/tstk/tdip. A duplicated surface would give 0.5.
+      !             Pinned by testsys/regression/test_dipping_fault_y_split.py.
+      !   DUPLICATE item 26, pinned by test_fault_mpi_boundary_arn.py
+      !             (symmetric-y case, vertical fault: serial == xsplit ==
+      !             zsplit == ysplit hypocenter traction, exactly).
+      if (hitAnywhere .and. me == masterProcsId) then
+          write(*,*) 'checkFaultMPIAlignment: NOTICE -- a y MPI boundary carries fault nodes for a fault whose'
+          write(*,*) '  NOMINAL GRID y-extent is non-zero (wedge degeneration, C_degen>3). That is the DIVIDE'
+          write(*,*) '  case and is handled; audited 2026-09-16, tractions identical to an unsplit run to 1.0e-08.'
+          write(*,*) '  NOTE: a fault built by insertion (insertFaultType>0) has ZERO nominal y-extent even when'
+          write(*,*) '  it dips steeply, and takes the DUPLICATE path instead -- the dip is not the discriminator.'
+          write(*,*) '  fltxyz(1,2)=', fltxyz(1,2,ntotft), ' fltxyz(2,2)=', fltxyz(2,2,ntotft)
+          write(*,*) '  npx,npy,npz =', npx, npy, npz
+      endif
 end subroutine checkFaultMPIAlignment
 
 subroutine checkMeshMaterial

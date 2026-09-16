@@ -171,6 +171,10 @@ subroutine MPI4NodalQuant(quantArray, numDof)
         !
                     call addFaultBoundaryTerm(ixyz, ib, 1, btmp, rrr, quantArray, dofCount4MPI)
 
+                    call requireValidNeighbor(dest, 'MPI4NodalQuant (assembleGlobalMass)', &
+                        ixyz, ib, 'nodal-quantity boundary exchange; bnd(1),bnd(2) and numxyz for this direction decide which sides run')
+                    call requireValidNeighbor(source, 'MPI4NodalQuant (assembleGlobalMass) recv', &
+                        ixyz, ib, 'same exchange, receive side')
                     call mpi_sendrecv(btmp,  rrr, MPI_DOUBLE_PRECISION, dest, sendtag, &
                                       btmp1, rrr, MPI_DOUBLE_PRECISION, source, recvtag, &
                                       MPI_COMM_WORLD, iMPIstatus, iMPIerr)

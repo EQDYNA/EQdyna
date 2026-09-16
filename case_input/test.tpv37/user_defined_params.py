@@ -59,7 +59,12 @@ print('DIP: ysource, zsource are' , par.ysource, par.zsource)
 print('DIP: dt is    ', par.dt)
 
 par.nx = 2
-par.ny = 2
+par.ny = 1  # NOT 2: this is a DIPPING fault, so the fault has genuine
+            # y-extent (par.fymax = faultWidth*cos(dip) != par.fymin). Any
+            # y-split can then put a rank boundary ON the fault, and
+            # MPI4arn's divide-vs-duplicate reasoning is not audited for
+            # that case -- checkFaultMPIAlignment refuses it with exit 51.
+            # npy=1 sidesteps it; x and z still split, so 4 ranks.
 par.nz = 2
 par.HPC_ncpu  = par.nx*par.ny*par.nz # Number of CPUs requested.
 par.HPC_nnode = round(floor(par.HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.

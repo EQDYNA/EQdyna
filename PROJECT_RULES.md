@@ -451,9 +451,21 @@ in-tree reproduces them — that is pathway item 28, and it is the one part of
 the TPV29 work that was done wrong. Write the comparison as a committed script
 from the start (rule 4).
 
-**7. Run the FULL sweep, all three backends.** A new case is 3 cells, not 1.
-Either all three pass, or the failing ones are declared UNSUPPORTED in
-`matrix.py` with a reason verified in the source — never left absent.
+**7. Run the FULL sweep, all three backends -- and ALL THREE MUST PASS.**
+A new case is 3 cells, not 1.
+
+**Supporting a TPV, or any problem, means supporting it on every backend**
+(owner, 2026-09-16). A case is not added with its Python columns declared
+UNSUPPORTED to be filled in later: that ships a benchmark the Fortran can run
+and the port cannot, and the sweep's whole value is that the two
+implementations check each other. If the port lacks a feature the case needs,
+PORT THE FEATURE FIRST, then add the case.
+
+`UNSUPPORTED` in `matrix.py` remains the honest way to record a gap that
+ALREADY exists on a case already gated -- it is not a runway for new ones. The
+friclaw-2 gap is the worked example: test.meng2023a and test.meng2023cb sat
+declared-unsupported for months, and closing it turned out to be ~20 lines of
+`time_weak`. Had this rule been in force, that gap would never have opened.
 
 **How to apply**: `python3 testsys/e2e/run_e2e.py --cases test.tpvNN` for the
 new case alone while iterating, then `python3 testsys/run.py all` before
