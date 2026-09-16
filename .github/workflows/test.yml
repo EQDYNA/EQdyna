@@ -1,6 +1,31 @@
 name: Automatic Testing of EQdyna
 
-on: [push, pull_request]
+# paths-ignore is deliberately NARROW, not a blanket '**.md': README.md is
+# read by testsys/regression/test_readme_commands.py (checks its documented
+# tiers/compsets actually exist) and, together with pathway_forward.md, by
+# test_release_complete.py's release-completeness checks -- so README.md
+# stays in the trigger set unconditionally. pathway_forward.md and
+# PROJECT_RULES.md are excluded: nothing parses PROJECT_RULES.md's content
+# today (grepped testsys/ for it -- every hit is a comment citing a rule
+# number, not a check of the file itself), and pathway_forward.md-only edits
+# cannot silently break test_release_complete.py's Tasks-done-row check
+# because that check only fires once a tag for VERSION exists, and VERSION
+# only changes in a release commit -- which always also touches non-md files
+# (src/fortran/eqdyna3d.f90's banner, at minimum) and so always still
+# triggers CI regardless of this list. Measured on the v5.8.3 release chain
+# (2026-09-16): 3 of 5 commits touched only pathway_forward.md/
+# PROJECT_RULES.md, each burning a full ~11-minute run (591s of it real MPI
+# compute in "Run tests", not fixable by caching) for a prose-only change,
+# and because a release blocks on green, that is release-delay too.
+on:
+  push:
+    paths-ignore:
+      - 'pathway_forward.md'
+      - 'PROJECT_RULES.md'
+      - 'pastReleaseNotes.md'
+      - 'Docker.guide.md'
+      - 'docs/**'
+  pull_request:
 
 jobs:
   build:

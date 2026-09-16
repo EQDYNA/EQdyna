@@ -27,9 +27,17 @@ RUN apt-get update && \
 # would roughly double image size for a backend most container users will
 # never touch. CI (.github/workflows/test.yml) installs jax for that reason;
 # this image does not. Revisit if a jax-GPU container variant is added later
-# (see the note in QUEUE_dockerfile.md about a CUDA variant / separate
-# Dockerfile, not this one).
-RUN pip3 install --break-system-packages numpy netCDF4 matplotlib xarray
+# (a CUDA variant would need its own separate Dockerfile, not this one).
+#
+# No --break-system-packages: that flag does not exist on ubuntu:22.04's
+# stock pip3 (22.0.2 -- the flag was added in pip 23.0.1) and its absence
+# here broke the FIRST real build this Dockerfile ever went through
+# (v5.8.3's tag-triggered publish.yml run, exit code 2, "no such option");
+# nothing had ever actually built this image before that run, since the
+# original publish workflow shipped with zero build verification. ubuntu:22.04
+# has no PEP 668 externally-managed-environment marker on its system Python,
+# so a plain pip3 install needs no flag at all.
+RUN pip3 install numpy netCDF4 matplotlib xarray
 
 COPY . /opt/eqdyna
 WORKDIR /opt/eqdyna
