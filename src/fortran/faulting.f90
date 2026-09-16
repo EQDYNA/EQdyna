@@ -10,7 +10,11 @@ subroutine faulting
     real (kind = dp) :: nsdSlipVector(4), nsdSliprateVector(4), nsdTractionVector(4)
     real (kind = dp) :: nsdInitTractionVector(3)
     
-    startTimeStamp = MPI_WTIME()
+    ! LOCAL stage timer. The shared global startTimeStamp was written by
+    ! eight sites across six files, each pairing it with a different
+    ! counter, so any nesting silently truncated the OUTER one.
+    real (kind = dp) :: tStageStart
+    tStageStart = MPI_WTIME()
     do ift = 1, ntotft
         do i = 1, nftnd(ift)   
             call getNsdSlipSliprateTraction(ift, i, nsdSlipVector, nsdSliprateVector, nsdTractionVector, nsdInitTractionVector, dtau)
@@ -21,7 +25,7 @@ subroutine faulting
             call storeRuptureTime(ift, i, nsdSliprateVector)
         enddo 
     enddo  
-    compTimeInSeconds(6) = compTimeInSeconds(6) + MPI_WTIME() - startTimeStamp 
+    compTimeInSeconds(6) = compTimeInSeconds(6) + MPI_WTIME() - tStageStart 
 end subroutine faulting     
 
 ! Subroutine rate_state_normal_stress calculates the effect of normal stress change

@@ -8,7 +8,11 @@ subroutine assembleGlobalKU
     integer (kind = 4) :: nel, i, j, eqNumTmp
     real (kind = dp) :: pstrinc, efPML(96), elresf(nee), al(ned,nen)
         
-    startTimeStamp = MPI_WTIME()
+    ! LOCAL stage timer. The shared global startTimeStamp was written by
+    ! eight sites across six files, each pairing it with a different
+    ! counter, so any nesting silently truncated the OUTER one.
+    real (kind = dp) :: tStageStart
+    tStageStart = MPI_WTIME()
     
     do nel = 1, totalNumOfElements
         !al(1:ned,1:nen) = 0.0d0
@@ -63,7 +67,7 @@ subroutine assembleGlobalKU
             enddo
         endif
     enddo
-    compTimeInSeconds(4) = compTimeInSeconds(4) + MPI_WTIME() - startTimeStamp
+    compTimeInSeconds(4) = compTimeInSeconds(4) + MPI_WTIME() - tStageStart
 end subroutine assembleGlobalKU
 
 
