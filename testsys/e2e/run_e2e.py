@@ -367,18 +367,42 @@ def main(argv=None):
     else:
         import concurrent.futures as _cf
         import threading
-        sem = threading.Semaphore(budget)
         lock = threading.Lock()
 
+        # ALL-OR-NOTHING core reservation. A cell costs more than one core
+        # (a fortran cell costs its rank count), and the obvious spelling --
+        # `for _ in range(cost): sem.acquire()` on a Semaphore -- DEADLOCKS,
+        # because it takes units one at a time: with budget 6, two cells each
+        # needing 4 can end up holding 3 apiece and both wait forever for a
+        # fourth the other is holding. That is not hypothetical; it hung this
+        # sweep for 80 minutes with 14 cells left, parent alive at 0.1% CPU
+        # and no children. A Condition lets a thread take its whole cost
+        # atomically or not at all, which cannot deadlock.
+        cond = threading.Condition()
+        free_cores = budget
+
+        def reserve(cost):
+            nonlocal free_cores
+            with cond:
+                while free_cores < cost:
+                    cond.wait()
+                free_cores -= cost
+
+        def release(cost):
+            nonlocal free_cores
+            with cond:
+                free_cores += cost
+                cond.notify_all()
+
         def guarded(cb):
+            # min(): a cell that costs more than the whole budget would
+            # otherwise wait forever for cores that will never exist.
             cost = min(cell_cost(*cb), budget)
-            for _ in range(cost):
-                sem.acquire()
+            reserve(cost)
             try:
                 return run_one(cb)
             finally:
-                for _ in range(cost):
-                    sem.release()
+                release(cost)
 
         print('e2e: running %d cells concurrently, core budget %d '
               '(serial would be the sum of all cell times)'
