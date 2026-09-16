@@ -1,0 +1,222 @@
+{
+ "tpv104": {
+  "users": [
+   "dliu"
+  ],
+  "labels": {
+   "dliu": "Dunyu Liu - Finite Element - EQdyna3d_V4.1"
+  },
+  "ulist": "barall*dliu*kaneko*ke*ma*ma.2*premus*ulrich.3*wzhang",
+  "all_users": [
+   "barall",
+   "dliu",
+   "kaneko",
+   "ke",
+   "ma",
+   "ma.2",
+   "premus",
+   "ulrich.3",
+   "wzhang"
+  ]
+ },
+ "tpv105-3d": {
+  "users": [
+   "dliu",
+   "dliu.2"
+  ],
+  "labels": {
+   "dliu": "D.Liu, B. Luo - FEM - EQdyna_3D_5.1.0-200m",
+   "dliu.2": "D.Liu, B. Luo - FEM - EQdyna_3D_5.1.0-100m"
+  },
+  "ulist": "barall*barall.2*chen*chen.2*dliu*dliu.2*wang*wang.2*wzhang",
+  "all_users": [
+   "barall",
+   "barall.2",
+   "chen",
+   "chen.2",
+   "dliu",
+   "dliu.2",
+   "wang",
+   "wang.2",
+   "wzhang"
+  ]
+ },
+ "tpv105-3d_arc": {
+  "users": [
+   "dliu.2"
+  ],
+  "labels": {
+   "dliu.2": "D.Liu, B. Luo - FEM - EQdyna_3D_5.1.0-100m"
+  },
+  "ulist": "barall.2*chen.2*dliu.2*vyas*wang.2*wzhang",
+  "all_users": [
+   "barall.2",
+   "chen.2",
+   "dliu.2",
+   "vyas",
+   "wang.2",
+   "wzhang"
+  ]
+ },
+ "tpv29": {
+  "users": [
+   "dliu",
+   "dliu.2"
+  ],
+  "labels": {
+   "dliu": "Dunyu Liu - Finite Element - EQdyna-100m",
+   "dliu.2": "Dunyu Liu - Finite Element - EQdyna-50m"
+  },
+  "ulist": "bai*barall*barall.2*chen*dliu*dliu.2*duru*duru.2*gabriel*kaneko*shi*shi.2*wzhang",
+  "all_users": [
+   "bai",
+   "barall",
+   "barall.2",
+   "chen",
+   "dliu",
+   "dliu.2",
+   "duru",
+   "duru.2",
+   "gabriel",
+   "kaneko",
+   "shi",
+   "shi.2",
+   "wzhang"
+  ]
+ },
+ "tpv30": {
+  "users": [
+   "dliu",
+   "dliu.2",
+   "dliu.3"
+  ],
+  "labels": {
+   "dliu": "Dunyu Liu - Finite Element - EQdyna-100m",
+   "dliu.2": "Dunyu Liu - Finite Element - EQdyna-50m",
+   "dliu.3": "Dunyu Liu - Finite Element - EQdyna - 25m"
+  },
+  "ulist": "barall*barall.2*chen*dliu*dliu.2*dliu.3*duru*duru.2*kaneko*shi*shi.2*ulrich*wzhang",
+  "all_users": [
+   "barall",
+   "barall.2",
+   "chen",
+   "dliu",
+   "dliu.2",
+   "dliu.3",
+   "duru",
+   "duru.2",
+   "kaneko",
+   "shi",
+   "shi.2",
+   "ulrich",
+   "wzhang"
+  ]
+ },
+ "tpv34": {
+  "users": [
+   "dliu",
+   "dliu.2"
+  ],
+  "labels": {
+   "dliu": "Dunyu Liu - Finite Element - EQdyna -50m",
+   "dliu.2": "Dunyu Liu_EQdyna3d_v4.0_3DMPI_Ada_25m"
+  },
+  "ulist": "barall*barall.2*chen*chen.2*dliu*dliu.2*taufiq*taufiq.2",
+  "all_users": [
+   "barall",
+   "barall.2",
+   "chen",
+   "chen.2",
+   "dliu",
+   "dliu.2",
+   "taufiq",
+   "taufiq.2"
+  ]
+ },
+ "tpv35": {
+  "users": [
+   "dliu"
+  ],
+  "labels": {
+   "dliu": "Dunyu Liu - Finite Element - EQdyna3Dv4.1.3 - 100m"
+  },
+  "ulist": "barall*barall.2*chen*dliu*nature*nature.2*ulrich.2",
+  "all_users": [
+   "barall",
+   "barall.2",
+   "chen",
+   "dliu",
+   "nature",
+   "nature.2",
+   "ulrich.2"
+  ]
+ },
+ "tpv36": {
+  "users": [
+   "dliu.3"
+  ],
+  "labels": {
+   "dliu.3": "EQdyna.v5.3.3.50m.dliu.largeDomain"
+  },
+  "ulist": "barall*dliu.3*li.2*wzhang.2",
+  "all_users": [
+   "barall",
+   "dliu.3",
+   "li.2",
+   "wzhang.2"
+  ]
+ },
+ "tpv36_arc": {
+  "users": [
+   "dliu.3"
+  ],
+  "labels": {
+   "dliu.3": "EQdyna.v5.3.3.50m.dliu.largeDomain"
+  },
+  "ulist": "barall*dliu.3*imran*kutschera.2*ma*wzhang.2*yang.2",
+  "all_users": [
+   "barall",
+   "dliu.3",
+   "imran",
+   "kutschera.2",
+   "ma",
+   "wzhang.2",
+   "yang.2"
+  ]
+ },
+ "tpv37": {
+  "users": [
+   "dliu",
+   "dliu.2"
+  ],
+  "labels": {
+   "dliu": "EQdyna.v5.3.3.50m.dliu",
+   "dliu.2": "EQdyna.v5.3.3.100m.dliu"
+  },
+  "ulist": "barall*dliu*dliu.2*wzhang.2",
+  "all_users": [
+   "barall",
+   "dliu",
+   "dliu.2",
+   "wzhang.2"
+  ]
+ },
+ "tpv37_arc": {
+  "users": [
+   "dliu.3"
+  ],
+  "labels": {
+   "dliu.3": "EQdyna.v5.3.3.50m.dliu.largeDomain"
+  },
+  "ulist": "barall*dliu.3*imran*kutschera.2*ma*wzhang.2*yang.2",
+  "all_users": [
+   "barall",
+   "dliu.3",
+   "imran",
+   "kutschera.2",
+   "ma",
+   "wzhang.2",
+   "yang.2"
+  ]
+ }
+}
