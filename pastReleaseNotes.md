@@ -1,6 +1,11 @@
 # Past release notes\
 
 # News in 2026
+* 20260915 v5.7.1 release notes
+  * Fix - v5.7.0's CI went red: the Python/JAX backend inside e2e needs 10.4 GB for test.tpv104 and a GitHub runner has 7 GB, so the job was SIGTERM'd (exit 143) with no output. CI now gates test.tpv8 (measured 3.59 GB at the time; 1.91 GB jax / 1.45 GB numpy as of v5.8.0), and e2e prints its case list so a green check states its own coverage instead of implying five.
+  * Fix - the e2e python child runs unbuffered; under the previous buffering a resource kill produced zero output, so the log showed seven minutes of silence and a bare exit code.
+  * Change - release workflow (rule 15): the tag and GitHub Release now come AFTER CI is green on the pushed commit, not before. v5.7.0 was tagged on a local green that could not model the runner's memory; a released tag pointing at a red commit makes the Releases page the authoritative wrong answer.
+  * Note - all five accept cases run and pass locally. The exclusion is the runner's memory, not the cases. Python peak RSS on test.tpv104 is 10.4 GB (jax) / 4.2 GB (numpy) against Fortran's 0.95 GB; reducing that is tracked in pathway_forward.md. [SUPERSEDED: the jit closure fix in v5.8.0 took tpv104 jax to 3.42 GB and the solver restructure took numpy to 2.29 GB. See README's Performance section for current figures.]
 * 20260916 v5.8.0 release notes
   * New - `src/fortran/` and `src/python/`: the two implementations of the same solver now sit side by side under one parent. 26 .f90 + makefile, and 14 .py of which every one but `backend.py` (the numpy/jax adapter) and `__main__.py` maps 1:1 onto a Fortran file.
   * New - the Python solver mirrors the Fortran design. The three per-friclaw solver copies (port/port_rsf/port_tp, each duplicated again for JAX) collapse into ONE driver whose friclaw dispatch sits inside `solveSWTW`, exactly as `faulting.f90:17-18` does it. Solver 1,497 -> 842 lines; tpv104 peak RSS 2.52 -> 2.29 GB.

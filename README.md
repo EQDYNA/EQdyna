@@ -1,10 +1,14 @@
 # News in 2026
-* 20260915 v5.7.1 release notes
-  * Fix - v5.7.0's CI went red: the Python/JAX backend inside e2e needs 10.4 GB for test.tpv104 and a GitHub runner has 7 GB, so the job was SIGTERM'd (exit 143) with no output. CI now gates test.tpv8 (measured 3.59 GB), and e2e prints its case list so a green check states its own coverage instead of implying five.
-  * Fix - the e2e python child runs unbuffered; under the previous buffering a resource kill produced zero output, so the log showed seven minutes of silence and a bare exit code.
-  * Change - release workflow (rule 15): the tag and GitHub Release now come AFTER CI is green on the pushed commit, not before. v5.7.0 was tagged on a local green that could not model the runner's memory; a released tag pointing at a red commit makes the Releases page the authoritative wrong answer.
-  * Note - all five accept cases run and pass locally. The exclusion is the runner's memory, not the cases. Python peak RSS on test.tpv104 is 10.4 GB (jax) / 4.2 GB (numpy) against Fortran's 0.95 GB; reducing that is tracked in pathway_forward.md.
+* 20260916 v5.8.0 release notes
+  * New - `src/fortran/` + `src/python/`: the two implementations of the same solver side by side. 26 .f90, and 14 .py of which every one but `backend.py` (the numpy/jax adapter) and `__main__.py` maps 1:1 onto a Fortran file.
+  * New - friclaw 2 (time-weakening) ported: test.meng2023a and test.meng2023cb run on the Python backends for the first time. The sweep is 24 cells with ZERO declared-unsupported.
+  * Fix - TPV 29 was missing from `swtwNucleation`'s smoothed forced-rupture list, so test.tpv29 had been declaring `par.tpv = 36` to reach its own spec formula. That hid a port gap which nucleated 0 of 3321 fault nodes against a reference of 2974: 7.10e7 -> 9.9e-15.
+  * Fix - the port ended each step with `force * inv_mass` where `driver.f90:30` DIVIDES. friclaw 4/5 moved toward the reference; drv.a6 x python-numpy 461 -> 423 rupture-arrival flips under its UNTOUCHED 450 budget.
+  * Fix - the parallel sweep could deadlock (multi-core cells reserved units one at a time). Observed: 80 minutes, 14 of 24 cells unrun, no error. Guarded.
+  * Change - ONE test: the `accept` and `parity` tiers are gone, along with the pydump Fortran instrumentation they needed. ~5,700 lines net removed.
+  * Perf - solver 1,497 -> 842 lines; tpv104 numpy peak RSS 2.52 -> 2.29 GB. The perf tier now gates on PER-STEP cost with compile subtracted, after a total-wall-clock metric reported a 33% JAX regression that did not exist.
   * For past release notes, please refer to pastReleaseNotes.md.
+
 
 
 
@@ -61,16 +65,16 @@ which it did not, so a green result states its own scope. CI runs the subset
 that fits a 7 GB runner (`python3 testsys/run.py unit regression e2e-ci`);
 `python3 testsys/run.py all` runs the whole sweep.
 
-| case | physics | SCEC benchmark | fast tier (dx/cores/~time) | full-tier spec (dx/term) |
+| case | physics | SCEC benchmark | fast tier (dx / ranks / fortran s / numpy s / jax s) | full-tier spec (dx/term) |
 |---|---|---|---|---|
-| [test.tpv8](case_input/test.tpv8/README.md) | strike-slip, slip-weakening | [TPV8](https://strike.scec.org/cvws/tpv89docs.html) | 500m/4/~48s | 100m/15s |
-| [test.tpv10](case_input/test.tpv10/README.md) | dipping normal fault | [TPV10](https://strike.scec.org/cvws/tpv10_11docs.html) | 500m/4/~48s | 100m/15s |
-| [test.tpv104](case_input/test.tpv104/README.md) | strike-slip, rate-and-state | [TPV104](https://strike.scec.org/cvws/tpv103_104docs.html) | 500m/4/~48s | 50m/12s |
-| [test.tpv1053d](case_input/test.tpv1053d/README.md) | RSF + thermal pressurization | [TPV105-3D](https://strike.scec.org/cvws/tpv105_3D_docs.html) | 500m/4/~48s | excluded (no spec dx) |
-| [test.drv.a6](case_input/test.drv.a6/README.md) | fractal fault + plasticity | internal | 500m/4/~48s | excluded (no published spec) |
-| [test.meng2023a](case_input/test.meng2023a/README.md) | layered velocity structure | internal | 400m/4/~48s | excluded (no published spec) |
-| [test.meng2023cb](case_input/test.meng2023cb/README.md) | layered velocity, multi-patch | internal | 400m/4/~48s | excluded (no published spec) |
-| [test.tpv29](case_input/test.tpv29/README.md) | strike-slip, fractal rough fault | [TPV29](https://strike.scec.org/cvws/tpv29_30docs.html) | 500m/4/~3 min | 50m/20s |
+| [test.tpv8](case_input/test.tpv8/README.md) | strike-slip, slip-weakening | [TPV8](https://strike.scec.org/cvws/tpv89docs.html) | 500m/4/13.3/74.3/20.4 | 100m/15s |
+| [test.tpv10](case_input/test.tpv10/README.md) | dipping normal fault | [TPV10](https://strike.scec.org/cvws/tpv10_11docs.html) | 500m/4/39.0/331.3/98.5 | 100m/15s |
+| [test.tpv104](case_input/test.tpv104/README.md) | strike-slip, rate-and-state | [TPV104](https://strike.scec.org/cvws/tpv103_104docs.html) | 500m/4/33.6/309.5/86.1 | 50m/12s |
+| [test.tpv1053d](case_input/test.tpv1053d/README.md) | RSF + thermal pressurization | [TPV105-3D](https://strike.scec.org/cvws/tpv105_3D_docs.html) | 500m/4/51.0/368.3/98.1 | excluded (no spec dx) |
+| [test.drv.a6](case_input/test.drv.a6/README.md) | fractal fault + plasticity | internal | 500m/4/96.5/687.6/209.5 | excluded (no published spec) |
+| [test.meng2023a](case_input/test.meng2023a/README.md) | layered velocity structure | internal | 400m/4/49.7/400.1/99.0 | excluded (no published spec) |
+| [test.meng2023cb](case_input/test.meng2023cb/README.md) | layered velocity, multi-patch | internal | 400m/4/50.7/346.3/113.9 | excluded (no published spec) |
+| [test.tpv29](case_input/test.tpv29/README.md) | strike-slip, fractal rough fault | [TPV29](https://strike.scec.org/cvws/tpv29_30docs.html) | 500m/4/148.3/1108.5/229.4 | 50m/20s |
 
 # Environment
 *Optional (Python solver on GPU)*: `pip install "jax[cuda12]"` — the Python solver (`python3 -m eqdyna <case_dir> --backend jax`) then runs on NVIDIA GPUs; verify with `python3 testsys/run.py gpu`.
@@ -110,6 +114,55 @@ For bash, please insert the following lines in .bashrc
 export EQDYNAROOT=/path/to/EQdynaRootDirectory
 PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 ```
+
+# Performance
+
+Every number here is measured, and names the command that produced it. If you
+cannot reproduce one, that is a bug in this section -- report it.
+
+**Per-step solver cost**, `test.tpv8`, pinned to a single core, fixed
+setup/compile subtracted by difference over two step counts
+(`python3 testsys/run.py perf`, 2026-09-16, load 4.35):
+
+| engine | ms/step | vs fortran |
+|---|---|---|
+| fortran | 305.8 | 1.00 |
+| jax-cpu | 191.3 | 0.63 (faster) |
+| numpy | 529.5 | 1.73 (slower) |
+
+Gated on the PER-STEP ratio, not total wall clock: at 114 steps XLA compile is
+15% of a jax run and 2% of a numpy one, so a total-time metric drifts when the
+compiler changes and the solver does not. A baseline recording a different
+metric is refused rather than compared against.
+
+**Peak RSS** (`/usr/bin/time -v`, one case at a time; `testsys/matrix.py`'s
+`MEASURED_PEAK_RSS_GB` is the authoritative record and the reason CI runs only
+the cells that fit a 7 GB runner):
+
+| case | numpy | jax |
+|---|---|---|
+| test.tpv8 | 1.45 GB | 1.91 GB |
+| test.tpv10 | -- | 3.23 GB |
+| test.tpv104 | 2.29 GB | 3.42 GB |
+| test.tpv1053d | -- | 3.95 GB |
+| test.drv.a6 | -- | 9.57 GB |
+
+**Full sweep**: 24 cells in ~1100 s wall clock at `--jobs 16` on this 64-core
+box (`python3 testsys/e2e/run_e2e.py --jobs 16`). Cells are independent and
+each uses about one core, so sweep throughput comes from running many at once,
+not from scaling one cell.
+
+**Core scaling of a single jax-CPU run is NOT currently characterised.** One
+ratio is measured on current code -- 193 ms/step on 1 core vs 13.8 ms/step
+unpinned, 14x. The older `2.00x / 3.96x / 7.48x on 2/4/8 cores` curve predates
+the solver restructure and has not been reproduced; it also has a knee at
+exactly 8 cores, which is this box's NUMA node size (8 nodes x 8 cores, 2
+sockets x 32), so it may be measuring memory locality rather than the solver.
+`testsys/perf/run_numa_scaling.py` separates the two and REFUSES to run on a
+loaded box -- a bandwidth measurement taken under other users' memory traffic
+measures them. Tracked as pathway_forward item 33; do not cite a scaling
+figure until it lands.
+
 
 # Quick Start Guide
 Three steps are needed to run a new case. <br/>
