@@ -1,0 +1,53 @@
+import os, numpy as np
+import matplotlib; matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+S='/tmp/claude-16759/-home-utig5-dliu-EQdyna/e618789a-38a5-4235-9ca3-c8a3a0fe9ba6/scratchpad'
+# 8 data columns, both sides:
+# 0 t, 1 h-slip, 2 h-sr, 3 h-shear, 4 dd-slip, 5 dd-sr, 6 dd-shear, 7 n-stress
+CASES = {'tpv36': (S+'/tpv3xb/test.tpv36','scec_archive/tpv36/eqdyna-v5.3.3-50m-2024'),
+         'tpv37': (S+'/tpv3xb/test.tpv37','scec_archive/tpv37/eqdyna-v5.3.3-50m-2024')}
+def load(p):
+    r=[]
+    for ln in open(p,errors='replace'):
+        s=ln.strip()
+        if not s or s.startswith('#'): continue
+        try: v=[float(x) for x in s.split()]
+        except ValueError: continue
+        if len(v)==8: r.append(v)
+    return np.array(r) if r else None
+
+for name,(loc,pub) in CASES.items():
+    sts = sorted(set(f[:-4] for f in os.listdir(loc) if f.startswith('faultst') and f.endswith('.txt'))
+                 & set(f for f in os.listdir(pub) if f.startswith('faultst')))
+    print('\n%s -- %d common stations, DOWN-DIP components (dipping fault)' % (name, len(sts)))
+    print('  %-20s %-22s %-22s %-10s' % ('station','final dd-slip (m)','peak |dd-shear| (MPa)','initial dd-shear'))
+    rows=[]
+    for st in sts:
+        a=load(os.path.join(loc,st+'.txt')); b=load(os.path.join(pub,st))
+        if a is None or b is None: continue
+        rows.append((st,a,b))
+        print('  %-20s pub %8.3f loc %8.3f   pub %8.2f loc %8.2f     pub %7.2f loc %7.2f'
+              % (st, b[-1,4], a[-1,4], np.nanmax(np.abs(b[:,6])), np.nanmax(np.abs(a[:,6])), b[0,6], a[0,6]))
+    # the factor-of-2 test: INITIAL down-dip shear is a pure input, resolution-independent
+    i_pub=np.array([r[2][0,6] for r in rows]); i_loc=np.array([r[1][0,6] for r in rows])
+    ok=np.abs(i_pub)>1e-6
+    if ok.any():
+        rat=i_loc[ok]/i_pub[ok]
+        print('  INITIAL dd-shear ratio local/published: median %.4f  min %.4f  max %.4f  (n=%d)'
+              % (np.median(rat), rat.min(), rat.max(), ok.sum()))
+        print('  -> a 0.5 or 2.0 here would be the arn doubling; initial stress is an INPUT,')
+        print('     so resolution (500 m vs 50 m) cannot explain a deviation in it.')
+    pick=[r for r in rows if abs(r[2][-1,4])>1e-3][:4] or rows[:4]
+    if pick:
+        fig,ax=plt.subplots(2,len(pick),figsize=(4.2*len(pick),7),squeeze=False)
+        for j,(st,a,b) in enumerate(pick):
+            ax[0][j].plot(b[:,0],b[:,4],'k-',lw=2,label='published 50 m (v5.3.3, 2024)')
+            ax[0][j].plot(a[:,0],a[:,4],'r--',lw=1.5,label='local 500 m (v5.8.1, npy=1)')
+            ax[0][j].set_title('%s  %s'%(name,st),fontsize=9); ax[0][j].set_ylabel('down-dip slip (m)')
+            ax[0][j].set_xlabel('time (s)'); ax[0][j].legend(fontsize=7); ax[0][j].grid(alpha=.3)
+            ax[1][j].plot(b[:,0],b[:,6],'k-',lw=2); ax[1][j].plot(a[:,0],a[:,6],'r--',lw=1.5)
+            ax[1][j].set_xlabel('time (s)'); ax[1][j].set_ylabel('down-dip shear (MPa)'); ax[1][j].grid(alpha=.3)
+        fig.suptitle('%s down-dip: published 50 m vs local 500 m'%name)
+        fig.tight_layout(); fig.savefig(S+'/cmp_%s_dd.png'%name,dpi=110); plt.close(fig)
+        print('  wrote %s/cmp_%s_dd.png'%(S,name))

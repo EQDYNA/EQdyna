@@ -341,11 +341,36 @@ contains
     subroutine syncArnBoundary(idxArr, n, k, neighbor, tagBase, ift, dimId)
     ! Send this rank's arn values for the given boundary's fault nodes to
     ! neighbor, receive neighbor's values for the same nodes, and accumulate
-    ! -- UNLESS the fault has zero nominal extent in the physical dimension
+    ! -- UNLESS the fault has zero NOMINAL GRID extent in the dimension
     ! (dimId: 1=x, 2=y, 3=z) this boundary lies along, in which case this
     ! rank's local arn is already the fault's full local contribution and
-    ! the neighbor's value is a duplicate, not a partial sum (see the NOTE
-    ! above MPI4arn's npx/npy/npz blocks). fltMPI(k) is still set and the
+    ! the neighbor's value is a duplicate, not a partial sum.
+    !
+    ! "NOMINAL GRID extent" is fltxyz, and it is NOT the physical dip. The
+    ! two ways checkIsOnFault selects fault nodes give opposite answers here:
+    !
+    !   insertFaultType > 0, C_degen == 0  (e.g. test.tpv10, dip 60)
+    !       nodes chosen by nodeCoor(2) == 0.0d0, exact equality on the
+    !       UNBLENDED grid y. The fault is ONE y-index plane however steeply
+    !       it dips; insertFaultInterface displaces only the physical y into
+    !       ycoort/meshCoor. fltxyz y-extent is 0.0/0.0, so a y boundary
+    !       COINCIDES with the fault and both ranks hold the COMPLETE
+    !       tributary area  ->  DUPLICATE, skip the add-back.
+    !
+    !   C_degen > 3  (wedge degeneration, e.g. test.tpv36/37, dip 15)
+    !       nodes chosen by |z + y*tan(C_degen)| < dx/100. The fault SPANS a
+    !       range of grid y, fltxyz y-extent is faultWidth*cos(dip), so a y
+    !       boundary CROSSES it and each rank holds a partial area
+    !       ->  DIVIDE, add back.
+    !
+    ! A steeply dipping inserted fault therefore behaves exactly like a
+    ! vertical one for this decision. Anyone tempted to branch on the dip
+    ! angle here would break test.tpv10.
+    !
+    ! Evidence: DUPLICATE -- test_fault_mpi_boundary_arn.py (serial == xsplit
+    ! == zsplit == ysplit, exactly). DIVIDE -- test_dipping_fault_y_split.py
+    ! (tpv36 at (2,2,1) vs (2,1,2), tractions equal to 1.0e-08, ratio
+    ! 1.000000 at 3416 nodes; audited 2026-09-16). fltMPI(k) is still set and the
     ! exchange still happens either way: addFaultBoundaryTerm
     ! (assembleGlobalMass.f90) depends on fltMPI(k)/the send-recv having run,
     ! independent of what this subroutine does with arn.
@@ -360,6 +385,8 @@ contains
         do j = 1, n
             sendBuf(j)=arn(idxArr(j),ift)
         enddo
+        call requireValidNeighbor(neighbor, 'syncArnBoundary (meshgen/MPI4arn)', &
+            dimId, k, 'fault-node arn boundary exchange; entered only when fltnum(k)>0 on THIS rank, which is a local condition')
         call mpi_sendrecv(sendBuf, n, MPI_DOUBLE_PRECISION, neighbor, tagBase+me, &
             recvBuf, n, MPI_DOUBLE_PRECISION, neighbor, tagBase+neighbor, &
             MPI_COMM_WORLD, jMPIstatus, jMPIerr)

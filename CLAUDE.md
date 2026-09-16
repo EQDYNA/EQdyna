@@ -94,7 +94,12 @@ reason each step exists:
 6. **Validate against something independent, as a committed SCRIPT.** TPV29's
    cross-code numbers are prose-only with a gitignored baseline; that is
    pathway item 28 and it is the part of the TPV29 work done wrong.
-7. **Run all three backends.** A new case is 3 cells, not 1.
+7. **Run all three backends, and all three must pass.** A new case is 3 cells,
+   not 1. **Supporting a TPV means supporting it on every backend** -- a case is
+   never added with its Python columns declared UNSUPPORTED to be filled in
+   later. If the port lacks a feature the case needs, port the feature first.
+   `UNSUPPORTED` records a gap that already exists; it is not a runway for new
+   ones.
 
 ## Things that will bite you
 

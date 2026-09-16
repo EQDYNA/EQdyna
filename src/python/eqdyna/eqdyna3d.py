@@ -141,6 +141,25 @@ def build_solver_state(case_dir):
     if (g['npx'], g['npy'], g['npz']) != (1, 1, 1):
         raise NotImplementedError('build_solver_state: only serial (npx=npy=npz=1) is supported '
                                    '(got %r)' % ((g['npx'], g['npy'], g['npz']),))
+    # C_degen != 0 means WEDGE DEGENERATION: meshgen.f90:95,99 collapses
+    # fault-adjacent hexes and tags them elemTypeArr==13, and checkIsOnFault
+    # switches from `nodeCoor(2)==0` to the |z + y*tan(C_degen)| distance test
+    # so the fault plane DIPS through the grid. None of that is ported --
+    # assembleGlobalMass.py says so in four separate docstrings ("the C_degen==0
+    # scope this whole module ...") -- but nothing REFUSED it, so a C_degen case
+    # would have run here and silently treated the degenerate elements as
+    # ordinary hexes, and the fault nodes as a y=0 plane. Wrong answers, no
+    # warning. That is the exact shape rule 2 forbids.
+    # Found 2026-09-16 while gating test.tpv36 (C_degen = dip = 15).
+    if g.get('C_degen', 0) != 0:
+        raise NotImplementedError(
+            'build_solver_state: C_degen=%r (wedge degeneration) is not '
+            'implemented. The port is written for C_degen==0 throughout -- it '
+            'would treat the degenerate elements as hexes and the fault as the '
+            'y=0 plane, and return plausible wrong numbers. test.tpv36 and '
+            'test.tpv37 are the cases that hit this; they are declared '
+            'UNSUPPORTED for the python backends in testsys/matrix.py.'
+            % g.get('C_degen'))
     # (The insertFaultType>0 x friclaw==5 refusal that stood here is GONE, and
     # not by relaxing it: faulting.f90:201-208's min_norm/max_norm clamp was
     # ported in port_rsf.py and missing from port_tp.py, so the combination was

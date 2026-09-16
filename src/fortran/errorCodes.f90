@@ -82,6 +82,7 @@ MODULE errorCodes
 
     ! --- 51-59 MPI and domain decomposition ---------------------------
     integer, parameter :: ERR_MPI_FAULT_ALIGNMENT    = 51  ! a rank boundary in y coincides with the fault plane
+    integer, parameter :: ERR_MPI_BAD_NEIGHBOR       = 52  ! point-to-point exchange with a rank outside 0..npx*npy*npz-1
 
     ! --- 61-69 numerics and runtime state -----------------------------
     integer, parameter :: ERR_NUM_PML_ALIGNMENT      = 61  ! element centre lies exactly on a PML bound
@@ -166,5 +167,40 @@ CONTAINS
         call exit(code)
 
     end subroutine abortRun
+
+subroutine requireValidNeighbor(neighbor, site, ixyz, ib, extra)
+! Refuse a point-to-point exchange with a rank that does not exist, and say
+! EVERYTHING needed to place it: the call site, the direction, the side, this
+! rank's 3-D coordinates, the decomposition, and the offending neighbour id.
+!
+! Without this, an out-of-range neighbour surfaces only as the MPI library's
+! own message --
+!     *** An error occurred in MPI_Sendrecv
+!     *** MPI_ERR_RANK: invalid rank
+! -- which names neither the call site nor the value, and leaves the reader to
+! guess among every exchange in the code. That cost real time on test.tpv36
+! (2026-09-16): two decompositions tried, a serial control run, and a read of
+! both sendrecv sites, to learn something the MPI library already knew.
+    use globalvar, only : me, npx, npy, npz
+    implicit none
+    integer (kind = 4), intent(in) :: neighbor, ixyz, ib
+    character(len=*), intent(in) :: site, extra
+    integer (kind = 4) :: mex, mey, mez, nranks
+    character(len=600) :: reason
+
+    nranks = npx*npy*npz
+    if (neighbor >= 0 .and. neighbor < nranks) return
+
+    mex = int(me/(npy*npz))
+    mey = int((me - mex*npy*npz)/npz)
+    mez = int(me - mex*npy*npz - mey*npz)
+
+    write(reason, '(A,A,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,A)') &
+        'invalid MPI neighbour in ', trim(site), ': neighbour=', neighbor, &
+        ' outside 0..', nranks-1, '.  me=', me, ' (mex,mey,mez)=(', mex,   &
+        ',', mey, ',', mez, ')  npx,npy,npz=', npx, ',', npy, ',', npz,    &
+        '  ixyz=', ixyz, ' ib=', ib, '.  ', trim(extra)
+    call abortRun(ERR_MPI_BAD_NEIGHBOR, trim(reason))
+end subroutine requireValidNeighbor
 
 END MODULE errorCodes
