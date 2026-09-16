@@ -35,7 +35,23 @@ benchmarks (https://strike.scec.org/cvws/). The fast tier gates every
 commit at coarse resolution against frozen references
 (`python3 testsys/run.py e2e`); the full tier reproduces each gated
 benchmark at its official spec resolution and duration, report-only, on
-16 ranks (`python3 testsys/run.py e2e-full`).
+16 ranks. These are multi-hour runs, so the tier REFUSES to start unless you
+opt in explicitly:
+
+```
+EQDYNA_FULL_LAUNCH=yes-hours python3 testsys/run.py e2e-full
+```
+
+Without the variable it prints what it would run and exits non-zero, so the
+tier can never be triggered by accident (for example by `run.py all`).
+
+Each case reaches its spec resolution by DECIMATING a shipped fault surface --
+every value is an official one, no interpolation -- so a clean checkout needs
+no downloads. test.tpv29 ships its surface at 100 m (3.5 MB) and 50 m (14 MB);
+a request for a dx finer than the shipped source, or one that is not a
+multiple of it, is refused rather than interpolated (`scripts/lib.py`'s
+`requireFaultGeometryResolution`). 25 m needs the official SCEC file and
+`tpv29GeometryTools.convertOfficial25m`.
 
 The fast tier is a single sweep over `case x backend`: each case below is run
 on the Fortran solver (MPI) and on the standalone Python solver (NumPy and
@@ -83,9 +99,10 @@ chmod 755 install-eqdyna.sh
 ./install-eqdyna.sh -m ubuntu # ubuntu/ls6/macos
 export EQDYNAROOT=$(pwd)
 PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-python3 testsys/run.py all # the sweep: 8 cases x 3 backends (fortran, python-numpy,
-                           # python-jax) against one canonical reference each.
-                           # Cells run concurrently; ~730 s on a 64-core box.
+python3 testsys/run.py all # unit + regression + the sweep: 8 cases x 3 backends
+                           # (fortran, python-numpy, python-jax) against one
+                           # canonical reference each, 24 cells.
+                           # Cells run concurrently; ~1100 s on a 64-core box.
                            # It prints which cells it ran, so a pass states its scope.
 ```
 For bash, please insert the following lines in .bashrc
