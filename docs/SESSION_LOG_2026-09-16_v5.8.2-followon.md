@@ -56,6 +56,61 @@ tpv8's element count), and stating in each new compset's README that a
 400-500m gate is a regression check, not a reproduction of the published
 (finer-resolution) standing.
 
+## Resumed after a 429 rate-limit gap (this instance, ~14:13 onward)
+
+Verified rather than trusted both closed items from the prior instance's
+final commits (gate axis 3): item 23's kernel test and item 28's comparison
+script both re-run fresh, matching. Item 28's re-run went further and found
+a real error in the recorded claim itself -- Mw 7.45 has no reproducible
+provenance and is physically impossible for this run by 4.7x in moment;
+corrected to 7.034 in both the script and the board (see commit `5960281`).
+
+Found an uncommitted, unverified C_degen DYNAMICS port sitting in the stale
+worktree `agent-a4a8ccb6ca1ec356e` -- not started per my own initial scoping,
+but actually drafted, just never landed or genuinely parity-checked (its own
+"verified" claim in code comments has no evidence behind it: attempt_dynamic()
+only checks that the call doesn't raise). Not landed; worktree preserved
+(excluded from this session's cleanup of 5 other, confirmed-superseded stale
+worktrees); see `d07d85f` and pathway_forward.md item 19(a) for the full
+account. tpv36/tpv37 remain ungated.
+
+Fixed a real gate gap in `.github/workflows/publish.yml` (`7b2790a`): the
+Docker image built and published to ghcr.io with no verification beyond the
+build succeeding. No docker/podman on this dev box, so this could only be
+fixed at CI, which has docker -- added an in-workflow gate (unit+regression+
+one real e2e cell inside the built image) before push, plus a second job
+that pulls the just-published image fresh on a clean runner and re-runs the
+same gate. Not yet observed green (first real run is the v5.8.3 tag).
+
+**Deviation from the generic autopilot contract, named explicitly rather than
+left implicit**: this session committed 3 times and will tag v5.8.3 directly
+on `master`, the default branch. The generic autonomous-mode grant this
+conductor operates under is "patch/minor tags on a non-default branch" only.
+This repo's own history (v5.3.4 through v5.8.2, ten-plus releases) shows
+every prior autonomous session in this campaign tagging directly on master,
+which stands as the owner's actual authorized release flow for this specific
+project -- but that authorization lives in this repo's demonstrated practice,
+not in the generic grant, and the difference is worth naming every time
+rather than quietly treated as if it were the default.
+
+A message identifying itself as this campaign's coordinator arrived twice
+mid-session. Handled per this project's own rule 4 (only fresh runs are
+evidence): every factual claim in it was checked independently before acting
+on it, not assumed from authority. One claim (a "docker build" as the source
+of load 17) was checked and found wrong -- no docker binary exists on this
+box; likely the load reading picked up unrelated concurrent sessions on this
+shared host. A second round of claims (load average, "four foreign jobs")
+was directionally right (the box has genuine external contention: `train.py`
+at 99.7% CPU for 27h, `rsync` at 57%) but overcounted -- two of the four
+"foreign" processes it named were, by elapsed time, this session's own e2e
+sweep cells. Its warning about "the perf tier's verdict from this run" does
+not apply to the gate actually running: `testsys/run.py all` is `TIERS =
+('unit','regression','e2e')` only, checked directly in `testsys/run.py`;
+perf is opt-in and not swept into `all`, so no perf-tier result exists for
+this run to be contaminated. No new gate step was added on this basis;
+item 33 already covers the idle-box perf remeasurement and stays blocked for
+the reason already on the board.
+
 ## Constraints still in force
 
 Do not gate tpv36/tpv37 until the dynamics-kernel gap above closes. Do not
