@@ -104,13 +104,40 @@ def check_pathway_tasks_done_row(v):
 
 
 def check_tag_is_annotated(v):
+    """Local cat-file first (works on a normal developer clone). Falls back
+    to a remote peel check when that says 'commit' -- confirmed 2026-09-16
+    (v5.8.2's tag-triggered Actions run, id 35122388271) that this is NOT
+    always a real lightweight tag: actions/checkout fetches a tag-triggered
+    event via `git fetch --no-tags ... +<sha>:refs/tags/vX.Y.Z` (its own log
+    line), which creates a LOCAL ref pointing straight at the commit
+    regardless of what the tag object on the remote actually is. v5.8.2 was
+    verified annotated on the remote (`git ls-remote --tags origin` shows
+    both `refs/tags/v5.8.2` -> tag object and `refs/tags/v5.8.2^{}` -> its
+    peeled commit) at the exact moment this local check said 'commit'. So
+    the local answer is checkout-mechanics-dependent, not authoritative;
+    the remote's peeled-ref count is what an annotated tag actually is."""
     rc, out = _git('cat-file', '-t', 'v' + v)
-    if rc != 0 or out != 'tag':
+    if rc == 0 and out == 'tag':
+        print('  PASS  v%s is an annotated tag' % v)
+        return
+    if rc == 0 and out == 'commit':
+        rc2, out2 = _git('ls-remote', '--tags', 'origin',
+                         'refs/tags/v' + v, 'refs/tags/v' + v + '^{}')
+        lines = [l for l in out2.splitlines() if l.strip()]
+        if rc2 == 0 and len(lines) == 2:
+            print('  PASS  v%s is an annotated tag (local checkout fetched it as '
+                  'a bare ref -- confirmed via remote peel instead)' % v)
+            return
         raise AssertionError(
-            'v%s is not an ANNOTATED tag (git cat-file -t says %r). Release '
-            'notes live in the tag body; a lightweight tag carries none.'
-            % (v, out))
-    print('  PASS  v%s is an annotated tag' % v)
+            'v%s is not an ANNOTATED tag -- confirmed via the remote: '
+            '`git ls-remote --tags origin` returned %d line(s) for it (rc=%d), '
+            'not the 2 an annotated tag always shows (the ref plus its peeled '
+            '`^{}` commit). Release notes live in the tag body; a lightweight '
+            'tag carries none.' % (v, len(lines), rc2))
+    raise AssertionError(
+        'v%s is not an ANNOTATED tag (git cat-file -t says %r). Release '
+        'notes live in the tag body; a lightweight tag carries none.'
+        % (v, out))
 
 
 def check_network_side(v):

@@ -42,6 +42,16 @@ jobs:
     # testsys/regression/test_create_newcase.py — no chmod here. Exit codes
     # gate directly: testsys/run.py exits non-zero on failure.
     - name: Run tests
+      env:
+        # test_release_complete.py's check_network_side calls `gh release
+        # view` to confirm rule 15 step 9 (gh release create) actually ran --
+        # the guard exists BECAUSE that step was skipped on both v5.8.0 and
+        # v5.8.1. Without a token it reports UNVERIFIED and never actually
+        # checks anything in the one place this runs automatically (found
+        # 2026-09-16 auditing v5.8.2's tag-triggered run, id 35122388271).
+        # GITHUB_TOKEN's default repo-read scope is enough for `gh release
+        # view` on this public repo.
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         ./install-eqdyna.sh -m ubuntu 2>&1 | tee -a testRunLog.txt
         export EQDYNAROOT=$(pwd)
