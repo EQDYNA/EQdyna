@@ -1,15 +1,21 @@
 {
-  "git_sha": "530ae62",
+  "git_sha": "f3518a5",
   "hostname": "cotopaxi",
   "platform": "Linux-6.8.0-107-generic-x86_64-with-glibc2.35",
-  "load_avg": "15.37 14.00 13.19",
+  "load_avg": "4.87 5.00 4.90",
   "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
   "pinned_core": "0",
-  "timestamp": "2026-09-13 14:33:57",
+  "timestamp": "2026-09-15 21:23:08",
+  "metric": "per_step",
   "ratios": {
-    "numpy_over_fortran": 1.7888596615457375,
-    "jax_over_fortran": 0.6114050051106856
+    "numpy_over_fortran": 1.7315555092172703,
+    "jax_over_fortran": 0.6255874485505527
   },
-  "best_python_over_fortran": 0.6114050051106856,
-  "note": "First pinned run -- this file becomes the baseline. Committed by the reviewer, not auto-committed by this script."
+  "per_step_seconds": {
+    "numpy": 0.5295477185332984,
+    "jax": 0.19131838647942795
+  },
+  "fortran_per_step_seconds": 0.30582197088944285,
+  "best_python_over_fortran": 0.6255874485505527,
+  "note": "Per-step baseline. Committed by the reviewer, not auto-committed by this script."
 }
