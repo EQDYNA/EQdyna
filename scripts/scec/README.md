@@ -6,11 +6,13 @@ This is the TOOLING. The data it fetches is not tracked and must not be.
 
 `pathway_forward.md` item 28: TPV29's cross-code validation numbers (median
 rupture-time differences 0.076 / 0.028 / 0.006 s at 500 / 200 / 100 m vs
-EQdyna's 2015 submission, ruptured area 749-756 km², Mw 7.45) were prose-only,
-and the baseline they were measured against lived in gitignored `scratch/`
-along with the tooling that produced it. Nobody could reproduce them from a
-clean clone — a rule 4 violation, since a number has to travel with something
-that regenerates it.
+EQdyna's 2015 submission, ruptured area 749-756 km², Mw 7.45 -- this is the
+ORIGINAL prose claim, recorded here as history; the Mw figure did not
+reproduce and is corrected to 7.034 in `evidence_tpv29_scec_comparison.py`
+and `pathway_forward.md` item 20/28) were prose-only, and the baseline they
+were measured against lived in gitignored `scratch/` along with the tooling
+that produced it. Nobody could reproduce them from a clean clone — a rule 4
+violation, since a number has to travel with something that regenerates it.
 
 The data is **484 MB** and correctly stays out of git. The tooling is **116 KB**
 and had no business being untracked. That is the whole fix: track what

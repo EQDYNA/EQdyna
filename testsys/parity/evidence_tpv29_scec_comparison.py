@@ -117,10 +117,24 @@ DX_M = 100.0
 UNRUPTURED = 900.0                     # 2015 sentinel 1000.0, current 99999.0
 RHO, VS = 2670.0, 3464.0               # TPV29 spec material (case's own params)
 
-# The four recorded prose numbers this script's fresh numbers are checked
+# The recorded prose numbers this script's fresh numbers are checked
 # against (pathway_forward.md item 20; case_input/test.tpv29/README.md).
+# area_km2_range is the NAIVE one-node-per-cell count (matches METRIC 3's
+# diagnostic rule, not the corner rule this script treats as primary --
+# labelled, not "fixed", since nothing physical differs between the rules).
+#
+# mw CORRECTED 2026-09-16: the previously recorded 7.45 has no reproducible
+# provenance and is physically impossible for this run -- Mw 7.45 implies
+# M0 = 1.884e20 N*m (Kanamori: Mw = (log10(M0)-9.1)/1.5), 4.7x this run's
+# actual M0 = 3.99e19 N*m over 80601 deduped fault nodes; matching it would
+# need mean slip ~6.5 m over EVERY node, 2.24x this run's own max slip
+# (2.903 m). First run of this script (2026-09-16) reproduced the OLD 7.45
+# value's absence, not its presence -- discarded, not chased further, same
+# call as item 32's unrecoverable 329-flip figure. 7.034 is this run's own
+# measured value, not a second inherited claim -- there is no independent
+# figure left to check it against; treat this row as the new baseline.
 RECORDED = dict(median_dt_s=0.006, median_slip_pct=0.22,
-                 area_km2_range=(749.0, 756.0), mw=7.45)
+                 area_km2_range=(749.0, 756.0), mw=7.034)
 
 
 # ------------------------------------------------------------- generic I/O --
