@@ -19,6 +19,7 @@ testsys/parity/evidence_output/
 # (lib.py stuck at 187 lines against the live 949) and was then exempted from
 # the CI-dependency lint to keep it quiet.
 testsys/perf/perf_case/
+testsys/parity/probe_case/
 scec_archive/
 relnotes_v*.md
 # testsys/perf/elem_scaling_last.json tracked: raw evidence behind measured_runs.md
