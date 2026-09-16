@@ -64,10 +64,15 @@ subroutine MPI4NodalQuant(quantArray, numDof)
     integer (kind = 4) ::  iMPIerr, iMPIstatus(MPI_STATUS_SIZE), i, ixyz, numDof, rrr, &
         ix,iy,iz, nodenumtemp, dofCount4MPI, dest, sendtag, source, recvtag, ib, iSign, &
         bnd(2), mexyz(3), npxyz(3), numxyz(3), abc(3)
-    real (kind = dp) :: quantArray(totalNumOfEquations) 
+    real (kind = dp) :: quantArray(totalNumOfEquations)
+    ! LOCAL stage timer, not the shared global: this routine is called
+    ! from inside assembleGlobalMass, which eqdyna3d.f90:68-70 is timing.
+    ! Writing the global here reset that outer start, so
+    ! compTimeInSeconds(2) measured only the tail of the call.
+    real (kind = dp) :: tStageStart
     real (kind = dp), allocatable, dimension(:) :: btmp, btmp1
     
-    startTimeStamp = MPI_WTIME()     
+    tStageStart = MPI_WTIME()
     
     mexyz(1)=int(me/(npy*npz))
     mexyz(2)=int((me-mexyz(1)*npy*npz)/npz)
@@ -203,7 +208,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
         call mpi_barrier(MPI_COMM_WORLD, iMPIerr)
     enddo 
     
-    MPICommTimeInSeconds = MPICommTimeInSeconds + MPI_WTIME() - startTimeStamp
+    MPICommTimeInSeconds = MPICommTimeInSeconds + MPI_WTIME() - tStageStart
 contains
     subroutine addFaultBoundaryTerm(ixyzArg, ibArg, modeArg, arr, rrrArg, quantArr, dofCount)
     ! Fetch (modeArg=1) or add (modeArg=2) the fault-boundary-node contribution

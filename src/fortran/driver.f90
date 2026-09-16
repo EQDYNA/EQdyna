@@ -98,7 +98,11 @@ subroutine velDispUpdate
     integer (kind = 4) :: i, j, eqNumTmp
     real (kind = dp) :: dampv(9)
    
-    startTimeStamp = MPI_WTIME()
+    ! LOCAL stage timer. The shared global startTimeStamp was written by
+    ! eight sites across six files, each pairing it with a different
+    ! counter, so any nesting silently truncated the OUTER one.
+    real (kind = dp) :: tStageStart
+    tStageStart = MPI_WTIME()
     do i = 1, totalNumOfNodes
         if (numOfDofPerNodeArr(i)==3) then
             do j = 1, 3
@@ -156,7 +160,7 @@ subroutine velDispUpdate
                 'Velocity became NaN during time stepping (node coordinates and time step printed above).')
         endif
     enddo
-    compTimeInSeconds(3) = compTimeInSeconds(3) + MPI_WTIME() - startTimeStamp
+    compTimeInSeconds(3) = compTimeInSeconds(3) + MPI_WTIME() - tStageStart
 end subroutine velDispUpdate
 
 subroutine storeOffFaultStData

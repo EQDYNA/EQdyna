@@ -9,7 +9,11 @@ subroutine calcHourglassResist
     integer (kind = 4) :: nel, i , j, k, itmp, itag, fi(4,8)
     real (kind = dp) :: phid(ned), dl(ned,nen), vl(ned,nen), fhr(ned,nen), f(24), det, coef, q(3,4)
     
-    startTimeStamp = MPI_WTIME()
+    ! LOCAL stage timer. The shared global startTimeStamp was written by
+    ! eight sites across six files, each pairing it with a different
+    ! counter, so any nesting silently truncated the OUTER one.
+    real (kind = dp) :: tStageStart
+    tStageStart = MPI_WTIME()
     do nel = 1, totalNumOfElements
         do i = 1, nen
             do j = 1, ned
@@ -92,5 +96,5 @@ subroutine calcHourglassResist
             enddo
         endif
     enddo
-    compTimeInSeconds(5) = compTimeInSeconds(5) + MPI_WTIME() - startTimeStamp
+    compTimeInSeconds(5) = compTimeInSeconds(5) + MPI_WTIME() - tStageStart
 end subroutine calcHourglassResist
