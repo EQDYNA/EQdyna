@@ -13,8 +13,16 @@ assembleGlobalKU implementation; there is no per-backend and no per-friclaw
 solver module to dispatch between.
 
 SCOPE, enforced by loud refusals in build_solver_state rather than by silent
-partial runs: ntotft==1, C_degen==0, serial (npx==npy==npz==1). friclaw 1-5
-are all implemented.
+partial runs: ntotft==1, serial (npx==npy==npz==1), C_degen==0 (planar) OR
+C_degen>3 (dipping, wedge-degeneration -- meshgen.py's build_elements/
+build_fault_geometry port library_degeneration.f90's wedge()/reorder(); see
+those functions' docstrings and testsys/parity/evidence_c_degen_port.py).
+C_degen>3's MESH is fully ported and verified against Fortran on
+test.tpv36; its DYNAMICS are refused whenever the mesh actually contains a
+wedge element (elemTypeArr 11/12), because assembleGlobalMass.py does not
+port calcGlobalShapeFunc.f90's degeneration branch those elements need (see
+the raise right before compute_element_shape below) -- a known, documented
+gap, not a silent one. friclaw 1-5 are all implemented.
 
 S-dict provenance, field by field:
   N, E, NEQ, nen, ned            -- meshgen.py M1-M3 (nen=8, ned=3 are the
@@ -141,28 +149,35 @@ def build_solver_state(case_dir):
     if (g['npx'], g['npy'], g['npz']) != (1, 1, 1):
         raise NotImplementedError('build_solver_state: only serial (npx=npy=npz=1) is supported '
                                    '(got %r)' % ((g['npx'], g['npy'], g['npz']),))
-    # C_degen != 0 means WEDGE DEGENERATION: meshgen.f90:95,99 collapses
-    # fault-adjacent hexes and tags them elemTypeArr==13, and checkIsOnFault
-    # switches from `nodeCoor(2)==0` to the |z + y*tan(C_degen)| distance test
-    # so the fault plane DIPS through the grid. None of that is ported --
-    # assembleGlobalMass.py says so in four separate docstrings ("the C_degen==0
-    # scope this whole module ...") -- but nothing REFUSED it, so a C_degen case
-    # would have run here and silently treated the degenerate elements as
-    # ordinary hexes, and the fault nodes as a y=0 plane. Wrong answers, no
-    # warning. That is the exact shape rule 2 forbids.
-    # Found 2026-09-16 while gating test.tpv36 (C_degen = dip = 15).
-    if g.get('C_degen', 0) != 0:
+    # C_degen: meshgen.py's build_elements/build_fault_geometry (and
+    # readInputFiles.py's fltxyz(2,4,i) derivation) now port BOTH C_degen==0
+    # (planar fault, tpv8/tpv104/tpv10/drv.a6) and C_degen>3
+    # (wedge-degeneration, tpv36/tpv37 -- library_degeneration.f90's wedge()/
+    # reorder()). 0<C_degen<=3 stays refused: checkIsOnFault itself takes
+    # neither if/elseif branch there (isOnFault stays 0 unconditionally), a
+    # degenerate Fortran behavior this port does not silently mimic.
+    if not (params['C_degen'] == 0.0 or params['C_degen'] > 3.0):
+        raise NotImplementedError('build_solver_state: only C_degen==0 or C_degen>3 is '
+                                   'supported (got %r)' % params['C_degen'])
+    # C_degen>3 + C_elastic==0 (plastic): NOT supported. meshgen.f90:104 only
+    # calls setPlasticStress once per (ix,iy,iz) grid point, using whichever
+    # `elemCount` is current AFTER wedge() has (possibly) split it into two
+    # sub-elements -- so the type-11 (below-fault) sub-element's lithostatic
+    # depth is simply never written by the Fortran for that slot, a quirk
+    # this port has not verified end to end. Every currently supported
+    # C_degen>3 case (tpv36/tpv37) has C_elastic==1, so elem_depth/
+    # init_stress are never read regardless (see build_elements' docstring)
+    # -- refusing the untested combination explicitly rather than silently
+    # feeding it a depth value with no Fortran-verified meaning.
+    if params['C_degen'] > 3.0 and g['C_elastic'] == 0:
         raise NotImplementedError(
-            'build_solver_state: C_degen=%r (wedge degeneration) is not '
-            'implemented. The port is written for C_degen==0 throughout -- it '
-            'would treat the degenerate elements as hexes and the fault as the '
-            'y=0 plane, and return plausible wrong numbers. test.tpv36 and '
-            'test.tpv37 are the cases that hit this; per rule 17 step 7 they '
-            'are NOT gated in testsys/matrix.py at all (no UNSUPPORTED entry) '
-            'until this refusal is replaced by a real port of wedge '
-            'degeneration -- gating them UNSUPPORTED is exactly what that '
-            'rule forbids.'
-            % g.get('C_degen'))
+            'build_solver_state: C_degen>3 (wedge-degenerate elements) combined with '
+            'C_elastic==0 (plastic) is not supported -- meshgen.f90:104\'s '
+            'setPlasticStress is never called for the type-11 wedge sub-element '
+            '(it runs once per grid point, against whichever elemCount wedge() left '
+            'current -- the type-12 slot), a depth-assignment quirk this port has not '
+            'verified; C_elastic==1 (tpv36/tpv37) is unaffected since elem_depth/'
+            'init_stress are never read then.')
     # (The insertFaultType>0 x friclaw==5 refusal that stood here is GONE, and
     # not by relaxing it: faulting.f90:201-208's min_norm/max_norm clamp was
     # ported in port_rsf.py and missing from port_tp.py, so the combination was
@@ -184,6 +199,33 @@ def build_solver_state(case_dir):
     fric = readInputFiles.read_on_fault_vars(
         os.path.join(case_dir, 'on_fault_vars_input.nc'), params['fxmin'], params['fzmin'],
         params['dx'], params['dz'], meshCoor, nsmp)
+
+    # calcGlobalShapeFunc.f90:22-28 (called unconditionally, for EVERY
+    # element, from assembleGlobalMass.f90:35) special-cases elemTypeArr
+    # 11/12 by merging shape-function rows 3+4 and 7+8 (Hughes p.125's
+    # standard hex-to-wedge collapse fix-up) -- assembleGlobalMass.py's
+    # compute_element_shape/compute_hourglass/contm do NOT implement this
+    # branch (confirmed by reading both files directly, not assumed; see
+    # assembleGlobalMass.py's own module docstring, written before this
+    # port existed to say exactly that). Running them on a wedge element
+    # (type 11/12; type 13 is a plain, non-degenerate brick and is NOT
+    # affected) would silently compute the wrong Jacobian/mass/hourglass
+    # tensor for it -- refused here rather than shipped as a quietly-wrong
+    # dynamics run. meshgen.py's elemTypeArr/connectivity/material split
+    # itself IS verified (testsys/parity/evidence_c_degen_port.py); only
+    # the downstream FEM-kernel degeneration branch is the open gap.
+    if np.any((elem_type == 11) | (elem_type == 12)):
+        raise NotImplementedError(
+            'build_solver_state: %d wedge-degenerate element(s) (elemTypeArr '
+            '11/12) present (C_degen=%r) -- assembleGlobalMass.py\'s '
+            'compute_element_shape/compute_hourglass/contm do not port '
+            'calcGlobalShapeFunc.f90\'s elemTypeArr==11/12 shape-function-'
+            'merge branch, so the mass/stiffness kernel would be silently '
+            'wrong for these elements. The MESH (elemTypeArr/connectivity/'
+            'material) is correctly ported and verified independently -- '
+            'see testsys/parity/evidence_c_degen_port.py; only the dynamics '
+            'kernel is out of scope here.'
+            % (int(np.sum((elem_type == 11) | (elem_type == 12))), params['C_degen']))
 
     xl = meshCoor[conn]
     det, eleshp3, xs = assembleGlobalMass.compute_element_shape(xl)

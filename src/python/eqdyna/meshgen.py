@@ -171,47 +171,86 @@ def build_grid_lines(params):
     return xline, yline, zline, pmlb, (xbound, ybound, zbound)
 
 
-def is_on_fault(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax, tol, c_degen=0.0):
-    """Port of checkIsOnFault, C_degen==0 branch only (planar fault at y=0;
-    tpv8/tpv104 both use this branch -- insertFaultType>0/C_degen>3 rough-
-    fault branches are NOT ported here, matching this milestone's scope)."""
-    if c_degen != 0.0:
-        raise NotImplementedError('only the planar (C_degen==0) fault branch is ported')
-    in_box = (x >= fxmin - tol and x <= fxmax + tol and
-              y >= fymin - tol and y <= fymax + tol and
-              z >= fzmin - tol and z <= fzmax + tol)
-    return in_box and y == 0.0
+def _dip_plane_distance(y, z, c_degen):
+    """checkIsOnFault/wedge()'s shared dipping-plane distance formula
+    (meshgen.f90:765-766, library_degeneration.f90:10-11):
+    `abs(z + y*tan(c_degen deg)) / sqrt(1+tan(c_degen deg)**2)`. `c_degen`
+    is in degrees, matching the Fortran's own `C_degen/180.d0*pi` (division
+    before multiplication, reproduced in that order here even though it is
+    exactly commutative in double precision). Works elementwise on Python
+    floats or numpy arrays."""
+    tangent = np.tan((c_degen / 180.0) * np.pi)
+    return np.abs(z + y * tangent) / (1.0 + tangent ** 2) ** 0.5
+
+
+def _check_is_on_fault_vec(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax,
+                            tol, c_degen, dx=None):
+    """Elementwise (broadcasting) port of checkIsOnFault -- the same two
+    branches `is_on_fault` implements, written so it also works on full
+    grid-shaped arrays (used by `on_fault_grid_mask`) and on point arrays
+    (used by `build_elements`' type-13 retag test), not just Python floats."""
+    in_box = ((x >= fxmin - tol) & (x <= fxmax + tol) &
+              (y >= fymin - tol) & (y <= fymax + tol) &
+              (z >= fzmin - tol) & (z <= fzmax + tol))
+    if c_degen == 0.0:
+        return in_box & (y == 0.0)
+    if c_degen > 3.0:
+        if dx is None:
+            raise ValueError('_check_is_on_fault_vec: dx is required for the C_degen>3 branch')
+        return in_box & (_dip_plane_distance(y, z, c_degen) < dx / 100.0)
+    raise NotImplementedError(
+        '_check_is_on_fault_vec: only c_degen==0 or c_degen>3 are ported (got %r); '
+        'the Fortran checkIsOnFault itself takes neither if/elseif branch for '
+        '0<C_degen<=3, so isOnFault stays 0 unconditionally there -- not '
+        'silently mimicked here without a real case to pin it down' % c_degen)
+
+
+def is_on_fault(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax, tol, c_degen=0.0, dx=None):
+    """Port of checkIsOnFault. C_degen==0: planar fault at y=0 (tpv8/
+    tpv104). C_degen>3: distance-to-dipping-plane test (meshgen.f90:763-767;
+    tpv36/tpv37's wedge-degeneration branch) -- `dx` is required then (the
+    Fortran uses `dx/100.d0`, NOT the module `tol`=1e-5 the box test uses).
+    Any other c_degen (0<c_degen<=3) raises: the Fortran itself falls into
+    neither if/elseif branch there, so isOnFault is unconditionally 0 -- a
+    behavior this port does not silently reproduce without a real case."""
+    return bool(_check_is_on_fault_vec(x, y, z, fxmin, fxmax, fymin, fymax,
+                                        fzmin, fzmax, tol, c_degen, dx))
 
 
 def on_fault_grid_mask(xline, yline, zline, params):
     """Vectorized `is_on_fault` over the whole (ix, iz, iy) grid, in the
     traversal order every builder in this module uses (ix outer, iz middle,
-    iy inner).
+    iy inner) -- now dispatching on `params['C_degen']` via the SAME
+    `_check_is_on_fault_vec` helper `is_on_fault` uses (evaluated once for
+    the grid instead of once per node per builder: the scalar helper was
+    being called nx*ny*nz times by each of five builders).
 
-    This is the same predicate as `is_on_fault`, term for term -- an
-    axis-separable box test AND `y == 0.0` -- evaluated once for the grid
-    instead of once per node per builder (the scalar helper was being called
-    nx*ny*nz times by each of five builders). `testsys/unit/
-    test_meshgen_vectorized.py` asserts it agrees with `is_on_fault` on
-    every node of a real mesh, not on a sample.
-
-    Every caller in this module invokes `is_on_fault` with its `c_degen`
-    argument at its 0.0 default (checked: all five call sites pass only the
-    box bounds and tol), so the scalar helper's C_degen!=0 guard is
-    unreachable from here and is deliberately not duplicated -- mirroring it
-    off `params['C_degen']` instead would WRONGLY reject the dipping-fault
-    cases (tpv10/drv.a6 carry C_degen>3 while still taking this planar
-    fault-node test).
+    For C_degen==0 this is unchanged from before (same formula, just
+    restructured through the shared helper) -- tpv8/tpv104/tpv10/drv.a6 all
+    carry C_degen==0 (confirmed by reading their case_input/*/
+    user_defined_params.py directly, not assumed), so nothing here can
+    regress them. For C_degen>3 (tpv36/tpv37) the dipping-plane distance
+    test genuinely depends on BOTH y and z jointly, so it is evaluated as
+    one broadcast 3-D array rather than kept axis-separable the way the
+    C_degen==0 y==0 test could be.
 
     Returns a (nx*nz*ny,) bool array in traversal order.
     """
     p = params
     tol = p['tol']
+    c_degen = p['C_degen']
     X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
-    mx = (X >= p['fxmin'] - tol) & (X <= p['fxmax'] + tol)
-    my = (Y >= p['fymin'] - tol) & (Y <= p['fymax'] + tol) & (Y == 0.0)
-    mz = (Z >= p['fzmin'] - tol) & (Z <= p['fzmax'] + tol)
-    return (mx[:, None, None] & mz[None, :, None] & my[None, None, :]).ravel()
+    Xg = X[:, None, None]
+    Yg = Y[None, None, :]
+    Zg = Z[None, :, None]
+    dx = p['dx'] if c_degen > 3.0 else None
+    # already the full (nx,nz,ny) shape by construction: every branch above
+    # combines an x-dependent, a y-dependent and a z-dependent boolean with
+    # `&`, and numpy broadcasts that to the full outer-product shape before
+    # this function returns.
+    mask = _check_is_on_fault_vec(Xg, Yg, Zg, p['fxmin'], p['fxmax'], p['fymin'],
+                                   p['fymax'], p['fzmin'], p['fzmax'], tol, c_degen, dx)
+    return mask.ravel()
 
 
 def _fortran_nint(x):
@@ -370,16 +409,25 @@ def build_node_coordinates(xline, yline, zline, params):
 
 def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     """Milestone 2: port of meshgen.f90's createElement + setElementMaterial +
-    replaceSlaveWithMasterNode, single planar fault (ntotft==1, C_degen==0),
-    homogeneous or 1D-layered material (setElementMaterial's two branches).
+    replaceSlaveWithMasterNode, single planar fault (ntotft==1), homogeneous
+    or 1D-layered material (setElementMaterial's two branches), for BOTH
+    C_degen==0 (planar fault, tpv8/tpv104) and C_degen>3 (dipping fault
+    wedge-degeneration, tpv36/tpv37) -- the latter ports
+    library_degeneration.f90's wedge()/reorder() plus meshgen.f90:91-101's
+    type-13 retag; see the `c_degen > 3.0` block below and
+    `_wedge_material_row`/`_splice_wedge_elements`.
 
-    Verified against `testsys/parity/fixtures/test_tpv8_serial/pydump_conn.txt`
-    (nodeElemIdRelation + elemTypeArr + mat(1:5) for every element, dumped by
-    src/pydump.f90) -- see the removed parity tier (test_standalone_meshgen.py, deleted 2026-09-15).
+    C_degen==0 verified against `testsys/parity/fixtures/test_tpv8_serial/
+    pydump_conn.txt` (nodeElemIdRelation + elemTypeArr + mat(1:5) for every
+    element, dumped by src/pydump.f90) -- see the removed parity tier
+    (test_standalone_meshgen.py, deleted 2026-09-15). C_degen>3 verified
+    against a freshly-built Fortran binary on test.tpv36 by
+    `testsys/parity/evidence_c_degen_port.py` (element-type-count/material/
+    fault-node-count parity -- report-only, not wired into any gate).
 
     PERFORMANCE NOTE (vectorized; the verbatim scalar loop this replaced is
     kept as `_build_elements_scalar` below and is the bit-for-bit oracle
-    `testsys/unit/test_meshgen_vectorized.py` checks this against):
+    `testsys/unit/test_meshgen_c_degen_wedge.py` checks this against):
 
     The scalar version's plane1/plane2 sliding-column bookkeeping is
     reproducible in closed form, and this was established by reading the
@@ -421,7 +469,11 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     Returns (conn, elem_type, mat, depth) where conn is (E,8) 1-indexed node
     ids in the Fortran nodeElemIdRelation column order (0-unused row NOT
     included -- conn is 0-indexed by element, elements 1..E map to rows
-    0..E-1), elem_type is (E,) int (1=interior/hourglass-controlled, 2=PML),
+    0..E-1), elem_type is (E,) int (1=interior/hourglass-controlled, 2=PML,
+    and for C_degen>3 also 11=wedge below fault/12=wedge above fault/
+    13=interior brick retagged adjacent-to-fault -- E itself is then LARGER
+    than (nx-1)*(ny-1)*(nz-1) by the number of wedge-triggered brick
+    positions, one extra element per trigger),
     mat is (E,5) [vp,vs,rho,lambda,mu], and depth (E,) is
     `-0.5*(zline[iz]+zline[iz-1]) + 7.3215` (meshgen.f90:103's argument to
     setPlasticStress, verbatim including the 7.3215 magic-number shift --
@@ -435,6 +487,11 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     tol = p['tol']
     dx, dy = p['dx'], p['dy']
     fxmin, fxmax, fzmin = p['fxmin'], p['fxmax'], p['fzmin']
+    fymin, fymax, fzmax = p['fymin'], p['fymax'], p['fzmax']
+    c_degen = p['C_degen']
+    if not (c_degen == 0.0 or c_degen > 3.0):
+        raise NotImplementedError('build_elements: only C_degen==0 or C_degen>3 is ported '
+                                   '(got %r)' % c_degen)
 
     # PMLb per getLocalOneDimCoorArrAndSize's mapping (build_grid_lines' pmlb dict).
     xmax0, xmin0 = pmlb['xmax0'], pmlb['xmin0']
@@ -480,16 +537,69 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     elem_type = np.where((cx > xmax0) | (cx < xmin0) | (cy > ymax0) | (cy < ymin0) |
                           (cz < zmin0), 2, 1).astype(np.int64)
 
-    # ---- replaceSlaveWithMasterNode (C_degen==0, elemTypeArr==1 branch) ----
+    # ---- wedge degeneration (C_degen>3): library_degeneration.f90's wedge()
+    # + meshgen.f90:91-101's type-13 retag, both gathered from the ORIGINAL
+    # (pre-replaceSlaveWithMasterNode) `conn` -- Fortran's wedge() reads
+    # plane1/plane2 (== this `conn`) before replaceSlaveWithMasterNode ever
+    # runs on that ix/iy/iz point. tpv8/tpv104/tpv10/drv.a6 all carry
+    # C_degen==0 (confirmed by reading their case_input/*/
+    # user_defined_params.py), so this entire block is unreachable for them.
+    wedge_trigger = np.zeros(n_elem, dtype=bool)
+    retag13 = np.zeros(n_elem, dtype=bool)
+    wedge11_conn = wedge12_conn = wedge12_mat_row = None
+    if c_degen > 3.0:
+        # wedge()'s OWN box test (library_degeneration.f90:12-15): strict
+        # inequalities, NO +/-tol slop on the bounds (unlike checkIsOnFault's
+        # box test below), and cenz bounded ONLY from below -- reproduced
+        # exactly, not "fixed" to match checkIsOnFault's box test.
+        dist_wedge = _dip_plane_distance(cy, cz, c_degen)
+        wedge_trigger = ((cx > fxmin) & (cx < fxmax) & (cy > fymin) & (cy < fymax) &
+                          (cz > fzmin) & (dist_wedge < tol))
+
+        # meshgen.f90:93-99's retag-to-13 test: checkIsOnFault on THIS
+        # element's (unmodified, since wedge didn't fire) corner1/corner2 --
+        # only meaningful where wedge did NOT fire and the element is still
+        # plain interior (elemTypeArr==1); PML (2) is never retagged.
+        n1 = meshCoor[conn[:, 0]]
+        n2 = meshCoor[conn[:, 1]]
+        onfault1 = _check_is_on_fault_vec(n1[:, 0], n1[:, 1], n1[:, 2], fxmin, fxmax,
+                                           fymin, fymax, fzmin, fzmax, tol, c_degen, dx)
+        onfault2 = _check_is_on_fault_vec(n2[:, 0], n2[:, 1], n2[:, 2], fxmin, fxmax,
+                                           fymin, fymax, fzmin, fzmax, tol, c_degen, dx)
+        retag13 = (~wedge_trigger) & (elem_type == 1) & (onfault1 | onfault2)
+
+        # library_degeneration.f90:30-43's two `reorder` calls, vectorized:
+        # neworder=(5,1,4,4,6,2,3,3) for the type-11 (below-fault) wedge,
+        # (4,8,5,5,3,7,6,6) for type-12 (above-fault) -- corner k is
+        # `conn[:, k-1]`. Gathered from the conn snapshot ABOVE, i.e. before
+        # `replace` (built below) can mutate it in place.
+        wedge11_conn = conn[:, [4, 0, 3, 3, 5, 1, 2, 2]]
+        wedge12_conn = conn[:, [3, 7, 4, 4, 2, 6, 5, 5]]
+        wedge12_mat_row = _wedge_material_row(material)
+
+    elem_type = np.where(retag13, 13, elem_type)
+
+    # ---- replaceSlaveWithMasterNode (meshgen.f90:733-736's full guard:
+    # (elemTypeArr==1 AND geometric) OR elemTypeArr==12 OR elemTypeArr==13.
+    # The OR-clause is unreachable dead code for C_degen==0 (elemTypeArr
+    # never takes 11/12/13 then) and is exercised here for the first time;
+    # elemTypeArr==12 doesn't exist at this per-brick-row granularity yet
+    # (it is only created by the splice below) so it is applied directly to
+    # `wedge12_conn` there instead -- UNCONDITIONALLY, matching the Fortran;
+    # elemTypeArr==11 NEVER gets this substitution, also matching the
+    # Fortran, and is intentionally absent from both masks below.)
     # Test uses the element's "top" node coords (this ix,iy,iz), matching
     # Fortran's `nodeCoor` at the point createElement/replaceSlave... run.
     xcoor, ycoor, zcoor = xline[IX], yline[IY], zline[IZ]
-    replace = ((elem_type == 1) & (xcoor > fxmin - tol) & (xcoor < fxmax + dx + tol) &
-               (zcoor > fzmin - tol) & (ycoor > 0.0) & (np.abs(ycoor - dy) < tol))
+    replace = (((elem_type == 1) & (xcoor > fxmin - tol) & (xcoor < fxmax + dx + tol) &
+                (zcoor > fzmin - tol) & (ycoor > 0.0) & (np.abs(ycoor - dy) < tol)) |
+               (elem_type == 13))
+    lut = np.arange(meshCoor.shape[0], dtype=np.int64)
+    lut[nsmp[:, 0]] = nsmp[:, 1]
     if replace.any():
-        lut = np.arange(meshCoor.shape[0], dtype=np.int64)
-        lut[nsmp[:, 0]] = nsmp[:, 1]
         conn[replace] = lut[conn[replace]]
+    if wedge12_conn is not None:
+        wedge12_conn = lut[wedge12_conn]
 
     # ---- setElementMaterial ----
     nmat, n2mat = material.shape
@@ -527,7 +637,91 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     # elemCount)` -- same expression, same operand order, evaluated per element.
     depth = -0.5 * (zline[IZ] + zline[IZ - 1]) + 7.3215
 
+    if wedge_trigger.any():
+        conn, elem_type, mat, depth = _splice_wedge_elements(
+            conn, elem_type, mat, depth, wedge_trigger, wedge11_conn,
+            wedge12_conn, wedge12_mat_row)
+
     return conn, elem_type, mat, depth
+
+
+def _wedge_material_row(material):
+    """Port of library_degeneration.f90's wedge()'s hardcoded material read
+    for the type-12 (above-fault) wedge sub-element (lines 49-53):
+    `mat(elemCount,1)=material(1,1)`, `,2)=material(1,2)`, `,3)=material(1,3)`,
+    then `mu=vs**2*rho`, `lam=vp**2*rho-2*mu`. This reads material ROW 1,
+    COLUMNS 1-3 LITERALLY, regardless of `n2mat` -- for the homogeneous
+    (n2mat==3) table those columns really are [vp,vs,rho] (tpv36's case,
+    matching setElementMaterial's own homogeneous branch exactly); for the
+    1D-layered (n2mat==4) table, column 1 is actually the layer's DEPTH
+    bound, not vp -- reproduced index-for-index as the Fortran source
+    itself does, not "fixed", per this port's discipline against silently
+    correcting behavior it doesn't own."""
+    vp0, vs0, rho0 = material[0, 0], material[0, 1], material[0, 2]
+    mu0 = vs0 * vs0 * rho0
+    lam0 = vp0 * vp0 * rho0 - 2.0 * mu0
+    return np.array([vp0, vs0, rho0, lam0, mu0])
+
+
+def _splice_wedge_elements(conn, elem_type, mat, depth, wedge_trigger,
+                            wedge11_conn, wedge12_conn, wedge12_mat_row):
+    """Insert the two wedge sub-elements (types 11, 12) in place of each
+    wedge_trigger brick position, shifting every later element's final
+    index -- the array-level mirror of library_degeneration.f90's wedge()
+    incrementing Fortran's running `elemCount` by 2 (instead of createElement's
+    usual 1) for that ix/iy/iz grid point.
+
+    `conn`/`elem_type`/`mat`/`depth` are the size-(n_brick) per-brick-position
+    arrays already finalized (post material/depth/replace) for the
+    non-degenerating path. The type-11 row REUSES that position's own
+    mat/depth verbatim: wedge() never overwrites `mat(elemCount,:)` for the
+    FIRST sub-element (only the type-12 slot gets an explicit mat write, see
+    `_wedge_material_row`) and meshgen.f90:104's setPlasticStress call runs
+    once per ix/iy/iz point using whatever `elemCount` is AFTER the wedge
+    split (i.e. the type-12 slot) -- both facts mean this port's depth value
+    for the type-11 row is not the literal Fortran value (which is simply
+    never written by any call for that slot) but is harmless BY
+    CONSTRUCTION: `depth` is only ever read when C_elastic==0, a combination
+    this port's caller (eqdyna3d.py) refuses outright for C_degen>3.
+
+    Returns (conn, elem_type, mat, depth) at the FINAL (post-split) element
+    count.
+    """
+    n_brick = conn.shape[0]
+    mult = np.where(wedge_trigger, 2, 1)
+    starts = np.zeros(n_brick, dtype=np.int64)
+    np.cumsum(mult[:-1], out=starts[1:])
+    n_final = int(starts[-1] + mult[-1]) if n_brick else 0
+
+    final_conn = np.repeat(conn, mult, axis=0)
+    final_elem_type = np.repeat(elem_type, mult)
+    final_mat = np.repeat(mat, mult, axis=0)
+    final_depth = np.repeat(depth, mult)
+
+    trig_idx = np.nonzero(wedge_trigger)[0]
+    s = starts[trig_idx]
+    final_conn[s] = wedge11_conn[trig_idx]
+    final_elem_type[s] = 11
+    # mat/depth at row s already correct: np.repeat carried the original
+    # brick's own values forward, exactly what the type-11 sub-element keeps.
+    final_conn[s + 1] = wedge12_conn[trig_idx]
+    final_elem_type[s + 1] = 12
+    final_mat[s + 1] = wedge12_mat_row
+    # depth at row s+1: same formula, same ix/iy/iz point, already correct
+    # via np.repeat too (see this function's docstring for why this is the
+    # right call even though it is not the literal, never-written Fortran
+    # value for the OTHER (type-11) slot).
+
+    assert final_conn.shape[0] == n_final, (final_conn.shape[0], n_final)
+    # meshgen.f90's own sanity check (assembleGlobalMass.f90:45-50): a
+    # degenerate wedge's nodes 3 and 4 must coincide by construction of
+    # neworder=(...,4,4,...)/(...,5,5,...) above -- verified, not assumed.
+    bad11 = np.nonzero(final_conn[final_elem_type == 11][:, 2] !=
+                        final_conn[final_elem_type == 11][:, 3])[0]
+    if bad11.size:
+        raise ValueError('_splice_wedge_elements: a type-11 wedge has unequal '
+                          'node ids at corners 3/4 (%r)' % bad11[:5].tolist())
+    return final_conn, final_elem_type, final_mat, final_depth
 
 
 def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
@@ -542,15 +736,22 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
     tol = p['tol']
     dx, dy = p['dx'], p['dy']
     fxmin, fxmax, fzmin = p['fxmin'], p['fxmax'], p['fzmin']
+    fymin, fymax, fzmax = p['fymin'], p['fymax'], p['fzmax']
+    c_degen = p['C_degen']
+    if not (c_degen == 0.0 or c_degen > 3.0):
+        raise NotImplementedError('_build_elements_scalar: only C_degen==0 or C_degen>3 '
+                                   'is ported (got %r)' % c_degen)
     xmax0, xmin0 = pmlb['xmax0'], pmlb['xmin0']
     ymax0, ymin0 = pmlb['ymax0'], pmlb['ymin0']
     zmin0 = pmlb['zmin0']
 
     slave2master = {int(s): int(m) for s, m in nsmp}
+    wedge12_mat_row = _wedge_material_row(material) if c_degen > 3.0 else None
 
-    n_elem = (nx - 1) * (ny - 1) * (nz - 1)
-    conn = np.zeros((n_elem, 8), dtype=np.int64)
-    elem_type = np.zeros(n_elem, dtype=np.int64)
+    conn_rows = []       # dynamic: a wedge_trigger emits 2 rows per (ix,iy,iz)
+    elem_type_rows = []
+    mat_rows = []
+    depth_rows = []
 
     nmat, n2mat = material.shape
     if nmat == 1 and n2mat == 3:
@@ -583,9 +784,6 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
         lam = vp * vp * rho - 2.0 * mu
         return np.array([vp, vs, rho, lam, mu])
 
-    mat = np.zeros((n_elem, 5))
-    depth = np.zeros(n_elem)
-
     # plane1/plane2: (ny+1) x nz, row ny (0-indexed) is the ntotft==1 master row.
     plane1 = np.zeros((ny + 1, nz), dtype=np.int64)
     plane2 = np.zeros((ny + 1, nz), dtype=np.int64)
@@ -602,8 +800,8 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
                 node_count += 1
                 plane2[iy, iz] = node_count
 
-                if is_on_fault(xcoor, ycoor, zcoor, fxmin, fxmax, p['fymin'],
-                                p['fymax'], fzmin, p['fzmax'], tol):
+                if is_on_fault(xcoor, ycoor, zcoor, fxmin, fxmax, fymin,
+                                fymax, fzmin, fzmax, tol, c_degen, dx):
                     master_count += 1
                     msnode = nx * ny * nz + master_count
                     plane2[ny, iz] = msnode
@@ -628,22 +826,72 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
                     if cx > xmax0 or cx < xmin0 or cy > ymax0 or cy < ymin0 or cz < zmin0:
                         etype = 2
 
-                    if etype == 1 and (xcoor > fxmin - tol and xcoor < fxmax + dx + tol
-                                       and zcoor > fzmin - tol and ycoor > 0.0
-                                       and abs(ycoor - dy) < tol):
-                        for k in range(8):
-                            nid = int(c[k])
-                            if nid in slave2master:
-                                c[k] = slave2master[nid]
+                    depth_val = -0.5 * (zline[iz] + zline[iz - 1]) + 7.3215
 
-                    conn[elem_count] = c
-                    elem_type[elem_count] = etype
-                    mat[elem_count] = material_for(cz)
-                    depth[elem_count] = -0.5 * (zline[iz] + zline[iz - 1]) + 7.3215
-                    elem_count += 1
+                    # ---- wedge degeneration (C_degen>3): verbatim scalar
+                    # mirror of library_degeneration.f90's wedge() +
+                    # meshgen.f90:91-101's type-13 retag. This runs BEFORE
+                    # replaceSlaveWithMasterNode below, on the UNSUBSTITUTED
+                    # `c`, exactly as meshgen.f90 orders the calls.
+                    wedge_fired = False
+                    if c_degen > 3.0:
+                        dist_wedge = abs(cy * np.tan((c_degen / 180.0) * np.pi) + cz) / \
+                            (1.0 + np.tan((c_degen / 180.0) * np.pi) ** 2) ** 0.5
+                        if (cx > fxmin and cx < fxmax and cy > fymin and cy < fymax and
+                                cz > fzmin and dist_wedge < tol):
+                            wedge_fired = True
+                            c11 = c[[4, 0, 3, 3, 5, 1, 2, 2]]
+                            c12 = c[[3, 7, 4, 4, 2, 6, 5, 5]]
+                            conn_rows.append(c11)
+                            elem_type_rows.append(11)
+                            mat_rows.append(material_for(cz))
+                            depth_rows.append(depth_val)
+                            c12 = np.array([slave2master.get(int(v), int(v)) for v in c12],
+                                            dtype=np.int64)
+                            conn_rows.append(c12)
+                            elem_type_rows.append(12)
+                            mat_rows.append(wedge12_mat_row)
+                            depth_rows.append(depth_val)
+                            elem_count += 2
+                        elif etype == 1:
+                            n1 = meshCoor[int(c[0])]
+                            n2 = meshCoor[int(c[1])]
+                            on1 = is_on_fault(n1[0], n1[1], n1[2], fxmin, fxmax, fymin,
+                                               fymax, fzmin, fzmax, tol, c_degen, dx)
+                            on2 = is_on_fault(n2[0], n2[1], n2[2], fxmin, fxmax, fymin,
+                                               fymax, fzmin, fzmax, tol, c_degen, dx)
+                            if on1 or on2:
+                                etype = 13
+
+                    if not wedge_fired:
+                        if (etype == 1 and (xcoor > fxmin - tol and xcoor < fxmax + dx + tol
+                                             and zcoor > fzmin - tol and ycoor > 0.0
+                                             and abs(ycoor - dy) < tol)) or etype == 13:
+                            for k in range(8):
+                                nid = int(c[k])
+                                if nid in slave2master:
+                                    c[k] = slave2master[nid]
+
+                        conn_rows.append(c)
+                        elem_type_rows.append(etype)
+                        mat_rows.append(material_for(cz))
+                        depth_rows.append(depth_val)
+                        elem_count += 1
         plane1 = plane2.copy()
 
-    assert elem_count == n_elem, (elem_count, n_elem)
+    n_elem = (nx - 1) * (ny - 1) * (nz - 1)
+    if c_degen == 0.0:
+        assert elem_count == n_elem, (elem_count, n_elem)
+    conn = np.array(conn_rows, dtype=np.int64)
+    elem_type = np.array(elem_type_rows, dtype=np.int64)
+    mat = np.array(mat_rows)
+    depth = np.array(depth_rows)
+    # meshgen.f90's own sanity check (assembleGlobalMass.f90:45-50): a
+    # degenerate wedge's nodes 3 and 4 must coincide by construction.
+    bad11 = np.nonzero(conn[elem_type == 11][:, 2] != conn[elem_type == 11][:, 3])[0]
+    if bad11.size:
+        raise ValueError('_build_elements_scalar: a type-11 wedge has unequal '
+                          'node ids at corners 3/4 (%r)' % bad11[:5].tolist())
     return conn, elem_type, mat, depth
 
 
