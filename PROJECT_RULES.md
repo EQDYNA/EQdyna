@@ -393,3 +393,68 @@ Shortcuts like `EQDYNA_E2E_BIN=src/eqdyna` exist to keep a gate from disturbing
 a running job; they skip the build-and-install path, so a green run under them
 says nothing about it. If you used one, say so, and run the real entry point
 before the tag.
+
+---
+
+## 17. Reviving or adding a TPV benchmark
+
+TPV29 established this recipe the expensive way. Follow it in order; each step
+exists because skipping it cost something.
+
+**1. Fetch the official spec first, and cite it by name and part.** Put it in
+`scratch/specs/`. Every resolution, duration and station list comes from there.
+If the spec does not state a number, it does not get invented — `test.tpv1053d`
+has no spec element size, so `testsys/e2e/full_specs.py` carries an EXCLUDED
+entry saying exactly that instead of a plausible guess.
+
+**2. Decimate geometry, never interpolate.** A supplied fault surface is a
+fixed sampling of ONE random realisation. Taking every n-th node keeps official
+values; interpolating invents detail that is not in the benchmark. Ship the
+spec resolution plus a coarser source, declare `par.faultGeometrySourceDx` and
+`par.faultGeometrySourceAvailableDx`, and let
+`lib.requireFaultGeometryResolution` refuse any dx that is finer than, or not a
+multiple of, the source. TPV29 ships 100 m (3.5 MB) and 50 m (14 MB), both
+exact decimations of the official 25 m file, so a clean checkout needs no
+download.
+
+**3. Check the CODE has that TPV's branch before trusting a run.** This is the
+step that cost the most. `swtwNucleation` branched on `TPV in {201,36,37}` and
+omitted 29 — the case the smoothed forced-rupture formula comes FROM — so
+`case_input/test.tpv29` had been declaring `par.tpv = 36` to reach its own
+physics. The misdeclaration hid a real gap: the Python port implemented only
+the degenerate branch and nucleated **0 of 3321** fault nodes against a
+reference of 2974, failing at 7.10e7 on both backends at the identical value.
+Grep the source for the TPV number you are adding. If the case has to
+impersonate another TPV to work, that is a bug in the code, not a
+configuration trick.
+
+**4. Gate COARSE, freeze ONE reference.** Gate at a dx that runs in minutes at
+4 ranks (TPV29: 500 m), not at spec resolution. Freeze exactly one
+`frt.canonical.txt` (`python3 -m testsys.frt_canonical <case_dir>`) — it is
+decomposition-independent, so the same artifact serves Fortran at any rank
+count and the serial Python backends. Then add the case to BOTH
+`testNameList.py` and `testsys/matrix.py` (`CASE_BOUND` **and** `GATE`);
+matrix.py fails at import if either is missing, which is deliberate.
+
+**5. Record the spec-resolution tier without running it.** Add the
+`full_specs.py` entry (dx, term, nx/ny/nz, citation) so the run is one command
+away. Actually performing it is a scheduling decision — TPV29's 50 m run was
+deliberately NOT done because 500/200/100 m already converged (0.076 / 0.028 /
+0.006 s median rupture-time difference) and the 100 m run was the real
+cross-code validation.
+
+**6. Validate against something independent, as a SCRIPT.** TPV29 was checked
+against EQdyna's own 2015 SCEC submission at matched 100 m: 0.006 s median
+rupture time, 0.22% median final slip over 24 on-fault stations. Those numbers
+are prose-only and their baseline (`scec_archive/`) is gitignored, so nothing
+in-tree reproduces them — that is pathway item 28, and it is the one part of
+the TPV29 work that was done wrong. Write the comparison as a committed script
+from the start (rule 4).
+
+**7. Run the FULL sweep, all three backends.** A new case is 3 cells, not 1.
+Either all three pass, or the failing ones are declared UNSUPPORTED in
+`matrix.py` with a reason verified in the source — never left absent.
+
+**How to apply**: `python3 testsys/e2e/run_e2e.py --cases test.tpvNN` for the
+new case alone while iterating, then `python3 testsys/run.py all` before
+committing the reference.
