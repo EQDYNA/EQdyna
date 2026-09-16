@@ -20,7 +20,7 @@ testsys/parity/evidence_output/
 # the CI-dependency lint to keep it quiet.
 testsys/perf/perf_case/
 testsys/parity/probe_case/
-scec_archive/
+scec_archive/          # 484 MB of fetched submissions; the TOOLING is tracked at scripts/scec/
 relnotes_v*.md
 # testsys/perf/elem_scaling_last.json tracked: raw evidence behind measured_runs.md
 # (its harness was removed 2026-09-15 -- see that file's header)
