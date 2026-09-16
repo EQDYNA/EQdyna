@@ -129,7 +129,7 @@ def build_serial_fortran_binary():
     target, MACHINE=ubuntu)". Rebuilt every invocation (rule 4 -- a stale
     bin/eqdyna already caused one diagnosis detour this project, see
     test_standalone_acceptance.py's module docstring)."""
-    src = os.path.join(REPO_ROOT, 'src')
+    src = os.path.join(REPO_ROOT, 'src', 'fortran')
     env = dict(os.environ, MACHINE='ubuntu')
     subprocess.run(['bash', '-c', 'rm -f *.o eqdyna'], cwd=src)
     t0 = time.time()

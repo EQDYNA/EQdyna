@@ -35,7 +35,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SRC = os.path.join(ROOT, 'src')
+SRC = os.path.join(ROOT, 'src', 'fortran')
 REGISTRY = os.path.join(SRC, 'errorCodes.f90')
 
 ALLOW_MARKER = 'NORMAL-EXIT'

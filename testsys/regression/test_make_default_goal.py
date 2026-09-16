@@ -39,7 +39,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SRC = os.path.join(ROOT, 'src')
+SRC = os.path.join(ROOT, 'src', 'fortran')
 
 
 def _copySrc(dest):

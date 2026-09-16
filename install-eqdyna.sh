@@ -1,7 +1,7 @@
 #! /bin/bash 
 
 # The shell script is to set up environments for EQdyna and 
-#	install it. It will call the makefile inside src/ and generate 
+#	install it. It will call the makefile inside src/fortran/ and generate 
 #	an executable eqdyna and move it to bin/.
 
 # Currently, the machines supported are:
@@ -95,11 +95,16 @@ if [ -n "$MACH" ]; then
     if [ -n "$CONFIG" ]; then 
         echo "Simply configure EQdyna without installation ... ..."
     else
-        cd src
+        # cd back by NAME, not `cd ..`: the sources moved one level deeper
+        # (src/ -> src/fortran/) and a relative `cd ..` silently landed in
+        # src/, so every path after this block -- EQDYNAROOT, the PATH
+        # exports, the chmods -- was resolved against the wrong directory.
+        EQDYNA_TOP=$(pwd)
+        cd src/fortran
         make
-        cd ..
-        mkdir bin
-        mv src/eqdyna bin
+        cd "$EQDYNA_TOP"
+        mkdir -p bin
+        mv src/fortran/eqdyna bin
     fi
 
     export EQDYNAROOT=$(pwd)

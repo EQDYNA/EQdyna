@@ -139,7 +139,7 @@ def run_standalone(case_dir, backend, device='cpu', env=None):
     """
     solver = {'python-numpy': 'numpy', 'python-jax': 'jax'}[backend]
     env = dict(env or base_env())
-    env['PYTHONPATH'] = os.path.join(REPO_ROOT, 'python')
+    env['PYTHONPATH'] = os.path.join(REPO_ROOT, 'src', 'python')
     env['PYTHONUNBUFFERED'] = '1'
     # JAX_PLATFORMS pins the device: a run labelled jax-on-cpu that silently
     # landed on a contended GPU is a different measurement under the same name.

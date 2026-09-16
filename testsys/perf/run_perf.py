@@ -32,7 +32,7 @@ import time
 
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
-PYTHON_PKG = os.path.join(REPO_ROOT, 'python')
+PYTHON_PKG = os.path.join(REPO_ROOT, 'src', 'python')
 FIXTURE_CASE = os.path.join(TESTSYS, '..', 'parity', 'fixtures', 'test_tpv8_serial')
 BASELINE_PATH = os.path.join(TESTSYS, 'baseline.json')
 CORE = os.environ.get('PERF_CORE', '0')

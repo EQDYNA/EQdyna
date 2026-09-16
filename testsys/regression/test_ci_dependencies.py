@@ -75,10 +75,10 @@ def first_party():
                 names.add(entry[:-3])
         for d in dirs:
             # A package by __init__.py, or a directory the repo puts on
-            # sys.path itself (python/eqdyna is imported as `eqdyna` after
-            # testsys/parity inserts python/ -- it has no __init__.py).
+            # sys.path itself (src/python/eqdyna is imported as `eqdyna` once
+            # src/python is on the path -- it has no __init__.py).
             if (os.path.exists(os.path.join(root, d, '__init__.py'))
-                    or os.path.relpath(root, ROOT) == 'python'):
+                    or os.path.relpath(root, ROOT) == os.path.join('src', 'python')):
                 names.add(d)
     return names
 
