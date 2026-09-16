@@ -20,6 +20,39 @@ Current layout, for reading the older rows: Fortran is `src/fortran/`, the
 Python solver is `src/python/eqdyna/` (14 modules, one per Fortran file), and
 there is ONE test -- `testsys/run.py e2e`, 8 cases x 3 backends = 24 cells.
 
+## Priority order (set 2026-09-16)
+
+Ranked by value per unit of risk, not by item number. P1 first; do not start a
+P3 whose prerequisite is unmet. **BLOCKED-ON-OWNER items need a decision, not
+effort** -- doing them anyway means guessing at something that is not mine to
+guess.
+
+| rank | item | what | why this rank | blocked on |
+|---|---|---|---|---|
+| **P1** | 32 | drv.a6 flips against a SERIAL Fortran reference | compute already done; report-only, cannot move a gate; isolates the port's true contribution from the decomposition term | nothing |
+| **P1** | 19(a) | gate TPV36 + TPV37 | compsets and code branches already exist; **no gated case exercises `C_degen`** (verified across all 8), and both set `C_degen = par.dip`, so this closes a path that ships untested | owner: reference freeze creates new ground truth (rule 7) |
+| **P2** | 23 | isolated Drucker-Prager kernel test | friclaw 4 is covered end-to-end (drv.a6, tpv104) but never in isolation, so a math error inside the 450-flip budget would ship | nothing |
+| **P2** | 28 | TPV29 cross-code numbers are prose-only | they are the validation anyone would cite; the baseline `scec_archive/` is gitignored so no script can reproduce them from a clean clone | owner: track the baseline, or label the claim spike-only |
+| **P2** | 29 | two changes stashed in the v5.5.0 audit | the stash is shared across worktrees; leaving it indefinitely risks another session popping it | owner: apply or drop |
+| **P3** | 24(b)-(f) | viscoplastic gaps: Tv has no input slot, missing depth taper, `+7.3215` undocumented (measured LOAD-BEARING), hardcoded shearMod, hardcoded output window | prerequisite for TPV30 | nothing |
+| **P3** | 19(b) | promote TPV30 from `scratch/tpv30/` | it is the rough VISCOPLASTIC benchmark; freezing a reference before 24(b)-(f) would pin known-wrong loading | item 24(b)-(f) |
+| **P3** | 17 | multi-fault campaign | input contract now refused with a named error, so nothing is silently wrong; the next step is a design decision | owner: how on-fault stations map to faults (`nonfs(i)` is per-fault, `par.st_coor_on_fault` is flat) |
+| **P4** | 7, 9, 10 | the three latent `ntotft>=2` bugs | UNREACHABLE today -- they sit behind item 17's refusal, so they cannot bite | item 17 |
+| **P4** | 19(c) | TPV34 + TPV35 | new builds: no compset, no draft, specs not even fetched | nothing, just cost |
+| **P4** | 16(b) | freeze tpv36/37 references | folds into 19(a); listed separately only because the row predates it | see 19(a) |
+| **P4** | 11 | -- | CLOSED 2026-09-16 | -- |
+
+Two standing notes that are not items:
+
+* **`writeCompTime` is read from nowhere** (`globalvar.f90:109`), so every
+  per-stage timing number is invisible by default. That is how a 511x error in
+  `compTimeInSeconds(2)` survived. Giving it an input slot is a case-input
+  contract change; not queued, but it is why timing bugs hide here.
+* **Four claims in this file did not survive measurement** (24(a)'s half
+  tractions, a 33% JAX regression, a friclaw-4 coverage gap, a
+  compile-fraction figure) and two nearly became fixes. Prefer measuring a
+  claim over repairing it.
+
 | # | Item | Rule | Surface | Re-check interval | Last checked | Command |
 |---|---|---|---|---|---|---|
 | 1 | ~~Untracked build artifacts~~ resolved by `.gitignore` update (8c40871); recheck each release | 12 | repo root, `src/` | every release | 2026-09-09 | `git status --porcelain` |
