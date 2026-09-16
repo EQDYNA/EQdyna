@@ -1,25 +1,14 @@
 # News in 2026
-* 20260916 v5.8.1 release notes
-  * Fix - per-stage timers shared ONE global `startTimeStamp`, written by eight sites across six files, so any nesting silently truncated the outer measurement. `compTimeInSeconds(2)` was understated **511x** (0.0001 s where the true cost is 0.0511 s), not the "<=1% bias, harmless" the issue recorded. Each site now uses a local. Output bit-identical.
-  * Fix - `case.setup` REFUSES `par.ntotft > 1` with a named reason. It previously produced a `bStations.txt` whose line 2 carried one on-fault station count where `readInputFiles.f90:152` reads `ntotft` of them, and the run died in list-directed input with `Bad integer for item 2` and exit 2. That crash also made the deliberate multi-fault stop at `meshgen.f90:790` unreachable.
-  * Fix - `test_stop_exit_status.py`'s real-binary probe -- the only check that a refused run EXITS rather than hangs under mpirun -- had been silently SKIPPING on every ordinary tree, because it looked for `src/eqdyna` while `install-eqdyna.sh` moves the binary to `bin/`. Live again, and running in CI for the first time.
-  * Fix - `test_ci_dependencies.py` never scanned `src/python`, the solver package, despite its own docstring claiming every third-party import is checked against CI's pip line.
-  * Fix - `testsys/perf/run_scaling.py` set PYTHONPATH to a directory that does not exist.
-  * Fix - README's performance numbers were stale in three ways: embedded v5.7.1 release notes quoting 10.4 GB for tpv104 (now 3.42), a case table reporting `~48s` for cases that range 13.3-1108.5 s, and no statement of what produced any figure. There is now a Performance section where every number names its command, and it says plainly that single-run core scaling is NOT characterised.
-  * Fix - PROJECT_RULES rule 16 told the reader to reproduce CI's entry point and then quoted a command CI does not run. Six of seventeen rules cited deleted files.
-  * New - rule 17 and `CLAUDE.md`: the TPV revival workflow, written from what TPV29 cost. The load-bearing step is checking the CODE has that TPV's branch before trusting a run.
-  * Closed by measurement, not by fixing - item 24(a)'s "tractions are exactly HALF for C_elastic==0" does NOT reproduce (Tn ratio 1.0018 over 4747 nodes); item 11's counting-vs-allocating divergence is structurally impossible AND already aborts; item 32's additive flip model is refuted -- drv.a6's flips are a fixed marginal population of ~400 roundoff-decided nodes, not a sum of error sources.
+* 20260916 v5.8.2 release notes
+  * Fix - test.tpv36/test.tpv37 (dipping, wedge-degenerate faults) run under MPI again. `checkFaultMPIAlignment` was correctly refusing a y-split of the fault (exit 51); the `MPI_ERR_RANK` first reported was the MPI library's secondary noise from partners that had already `MPI_Abort`'ed, not the real cause. The divide-vs-duplicate `arn` accounting for this branch is now audited (same case with/without a y-split, 3416 fault nodes: `tnrm`/`tstk`/`tdip` ratio 1.000000, max |diff| over all 22 canonical columns 1.0e-08) and was already correct, so the refusal is now a rank-0 NOTICE carrying that evidence, pinned by new regression guard `test_dipping_fault_y_split.py`.
+  * Fix - a data-integrity bug found auditing this release: a trailing inline comment on `.gitignore`'s `scec_archive/` line made the whole line, comment text included, the literal (unmatchable) pattern, so `scec_archive/` was never actually ignored. 693 files / ~1.16 GB of fetched SCEC submissions were tracked into git by v5.8.2's own predecessor commit despite every doc in the repo saying that data stays untracked. Pattern fixed and the files untracked going forward in this release; the blobs remain in git history pending a deliberate, separately-approved history rewrite.
+  * Fix - `requireValidNeighbor` (new error code 52, `ERR_MPI_BAD_NEIGHBOR`) on both `mpi_sendrecv` call sites, so an out-of-range MPI rank names its call site, direction, side and decomposition instead of leaving the reader to guess.
+  * Fix - corrected in-code explanation of what discriminates the DUPLICATE vs DIVIDE fault-boundary branches: the NOMINAL GRID y-extent in `fltxyz`, not the physical dip angle -- a 60-degree inserted fault (test.tpv10) behaves like a vertical one. Also corrected a docstring claim that the DIVIDE case was "not producible by any case in this codebase today" (that survey covered only the 8 gated cases).
+  * New - interim `C_degen != 0` refusal in the Python port (`src/python/eqdyna/eqdyna3d.py`): the port was documented as `C_degen==0` scope in four docstrings with nothing enforcing it; it now refuses rather than silently mis-treating a degenerate wedge as a hex and the fault as a y=0 plane. test.tpv36/test.tpv37 remain UNGATED (not added to `testNameList.py` or `testsys/matrix.py`) until wedge degeneration is actually ported.
+  * Fix - moved the SCEC re-fetch TOOLING (`scripts/scec/`: fetch_all_dliu.py, organize.py, make_index.py, provenance.py, pure stdlib) out of gitignored `scratch/` and into the tracked tree, so TPV29's cross-code validation baseline is regenerable from a clean clone even though the 484 MB it fetches correctly stays untracked.
+  * Fix - `testsys/regression/test_release_complete.py`: a released version must be released everywhere. v5.8.0 and v5.8.1 both skipped the `pathway_forward.md` Tasks-done row and `gh release create`; this guard checks the runtime banner, README's leading News block, a dated Tasks-done row, an annotated tag, and (best-effort, network) the pushed tag and GitHub Release, for whatever version `VERSION` currently names.
+  * Change - `PROJECT_RULES.md` rule 17 step 7 and `CLAUDE.md`: supporting a TPV means supporting it on every backend -- a case is never added with its Python columns declared UNSUPPORTED to be filled in later.
   * For past release notes, please refer to pastReleaseNotes.md.
-* 20260916 v5.8.0 release notes
-  * New - `src/fortran/` + `src/python/`: the two implementations of the same solver side by side. 26 .f90, and 14 .py of which every one but `backend.py` (the numpy/jax adapter) and `__main__.py` maps 1:1 onto a Fortran file.
-  * New - friclaw 2 (time-weakening) ported: test.meng2023a and test.meng2023cb run on the Python backends for the first time. The sweep is 24 cells with ZERO declared-unsupported.
-  * Fix - TPV 29 was missing from `swtwNucleation`'s smoothed forced-rupture list, so test.tpv29 had been declaring `par.tpv = 36` to reach its own spec formula. That hid a port gap which nucleated 0 of 3321 fault nodes against a reference of 2974: 7.10e7 -> 9.9e-15.
-  * Fix - the port ended each step with `force * inv_mass` where `driver.f90:30` DIVIDES. friclaw 4/5 moved toward the reference; drv.a6 x python-numpy 461 -> 423 rupture-arrival flips under its UNTOUCHED 450 budget.
-  * Fix - the parallel sweep could deadlock (multi-core cells reserved units one at a time). Observed: 80 minutes, 14 of 24 cells unrun, no error. Guarded.
-  * Change - ONE test: the `accept` and `parity` tiers are gone, along with the pydump Fortran instrumentation they needed. ~5,700 lines net removed.
-  * Perf - solver 1,497 -> 842 lines; tpv104 numpy peak RSS 2.52 -> 2.29 GB. The perf tier now gates on PER-STEP cost with compile subtracted, after a total-wall-clock metric reported a 33% JAX regression that did not exist.
-  * For past release notes, please refer to pastReleaseNotes.md.
-
 
 
 
@@ -259,7 +248,7 @@ authoritative; the specific number is advisory under `srun`.
 
 | code | name | meaning |
 |-----:|------|---------|
-| 51 | `ERR_MPI_FAULT_ALIGNMENT` | a rank boundary in y coincides with the fault plane |
+| 51 | `ERR_MPI_FAULT_ALIGNMENT` | a rank boundary in y coincides with the fault plane (not raised as of v5.8.2; downgraded to a NOTICE, see syncArnBoundary) |
 | 52 | `ERR_MPI_BAD_NEIGHBOR` | point-to-point exchange with a rank outside 0..npx*npy*npz-1 |
 
 **Numerics and runtime state** (61-69)

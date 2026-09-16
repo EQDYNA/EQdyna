@@ -61,10 +61,12 @@ print('DIP: dt is    ', par.dt)
 par.nx = 2
 par.ny = 1  # NOT 2: this is a DIPPING fault, so the fault has genuine
             # y-extent (par.fymax = faultWidth*cos(dip) != par.fymin). Any
-            # y-split can then put a rank boundary ON the fault, and
-            # MPI4arn's divide-vs-duplicate reasoning is not audited for
-            # that case -- checkFaultMPIAlignment refuses it with exit 51.
-            # npy=1 sidesteps it; x and z still split, so 4 ranks.
+            # y-split can then put a rank boundary ON the fault. This was
+            # refused (exit 51) through v5.8.1 because MPI4arn's
+            # divide-vs-duplicate reasoning was unaudited for that case; it
+            # is now audited (1.000000 ratio at 3416 nodes, see meshgen.f90
+            # syncArnBoundary) and downgraded to a NOTICE, but this compset
+            # still ships at npy=1 -- x and z still split, so 4 ranks.
 par.nz = 2
 par.HPC_ncpu  = par.nx*par.ny*par.nz # Number of CPUs requested.
 par.HPC_nnode = round(floor(par.HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.

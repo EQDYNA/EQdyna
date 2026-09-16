@@ -157,8 +157,11 @@ def build_solver_state(case_dir):
             'implemented. The port is written for C_degen==0 throughout -- it '
             'would treat the degenerate elements as hexes and the fault as the '
             'y=0 plane, and return plausible wrong numbers. test.tpv36 and '
-            'test.tpv37 are the cases that hit this; they are declared '
-            'UNSUPPORTED for the python backends in testsys/matrix.py.'
+            'test.tpv37 are the cases that hit this; per rule 17 step 7 they '
+            'are NOT gated in testsys/matrix.py at all (no UNSUPPORTED entry) '
+            'until this refusal is replaced by a real port of wedge '
+            'degeneration -- gating them UNSUPPORTED is exactly what that '
+            'rule forbids.'
             % g.get('C_degen'))
     # (The insertFaultType>0 x friclaw==5 refusal that stood here is GONE, and
     # not by relaxing it: faulting.f90:201-208's min_norm/max_norm clamp was

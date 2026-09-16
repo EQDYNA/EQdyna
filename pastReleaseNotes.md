@@ -1,6 +1,24 @@
 # Past release notes\
 
 # News in 2026
+* 20260916 v5.8.1 release notes
+  * Fix - per-stage timers shared ONE global `startTimeStamp`, written by eight sites across six files, so any nesting silently truncated the outer measurement. `compTimeInSeconds(2)` was understated **511x** (0.0001 s where the true cost is 0.0511 s), not the "<=1% bias, harmless" the issue recorded. Each site now uses a local. Output bit-identical.
+  * Fix - `case.setup` REFUSES `par.ntotft > 1` with a named reason. It previously produced a `bStations.txt` whose line 2 carried one on-fault station count where `readInputFiles.f90:152` reads `ntotft` of them, and the run died in list-directed input with `Bad integer for item 2` and exit 2. That crash also made the deliberate multi-fault stop at `meshgen.f90:790` unreachable.
+  * Fix - `test_stop_exit_status.py`'s real-binary probe -- the only check that a refused run EXITS rather than hangs under mpirun -- had been silently SKIPPING on every ordinary tree, because it looked for `src/eqdyna` while `install-eqdyna.sh` moves the binary to `bin/`. Live again, and running in CI for the first time.
+  * Fix - `test_ci_dependencies.py` never scanned `src/python`, the solver package, despite its own docstring claiming every third-party import is checked against CI's pip line.
+  * Fix - `testsys/perf/run_scaling.py` set PYTHONPATH to a directory that does not exist.
+  * Fix - README's performance numbers were stale in three ways: embedded v5.7.1 release notes quoting 10.4 GB for tpv104 (now 3.42), a case table reporting `~48s` for cases that range 13.3-1108.5 s, and no statement of what produced any figure. There is now a Performance section where every number names its command, and it says plainly that single-run core scaling is NOT characterised.
+  * Fix - PROJECT_RULES rule 16 told the reader to reproduce CI's entry point and then quoted a command CI does not run. Six of seventeen rules cited deleted files.
+  * New - rule 17 and `CLAUDE.md`: the TPV revival workflow, written from what TPV29 cost. The load-bearing step is checking the CODE has that TPV's branch before trusting a run.
+  * Closed by measurement, not by fixing - item 24(a)'s "tractions are exactly HALF for C_elastic==0" does NOT reproduce (Tn ratio 1.0018 over 4747 nodes); item 11's counting-vs-allocating divergence is structurally impossible AND already aborts; item 32's additive flip model is refuted -- drv.a6's flips are a fixed marginal population of ~400 roundoff-decided nodes, not a sum of error sources.
+* 20260916 v5.8.0 release notes
+  * New - `src/fortran/` + `src/python/`: the two implementations of the same solver side by side. 26 .f90, and 14 .py of which every one but `backend.py` (the numpy/jax adapter) and `__main__.py` maps 1:1 onto a Fortran file.
+  * New - friclaw 2 (time-weakening) ported: test.meng2023a and test.meng2023cb run on the Python backends for the first time. The sweep is 24 cells with ZERO declared-unsupported.
+  * Fix - TPV 29 was missing from `swtwNucleation`'s smoothed forced-rupture list, so test.tpv29 had been declaring `par.tpv = 36` to reach its own spec formula. That hid a port gap which nucleated 0 of 3321 fault nodes against a reference of 2974: 7.10e7 -> 9.9e-15.
+  * Fix - the port ended each step with `force * inv_mass` where `driver.f90:30` DIVIDES. friclaw 4/5 moved toward the reference; drv.a6 x python-numpy 461 -> 423 rupture-arrival flips under its UNTOUCHED 450 budget.
+  * Fix - the parallel sweep could deadlock (multi-core cells reserved units one at a time). Observed: 80 minutes, 14 of 24 cells unrun, no error. Guarded.
+  * Change - ONE test: the `accept` and `parity` tiers are gone, along with the pydump Fortran instrumentation they needed. ~5,700 lines net removed.
+  * Perf - solver 1,497 -> 842 lines; tpv104 numpy peak RSS 2.52 -> 2.29 GB. The perf tier now gates on PER-STEP cost with compile subtracted, after a total-wall-clock metric reported a 33% JAX regression that did not exist.
 * 20260915 v5.7.1 release notes
   * Fix - v5.7.0's CI went red: the Python/JAX backend inside e2e needs 10.4 GB for test.tpv104 and a GitHub runner has 7 GB, so the job was SIGTERM'd (exit 143) with no output. CI now gates test.tpv8 (measured 3.59 GB at the time; 1.91 GB jax / 1.45 GB numpy as of v5.8.0), and e2e prints its case list so a green check states its own coverage instead of implying five.
   * Fix - the e2e python child runs unbuffered; under the previous buffering a resource kill produced zero output, so the log showed seven minutes of silence and a bare exit code.
