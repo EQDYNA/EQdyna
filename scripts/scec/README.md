@@ -64,3 +64,24 @@ statement about accuracy at that resolution.
 
 Depends on the public portal being reachable. If it moves or retires, this
 tooling is the record of what was there and when.
+
+## Verifying the on-disk archive against a tracked manifest
+
+`CHECKSUMS.sha256` (693 lines, ~80 KB, standard `sha256sum` format, paths
+relative to `scec_archive/`) is tracked so the 484 MB archive's integrity is
+auditable without putting the archive itself in git — "it is an asset, hash
+but no need to be in git" (owner, 2026-09-16, after `f2c9851` accidentally
+committed all 484 MB: a `.gitignore` inline comment on the `scec_archive/`
+line made the whole line an unmatchable literal pattern, since gitignore has
+no inline-comment syntax; `git rm --cached -r scec_archive/` untracked it
+going forward, `git gc` reclaimed the loose objects, and this manifest is the
+integrity check that replaces "it's in git so I'd notice if it changed").
+
+    python3 scripts/scec/organize.py --verify
+
+Reports OK / MISMATCH / MISSING / EXTRA counts and exits non-zero on any of
+the three — the manifest is meant to enumerate the full archive, so an EXTRA
+file (present on disk, absent from the manifest, e.g. after a re-fetch that
+grew the archive before this file was regenerated) is drift worth seeing,
+not something to pass silently (rule 2). Regenerate the manifest deliberately
+when the archive legitimately changes; do not loosen this check instead.

@@ -14,6 +14,7 @@ RAW = os.path.join(HERE, 'raw')
 ARCHIVE = os.path.abspath(os.path.join(HERE, '..', '..', 'scec_archive'))
 PAGES = os.path.join(HERE, 'pages')
 FETCH_DATE = '2026-09-14'
+CHECKSUMS = os.path.join(HERE, 'CHECKSUMS.sha256')
 CGI = 'https://strike.scec.org/cvws/cgi-bin/cvws.cgi'
 
 HDR = re.compile(r'^#\s*([A-Za-z_]+)\s*=\s*(.*?)\s*$')
@@ -155,6 +156,60 @@ def sha(path):
         for b in iter(lambda: f.read(1 << 20), b''):
             h.update(b)
     return h.hexdigest()
+
+
+def verify_checksums(checksums_path=CHECKSUMS, archive=ARCHIVE):
+    """Check every file scec_archive/ is supposed to hold against
+    CHECKSUMS.sha256 (standard `sha256sum` format: '<hex>  ./relpath').
+    scec_archive/ itself is gitignored (484 MB, an owner-retained asset, not
+    reproducible from this repo per its own README) -- this 80 KB manifest is
+    the tracked, auditable stand-in: it proves the on-disk archive has not
+    silently drifted, without putting the archive itself in git (the mistake
+    f2c9851 made via an unmatchable .gitignore inline-comment pattern).
+
+    Returns (ok, mismatched, missing, extra) counts/lists; prints a report;
+    does not raise (rule 2 -- the CALLER decides the exit code, same as every
+    other entry point in this file)."""
+    if not os.path.isfile(checksums_path):
+        print(f'FAIL: no checksum manifest at {checksums_path}', file=sys.stderr)
+        return None
+    expected = {}
+    with open(checksums_path) as f:
+        for line in f:
+            line = line.rstrip('\n')
+            if not line.strip():
+                continue
+            digest, relpath = line.split('  ', 1)
+            expected[relpath[2:] if relpath.startswith('./') else relpath] = digest
+
+    ok, mismatched, missing = [], [], []
+    for relpath, digest in sorted(expected.items()):
+        full = os.path.join(archive, relpath)
+        if not os.path.isfile(full):
+            missing.append(relpath)
+            continue
+        actual = sha(full)
+        (ok if actual == digest else mismatched).append(relpath)
+
+    on_disk = set()
+    for root, _, files in os.walk(archive):
+        for fn in files:
+            on_disk.add(os.path.relpath(os.path.join(root, fn), archive))
+    extra = sorted(on_disk - set(expected))
+
+    print(f'CHECKSUMS.sha256: {len(expected)} entries, archive has '
+          f'{len(on_disk)} files')
+    print(f'  OK        : {len(ok)}')
+    print(f'  MISMATCH  : {len(mismatched)}')
+    for r in mismatched:
+        print(f'    {r}')
+    print(f'  MISSING   : {len(missing)}  (listed in manifest, not on disk)')
+    for r in missing:
+        print(f'    {r}')
+    print(f'  EXTRA     : {len(extra)}  (on disk, not in manifest)')
+    for r in extra:
+        print(f'    {r}')
+    return ok, mismatched, missing, extra
 
 
 # ---------------------------------------------------------------- metrics
@@ -338,4 +393,7 @@ def main():
 
 
 if __name__ == '__main__':
+    if '--verify' in sys.argv:
+        result = verify_checksums()
+        sys.exit(1 if result is None or any(result[1:]) else 0)
     main()
