@@ -61,12 +61,15 @@ JAX), and every cell is compared against the same committed reference for that
 case, at that case's one tolerance. The run prints which cells it covered and
 which it did not, so a green result states its own scope. CI runs the subset
 that fits a 7 GB runner, split across parallel jobs so each cell group gets
-its own 7 GB rather than sharing one runner
+its own 7 GB rather than sharing one runner, and so the 8 fortran cases (which
+a small runner's core count forces to run one at a time) are not all queued
+behind each other in a single job
 (`.github/workflows/test.yml`: `build`, then `unit-regression`
-[`testsys/run.py unit regression`], `e2e-ci-fortran`
-[`testsys/e2e/run_e2e.py --ci --backends fortran`], and `e2e-ci-python`
-[`testsys/e2e/run_e2e.py --ci --backends python-numpy,python-jax`] in
-parallel) -- the same total coverage as one local invocation of
+[`testsys/run.py unit regression`], `e2e-ci-fortran-a` and `e2e-ci-fortran-b`
+[`testsys/e2e/run_e2e.py --ci --backends fortran --cases <4 of the 8>` each],
+and `e2e-ci-python`
+[`testsys/e2e/run_e2e.py --ci --backends python-numpy,python-jax`], all in
+parallel after `build`) -- the same total coverage as one local invocation of
 `python3 testsys/run.py unit regression e2e-ci`. `python3 testsys/run.py all`
 runs the whole sweep.
 

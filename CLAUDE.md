@@ -42,8 +42,11 @@ python3 testsys/run.py unit regression       # seconds — run this constantly
 python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran   # one cell
 ```
 
-CI runs `unit regression e2e-ci` (10 of 24 cells — the rest do not fit a 7 GB
-runner). `run.py all` is the wider LOCAL gate; it is not a reproduction of CI.
+CI covers the same 10 of 24 cells as `unit regression e2e-ci` (the rest do not
+fit a 7 GB runner) but as of 2026-09-16 runs it split across parallel jobs —
+`build`, `unit-regression`, `e2e-ci-fortran-a`/`-b`, `e2e-ci-python` — not one
+invocation; see `.github/workflows/test.yml` for the exact per-job commands.
+`run.py all` is the wider LOCAL gate; it is not a reproduction of CI.
 Rule 16 was itself wrong about this until 2026-09-16.
 
 ## There is ONE test
