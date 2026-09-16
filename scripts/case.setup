@@ -66,6 +66,36 @@ def create_model_input_file():
 
 def create_station_input_file():
     # Function to create model.txt used by EQquasi.
+    #
+    # ntotft > 1 IS REFUSED HERE, and this is the honest place for it.
+    # readInputFiles.f90:152 reads `(nonfs(i), i = 1, ntotft)` -- ntotft
+    # integers -- from line 2 of this file, while the write below emits ONE
+    # scalar. They agree only at ntotft == 1. At ntotft == 2 the list-directed
+    # read runs past the short line into the station coordinates and dies with
+    #     At line 152 of file readInputFiles.f90 (unit = 1006, ...)
+    #     Fortran runtime error: Bad integer for item 2 in list input
+    # -- exit 2, a raw gfortran I/O error naming neither the cause nor ntotft
+    # (measured 2026-09-16 on a two-fault test.tpv8). That crash also means the
+    # deliberate multi-fault stop in meshgen.f90:790
+    # (ERR_MESH_MULTIFAULT_MSNODE, exit 45) is UNREACHABLE through the normal
+    # path: the input read fails first.
+    #
+    # Writing ntotft copies of n_on_fault would silence the crash and be
+    # wrong -- nonfs(i) is the on-fault station count FOR FAULT i, and
+    # par.st_coor_on_fault is a flat list with no per-fault assignment. That
+    # assignment is a design decision (pathway_forward item 17), not a
+    # formatting one, so this refuses instead of guessing (rule 2).
+    if getattr(par, 'ntotft', 1) > 1:
+        raise NotImplementedError(
+            "case.setup: par.ntotft = %d, but multi-fault input is not "
+            "supported.\n"
+            "  bStations.txt line 2 must carry ntotft on-fault station counts "
+            "(readInputFiles.f90:152 reads `(nonfs(i), i = 1, ntotft)`), and "
+            "this writer emits one.\n"
+            "  par.st_coor_on_fault is a flat list with no per-fault "
+            "assignment, so the correct values cannot be derived here.\n"
+            "  See pathway_forward.md item 17 (multi-fault campaign). Until "
+            "that lands, use par.ntotft = 1." % par.ntotft)
     with open('bStations.txt', 'w') as f:
         f.write(str(par.n_off_fault) + "\n")
         f.write(str(par.n_on_fault) + "\n")
