@@ -64,13 +64,22 @@ if [ -n "$MACH" ]; then
         echo "Installing EQdyna on Ubuntu 22.04 ... ..."
         export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
         if [ -n "$ENV" ]; then
-            # It uses MPICH MPI.
-            apt-get install git vim make mpich
-            apt-get install libnetcdf-dev libnetcdff-dev 
+            # It uses MPICH MPI. gfortran is the actual Fortran compiler
+            # mpif90 shells out to -- mpich's package only pulls in
+            # libgfortran5 (the runtime .so), not the gfortran compiler
+            # itself, so `make` failed with "gfortran: command not found"
+            # on a bare ubuntu:22.04 with nothing else pre-installed. Every
+            # environment this branch had run in before (this dev box,
+            # GitHub Actions' ubuntu-22.04 runner image) already had
+            # gfortran present for unrelated reasons, so this gap was never
+            # exposed until the Dockerfile -- which transcribes this exact
+            # list -- tried a truly minimal base image (found 2026-09-16).
+            apt-get install git vim make mpich gfortran
+            apt-get install libnetcdf-dev libnetcdff-dev
             apt-get install python3 python3-pip
             pip install numpy netCDF4 matplotlib xarray
             pip install --upgrade numpy
-        fi 
+        fi
     elif [ $MACHINE == "grace" ]; then 
         echo "Installing EQdyna on Grace at TAMU ... ..."
         echo "Loading netcdf module ... ..."
