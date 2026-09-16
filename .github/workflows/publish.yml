@@ -1,0 +1,40 @@
+name: Publish EQdyna Docker image
+
+# Builds and publishes the image described by the root Dockerfile to GHCR.
+# Gated strictly on the tag push, not on push-to-master (contrast
+# .github/workflows/test.yml, which runs on every push/PR): an image is only
+# ever produced for a released, tagged commit, so its version cannot drift
+# from the tag the way dunyuliu/eqdyna:v5.3.1 drifted seven minor versions
+# behind the repo before this workflow existed (see Docker.guide.md).
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write   # GITHUB_TOKEN needs this to push to ghcr.io -- no
+                         # separate secret to configure, unlike Docker Hub.
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Log in to ghcr.io
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+    - name: Build image
+      run: |
+        TAG="${GITHUB_REF_NAME}"
+        docker build \
+          -t ghcr.io/eqdyna/eqdyna:"${TAG}" \
+          -t ghcr.io/eqdyna/eqdyna:latest \
+          .
+
+    - name: Push image
+      run: |
+        TAG="${GITHUB_REF_NAME}"
+        docker push ghcr.io/eqdyna/eqdyna:"${TAG}"
+        docker push ghcr.io/eqdyna/eqdyna:latest
