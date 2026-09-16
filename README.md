@@ -1,6 +1,6 @@
 # News in 2026
-* 20260916 v5.8.4 release notes
-  * Fix - the Dockerfile added in v5.8.3 could not actually build: `ubuntu:22.04`'s stock pip3 (22.0.2) does not support the `--break-system-packages` flag (added in pip 23.0.1), so `RUN pip3 install --break-system-packages ...` failed with exit 2 on the very first real build v5.8.3's tag push triggered. Flag removed (22.04's system Python has no PEP 668 externally-managed-environment marker, so none is needed). `ghcr.io/eqdyna/eqdyna:v5.8.4` and `:latest` are the first images this pipeline has actually published; v5.8.3's images were never pushed (its Release notes are corrected to say so). No solver or test changes in this release -- Dockerfile only.
+* 20260916 v5.8.5 release notes
+  * Fix - v5.8.4's Dockerfile fix addressed the failing log line, not the pattern: `.github/workflows/publish.yml` had two more copies of the same `--break-system-packages` flag (the CI-only pytest/scipy overlay in both the `build-and-push` and `verify-published-image` jobs). Both fixed; a repo-wide grep confirmed no more occurrences (`install-eqdyna.sh`'s own use of the flag is in the macOS/Homebrew branch, which does need it -- checked, not a matching bug). `ghcr.io/eqdyna/eqdyna:v5.8.5` and `:latest` are the first images this pipeline has actually published; v5.8.3 and v5.8.4's Release notes are both corrected to say theirs never did. No solver or test changes.
   * For past release notes, please refer to pastReleaseNotes.md.
 
 

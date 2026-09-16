@@ -1,6 +1,8 @@
 # Past release notes\
 
 # News in 2026
+* 20260916 v5.8.4 release notes
+  * Fix - the Dockerfile added in v5.8.3 could not actually build: `ubuntu:22.04`'s stock pip3 (22.0.2) does not support the `--break-system-packages` flag (added in pip 23.0.1), so `RUN pip3 install --break-system-packages ...` failed with exit 2 on the very first real build v5.8.3's tag push triggered. Flag removed (22.04's system Python has no PEP 668 externally-managed-environment marker, so none is needed). CORRECTION: the image still did not publish for v5.8.4 either -- `publish.yml` had two more copies of the identical flag one step further down the pipeline; fixed in v5.8.5, the first tag to actually publish an image.
 * 20260916 v5.8.3 release notes
   * Fix - item 23 (Drucker-Prager viscoplastic kernel, `calcElemKU.f90:127-161`, friclaw 4) had zero isolated test; `testsys/regression/test_drucker_prager_kernel.py` now compiles the real, unmodified Fortran routine and diffs it against the Python port on 4 synthetic stress states, no MPI/case/mesh required.
   * Fix - item 28's TPV29 cross-code comparison is now a committed, reproducible script (`testsys/parity/evidence_tpv29_scec_comparison.py`), not prose. Running it found a real error in the previously recorded claim: Mw 7.45 has no reproducible provenance and is physically impossible for this run (Kanamori relation puts it at 4.7x the run's actual seismic moment); corrected to 7.034, derivation left inline.
