@@ -14,7 +14,7 @@ entire purpose is to refuse a mesh that would produce a wrong answer. A
 batch script, testsys/run.py, or CI checking $? scored those refusals as
 passes.
 
-All fatal paths now go through `abortRun(code, reason)` in src/errorCodes.f90,
+All fatal paths now go through `abortRun(code, reason)` in src/fortran/errorCodes.f90,
 which prints a structured block and calls MPI_Abort so the whole job dies
 with `code` as its exit status instead of one rank stopping and the rest
 blocking forever in their next collective.
@@ -106,7 +106,7 @@ RANGES = [
     (71, 79, 'External libraries'),
 ]
 README = os.path.join(ROOT, 'README.md')
-BEGIN = '<!-- BEGIN EXIT CODES (generated from src/errorCodes.f90; do not edit by hand) -->'
+BEGIN = '<!-- BEGIN EXIT CODES (generated from src/fortran/errorCodes.f90; do not edit by hand) -->'
 END = '<!-- END EXIT CODES -->'
 
 CODE_DECL = re.compile(
@@ -145,7 +145,7 @@ def render_table(codes):
         L += ['| %d | `%s` | %s |' % (v, n, d) for v, n, d in rows]
         L += ['']
     L += ['Exit status 0 means the run completed. Every fatal path goes through',
-          '`abortRun` in `src/errorCodes.f90`, which calls `MPI_Abort` so the whole job',
+          '`abortRun` in `src/fortran/errorCodes.f90`, which calls `MPI_Abort` so the whole job',
           'ends instead of one rank stopping while the others block in a collective.',
           '', END]
     return '\n'.join(L)
@@ -167,7 +167,7 @@ def check_or_update_readme(update=False):
         open(README, 'w').write(head + wanted + tail)
         print('  README.md exit-code table regenerated')
         return []
-    return ["README.md's exit-code table no longer matches src/errorCodes.f90"
+    return ["README.md's exit-code table no longer matches src/fortran/errorCodes.f90"
             " -- rerun this test with --update"]
 
 
@@ -210,7 +210,7 @@ def check_registry():
     """Every ERR_* code must be unique and in the shell-safe range 1-125."""
     problems = []
     if not os.path.exists(REGISTRY):
-        return ['src/errorCodes.f90 is missing']
+        return ['src/fortran/errorCodes.f90 is missing']
     seen = {}
     pat = re.compile(r'^\s*integer,\s*parameter\s*::\s*(ERR_\w+)\s*=\s*(\d+)',
                      re.IGNORECASE)
@@ -230,7 +230,7 @@ def check_registry():
         else:
             seen[value] = name
     if not seen:
-        problems.append('no ERR_* codes found in src/errorCodes.f90')
+        problems.append('no ERR_* codes found in src/fortran/errorCodes.f90')
     return problems, len(seen)
 
 
@@ -246,10 +246,20 @@ def probe_real_binary():
     Reported as SKIPPED, never as PASS, when the binary or mpirun is absent,
     so an unbuilt tree cannot look like a green check.
     """
-    binary = os.path.join(SRC, 'eqdyna')
+    # bin/eqdyna FIRST: install-eqdyna.sh moves the binary there, so after a
+    # normal build src/fortran/eqdyna does not exist and this probe was
+    # skipping on every ordinary tree -- the strongest check in this file,
+    # silently absent, on a repo that HAD a built binary two directories away.
+    # src/fortran/eqdyna is still accepted for a bare `make` with no install.
     mpirun = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
-    if not os.path.exists(binary):
-        print('  real-binary probe SKIPPED (no %s; build it to enable)'
+    binary = None
+    for cand in (os.path.join(ROOT, 'bin', 'eqdyna'),
+                 os.path.join(SRC, 'eqdyna')):
+        if os.path.exists(cand):
+            binary = cand
+            break
+    if binary is None:
+        print('  real-binary probe SKIPPED (no bin/eqdyna or %s; build it to enable)'
               % os.path.relpath(binary, ROOT))
         return None
     want = None
@@ -335,7 +345,7 @@ def main():
         for rel, lineno, form, code in offenders:
             print('  %s:%d  [%s]  %s' % (rel, lineno, form, code))
         print('\nUse `call abortRun(ERR_..., \'what was wrong and what to do\')`'
-              '\n  from src/errorCodes.f90. If a `stop` really does end a'
+              '\n  from src/fortran/errorCodes.f90. If a `stop` really does end a'
               ' SUCCESSFUL run,\n  mark it with a trailing `! %s: ...` comment.'
               % ALLOW_MARKER)
         rc = 1

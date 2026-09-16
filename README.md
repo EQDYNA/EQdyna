@@ -57,7 +57,7 @@ that fits a 7 GB runner (`python3 testsys/run.py unit regression e2e-ci`);
 | [test.tpv29](case_input/test.tpv29/README.md) | strike-slip, fractal rough fault | [TPV29](https://strike.scec.org/cvws/tpv29_30docs.html) | 500m/4/~3 min | 50m/20s |
 
 # Environment
-*Optional (Python solver on GPU)*: `pip install "jax[cuda12]"` — the standalone Python solver (`python -m eqdyna.standalone`) then runs on NVIDIA GPUs; verify with `python3 testsys/run.py gpu`.
+*Optional (Python solver on GPU)*: `pip install "jax[cuda12]"` — the Python solver (`python3 -m eqdyna <case_dir> --backend jax`) then runs on NVIDIA GPUs; verify with `python3 testsys/run.py gpu`.
 
 *```EQdyna```* requires <br/>
   - FORTRAN compiler (gfortran/intel FORTRAN)
@@ -121,7 +121,7 @@ For a customized case, please choose the most relevant predefined compset and mo
 * TPV104: 0.4 hours for 15-sec simulation (1875 time steps) using 40 CPUs on Lonestar6.  <br/>
 
 # Exit codes
-<!-- BEGIN EXIT CODES (generated from src/errorCodes.f90; do not edit by hand) -->
+<!-- BEGIN EXIT CODES (generated from src/fortran/errorCodes.f90; do not edit by hand) -->
 
 When a run is refused or fails, EQdyna prints a `FATAL` block naming the code
 and the reason, and exits with that code. Codes are kept in 1-125 so the number
@@ -196,7 +196,7 @@ authoritative; the specific number is advisory under `srun`.
 | 71 | `ERR_NETCDF` | a NetCDF call returned an error |
 
 Exit status 0 means the run completed. Every fatal path goes through
-`abortRun` in `src/errorCodes.f90`, which calls `MPI_Abort` so the whole job
+`abortRun` in `src/fortran/errorCodes.f90`, which calls `MPI_Abort` so the whole job
 ends instead of one rank stopping while the others block in a collective.
 
 <!-- END EXIT CODES -->
