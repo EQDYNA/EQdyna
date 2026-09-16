@@ -12,9 +12,18 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# gfortran explicit, not implicit: mpich's package only depends on
+# libgfortran5 (the runtime .so), not the gfortran compiler `mpif90` shells
+# out to for every build -- `make` failed with "gfortran: command not
+# found" INSIDE this exact RUN step (found 2026-09-16, this image's first
+# real build after the CI-gate fixes landed). install-eqdyna.sh's ubuntu
+# branch had the identical gap and is fixed the same way, same commit --
+# every prior environment that ran it (this dev box, GitHub Actions'
+# ubuntu-22.04 runner) already had gfortran from something else, so a bare
+# ubuntu:22.04 base image is what finally exposed it.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        git vim make mpich \
+        git vim make mpich gfortran \
         libnetcdf-dev libnetcdff-dev \
         python3 python3-pip \
         ca-certificates && \

@@ -260,7 +260,7 @@ def probe_real_binary():
             break
     if binary is None:
         print('  real-binary probe SKIPPED (no bin/eqdyna or %s; build it to enable)'
-              % os.path.relpath(binary, ROOT))
+              % os.path.relpath(os.path.join(SRC, 'eqdyna'), ROOT))
         return None
     want = None
     for raw in open(REGISTRY, errors='replace'):
