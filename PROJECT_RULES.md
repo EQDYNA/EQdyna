@@ -307,8 +307,20 @@ The release workflow, in order:
 4. Add a Tasks-done row to `pathway_forward.md` (rule 14).
 5. Commit everything above together.
 6. Push the COMMIT and wait for CI to go green. Do not tag yet.
-7. Tag `vX.Y.Z` and publish the GitHub Release only after CI is green on that
-   commit.
+7. Tag `vX.Y.Z`, push the tag, and publish the GitHub Release as ONE
+   uninterrupted action, only after CI is green on the commit (formerly two
+   separate steps, 7 and 9 — merged 2026-09-16, see rationale below). Run all
+   three with no pause in between, and do not stop to watch CI between the
+   tag push and `gh release create`:
+
+       git tag -a vX.Y.Z -m "<release summary>" <sha>
+       git push origin vX.Y.Z
+       gh release create vX.Y.Z --notes-file <notes-file> --latest --verify-tag
+
+   `--verify-tag` makes `gh release create` use the tag just pushed instead of
+   minting its own from the branch tip, which would be a lightweight tag and
+   fail `check_tag_is_annotated`
+   (`testsys/regression/test_release_complete.py:106-113`).
 
    **Why the tag comes after CI, not before.** A local gate cannot model the
    runner. v5.7.0 was gated green locally through CI's own entry point, tagged,
@@ -324,10 +336,31 @@ The release workflow, in order:
 
    A released tag that points at a red commit is worse than a late tag: the
    Releases page becomes the authoritative wrong answer.
+
+   **Why the tag push and the GitHub Release cannot be two separate steps
+   (2026-09-16, formerly step 9).** Tags are pushed refs, so pushing one fires
+   its own `push`-triggered workflow run, independent of the branch push that
+   already went green. v5.8.2's release commit `bccfb845` has two: run
+   `35121095979` (created 16:18:56Z, the branch push) concluded SUCCESS; run
+   `35122388271` (created 16:30:56Z, twelve minutes later, the TAG push,
+   identical commit) concluded FAILURE. Its only failing check was
+   `test_release_complete.py`'s `check_network_side`
+   (`testsys/regression/test_release_complete.py:132-139`), which SKIPS while
+   no tag exists for `VERSION` and fires the instant one does — the guard
+   exists specifically because `gh release create` (old step 9) was skipped on
+   both v5.8.0 and v5.8.1, so it correctly refuses to pass a tag with no
+   Release behind it. The old ordering (tag at step 7, `gh release create` as
+   a separate, manually-remembered step 9) guaranteed a window between the two
+   where exactly that condition holds, and the tag push itself schedules a CI
+   run that lands inside it. Collapsing the two into one chained command
+   removes the window: the guard's network check runs late enough in CI
+   (after checkout, build, unit and regression tiers) that the immediately
+   following `gh release create` has already landed by the time it executes.
+   (Three older release commits — `335e21d`, `238f1ac`, `9950ae1` — each show
+   two push-triggered runs one second apart, both FAILURE; that is a separate,
+   unexplained duplicate-push artifact, not this mechanism, and was not
+   investigated further.)
 8. Push only on explicit approval from the maintainer.
-9. Publish the GitHub Release for the tag
-   (`gh release create vX.Y.Z --title vX.Y.Z --notes-file <notes> --latest`)
-   so the Releases page always shows the current version -- after step 7.
 
 **Rationale**: v5.3.4 (2026-09-09) was cut with its notes appended to
 `pastReleaseNotes.md` instead of leading `README.md`, because the
