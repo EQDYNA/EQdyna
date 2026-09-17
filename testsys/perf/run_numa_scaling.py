@@ -24,10 +24,25 @@ separated the two. That is what the SPREAD configuration below is for: the same
 the solver running out of parallel work.
 
 WHY IT REFUSES TO RUN ON A BUSY BOX. A memory-bandwidth measurement taken while
-ten other users are streaming memory measures them, not us. This is not a
-caveat to note in the output -- it invalidates the number, so the script FAILS
-(rule 2: a check that cannot run must not produce a result that looks like
-one). Override only if you know why you are doing it.
+another process is streaming memory ON THE SAME CPUS measures that process,
+not us. This is not a caveat to note in the output -- it invalidates the
+number, so the script FAILS (rule 2: a check that cannot run must not produce
+a result that looks like one). Override only if you know why you are doing it.
+
+THE CEILING IS PER-CPU, NOT A WHOLE-BOX LOAD AVERAGE (F3, 2026-09-17). The
+first version of this ceiling was `os.getloadavg()[0] <= 1.0`, which on this
+64-core box refused at load 1.28 -- one core busy (the owner's own `train.py`,
+pinned to a single core for 1d21h) and 62 free. That is not conservative, it
+is the wrong QUESTION: load average is an absolute queue length, not a
+fraction of capacity, so a fixed ceiling of 1.0 is unmeasurable by
+construction on any machine with even one long-running background process,
+regardless of how quiet everything else is. What this experiment actually
+needs to know is "are the SPECIFIC cpus I am about to pin to free" -- a
+foreign process on a different NUMA node is irrelevant to a measurement that
+never touches it. So the gate now samples `/proc/stat` for exactly the cpu
+list a given configuration is about to use (see `cpu_busy_fractions`) and
+refuses per-configuration, not once globally: a busy core on socket 1 skips
+only the configurations that would have used it, not the whole run.
 
 METHOD. Per-step cost by DIFFERENCE over two step counts, so the fixed cost
 (interpreter, case load, XLA compile) cancels exactly -- the same technique
@@ -42,7 +57,7 @@ alternative explanation for the knee, which would confound the whole point.
 Usage:
     python3 testsys/perf/run_numa_scaling.py [--case test.tpv104]
                                              [--steps 114] [--factor 3]
-                                             [--load-ceiling 1.0]
+                                             [--busy-ceiling 0.2]
                                              [--i-know-the-box-is-busy]
 """
 import argparse
@@ -75,9 +90,7 @@ def numa_topology():
     return nodes
 
 
-def require_idle(ceiling, override):
-    """Refuse to measure bandwidth on a contended box."""
-    load1, load5, load15 = os.getloadavg()
+def _other_users():
     others = set()
     ps = subprocess.run(['ps', '-eo', 'user='], capture_output=True, text=True)
     me = os.environ.get('USER', '')
@@ -88,27 +101,97 @@ def require_idle(ceiling, override):
                 'colord', 'avahi', 'kernoops', 'whoopsie', 'gdm', 'lightdm',
                 'libstor+', 'systemd-network', 'systemd-resolve'):
             others.add(u)
-    if load1 <= ceiling:
-        print('  load %.2f (1 min) <= %.2f -- box is quiet enough' % (load1, ceiling))
-        return load1, load5, load15, sorted(others)
-    msg = ('REFUSING TO MEASURE: load average is %.2f / %.2f / %.2f and the '
-           'ceiling is %.2f.\n'
-           '  Other users with processes: %s\n'
-           '  A core-scaling measurement is a MEMORY BANDWIDTH measurement. '
-           'Taken under someone\n'
-           '  else\'s memory traffic it measures them, and the number is not '
-           'wrong-but-usable,\n'
-           '  it is meaningless. pathway item 33 exists because the previous '
-           'figures were taken\n'
-           '  exactly this way.\n'
-           '  Wait for an idle box, or pass --i-know-the-box-is-busy to record '
-           'a number that\n'
-           '  must NOT be quoted as this repo\'s scaling curve.'
-           % (load1, load5, load15, ceiling, ', '.join(sorted(others)) or 'none'))
-    if not override:
-        raise SystemExit('FAIL: ' + msg)
-    print('  WARNING, OVERRIDDEN: ' + msg)
-    return load1, load5, load15, sorted(others)
+    return sorted(others)
+
+
+def cpu_busy_fractions(cpus, sample_s=0.3):
+    """Busy fraction (0..1) for EXACTLY the requested cpu ids, from a short
+    /proc/stat sample -- not the whole-box load average (see module
+    docstring, F3). Returns {} if per-cpu stats could not be read for these
+    ids at all; the caller must treat that as a hard failure, not as
+    'idle' (rule 2: a check that cannot evaluate must fail, not default to a
+    pass)."""
+    def read():
+        rows = {}
+        try:
+            with open('/proc/stat') as f:
+                for line in f:
+                    if not line.startswith('cpu') or line[3] == ' ':
+                        continue
+                    parts = line.split()
+                    cpu_id = int(parts[0][3:])
+                    nums = [int(x) for x in parts[1:]]
+                    idle = nums[3] + nums[4]        # idle + iowait
+                    rows[cpu_id] = (idle, sum(nums))
+        except (OSError, ValueError, IndexError):
+            return None
+        return rows
+    t0 = read()
+    time.sleep(sample_s)
+    t1 = read()
+    if t0 is None or t1 is None:
+        return {}
+    out = {}
+    for c in cpus:
+        if c not in t0 or c not in t1:
+            continue
+        d_idle = t1[c][0] - t0[c][0]
+        d_total = t1[c][1] - t0[c][1]
+        out[c] = 0.0 if d_total <= 0 else max(0.0, min(1.0, 1.0 - d_idle / d_total))
+    return out
+
+
+def require_idle(cpus, busy_ceiling, override):
+    """Refuse to measure THESE cpus if any one of them is busier than
+    `busy_ceiling` (a 0..1 fraction), using per-cpu utilisation rather than
+    a whole-box load average -- a foreign process on cpus this configuration
+    never touches does not disqualify it.
+
+    Returns (load1, load5, load15, other_users, busy_dict) if free enough (or
+    overridden). Returns None if refused and NOT overridden -- the caller
+    skips just this configuration; item 33 stays runnable on every OTHER cpu
+    set even while one is busy. Raises SystemExit only if utilisation could
+    not be measured AT ALL for these cpus -- that is a hard failure, distinct
+    from 'measured, and busy'.
+    """
+    load1, load5, load15 = os.getloadavg()
+    others = _other_users()
+    busy = cpu_busy_fractions(cpus)
+    if not busy:
+        raise SystemExit(
+            'FAIL: could not read per-cpu utilisation for cpus %s from '
+            '/proc/stat -- a check that cannot evaluate must fail, not '
+            'default to "idle" (rule 2).' % cpus)
+    worst_cpu = max(busy, key=busy.get)
+    worst = busy[worst_cpu]
+    print('    cpus %s busy: %s  (whole-box load %.2f/%.2f/%.2f, other users: %s)'
+          % (cpus, {c: '%.0f%%' % (f * 100) for c, f in sorted(busy.items())},
+             load1, load5, load15, ', '.join(others) or 'none'))
+    if worst <= busy_ceiling:
+        print('    cpu %d worst at %.0f%% <= %.0f%% ceiling -- free enough'
+              % (worst_cpu, worst * 100, busy_ceiling * 100))
+        return load1, load5, load15, others, busy
+    msg = ('REFUSING TO MEASURE cpus %s: cpu %d is %.0f%% busy, ceiling is '
+           '%.0f%%.\n'
+           '    Other users with processes: %s\n'
+           '    A core-scaling measurement is a MEMORY BANDWIDTH measurement '
+           'on THESE cpus.\n'
+           '    Taken while one of them is busy the number measures that '
+           'process, not us --\n'
+           '    not wrong-but-usable, meaningless. pathway item 33 exists '
+           'because earlier\n'
+           '    figures were taken exactly this way.\n'
+           '    Wait for these cpus to free up, or pass '
+           '--i-know-the-box-is-busy to record\n'
+           '    a number that must NOT be quoted as this repo\'s scaling '
+           'curve.'
+           % (cpus, worst_cpu, worst * 100, busy_ceiling * 100,
+              ', '.join(others) or 'none'))
+    if override:
+        print('    WARNING, OVERRIDDEN: ' + msg)
+        return load1, load5, load15, others, busy
+    print('    ' + msg)
+    return None
 
 
 def build_case(case_name):
@@ -167,7 +250,9 @@ def main():
     ap.add_argument('--case', default='test.tpv104')
     ap.add_argument('--steps', type=int, default=114)
     ap.add_argument('--factor', type=int, default=3)
-    ap.add_argument('--load-ceiling', type=float, default=1.0)
+    ap.add_argument('--busy-ceiling', type=float, default=0.2,
+                     help='max per-cpu busy fraction (0..1) tolerated on the '
+                          'exact cpus a configuration is about to use')
     ap.add_argument('--i-know-the-box-is-busy', action='store_true')
     a = ap.parse_args()
 
@@ -178,7 +263,6 @@ def main():
                          'experiment is about NUMA and cannot run blind.')
     per_node = len(nodes[min(nodes)])
     print('  topology: %d NUMA node(s) x %d cpu(s)' % (len(nodes), per_node))
-    load = require_idle(a.load_ceiling, a.i_know_the_box_is_busy)
 
     node0 = nodes[min(nodes)]
     configs = []
@@ -213,10 +297,19 @@ def main():
     print()
 
     results = {}
+    skipped = {}
     base = None
     print('  %-26s %6s  %12s  %10s  %s'
           % ('configuration', 'cpus', 'ms/step', 'speedup', 'fixed cost'))
     for label, cpus in configs:
+        print('  %-26s %6d  checking...' % (label, len(cpus)))
+        chk = require_idle(cpus, a.busy_ceiling, a.i_know_the_box_is_busy)
+        if chk is None:
+            print('  %-26s %6d  SKIPPED (cpus busy, not overridden)'
+                  % (label, len(cpus)))
+            skipped[label] = dict(cpus=cpus)
+            continue
+        load1, load5, load15, others, busy = chk
         ps, fixed = per_step(case_dir, cpus, n_lo, n_hi)
         if ps is None:
             print('  %-26s %6d  FAILED' % (label, len(cpus)))
@@ -224,9 +317,21 @@ def main():
         if base is None:
             base = ps
         results[label] = dict(cpus=cpus, ms_per_step=ps * 1e3,
-                              speedup=base / ps, fixed_s=fixed)
+                              speedup=base / ps, fixed_s=fixed,
+                              load_avg='%.2f %.2f %.2f' % (load1, load5, load15),
+                              other_users=others, cpu_busy=busy)
         print('  %-26s %6d  %12.2f  %9.2fx  %8.2f s'
               % (label, len(cpus), ps * 1e3, base / ps, fixed))
+
+    if not results:
+        raise SystemExit(
+            'FAIL: every configuration was skipped or failed -- nothing '
+            'measured. %d skipped as busy: %s. Wait for those cpus to free '
+            'up, or pass --i-know-the-box-is-busy.'
+            % (len(skipped), sorted(skipped)))
+    if skipped:
+        print('\n  %d configuration(s) SKIPPED as busy (not measured, not a '
+              'silent gap): %s' % (len(skipped), sorted(skipped)))
 
     w = results.get('within-node-%d' % per_node)
     sp = results.get('spread-%d-one-per-node' % per_node)
@@ -250,7 +355,7 @@ def main():
     payload = dict(
         item='pathway_forward 33', case=a.case, steps=[n_lo, n_hi],
         topology={str(k): v for k, v in nodes.items()},
-        load_avg='%.2f %.2f %.2f' % load[:3], other_users=load[3],
+        busy_ceiling=a.busy_ceiling, skipped=skipped,
         host=socket.gethostname(), platform=platform.platform(),
         timestamp=time.strftime('%Y-%m-%d %H:%M:%S'),
         overridden=bool(a.i_know_the_box_is_busy), results=results)
