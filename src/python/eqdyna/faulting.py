@@ -106,7 +106,11 @@ def forced_rupture_time(xp, finv):
     if nucR <= 0.0:
         return never
     inside = radius <= nucR
-    if TPV in (29, 36, 37, 201):
+    # TPV30 is TPV29 with off-fault Drucker-Prager viscoplasticity added
+    # (spec p.11: "the material properties are the only difference"); p.16
+    # states Parts 5/6 (friction + this nucleation formula) apply to
+    # "Benchmarks TPV29 and TPV30" identically -- same as faulting.f90:405.
+    if TPV in (29, 30, 36, 37, 201):
         ratio = xp.where(inside, radius / nucR, 0.0)
         taper = 1.0 / (1.0 - ratio ** 2) - 1.0
         tr = (radius + gv.NUC_TAPER_COEF * nucR * taper) / (

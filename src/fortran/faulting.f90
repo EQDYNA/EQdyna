@@ -402,7 +402,13 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
         ! OWN formula; that misdeclaration is what hid the gap when the
         ! Python port implemented only the degenerate tr=1e9 branch and
         ! nucleated nothing (0 of 3321 nodes against a reference of 2974).
-        if (TPV == 201 .or. TPV==36 .or. TPV==37 .or. TPV==29) &
+        ! TPV30 is TPV29 with off-fault Drucker-Prager viscoplasticity added
+        ! (spec p.11: "the material properties are the only difference");
+        ! p.16 states Part 5 (friction) applies to "Benchmarks TPV29 and
+        ! TPV30" identically, and Part 6 (this formula) is the same T(r) for
+        ! both, so 30 belongs in this list too -- do not let a TPV30 compset
+        ! impersonate TPV29/36 to reach it (rule 17 step 3).
+        if (TPV == 201 .or. TPV==36 .or. TPV==37 .or. TPV==29 .or. TPV==30) &
             tr = (radius+NUC_TAPER_COEF*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(NUC_VR_TO_VS*NUC_VS_FIXED)
         if (TPV == 202) tr = radius/nucRuptVel
     endif

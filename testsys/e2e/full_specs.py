@@ -38,6 +38,24 @@ FULL_SPECS = {
                 "v5.6.0 only a 100 m surface shipped and this entry could not "
                 "be set up at all."),
     ),
+    'test.tpv30': dict(
+        # rule 17 step 5: recorded, not run. Same fault/geometry/nucleation
+        # citation as test.tpv29 (identical surface, identical Part 5/6);
+        # the ONLY thing TPV30 adds is Part 7 (Drucker-Prager viscoplasticity,
+        # already wired via par.viscoplasticRelaxTime/devStrTaperDepthStart/
+        # End -- item 24(b)/(c)). Actually running this needs the 50 m
+        # bFault_Rough_Geometry file copied into case_input/test.tpv30/ first
+        # (only the 100 m file is shipped there today; see that compset's
+        # README) -- a scheduling/storage decision, not a spec gap.
+        dx=50.0, term=20.0, nx=4, ny=1, nz=4,
+        citation=("TPV29_30_Description_v06, Part 3 (p.15) 'Please submit "
+                "results using 50 m node spacing on the fault plane. If you "
+                "are unable to run the simulation with 50 m node spacing, "
+                "then it is OK to use 100 m node spacing.'; 'Run the model "
+                "for times from 0.0 to 20.0 seconds after nucleation.' "
+                "ny=1 keeps the fault plane off MPI partitions, same as "
+                "test.tpv29's own full-tier entry."),
+    ),
     'test.tpv8': dict(
         dx=100., term=15., nx=4, ny=2, nz=2,
         citation=(
