@@ -939,6 +939,58 @@ retracted, "confirmed bug, ratio 1.18926, localization dispatched to
 lars-eriksson" is now the standing wording. Release gate (`br2ekcqll`)
 down to single-digit remaining cells, still green so far.
 
+## Update: lars-eriksson's localization was WRONG -- caught it myself before
+## relaying it, then the coordinator found the REAL root cause independently
+
+`lars-eriksson` reported the bug was in `us`'s normalization
+(`meshgen.f90:896-897`, missing a `pfz` term), predicting the measured
+1.18926 ratio. Checked his arithmetic myself before relaying it: `us` as
+ACTUALLY shipped is a unit vector for any `pfx`/`pfz` (self-normalizing --
+`(1+pfx^2)/(1+pfx^2)=1` exactly, verified numerically), not the
+0.840-magnitude vector his prediction requires -- his number came from a
+hypothetical alternate formula he never confirmed was the shipped one.
+Decisively: the analytic Python path
+(`case_input/test.tpv30/user_defined_params.py:275`) uses the IDENTICAL
+`[1,pfx,0]/sqrt(1+pfx^2)` construction, and that path produces tpv29's
+confirmed-correct 27.791 MPa -- if this formula were the bug, tpv29 would
+be wrong too, and it isn't. Did not relay this as the located bug; reported
+the disproof back instead.
+
+**Coordinator then found the REAL root cause independently: tpv30 is
+running a half-implemented SPEC METHOD, not a numerics bug in a shared
+formula.** `TPV29_30_Description_v06.pdf` Part 8 offers two mutually
+exclusive initial-condition methods. Method 1 (stress CHANGE from initial,
+no gravity, MANUALLY SPECIFIED fault traction, no boundary tractions
+needed) is what tpv29 runs. Method 2 (TOTAL stress, explicit gravity,
+fault traction DERIVED from the field, REQUIRES boundary tractions if the
+mesh boundary can move) is what tpv30 runs -- confirmed by wei-lin
+independently: the `(1-C_elastic)` gravity body force at
+`assembleGlobalKU.f90:20` exists exactly as described, and a grep for
+`boundaryForce`/`boundary_force`/`BoundaryTraction` across both Fortran and
+Python returns NOTHING -- Method 2's required boundary tractions are
+genuinely unimplemented. Without them the initial state is not in static
+equilibrium, the medium deforms from t=0, and the fault traction is read
+off a body already in motion -- exactly the measured 33.05->28.75
+pre-arrival relaxation.
+
+**Owner decision: move tpv30 to Method 1** (not "complete Method 2") --
+drop the gravity body force for this case, keep `setPlasticStress`'s
+element field for the yield calculation ONLY, and use the manually-specified
+on-fault initial traction `case.setup` already computes and writes
+(`on_fault_vars[7]/[8]/[49]`) but currently discards via the `C_elastic`
+multiplier. This retires the earlier double-counting objection: under
+Method 1 the element stress never generates fault traction at all, so
+applying `T_init` directly is the method working as specified.
+
+`dunyu-liu`'s currently-in-flight mission (`a2d9003fa3ce1790f`) was briefed
+on the now-superseded "discrete-equilibrium correction" framing
+(`T_init = analytic - FE reconstruction`) rather than this cleaner
+"switch to Method 1, apply T_init directly" fix. Cannot redirect mid-flight
+(no SendMessage) -- will evaluate his report against the sharper Method-1
+spec when it returns rather than guess now; a corrected follow-up dispatch
+is likely needed regardless of what he produces. Release gate still green,
+8 processes remaining.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
