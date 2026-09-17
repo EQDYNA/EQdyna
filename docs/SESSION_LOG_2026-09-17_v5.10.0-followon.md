@@ -1035,6 +1035,46 @@ confirmed to go LIVE under Method 1 (a real, expected behavior change).
 Explicitly told to leave the rejected offset worktree untouched -- I reap
 it only once the Method-1 build is verified, not before.
 
+## Update: v5.11.0 TAGGED AND RELEASED. dunyu-liu's Method-1 build (also
+## rejected per the "leave it open" decision) returned working but is not
+## landed; one incidental, real, currently-harmless finding extracted and
+## recorded separately. Both tpv30 worktrees reaped.
+
+CI went green on `b63b959` (fresh, own run). Confirmed every commit added
+after it (`e731c25`, `d74e180`, `9999928`, `7028fc7`, `e588708`) touches
+only `docs/SESSION_LOG_*.md` and `pathway_forward.md` -- both provably
+CI-path-ignored and behavior-inert -- so `e588708`'s code state is
+byte-identical to the CI-validated `b63b959`; tagged `e588708`, not the
+stale `b63b959`. Tag + `gh release create` run as one uninterrupted chained
+action per rule 15's amendment (`v5.11.0` -> `e588708`). Two same-second
+duplicate push-triggered CI runs fired on the tag push -- matches item 35's
+already-documented, not-investigated-further pattern exactly, not a new
+concern.
+
+`dunyu-liu`'s Method-1 mission (`a746fa7807cf3485e`) returned AFTER the
+"leave it open" decision -- reported a working, fully-verified
+implementation (27.79127 MPa matching tpv29 bit-identically, drv.a6 reading
+its own declared 40/-120 MPa, 27/30 sweep green with only drv.a6's 3 cells
+failing as anticipated). **Not landed, per the owner's final decision** --
+the whole approach was retracted before this report even arrived, based on
+newer evidence (the resolution-independent published data) that this
+report's own author never saw. Worktree reaped after extracting one
+genuinely separate, valuable finding: his own report flagged an incidental
+numpy aliasing bug at `driver.py:182` (`xp.asarray(inv['stress_i0'])`
+missing a defensive `.copy()`) that broke `test.tpv8 x python-numpy` by
+1.2e17x in HIS build. Verified myself before accepting or extracting
+anything: in CURRENT MASTER, `inv['stress_i0']` is read exactly ONCE
+(this same line) and nothing else re-reads it -- so the missing copy is
+REAL but CURRENTLY HARMLESS; it only became active because his own
+(rejected) code added a second read later in the step function that his
+own work needed. Not landing the one-line defensive fix myself either --
+it emerged entirely from rejected work and the owner's instruction was "do
+not dispatch a fix," not "extract salvageable pieces" -- dispatched
+`zofia-kaminska` for a new, separate, low-priority pathway_forward.md row
+instead, so it isn't lost for whenever someone next needs a second read of
+that value. Both tpv30 investigation worktrees (`a2d9003fa3ce1790f` offset,
+`a746fa7807cf3485e` Method-1) now reaped.
+
 Sixth occurrence of the identical Fable-5 429 pattern this campaign, on the
 very first attempt at this mission. Re-dispatched immediately with
 `model:"sonnet"` override (agent `a746fa7807cf3485e`), no orphaned worktree
