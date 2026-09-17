@@ -190,12 +190,20 @@ def main():
     spread = [nodes[n][0] for n in sorted(nodes)][:per_node]
     if len(spread) == per_node:
         configs.append(('spread-%d-one-per-node' % per_node, spread))
-    # one full socket, if the topology has at least 4 nodes
+    # Socket-fill region. Item 33 asks for BOTH 16 and 32 within one socket --
+    # jumping straight from spread-8 to a full socket left a 4x gap with no
+    # point in between (F2, found 2026-09-17). The owner's constraint is "at
+    # most 32, not 64": a single process has no reason to ever span both
+    # sockets, so there is deliberately no all-cores config here (F1, same
+    # date -- the previous version generated one, contradicting that
+    # constraint).
+    sorted_nodes = sorted(nodes)
+    if len(sorted_nodes) >= 2:
+        two_node = [c for n in sorted_nodes[:2] for c in nodes[n]]
+        configs.append(('multi-node-%d' % len(two_node), two_node))
     if len(nodes) >= 4:
-        sock = [c for n in sorted(nodes)[:len(nodes) // 2] for c in nodes[n]]
+        sock = [c for n in sorted_nodes[:len(nodes) // 2] for c in nodes[n]]
         configs.append(('socket-%d' % len(sock), sock))
-        allc = [c for n in sorted(nodes) for c in nodes[n]]
-        configs.append(('all-%d' % len(allc), allc))
 
     print('  case    : %s (built fresh, serial)' % a.case)
     case_dir = build_case(a.case)
