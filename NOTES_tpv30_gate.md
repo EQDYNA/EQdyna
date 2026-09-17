@@ -199,3 +199,120 @@ not done here), or (b) a deliberate flip-budget gate design measured the
 way test.drv.a6's was (multiple decompositions, serial-vs-parallel Fortran
 baseline, etc.) -- either is a real, separate piece of work, not a
 guess-and-loosen-the-bound fix.
+
+## Rule 17 step 6 satisfied: independent validation against the owner's OWN
+## published TPV30 submissions (2026-09-17, follow-up mission)
+
+New information changed what was possible: `scec_archive/tpv30/eqdyna-v3.1-
+{100,50,25}m-2015/` (the owner's own 2015 SCEC/USGS cvws submissions,
+gitignored, present on this box) were not available/considered when the STOP
+above was written. Rule 17 step 6 ("validate against something independent,
+as a committed script") is satisfiable today with data already on disk, so it
+was done, WITHOUT touching the unresolved Fortran-vs-Python finding above.
+
+**Script**: `testsys/parity/evidence_tpv30_scec_comparison.py` (new, report-
+only, never asserts, exits 0 -- same pattern as
+`evidence_tpv29_scec_comparison.py` and `evidence_tpv30_vs_tpv29_contrast.py`
+in the same directory, which it imports from rather than duplicating generic
+archive I/O, per rule 1). Run:
+`python3 testsys/parity/evidence_tpv30_scec_comparison.py`.
+
+**What it compares** (see the script's own docstring for full detail): the
+ALREADY-COMMITTED `test.reference.results/test.tpv30/frt.canonical.txt`
+(EQdyna Fortran, dx=500 m, the rule-17-step-4 gate run frozen earlier in this
+document) against `scec_archive/tpv30/eqdyna-v3.1-100m-2015/` (the owner's OWN
+2015 EQdyna submission, dx=100 m). This is Fortran-vs-Fortran, 21 years apart
+-- it says NOTHING about the numpy/jax divergence above; that finding is
+untouched and still open.
+
+**Framing, stated explicitly per the mission's own bar** ("roughly match",
+never an accuracy claim): the owner's own 100 m TPV30 submission itself ranks
+14/14 (farthest from the group median) among 14 independent cross-code
+submissions at the SCEC portal (scec_archive/tpv30/eqdyna-v3.1-100m-2015/
+PROVENANCE.md), improving monotonically 100m(14/14) -> 50m(12/14) -> 25m(8/14)
+in the owner's own record. So a 500 m EQdyna run matching the owner's OWN
+100 m run is a REGRESSION check ("recognizably the same physics"), not an
+accuracy claim, exactly the tpv36/tpv37 500 m gate framing.
+
+**Numbers actually computed by the script (not from any README/prior claim)**:
+
+  - METRIC 1 (rupture time, FULL 3321-node 500 m grid, exact-coordinate
+    lookup into the 100 m archive grid -- dx=500 divides dx=100 exactly, no
+    interpolation): 2940/3321 nodes ruptured in BOTH runs, 314 never ruptured
+    in either, 44 ruptured only at 500 m, 23 ruptured only in the archive --
+    99.2% of the archive's ruptured nodes also ruptured at 500 m. Median
+    |dt| = 1.077 s, mean 1.476 s, max 9.611 s (coarse-grid timing noise, not
+    zero, as expected).
+  - METRIC 2 (ruptured area, each grid at its OWN resolution, corner rule +
+    naive rule, both reused verbatim from evidence_tpv29_scec_comparison.py):
+    corner rule 713.8 km2 (500 m) vs 729.9 km2 (100 m archive), ratio 0.978;
+    naive rule 746.0 km2 vs 736.1 km2, ratio 1.013. (A bug was caught and
+    fixed while writing this: `ref['dip'] = -ref['z']` runs DESCENDING
+    (20000->0) because `ref['z']` itself runs ascending -20000->0, and
+    `rupture_area_km2`'s `dz = np.diff(z).mean()` is signed -- this returned
+    a NEGATIVE area on the first real run of the script, caught immediately
+    because the number was obviously wrong, not silently accepted. Fixed by
+    flipping to ascending order before that one call; METRIC 1/3 are
+    direction-agnostic and needed no fix.)
+  - METRIC 3 (final slip, all 24 archive on-fault stations, vs the 500 m
+    grid's NEAREST node -- most named stations are not on 500 m multiples,
+    max offset 283 m, every offset reported alongside its number): median
+    percentage diff 6.3%. 20 of 24 stations are under 20%; two outliers
+    (faultst167dp105 at 37.7%, faultst170dp045 at 99.3%) are both small
+    absolute-slip, near-edge stations where percentage error is naturally
+    amplified by a small denominator at coarse resolution -- not treated as
+    evidence against the match, stated as what it is.
+  - METRIC 4 (Mw, current 500 m run only -- the archive has no full 2D slip
+    field, same documented limitation as TPV29's own script): M0 =
+    3.876e19 N*m over all 3321 nodes, Mw = 7.026, computed fresh from this
+    run's own slip field (RHO=2670, VS=3464, the case's own spec-p.11
+    material), not compared cross-code (rule 1 -- no guessed baseline).
+
+**Verdict, the two SEPARATE questions kept separate (mission Step 3, and the
+script's own print_report says both, side by side, every run)**:
+
+  (A) PHYSICS VALIDITY (this script, Fortran vs Fortran, rule 17 step 6):
+  **ROUGHLY MATCHES** -- 99.2% rupture-extent overlap, ruptured-area ratio
+  0.98 (corner rule), median station slip diff 6.3%. This is real and worth
+  recording on its own: EQdyna's viscoplastic TPV30 physics at a coarse 500 m
+  gate resolution is recognizably the same physics as the owner's own finer
+  2015 submission, not a different or broken rupture.
+
+  (B) PORT CORRECTNESS (numpy/jax vs Fortran, rule 17 step 7): **UNCHANGED,
+  STILL NOT RESOLVED.** The "STOP" finding above this section stands exactly
+  as written -- this script never touches it (it never runs the Python
+  backends, only reads the already-frozen Fortran reference). (A) matching
+  does NOT imply (B) is fixed; the numpy/jax vs Fortran divergence (up to 30%
+  at t=20s, root cause not found, needs a debug-build per-step dump per the
+  HANDOFF above) is completely independent of whether the Fortran physics
+  itself is validated.
+
+**Gate action: NONE.** Per the mission's own instruction, gating requires
+BOTH (A) and (B); (A) now holds but (B) does not, so test.tpv30 stays
+un-registered in `testNameList.py`/`testsys/matrix.py`, exactly as the
+earlier STOP section left it. This is a complete, valuable combined finding
+(validated physics, unresolved port divergence), not a substitute for one.
+
+**Step 4 (costing, not running, a 100 m EQdyna validation run)**: NOT run.
+Rough cost estimate from this case's own scaling, not guessed: the 500 m gate
+(4 ranks, 81x41x?? mesh, term=20s) completed in the same
+"minutes at 4 ranks" range rule 17 step 4 targets generally (not separately
+re-timed here since it was not re-run this session). Going 500m -> 100m is a
+5x reduction in dx, i.e. 5x in EACH of 2 horizontal fault-plane dimensions
+that drive element count, and a similar factor in the off-fault volume mesh
+plus a 5x smaller stable timestep (CFL) -- a full 3D explicit dynamic-rupture
+run scales roughly as (element count) x (timestep count), so a naive
+dx-only estimate is O(5^4) = 625x in raw work for the volume mesh (3
+spatial dims + 1 time dimension all tightening by 5x), before accounting for
+any rank-count increase to keep wall-clock down. TPV29's own 100 m run (cited
+in evidence_tpv29_scec_comparison.py's module docstring) used 48 ranks and
+took "tens of minutes"; TPV29's 50 m run (a further 2x tightening from its
+own 100 m) was independently measured at 2-3.5 h on 16 ranks per that
+script's docstring. Applying the same 500m->100m jump to TPV30 at a
+similarly scaled-up rank count (48+ ranks) would plausibly land in the same
+"tens of minutes to low hours" band TPV29's own 100 m run sits in, NOT the
+2-3.5 h TPV29 50 m band (100 m, not 50 m, is what scec_archive ships a direct
+comparison point for, per the mission's own reasoning) -- but this is an
+extrapolation from a different case's own measured numbers, not a fresh
+timing of TPV30 itself, and is explicitly NOT queued or started here, per the
+mission's own Step 4 instruction ("cost out, do not necessarily run").
