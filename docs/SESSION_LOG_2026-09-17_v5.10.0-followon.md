@@ -387,6 +387,35 @@ Proceeding down the queue as planned: TPV30 SCEC-archive validation next
 (mira-volkov, dispatching now), item 33's reframed scaling-optimization
 mandate after that.
 
+## Update: TPV30 SCEC validation landed (f110c75, c3dace7); item 33 dispatched
+
+Mira's TPV30 validation mission returned cleanly: two separate findings, not
+conflated. (A) physics validity ROUGHLY MATCHES the owner's own published
+100m 2015 submission (99.2% rupture-extent overlap, area ratio 0.978/1.013,
+median slip diff 6.3% over 24 stations, Mw 7.026 computed fresh) -- framed
+explicitly as a regression check (the owner's own 100m submission ranks
+14/14 among 14 cross-code submissions). (B) port correctness (numpy/jax vs
+Fortran, up to 30% divergence by t=20s) UNCHANGED, still unresolved. Gate
+action: none, correctly -- both must hold, only (A) does. Independently
+re-run by me in the main checkout (scec_archive/ is gitignored, absent from
+her worktree; she used a temporary symlink, removed before finishing) before
+landing `f110c75` -- numbers reproduced exactly. Worktree reaped after
+confirming its uncommitted content matched what I'd already landed
+byte-for-byte (not a stale-lock case, just normal cleanup). Board updated by
+zofia (`c3dace7`), verified against her own fresh script run before landing.
+
+Dispatched `mira-volkov` (fresh isolated worktree) for item 33's full
+reframed mandate: fix `run_scaling.py` (extend `PY_THREADS` to match
+`FORTRAN_RANKS` up to 32, replace bare `taskset` with `numactl
+--cpunodebind/--membind`, two placement policies -- compact vs spread -- to
+attribute any knee, and the SAME per-cpu busy-check discipline as
+`run_numa_scaling.py`'s F3 so individual points stay trustworthy even though
+this box has not been idle all session), then root-cause and FIX numpy's
+anti-scaling and jax's ~1.44x ceiling, checking the two known project
+failure modes (HLO literals, jit-inside-a-loop recompilation) first, keeping
+all three backends green at CURRENT bounds throughout (optimization, not a
+physics change). Not yet returned.
+
 **Item 33 mandate escalated again:** not a curve to report -- an
 optimization to land. Owner: "if not, go optimize it" / "at least, jax
 should scale really well." jax's measured 1.44x (1 core to unrestricted) is
