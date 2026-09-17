@@ -130,6 +130,18 @@ CASE_BOUND = {
     # worst observation, in the same headroom family as tpv8/tpv36.
     'test.tpv37': 1e-6,
 }
+# test.tpv30 is NOT registered in testNameList.py yet -- see that file's
+# comment and NOTES_tpv30_gate.md. A first real sweep (2026-09-17) found
+# python-numpy and python-jax agree with EACH OTHER to ~1e-3 over the full
+# 3321-node grid at t=20s but disagree with Fortran by up to 4.0e8 Pa
+# (30% relative) at a majority of nodes -- a real, deterministic divergence
+# (not per-backend chaos: chaos would not leave numpy and jax bit-close to
+# each other while both are far from Fortran), root-caused only as far as
+# "somewhere between t=1s (bit-exact, all three) and t=6s (already
+# widespread, including at least one rupture-arrival flip)". No abs-max
+# bound is honest here yet, and no flip-budget gate has been calibrated
+# (test.drv.a6's own DRV_A6 dict took dedicated measurement -- not
+# improvised for a case landed in the same change as its own diagnosis).
 
 GATE = {
     'test.tpv8': 'abs-max',
