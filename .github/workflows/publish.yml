@@ -4,21 +4,14 @@ name: Publish EQdyna Docker image
 # Gated strictly on the tag push for anything that reaches the REGISTRY, not
 # on push-to-master (contrast .github/workflows/test.yml, which runs on every
 # push/PR): an image is only ever PUSHED for a released, tagged commit, so its
-# version cannot drift from the tag the way dunyuliu/eqdyna:v5.3.1 drifted
-# seven minor versions behind the repo before this workflow existed (see
-# Docker.guide.md).
+# version cannot drift from the tag (see Docker.guide.md).
 #
-# workflow_dispatch added 2026-09-16: this workflow can ONLY be exercised by a
-# tag push otherwise, which means every debug iteration of build+gate cost a
-# full release (v5.8.3/4/5 each existed largely to run this workflow once,
-# three distinct real bugs found one release apart). `gh workflow run
-# publish.yml --ref master` now iterates it for free -- but a dispatch run is
-# build+gate ONLY: the push step and the `:latest` tag are both gated on
-# `github.event_name == 'push'` below, so a manual run never reaches the
-# registry and can't publish `ghcr.io/eqdyna/eqdyna:master` or clobber
-# `:latest` with an unreleased commit. That preserves the original property
-# (an image only ever exists on GHCR for a released, tagged commit); it just
-# makes the expensive part of debugging it free.
+# workflow_dispatch lets `gh workflow run publish.yml --ref master` exercise
+# build+gate without a tag push, but it is build+gate ONLY: the push step and
+# the `:latest` tag are both gated on `github.event_name == 'push'` below, so
+# a manual run never reaches the registry and can't publish
+# `ghcr.io/eqdyna/eqdyna:master` or clobber `:latest` with an unreleased
+# commit.
 on:
   push:
     tags:
@@ -64,16 +57,9 @@ jobs:
     # backend -- the image deliberately excludes jax, same rationale as
     # the Dockerfile's jax-exclusion note) INSIDE the just-built image.
     # pytest/scipy are installed here, not in the Dockerfile: they are a
-    # CI-only overlay (test.yml does the same on top of install-eqdyna.sh's
-    # own deps), not a production dependency this image should carry --
-    # mirrors the deliberate jax exclusion already documented there. No
-    # --break-system-packages: the base image is ubuntu:22.04, whose stock
-    # pip3 (22.0.2) predates that flag (pip 23.0.1+, PEP 668) -- the same
-    # bug the Dockerfile itself had, and this occurrence was NOT caught by
-    # the first fix because that fix addressed the failing log line, not
-    # the pattern (a `grep -rn` for the flag across the repo at the time
-    # would have caught this AND the verify-published-image copy below in
-    # one pass -- v5.8.4 still shipped both of them broken).
+    # CI-only overlay, not a production dependency this image should carry.
+    # No --break-system-packages: the base image is ubuntu:22.04, whose stock
+    # pip3 (22.0.2) predates that flag (pip 23.0.1+, PEP 668).
     # A failing gate stops the job here; the push step below never runs.
     - name: Gate the image on the repo's own test tiers (not a --version smoke test)
       run: |
@@ -99,8 +85,8 @@ jobs:
   # pushed and re-runs the same gate, so a registry-roundtrip-only failure
   # (wrong manifest, layer squashing, auth) is caught the same way a human
   # pulling `ghcr.io/eqdyna/eqdyna:vX.Y.Z` into an empty directory would hit
-  # it -- the check the previous version of this workflow never did. Skipped
-  # entirely on a dispatch run: build-and-push pushed nothing for it to pull.
+  # it. Skipped entirely on a dispatch run: build-and-push pushed nothing for
+  # it to pull.
   verify-published-image:
     needs: build-and-push
     if: github.event_name == 'push'

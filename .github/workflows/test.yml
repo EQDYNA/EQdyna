@@ -6,17 +6,12 @@ name: Automatic Testing of EQdyna
 # test_release_complete.py's release-completeness checks -- so README.md
 # stays in the trigger set unconditionally. pathway_forward.md and
 # PROJECT_RULES.md are excluded: nothing parses PROJECT_RULES.md's content
-# today (grepped testsys/ for it -- every hit is a comment citing a rule
-# number, not a check of the file itself), and pathway_forward.md-only edits
-# cannot silently break test_release_complete.py's Tasks-done-row check
-# because that check only fires once a tag for VERSION exists, and VERSION
-# only changes in a release commit -- which always also touches non-md files
-# (src/fortran/eqdyna3d.f90's banner, at minimum) and so always still
-# triggers CI regardless of this list. Measured on the v5.8.3 release chain
-# (2026-09-16): 3 of 5 commits touched only pathway_forward.md/
-# PROJECT_RULES.md, each burning a full ~11-minute run (591s of it real MPI
-# compute in "Run tests", not fixable by caching) for a prose-only change,
-# and because a release blocks on green, that is release-delay too.
+# today, and pathway_forward.md-only edits cannot silently bypass
+# test_release_complete.py's Tasks-done-row check because that check only
+# fires once a tag for VERSION exists, and VERSION only changes in a release
+# commit -- which always also touches non-md files (src/fortran/eqdyna3d.f90's
+# banner, at minimum) and so always still triggers CI regardless of this
+# list.
 on:
   push:
     paths-ignore:
@@ -28,49 +23,37 @@ on:
   pull_request:
 
 # ONE job on ONE ubuntu-22.04 runner used to do apt install + build + unit +
-# regression + e2e-ci back to back: 11 min wall clock, 591s of it ("Run
-# tests") fully sequential and 90% of the total (measured on run 35147230900
-# and consistently across 14 runs the same day). Splitting into a build job
+# regression + e2e-ci back to back, with the test step fully sequential and
+# by far the largest share of total wall clock. Splitting into a build job
 # plus parallel test jobs pays twice: wall clock drops to roughly the
 # slowest single job instead of the sum, AND each job gets its own 7 GB
 # runner instead of one runner holding the Fortran build, mpirun, AND every
-# python/jax cell at once -- which is the actual reason CI_CELLS was capped
-# at 11 of 27 cells (testsys/matrix.py's own comment: the all-cells run got
-# SIGTERM'd, exit 143, no output; test.tpv36 joined the fortran-only slice
-# automatically the day it was gated -- CI_CELLS includes every case's
-# fortran cell unconditionally, see matrix.py). More jobs is how a per-job memory ceiling
-# gets solved; a bigger single runner is not offered by GitHub-hosted
-# runners at all.
+# python/jax cell at once -- which is the actual reason CI_CELLS is capped
+# below the full matrix (see testsys/matrix.py's CI_CELLS comment). More jobs
+# is how a per-job memory ceiling gets solved; a bigger single runner is not
+# offered by GitHub-hosted runners at all.
 #
-# Coverage was 10 of 24 cells at the first cut of this matrix (2026-09-16),
-# unchanged from the one-job workflow it replaced -- e2e-ci-fortran-a,
-# e2e-ci-fortran-b and (then) one e2e-ci-python job together selected exactly
-# matrix.CI_CELLS. WIDENED the same day, after the split itself removed the
-# constraint that had set CI_CELLS at 10: tpv10/tpv104/tpv1053d x python-jax
-# (3.2-4.0 GB each) and, newly measured, meng2023a/meng2023cb/tpv29 on both
-# python backends. 19 of 24 cells now. test_ci_workflow_coverage.py proves the
-# union of every `run_e2e.py --ci` invocation in this file is exactly
-# matrix.CI_CELLS by parsing this file and the table directly, so a future
-# edit that silently drops or double-runs a cell fails the regression tier
-# regardless of how many jobs or invocations this grows to.
+# test_ci_workflow_coverage.py proves the union of every `run_e2e.py --ci`
+# invocation in this file is exactly matrix.CI_CELLS by parsing this file and
+# the table directly, so a future edit that silently drops or double-runs a
+# cell fails the regression tier regardless of how many jobs or invocations
+# this grows to.
 #
-# The fortran slice is split in two (not left as one job): measured on run
-# 35150197402, one e2e-ci-fortran job running all 8 cases serially (a
-# GitHub-hosted runner's core count is at run_e2e.py's --jobs reservation
-# floor, which forces serial execution regardless) took 332.3s and was 89% of
-# that run's 450s total pipeline wall clock -- unambiguously the critical
-# path. Splitting it into two ~4-case, similarly-sized-by-measured-seconds
-# groups running in parallel jobs roughly halves it with no coverage change.
+# The fortran slice is split in two (not left as one job): a GitHub-hosted
+# runner's core count is at or below run_e2e.py's --jobs reservation floor,
+# which forces serial execution of all 8 cases in one job -- unambiguously
+# the critical path. Splitting it into two similarly-sized-by-measured-
+# seconds groups running in parallel jobs roughly halves it with no coverage
+# change.
 #
 # The python slice is split in three for the same reason, sized very
-# differently: test.tpv29 x python-numpy alone (1711.0 s measured) is an
-# order of magnitude more expensive than any other python cell and cannot be
-# shrunk by splitting -- it is isolated in its own job
-# (e2e-ci-python-tpv29) specifically so its cost is the new critical path on
-# its own, not stacked on top of anything else. See matrix.py's CI_CELLS
-# comment for why the per-job-memory argument that used to exclude the
-# tpv10/tpv104/tpv1053d/meng2023a/meng2023cb/tpv29 python cells no longer
-# holds once cells run one job at a time.
+# differently: test.tpv29 x python-numpy alone is an order of magnitude more
+# expensive than any other python cell and cannot be shrunk by splitting --
+# it is isolated in its own job (e2e-ci-python-tpv29) specifically so its
+# cost is the new critical path on its own, not stacked on top of anything
+# else. See matrix.py's CI_CELLS comment for why the per-job-memory argument
+# that used to exclude some python cells no longer holds once cells run one
+# job at a time.
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -190,26 +173,18 @@ jobs:
       run: cat testRunLog.txt
 
   # The fortran slice of matrix.CI_CELLS, all 8 cases on the fortran/MPI
-  # backend, SPLIT ACROSS TWO JOBS. A single such job was measured (run
-  # 35150197402, 2026-09-16) at 332.3s serial -- 89% of that run's 450s total
-  # pipeline wall clock and by far the critical path, because a GitHub-hosted
-  # runner's core count is at or below run_e2e.py's --jobs reservation floor
-  # (cores-4), which forces budget=1 and every fortran cell to run one after
-  # another even though they are independent. Two jobs each get their own
-  # runner, so the SAME 8 cells run as two SERIAL-4 groups in PARALLEL instead
-  # of one SERIAL-8 group -- coverage is identical, wall clock roughly halves.
+  # backend, SPLIT ACROSS TWO JOBS -- see the top-of-file comment above the
+  # `jobs:` key for why (core-count-forced serial execution). Two jobs each
+  # get their own runner, so the SAME 8 cells run as two SERIAL-4 groups in
+  # PARALLEL instead of one SERIAL-8 group -- coverage is identical, wall
+  # clock roughly halves.
   #
-  # The two --cases lists below are a balanced (LPT) partition of that run's
-  # own per-cell seconds (not the README's 64-core-box numbers, which are a
-  # different environment -- rule 6, measure on the thing you are deciding
-  # about): tpv29 104.4, drv.a6 65.6, meng2023a 34.6, meng2023cb 34.3,
-  # tpv1053d 30.6, tpv10 28.6, tpv104 24.6, tpv8 9.6 (seconds). Group A =
-  # tpv29+tpv1053d+tpv104+tpv8 = 169.2s; Group B =
-  # drv.a6+meng2023a+meng2023cb+tpv10 = 163.1s (both stale by tpv36's and
-  # tpv37's own fortran cells, added later at their own re-gating/gating
-  # commits without a full re-measurement -- a scheduling nicety, not a
-  # correctness requirement; test.tpv37's fortran cell (item 19a, second
-  # half) is appended to Group A below). Re-balance if a future case's cost
+  # The two --cases lists below are a balanced (LPT) partition of measured
+  # per-cell seconds on this repo's own CI runner (not the README's
+  # 64-core-box numbers, which are a different environment -- rule 6, measure
+  # on the thing you are deciding about), stale by tpv36's and tpv37's own
+  # fortran cells joining later without a full re-measurement -- a scheduling
+  # nicety, not a correctness requirement. Re-balance if a future case's cost
   # shifts this badly out of true -- test_ci_workflow_coverage.py already
   # proves the union of every `--ci` invocation in this file is exactly
   # matrix.CI_CELLS regardless of how the groups are drawn.
@@ -307,13 +282,12 @@ jobs:
       if: always()
       run: cat testRunLog.txt
 
-  # The python slice of matrix.CI_CELLS, WIDENED 2026-09-16 and split across
-  # THREE jobs by measured cost (`/usr/bin/time -v`, full-length, one at a
-  # time, this development box -- see matrix.MEASURED_PEAK_RSS_GB for every
-  # number and its provenance). No fortran cell is selected in any of the
-  # three, so run_e2e.py never builds anything and none needs `needs: build`,
-  # mpich, or netCDF dev headers -- all three start immediately in parallel
-  # with `build` instead of waiting on it.
+  # The python slice of matrix.CI_CELLS, split across THREE jobs by measured
+  # cost (see matrix.MEASURED_PEAK_RSS_GB for every number and its
+  # provenance). No fortran cell is selected in any of the three, so
+  # run_e2e.py never builds anything and none needs `needs: build`, mpich, or
+  # netCDF dev headers -- all three start immediately in parallel with
+  # `build` instead of waiting on it.
   #
   # Each case's two backends are DELIBERATELY not always in the same job: a
   # `--backends` filter applies uniformly to every `--cases` entry in one
@@ -322,12 +296,11 @@ jobs:
   # test_ci_workflow_coverage.py's line-based parser sees both calls as
   # separate invocations and unions them, so this composes cleanly.
   #
-  # test.tpv29 x python-numpy alone (1711.0 s measured locally) dwarfs every
-  # other python cell combined (the other 8 sum to 1348.7 s) and cannot be
-  # made to run faster by more splitting -- it is one sequential simulation.
-  # Isolating it in its own job (e2e-ci-python-tpv29) means its irreducible
-  # cost sets the new CI critical path on its own, rather than also queuing
-  # behind or ahead of anything else.
+  # test.tpv29 x python-numpy alone dwarfs every other python cell combined
+  # and cannot be made to run faster by more splitting -- it is one
+  # sequential simulation. Isolating it in its own job (e2e-ci-python-tpv29)
+  # means its irreducible cost sets the new CI critical path on its own,
+  # rather than also queuing behind or ahead of anything else.
   e2e-ci-python-cheap:
     runs-on: ubuntu-22.04
 
@@ -350,11 +323,10 @@ jobs:
         pip install jax
 
     # tpv8 (both backends, the two original CI cells) + the tpv10/tpv104/
-    # tpv1053d jax cells (3.2-4.0 GB each, previously excluded for a shared-
-    # runner reason that no longer applies once each job has its own 7 GB --
-    # see matrix.py's CI_CELLS comment). Their numpy columns stay excluded:
-    # never measured, so the "no cell without a measured RSS" rule still
-    # applies to them.
+    # tpv1053d jax cells, previously excluded for a shared-runner reason that
+    # no longer applies once each job has its own 7 GB -- see matrix.py's
+    # CI_CELLS comment. Their numpy columns stay excluded: never measured, so
+    # the "no cell without a measured RSS" rule still applies to them.
     - name: Run e2e-ci (python cells, cheap group)
       run: |
         export EQDYNAROOT=$(pwd)
@@ -394,8 +366,7 @@ jobs:
         pip install --upgrade numpy
         pip install jax
 
-    # meng2023a + meng2023cb, both backends (newly measured, 2.5 GB numpy /
-    # 4.0 GB jax each) -- plus test.tpv29 x python-jax (198.0 s measured),
+    # meng2023a + meng2023cb, both backends -- plus test.tpv29 x python-jax,
     # deliberately NOT test.tpv29 x python-numpy, which is isolated in its
     # own job below because it is an order of magnitude more expensive than
     # everything else in this group combined.
@@ -435,11 +406,11 @@ jobs:
         pip install --upgrade numpy
         pip install jax
 
-    # test.tpv29 x python-numpy ALONE: 1711.0 s measured locally, by far the
-    # single most expensive cell in the table (matrix.MEASURED_PEAK_RSS_GB).
-    # This job's own wall clock is the new CI critical path; that is expected
-    # and reported, not a regression to chase away by further splitting --
-    # there is nothing left to parallelize inside one sequential simulation.
+    # test.tpv29 x python-numpy ALONE: by far the single most expensive cell
+    # in the table (matrix.MEASURED_PEAK_RSS_GB). This job's own wall clock is
+    # the new CI critical path; that is expected and reported, not a
+    # regression to chase away by further splitting -- there is nothing left
+    # to parallelize inside one sequential simulation.
     - name: Run e2e-ci (python cells, tpv29-numpy)
       run: |
         export EQDYNAROOT=$(pwd)
