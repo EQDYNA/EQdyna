@@ -1,6 +1,10 @@
 # Past release notes\
 
 # News in 2026
+* 20260916 v5.8.6 release notes
+  * Fix - the Docker image had never actually built the solver: `ubuntu:22.04`'s `mpich` package depends on `libgfortran5` (the runtime library) but not `gfortran` (the compiler `mpif90` shells out to for every build), so `make` failed with `gfortran: command not found` inside the Dockerfile's own build step. `gfortran` added explicitly to both `Dockerfile` and `install-eqdyna.sh`'s ubuntu branch, which had the identical latent gap. A second issue found right behind it: `--no-install-recommends` gave the image a STRICTER dependency closure than `install-eqdyna.sh -m ubuntu` itself uses, silently dropping `mpif.h`; the flag is now dropped.
+  * New - `.github/workflows/publish.yml` gained `workflow_dispatch` (debug iterations no longer cost a release); CI parallelized 660s -> 303s (-54%, coverage unchanged); two release-guard bugs fixed (annotated-tag remote-peel fallback, `GH_TOKEN` for the Release check).
+  * CORRECTION: the image DID actually publish for this tag (`docker push` succeeded) -- what failed was a false FAIL in the SEPARATE verify-published-image job, itself a bug in the annotated-tag fallback added above (it treated a failed network round-trip the same as a confirmed lightweight tag). Fixed in v5.8.7.
 * 20260916 v5.8.5 release notes
   * Fix - v5.8.4's Dockerfile fix addressed the failing log line, not the pattern: `.github/workflows/publish.yml` had two more copies of the same `--break-system-packages` flag (the CI-only pytest/scipy overlay in both the `build-and-push` and `verify-published-image` jobs). Both fixed; a repo-wide grep confirmed no more occurrences (`install-eqdyna.sh`'s own use of the flag is in the macOS/Homebrew branch, which does need it -- checked, not a matching bug). CORRECTION: the image still did not publish for this tag either -- a missing `gfortran` dependency (found next) blocked the Docker build itself one layer further in; fixed in v5.8.6.
 * 20260916 v5.8.4 release notes
