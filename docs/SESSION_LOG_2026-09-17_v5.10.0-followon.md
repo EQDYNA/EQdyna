@@ -867,6 +867,40 @@ finding unchanged (that one was never in doubt). Not yet returned.
 Release gate (`br2ekcqll`) still running in the background, now past
 regression into e2e.
 
+## Update: owner ruled "no need for finer grids" -- gate-it-finer wording
+## retracted; a real fix direction (discrete-equilibrium correction) given
+## and dispatched to dunyu-liu
+
+Owner: tpv29 is ITSELF FE-reconstructed at dx=500 after t=0 and shows no
+comparable error there, so "500m is too coarse" cannot explain the INITIAL
+state specifically -- "gate it finer" is REJECTED, not just softened.
+Mechanism stands (elastic=exact projection since elements start at zero;
+plastic=FE reconstruction of setPlasticStress's field, since elements
+already carry real stress). New, sharper framing: `case.setup` ALREADY
+computes the exact analytic projection for tpv30 (writes it to
+`on_fault_vars[7]`/`[8]`) and it is discarded by the `C_elastic` multiplier
+-- the answer is sitting in the input file, unused. Real problem: a uniform
+far-field tensor on a FACETED rough fault is not in discrete equilibrium,
+so FE reconstruction disagrees with the exact projection by an amount
+scaling with facet geometry (this is the "4.3 MPa pre-arrival relaxation").
+Fix direction (NOT a specified fix, needs a numerics read first): `T_init`
+carries `(analytic projection - FE reconstruction at t=0)` instead of being
+zeroed, so the fault sees the exact traction while the element field stays
+intact for the yield calculation.
+
+Corrected `README.md`'s v5.11.0 note myself (removed "gate finer"/dx=100
+wording, replaced with the mechanism + "fix is a design question in
+progress" framing, still uncommitted pending the release). Dispatched
+`zofia-kaminska` (agent `a89c1013cdabc87f5`) for the matching
+`pathway_forward.md` correction (surgical -- remove finer-grid conclusion,
+add the discrete-equilibrium direction and the exact success criterion:
+tpv30 matches tpv29's 27.791 MPa AT dx=500, no pre-arrival relaxation).
+Dispatched `dunyu-liu` for the actual design+implementation, spec in hand
+(`scratch/specs/TPV29_30_Description_v06.pdf`) -- first attempt hit the
+same Fable-5 429 immediately (fifth occurrence this campaign, same
+pattern), re-dispatched with `model:"sonnet"` override (agent
+`a2d9003fa3ce1790f`). Both not yet returned.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
