@@ -58,18 +58,24 @@ on the Fortran solver (MPI) and on the standalone Python solver (NumPy and
 JAX), and every cell is compared against the same committed reference for that
 case, at that case's one tolerance. The run prints which cells it covered and
 which it did not, so a green result states its own scope. CI runs the subset
-that fits a 7 GB runner, split across parallel jobs so each cell group gets
-its own 7 GB rather than sharing one runner, and so the 8 fortran cases (which
-a small runner's core count forces to run one at a time) are not all queued
-behind each other in a single job
+this table declares memory-safe (`testsys/matrix.py`'s `CI_CELLS` /
+`MEASURED_PEAK_RSS_GB`, 19 of 24 cells as of 2026-09-16), split across
+parallel jobs so each cell group gets its own 7 GB runner rather than sharing
+one, and so no case queues behind another that does not need to
 (`.github/workflows/test.yml`: `build`, then `unit-regression`
-[`testsys/run.py unit regression`], `e2e-ci-fortran-a` and `e2e-ci-fortran-b`
-[`testsys/e2e/run_e2e.py --ci --backends fortran --cases <4 of the 8>` each],
-and `e2e-ci-python`
-[`testsys/e2e/run_e2e.py --ci --backends python-numpy,python-jax`], all in
+[`testsys/run.py unit regression`]; `e2e-ci-fortran-a`/`-b`
+[`testsys/e2e/run_e2e.py --ci --backends fortran --cases <4 of the 8>` each];
+`e2e-ci-python-cheap` [tpv8 both backends + tpv10/tpv104/tpv1053d x jax];
+`e2e-ci-python-meng` [meng2023a/meng2023cb both backends + tpv29 x jax]; and
+`e2e-ci-python-tpv29` [tpv29 x python-numpy alone -- 1711 s measured locally,
+an order of magnitude past every other python cell, isolated so its
+irreducible cost doesn't queue behind or ahead of anything else] -- all in
 parallel after `build`) -- the same total coverage as one local invocation of
 `python3 testsys/run.py unit regression e2e-ci`. `python3 testsys/run.py all`
-runs the whole sweep.
+runs the whole sweep. Still excluded from CI: `test.drv.a6` on either python
+backend (9.57 GB measured on jax; numpy never measured) and
+`test.tpv10`/`test.tpv104`/`test.tpv1053d` on python-numpy (never measured --
+their jax columns are the ones now in CI).
 
 | case | physics | SCEC benchmark | fast tier (dx / ranks / fortran s / numpy s / jax s) | full-tier spec (dx/term) |
 |---|---|---|---|---|

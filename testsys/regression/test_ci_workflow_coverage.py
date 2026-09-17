@@ -51,9 +51,19 @@ from testsys import matrix  # noqa: E402
 
 def find_ci_invocations(text):
     """Every line invoking `run_e2e.py ... --ci ...`, with its --backends and
-    --cases values (None if the flag is absent -- meaning 'all')."""
+    --cases values (None if the flag is absent -- meaning 'all').
+
+    Strips everything from the first '#' onward before matching: this file's
+    own explanatory comments describe `run_e2e.py --ci ...` invocations in
+    prose right next to the real ones, and matching prose instead of code is
+    the exact false-positive failure mode
+    testsys/regression/test_sweep_core_budget.py's own comment-stripping
+    already warns about for a different guard. A line that is ALL comment
+    (or blank after stripping) simply has nothing left to match.
+    """
     invocations = []
-    for line in text.splitlines():
+    for raw in text.splitlines():
+        line = raw.split('#', 1)[0]
         if 'run_e2e.py' not in line or '--ci' not in line:
             continue
         m_backends = re.search(r'--backends\s+([\w,\-]+)', line)
