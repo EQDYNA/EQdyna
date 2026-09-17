@@ -359,6 +359,12 @@ jobs:
       run: |
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        # Pin numpy's own BLAS thread pools (item 40, haruto-nakamura,
+        # 2026-09-17): unpinned numpy scattered 2072-3747 ms/step with NO
+        # dependence on step count, while pinned is linear to 0.2%. This
+        # buys determinism, not speed -- it removes the bad placement draw
+        # that made a single-run number look like a real perf gap.
+        export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
         set -o pipefail
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax 2>&1 | tee -a testRunLog.txt
@@ -397,6 +403,9 @@ jobs:
       run: |
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        # Pin numpy's own BLAS thread pools (item 40) -- see the cheap-group
+        # job above for the measurement this is based on.
+        export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
         set -o pipefail
         python3 testsys/e2e/run_e2e.py --ci --cases test.meng2023a,test.meng2023cb --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-jax 2>&1 | tee -a testRunLog.txt
@@ -435,6 +444,11 @@ jobs:
       run: |
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        # Pin numpy's own BLAS thread pools (item 40) -- this is the exact
+        # cell haruto-nakamura measured: unpinned 2072-3747 ms/step scattered
+        # with no dependence on step count (the source of this job's own
+        # 950-1711 s wall-clock spread); pinned 2072 ms/step, linear to 0.2%.
+        export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
         set -o pipefail
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-numpy 2>&1 | tee -a testRunLog.txt
 
