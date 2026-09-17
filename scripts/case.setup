@@ -3,7 +3,7 @@
 Script to setup the case via user_defined_params.py.
 """
 from user_defined_params import par
-from lib import ensureFaultRoughGeometryForCase
+from lib import ensureFaultRoughGeometryForCase, resolveViscoplasticParams
 import netCDF4 as nc
 import numpy as np
 import os
@@ -40,7 +40,19 @@ def create_model_input_file():
         f.write(str(par.bulk)+" "+str(par.coheplas)+"\n")
         f.write(str(par.strike) + " " + str(par.dip) + "\n")
         f.write(str(par.slipRateThres) + "\n")
-        
+        # Viscoplastic / plastic-output block (readInputFiles.f90's readglobal
+        # reads it unconditionally and refuses a file that lacks it, rather
+        # than falling back to the constants the solver used to compile in).
+        # Written for every case, elastic ones included, so bGlobal.txt has
+        # ONE format -- the same reason bulk/coheplas are written above
+        # regardless of C_elastic.
+        tv, taperStart, taperEnd, plasticWindow = resolveViscoplasticParams(par)
+        f.write(" " + "\n")
+        f.write(str(tv) + "\n")
+        f.write(str(taperStart) + " " + str(taperEnd) + "\n")
+        f.write(str(plasticWindow[0]) + " " + str(plasticWindow[1]) + " " + str(plasticWindow[2]) + "\n")
+
+
     with open('bModelGeometry.txt', "w") as f:
         f.write(str(par.xmin) + "  " + str(par.xmax) + "\n")
         f.write(str(par.ymin) + "  " + str(par.ymax) + "\n")

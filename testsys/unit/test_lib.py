@@ -168,6 +168,10 @@ def _make_par(tmp_path):
         dip=90.0,  # sin(90 deg) == 1, keeps along-dip arithmetic trivial
         fx=np.linspace(fxmin, fxmax, na),
         fz=np.linspace(fzmin, fzmax, ma),
+        # Material: loadFrtData's seismic moment now uses THIS case's
+        # mu = rho*Vs^2, not the 3464^2*2800 constant it hardcoded until
+        # v5.9.0 (pathway item 24(e)), so the fixture has to declare one.
+        nmat=1, vp=6.0e3, vs=3.464e3, rou=2.67e3,
     )
 
 
@@ -194,7 +198,97 @@ def test_loadFrtData_grids_two_nodes_from_a_synthetic_frt_file(tmp_path, monkeyp
     assert fVarArr[0, 0, 5] == pytest.approx(17.0)  # state_normal (col 21)
     assert rupt[0, 2] == pytest.approx(1.0)         # rupture time for ii=0
     assert rupt[1, 2] == pytest.approx(2.0)         # rupture time for ii=1
-    assert magnitude != 0.0  # moment accumulated from the non-zero node
+    # Moment comes from the ONE non-zero node: slip 5 m over dx*dx, times
+    # this case's own mu = rho*Vs^2. Computed here from the fixture's
+    # material by the documented formula, not copied from the implementation.
+    mu = par.rou*par.vs**2
+    expectedMagnitude = 2/3*math.log10(5.0*par.dx*par.dx*mu*1.e7) - 10.7
+    assert magnitude == pytest.approx(expectedMagnitude, rel=1e-12)
+
+
+# ---- shearModulusFromPar: the case's material, not a baked-in constant ----
+# (pathway_forward.md item 24(e): lib.py:145 carried shearMod = 3464**2*2800,
+#  a density no case in this repo configures.)
+
+def test_shearModulusFromPar_uniform_material_is_rho_vs_squared():
+    par = types.SimpleNamespace(nmat=1, vp=6.0e3, vs=3.464e3, rou=2.67e3)
+    assert lib.shearModulusFromPar(par) == pytest.approx(2.67e3*3.464e3**2, rel=1e-15)
+    # Depth is irrelevant for a uniform material, and must not change it.
+    assert lib.shearModulusFromPar(par, 12345.0) == lib.shearModulusFromPar(par, 0.0)
+
+
+def test_shearModulusFromPar_layered_material_selects_the_layer_at_that_depth():
+    # Rows are [layer bottom depth, vp, vs, rou] -- defaultParameters.py's
+    # own layered example, selected with meshgen.f90:187-198's comparisons.
+    mat = np.array([[1.0e3, 2.74e3, 1.45e3, 2.1e3],
+                    [3.0e3, 5.75e3, 3.06e3, 2.4e3],
+                    [9.0e3, 6.32e3, 3.67e3, 2.8e3]])
+    par = types.SimpleNamespace(nmat=3, mat=mat)
+    # Inside the top layer, at the first interface (belongs to layer 2 by
+    # `>=`), and inside the bottom layer.
+    assert lib.shearModulusFromPar(par, 500.0) == pytest.approx(2.1e3*1.45e3**2, rel=1e-15)
+    assert lib.shearModulusFromPar(par, 1.0e3) == pytest.approx(2.4e3*3.06e3**2, rel=1e-15)
+    assert lib.shearModulusFromPar(par, 8.9e3) == pytest.approx(2.8e3*3.67e3**2, rel=1e-15)
+    # Sign of the coordinate must not matter: the Fortran uses abs(z).
+    assert lib.shearModulusFromPar(par, -500.0) == lib.shearModulusFromPar(par, 500.0)
+    # Below the deepest layer the case defines NO material: refuse, never
+    # substitute (PROJECT_RULES.md rule 2).
+    with pytest.raises(ValueError, match='below the deepest layer'):
+        lib.shearModulusFromPar(par, 9.5e3)
+
+
+# ---- resolveViscoplasticParams: the bGlobal.txt viscoplastic block --------
+# (pathway_forward.md item 24(b)(c)(f).)
+
+def _viscoPar(**over):
+    kw = dict(dz=500.0, viscoplasticRelaxTime=None,
+              devStrTaperDepthStart=None, devStrTaperDepthEnd=None,
+              plasticOutputHalfWidth=(5.0e3, 2.0e3, 8.0e3))
+    kw.update(over)
+    return types.SimpleNamespace(**kw)
+
+
+def test_resolveViscoplasticParams_unset_reproduces_the_pre_v590_hardcode():
+    # readInputFiles.f90 computed tv = 2*dz/3464 for every case before Tv had
+    # an input slot. An unset case must still get exactly that value, and no
+    # taper -- this is what makes every already-gated case bit-for-bit.
+    tv, taperStart, taperEnd, window = lib.resolveViscoplasticParams(_viscoPar())
+    assert tv == 2.0*500.0/3464.0
+    assert (taperStart, taperEnd) == (0.0, 0.0)
+    assert window == (5.0e3, 2.0e3, 8.0e3)
+
+
+def test_resolveViscoplasticParams_explicit_tv_and_taper_pass_through():
+    # SCEC TPV29/30 spec part 4: Tv = 0.05 s, Omega tapers over 17-22 km.
+    par = _viscoPar(viscoplasticRelaxTime=0.05,
+                    devStrTaperDepthStart=17.0e3, devStrTaperDepthEnd=22.0e3,
+                    plasticOutputHalfWidth=(25.0e3, 10.0e3, 22.0e3))
+    tv, taperStart, taperEnd, window = lib.resolveViscoplasticParams(par)
+    assert tv == 0.05
+    assert (taperStart, taperEnd) == (17.0e3, 22.0e3)
+    assert window == (25.0e3, 10.0e3, 22.0e3)
+
+
+def test_resolveViscoplasticParams_refuses_a_half_configured_taper():
+    # One depth alone does not define a taper -- refuse, do not invent the
+    # other (PROJECT_RULES.md rule 2).
+    with pytest.raises(ValueError, match='must be set together'):
+        lib.resolveViscoplasticParams(_viscoPar(devStrTaperDepthStart=17.0e3))
+    with pytest.raises(ValueError, match='must be set together'):
+        lib.resolveViscoplasticParams(_viscoPar(devStrTaperDepthEnd=22.0e3))
+
+
+def test_resolveViscoplasticParams_refuses_inverted_and_nonpositive_input():
+    with pytest.raises(ValueError, match='0 <= par.devStrTaperDepthStart'):
+        lib.resolveViscoplasticParams(
+            _viscoPar(devStrTaperDepthStart=22.0e3, devStrTaperDepthEnd=17.0e3))
+    with pytest.raises(ValueError, match='positive time in seconds'):
+        lib.resolveViscoplasticParams(_viscoPar(viscoplasticRelaxTime=0.0))
+    with pytest.raises(ValueError, match='three half-widths'):
+        lib.resolveViscoplasticParams(_viscoPar(plasticOutputHalfWidth=(1.0, 2.0)))
+    with pytest.raises(ValueError, match='entry must be positive'):
+        lib.resolveViscoplasticParams(
+            _viscoPar(plasticOutputHalfWidth=(5.0e3, 0.0, 8.0e3)))
 
 
 # ---- bFault_Rough_Geometry.txt validation --------------------------------

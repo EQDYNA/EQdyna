@@ -7,9 +7,9 @@ subroutine readglobal
     include 'mpif.h'
 
     logical::file_exists
-    integer(kind=4):: i 
-    
-    
+    integer(kind=4):: i, ios
+
+
     call requireInputFile("bGlobal.txt")
     
     open(unit = 1001, file = 'bGlobal.txt', form = 'formatted', status = 'old')
@@ -42,10 +42,48 @@ subroutine readglobal
         read(1001,*) fstrike, fdip
         read(1001,*) slipRateThres
 
+        ! Viscoplastic / plastic-output block. Every entry here used to be a
+        ! constant compiled into the solver: tv was 2*dz/NUC_VS_FIXED
+        ! (readInputFiles.f90), the deviatoric pre-stress had no depth taper at
+        ! all (meshgen.f90's setPlasticStress), and the plastic-strain output
+        ! window was a fixed 5x2x8 km box (library_output.f90). They are read,
+        ! never defaulted here: case.setup writes all three unconditionally, so
+        ! a file without them is a STALE file and says so (rule 2).
+        read(1001,*,iostat=ios)
+        if (ios /= 0) call stopStaleGlobal('the viscoplastic/plastic-output block separator')
+        read(1001,*,iostat=ios) tv
+        if (ios /= 0) call stopStaleGlobal('the viscoplastic relaxation time Tv, s (par.viscoplasticRelaxTime)')
+        read(1001,*,iostat=ios) devStrTaperDepthStart, devStrTaperDepthEnd
+        if (ios /= 0) call stopStaleGlobal('the deviatoric pre-stress taper depths, m positive down (par.devStrTaperDepthStart/End)')
+        read(1001,*,iostat=ios) (plasticOutputHalfWidth(i), i = 1, 3)
+        if (ios /= 0) call stopStaleGlobal('the plastic-strain output window half-widths, m (par.plasticOutputHalfWidth)')
+
     close(1001)
     str1ToFaultAngle = str1ToFaultAngle*pi/180.0d0 !convert degrees to radian
-    
-end subroutine readglobal 
+
+end subroutine readglobal
+
+subroutine stopStaleGlobal(what)
+! Stop loudly on a bGlobal.txt written by an older case.setup than this binary
+! (PROJECT_RULES.md rule 2: no substituted default for absent input). Every
+! rank reads the same file and reaches the same verdict; only the master
+! prints, then all ranks stop.
+    use globalvar
+    use errorCodes
+    implicit none
+    include 'mpif.h'
+    character (len=*) :: what
+    integer (kind = 4) :: iMPIerr
+
+    if (me == masterProcsId) then
+        write(*,*) 'readglobal: bGlobal.txt ends before ', trim(what), '.'
+        write(*,*) '  This file was written by an older case.setup than this binary.'
+        write(*,*) '  Re-run case.setup in this directory to regenerate it.'
+    endif
+    call MPI_Barrier(MPI_COMM_WORLD, iMPIerr)
+    call abortRun(ERR_INPUT_FILE_STALE, &
+        'bGlobal.txt ends before '//trim(what)//'; re-run case.setup.')
+end subroutine stopStaleGlobal
 ! #2 readmodelgeometry -------------------------------------------------
 subroutine readmodelgeometry
 ! This subroutine is read information from bglobal.txt
@@ -130,8 +168,8 @@ subroutine readmaterial
     ccosphi = coheplas*dcos(atan(bulk))
     sinphi  = dsin(atan(bulk))
     nstep   = idnint(totalSimuTime/dt)
-    rdampk  = rdampk*dt    
-    tv      = 2.0d0*dz/NUC_VS_FIXED
+    rdampk  = rdampk*dt
+    ! tv is no longer derived here -- it is read from bGlobal.txt (readglobal).
 end subroutine readmaterial
 
 ! #6 readstations --------------------------------------------------------

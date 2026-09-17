@@ -955,14 +955,20 @@ subroutine setPlasticStress(depth, elemCount)
     implicit none
     
     real(kind = dp) :: depth, vstmp, vptmp, routmp, strVert, devStr
+    real(kind = dp) :: devStrDepthTaper
     integer(kind = 4) :: elemCount, etTag
-    
+
     etTag = 0
     if (elemTypeArr(elemCount)==2) etTag = 1 ! adjustment for PML elements
     
     eleporep(elemCount) = 0.0d0  !rhow*tmp2*gama  !pore pressure>0
     strVert            = -(roumax- rhow*(gamar+1.0d0))*depth*grav ! should be negative   
-    devStr             = abs(strVert)*devStrToStrVertRatio ! positive
+    ! devStrDepthTaper (func_lib.f90) is SCEC TPV29/30's Omega(depth): the
+    ! deviatoric component tapers to zero over a depth interval while the
+    ! vertical component keeps growing. It returns exactly 1.0d0 when the
+    ! taper is not configured, so this line is bit-for-bit the pre-v5.9.0
+    ! `abs(strVert)*devStrToStrVertRatio` for every such case.
+    devStr             = abs(strVert)*devStrToStrVertRatio*devStrDepthTaper(depth) ! positive
     
     stressArr(stressCompIndexArr(elemCount)+3+15*etTag) = strVert
     stressArr(stressCompIndexArr(elemCount)+1+15*etTag) = strVert - devStr*dcos(2.0d0*str1ToFaultAngle)

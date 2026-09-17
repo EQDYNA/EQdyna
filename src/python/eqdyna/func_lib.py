@@ -1,8 +1,11 @@
 """func_lib.py <- src/func_lib.f90.
 
-Currently one routine: `region_damp`, a vectorized port of
-`pmlRegionDistance`, which classifies a point into one of the PML regions
-and returns the three damping coefficients.
+Two routines:
+  `region_damp`          <- `pmlRegionDistance`, vectorized: classifies a
+                            point into one of the PML regions and returns the
+                            three damping coefficients.
+  `dev_str_depth_taper`  <- `devStrDepthTaper`: SCEC TPV29/30's Omega(depth)
+                            taper on the off-fault deviatoric pre-stress.
 
 As of pathway_forward.md item 13, `pmlRegionDistance` classifies BOTH its
 callers -- node-based (computePMLDampingVector.f90/velDispUpdate) and
@@ -57,3 +60,25 @@ def region_damp(x, y, z, PMLb, nPML, vmaxPML, R):
     for d, delta in ((d1, nPML * maxdx), (d2, nPML * maxdy), (d3, nPML * maxdz)):
         out.append(3.0 * vmaxPML / 2.0 / delta * np.log(1.0 / R) * (d / delta) ** 2.0)
     return out  # damp1, damp2, damp3
+
+
+def dev_str_depth_taper(depth, taper_start, taper_end):
+    """Port of src/fortran/func_lib.f90's `devStrDepthTaper` -- SCEC
+    TPV29/TPV30's Omega(depth) (spec part 4, "Initial Stress Tensor"): the
+    off-fault DEVIATORIC pre-stress tapers linearly to zero between
+    `taper_start` and `taper_end` (depths in m, positive down) while the
+    vertical lithostatic component keeps growing. TPV30's values are 17000 m
+    and 22000 m.
+
+    The taper is INACTIVE when taper_end <= taper_start (what case.setup
+    writes as `0.0 0.0` for a case that does not configure it), and then this
+    returns exactly 1.0 -- an IEEE-exact multiplicative identity, which is
+    what keeps a case that does not ask for the taper bit-for-bit identical to
+    the pre-v5.9.0 solver.
+
+    `depth` may be a scalar or an array; the return has its shape.
+    """
+    if not taper_end > taper_start:
+        return np.ones_like(np.asarray(depth, dtype=np.float64))
+    omega = (taper_end - np.asarray(depth, dtype=np.float64)) / (taper_end - taper_start)
+    return np.clip(omega, 0.0, 1.0)

@@ -88,6 +88,37 @@ def read_bglobal(path):
     g['fstrike'], g['fdip'] = (float(v) for v in vals)
     g['slipRateThres'] = float(nxt()[0])
 
+    # Viscoplastic / plastic-output block. Port of the matching reads in
+    # readglobal: tv (the Duvaut-Lions relaxation time, which the Fortran
+    # derived as 2*dz/3464 until it got this input slot), the deviatoric
+    # pre-stress depth taper, and the plastic-strain output window.
+    # A file without the block was written by an older case.setup and is
+    # REFUSED, not defaulted -- same verdict as the Fortran's
+    # stopStaleGlobal/ERR_INPUT_FILE_STALE (PROJECT_RULES.md rule 2).
+    def stale(what):
+        return ValueError(
+            'read_bglobal: %s ends before %s. This file was written by an '
+            'older case.setup than this port; re-run case.setup in that case '
+            'directory to regenerate it.' % (path, what))
+
+    def nxtOrStale(what):
+        try:
+            return next(it).split()
+        except StopIteration:
+            raise stale(what)
+
+    nxtOrStale('the viscoplastic/plastic-output block separator')
+    try:
+        g['tv'] = float(nxtOrStale('the viscoplastic relaxation time Tv')[0])
+        vals = nxtOrStale('the deviatoric pre-stress taper depths')
+        g['devStrTaperDepthStart'], g['devStrTaperDepthEnd'] = float(vals[0]), float(vals[1])
+        vals = nxtOrStale('the plastic-strain output window half-widths')
+        g['plasticOutputHalfWidth'] = tuple(float(v) for v in vals[:3])
+    except IndexError:
+        raise stale('a complete viscoplastic/plastic-output block')
+    if len(g['plasticOutputHalfWidth']) != 3:
+        raise stale('three plastic-strain output window half-widths')
+
     g['str1ToFaultAngle'] = g['str1ToFaultAngle'] * np.pi / 180.0
     # nstep = idnint(totalSimuTime/dt) -- Fortran round-half-away-from-zero.
     ratio = g['totalSimuTime'] / g['dt']

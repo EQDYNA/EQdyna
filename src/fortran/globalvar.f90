@@ -76,7 +76,7 @@ MODULE globalvar
     ! TPV201/36/37 hardcode a fixed Vs here; a real case should derive
     ! this from the local material model instead.
     !=====================================================================
-    real (kind = dp), parameter :: NUC_VS_FIXED   = 3464.d0 ! fixed shear-wave speed used by the TPV201/36/37 nucleation-time formula (also readInputFiles.f90's tv init), m/s
+    real (kind = dp), parameter :: NUC_VS_FIXED   = 3464.d0 ! fixed shear-wave speed used by the TPV201/36/37 nucleation-time formula, m/s
     real (kind = dp), parameter :: NUC_TAPER_COEF = 0.081d0 ! TPV201/36/37 nucleation rupture-time taper coefficient
     real (kind = dp), parameter :: NUC_VR_TO_VS   = 0.7d0   ! TPV201/36/37 nucleation rupture-speed-to-Vs ratio
 
@@ -157,6 +157,16 @@ MODULE globalvar
     ! Plasticity / off-fault material response
     !=====================================================================
     real (kind = dp) :: critd0, cohes, brangle, bulk, coheplas, tv, ccosphi, sinphi
+    ! tv -- viscoplastic (Duvaut-Lions) relaxation time, s, used by
+    !   calcElemKU.f90's exp(-dt/tv). READ FROM bGlobal.txt. Until v5.9.0 it
+    !   had no input slot and readInputFiles.f90 derived it as
+    !   2*dz/NUC_VS_FIXED, i.e. a mesh-resolution quantity standing in for a
+    !   material one; scripts/case.setup still writes exactly that value when
+    !   a case does not set par.viscoplasticRelaxTime, so nothing changed for
+    !   a case that does not ask for it. SCEC TPV30 states Tv = 0.05 s.
+    real (kind = dp) :: devStrTaperDepthStart     ! depth (m, positive down) at which the off-fault deviatoric pre-stress starts tapering; the taper is INACTIVE when End <= Start
+    real (kind = dp) :: devStrTaperDepthEnd       ! depth (m, positive down) at which the off-fault deviatoric pre-stress reaches zero
+    real (kind = dp) :: plasticOutputHalfWidth(3) ! |x|, |y|, |z| half-widths (m) of the plastic-strain output window (library_output.f90)
 
     !=====================================================================
     ! PML & damping

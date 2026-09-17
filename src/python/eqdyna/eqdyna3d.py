@@ -72,7 +72,7 @@ import time
 
 import numpy as np
 
-from . import assembleGlobalMass, driver, library_output, meshgen, readInputFiles
+from . import assembleGlobalMass, driver, func_lib, library_output, meshgen, readInputFiles
 from . import backend as _backend
 
 # friclaw -> the NumPy solver module whose run(S, nsteps, verbose) consumes
@@ -243,19 +243,20 @@ def build_solver_state(case_dir):
     E = conn.shape[0]
 
     # Milestone 10 (drv.a6, C_elastic==0): readInputFiles.f90's readmaterial
-    # computes ccosphi/sinphi/tv AFTER bMaterial.txt is read (needs dz, read
-    # earlier in readmodelgeometry) but BEFORE the time loop -- reproduced
-    # here, verbatim formula, NUC_VS_FIXED=3464.0 (globalvar.f90's own
-    # comment: "fixed shear-wave speed ... also readInputFiles.f90's tv
-    # init"). g['bulk']/g['coheplas'] are read unconditionally by
+    # computes ccosphi/sinphi AFTER bMaterial.txt is read but BEFORE the time
+    # loop -- reproduced here, verbatim formula.
+    # tv is NOT derived here any more: it is read from bGlobal.txt, exactly as
+    # readglobal now reads it (pathway item 24(b)). scripts/case.setup writes
+    # the pre-v5.9.0 value 2*dz/3464 for any case that does not set
+    # par.viscoplasticRelaxTime, so an unchanged case is unchanged here too.
+    # g['bulk']/g['coheplas'] are read unconditionally by
     # readInputFiles.read_bglobal regardless of C_elastic (same bGlobal.txt
     # line for every case) -- always computed here too, harmless for
     # C_elastic==1 cases since assembleGlobalKU gates its USE on
     # C_elastic==0 (see those modules' build()).
-    _NUC_VS_FIXED = 3464.0
     ccosphi = g['coheplas'] * np.cos(np.arctan(g['bulk']))
     sinphi = np.sin(np.arctan(g['bulk']))
-    tv = 2.0 * params['dz'] / _NUC_VS_FIXED
+    tv = g['tv']
 
     # meshgen.f90:103's setPlasticStress (called for EVERY element, both
     # interior and PML, only when C_elastic==0): lithostatic per-element
@@ -265,7 +266,12 @@ def build_solver_state(case_dir):
     # raise loudly (not silently default) if C_elastic==0 but this key is
     # somehow missing, rather than silently zero-initializing plastic runs.
     strVert = -(g['roumax'] - g['rhow'] * (g['gamar'] + 1.0)) * elem_depth * 9.8
-    devStr = np.abs(strVert) * g['devStrToStrVertRatio']
+    # func_lib.dev_str_depth_taper is SCEC TPV29/30's Omega(depth), the port of
+    # func_lib.f90's devStrDepthTaper (pathway item 24(c)). It is exactly 1.0
+    # when the case does not configure a taper, so this is bit-for-bit the
+    # pre-v5.9.0 `np.abs(strVert) * ratio` for every such case.
+    devStr = np.abs(strVert) * g['devStrToStrVertRatio'] * func_lib.dev_str_depth_taper(
+        elem_depth, g['devStrTaperDepthStart'], g['devStrTaperDepthEnd'])
     theta2 = 2.0 * g['str1ToFaultAngle']
     init_stress = np.zeros((E, 6))
     init_stress[:, 0] = strVert - devStr * np.cos(theta2)  # xx

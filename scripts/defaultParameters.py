@@ -79,7 +79,37 @@ class parameters:
     gamar       = 0.66 # overpressurization coefficient
     bulk        = 0.75 # bulk friction
     coheplas    = 5.e6 # Pa
-    
+
+    # Viscoplastic relaxation time Tv (s) in the Duvaut-Lions relaxation law
+    # (src/fortran/calcElemKU.f90's exp(-dt/tv)).
+    # None means "derive the pre-v5.9.0 value 2*dz/3464", which is what
+    # readInputFiles.f90 computed for EVERY case before Tv had an input slot --
+    # a mesh-resolution quantity standing in for a material one, and one that
+    # only reaches SCEC TPV30's stated Tv = 0.05 s at dz ~ 87 m. Set it
+    # explicitly for any viscoplastic case whose benchmark states a value
+    # (TPV30: par.viscoplasticRelaxTime = 0.05). lib.resolveViscoplasticParams
+    # resolves it at case.setup time and prints the value it wrote.
+    viscoplasticRelaxTime = None
+
+    # Depth taper on the OFF-FAULT deviatoric pre-stress built by
+    # meshgen.f90's setPlasticStress -- SCEC TPV29/TPV30's Omega(depth) (spec
+    # part 4, "Initial Stress Tensor"): the deviatoric component tapers
+    # linearly to zero between Start and End depth (m, positive down) while
+    # the vertical lithostatic component keeps growing.
+    # Both None = no taper, i.e. devStr stays a fixed fraction of |strVert| at
+    # every depth (the pre-v5.9.0 behaviour, bit-for-bit). Setting exactly one
+    # of the two is refused, not guessed. TPV30: 17.0e3 and 22.0e3.
+    devStrTaperDepthStart = None
+    devStrTaperDepthEnd   = None
+
+    # Half-widths (m) of the |x|, |y|, |z| window that
+    # library_output.f90's output_plastic_strain writes pstr.txt* inside.
+    # These are the numbers that subroutine hardcoded until v5.9.0; they were
+    # sized for one case, so any case with a larger fault or domain must set
+    # them (TPV30's fault alone is 40 km x 20 km).
+    plasticOutputHalfWidth = (5.0e3, 2.0e3, 8.0e3)
+
+
     C_nuclea    = 1 # artificial nucleation (1), no (0). 
     C_degen     = 0 # degenerate hexahedrals (1), no (0).
     friclaw     = 5 # sw(1), tw(2), rsf_aging(3), rsf_slip_srw(4), rsf_slip_srw_tp(5).
