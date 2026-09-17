@@ -782,6 +782,49 @@ dx=200 attempts are paused here, not abandoned. `case.setup`'s
 inert-on-fault-stress-declaration warning (drv.a6's now-confirmed-live trap)
 remains queued behind the release landing.
 
+## Update: release attempt #2 (`a92c110247686a6e9`, sonnet) completed its
+## audit/gate but correctly stopped before committing -- assembled the
+## rest myself rather than a third full dispatch
+
+Full green gate confirmed (fresh, on pristine pre-release master `bd9d81e`):
+`./install-eqdyna.sh -m ubuntu` clean, `python3 testsys/run.py all` --
+unit/regression SUCCESS, **e2e 30/30 cells SUCCESS**, wall clock 2263.3s.
+CI independently confirmed green on `72a353b` (the last code-touching
+commit; the 3 commits after it are docs-only, correctly excluded from CI by
+`paths-ignore`).
+
+**Caught and corrected three errors in MY OWN dispatch brief before they
+reached the release notes** -- verified independently by wei-lin, not taken
+on the report alone: (1) item 39's bound tightening already shipped in
+v5.10.0 (`git show v5.10.0:testsys/matrix.py` confirms the "TIGHTENED
+2026-09-17" comment predates this release) -- excluded from the v5.11.0
+note. (2) The Docker.guide.md de-pinning commit (`ca83335`) is also an
+ancestor of v5.10.0 (`git merge-base --is-ancestor` confirmed) -- excluded.
+(3) `scratch/specs/` is gitignored repo-wide (`.gitignore:3`), so nothing
+there is ever "committed" -- corrected to cite the spec by name/part in
+already-committed prose (`NOTES_tpv30_gate.md`, `testsys/e2e/full_specs.py`)
+instead.
+
+**Correctly stopped before committing anything:** rule 15 requires the
+`pathway_forward.md` Tasks-done row in the SAME commit as the VERSION bump;
+since `pathway_forward.md` is zofia's file, committing without her row first
+and then tagging would have hit `test_release_complete.py`'s
+`check_pathway_tasks_done_row` guard on the TAG-triggered CI run --
+a guaranteed, self-inflicted red, correctly refused rather than risked.
+
+His worktree turned out to hold no uncommitted file changes (the VERSION/
+README content was drafted in his report text, not written to disk) --
+rather than a third full dispatch just to write already-agreed content,
+assembled it myself: dispatched `zofia-kaminska` for the Tasks-done row
+(landed, diff verified: exactly one row, newest-first order preserved, no
+other file touched), then wrote `README.md`'s new v5.11.0 news block
+(terse, user-facing, per rule 15's own style guidance -- full detail stays
+in `pathway_forward.md`/the GitHub Release body), moved v5.10.0's block
+into `pastReleaseNotes.md`, bumped `VERSION` and the Fortran banner string
+in `src/fortran/eqdyna3d.f90` to match. Rebuilt clean, full gate
+(`python3 testsys/run.py all`) running now in the background before the
+release commit.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
