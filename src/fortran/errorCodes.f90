@@ -66,6 +66,7 @@ MODULE errorCodes
 
     ! --- 21-29 input files --------------------------------------------
     integer, parameter :: ERR_INPUT_FILE_MISSING     = 21  ! a required FE_*.txt / data file is absent
+    integer, parameter :: ERR_INPUT_FILE_STALE       = 22  ! an input file is present but predates this binary's input format
 
     ! --- 31-39 fault geometry -----------------------------------------
     integer, parameter :: ERR_GEOM_ROUGH_INVALID     = 31  ! bFault_Rough_Geometry.txt does not match this mesh

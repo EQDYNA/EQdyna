@@ -9,6 +9,8 @@
 ! #4 fb2
 ! #5 fb3
 ! #6 vlm
+! #7 checkPMLAlignment
+! #8 devStrDepthTaper
 
 ! #1 pmlRegionDistance
 subroutine pmlRegionDistance(x, y, z, xmax0, xmin0, ymax0, ymin0, zmin0, damp)
@@ -235,3 +237,40 @@ subroutine checkPMLAlignment(elemCenter)
             'An element centre lies exactly on a PML bound, making region classification ambiguous. Adjust the mesh or nPML.')
     endif
 end subroutine checkPMLAlignment
+
+! #8 devStrDepthTaper
+function devStrDepthTaper(depth) result(omega)
+    ! Depth taper applied to the OFF-FAULT deviatoric pre-stress built by
+    ! meshgen.f90's setPlasticStress. Mirrors SCEC TPV29/TPV30's Omega(depth)
+    ! (spec part 4, "Initial Stress Tensor"): the deviatoric component of the
+    ! initial stress tapers linearly to zero between two depths, while the
+    ! vertical (lithostatic) component keeps growing. TPV30's own values are
+    ! 17000 m and 22000 m.
+    !
+    ! Without it, devStr stays a FIXED fraction of |strVert| at every depth,
+    ! so the deviatoric stress grows without bound with depth -- fine for the
+    ! cases gated before v5.9.0 (all of which leave the taper inactive and are
+    ! bit-for-bit unchanged), wrong for TPV30.
+    !
+    ! The taper is INACTIVE when devStrTaperDepthEnd <= devStrTaperDepthStart
+    ! (case.setup writes 0.0 0.0 for a case that does not configure it, and
+    ! refuses a half-configured pair), and then returns exactly 1.0d0 -- an
+    ! IEEE-exact multiplicative identity, which is what keeps the pre-taper
+    ! result bit-for-bit.
+    !
+    ! depth is positive DOWN, in m -- the same argument setPlasticStress
+    ! already takes.
+    use globalvar
+    implicit none
+    real (kind = dp) :: depth, omega
+
+    omega = 1.0d0
+    if (devStrTaperDepthEnd > devStrTaperDepthStart) then
+        if (depth >= devStrTaperDepthEnd) then
+            omega = 0.0d0
+        elseif (depth > devStrTaperDepthStart) then
+            omega = (devStrTaperDepthEnd - depth) &
+                    /(devStrTaperDepthEnd - devStrTaperDepthStart)
+        endif
+    endif
+end function devStrDepthTaper

@@ -14,6 +14,9 @@ import numpy as np
 # - state_steady_state
 # - B1, defined in TPV104 and TPV105
 # - B2 and B3, defined in TPV105
+# - resolveViscoplasticParams, case.setup's resolver+validator for the
+#   viscoplastic/plastic-output block at the end of bGlobal.txt
+# - shearModulusFromPar, mu = rho*Vs^2 from the case's own material config
 # - loadFrtData, shared frt.txt* loader for plotRuptureDynamics/plotSlipAndRPT
 # - tryint, alphanum_key, sort_nicely, generate_gif, seek_numbers_filename,
 #   shared filename-sorting/gif helpers for plot_on_fault_vars
@@ -83,6 +86,124 @@ def linear1(x,ww,w):
     res = 0.0
   return res
 
+# globalvar.f90's own constant, m/s. Used here for ONE thing: reproducing the
+# pre-v5.9.0 derivation of the viscoplastic relaxation time, 2*dz/NUC_VS_FIXED,
+# which readInputFiles.f90 applied to every case when Tv had no input slot.
+NUC_VS_FIXED = 3464.0
+
+
+def resolveViscoplasticParams(par):
+    """Resolve the viscoplastic/plastic-output block case.setup writes to the
+    end of bGlobal.txt, and print the values it resolved.
+
+    Returns (tv, taperStart, taperEnd, halfWidths):
+      tv         -- viscoplastic (Duvaut-Lions) relaxation time, s.
+                    par.viscoplasticRelaxTime, or 2*par.dz/3464 when that is
+                    None -- the formula readInputFiles.f90 hardcoded until
+                    v5.9.0, so an unset case is unchanged bit-for-bit (Python
+                    and Fortran evaluate the same two IEEE-754 operations on
+                    the same dz, and str() round-trips the double exactly).
+      taperStart,
+      taperEnd   -- depths (m, positive down) of the deviatoric pre-stress
+                    taper, SCEC TPV29/30's Omega(depth). (0.0, 0.0) means no
+                    taper, which func_lib.f90's devStrDepthTaper turns into an
+                    exact 1.0 multiplier.
+      halfWidths -- (|x|,|y|,|z|) half-widths (m) of the plastic-strain output
+                    window.
+
+    Every invalid combination RAISES (PROJECT_RULES.md rule 2) -- a
+    half-configured taper, a non-positive Tv, or a non-positive window is a
+    case-configuration error, not something to fill in with a guess.
+    """
+    tv = getattr(par, 'viscoplasticRelaxTime', None)
+    if tv is None:
+        tv = 2.0*par.dz/NUC_VS_FIXED
+        tvSource = 'derived as 2*dz/%g (the pre-v5.9.0 hardcode)' % NUC_VS_FIXED
+    else:
+        tv = float(tv)
+        tvSource = 'par.viscoplasticRelaxTime'
+    if not tv > 0.0:
+        raise ValueError(
+            'case.setup: par.viscoplasticRelaxTime must be a positive time in '
+            'seconds (got %r). It is Tv in exp(-dt/Tv) (calcElemKU.f90).' % tv)
+
+    taperStart = getattr(par, 'devStrTaperDepthStart', None)
+    taperEnd   = getattr(par, 'devStrTaperDepthEnd', None)
+    if (taperStart is None) != (taperEnd is None):
+        raise ValueError(
+            'case.setup: par.devStrTaperDepthStart and '
+            'par.devStrTaperDepthEnd must be set together (got %r and %r).\n'
+            '  They are the two depths of SCEC TPV29/30\'s Omega(depth) taper '
+            'on the off-fault deviatoric pre-stress; one of them alone does '
+            'not define a taper, so this refuses rather than inventing the '
+            'other.' % (taperStart, taperEnd))
+    if taperStart is None:
+        taperStart, taperEnd = 0.0, 0.0
+        taperSource = 'no taper (devStr is a fixed fraction of |strVert| at every depth)'
+    else:
+        taperStart, taperEnd = float(taperStart), float(taperEnd)
+        if taperStart < 0.0 or taperEnd <= taperStart:
+            raise ValueError(
+                'case.setup: the deviatoric-stress taper needs '
+                '0 <= par.devStrTaperDepthStart < par.devStrTaperDepthEnd '
+                '(depths in m, positive down); got %r and %r.'
+                % (taperStart, taperEnd))
+        taperSource = 'par.devStrTaperDepthStart/End'
+
+    halfWidths = getattr(par, 'plasticOutputHalfWidth', None)
+    if halfWidths is None or len(halfWidths) != 3:
+        raise ValueError(
+            'case.setup: par.plasticOutputHalfWidth must be three half-widths '
+            '(|x|,|y|,|z|) in m for the plastic-strain output window (got %r).'
+            % (halfWidths,))
+    halfWidths = tuple(float(v) for v in halfWidths)
+    if min(halfWidths) <= 0.0:
+        raise ValueError(
+            'case.setup: every par.plasticOutputHalfWidth entry must be '
+            'positive (got %r); a non-positive half-width writes no '
+            'plastic-strain output at all.' % (halfWidths,))
+
+    print('VISCOPLASTIC: Tv = %r s, %s' % (tv, tvSource))
+    print('VISCOPLASTIC: deviatoric-stress depth taper %r -> %r m, %s'
+          % (taperStart, taperEnd, taperSource))
+    print('VISCOPLASTIC: plastic-strain output window half-widths %r m' % (halfWidths,))
+    return tv, taperStart, taperEnd, halfWidths
+
+
+def shearModulusFromPar(par, depth=0.0):
+    """Shear modulus mu = rho*Vs^2 (Pa) of THIS case's configured material, at
+    `depth` (m, positive down).
+
+    par.nmat == 1: the single (vp, vs, rou) block case.setup writes to
+    bMaterial.txt, so depth is irrelevant.
+    par.nmat  > 1: the layered table par.mat, whose rows are
+    [layer bottom depth, vp, vs, rou] -- selected with the SAME comparisons
+    meshgen.f90:187-198 uses to assign a material to an element
+    (`abs(z) < material(1,1)` for the top layer, then
+    `material(i-1,1) <= abs(z) < material(i,1)`), so the modulus used here is
+    the one the solver actually used there.
+
+    Raises if the depth lies below the deepest layer -- the same condition the
+    Fortran refuses with ERR_MESH_MATERIAL_UNSET. There is no fallback
+    constant (PROJECT_RULES.md rule 2): a wrong modulus silently rescales
+    every reported seismic moment.
+    """
+    depth = abs(depth)
+    if par.nmat == 1:
+        return par.rou*par.vs**2
+    mat = par.mat
+    if depth < mat[0, 0]:
+        return mat[0, 3]*mat[0, 2]**2
+    for i in range(1, par.nmat):
+        if mat[i-1, 0] <= depth < mat[i, 0]:
+            return mat[i, 3]*mat[i, 2]**2
+    raise ValueError(
+        'shearModulusFromPar: depth %g m lies below the deepest layer in '
+        'par.mat (bottom at %g m), so this case defines no material there -- '
+        'the same state meshgen.f90 refuses with ERR_MESH_MATERIAL_UNSET.'
+        % (depth, mat[par.nmat-1, 0]))
+
+
 def loadFrtData(par):
     """Load and grid the on-fault frt.txt* output written by EQdyna.
 
@@ -142,7 +263,11 @@ def loadFrtData(par):
             rupt2d[jj,ii,1]  = (a[i,4]**2 + a[i,5]**2)**0.5  # slip magnitude
             rupt2d[jj,ii,2]  = a[i,9]                        # peak slip rate
             rupt2d[jj,ii,3]  = a[i,10]                       # final slip rate
-            shearMod = 3464**2*2800
+            # mu = rho*Vs^2 of THIS case's material at this node's depth, not
+            # the 3464^2*2800 constant this line carried until v5.9.0 -- that
+            # was a density this repo's own default case does not use (2670),
+            # and it rescales every reported moment/Mw.
+            shearMod = shearModulusFromPar(par, abs(a[i,2]))
             moment = moment + rupt2d[jj,ii,1]*par.dx*par.dx*shearMod
             rupt2d[jj,ii,4]  = a[i,12]/1.e6 # final shear stress
             rupt2d[jj,ii,5]  = a[i,11]/1.e6 # final normal stress

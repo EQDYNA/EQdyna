@@ -235,6 +235,7 @@ authoritative; the specific number is advisory under `srun`.
 | code | name | meaning |
 |-----:|------|---------|
 | 21 | `ERR_INPUT_FILE_MISSING` | a required FE_*.txt / data file is absent |
+| 22 | `ERR_INPUT_FILE_STALE` | an input file is present but predates this binary's input format |
 
 **Fault geometry** (31-39)
 

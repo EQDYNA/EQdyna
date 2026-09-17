@@ -234,8 +234,13 @@ subroutine output_plastic_strain
     real (kind = dp) :: sc(3)
     if (output_plastic == 1) then
 
+        ! The output window is par.plasticOutputHalfWidth, read from
+        ! bGlobal.txt. It defaults to (5, 2, 8) km, the box this subroutine
+        ! hardcoded until v5.9.0 -- which was sized for one case and would
+        ! silently clip, or entirely miss, a case with a different fault or
+        ! domain extent (TPV30's fault alone is 40 x 20 km).
         do i=1,totalNumOfElements
-                    if ((pstrain(i)>1.0d-4).and.(abs(meshCoor(1,nodeElemIdRelation(1,i)))<5.0d3).and.(abs(meshCoor(2,nodeElemIdRelation(1,i)))<2.0d3).and.(abs(meshCoor(3,nodeElemIdRelation(1,i)))<8.0d3)) then
+                    if ((pstrain(i)>1.0d-4).and.(abs(meshCoor(1,nodeElemIdRelation(1,i)))<plasticOutputHalfWidth(1)).and.(abs(meshCoor(2,nodeElemIdRelation(1,i)))<plasticOutputHalfWidth(2)).and.(abs(meshCoor(3,nodeElemIdRelation(1,i)))<plasticOutputHalfWidth(3))) then
                 open(unit=UNIT_PSTR_BASE+me,file='pstr.txt'//mm,status='unknown',position='append')
                 sc=0.0d0
                 do j=1,8
