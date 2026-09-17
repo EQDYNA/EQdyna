@@ -205,10 +205,13 @@ jobs:
   # about): tpv29 104.4, drv.a6 65.6, meng2023a 34.6, meng2023cb 34.3,
   # tpv1053d 30.6, tpv10 28.6, tpv104 24.6, tpv8 9.6 (seconds). Group A =
   # tpv29+tpv1053d+tpv104+tpv8 = 169.2s; Group B =
-  # drv.a6+meng2023a+meng2023cb+tpv10 = 163.1s. Re-balance if a future case's
-  # cost shifts this badly out of true -- it is a scheduling nicety, not a
-  # correctness requirement, and test_ci_workflow_coverage.py already proves
-  # the union of every `--ci` invocation in this file is exactly
+  # drv.a6+meng2023a+meng2023cb+tpv10 = 163.1s (both stale by tpv36's and
+  # tpv37's own fortran cells, added later at their own re-gating/gating
+  # commits without a full re-measurement -- a scheduling nicety, not a
+  # correctness requirement; test.tpv37's fortran cell (item 19a, second
+  # half) is appended to Group A below). Re-balance if a future case's cost
+  # shifts this badly out of true -- test_ci_workflow_coverage.py already
+  # proves the union of every `--ci` invocation in this file is exactly
   # matrix.CI_CELLS regardless of how the groups are drawn.
   #
   # Both use the build job's binary via EQDYNA_E2E_BIN so neither rebuilds --
@@ -254,7 +257,7 @@ jobs:
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
         export EQDYNA_E2E_BIN=$EQDYNAROOT/bin/eqdyna
         set -o pipefail
-        python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8 2>&1 | tee -a testRunLog.txt
+        python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8,test.tpv37 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt
       if: always()
