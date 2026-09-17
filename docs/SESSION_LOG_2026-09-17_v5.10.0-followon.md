@@ -550,8 +550,62 @@ regenerating any reference.
 first dispatch attempt hit a Fable-5 session-level 429 before even creating
 a worktree (nothing to reap). Re-dispatched the identical mission with
 `model: "sonnet"` override, matching this repo's own prior precedent
-(commit `3677581`'s author note) for the same failure mode. Not yet
-returned.
+(commit `3677581`'s author note) for the same failure mode.
+
+## Update: dunyu-liu's investigation returned -- CONFIRMED, root-caused, a
+## shipped/gated case is affected. ESCALATING, not proceeding further.
+
+Verdict: confirmed, root-caused, NOT fixed. Landed the notes file
+(`fda2d4a`) only -- no source change, per the mission's own correct
+decision not to fix without an owner call.
+
+**Mechanism, independently verified by wei-lin (not taken from the report):**
+`src/fortran/faulting.f90` lines 119/123/127
+(`nsdInitTractionVector(1..3)*C_elastic`) and 179/180
+(`xyzInitTractionVector(j)*C_elastic`) -- read directly, confirmed present
+exactly as reported. For `C_elastic=0` (tpv30, drv.a6), this multiplies the
+CORRECT, spec-matching analytic on-fault initial traction by zero, so the
+fault's actual initial state instead comes from an off-fault-element-stress
+interpolation (`setPlasticStress`'s volumetric tensor, not locally rotated
+to the rough fault normal) -- which does not match.
+
+**A real detour that resolved IN FAVOR of the finding, recorded because it
+could easily have gone the other way and I want the reasoning on record:**
+while independently checking this, `netcdf_io.f90`'s
+`netcdf_read_on_fault_eqdyna` appeared to read on-fault init stress from
+slot 19/20 while drv.a6's own `case.setup` writes its stated 40e6/-120e6 to
+Python-side slots 7/8 -- looked like a SEPARATE writer/reader slot mismatch,
+which would have meant dunyu-liu's "same mechanism as tpv30" claim for
+drv.a6 was wrong. Traced `scripts/case.setup`'s actual on_fault_vars
+netCDF-write remap table (lines 199-227) before concluding anything: it
+explicitly writes Python slot 8 -> netCDF `var18` (`init_strike_shear`) and
+slot 7 -> `var19` (`init_normal_stress`), which IS what the Fortran reader's
+positions 19/20 read. No mismatch -- the analytic value IS set correctly
+before the `C_elastic` multiplier discards it. This resolves the detour in
+favor of, not against, dunyu-liu's finding.
+
+**Blast radius CONFIRMED directly against the real file, not inferred:**
+`test.drv.a6` (`C_elastic=0`, currently GATED and SHIPPED) states 40e6 Pa
+shear / -120e6 Pa normal in its own compset
+(`case_input/test.drv.a6/user_defined_params.py:134-135`). Its own
+committed, currently-PASSING reference
+(`test.reference.results/test.drv.a6/faultst000dp075.txt`, t=0.0417s, read
+directly) shows **24.6801 MPa shear / 76.8865 MPa normal** -- confirmed
+exact match to dunyu-liu's cited figures, from the actual file.
+
+**ESCALATING rather than proceeding.** This is a real, independently
+confirmed correctness bug in a case this project has already shipped and
+gates on every sweep -- its actual physics does not match its own stated
+intent, and the two candidate fixes (drop the `C_elastic` multiplier
+entirely, or make `setPlasticStress` locally rotate to the rough-fault
+normal) are both real physics decisions that would move `test.drv.a6`'s
+currently-passing flip-budget gate and its committed reference. Per rule 7
+(reference regen is a deliberate, reviewed commit, never a side effect of a
+bug fix) and my own escalation criteria ("a decision changes product
+behaviour... rather than just landing a verified fix"), this is not mine
+to decide. Not fixing, not regenerating anything, not touching
+`test.drv.a6`'s gate. Surfacing this to the coordinator/owner as the
+top-priority open item.
 
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
