@@ -238,3 +238,40 @@ without guessing).
 Both agents run in their own worktrees / own file (pathway_forward.md is
 Zofia's alone) — no collision: verified by listing what each was briefed to
 touch before dispatching a second one.
+
+## Update: Mira's TPV30 mission — a real STOP-and-report, landed partially
+
+Mira did NOT gate TPV30 (rule 17 steps 4/7 not satisfied) and said so
+plainly rather than force a pass. Finding: a full 3-backend sweep showed
+python-numpy and python-jax agreeing with each other to ~1e-3 over the whole
+3321-node canonical grid at t=20s while BOTH disagree with the Fortran
+reference by up to 4.0e8 Pa (~30% relative) at 3310/3321 nodes -- a real,
+deterministic port divergence, not per-backend chaos (chaos would not leave
+numpy and jax bit-close to each other while both are far from Fortran).
+Binary-search localized: bit-exact across all three backends at t=1s (24
+steps, confirms item 24(b)/(c)'s new Tv/taper/Drucker-Prager plumbing is
+correctly ported), already diverged with a rupture-arrival flip by t=6s
+(144 steps). Not narrowed further inside her session budget.
+
+Verified independently before landing (not on her report alone): diffed
+`src/fortran/faulting.f90` / `src/python/eqdyna/faulting.py` against current
+master -- the only change is the `TPV==30` addition to `swtwNucleation`'s
+shared branch list, matching the spec citation (p.16) exactly; grepped every
+`case_input/*/user_defined_params.py` and confirmed NO case currently sets
+`par.tpv=30`, so this is a true no-op for all 10 currently gated cases.
+`testNameList.py`/`testsys/matrix.py` diffs are comment-only (line-by-line
+confirmed, `matrix.CASES` unchanged at 10 entries). Ran
+`python3 testsys/run.py unit regression` fresh on the merged tree myself:
+SUCCESS both tiers. Landed as `a25ed6c`: the branch fix, the new
+`case_input/test.tpv30/` compset (unregistered, documents its own gate
+status in its README), the Fortran-only reference under
+`test.reference.results/test.tpv30/` (not wired to any gate), the promoted
+`testsys/parity/evidence_tpv30_vs_tpv29_contrast.py` (report-only), and her
+full trace in `NOTES_tpv30_gate.md`. Both worktrees (kai's, mira's) reaped
+after confirming clean/merged status; mira's carried a stale lock (PID
+2872539, this session's own shared harness process, not an active writer)
+and was force-released, recorded here by name and reason.
+
+Item 39/19(b) needs a board update reflecting this (real progress, not
+gated, a concrete open divergence with a file:line'd cause) -- routed to
+zofia-kaminska next, not written by me.
