@@ -107,7 +107,20 @@ def build(S):
     eleshp = S['eleshp']; ss = S['ss']; phi = S['phi']
     ndof = S['ndof']; eq_ids = S['eq_ids']; NEQ = S['NEQ']
 
-    E_int = np.nonzero(elemType == 1)[0]
+    # assembleGlobalKU.f90:25's dispatch is `elemTypeArr(nel)==1 .or.
+    # elemTypeArr(nel)>10` -> calcElemKU (interior kernel), matching
+    # `elseif elemTypeArr(nel)==2` -> calcPMLElemKU (PML). elemType 11/12
+    # (wedge) and 13 (plain non-degenerate brick, meshgen.py's own
+    # docstring) all route through calcElemKU exactly like elemType 1 --
+    # confirmed by reading assembleGlobalKU.f90 directly: calcElemKU takes
+    # `eleshp(1,1,nel)`/`eledet(nel)` as opaque precomputed arrays and has
+    # no elemTypeArr branch of its own (grepped calcElemKU.f90,
+    # calcHourglassResist.f90, calcElemMass.f90 -- none reference
+    # elemTypeArr), so once those arrays are correct (assembleGlobalMass.py's
+    # compute_element_shape) this dispatch is the only place that needs to
+    # know about elemType>10 at all. Verified against Fortran directly by
+    # testsys/parity/evidence_wedge_kernel.py.
+    E_int = np.nonzero((elemType == 1) | (elemType > 10))[0]
     E_pml = np.nonzero(elemType == 2)[0]
 
     int_nodes_idx = np.nonzero(ndof == 3)[0]
@@ -176,7 +189,17 @@ def build(S):
     C_elastic = S['C_elastic']
     grav_const = ((1.0 - C_elastic) * S['grav']
                   * (S['roumax'] - (S['gamar'] + 1.0) * S['rhow']) / S['roumax'])
-    m_e_all = mat[:, 2] * eledet   # contm's per-element lumped mass
+    # contm's per-element lumped mass -- the uniform (non-wedge) closed
+    # form ONLY (assembleGlobalMass.py's `contm`), not
+    # `_contm_wedge_node_mass`'s per-node wedge value. This is a latent gap
+    # for wedge elements, but a PROVEN no-op in this port's scope: `m_e_all`
+    # is used only via `grav_const` below, which is EXACTLY 0.0 whenever
+    # C_elastic==1 -- and eqdyna3d.py's build_solver_state already refuses
+    # C_degen>3 (the only source of wedge elements) combined with
+    # C_elastic==0, so a wedge run can never reach the C_elastic==0 branch
+    # that would need this value to be right. If that refusal is ever
+    # lifted, `m_e_all` must be recomputed per-node (elemType 11/12) here.
+    m_e_all = mat[:, 2] * eledet
     if C_elastic == 0:
         init_stress = S['init_stress']   # raises loudly (KeyError) if missing;
         stress_i0 = init_stress[E_int].copy()    # never a silent zero.
