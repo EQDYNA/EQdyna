@@ -1,6 +1,8 @@
 # Past release notes\
 
 # News in 2026
+* 20260916 v5.8.7 release notes
+  * Fix - v5.8.6's `verify-published-image` CI job reported a false FAIL (a failed git network round-trip inside a container run on a separate job/runner was treated as a confirmed lightweight tag). Fixed to report UNVERIFIED instead, matching an existing pattern elsewhere in the same file. v5.8.6's image had, in fact, already published successfully.
 * 20260916 v5.8.6 release notes
   * Fix - the Docker image had never actually built the solver: `ubuntu:22.04`'s `mpich` package depends on `libgfortran5` (the runtime library) but not `gfortran` (the compiler `mpif90` shells out to for every build), so `make` failed with `gfortran: command not found` inside the Dockerfile's own build step. `gfortran` added explicitly to both `Dockerfile` and `install-eqdyna.sh`'s ubuntu branch, which had the identical latent gap. A second issue found right behind it: `--no-install-recommends` gave the image a STRICTER dependency closure than `install-eqdyna.sh -m ubuntu` itself uses, silently dropping `mpif.h`; the flag is now dropped.
   * New - `.github/workflows/publish.yml` gained `workflow_dispatch` (debug iterations no longer cost a release); CI parallelized 660s -> 303s (-54%, coverage unchanged); two release-guard bugs fixed (annotated-tag remote-peel fallback, `GH_TOKEN` for the Release check).
