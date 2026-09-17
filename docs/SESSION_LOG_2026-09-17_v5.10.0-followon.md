@@ -762,6 +762,26 @@ in parallel -- confirmed alive (worktree locked), his own `testsys/run.py
 all` gate likely explains the box load spike to 19-31 observed this pass;
 not competing with it further.
 
+## Update: release attempt #1 hit a session rate limit mid-sweep,
+## re-dispatched with model override; coordinator now running the dx=200
+## localizing measurement themselves, correctly not duplicated here
+
+`a5be6c04216c5ef56` failed on a Fable-5 session-limit 429 -- per its own
+final note, it was "well into the e2e sweep with real successes" when cut
+off. Worktree was gone by the time I checked (auto-cleaned on termination),
+so nothing to resume from or reap -- re-dispatched fresh, not continued.
+**Fourth rate-limit hit this campaign, same pattern each time**: re-dispatched
+identical mission with `model: "sonnet"` override (agent `a92c110247686a6e9`),
+recorded here per the coordinator's own standing instruction to record which
+model ran what.
+
+Coordinator is running the dx=200/dx=500 `test.tpv30` localizing measurement
+(t=0 initial shear) themselves and will relay the number -- explicitly told
+me not to duplicate it, so the geometry-decimation-bug thread and my own
+dx=200 attempts are paused here, not abandoned. `case.setup`'s
+inert-on-fault-stress-declaration warning (drv.a6's now-confirmed-live trap)
+remains queued behind the release landing.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
