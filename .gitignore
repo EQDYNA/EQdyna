@@ -8,6 +8,7 @@ __pycache__/
 src/fortran/*.o
 src/fortran/eqdyna
 src/fortran/_probe_wedge_mesh
+src/fortran/_probe_wedge_kernel
 
 test/
 test.prev/
