@@ -202,23 +202,12 @@ MEASURED_PEAK_RSS_GB = {
     ('test.drv.a6', 'python-jax'): 9.57,
 }
 CI_RUNNER_RAM_GB = 7.0
-# test.tpv36 excluded from the `(c, 'fortran') for c in CASES` formula below,
-# found 2026-09-16 the moment it broke test_ci_workflow_coverage.py (haruto's
-# own new guard): CASES gaining a case automatically joins CI_CELLS for its
-# fortran cell, which assumes every fortran cell is CI-cheap -- true for the
-# other 8, not measured for tpv36, which the sweep records at ~13x tpv8's
-# element count. Excluded rather than guessed into one of the fortran
-# workflow groups; add it back alongside a measured per-cell CI wall-clock
-# time, the same discipline CI_RUNNER_RAM_GB already holds Python cells to.
 CI_CELLS = (
-    tuple((c, 'fortran') for c in CASES if c != 'test.tpv36')
+    tuple((c, 'fortran') for c in CASES)
     + (('test.tpv8', 'python-numpy'), ('test.tpv8', 'python-jax'))
 )
 # WHAT THIS LIST LEAVES OUT, AND WHY -- said here rather than implied. Every
-# exclusion below is a MEASURED memory (or, for tpv36, TIME) decision; none is
-# a case that fails.
-#   * test.tpv36 x fortran: not yet timed on a CI runner (~13x tpv8's element
-#     count locally); add once measured, see the comment above CI_CELLS.
+# exclusion below is a MEASURED memory decision; none is a case that fails.
 #   * python cells for tpv10/tpv104/tpv1053d: measured 3.2-4.0 GB above,
 #     against a 7 GB runner already holding the Fortran build. A resource kill
 #     (SIGTERM, exit 143, no output) is not a test result.
