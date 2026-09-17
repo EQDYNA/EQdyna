@@ -671,6 +671,56 @@ in the loop -- surfacing this back to the coordinator/owner as the correct
 next step,** same as the original escalation. `test.drv.a6`/`test.tpv30`
 gates/registrations/references remain fully untouched.
 
+## Update: owner independently re-verified the falsification, reframed as
+## "analytic vs FE-reconstructed initial traction" (a discretization
+## question, not a bug), and asked for a 500/200/100m convergence check
+
+Owner traced `meshgen.f90:892` themselves and confirmed no `C_elastic`
+branch in 860-930 -- agreed option B had no target. Reframe: with the local
+normal applied identically either way, `C_elastic` only chooses WHICH
+initial traction the fault sees -- the analytic value (1) or the FE
+reconstruction of the element stress tensor (0). The ~18-19% gap is then a
+DISCRETIZATION difference (FE reconstruction vs analytic), which should
+SHRINK with resolution if that's really all it is. Test: run tpv30 at
+500/200/100m, read `faultst000dp120.txt` t=0 shear. Converging closes this
+as a documented `C_elastic=0` property; not converging means a real defect.
+
+**Ran it myself (mechanical, no dispatch needed), stated cost first (mesh-gen
+dominated once truncated to `par.term=0.2`, ~1-4s at dx=200/dx=100 case.setup
+plus a short mpirun since only ~24 steps are needed for the first output
+row, not the full 20s duration):**
+
+- dx=500 (already known, dunyu-liu's Step 1): **33.1126 MPa**
+- dx=200: **FAILED** -- `case.setup`'s own fault-geometry writer produced a
+  self-inconsistent dx=200 decimation (`validateFaultRoughGeometry` rejected
+  its own freshly-written `bFault_Rough_Geometry.txt`: derivative columns
+  disagree with the surface column by 2.0x the bound at 2 of 202 boundary
+  nodes). Reproducible, not a stale-file artifact (timestamps confirm the
+  file was written fresh by this exact run). A real, separate finding --
+  the geometry decimation path has a bug at dx=200 specifically. Not
+  investigated further this pass (out of scope for the physics question);
+  worth its own board row.
+- dx=100 (native shipped resolution, no decimation, so immune to the dx=200
+  bug): **28.0546 MPa**, t=0.00833s first output row.
+- Published (SCEC v3.1, 100m, cited by the owner): 28.18 MPa.
+- Analytic (bit-identical between tpv29/tpv30's own on_fault_vars_input.nc,
+  per dunyu-liu's Step 1): 27.79 MPa.
+
+**33.11 -> 28.05, converging tightly onto the published 28.18 (0.46% off)
+and close to the analytic 27.79.** Strong support for "FE-reconstruction
+discretization error that shrinks with resolution," not a defect -- though
+the middle point (200m) is missing due to the unrelated geometry bug above,
+so this is not yet a complete three-point convergence curve. Scratch dirs:
+`scratch/tpv30_convergence/test.tpv30.dx100`,
+`scratch/tpv30_convergence/test.tpv30.dx200` (failed case.setup, kept as
+evidence of the geometry bug).
+
+**Owner directive received mid-run: cut the release first (24 commits sitting
+on master), THEN continue this convergence work + the drv.a6 inert-declaration
+fix + item-33 requiet-box re-measure, in that order.** Switching to the
+release now; the dx=200 geometry bug and completing the convergence
+picture are queued right after.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
