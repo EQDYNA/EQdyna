@@ -81,10 +81,28 @@ CASE_BOUND = {
     'test.tpv104': 1e-5,      # observed 3.39e-07
     'test.tpv1053d': 1e-4,    # observed 6.65e-06
     'test.tpv10': 1e-6,       # observed 3.02e-08 (dipping fault, insertFaultType==1)
-    'test.meng2023a': THRESHOLD,   # fortran-only column so far; no python run has
-    'test.meng2023cb': THRESHOLD,  # ever been measured for these, so they carry
-    'test.tpv29': THRESHOLD,       # the outer bound EXPLICITLY rather than a
-                                   # tighter number nobody has observed.
+    # TIGHTENED 2026-09-17 (item 37 -- same defect item 19a caught and fixed
+    # for tpv36's bound, found here by inspection of this file's own
+    # commented history a few lines below, not by a fresh claim): the
+    # THRESHOLD these three carried was justified by "no python run has ever
+    # been measured for these", which stopped being true once haruto's
+    # CI_CELLS widening pass measured all three (`/usr/bin/time -v`,
+    # full-length, one at a time, this dev box, 2026-09-16) AND confirmed
+    # each one passes its cell via testsys.compare.compare_cell on that same
+    # run. Observed: meng2023a numpy/jax 4.628301e-09/3.229082e-09,
+    # meng2023cb numpy/jax 5.054473e-09/4.395842e-09, tpv29 numpy/jax
+    # 9.876230e-15/1.276548e-13. Bounds set the same way tpv36's was: the
+    # worst observation times test.tpv8's own headroom ratio
+    # (1e-8 / 8.23e-11 = ~121.5x), then rounded to the nearest bound already
+    # in use at that order of magnitude rather than an arbitrary new number.
+    'test.meng2023a': 1e-6,    # worst 4.63e-09 * ~121.5 = 5.6e-7; rounds to
+                               # the same 1e-6 already used for tpv10/tpv36.
+    'test.meng2023cb': 1e-6,   # worst 5.05e-09 * ~121.5 = 6.1e-7; same bound.
+    'test.tpv29': 1e-10,       # worst 1.28e-13 * ~121.5 = 1.6e-11; rounded UP
+                               # to 1e-10 (headroom ~780x, not the smaller
+                               # ~121x -- these are near-machine-epsilon
+                               # diffs and 1e-11 would leave no margin for
+                               # ordinary cross-run noise at that scale).
     'test.drv.a6': None,      # chaotically bistable -- flip-budget gate, below.
     # C_degen>3 (wedge-degeneration), dip=15 (tpv36's par.dip), dx=500,
     # par.term=6 -- a COARSE regression gate (rule 17 step 4), NOT a claim
