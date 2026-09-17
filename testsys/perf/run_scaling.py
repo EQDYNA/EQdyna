@@ -1,26 +1,118 @@
 #! /usr/bin/env python3
 """
 Strong-scaling measurement (report-only; never a red/green gate).
+pathway_forward item 33. Companion to `run_numa_scaling.py` (the JAX-only
+locality tool fixed earlier this session, commit 03ba055/0b4684c) -- this
+tool covers BOTH python backends (numpy and jax) and Fortran MPI, over the
+full 1..32-core range, and follows the same pattern for the reasons below.
 
-Fortran MPI: test.tpv8 at 1/2/4/8/16/32 ranks, ranks pinned to distinct
-cores (taskset), decomposition matched to rank count. Python (JAX-CPU):
-the standalone solver at 1/2/4/8 XLA intra-op threads, pinned likewise.
-One configuration at a time — scaling numbers are meaningless under
-self-contention. Prints a provenance-stamped table (git SHA, host,
-loadavg, compiler) per PROJECT_RULES.md rule 6.
+TWO DEFECTS FIXED HERE (found by reading this file, not assumed from a
+prior report):
 
-Usage: python3 testsys/perf/run_scaling.py [--case test.tpv8] [--out table.txt]
-Env: EQDYNAROOT, MACHINE, PATH with bin: and scripts:.
+1. `PY_THREADS` stopped at 8 while `FORTRAN_RANKS` went to 32 -- the python
+   side could not structurally answer whether either backend reaches 32
+   cores. Now `PY_THREADS == FORTRAN_RANKS == [1,2,4,8,16,32]`, for BOTH
+   numpy and jax. Never 64: a single process has no reason to span both
+   sockets (owner constraint, same one `run_numa_scaling.py` enforces).
+
+2. Every pin used bare `taskset -c <cores>` with `cores = range(n)`. Two
+   bugs in one: (a) on this box (8 NUMA nodes x 8 cores, confirmed via
+   `numactl --hardware`, not assumed) `range(16)` spans 2 nodes and
+   `range(32)` spans 4, so a knee at 8->16 would be a NUMA-crossing artifact
+   misread as a scaling limit; (b) `taskset` binds CPU only, not memory --
+   first-touch allocation can land on any node, so a "pinned" run can still
+   fault in memory remotely. Both python and Fortran paths now use
+   `numactl --physcpubind=<cpus> --membind=<nodes>`, and every data point
+   records exactly which cpus/nodes it used.
+
+THE PIN IS ALSO THE FIX, NOT JUST THE FAIRNESS. Measured directly, on THIS
+box, before writing this tool: OpenBLAS (scipy-openblas 0.3.29, this
+project's numpy build) reads OPENBLAS_NUM_THREADS and probes its affinity
+mask ONLY at library load (`import numpy`, transitively). Setting the env
+var AFTER `import numpy` has ZERO effect (0.40s vs 0.36s default on a
+4000x4000 matmul -- indistinguishable); numactl-restricting the process
+to N cpus BEFORE python starts (which is what `taskset`/`numactl` always
+do, since they exec a fresh process image) makes OpenBLAS auto-detect
+exactly N threads with NO explicit OPENBLAS_NUM_THREADS needed at all
+(0.80s at 4 cpus pinned+auto vs 0.81s at 4 cpus pinned+explicit=4 --
+equal). So a bare `taskset` pin was already sizing BLAS's thread pool
+correctly; explicit BLAS-thread env vars are not the fix here and this
+tool does not set them. This REFRAMES, not confirms, pathway item 40's
+"numpy anti-scales" hypothesis: that comparison was pinned-to-1-core vs
+completely UNPINNED (sched_getaffinity sees all 64 cpus, so OpenBLAS
+spawns up to 64 threads that then contend with this box's ~9 other
+tenants for far fewer than 64 real cores -- a placement-lottery artifact
+of an unfair baseline, not necessarily a property of the solver at a
+given PINNED core count). There was, before this tool, no actual
+pinned-N-core measurement for numpy at N>1 to check that against. This
+tool's job is to produce that measurement honestly; see the session
+report for what it found and whether a port-side fix followed from it.
+
+Same reasoning for jax: `run_numa_scaling.py` already established (and
+this tool follows) that XLA also auto-sizes its intra-op thread pool from
+the process's cpu affinity -- do NOT force XLA_FLAGS/OMP_NUM_THREADS here;
+let the pin speak for itself, exactly like the numa tool does.
+
+TWO PLACEMENT POLICIES, so a knee can be attributed (same idea as
+`run_numa_scaling.py`'s within-node/spread contrast, generalised to every
+core count instead of one):
+  COMPACT -- fill node 0's cpus, then node 1's, etc. Minimum NUMA spread
+             for a given core count.
+  SPREAD  -- round-robin across every node (0,1,2,...,7,0,1,...). Maximum
+             NUMA spread for the SAME core count. If compact scales and
+             spread does not, the knee is locality; if both flatten
+             together, it is the solver running out of parallel work.
+
+PER-CPU BUSY CHECK BEFORE EVERY POINT, same discipline and same function
+(`cpu_busy_fractions`/`require_idle`, imported from `run_numa_scaling.py`
+rather than re-implemented -- one bug fixed once) as the locality tool:
+a whole-box load average is unmeasurable-by-construction on a box with
+long-running unrelated tenants (this one has ~9, load 6-9 all session),
+so the ceiling is evaluated per-cpu, per-point, on exactly the cpus a
+configuration is about to use. A busy point is SKIPPED and recorded, not
+silently included and not silently dropped.
+
+PER-STEP BY DIFFERENCE for the two python backends (`per_step_py`, same
+technique as `run_numa_scaling.py`'s `per_step`): run n_lo and n_hi steps
+in separate fresh processes (jax caches compiled code in-process, so a
+second call in the same interpreter would pay no compile and cancel the
+wrong term) and divide the wall-time difference by the step-count
+difference, so fixed cost (interpreter start, case load, XLA compile)
+cancels exactly. Fortran gets a single end-to-end wall time instead: it is
+a compiled binary with no JIT to amortise, and its fixed cost (mesh
+read/broadcast) is genuinely small next to a multi-second MPI solve.
+
+Usage:
+    python3 testsys/perf/run_scaling.py [--case test.tpv104]
+        [--fortran-ranks 1,2,4,8] [--py-threads 1,2,4,8,16,32]
+        [--policies compact,spread] [--n-lo 20] [--n-hi 60]
+        [--busy-ceiling 0.2] [--i-know-the-box-is-busy] [--repeats 1]
+        [--skip-fortran] [--backends numpy,jax]
 """
-import os, re, shutil, subprocess, sys, time, tempfile, json
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
 
-ROOT = os.environ.get('EQDYNAROOT') or os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))
-CASE = 'test.tpv8'
+TESTSYS = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.environ.get('EQDYNAROOT') or os.path.dirname(os.path.dirname(TESTSYS))
+PYTHON_PKG = os.path.join(ROOT, 'src', 'python')
+OUT = os.path.join(TESTSYS, 'scaling_last.json')
+
+sys.path.insert(0, TESTSYS)
+import run_numa_scaling as numa  # noqa: E402  (numa_topology, cpu_busy_fractions, require_idle)
+
+CASE = 'test.tpv104'  # tpv8 runs out of parallel work early (prior session notes); use a
+                       # case with real per-step work -- tpv104 (friclaw 4, ~970k elements).
 DECOMP = {1: (1, 1, 1), 2: (2, 1, 1), 4: (2, 2, 1), 8: (2, 2, 2),
           16: (4, 2, 2), 32: (4, 4, 2)}
 FORTRAN_RANKS = [1, 2, 4, 8, 16, 32]
-PY_THREADS = [1, 2, 4, 8]
+PY_THREADS = [1, 2, 4, 8, 16, 32]  # F1: was [1,2,4,8]; now matches FORTRAN_RANKS, both backends
 
 
 def sh(cmd, **kw):
@@ -30,7 +122,52 @@ def sh(cmd, **kw):
     return r
 
 
-def make_case(dst, nx, ny, nz):
+# --------------------------------------------------------------------------
+# placement: compact / spread cpu lists from `numa_topology()`'s {node: [cpu,...]}
+# --------------------------------------------------------------------------
+def compact_cpus(nodes, k):
+    cpus = []
+    for n in sorted(nodes):
+        for c in nodes[n]:
+            cpus.append(c)
+            if len(cpus) == k:
+                return cpus
+    raise ValueError('compact_cpus: only %d cpus available, need %d' % (len(cpus), k))
+
+
+def spread_cpus(nodes, k):
+    node_ids = sorted(nodes)
+    used = {n: 0 for n in node_ids}
+    cpus = []
+    while len(cpus) < k:
+        progressed = False
+        for n in node_ids:
+            if used[n] < len(nodes[n]):
+                cpus.append(nodes[n][used[n]])
+                used[n] += 1
+                progressed = True
+                if len(cpus) == k:
+                    break
+        if not progressed:
+            raise ValueError('spread_cpus: only %d cpus available, need %d' % (len(cpus), k))
+    return cpus
+
+
+def nodes_of(node_map, cpus):
+    cpu2node = {c: n for n, cs in node_map.items() for c in cs}
+    return sorted({cpu2node[c] for c in cpus})
+
+
+def numactl_prefix(cpus, node_map):
+    nodes = nodes_of(node_map, cpus)
+    return ['numactl', '--physcpubind=%s' % ','.join(str(c) for c in cpus),
+            '--membind=%s' % ','.join(str(n) for n in nodes)]
+
+
+# --------------------------------------------------------------------------
+# case construction (Fortran: rank-count decomposition; python: forced serial)
+# --------------------------------------------------------------------------
+def make_case(dst, nx, ny, nz, term=None):
     if os.path.exists(dst):
         shutil.rmtree(dst)
     sh(f'create.newcase {dst} {CASE}')
@@ -41,63 +178,230 @@ def make_case(dst, nx, ny, nz):
     s = re.sub(r'^par\.nx = .*', f'par.nx = {nx}', s, flags=re.M)
     s = re.sub(r'^par\.ny = .*', f'par.ny = {ny}', s, flags=re.M)
     s = re.sub(r'^par\.nz = .*', f'par.nz = {nz}', s, flags=re.M)
+    if term is not None:
+        s = re.sub(r'^par\.term\s*=.*', f'par.term = {term!r}', s, flags=re.M)
     open(p, 'w').write(s)
     sh('./case.setup', cwd=dst)
 
 
-def run_fortran(work, n):
+def read_term_dt(dst):
+    """(term, dt) exactly as case.setup wrote them to bGlobal.txt -- lines
+    15/16 (0-indexed) per scripts/case.setup's fixed write order (term right
+    after the 'nx ny nz' line and its blank separator; dt right after term).
+    Fortran computes nstep = idnint(term/dt) at runtime (readInputFiles.f90);
+    reading these back (rather than recomputing par.dt ourselves) means we
+    use the SAME numbers the binary will use, not a second copy that could
+    drift from case.setup's write order."""
+    lines = open(os.path.join(dst, 'bGlobal.txt')).read().splitlines()
+    return float(lines[15]), float(lines[16])
+
+
+# --------------------------------------------------------------------------
+# Fortran: rank-count decomposition, one wall-clock run per (n, policy)
+# --------------------------------------------------------------------------
+def fortran_cmd(n, cpus, node_map, binary):
+    """mpirun with each of the n ranks numactl-pinned to its own cpu/node.
+    A bare `mpirun --bind-to core` cannot be trusted to respect an outer
+    numactl restriction (OpenMPI's own hwloc-based binder can reissue
+    sched_setaffinity to any online cpu, which is not blocked by a plain
+    affinity mask the way a cgroup would block it) -- so each rank pins
+    itself explicitly via OMPI_COMM_WORLD_LOCAL_RANK, the correct and
+    portable way to combine OpenMPI with numactl."""
+    cpu_list = ' '.join(str(c) for c in cpus[:n])
+    cpu2node = {c: nd for nd, cs in node_map.items() for c in cs}
+    node_list = ' '.join(str(cpu2node[c]) for c in cpus[:n])
+    inner = ('CPUS=(%s); NODES=(%s); exec numactl '
+             '--physcpubind=${CPUS[$OMPI_COMM_WORLD_LOCAL_RANK]} '
+             '--membind=${NODES[$OMPI_COMM_WORLD_LOCAL_RANK]} %s'
+             % (cpu_list, node_list, binary))
+    return "mpirun -np %d bash -c '%s'" % (n, inner)
+
+
+def run_fortran(work, n, policy, node_map, term):
     nx, ny, nz = DECOMP[n]
-    d = os.path.join(work, f'f{n}')
-    make_case(d, nx, ny, nz)
-    cores = ','.join(str(c) for c in range(n))
+    d = os.path.join(work, f'f{n}_{policy}')
+    make_case(d, nx, ny, nz, term=term)
+    cpus = compact_cpus(node_map, n) if policy == 'compact' else spread_cpus(node_map, n)
+    binary = os.path.join(ROOT, 'bin', 'eqdyna')
+    if not os.path.exists(binary):
+        raise SystemExit(f'FAIL: {binary} missing -- build it first '
+                         '(./install-eqdyna.sh -m ubuntu).')
     t0 = time.time()
-    sh(f'taskset -c {cores} mpirun -np {n} {ROOT}/bin/eqdyna', cwd=d)
-    return time.time() - t0
+    sh(fortran_cmd(n, cpus, node_map, binary), cwd=d)
+    return time.time() - t0, cpus, nodes_of(node_map, cpus)
 
 
-def run_python(work, threads):
-    d = os.path.join(work, f'p{threads}')
-    make_case(d, 1, 1, 1)
-    env = os.environ.copy()
-    env['PYTHONPATH'] = os.path.join(ROOT, 'src', 'python')
-    env['XLA_FLAGS'] = (f'--xla_cpu_multi_thread_eigen={"true" if threads > 1 else "false"} '
-                        f'intra_op_parallelism_threads={threads}')
-    env['OMP_NUM_THREADS'] = str(threads)
-    cores = ','.join(str(c) for c in range(threads))
-    t0 = time.time()
-    r = subprocess.run(f'taskset -c {cores} python3 -m eqdyna .',
-                       shell=True, cwd=d, env=env, text=True, capture_output=True)
+# --------------------------------------------------------------------------
+# python: per-step by difference, numactl-pinned, fresh process each call
+# --------------------------------------------------------------------------
+def build_py_case(case_name):
+    sys.path.insert(0, os.path.join(TESTSYS, os.pardir, 'e2e'))
+    import run_e2e  # noqa: E402
+    d = os.path.join(TESTSYS, 'scaling_case', case_name)
+    if os.path.isdir(d):
+        shutil.rmtree(d)
+    os.makedirs(os.path.dirname(d), exist_ok=True)
+    run_e2e.make_serial_case(case_name, d, run_e2e.base_env())
+    return d
+
+
+def time_one_py(case_dir, nsteps, cpus, node_map, backend):
+    script = (
+        "import sys; sys.path.insert(0, %r)\n"
+        "from eqdyna import eqdyna3d\n"
+        "import time; t0 = time.time()\n"
+        "eqdyna3d.run_case(%r, nsteps=%d, verbose=False, backend=%r)\n"
+        "print('WALL', time.time() - t0)\n" % (PYTHON_PKG, case_dir, nsteps, backend))
+    env = dict(os.environ)
+    env['JAX_PLATFORMS'] = 'cpu'
+    # Do NOT force XLA_FLAGS/OMP_NUM_THREADS/OPENBLAS_NUM_THREADS: both XLA and
+    # OpenBLAS auto-size their thread pools from the process's cpu affinity at
+    # import/first-use time, which numactl already sets correctly below (see
+    # module docstring for the measured evidence). Forcing them here would
+    # hide whether the PORT itself pins correctly when called unpinned.
+    env.pop('XLA_FLAGS', None)
+    env.pop('OMP_NUM_THREADS', None)
+    env.pop('OPENBLAS_NUM_THREADS', None)
+    cmd = numactl_prefix(cpus, node_map) + [sys.executable, '-c', script]
+    r = subprocess.run(cmd, env=env, capture_output=True, text=True)
     if r.returncode != 0:
-        raise RuntimeError(f'python run failed:\n{r.stderr[-800:]}')
-    return time.time() - t0
+        print(r.stdout[-1500:]); print(r.stderr[-1500:])
+        return None
+    for line in r.stdout.splitlines():
+        if line.startswith('WALL'):
+            return float(line.split()[1])
+    return None
+
+
+def per_step_py(case_dir, cpus, node_map, backend, n_lo, n_hi):
+    t_lo = time_one_py(case_dir, n_lo, cpus, node_map, backend)
+    t_hi = time_one_py(case_dir, n_hi, cpus, node_map, backend)
+    if t_lo is None or t_hi is None:
+        return None, None
+    ps = (t_hi - t_lo) / float(n_hi - n_lo)
+    fixed = t_lo - n_lo * ps
+    return ps, fixed
 
 
 def main():
     global CASE
-    if '--case' in sys.argv:
-        CASE = sys.argv[sys.argv.index('--case') + 1]
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--case', default=CASE)
+    ap.add_argument('--fortran-ranks', default=','.join(str(x) for x in FORTRAN_RANKS))
+    ap.add_argument('--py-threads', default=','.join(str(x) for x in PY_THREADS))
+    ap.add_argument('--policies', default='compact,spread')
+    ap.add_argument('--backends', default='numpy,jax')
+    ap.add_argument('--n-lo', type=int, default=20)
+    ap.add_argument('--n-hi', type=int, default=60)
+    ap.add_argument('--repeats', type=int, default=1)
+    ap.add_argument('--busy-ceiling', type=float, default=0.2)
+    ap.add_argument('--i-know-the-box-is-busy', action='store_true')
+    ap.add_argument('--skip-fortran', action='store_true')
+    a = ap.parse_args()
+    CASE = a.case
+    fortran_ranks = [int(x) for x in a.fortran_ranks.split(',') if x]
+    py_threads = [int(x) for x in a.py_threads.split(',') if x]
+    policies = a.policies.split(',')
+    backends = a.backends.split(',')
+
+    for n in fortran_ranks + py_threads:
+        if n > 32:
+            raise SystemExit('FAIL: %d cores requested -- owner constraint is at most 32 '
+                             '(one socket), never 64.' % n)
+
+    nodes = numa.numa_topology()
+    if not nodes:
+        raise SystemExit('FAIL: numactl --hardware gave no topology; this experiment is '
+                         'about NUMA placement and cannot run blind.')
+    per_node = len(nodes[min(nodes)])
+    print('topology: %d NUMA node(s) x %d cpu(s)' % (len(nodes), per_node))
+
     sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
     host = os.uname().nodename
-    load = os.getloadavg()
     work = tempfile.mkdtemp(prefix='scaling.', dir=os.environ.get('TMPDIR', '/tmp'))
     rows = []
-    tf1 = None
-    for n in FORTRAN_RANKS:
-        t = run_fortran(work, n)
-        tf1 = tf1 or t
-        rows.append(('fortran', n, t, tf1 / t, tf1 / t / n))
-        print(f'fortran np={n:<3} {t:8.1f}s  speedup {tf1/t:5.2f}x  efficiency {tf1/t/n:5.1%}', flush=True)
-    tp1 = None
-    for n in PY_THREADS:
-        t = run_python(work, n)
-        tp1 = tp1 or t
-        rows.append(('python-jax', n, t, tp1 / t, tp1 / t / n))
-        print(f'python  th={n:<3} {t:8.1f}s  speedup {tp1/t:5.2f}x  efficiency {tp1/t/n:5.1%}', flush=True)
-    meta = dict(case=CASE, sha=sha, host=host, loadavg=load,
-                date=time.strftime('%Y-%m-%d %H:%M'), rows=rows)
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scaling_last.json')
-    json.dump(meta, open(out, 'w'), indent=1)
-    print(f'provenance: {CASE} @ {sha} on {host}, loadavg {load}; saved {out}')
+    skipped = []
+
+    def measure_once(label, cpus):
+        chk = numa.require_idle(cpus, a.busy_ceiling, a.i_know_the_box_is_busy)
+        if chk is None:
+            print(f'  {label:<28} SKIPPED (cpus busy, not overridden)')
+            skipped.append(dict(label=label, cpus=cpus))
+            return None
+        return chk
+
+    if not a.skip_fortran:
+        print('\n-- Fortran MPI (%s) --' % CASE)
+        d0 = os.path.join(work, 'dtprobe')
+        make_case(d0, 1, 1, 1)
+        _, dt = read_term_dt(d0)
+        shutil.rmtree(d0, ignore_errors=True)
+        term = dt * a.n_hi  # a single wall-clock run of n_hi steps (see docstring: no
+                             # JIT to amortise, so no per-step-difference needed here)
+        base = {}
+        for policy in policies:
+            for n in fortran_ranks:
+                cpus = compact_cpus(nodes, n) if policy == 'compact' else spread_cpus(nodes, n)
+                label = f'fortran np={n:<3} {policy}'
+                chk = measure_once(label, cpus)
+                if chk is None:
+                    continue
+                best = None
+                for rep in range(a.repeats):
+                    t, used_cpus, used_nodes = run_fortran(work, n, policy, nodes, term)
+                    best = t if best is None else min(best, t)
+                base.setdefault(policy, best)
+                ps = best / a.n_hi
+                speedup = base[policy] / best
+                row = dict(engine='fortran', n=n, policy=policy, ms_per_step=ps * 1e3,
+                          speedup=speedup, cpus=used_cpus, nodes=used_nodes,
+                          steps=a.n_hi, wall_s=best)
+                rows.append(row)
+                print(f'  {label:<28} {ps*1e3:9.2f} ms/step  speedup {speedup:5.2f}x  '
+                      f'cpus={used_cpus} nodes={used_nodes}', flush=True)
+
+    for backend in backends:
+        py_backend = 'python-%s' % backend
+        print('\n-- %s --' % py_backend)
+        case_dir = build_py_case(CASE)
+        base = {}
+        for policy in policies:
+            for n in py_threads:
+                cpus = compact_cpus(nodes, n) if policy == 'compact' else spread_cpus(nodes, n)
+                label = f'{py_backend} th={n:<3} {policy}'
+                chk = measure_once(label, cpus)
+                if chk is None:
+                    continue
+                best_ps, best_fixed = None, None
+                for rep in range(a.repeats):
+                    ps, fixed = per_step_py(case_dir, cpus, nodes, backend, a.n_lo, a.n_hi)
+                    if ps is None:
+                        continue
+                    if best_ps is None or ps < best_ps:
+                        best_ps, best_fixed = ps, fixed
+                if best_ps is None:
+                    print(f'  {label:<28} FAILED')
+                    continue
+                base.setdefault(policy, best_ps)
+                speedup = base[policy] / best_ps
+                used_nodes = nodes_of(nodes, cpus)
+                row = dict(engine=py_backend, n=n, policy=policy, ms_per_step=best_ps * 1e3,
+                          speedup=speedup, fixed_s=best_fixed, cpus=cpus, nodes=used_nodes,
+                          n_lo=a.n_lo, n_hi=a.n_hi)
+                rows.append(row)
+                print(f'  {label:<28} {best_ps*1e3:9.2f} ms/step  speedup {speedup:5.2f}x  '
+                      f'fixed {best_fixed:6.2f}s  cpus={cpus} nodes={used_nodes}', flush=True)
+
+    meta = dict(case=CASE, sha=sha, host=host, loadavg=os.getloadavg(),
+               date=time.strftime('%Y-%m-%d %H:%M'),
+               topology={str(k): v for k, v in nodes.items()},
+               busy_ceiling=a.busy_ceiling, overridden=bool(a.i_know_the_box_is_busy),
+               n_lo=a.n_lo, n_hi=a.n_hi, skipped=skipped, rows=rows)
+    json.dump(meta, open(OUT, 'w'), indent=1)
+    print(f'\nprovenance: {CASE} @ {sha} on {host}, loadavg {os.getloadavg()}; saved {OUT}')
+    if skipped:
+        print(f'{len(skipped)} configuration(s) SKIPPED as busy (not measured, not silently '
+              f'dropped): {[s["label"] for s in skipped]}')
     shutil.rmtree(work, ignore_errors=True)
 
 
