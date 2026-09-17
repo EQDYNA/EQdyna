@@ -35,8 +35,10 @@ on:
 # slowest single job instead of the sum, AND each job gets its own 7 GB
 # runner instead of one runner holding the Fortran build, mpirun, AND every
 # python/jax cell at once -- which is the actual reason CI_CELLS was capped
-# at 10 of 24 cells (testsys/matrix.py's own comment: the all-cells run got
-# SIGTERM'd, exit 143, no output). More jobs is how a per-job memory ceiling
+# at 11 of 27 cells (testsys/matrix.py's own comment: the all-cells run got
+# SIGTERM'd, exit 143, no output; test.tpv36 joined the fortran-only slice
+# automatically the day it was gated -- CI_CELLS includes every case's
+# fortran cell unconditionally, see matrix.py). More jobs is how a per-job memory ceiling
 # gets solved; a bigger single runner is not offered by GitHub-hosted
 # runners at all.
 #
@@ -281,7 +283,7 @@ jobs:
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
         export EQDYNA_E2E_BIN=$EQDYNAROOT/bin/eqdyna
         set -o pipefail
-        python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10 2>&1 | tee -a testRunLog.txt
+        python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt
       if: always()

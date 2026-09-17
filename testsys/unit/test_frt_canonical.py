@@ -52,6 +52,7 @@ EXPECTED_ROWS = {
     'test.tpv29': 3321,
     'test.meng2023a': 651,
     'test.meng2023cb': 651,
+    'test.tpv36': 3477,
 }
 
 # How the synthetic multi-rank fixtures below are built. OVERLAP_ROWS is the

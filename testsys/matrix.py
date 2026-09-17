@@ -86,6 +86,19 @@ CASE_BOUND = {
     'test.tpv29': THRESHOLD,       # the outer bound EXPLICITLY rather than a
                                    # tighter number nobody has observed.
     'test.drv.a6': None,      # chaotically bistable -- flip-budget gate, below.
+    # C_degen>3 (wedge-degeneration), dip=15 (tpv36's par.dip), dx=500,
+    # par.term=6 -- a COARSE regression gate (rule 17 step 4), NOT a claim
+    # about physical accuracy at SCEC-standings resolution (the published
+    # tpv36/37 standings rank a run this coarse last and improve
+    # monotonically with resolution). Measured AFTER item 19(a)'s jax-only
+    # regression fix (assembleGlobalMass.py's eleshp einsum dispatch), on a
+    # reference frozen fresh for this commit -- the merge's original
+    # measurement predates that fix and is not reused: observed python-jax
+    # 5.867293e-09, python-numpy 7.894064e-09 (both near-zero peak-slip-rate
+    # components on marginally-ruptured nodes -- roundoff, not physics).
+    # 1e-6 is ~127x the worst observation, the same headroom ratio
+    # test.tpv8 carries (1e-8 / 8.23e-11).
+    'test.tpv36': 1e-6,
 }
 
 GATE = {
@@ -96,6 +109,7 @@ GATE = {
     'test.meng2023a': 'abs-max',
     'test.meng2023cb': 'abs-max',
     'test.tpv29': 'abs-max',
+    'test.tpv36': 'abs-max',
     # test.drv.a6 (C_elastic==0 viscoplastic, friclaw==4, fractal-rough, long
     # duration) has genuinely bistable rupture arrivals, so a scalar max-abs
     # bound cannot distinguish "a few hundred marginal nodes flipped" from
@@ -203,7 +217,11 @@ CI_CELLS = (
 #     They PASS in the full sweep (both backends; the case's forced-rupture
 #     nucleation gap was fixed -- see src/faulting.f90's swtwNucleation), so
 #     measuring them is the only thing standing between here and wider CI.
-# A green CI run therefore means 10 of 24 cells, and says so.
+#   * python cells for tpv36: same reason as tpv29 -- peak RSS not yet
+#     measured on CI's runner. tpv36's fortran cell joined CI_CELLS
+#     automatically (every case's fortran cell does, unconditionally, by this
+#     tuple's own construction above) the moment the case was gated.
+# A green CI run therefore means 11 of 27 cells, and says so.
 
 
 def is_supported(case, backend):
