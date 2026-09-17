@@ -79,6 +79,63 @@ velocity structure and TPV35 is understood to be a Parkfield 2004 M6
 validation benchmark" — both confirmed against the fetched spec text above,
 not just trusted.
 
+## Rule 17 step-3-adjacent scoping: what code already exists to build on
+(2026-09-17, wei-lin, read-only — `nmat`/`meshgen.f90`/`faulting.f90` grep and
+read, no runs, done during a measurement window where nothing heavier was
+permitted)
+
+**Material model.** `nmat==1/n2mat==3` (homogeneous) and `nmat>1/n2mat==4`
+(1D layered) both exist, mirrored in Fortran (`meshgen.f90:174-201`) and
+Python (`meshgen.py:605-633,756-768`). The layered form keys ONLY on
+`abs(elementCenterCoor(3))` (depth) — no side-of-fault or lateral
+distinction. TPV35's spec ("1D velocity profile on each side of the fault")
+does NOT fit this as-is: it needs a fault-relative pick (which side), not a
+second depth axis. Bounded change (extend the lookup key), not a new
+subsystem. **TPV34 needs a full CVM-H 3D velocity query/grid — grep for
+`CVM`/`velocity_model`/`vmod` across `src/`, `scripts/` found nothing.** No
+counterpart exists at all; this is the single biggest net-new piece either
+case needs. Given this project's own precedent for TPV29 (ship a decimated,
+provenance-cited static grid rather than a live external dependency, rule 17
+step 2), the likely right shape is a pre-extracted, decimated CVM-H grid
+file, not a live query library.
+
+**Nucleation.** `swtwNucleation` (`faulting.f90:386-421`) already implements
+a shared smoothed forced-rupture-time formula (radius + elapsed-time driven
+friction-coefficient reduction) for TPV29/36/37/201/202. TPV34's "added
+shear-stress bump in circular patch around hypocenter" reads as structurally
+compatible with this family — plausibly a new `TPV==34` branch here, small.
+**TPV35 is a different shape: "lowered yield stress... built-in to the input
+data file"** implies an externally-supplied per-node value, not a formula.
+Grepped for any existing from-scratch external per-node stress/nucleation
+file input: none — the only external-file-driven per-node state in this
+codebase is the mode=2 cycle restart netcdf path (`netcdf_read_on_fault_eqdyna_restart`),
+a different code path with different semantics (continuing a cycle, not
+seeding a single dynamic run). This is genuinely new, not a reuse.
+
+**Validation against real recordings.** Grepped `testsys/`, `scripts/` for
+any existing real-seismogram/NGA comparison capability: none (TPV29's
+`evidence_tpv29_scec_comparison.py` compares against another CODE's output,
+not recorded ground motion). Per this project's own pattern (rule 17 step 6
+is a script, landed after gating, never a gate itself — see TPV29), this can
+defer to a post-gate evidence script and is NOT a blocker for landing TPV35
+on cross-code criteria alone.
+
+**Net sequencing read, for whoever scopes the actual dispatch:** TPV35 is
+closer on the material side (layering machinery ~80% there) but needs a
+wholly new external per-node stress-field ingestion path with no precedent.
+TPV34 is closer on the nucleation side (likely reuses `swtwNucleation`) but
+needs the single largest net-new subsystem of the two, a 3D velocity grid.
+Building the material-lookup generalization (fault-relative AND
+external-grid-capable) as ONE shared piece rather than two bespoke paths is
+the real architecture call here — and it touches code every gated case
+depends on (`meshgen.f90`'s material dispatch), so it needs its own
+correctness gate on the 8 already-gated cases before either TPV34 or TPV35
+can build on it (rule 3). Not sized further here; still not enough to
+dispatch blind, but the next scoping pass has concrete surfaces to read
+instead of a blank page. `tpv35_data_files.zip` (velocity model + stress
+field + stations) is still unfetched and is the next real step for TPV35;
+a CVM-H extraction/decimation approach is the next real step for TPV34.
+
 ## Risk flagged for the next scoper (not fixed here, out of mission scope)
 
 `testsys/e2e/run_e2e_full.py` iterates `FULL_SPECS.items()` directly and
