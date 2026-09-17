@@ -119,3 +119,59 @@ rank mismatch doesn't look silently overridden.
   board's own priority, once the load window allows a run.
 - Items 35/38 (CI flakes) remain single-occurrence, not investigated
   further per their own rows — no new occurrence found this pass.
+
+## Update: haruto reported, coordinator relayed at ~08:05
+
+Haruto's actual finding on item 33: not just a load problem — TWO real
+defects in `testsys/perf/run_numa_scaling.py` would have produced a
+misleading answer even on an idle box (F1: generated an all-64-core config,
+contradicting the owner's "at most 32, not 64"; F2: no 16-core point,
+4x gap between spread-8 and socket-32). He left a corrected driver at
+`/tmp/claude-16759/.../scratchpad/item33_driver.py`; promoted its fix
+(config-generation only, ceiling/override logic untouched) into
+`testsys/perf/run_numa_scaling.py`, verified by `ast.parse` + `--help` (no
+idle box yet to run the actual measurement), committed `03ba055`, pushed.
+Item 33 itself is STILL not measured — tooling is now trustworthy, the box
+is not yet idle enough to trust the number.
+
+Item 40 answered by haruto (relayed, not independently re-run by me):
+numpy-pinned 2072 ms/step (linear, 0.2% repeatable), jax-pinned 524 ms/step
+(4.0x), jax-unpinned 365 ms/step (5.7x, the board's old "~6x"). Key finding:
+unpinned numpy is UNSTABLE (2.08-3.75 s/step, no step-count dependence) while
+pinned is linear — CI's 950-1711s tpv29 spread IS this instability
+(1711/950=1.80 matches worst-unpinned/pinned ratio almost exactly), so CI's
+critical-path number is a placement lottery, not a fixed cost. Optimization
+targets identified but NOT applied: `assembleGlobalKU.py:466`
+`calcHourglassResist` 38%/step, `:256` `assembleGlobalKU` 29%/step; separately
+`meshgen.py:323 build_node_coordinates` is an 8.76s ONE-TIME (not per-step)
+cost, backend-independent (identical numpy/jax profiles), flagged as the
+cheapest real win precisely because a per-step metric will never show it
+moving.
+
+Dispatched `zofia-kaminska` (agent a83d0da3d39a106bb) to write pathway_forward
+rows for items 29 (stash drop, done — `git stash list` empty), 19(c) (rule 17
+step 1 already landed at `3677581`/v5.10.0, board text stale), 33 (tooling
+fixed, measurement still outstanding), 40 (haruto's numbers, marked as
+relayed not independently re-verified by me). Not yet returned as of this
+edit.
+
+Dispatched `mira-volkov` (agent a0f87ff963afe7929, isolated worktree) to gate
+TPV30 (item 39/19(b), P3, unblocked since item 24(b)/(c) landed). Briefed
+with exact paths (`scratch/tpv30/case_input_draft/test.tpv30/`,
+`case_input/test.tpv29/` as template, `scratch/tpv30/compareTpv29Tpv30.py`
+for rule 17 step 6), rule 17's full recipe in order, and a defect found
+during my own scoping pass: the old draft plans `par.tpv=36` to reach the
+shared nucleation formula (`swtwNucleation`, `faulting.f90:386-421`) instead
+of getting its own `TPV==30` branch — the exact impersonation anti-pattern
+rule 17 step 3 exists to catch, named explicitly in her brief as a required
+fix, not a workaround to carry forward. Not yet returned.
+
+Chose TPV30 over further TPV34/35 work because it is next in the board's own
+P3-before-P4 order and does not need any additional data fetch before
+dispatch (unlike TPV34/35, which still need `tpv35_data_files.zip` / a
+CVM-H extraction approach before an implementation brief could be written
+without guessing).
+
+Both agents run in their own worktrees / own file (pathway_forward.md is
+Zofia's alone) — no collision: verified by listing what each was briefed to
+touch before dispatching a second one.
