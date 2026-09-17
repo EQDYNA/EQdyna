@@ -991,6 +991,50 @@ spec when it returns rather than guess now; a corrected follow-up dispatch
 is likely needed regardless of what he produces. Release gate still green,
 8 processes remaining.
 
+## Update: release gate went green (30/30), release committed and pushed;
+## dunyu-liu's offset mission returned -- verified numerically correct but
+## architecturally wrong, sent back for the literal Method 1 switch
+
+Local gate (`br2ekcqll`) finished: **30/30 e2e cells SUCCESS**, unit+
+regression SUCCESS, wall clock 2576.2s. Found and fixed one more stale spot
+before finalizing: README.md's tpv30 bullet still described the disproven
+lars-eriksson "strike-traction" framing -- corrected to the actual
+half-implemented-Method-2 explanation before committing. Assembled and
+pushed the release commit (`2e42b4b`, VERSION 5.10.0->5.11.0, README news
+block, pastReleaseNotes.md move, Fortran banner string) after confirming no
+commit had touched those 4 files since I started editing them (zero
+staleness). CI running on `2e42b4b`; fortran-a/b, unit-regression, and build
+already green as of this checkpoint, the three python e2e jobs (meng,
+cheap, tpv29) still in progress -- holding the tag until all are green.
+
+`dunyu-liu`'s discrete-equilibrium-correction mission (`a2d9003fa3ce1790f`)
+returned. Independently verified myself, not just his report: pulled the
+actual pre-arrival window from his worktree's `faultst000dp120.txt`
+(t=0.04 to 1.25s) -- genuinely stable at 27.7906-27.7915 MPa, no relaxation,
+matching the target. But confirmed via diff that `assembleGlobalKU.f90`'s
+gravity gate is BYTE-IDENTICAL to before -- his fix is a persistent
+correction-offset (computed once at step 1, added back every step) with
+gravity left on, not the decided Method-1 architecture. Reported this
+plainly rather than landing a numerically-correct-but-differently-built fix
+or silently redoing it myself -- this is a "what does the physics
+represent" decision, not mine to make. Owner ruled: **do the literal Method
+1 switch**, backed by new evidence (independently rebuilt the FE force
+assembly from the morphed surface's own facet geometry, reproduced the
+code's nodal force to <0.2%/0.03% -- so 33.05 MPa is a CORRECT
+facet-weighted FE traction and 27.79 MPa is a CORRECT point projection; two
+different physically-valid quantities that only converge as dx->0, not a
+bug in the assembly. All 1921 common fault nodes checked -- arn/masses
+identical to tpv29 to 0.000e+00, un/us/ud bit-identical -- confirming the
+ONLY difference is which quantity feeds the fault's traction). Re-dispatched
+`dunyu-liu` (agent `a50faafb5e0d2f44e`) fresh for the literal switch: drop
+the gravity body force for `C_elastic=0`, keep `setPlasticStress` for yield
+only, apply `T_init` directly with the `*C_elastic` gating REMOVED (not
+offset-corrected), both backends, verified against the same full-window
+stability check I already validated, plus drv.a6's declared 40/-120 MPa
+confirmed to go LIVE under Method 1 (a real, expected behavior change).
+Explicitly told to leave the rejected offset worktree untouched -- I reap
+it only once the Method-1 build is verified, not before. Not yet returned.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
