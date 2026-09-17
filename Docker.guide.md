@@ -14,23 +14,25 @@ c. For Linux users, to be explored. <br/>
 
 Open a terminal and run the following command: <br/>
 ```
-docker run -it --name ContainerName ghcr.io/eqdyna/eqdyna:v5.8.2
-```
-or, for the most recent release: <br/>
-```
 docker run -it --name ContainerName ghcr.io/eqdyna/eqdyna:latest
 ```
 The image is built directly from the tagged commit by CI
 (`.github/workflows/publish.yml`, triggered on `push: tags: ['v*']`) -- there
 is no hand-modified or hand-committed step between the repository and the
-image, so `v5.8.2` here always means the actual v5.8.2 source tree, and
-`:latest` always tracks the most recent tag CI has built.
+image, so `:latest` always tracks the most recent tag CI has built. To pin a
+specific released version instead (for reproducibility), replace `:latest`
+with `:vX.Y.Z` for any tag on the
+[Releases page](https://github.com/EQDYNA/EQdyna/releases) -- do not hardcode
+a version number in this guide itself, since a pinned example here is exactly
+what let a past version drift seven minor releases out of date before anyone
+noticed (`testsys/regression/test_docker_guide_no_pinned_version.py` guards
+against that recurring).
 
 Note: for Windows users, you may need admin access for the Powershell. For MacOS users, it seems you don't need admin access (to be explored further). <br/>
 
 ## 3. Using the newly created EQdyna docker container! <br/>
 
-a. After pulling the image `ghcr.io/eqdyna/eqdyna:v5.8.2`, you will find it in the 'Images' tab on the left control panel of Docker Desktop. <br/>
+a. After pulling the image `ghcr.io/eqdyna/eqdyna:latest` (or a pinned `:vX.Y.Z`), you will find it in the 'Images' tab on the left control panel of Docker Desktop. <br/>
 b. Also you will find a container with the name you give, i.e., ContainerName, running in the 'Containers' tab in Docker Desktop. <br/>
 c. In the 'Actions' panel of the container, if you click the three dots, you will find an drop-down list. <br/>
        Click 'Open in terminal' and you will be navigated to the terminal of the Ubuntu system. <br/>
@@ -56,5 +58,5 @@ To mount the newly created docker container to other hard drives, additional to 
 For example, in the following command, I mount the container to an external Windows OS drive G:/scratch, and rename it to /mount in my container environment.
 
 ```
-docker run -it --name ContainerName -v G:/scratch:/mount ghcr.io/eqdyna/eqdyna:v5.8.2
+docker run -it --name ContainerName -v G:/scratch:/mount ghcr.io/eqdyna/eqdyna:latest
 ```
