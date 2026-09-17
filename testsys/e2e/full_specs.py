@@ -71,6 +71,22 @@ FULL_SPECS = {
             'time histories from t = 0 to t = 12 s".'
         ),
     ),
+    'test.tpv35': dict(
+        # NOTE: rule 17 step 1 only (spec fetched, no case exists yet --
+        # no test.tpv35 compset/case_input, no fortran or python branch;
+        # spec-resolution recorded here per step 5 so it is not lost, not
+        # because the case is registered in testNameList.py/matrix.py).
+        dx=100., term=18., nx=4, ny=2, nz=2,
+        citation=(
+            'SCEC TPV35 description (scratch/specs/TPV35_desc.pdf / .txt, '
+            'via https://strike.scec.org/cvws/tpv35docs.html -> '
+            'download/TPV35_Description_v05.pdf), Part 3 "Running Time, '
+            'Node Spacing, and Results": "Run the model for times from 0.0 '
+            'to 18.0 seconds after nucleation." / "The recommended '
+            'resolution for TPV35 is 100 meters. You may optionally also '
+            'submit results for a resolution of 50 meters."'
+        ),
+    ),
 }
 
 # case -> reason it is excluded from the full tier (rule 2: never invent a
@@ -102,5 +118,21 @@ EXCLUDED = {
     'test.meng2023cb': (
         'Same as test.meng2023a (paired case, same provenance gap). '
         'Excluded rather than invented.'
+    ),
+    'test.tpv34': (
+        # NOTE: rule 17 step 1 only -- no test.tpv34 case exists yet
+        # (no compset/case_input, no fortran or python branch). Recorded
+        # here per step 5 so the gap is not lost before the case is built.
+        'SCEC TPV34 description (scratch/specs/TPV34_desc.pdf / .txt, via '
+        'https://strike.scec.org/cvws/tpv34docs.html -> '
+        'download/TPV34_Description_v10.pdf), Part 3 "Running Time, Node '
+        'Spacing, and Results": "For TPV34, please select node spacing on '
+        'the fault plane in the range of 25 m to 50 m, and submit results '
+        'for your selected node spacing." No single recommended value is '
+        'given (unlike TPV35\'s "recommended resolution ... is 100 '
+        'meters") -- a submitter-chosen range, not a target to rewrite '
+        'par.dx to. Excluded rather than invented. Duration is stated '
+        '(0 to 20.0 s after nucleation) but withheld here too since dx is '
+        'the pairing key for this tier.'
     ),
 }
