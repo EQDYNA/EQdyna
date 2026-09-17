@@ -363,6 +363,30 @@ backend-wide, not wedge-specific. Not polling further on the RSS run per
 instruction -- the coordinator has a waiter on the process and will resume
 this session when it exits.
 
+## Update: RSS measurement re-planned and finished in minutes, not hours
+
+Coordinator caught a second problem before it cost 3 hours: peak RSS is a
+setup-time property (mesh/solver arrays preallocate before stepping, do not
+grow during it), so a handful of steps reaches the same peak as a full run.
+Validated directly rather than assumed: let the in-flight `test.tpv36 x
+python-numpy` full run (556 steps, 1415.9s) finish as ground truth (peak
+3050252 KiB, also PASSED its bound 7.894064e-09 vs 1e-06 -- confirms it
+wasn't stuck, just doing real, geometry-explained work), then ran the SAME
+cell truncated to 28 steps (par.term=0.3): peak 3047536 KiB, 0.09%
+different. Method validated on the exact cell that mattered, then used for
+the remaining three (killed the in-flight full `test.tpv36 x python-jax`
+attempt by PID once validated, rather than let ~3h of full-length runs
+continue): tpv36-jax 4.34 GB (38.6s), tpv37-numpy 2.91 GB (95.4s), tpv37-jax
+4.20 GB (30.1s). All four land in `af892df`: `testsys/matrix.py`
+`MEASURED_PEAK_RSS_GB` + `CI_CELLS` (21->25 of 30), `.github/workflows/
+test.yml`'s cheap-group job, `CLAUDE.md`'s cell count. Verified before
+landing: `test_ci_workflow_coverage.py` PASS (25 cells, no gap/overlap),
+fresh `unit regression` SUCCESS.
+
+Proceeding down the queue as planned: TPV30 SCEC-archive validation next
+(mira-volkov, dispatching now), item 33's reframed scaling-optimization
+mandate after that.
+
 **Item 33 mandate escalated again:** not a curve to report -- an
 optimization to land. Owner: "if not, go optimize it" / "at least, jax
 should scale really well." jax's measured 1.44x (1 core to unrestricted) is
