@@ -275,3 +275,102 @@ and was force-released, recorded here by name and reason.
 Item 39/19(b) needs a board update reflecting this (real progress, not
 gated, a concrete open divergence with a file:line'd cause) -- routed to
 zofia-kaminska next, not written by me.
+
+## Update: item 39/19(b) board row landed; item 33 reframed twice more; owner
+## directive on TPV30 validation queued
+
+Zofia's item 39/19(b) row update verified (cited command
+`python3 -c "import testNameList; print('test.tpv30' in testNameList.nameList)"`
+-> `False`, matches) and landed `8c5bac8`.
+
+**Owner directive, TPV30 (not yet actioned, queued behind the tpv36/37 RSS
+run):** Mira's stop-and-report was the right call on the information she had,
+but `scec_archive/tpv30/eqdyna-v3.1-{100m,50m,25m}-2015/` (published
+submissions, cplot + on-fault stations) already exists and makes rule 17
+step 6 satisfiable today. Directive: build the SCEC comparison for tpv30 on
+the `evidence_tpv29_scec_comparison.py` pattern (extend, don't duplicate,
+mira's own `evidence_tpv30_vs_tpv29_contrast.py`), compute every number from
+data (never seed from prose -- tpv29's own Mw 7.45->7.034 correction is the
+standing lesson), label which metric-definition rule produced each number. A
+500 m agreement is a REGRESSION check, not an accuracy claim (owner's own
+tpv30 standing: 100m rank 14/14, 50m 12/14, 25m 8/14 -- coarse ranks last by
+construction). If it roughly matches: gate all three backends at 500m with a
+measured bound (not THRESHOLD). If not: report it, don't gate -- "a
+divergence here would be more valuable than a gate." My own read going in:
+her already-found ~30% Fortran-vs-Python divergence by t=6-20s is itself
+legitimate grounds to still not gate even if the published-data comparison
+looks fine, and the brief needs to leave room for that combined honest
+outcome rather than forcing a pass. Then, ONLY if it gates, cost out a 100m
+(not 50m) validation run before queuing it -- cheapest resolution with a
+real published cross-code comparison point, matching tpv29's own 100m
+precedent over its unneeded 50m run.
+
+**Item 33 reframed a second time:** the actual goal is "make jax and numpy
+scale well," not produce a locality measurement -- measurement is
+instrumental, and I had been routing it at the wrong tool.
+`run_numa_scaling.py` (F1/F2/F3, already landed, still worth having) answers
+LOCALITY; the scaling curve itself lives in `run_scaling.py`, whose
+`PY_THREADS = [1,2,4,8]` structurally stops before 32 while
+`FORTRAN_RANKS` goes to 32 -- so the python side was never going to answer
+whether either backend reaches 32 cores. Real confound found in that script:
+`cores = ','.join(str(c) for c in range(threads))` then bare `taskset` --
+on this 8-node x 8-core topology, 16 threads silently spans 2 NUMA nodes,
+32 spans 4, and `taskset` binds CPU but not memory (first-touch, may run
+fully remote). Directive: extend `PY_THREADS` to match `FORTRAN_RANKS`
+(1/2/4/8/16/32, capped at one socket=32 per the owner's own constraint),
+replace `taskset` with `numactl --cpunodebind=N --membind=N` (record
+placement per point), and run TWO placement policies (compact vs
+one-per-node spread) so a knee can be attributed to locality vs
+out-of-parallel-work. THEN fix what it finds -- numpy anti-scales (2072ms/step
+pinned vs 2075-3747 unpinned, never faster, up to 1.8x slower: thread
+oversubscription + page migration is the leading hypothesis, candidates are
+explicit BLAS thread control / `--membind` / first-touch init); jax gains
+only ~1.44x despite XLA_FLAGS/OMP_NUM_THREADS already being set, so per-step
+work size and memory placement are the candidates; `numpy.ufunc.at` (10%,
+scatter-add, notoriously serial) is a plausible hard ceiling worth checking
+early. Owner routes this to mira-volkov (parity first, then optimize in the
+target idiom, re-checking parity every step; all three backends must stay
+green at CURRENT bounds -- this is optimization, not a physics change, so no
+reference moves). Sequenced explicitly AFTER the tpv36/37 RSS run and the
+tpv30 validation, and not to start while the box is loaded -- not yet
+dispatched.
+
+**tpv36/tpv37 RSS measurement status:** launched as my own background
+process (not an Agent, no async notification), `test.tpv36 x python-numpy`
+alone ran past 12 minutes of CPU time before I checked last -- evidently a
+genuinely heavier case than tpv8 (which measured 62.5s), not hung (steady
+~100% CPU, steadily climbing CPU-time between checks). `sleep`-based polling
+is blocked in this environment ("use run_in_background / Monitor"), so
+checks are spaced out rather than tight-looped. Holding the tpv30 dispatch
+and the item-33 rescoped dispatch until this finishes, per explicit
+instruction that the box cannot take more than one of these at a time.
+
+**Item 33 mandate escalated again:** not a curve to report -- an
+optimization to land. Owner: "if not, go optimize it" / "at least, jax
+should scale really well." jax's measured 1.44x (1 core to unrestricted) is
+now treated as a DEFECT to root-cause, not a property to report, since XLA-CPU
+parallelizing badly when configured and fed properly is itself anomalous.
+Candidate causes, cheapest first, none to be believed until reproduced: (1)
+memory placement -- `numactl --cpunodebind=N --membind=N` over bare
+`taskset` (leading hypothesis, both backends); (2) latency- vs
+throughput-bound -- jax already wins ~4x at one core via FUSION, so if the
+step is a long dependent-op chain there is little intra-op parallelism to
+exploit regardless of core count; dump the HLO (op count, tensor shapes)
+BEFORE optimizing anything, since this would reframe the fix as exposing
+parallelism (batching/vmap/scan) rather than tuning threads; (3) scatter-add
+-- `numpy.ufunc.at` at 10%/31 calls per step, whose jax equivalent
+(`.at[].add()` on duplicate indices) is the same op this repo's own notes
+say lowers to atomics on GPU and may serialize outright on CPU, a plausible
+hard scaling ceiling independent of core count; (4) HLO literals -- this
+repo's own documented lesson, a jitted function closing over an array pays
+it as an HLO literal (~7x); check jitted entry points pass arrays as
+ARGUMENTS; (5) recompilation -- also a documented lesson, confirm `jax.jit`
+is built once, never inside a run function. Items 4/5 are known project
+failure modes, check first. Numpy target: stop ANTI-scaling (currently never
+faster than 1 core, up to 1.8x slower) -- `ufunc.at` + BLAS thread
+oversubscription are the leads. Mandate: mira-volkov measures, root-causes,
+FIXES, re-measures, keeps all three backends green at CURRENT bounds (no
+reference moves, no bound loosens) -- if jax is genuinely at a real ceiling
+for this problem shape that's acceptable, but it needs HLO evidence, not an
+assertion. Still queued behind tpv36/37 RSS + tpv30 validation, not yet
+dispatched.
