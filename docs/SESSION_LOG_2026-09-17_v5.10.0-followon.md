@@ -635,8 +635,41 @@ contract change).
 
 **Rate-limit note (third occurrence this session of the identical
 pattern):** first dispatch attempt hit the same Fable-5 429 immediately.
-Re-dispatched the identical mission with `model: "sonnet"` override. Not
-yet returned.
+Re-dispatched the identical mission with `model: "sonnet"` override.
+
+## Update: Step 1 FALSIFIES option B's premise -- escalating again rather
+## than inventing a third fix
+
+Per the mission's own explicit branch ("if the premise is wrong, stop and
+report"), dunyu-liu did not write a fix. Verified independently by wei-lin
+before accepting this (it overturns an owner-approved plan, so it needed
+the same scrutiny as the original escalation): `un`/`us`/`ud` -- the local
+rough-fault-normal projection vectors -- are built from `pfx`/`pfz`
+(`src/fortran/meshgen.f90:892-905`) gated ONLY by `insertFaultType>0`, with
+NO branch on `C_elastic` anywhere in that construction. Read directly,
+confirmed. The FE-reconstruction path that projects nodal quantities onto
+those vectors (`faulting.f90:89-97`) is likewise unconditional on
+`C_elastic`. So the local rough normal is ALREADY applied identically for
+both `C_elastic=1` (tpv29) and `C_elastic=0` (tpv30, drv.a6) -- there is no
+"resolves onto the nominal plane instead of the local normal" defect for
+option B to target. `setPlasticStress`'s element tensor and the analytic
+on-fault path were checked term-for-term (by the mission, algebra verified
+against this compset's own constants) to already be identical once
+resolved onto that same shared local normal, from the same source file.
+
+Landed the notes file only (`72a353b`), no source change -- correctly
+matching the mission's own stop condition. Residual mismatch is now
+HYPOTHESIZED (not confirmed) as FE-discretization/mass-split reconstruction
+error scaling with fault roughness, weakly corroborated by an
+already-committed probe (`c7c4f5f`) finding a smaller version of the same
+effect at drv.a6's lower roughness -- not chased further, a genuine
+numerical-methods design question flagged for routing to a numerics
+specialist rather than invented here.
+
+**Not inventing a third fix myself, not re-litigating the owner's decision
+in the loop -- surfacing this back to the coordinator/owner as the correct
+next step,** same as the original escalation. `test.drv.a6`/`test.tpv30`
+gates/registrations/references remain fully untouched.
 
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
