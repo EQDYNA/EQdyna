@@ -337,13 +337,31 @@ dispatched.
 
 **tpv36/tpv37 RSS measurement status:** launched as my own background
 process (not an Agent, no async notification), `test.tpv36 x python-numpy`
-alone ran past 12 minutes of CPU time before I checked last -- evidently a
-genuinely heavier case than tpv8 (which measured 62.5s), not hung (steady
-~100% CPU, steadily climbing CPU-time between checks). `sleep`-based polling
-is blocked in this environment ("use run_in_background / Monitor"), so
-checks are spaced out rather than tight-looped. Holding the tpv30 dispatch
-and the item-33 rescoped dispatch until this finishes, per explicit
-instruction that the box cannot take more than one of these at a time.
+ran past 14 minutes of CPU time -- not hung (steady ~100% CPU). `sleep`-based
+polling is blocked in this environment, so checks were spaced out. Holding
+the tpv30 dispatch and the item-33 rescoped dispatch until this finishes,
+per explicit instruction that the box cannot take more than one of these at
+a time.
+
+**CORRECTED (coordinator caught this before it reached the board): I floated
+"the wedge kernel is much more expensive per-step" as the explanation for
+tpv36's slowness. WRONG, and retracted -- this is the fifth mechanism this
+campaign that did not survive arithmetic, and it was a plausible-sounding
+guess offered without doing the arithmetic first, exactly the failure mode
+rule 4/6 exist to catch.** The real explanation is pure geometry, no kernel
+term needed: tpv36 sets `par.dt = 0.5*par.dz/par.vp` (not `dx`, unlike tpv8),
+and `dz = dx*sin(15 deg) = 129.4 m` for its 15-degree dip -- so relative to
+tpv8 (dx=500, term=5): timestep is 0.259x -> 3.86x more steps; term 6/5 ->
+4.64x steps; z-resolution 3.86x finer -> ~3.86x elements. Predicted work
+ratio ~17.9x, observed ~13-14x -- the geometry OVER-explains the slowdown,
+so the wedge (`C_degen`) code path is, if anything, slightly CHEAPER per
+element-step than the hex path, not more expensive. Recording the wrong
+version would have sent item 33's optimization work profiling
+`compute_element_shape`'s wedge branch for a cost that isn't there, when the
+measured hot spots (`calcHourglassResist` 38%, `assembleGlobalKU` 29%) are
+backend-wide, not wedge-specific. Not polling further on the RSS run per
+instruction -- the coordinator has a waiter on the process and will resume
+this session when it exits.
 
 **Item 33 mandate escalated again:** not a curve to report -- an
 optimization to land. Owner: "if not, go optimize it" / "at least, jax
