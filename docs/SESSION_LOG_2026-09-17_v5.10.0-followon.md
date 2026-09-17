@@ -901,6 +901,44 @@ same Fable-5 429 immediately (fifth occurrence this campaign, same
 pattern), re-dispatched with `model:"sonnet"` override (agent
 `a2d9003fa3ce1790f`). Both not yet returned.
 
+## Update: owner retracted the discrete-equilibrium framing too -- it IS a
+## confirmed bug, tightly localized to the strike-direction traction
+## extraction, ratio 1.18926. Routing corrected from dunyu-liu to
+## lars-eriksson (mechanical bug hunt, not new-physics research).
+
+Sharper evidence this round: tpv29 gives the EXACT target (27.791 MPa
+shear, 181.504 MPa normal at `faultst000dp120`, dx=500); tpv30 gives
+33.051/181.960. Every input checked identical between the two cases
+(tensor to 1e-6 relative, gradients bit-identical/copied not recomputed,
+mesh morph exact to 5e-4m, spec's 93%-of-yield invariant, `str1ToFaultAngle`
+correct). Normal is right to 0.25%, shear off by exactly 1.18926 -- same
+masses/arn/un feed both, ruling out a scalar error, isolating the defect to
+`us` or the strike-projection of nodal forces specifically
+(`src/fortran/faulting.f90` ~89-97/117-127). Seven hypotheses already
+measured and rejected (sigma_xy/sigma_zx slot swap, element-depth effect,
+unnormalized `us`, recomputed gradients, the morph, the tensor, the angle).
+
+**Coordinator corrected the routing mid-thread**: this is `lars-eriksson`'s
+surface (bounded expression, known-correct target, sign/convention error to
+locate at file:line, no fix proposed by contract) not `dunyu-liu`'s
+(research-heavy new implementations with no reference). Dispatched
+`lars-eriksson` (agent `a76f4c9df9083a1f6`) with the full evidence chain and
+the explicit target ratio to explain (1.18926) -- read-only, no collision
+with the still-in-flight `dunyu-liu` mission (`a2d9003fa3ce1790f`, worktree
+confirmed still locked/alive), which I am letting run to completion rather
+than guess whether to cancel: if lars locates the real bug first, dunyu-liu's
+discrete-equilibrium-correction design becomes a workaround for a problem
+that has a direct fix instead, and I'll evaluate both reports against each
+other and against the target number when they return, not act on either
+alone.
+
+Corrected `README.md` a second time (still uncommitted, pending the
+release) and dispatched `zofia-kaminska` (agent `ad7523e125fe386e7`) for a
+third `pathway_forward.md` correction on the same thread -- "not a defect"
+retracted, "confirmed bug, ratio 1.18926, localization dispatched to
+lars-eriksson" is now the standing wording. Release gate (`br2ekcqll`)
+down to single-digit remaining cells, still green so far.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
