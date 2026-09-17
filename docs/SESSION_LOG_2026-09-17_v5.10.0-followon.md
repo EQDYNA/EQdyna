@@ -721,6 +721,47 @@ fix + item-33 requiet-box re-measure, in that order.** Switching to the
 release now; the dx=200 geometry bug and completing the convergence
 picture are queued right after.
 
+## Update: coordinator reversed the convergence call to CONFIRMED BUG (ran
+## the control themselves: tpv29 reads 27.791 at BOTH dx=500 and dx=200,
+## resolution-independent since it's the analytic value) -- asked for one
+## more localizing run at dx=200 for tpv30, "cheaper than the 500/200/100
+## sweep." Dispatched haruto for the release in parallel (not delayed).
+
+Retried tpv30 at dx=200 in a completely fresh directory (ruling out
+contamination from the earlier attempt): **identical failure, same numbers**
+(`case.setup`'s own `validateFaultRoughGeometry` rejects the freshly-written
+dx=200 surface, 2 of 202 boundary nodes over the derivative-consistency
+bound by 2.0x, worst at index (0,42), `|d - onesided(y)| = 1.7525e-03` vs
+bound `8.9320e-04`). Reproducible, not a fluke.
+
+**Then tried `test.tpv29` at dx=200 myself, to see whether I could reproduce
+the coordinator's own reported clean 27.79 MPa control run.** It FAILS
+identically -- same error text, same node count, same worst-index, same
+numbers, in this environment. I cannot get either case to build at dx=200
+right now, so I cannot produce the localizing data point as asked.
+
+**Not accusing the coordinator's number of being wrong -- reporting the
+discrepancy plainly and asking, rather than guessing why our environments
+disagree.** Possible explanations, not chosen between: a different override
+method that bypasses `ensureFaultRoughGeometryForCase`'s writer path
+entirely; a different git state; or a genuine intermittent/host-dependent
+element in the geometry-validation tolerance check. Either way, this dx=200
+geometry-decimation failure is itself real and reproducible in my hands for
+BOTH tpv29 and tpv30 -- independent of `C_elastic`, so on its own it neither
+confirms nor refutes the initial-stress finding, but it does mean the
+"cheaper single run" cannot be obtained here without first resolving (or
+working around) this separate validation bug.
+
+Not chasing the geometry bug further without direction -- it's already a
+second real, separate defect this session surfaced as a byproduct
+(alongside the drv.a6 inert-declaration trap), and digging into it now would
+be scope creep on top of an already-large thread. Surfacing it and holding.
+
+Haruto-nakamura (agent `a5be6c04216c5ef56`) dispatched for the minor release
+in parallel -- confirmed alive (worktree locked), his own `testsys/run.py
+all` gate likely explains the box load spike to 19-31 observed this pass;
+not competing with it further.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
