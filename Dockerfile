@@ -21,8 +21,20 @@ ENV DEBIAN_FRONTEND=noninteractive
 # every prior environment that ran it (this dev box, GitHub Actions'
 # ubuntu-22.04 runner) already had gfortran from something else, so a bare
 # ubuntu:22.04 base image is what finally exposed it.
+# NO --no-install-recommends. It was here, and it is what made this image
+# diverge from the very script this file exists to reproduce. `mpich` carries
+# the compiler wrappers but leaves mpif.h to a RECOMMENDED dev package, so the
+# flag silently removed it and the build died at
+#   errorCodes.f90:122: Error: Can't open included file 'mpif.h'
+# one layer after the gfortran fix -- the second missing-package failure in a
+# row from the same cause. install-eqdyna.sh:77-79 and test.yml both run a
+# plain `apt-get install` and both build fine; this file's whole job is to
+# reproduce install-eqdyna.sh -m ubuntu, so it must not use a STRICTER
+# dependency resolution than the path it is reproducing. Re-add the flag only
+# alongside an explicitly enumerated dev-package list, verified by a
+# `gh workflow run publish.yml` dispatch, as its own change.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y \
         git vim make mpich gfortran \
         libnetcdf-dev libnetcdff-dev \
         python3 python3-pip \
