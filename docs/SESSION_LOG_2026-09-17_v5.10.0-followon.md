@@ -825,6 +825,48 @@ in `src/fortran/eqdyna3d.f90` to match. Rebuilt clean, full gate
 (`python3 testsys/run.py all`) running now in the background before the
 release commit.
 
+## Update: coordinator fully explained the tpv30 mechanism -- NOT a bug,
+## a documented property of C_elastic=0. Corrected the release wording
+## before it shipped.
+
+Full explanation, verified by the owner via source read: `eqdyna3d.f90:153`
+initializes element stress to zero; `meshgen.f90:104` only fills it (via
+`setPlasticStress`) when `C_elastic==0`. So for elastic cases (tpv29), the
+FE reconstruction contributes ~0 and the fault sees the EXACT analytic
+projection (27.79 MPa, resolution-independent -- confirmed identical at
+dx=200 and dx=500). For plastic cases (tpv30), the elements already carry
+real stress, so the FE split-node reconstruction ALREADY supplies a fault
+traction (33.05 MPa at 500m) -- the analytic value is computed and
+correctly DISCARDED, because applying both would double-count
+(33.05+27.79=60.8, not physical). The `C_elastic` gate is correct by
+design. The ~19% gap is two representations of the same physical state
+(exact projection vs. FE reconstruction on a rough 500m mesh with 1.7km of
+relief) -- explains every observation six earlier hypotheses didn't: normal
+agrees to 0.25% (dominated by strVert, reconstructs cleanly), shear is off
+19% (purely deviatoric, exactly what roughness perturbs); tpv29 is
+resolution-independent, tpv30 isn't; the published 100m run (28.18 MPa) and
+this session's own fresh dx=100 measurement (28.05 MPa) both reconstruct
+closer because the mesh is finer. Fault MORPH also verified exact (max
+|y_mesh-y_file|=5.0e-04m across all 3321 nodes) -- geometry ruled out as an
+error source.
+
+**Corrected before shipping, not after:** edited `README.md`'s v5.11.0 news
+block myself (still uncommitted at that point) from "confirmed defect" to
+"documented property of C_elastic=0, not a bug -- natural fix is a finer
+gate resolution, not a code change." Dispatched `zofia-kaminska` (agent
+`a953ba2d6e0652ce5`) to correct the SAME characterization in
+`pathway_forward.md` (both the freshly-added v5.11.0 Tasks-done row and
+item 39/19(b)'s own row), fold in two new findings (dx=200 blocked for
+BOTH tpv29 and tpv30 identically -- not tpv30-specific, a legitimate
+resolution refused by a marginal edge-tolerance issue in
+`validateFaultRoughGeometry`; and a non-urgent design option for an EXACT
+tpv30 initial traction via `T_init = analytic - FE reconstruction`, owner's
+call, not landed), and explicitly preserve the drv.a6 inert-declaration
+finding unchanged (that one was never in doubt). Not yet returned.
+
+Release gate (`br2ekcqll`) still running in the background, now past
+regression into e2e.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
