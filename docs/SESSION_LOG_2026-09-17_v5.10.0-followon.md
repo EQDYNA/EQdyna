@@ -1090,6 +1090,33 @@ re-chasing the now-exonerated list (tensor, gradients, morph, arn/masses,
 un/us/ud, the strike-vector formula, the FE assembly algorithm itself).
 Both not yet returned.
 
+## Update: lars-eriksson's SECOND localization attempt also wrong -- caught
+## it myself again, with a cleaner argument this time
+
+He reported `replaceSlaveWithMasterNode` (`meshgen.f90:760-773`) as the
+defect: its condition checks element y-coordinate against `dy` (grid
+spacing) rather than the fault's own stored coordinate, allegedly causing
+near-fault elements to mis-route slave/master node references. Rejected,
+two independent reasons, neither requiring a re-run: (1) the check is
+CORRECT as written -- both tpv29 and tpv30 have their fault at nominal
+y=0 (`fltxyz(1,2,1)=fltxyz(2,2,1)=0`), so "one grid cell past the fault"
+sits exactly at `y=dy`; comparing against `dy` IS the right reference point
+for this geometry, not a hardcoded mistake. (2) Decisively: this routine
+has NO `C_elastic` dependency anywhere in it -- it runs identically
+regardless of rheology. Since tpv29 (`C_elastic=1`) is confirmed correct
+and traverses this exact same code with the exact same geometry, any defect
+here would already show up in tpv29 too, and it doesn't. Also independently
+corroborated by the coordinator's own measurement already on record:
+`massSlave`/`massMaster` bit-identical (0.000e+00 rel. diff) between tpv29
+and tpv30 across all 1921 common fault nodes -- if this routine
+mis-assigned node references differently between the two cases, that would
+show up as a mass difference, and it doesn't. Not relayed. Root cause
+remains unlocated -- four plausible mechanisms have now failed against
+direct measurement (strike-vector formula, FE-assembly algorithm, the
+architectural method choice, and this). CI on the release commit
+(`b63b959`) still in progress; `dunyu-liu`'s retracted Method-1 mission
+(`a746fa7807cf3485e`) still in flight, will not be landed when it returns.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
