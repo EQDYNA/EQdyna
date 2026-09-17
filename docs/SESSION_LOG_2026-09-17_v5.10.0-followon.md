@@ -479,6 +479,36 @@ anything from this mission until that completes green. In progress: 3 of 9
 done so far (`meng2023a`, `drv.a6`, `tpv29`), all SUCCESS against their
 existing bounds with the fixed affinity code in place.
 
+## Update: item 33 landed (`d70811d`), all 9 remaining numpy cells green
+
+`bdqqn40em` finished: all 9 SUCCESS against their existing frozen references
+and bounds, unmoved (`drv.a6` flip-budget 423/450, `tpv29` 9.876230e-15 vs
+1e-10, `tpv36`/`tpv37` 7.9e-09/6.9e-09 vs 1e-6, others similarly clean) --
+combined with her own `tpv8` check and jax/fortran being provably
+unreachable by a change gated on `backend=='numpy'`, this is full coverage.
+One more diff/syntax/staleness pass against current master (`d51a2a4`,
+zero commits had touched the changed files since her branch point) plus a
+fresh `unit regression` before landing.
+
+**Commit-message corruption caught and fixed before it shipped:** the first
+commit attempt (`9fd2cd8`) had several backtick-quoted code fragments (`` `mpirun --bind-to` ``,
+`` `import numpy` ``, `` `ordered[os.getpid() % len(ordered)]` ``) silently
+eaten by tcsh's backtick command-substitution when embedded in a shell
+heredoc -- this repo's shell is tcsh, not bash, and backticks are NOT inert
+there the way they are in a bash single-quoted heredoc. The commit itself
+landed fine (code diff unaffected, message only), but left visible blank
+gaps and stray `mpirun`/`import-im6` error noise in the terminal. Rewrote
+the message to a file and used `git commit --amend -F <file>` instead of
+embedding it inline -- avoids the shell entirely. Re-verified the amended
+message contains all three previously-eaten fragments before
+cherry-picking. Landed as `d70811d`, worktree reaped clean (nothing
+uncommitted, content matched master byte-for-byte before removal).
+
+**Lesson for the rest of this campaign:** never embed a commit message with
+backticked code spans directly in a `git commit -m "..."` shell argument on
+this box -- write it to a file and use `-F`, every time, regardless of how
+short the message looks.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
