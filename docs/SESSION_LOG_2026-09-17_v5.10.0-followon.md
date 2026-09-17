@@ -416,6 +416,67 @@ failure modes (HLO literals, jit-inside-a-loop recompilation) first, keeping
 all three backends green at CURRENT bounds throughout (optimization, not a
 physics change). Not yet returned.
 
+## Update: Mira's item 33 mission returned; a real regression caught by
+## gate-axis-3 review before it could land
+
+She delivered honestly and disclosed her own gaps rather than overclaiming:
+`run_scaling.py` rewritten (PY_THREADS to 32, numactl replacing taskset --
+including a genuinely new numactl-rankfile mechanism for the Fortran/MPI
+path since a bare `mpirun --bind-to` can be reissued past an outer numactl
+restriction by OpenMPI's own hwloc binder -- smoke-tested, not just written),
+compact/spread placement, per-cpu busy-check reused (not reimplemented) from
+`run_numa_scaling.py`. Measured (disclosed as taken with `--busy-ceiling 0.9`
+override, not the tool's strict 0.2 default, since the box was never
+idle): jax gains a real, if modest, 2.35x at 32 cores (cross-checked against
+this session's own earlier clean 1-4 core numbers); numpy anti-scales,
+mechanism verified by direct microbenchmark (OpenBLAS reads thread count at
+`import numpy` time only, confirmed by testing env-var-after-import vs
+numactl-pinned-before-start) rather than asserted. jax HLO dumped and read
+directly: one `fori_loop`, 1717 fusion + 556 scatter ops on arrays up to
+`f64[3818584]` -- real structural parallelism exists, ruling out
+"nothing to parallelize" as the explanation for the plateau past 8 cores.
+Both known project failure modes (HLO literals, jit-in-a-loop) checked
+against the actual code and ruled out, not assumed. Fix landed:
+`_narrow_numpy_affinity()` in `eqdyna3d.py`, pins the numpy backend to a
+single cpu (bounds the NUMA-migration worst case; does not claim to make
+numpy scale, since nothing can with its current single-threaded kernels --
+correctly scoped, a real kernel rewrite is out of scope here). New unit
+test added. She explicitly flagged that only 1 of 10 numpy cells (tpv8) was
+re-verified against its frozen reference before she had to kill her own
+`testsys/run.py all` run under this session's box contention (10 concurrent
+numpy cells at ~10% cpu each), and recommended completing verification
+before landing rather than claiming it done.
+
+**Gate-axis-3 review (wei-lin) caught a real defect her own testing didn't
+reach: concurrent numpy cells collide on ONE cpu.** `min(current)` always
+picks the SAME lowest-numbered cpu for every process. Verified directly,
+not inferred: launched two `python3 -m eqdyna` processes concurrently,
+read `/proc/<pid>/status`'s `Cpus_allowed_list` for both -- both `0`. This
+exactly explains the ~10%-cpu-each pileup observed during her own 10-cell
+parallel sweep, and would have silently made every future concurrent local
+sweep (`run_e2e.py --jobs N>1`, this project's own wider gate) serialize
+onto one physical core while dozens sit idle -- a real throughput
+regression to this project's own verification workflow, not caught by her
+brief (which asked her to test the scaling-tool's sequential use case, not
+concurrent sweep invocation) or by her one single-cell correctness check
+(which doesn't exercise concurrency at all). Fixed directly (small, bounded,
+well-diagnosed -- judged not worth a second full dispatch round-trip):
+`ordered[os.getpid() % len(ordered)]` instead of `min(current)`, still
+narrows to exactly one cpu (NUMA-migration fix unchanged) but different
+processes now land on different cpus. Re-verified both ways: her own unit
+test rewritten (the old one asserted "always narrows to lowest", which
+would have been PID-order-dependent and occasionally wrong under the
+corrected behavior -- replaced with a PID-aware assertion plus a new test
+simulating two different-parity pids), and the real concurrent-process
+check repeated post-fix: two processes now land on cpus 25 and 27, not both
+0. All 5 unit tests pass.
+
+Now running (background, `bdqqn40em`) the actual gate: the 9 numpy cells
+her mission didn't re-verify (`drv.a6, tpv10, tpv104, tpv1053d, meng2023a,
+meng2023cb, tpv29, tpv36, tpv37`) against their frozen references, `--jobs
+8` (safe now that concurrent cells no longer collide). Not landing
+anything from this mission until that completes green.
+
 **Item 33 mandate escalated again:** not a curve to report -- an
 optimization to land. Owner: "if not, go optimize it" / "at least, jax
 should scale really well." jax's measured 1.44x (1 core to unrestricted) is
