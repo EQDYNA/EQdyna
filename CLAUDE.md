@@ -37,12 +37,12 @@ changed and why. The port exists so a fix can be verified twice.
 ./install-eqdyna.sh -m ubuntu        # ubuntu/ls6/macos; builds src/fortran, installs bin/eqdyna
 export EQDYNAROOT=$(pwd); PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 
-python3 testsys/run.py all           # unit + regression + the sweep (24 cells, ~1100 s)
+python3 testsys/run.py all           # unit + regression + the sweep (27 cells, ~1440 s)
 python3 testsys/run.py unit regression       # seconds — run this constantly
 python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran   # one cell
 ```
 
-CI covers the same 10 of 24 cells as `unit regression e2e-ci` (the rest do not
+CI covers the same 11 of 27 cells as `unit regression e2e-ci` (the rest do not
 fit a 7 GB runner) but as of 2026-09-16 runs it split across parallel jobs —
 `build`, `unit-regression`, `e2e-ci-fortran-a`/`-b`, `e2e-ci-python` — not one
 invocation; see `.github/workflows/test.yml` for the exact per-job commands.
