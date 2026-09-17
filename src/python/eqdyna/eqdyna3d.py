@@ -96,6 +96,72 @@ SUPPORTED_FRICLAW = (1, 2, 3, 4, 5)
 
 DEFAULT_BACKEND = 'jax'
 
+_NUMPY_WIDE_AFFINITY_ENV = 'EQDYNA_NUMPY_ALLOW_WIDE_AFFINITY'
+
+
+def _narrow_numpy_affinity():
+    """numpy's hot kernels (calcHourglassResist/assembleGlobalKU's elementwise
+    ops, np.add.at scatter-adds -- 85%+ of a step by the pathway item 40/
+    testsys/perf profile) run on ONE thread regardless of core count: OpenBLAS
+    threading only engages BLAS-dispatched calls (matmul/dot), which is a
+    small fraction of this port's per-step cost. MEASURED on this box
+    (testsys/perf/run_scaling.py, test.tpv104, numactl-pinned, per-step by
+    difference): 1 cpu 9443 ms/step, 2 cpus (same NUMA node) 9872 ms/step,
+    4 cpus (same node) 8900 ms/step -- flat within noise, no speedup from
+    extra cores. 16 cpus SPANNING TWO NUMA NODES: 19055 ms/step, ~2x WORSE.
+    Mechanism: a single-threaded process given an affinity mask wider than
+    one NUMA node can be migrated by the OS scheduler between cpus on
+    DIFFERENT nodes over the run, stranding its memory on whichever node it
+    happened to first-touch -- a real regression, not noise (see
+    testsys/perf/run_scaling.py's docstring for the full measurement).
+
+    So there is no configuration that makes more cores help the numpy
+    backend, and a wide/unpinned affinity mask (e.g. a caller's plain
+    `python3 -m eqdyna` with no taskset/numactl at all, which sees every cpu
+    on the box) can make it WORSE by construction. This narrows the numpy
+    backend to exactly the FIRST cpu in whatever affinity mask it was given
+    -- never wider than the caller's own choice, just never spanning more
+    than it can use.
+
+    Does nothing for jax (which does show real, if limited, benefit from
+    extra cores -- see the same script's `python-jax` rows) and does nothing
+    where `os.sched_getaffinity` does not exist (macOS has no such syscall;
+    this is an optimisation, not a correctness check, so absence of the API
+    is a silent no-op here by design, not a rule-2 violation).
+
+    `EQDYNA_NUMPY_ALLOW_WIDE_AFFINITY=1` disables this, for anyone
+    deliberately re-measuring raw multi-core numpy behaviour (e.g. this
+    tool's own scaling curve, after a future kernel rewrite that might
+    finally give numpy something to parallelise).
+
+    CORRECTION (wei-lin, gate-axis-3 review, before this landed): the first
+    version of this always chose `min(current)` -- the SAME lowest-numbered
+    cpu for every process. Verified directly (two `python3 -m eqdyna`
+    invocations launched concurrently, `/proc/<pid>/status`'s
+    `Cpus_allowed_list`): both narrowed to cpu 0 exactly. That is fine for
+    ONE process at a time (this function's original, tested use case, and
+    still true for it), but `testsys/e2e/run_e2e.py --jobs N`'s own
+    concurrent-cell sweep (this repo's wider LOCAL gate, `run.py all`) then
+    forces every simultaneous numpy cell onto the identical physical core
+    while 63 others sit idle -- reproduced directly: two concurrent
+    tpv8-scale cells both measured `Cpus_allowed_list: 0`. Picking a cpu
+    DETERMINISTICALLY BY PID from within the given mask instead keeps the
+    single-process behaviour (still narrows to exactly one cpu, so the
+    NUMA-migration fix above is unchanged) while spreading concurrent
+    processes across different cpus without any inter-process coordination.
+    """
+    if os.environ.get(_NUMPY_WIDE_AFFINITY_ENV) == '1':
+        return
+    getter = getattr(os, 'sched_getaffinity', None)
+    setter = getattr(os, 'sched_setaffinity', None)
+    if getter is None or setter is None:
+        return
+    current = getter(0)
+    if len(current) > 1:
+        ordered = sorted(current)
+        chosen = ordered[os.getpid() % len(ordered)]
+        setter(0, {chosen})
+
 
 def _resolve_solver(friclaw, backend):
     """Returns the run()-providing module for `friclaw` under `backend`.
@@ -382,6 +448,8 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     `profile` is an optional Profile; when given, each phase is timed
     separately so setup, solve and output cannot be confused for one another.
     """
+    if backend == 'numpy':
+        _narrow_numpy_affinity()
     prof = profile if profile is not None else Profile(backend)
     with prof.phase('setup (mesh+input)'):
         S, mesh = build_solver_state(case_dir)
