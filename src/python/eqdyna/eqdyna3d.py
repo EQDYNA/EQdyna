@@ -18,11 +18,17 @@ C_degen>3 (dipping, wedge-degeneration -- meshgen.py's build_elements/
 build_fault_geometry port library_degeneration.f90's wedge()/reorder(); see
 those functions' docstrings and testsys/parity/evidence_c_degen_port.py).
 C_degen>3's MESH is fully ported and verified against Fortran on
-test.tpv36; its DYNAMICS are refused whenever the mesh actually contains a
-wedge element (elemTypeArr 11/12), because assembleGlobalMass.py does not
-port calcGlobalShapeFunc.f90's degeneration branch those elements need (see
-the raise right before compute_element_shape below) -- a known, documented
-gap, not a silent one. friclaw 1-5 are all implemented.
+test.tpv36. Its DYNAMICS are ALSO ported: assembleGlobalMass.py's
+compute_element_shape/assemble_mass apply calcGlobalShapeFunc.f90:22-28's
+elemTypeArr==11/12 shape-function merge, and assembleGlobalKU.py's element
+dispatch routes elemType>10 through the interior kernel
+(assembleGlobalKU.f90:25) -- see both modules' docstrings for what changed
+and why compute_hourglass/calcElemKU/calcHourglassResist/calcElemMass
+needed no changes of their own. Verified directly against Fortran (not
+end-to-end self-consistency alone) by testsys/parity/evidence_wedge_kernel.py
+on synthetic hex/wedge/shallow-dip element geometries; see that script's
+docstring for the exact tolerance and what was checked. friclaw 1-5 are all
+implemented.
 
 S-dict provenance, field by field:
   N, E, NEQ, nen, ned            -- meshgen.py M1-M3 (nen=8, ned=3 are the
@@ -203,35 +209,34 @@ def build_solver_state(case_dir):
     # calcGlobalShapeFunc.f90:22-28 (called unconditionally, for EVERY
     # element, from assembleGlobalMass.f90:35) special-cases elemTypeArr
     # 11/12 by merging shape-function rows 3+4 and 7+8 (Hughes p.125's
-    # standard hex-to-wedge collapse fix-up) -- assembleGlobalMass.py's
-    # compute_element_shape/compute_hourglass/contm do NOT implement this
-    # branch (confirmed by reading both files directly, not assumed; see
-    # assembleGlobalMass.py's own module docstring, written before this
-    # port existed to say exactly that). Running them on a wedge element
-    # (type 11/12; type 13 is a plain, non-degenerate brick and is NOT
-    # affected) would silently compute the wrong Jacobian/mass/hourglass
-    # tensor for it -- refused here rather than shipped as a quietly-wrong
-    # dynamics run. meshgen.py's elemTypeArr/connectivity/material split
-    # itself IS verified (testsys/parity/evidence_c_degen_port.py); only
-    # the downstream FEM-kernel degeneration branch is the open gap.
-    if np.any((elem_type == 11) | (elem_type == 12)):
-        raise NotImplementedError(
-            'build_solver_state: %d wedge-degenerate element(s) (elemTypeArr '
-            '11/12) present (C_degen=%r) -- assembleGlobalMass.py\'s '
-            'compute_element_shape/compute_hourglass/contm do not port '
-            'calcGlobalShapeFunc.f90\'s elemTypeArr==11/12 shape-function-'
-            'merge branch, so the mass/stiffness kernel would be silently '
-            'wrong for these elements. The MESH (elemTypeArr/connectivity/'
-            'material) is correctly ported and verified independently -- '
-            'see testsys/parity/evidence_c_degen_port.py; only the dynamics '
-            'kernel is out of scope here.'
-            % (int(np.sum((elem_type == 11) | (elem_type == 12))), params['C_degen']))
+    # standard hex-to-wedge collapse fix-up). PORTED: assembleGlobalMass.py's
+    # compute_element_shape now takes `elem_type` and applies this merge to
+    # the derivative rows before the Jacobian is built (exactly where the
+    # Fortran applies it); `assemble_mass` takes `elem_type` too, for the
+    # SEPARATE row-4 (shape-function VALUE) merge contm consumes
+    # (`_contm_wedge_node_mass`). `compute_hourglass` needed no change: it
+    # only consumes compute_element_shape's `eleshp`/`xs` output and has no
+    # elemTypeArr branch of its own in the Fortran either (confirmed by
+    # reading assembleGlobalMass.f90:330-377 directly).
+    # assembleGlobalKU.py's element dispatch (`E_int`) was ALSO fixed to
+    # route elemType>10 through the interior kernel, matching
+    # assembleGlobalKU.f90:25's `elemTypeArr(nel)==1 .or. elemTypeArr(nel)>10`
+    # -- without that fix wedge elements would silently contribute zero
+    # interior force while still contributing mass/hourglass, a second,
+    # independent gap found by reading the full call chain, not just the
+    # mass-lumping formula the original refusal here named.
+    # Verified directly against Fortran (real Fortran subroutine calls, not
+    # a re-implementation) by testsys/parity/evidence_wedge_kernel.py, on a
+    # non-degenerate hex (regression guard), a degenerate wedge, and a
+    # 15-degree shallow-dip wedge (tpv36's par.dip) -- see that script's
+    # docstring for the exact tolerance and what was/was not checked.
 
     xl = meshCoor[conn]
-    det, eleshp3, xs = assembleGlobalMass.compute_element_shape(xl)
+    det, eleshp3, xs = assembleGlobalMass.compute_element_shape(xl, elem_type)
     ss, phi48 = assembleGlobalMass.compute_hourglass(xl, xs, mat, eleshp3)
     nodalMassArr, fnms = assembleGlobalMass.assemble_mass(
-        conn, mat, det, num_dof, eq_start, eq_nums, total_eqs, meshCoor.shape[0] - 1)
+        conn, mat, det, elem_type, num_dof, eq_start, eq_nums, total_eqs,
+        meshCoor.shape[0] - 1)
     v1 = assembleGlobalMass.init_vel(nsmp, eq_nums, fric, total_eqs)
 
     N = meshCoor.shape[0] - 1  # drop the unused row-0
