@@ -509,6 +509,50 @@ backticked code spans directly in a `git commit -m "..."` shell argument on
 this box -- write it to a file and use `-F`, every time, regardless of how
 short the message looks.
 
+## Update: coordinator found a real spec-level bug candidate in TPV30 --
+## separate from the port divergence, dispatched to dunyu-liu
+
+Coordinator fetched `scratch/specs/TPV29_30_Description_v06.pdf` directly
+(rule 17 step 1 had never actually been done for tpv30 -- an omission this
+whole campaign's tpv30 work carried without anyone catching it until now)
+and audited the initial-stress setup line by line. Spec states twice
+(lines 28, 424) "the material properties are the only difference between
+the two benchmarks" -- same stress tensor, same b-coefficients, same
+friction/nucleation. Parameters (Tv, taper, cohesion, bulk friction,
+deviatoric ratio, the spec's own 93%-of-yield check) all independently
+verified correct. But on-fault initial shear at station
+`faultst000dp120` disagrees: our tpv30 measures ~18% HIGH at t=0 (33.05 MPa)
+vs both our own tpv29 (27.79 MPa, dx=200) AND the published SCEC v3.1 tpv30
+(28.18 MPa, 100m) -- which agree with EACH OTHER. Our tpv30 then visibly
+relaxes down to ~28.75 MPa over 2s, consistent with starting ABOVE yield
+(spec sets initial state at 93% of yield; an 18% overshoot exceeds it) --
+reframing the earlier-documented "relaxation" as a SYMPTOM of a wrong
+initial condition, not a resolution artifact. Mechanism candidate (not
+established): `par.C_elastic` selects two different on-fault initial-stress
+code paths (tpv29 never calls `setPlasticStress`; tpv30 does,
+`meshgen.f90:104` region) and the spec requires them to produce an
+IDENTICAL tensor.
+
+This directly means, if confirmed: my `d51a2a4` revert was right for a
+stronger reason than known at the time (not just "an unexplained
+divergence" but a located, spec-verifiable bug candidate), and
+`test.drv.a6` (also `C_elastic=0`, currently GATED and SHIPPED) may share
+the same code path -- a much bigger finding than tpv30 alone if so.
+
+Dispatched `dunyu-liu` for the controlled experiment (both cases at their
+own dx=500 fast-gate resolution, diff the SAME station's t=0 column,
+removing the dx=200-vs-100m confound from the coordinator's own
+comparison), then code-path localization, then the drv.a6 blast-radius
+check -- explicitly barred from fixing this by loosening a bound or
+regenerating any reference.
+
+**Rate-limit note, recording per this campaign's own standing lesson:**
+first dispatch attempt hit a Fable-5 session-level 429 before even creating
+a worktree (nothing to reap). Re-dispatched the identical mission with
+`model: "sonnet"` override, matching this repo's own prior precedent
+(commit `3677581`'s author note) for the same failure mode. Not yet
+returned.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
