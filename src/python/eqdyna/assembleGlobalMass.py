@@ -29,30 +29,15 @@ particular:
     note) -- `globalShapeFunc == localShapeFunc` going into the Jacobian
     for every element, exactly Fortran's own unconditional
     `globalShapeFunc = localShapeFunc` copy for this case.
-    UPDATED (C_degen>3 dynamics port): `compute_element_shape` now takes
-    `elem_type` and applies calcGlobalShapeFunc.f90:22-28's elemTypeArr
-    11/12 merge (local nodes 3<-3+4, 4->0; 7<-7+8, 8->0) to the LOCAL
-    derivative rows before the Jacobian is built, exactly where the
-    Fortran applies it (before `xs` is computed) -- so `eleshp`/`xs`/`det`
-    are correct for wedge elements too. `contm`'s row-4 (shape-function
-    VALUE, not derivative) merge is a SEPARATE branch -- see
-    `_contm_wedge_node_mass` below; the closed form `contm()` uses for
-    non-wedge elements does not generalize (the per-node value is no
-    longer uniform), so wedge elements get their own literal 8-term
-    accumulation, order-matched to contm's Fortran loop.
-    `compute_hourglass` needed NO changes: calcSSPhi4Hrgls (Fortran) takes
-    `xs`/`globalShapeFunc` as arguments and never re-derives them or
-    inspects elemTypeArr itself (confirmed by reading
-    assembleGlobalMass.f90:330-377 directly) -- once its inputs are
-    correct, its output is automatically correct. Likewise `vlm`
-    (func_lib.f90, `compute_element_volume`) is a pure function of nodal
-    coordinates `xl` with no elemTypeArr branch; a wedge element's
-    coincident node pair (3==4, 7==8) makes the general hex-volume formula
-    reduce to the wedge volume geometrically, so no port change was
-    needed there either. Verified directly against Fortran (not assumed)
-    by testsys/parity/evidence_wedge_kernel.py, on a non-degenerate hex
-    (regression guard), a degenerate wedge, and a 15-degree shallow-dip
-    wedge (tpv36's par.dip).
+    STILL TRUE as of the C_degen>3 (tpv36/tpv37) mesh port (meshgen.py's
+    build_elements/library_degeneration.f90 wedge()/reorder()): this
+    module's `compute_element_shape`/`compute_hourglass`/`contm` were NOT
+    extended with calcGlobalShapeFunc.f90:22-28's elemTypeArr==11/12
+    shape-function-merge branch -- left explicitly REFUSING, not silently
+    wrong: eqdyna3d.py's `build_solver_state` raises NotImplementedError
+    before calling into this module whenever the mesh contains any
+    elemTypeArr 11/12 element, rather than feeding them through this
+    module's generic (non-degenerate) formulas.
 
 Verified against `testsys/parity/fixtures/test_tpv8_serial/
 pydump_nodalmass.txt` / `pydump_fnms.txt` via
@@ -105,26 +90,6 @@ _ACOOR = np.array([
 _LOCAL_DERIV = _CST * _ACOOR  # (3,8): localShapeFunc(1:3,:)
 _W = 8.0  # calcLocalShapeFunc's `w = 8.0d0`, the 1-point Gaussian weight
 
-# calcGlobalShapeFunc.f90:22-28's Hughes-p.125 hex->wedge degeneration,
-# applied to the LOCAL derivative rows (localShapeFunc(1:3,:), i.e.
-# _LOCAL_DERIV) for elemTypeArr 11/12: local node 4's row folds into node
-# 3's, local node 8's folds into node 7's, both duplicates zeroed. This is
-# a REFERENCE-ELEMENT constant -- it depends only on which of the two
-# elemType branches an element takes, never on that element's geometry --
-# so, like _LOCAL_DERIV itself, it is computed once here rather than
-# per-element.
-_LOCAL_DERIV_WEDGE = _LOCAL_DERIV.copy()
-_LOCAL_DERIV_WEDGE[:, 2] = _LOCAL_DERIV[:, 2] + _LOCAL_DERIV[:, 3]
-_LOCAL_DERIV_WEDGE[:, 3] = 0.0
-_LOCAL_DERIV_WEDGE[:, 6] = _LOCAL_DERIV[:, 6] + _LOCAL_DERIV[:, 7]
-_LOCAL_DERIV_WEDGE[:, 7] = 0.0
-
-# The SAME calcGlobalShapeFunc.f90:22-28 merge, applied instead to the
-# row-4 shape-function VALUE (localShapeFunc(4,:) == _CST for every node,
-# unconditionally -- calcLocalShapeFunc.f90:21) -- this is what contm's
-# `globalShapeFunc(nrowsh,j)` actually reads; see `_contm_wedge_node_mass`.
-_WEDGE_VAL = np.array([_CST, _CST, _CST + _CST, 0.0, _CST, _CST, _CST + _CST, 0.0])
-
 
 def compute_element_det(xl):
     """Port of calcGlobalShapeFunc's Jacobian-determinant computation
@@ -154,10 +119,8 @@ def compute_element_det(xl):
 
 
 def contm(det, constm):
-    """Port of contm's lumped-mass formula for elemType NOT IN {11,12}
-    (interior/PML/type-13 -- single reduced-Gauss-point, homogeneous
-    8-node brick; type 13 is a plain non-degenerate brick, per meshgen.py's
-    own docstring, so it takes this same closed form).
+    """Port of contm's lumped-mass formula (C_degen==0, single reduced-
+    Gauss-point, homogeneous 8-node brick).
 
     Closed form, not a re-implementation of Fortran's 8-way accumulation
     loop: contm's per-node shape-function VALUE (row 4 of globalShapeFunc)
@@ -172,60 +135,17 @@ def contm(det, constm):
     the same tolerance every other milestone in this port uses for
     multi-element-accumulated quantities.
 
-    For elemType 11/12 (wedge), calcGlobalShapeFunc.f90:22-28 merges the
-    row-4 VALUE too (not just the derivative rows compute_element_shape
-    handles), so the per-node value is no longer uniform and this closed
-    form does not apply -- see `_contm_wedge_node_mass`.
-
     Returns m_e: (E,) float array, the (identical-for-x/y/z, identical-
     for-all-8-nodes) per-element-per-node lumped mass contribution.
     """
     return constm * det
 
 
-def _contm_wedge_node_mass(det, constm):
-    """contm's lumped-mass formula for elemType 11/12 (wedge), where the
-    row-4 shape-function VALUE calcGlobalShapeFunc.f90:22-28 feeds it is
-    `_WEDGE_VAL` (1/8, 1/8, 1/4, 0, 1/8, 1/8, 1/4, 0), not uniform 1/8 --
-    so, unlike `contm` above, the per-node lumped mass is NOT the same for
-    all 8 nodes and this cannot collapse to a scalar-per-element closed
-    form. A literal, order-preserving port of contm's own j=1..nen loop
-    instead (8 terms, sequential accumulation -- the same convention
-    `assemble_mass`'s own fnms column-sum already uses, for the same
-    reason: no reduction op that could reassociate the sum).
-
-    det, constm: (E,) for the WEDGE-ELEMENT SUBSET ONLY -- the caller
-    slices to elemType in {11,12} before calling this.
-
-    Returns node_mass: (E,8), Fortran's elmass(3*(j-1)+1..3) collapsed to
-    one value per node j (identical across the 3 dof components, exactly
-    as contm's own `elmass(n+k)=temp2` loop produces).
-
-    Verified directly against Fortran's contm() by
-    testsys/parity/evidence_wedge_kernel.py.
-    """
-    totmas = constm * _W * det
-    dsum = np.zeros_like(totmas)
-    work = np.zeros((totmas.shape[0], 8))
-    for j in range(8):
-        temp2 = totmas * _WEDGE_VAL[j] ** 2
-        dsum = dsum + temp2
-        work[:, j] = temp2
-    temp1 = totmas / dsum
-    return temp1[:, None] * work
-
-
-def assemble_mass(conn, mat, det, elem_type, num_dof, eq_start, eq_nums, n_equations, n_nodes):
+def assemble_mass(conn, mat, det, num_dof, eq_start, eq_nums, n_equations, n_nodes):
     """Port of assembleElementMassDetShg's nodalMassArr/fnms scatter
     (mass-only slice -- eledet/eleshp writes are out of scope, see module
     docstring), in the verbatim element-major/local-node-minor accumulation
     ORDER of the Fortran (and of this function's original scalar loop).
-
-    elem_type: (E,) int elemTypeArr -- wedge elements (11/12) get their
-    per-node mass from `_contm_wedge_node_mass` instead of `contm`'s
-    uniform closed form (see that function's docstring); every other
-    elemType is bit-identical to before this parameter was added, since
-    those rows of `node_mass` are still exactly `contm(det, constm)`.
 
     PERFORMANCE NOTE (order-preserving vectorization, replacing the original
     triple scalar loop -- the scalar version is kept below as
@@ -245,12 +165,9 @@ def assemble_mass(conn, mat, det, elem_type, num_dof, eq_start, eq_nums, n_equat
          whole-column adds. Column j adds exactly the j-th contribution of
          every node, so each node sees the identical left-to-right addition
          chain the scalar loop performs; the tail padding contributes
-         `x + 0.0`, which is exact in IEEE-754 for every finite x this
-         function can produce (`constm` and `det` are both > 0, det
-         checked by compute_element_shape, so contributions are >= 0 --
-         wedge elements' local nodes 4/8 contribute exactly 0.0 via
-         `_contm_wedge_node_mass`, itself an `x + 0.0`-exact case, not a
-         violation of this argument).
+         `x + 0.0`, which is exact in IEEE-754 for every x this function
+         can produce (all contributions are strictly positive -- `constm`
+         and `det` are both > 0, det checked by compute_element_det).
       3. `nodalMassArr` is then NOT accumulated separately: the scalar loop
          adds the SAME value, in the SAME order, to every positive equation
          slot of a node as it adds to `fnms[node]`, so
@@ -285,10 +202,6 @@ def assemble_mass(conn, mat, det, elem_type, num_dof, eq_start, eq_nums, n_equat
     sizes (n_equations+1,) and (n_nodes+1,).
     """
     m_e = contm(det, mat[:, 2])
-    node_mass = np.repeat(m_e[:, None], 8, axis=1)  # (E,8), uniform default
-    wedge_mask = (elem_type == 11) | (elem_type == 12)
-    if np.any(wedge_mask):
-        node_mass[wedge_mask] = _contm_wedge_node_mass(det[wedge_mask], mat[wedge_mask, 2])
 
     # (1) one contribution per (element, local node), in the scalar loop's
     # own visit order: flat index p = e*8 + k.
@@ -297,7 +210,7 @@ def assemble_mass(conn, mat, det, elem_type, num_dof, eq_start, eq_nums, n_equat
         raise ValueError('assemble_mass: conn references node id(s) outside '
                           '1..%d (min=%d, max=%d)'
                           % (n_nodes, int(flat.min()), int(flat.max())))
-    vals = node_mass.ravel()  # (E,8) C-order == conn's own (E,8) row-major flatten
+    vals = np.repeat(m_e, 8)
 
     # (2) stable bucket-by-node, then dense (node, occurrence) layout.
     order = np.argsort(flat, kind='stable')
@@ -331,51 +244,22 @@ def assemble_mass(conn, mat, det, elem_type, num_dof, eq_start, eq_nums, n_equat
     return nodalMassArr, fnms
 
 
-def _contm_scalar(det_e, constm_e, val):
-    """A literal, SINGLE-ELEMENT port of contm's Fortran loop (j=1..nen),
-    parameterized by the row-4 shape-function VALUE array `val` (length 8)
-    -- `[_CST]*8` for elemType not in {11,12}, `_WEDGE_VAL` for elemType
-    11/12. This is the scalar oracle both `contm`'s closed form and
-    `_contm_wedge_node_mass`'s vectorization are checked against (see
-    `_assemble_mass_scalar`, this module's own oracle for `assemble_mass`).
-
-    Returns a list of 8 floats, node_mass[0..7].
-    """
-    totmas = constm_e * _W * det_e
-    dsum = 0.0
-    work = [0.0] * 8
-    for j in range(8):
-        temp2 = totmas * val[j] ** 2
-        dsum += temp2
-        work[j] = temp2
-    temp1 = totmas / dsum
-    return [temp1 * work[j] for j in range(8)]
-
-
-_NON_WEDGE_VAL = [_CST] * 8
-
-
-def _assemble_mass_scalar(conn, mat, det, elem_type, num_dof, eq_start, eq_nums,
-                           n_equations, n_nodes):
+def _assemble_mass_scalar(conn, mat, det, num_dof, eq_start, eq_nums, n_equations, n_nodes):
     """The original verbatim scalar port of assembleElementMassDetShg's
     scatter, kept as the bit-for-bit ORACLE for `assemble_mass`'s
     order-preserving vectorization (see that function's docstring). Not
     used on any production path -- `testsys/unit/test_assembleGlobalMass_vectorized.py`
-    asserts byte-equality of the two on a real mesh, including a
-    synthetic wedge-element mix (`_contm_scalar` is the shared oracle both
-    sides' wedge formula is checked against, per-node, per-element).
+    asserts byte-equality of the two on a real mesh.
     """
     E = conn.shape[0]
+    m_e = contm(det, mat[:, 2])
     nodalMassArr = np.zeros(n_equations + 1)
     fnms = np.zeros(n_nodes + 1)
 
     for e in range(E):
-        is_wedge = elem_type[e] == 11 or elem_type[e] == 12
-        val = _WEDGE_VAL if is_wedge else _NON_WEDGE_VAL
-        node_m = _contm_scalar(det[e], mat[e, 2], val)
+        me_val = m_e[e]
         for k in range(8):
             nodeID = int(conn[e, k])
-            me_val = node_m[k]
             for eq in eq_nums[nodeID]:
                 if eq > 0:
                     nodalMassArr[eq] += me_val
@@ -384,50 +268,31 @@ def _assemble_mass_scalar(conn, mat, det, elem_type, num_dof, eq_start, eq_nums,
     return nodalMassArr, fnms
 
 
-def compute_element_shape(xl, elem_type):
-    """Port of calcGlobalShapeFunc's FULL output, for interior/PML elements
-    (elemType 1/2) AND wedge-degenerate elements (elemType 11/12,
-    calcGlobalShapeFunc.f90:22-28's Hughes-p.125 hex->wedge fix-up).
+def compute_element_shape(xl):
+    """Milestone 7.5: port of calcGlobalShapeFunc's FULL output (C_degen==0,
+    no wedge-degeneration branch -- see module docstring), for both interior
+    and PML elements (both take the identical code path in this scope).
 
     xl: (E,8,3) physical coordinates of each element's 8 corner nodes, in
     Fortran nodeElemIdRelation column order (conn from build_elements) --
     same convention as compute_element_det.
-    elem_type: (E,) int elemTypeArr. Only the value 11 or 12 changes
-    anything here (elemType 13, a plain non-degenerate brick per
-    meshgen.py's own docstring, takes the SAME code path as 1/2).
 
     Returns (det, eleshp, xs):
       det: (E,) Jacobian determinant (bit-identical to compute_element_det's
-        return for non-wedge elements -- same formula, kept as a separate
-        function per that function's own docstring/scope, not recomputed
-        differently here; wedge elements use the merged derivative rows,
-        as the Fortran does, and compute_element_det itself has no wedge
-        branch -- do not use it on a mesh containing wedge elements).
+        return -- same formula, kept as a separate function per that
+        function's own docstring/scope, not recomputed differently here).
       eleshp: (E,3,8) spatial shape-function derivatives dNx/dNy/dNz per
         node (Fortran's eleshp(1:nrowsh-1,1:nen,elemID) -- row 4, the
         shape-function VALUE, is never transformed by this subroutine, per
         the Fortran's own tmpGlobalShapeFunc(4,i) never being reassigned,
-        and is not part of eleshp -- contm's closed form/`_contm_wedge_
-        node_mass` already account for it, see those functions' docstrings).
-        For wedge elements, columns 3 and 7 (0-indexed) are exactly 0.0 and
-        columns 2 and 6 hold the summed node-3+4 / node-7+8 derivative,
-        exactly Fortran's globalShapeFunc(1:3,4)=0/globalShapeFunc(1:3,8)=0.
+        and is not part of eleshp -- contm's closed form already accounts
+        for it, see compute_element_det/contm's docstrings).
       xs: (E,3,3) the cofactor-matrix-over-determinant Fortran RETURNS in
         its own `xs` argument (reused variable name, NOT the same `xs` as
         the Jacobian computed mid-subroutine) -- this is what
         calcSSPhi4Hrgls's `xs` parameter actually receives.
-
-    Verified directly against Fortran's calcGlobalShapeFunc by
-    testsys/parity/evidence_wedge_kernel.py.
     """
-    is_wedge = (elem_type == 11) | (elem_type == 12)
-    # deriv_e: (E,3,8), the per-element LOCAL derivative row -- merged for
-    # wedge elements, unchanged for everyone else. Purely a per-element
-    # SELECT between two fixed reference-element matrices; no geometry
-    # involved, so this cannot itself introduce any rounding difference.
-    deriv_e = np.where(is_wedge[:, None, None], _LOCAL_DERIV_WEDGE[None, :, :],
-                        _LOCAL_DERIV[None, :, :])
-    xs_jac = np.einsum('eik,ekj->eji', deriv_e, xl)  # xs(j,i) mid-subroutine
+    xs_jac = np.einsum('ik,ekj->eji', _LOCAL_DERIV, xl)  # xs(j,i) mid-subroutine
 
     cof11 = xs_jac[:, 1, 1] * xs_jac[:, 2, 2] - xs_jac[:, 1, 2] * xs_jac[:, 2, 1]
     cof12 = xs_jac[:, 1, 2] * xs_jac[:, 2, 0] - xs_jac[:, 1, 0] * xs_jac[:, 2, 2]
@@ -446,19 +311,15 @@ def compute_element_shape(xl, elem_type):
                           'element(s) %r (det=%r)' % (bad[:5].tolist(), det[bad[:5]].tolist()))
 
     # eleshp(row,node) = (tmpG(1,node)*cof_row1 + tmpG(2,node)*cof_row2
-    #                      + tmpG(3,node)*cof_row3) / det, tmpG ==
-    # tmpGlobalShapeFunc == globalShapeFunc going in -- for wedge elements
-    # that is the ALREADY-MERGED deriv_e (Fortran's own
-    # `tmpGlobalShapeFunc = globalShapeFunc` copies the post-merge array,
-    # calcGlobalShapeFunc.f90:61), not the unmerged local derivative -- so
-    # this must reuse the SAME deriv_e the Jacobian was built from, per
-    # element, not the shared (3,8) _LOCAL_DERIV.
+    #                      + tmpG(3,node)*cof_row3) / det, tmpG == localDeriv
+    # (globalShapeFunc == localShapeFunc going in, C_degen==0, no
+    # degeneration overwrite).
     cof_rows = np.stack([
         np.stack([cof11, cof12, cof13], axis=1),
         np.stack([cof21, cof22, cof23], axis=1),
         np.stack([cof31, cof32, cof33], axis=1),
     ], axis=1)  # (E,3,3): cof_rows[e,row,col]
-    eleshp = np.einsum('erc,eck->erk', cof_rows, deriv_e) / det[:, None, None]
+    eleshp = np.einsum('erc,ck->erk', cof_rows, _LOCAL_DERIV) / det[:, None, None]
 
     # xs (Fortran's OUTPUT xs, reshape((/cof11,cof12,cof13,cof21,...,cof33/),(3,3))/det):
     # column-major reshape -> xs(:,1)=[cof11,cof12,cof13], xs(:,2)=[cof21,cof22,cof23],

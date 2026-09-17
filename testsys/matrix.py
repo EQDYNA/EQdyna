@@ -86,20 +86,6 @@ CASE_BOUND = {
     'test.tpv29': THRESHOLD,       # the outer bound EXPLICITLY rather than a
                                    # tighter number nobody has observed.
     'test.drv.a6': None,      # chaotically bistable -- flip-budget gate, below.
-    # C_degen>3 (wedge-degeneration), dip=15 (tpv36's par.dip), dx=500,
-    # par.term=6 -- a COARSE regression gate (rule 17 step 4), NOT a claim
-    # about physical accuracy at SCEC-standings resolution (the published
-    # tpv36/37 standings rank a run this coarse last and improve
-    # monotonically with resolution). BOTH python columns WERE measured
-    # before this case was registered (unlike meng2023a/cb/tpv29's THRESHOLD
-    # rows, whose own comment's condition -- "no python run has ever been
-    # measured" -- genuinely holds for them): observed python-jax
-    # 8.239717e-09, python-numpy 5.290638e-09 (both at column 12, a
-    # near-zero peak-slip-rate component on a marginally-ruptured node --
-    # roundoff, not physics). 1e-6 is ~120x that worst observation, the same
-    # headroom ratio test.tpv8 carries (1e-8 / 8.23e-11) -- consistent with
-    # the table's other measured rows, not the outer sanity bound.
-    'test.tpv36': 1e-6,
 }
 
 GATE = {
@@ -116,7 +102,6 @@ GATE = {
     # "everything drifted a little". Gated on bulk agreement PLUS an explicit
     # flip budget instead.
     'test.drv.a6': 'flip-budget',
-    'test.tpv36': 'abs-max',
 }
 
 # test.drv.a6's flip-budget gate. These numbers are measured, not chosen;

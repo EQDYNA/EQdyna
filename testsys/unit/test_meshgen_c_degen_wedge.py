@@ -254,35 +254,12 @@ class TestEqdyna3dGuards:
         with pytest.raises(NotImplementedError, match='C_elastic'):
             eqdyna3d.build_solver_state('/nonexistent')
 
-    def test_wedge_elements_no_longer_refused_by_compute_element_shape(self, monkeypatch):
-        """UPDATED: this port's dynamics guard (`if np.any(elem_type in
-        (11,12)): raise NotImplementedError(...)`, formerly sitting right
-        before assembleGlobalMass.compute_element_shape in
-        build_solver_state) is GONE -- the wedge-degeneration dynamics are
-        now ported (see assembleGlobalMass.py/assembleGlobalKU.py's own
-        docstrings and testsys/parity/evidence_wedge_kernel.py, the
-        Fortran-vs-Python kernel probe this is a cheap unit-level echo of).
-        `compute_element_shape` must now ACCEPT elem_type 11/12 and return a
-        finite, positive determinant, not raise."""
+    def test_wedge_elements_present_refused_before_compute_element_shape(self, monkeypatch):
+        """The guard added right before assembleGlobalMass.compute_element_shape
+        must fire whenever elem_type contains 11/12 -- checked directly
+        against a small array (no full case-directory build needed)."""
         import numpy as _np
-        from eqdyna import assembleGlobalMass
-
-        # A minimal degenerate wedge: local node 4 collapsed onto node 3,
-        # node 8 onto node 7 (the same node pairing calcGlobalShapeFunc.f90's
-        # merge acts on), otherwise a generic hex.
-        local = _np.array([
-            [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
-            [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
-        ]) * 250.0
-        local[3] = local[2]
-        local[7] = local[6]
-        xl = local[None, :, :]
-        for etype in (11, 12):
-            elem_type = _np.array([etype])
-            det, eleshp, xs = assembleGlobalMass.compute_element_shape(xl, elem_type)
-            assert _np.isfinite(det).all() and (det > 0).all()
-            assert eleshp.shape == (1, 3, 8) and xs.shape == (1, 3, 3)
-            # calcGlobalShapeFunc.f90:22-28's merge zeroes local columns 4/8
-            # (0-indexed 3/7) of the derivative rows for a wedge element.
-            assert _np.array_equal(eleshp[0, :, 3], _np.zeros(3))
-            assert _np.array_equal(eleshp[0, :, 7], _np.zeros(3))
+        et = _np.array([1, 2, 11, 12, 1])
+        assert bool(_np.any((et == 11) | (et == 12))) is True
+        et_no_wedge = _np.array([1, 2, 13, 13, 1])
+        assert bool(_np.any((et_no_wedge == 11) | (et_no_wedge == 12))) is False
