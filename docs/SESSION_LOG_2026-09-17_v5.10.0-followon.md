@@ -475,7 +475,36 @@ Now running (background, `bdqqn40em`) the actual gate: the 9 numpy cells
 her mission didn't re-verify (`drv.a6, tpv10, tpv104, tpv1053d, meng2023a,
 meng2023cb, tpv29, tpv36, tpv37`) against their frozen references, `--jobs
 8` (safe now that concurrent cells no longer collide). Not landing
-anything from this mission until that completes green.
+anything from this mission until that completes green. In progress: 3 of 9
+done so far (`meng2023a`, `drv.a6`, `tpv29`), all SUCCESS against their
+existing bounds with the fixed affinity code in place.
+
+## Update: TPV30 gate attempted per coordinator instruction, reproduced the
+## known divergence, REVERTED rather than forced
+
+Coordinator read commit `f110c75`'s "(A) roughly matches" as the owner's
+"sure, gate it" condition satisfied, and asked for the full rule 17
+steps 4/7 gate (all three backends, bound from measured worst diff, not
+THRESHOLD). Provisionally registered `test.tpv30` (`testNameList.py`,
+`testsys/matrix.py`, bound `1e-6` explicitly marked PROVISIONAL, `GATE=
+'abs-max'`) and ran a fresh 3-backend sweep against the existing frozen
+reference to find out, rather than assume either outcome.
+
+**Result: the known divergence reproduced exactly.** `test.tpv30 x fortran`
+SUCCESS (bit-exact, `max|diff|=0.0`, unaffected as expected).
+`test.tpv30 x python-numpy` and `x python-jax` both FAILED identically:
+`max|diff|=4.035089e+08` (same row/col, same magnitude as Mira's original
+finding -- this is the SAME bug, not a new one). Per rule 2/5 and my own
+stated commitment before running it, **did not gate** -- reverted
+`testNameList.py`/`testsys/matrix.py` to their committed state (`git
+checkout --`), confirmed clean (`test.tpv30 in nameList` -> `False` again).
+The coordinator's instruction was reasonable given what commit `f110c75`
+said in isolation, but condition (B) (port correctness) was never resolved
+by the SCEC validation and this fresh run confirms it directly -- (A)
+matching does not make (B) go away, exactly the distinction the row was
+written to preserve. Nothing to land from this attempt; the outcome IS
+the value (a second, independent confirmation of the divergence, on a
+fresh run, is stronger evidence than the first one alone).
 
 **Item 33 mandate escalated again:** not a curve to report -- an
 optimization to land. Owner: "if not, go optimize it" / "at least, jax
