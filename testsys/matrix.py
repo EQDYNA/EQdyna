@@ -266,6 +266,20 @@ MEASURED_PEAK_RSS_GB = {
                                               # and it never queues behind
                                               # anything else.
     ('test.tpv29', 'python-jax'): 4.052,     # 198.0 s wall
+    # Measured 2026-09-17 (wei-lin), `/usr/bin/time -v`, against current
+    # master. Peak RSS is a SETUP-time property here, not a full-run one: the
+    # numpy full-length run (par.term=6, 556 steps, 1415.9s wall, PASSED its
+    # bound at max|diff|=7.894064e-09 vs 1.0e-06) peaked at 3050252 KiB;
+    # a truncated par.term=0.3 (28 steps) run of the SAME cell peaked at
+    # 3047536 KiB -- 0.09% different, validating the truncated method on this
+    # exact cell before it was used for the remaining three (jax needs at
+    # least one full post-compile step; 28 is comfortably enough). tpv36 and
+    # tpv37 are the same dx=500/dip=15 mesh scale, so their numpy figures
+    # land within 0.05 GB of each other, as expected:
+    ('test.tpv36', 'python-numpy'): 2.91,   # 1415.9 s wall (full run, ground truth)
+    ('test.tpv36', 'python-jax'): 4.34,     # 38.6 s wall (truncated, validated method)
+    ('test.tpv37', 'python-numpy'): 2.91,   # 95.4 s wall (truncated, validated method)
+    ('test.tpv37', 'python-jax'): 4.20,     # 30.1 s wall (truncated, validated method)
 }
 CI_RUNNER_RAM_GB = 7.0
 # WIDENED 2026-09-16 (haruto, per owner instruction). The reasoning that
@@ -288,7 +302,9 @@ CI_CELLS = (
        ('test.tpv1053d', 'python-jax'),
        ('test.meng2023a', 'python-numpy'), ('test.meng2023a', 'python-jax'),
        ('test.meng2023cb', 'python-numpy'), ('test.meng2023cb', 'python-jax'),
-       ('test.tpv29', 'python-numpy'), ('test.tpv29', 'python-jax'))
+       ('test.tpv29', 'python-numpy'), ('test.tpv29', 'python-jax'),
+       ('test.tpv36', 'python-numpy'), ('test.tpv36', 'python-jax'),
+       ('test.tpv37', 'python-numpy'), ('test.tpv37', 'python-jax'))
 )
 # WHAT THIS LIST LEAVES OUT, AND WHY -- said here rather than implied. Every
 # exclusion below is a MEASURED-or-genuinely-unmeasured decision; none is a
@@ -304,16 +320,13 @@ CI_CELLS = (
 #     the same ballpark as jax" is exactly the kind of guess rule 6 forbids.
 #     Cheapest next step for whoever widens further: measure these three the
 #     same way as the entries above.
-#   * test.tpv36 x python-numpy/python-jax: same reason -- peak RSS not yet
-#     measured on CI's runner. tpv36's fortran cell joined CI_CELLS
-#     automatically (every case's fortran cell does, unconditionally, by this
-#     tuple's own construction above) the moment the case was re-gated
-#     (item 19a, after the jax-only regression that had reverted it was
-#     found and fixed -- see pathway_forward.md).
-#   * test.tpv37 x python-numpy/python-jax: same reason as tpv36 -- peak RSS
-#     not yet measured on CI's runner. tpv37's fortran cell joined CI_CELLS
-#     the same automatic way the moment it was gated (item 19a, second half).
-# A green CI run therefore means 21 of 30 cells, and says so.
+#   * test.tpv36/test.tpv37 x python-numpy/python-jax: RESOLVED 2026-09-17
+#     (wei-lin) -- measured 2.91-4.34 GB (see MEASURED_PEAK_RSS_GB above),
+#     comfortably under 7 GB even alongside the cheap group's existing
+#     largest member (tpv1053d-jax, 3.95 GB); admitted to CI_CELLS. Their
+#     fortran cells were already in CI_CELLS automatically since item 19(a)
+#     gated the cases.
+# A green CI run therefore means 25 of 30 cells, and says so.
 
 
 def is_supported(case, backend):

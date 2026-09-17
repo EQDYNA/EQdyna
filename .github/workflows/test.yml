@@ -327,6 +327,10 @@ jobs:
     # no longer applies once each job has its own 7 GB -- see matrix.py's
     # CI_CELLS comment. Their numpy columns stay excluded: never measured, so
     # the "no cell without a measured RSS" rule still applies to them.
+    # tpv36/tpv37 (both backends) measured 2026-09-17 at 2.91-4.34 GB, added
+    # here rather than a new job: this group's existing peak (tpv1053d-jax,
+    # 3.95 GB) already sets the job's memory footprint, so tpv36-jax's 4.34
+    # GB is the only new peak and it still clears 7 GB with margin.
     - name: Run e2e-ci (python cells, cheap group)
       run: |
         export EQDYNAROOT=$(pwd)
@@ -340,6 +344,7 @@ jobs:
         set -o pipefail
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax 2>&1 | tee -a testRunLog.txt
+        python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36,test.tpv37 --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt
       if: always()

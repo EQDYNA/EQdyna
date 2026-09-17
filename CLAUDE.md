@@ -42,10 +42,11 @@ python3 testsys/run.py unit regression       # seconds — run this constantly
 python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran   # one cell
 ```
 
-CI covers 21 of 30 cells (`testsys/matrix.py`'s `CI_CELLS`, widened 2026-09-16
+CI covers 25 of 30 cells (`testsys/matrix.py`'s `CI_CELLS`, widened 2026-09-16
 once the matrix split removed the shared-runner memory ceiling that used to
-cap it at 10, then +1 when `test.tpv36`'s fortran cell joined automatically
-on re-gating, then +1 again when `test.tpv37`'s did the same) split across
+cap it at 10, then +2 when `test.tpv36`/`test.tpv37`'s fortran cells joined
+automatically on re-gating, then +4 more 2026-09-17 once their python-numpy/
+python-jax cells were measured at 2.91-4.34 GB and admitted) split across
 parallel jobs — `build`, `unit-regression`, `e2e-ci-fortran-a`/`-b`,
 `e2e-ci-python-cheap`/`-meng`/`-tpv29` — not one invocation; see
 `.github/workflows/test.yml` for the exact per-job commands.
