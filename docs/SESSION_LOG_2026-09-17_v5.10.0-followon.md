@@ -1038,11 +1038,57 @@ it only once the Method-1 build is verified, not before.
 Sixth occurrence of the identical Fable-5 429 pattern this campaign, on the
 very first attempt at this mission. Re-dispatched immediately with
 `model:"sonnet"` override (agent `a746fa7807cf3485e`), no orphaned worktree
-left behind by the failed attempt. Not yet returned. CI on the release
-commit (`2e42b4b`, run `35279131717`) still green on every job that has
-finished (build, both fortran groups, unit-regression); the three python
-jobs (meng, cheap, tpv29) still in progress -- holding the tag until all
-are green.
+left behind by the failed attempt. CI on the release commit (`2e42b4b`, run
+`35279131717`) reached all-green (build, both fortran groups,
+unit-regression, and all three python jobs) before the next reversal below
+made its own release-note wording stale.
+
+## Update: the owner's own published cross-resolution data RETRACTS Method
+## 1 too -- Method 2 is proven correct, this is a genuine fault-node
+## force-balance defect, not an architecture question
+
+Coordinator compared the owner's three published TPV30 submissions
+(100/50/25m) at `faultst000dp120`: t=0 shear 28.176/27.888/27.815 MPa,
+pre-arrival CHANGE +0.636/+0.640/+0.636 -- resolution-independent (1.3%
+spread over 4x refinement) and showing NO relaxation at any published
+resolution. This build's 500m run: t=0 33.051 MPa, change **-4.30**. Two
+kills: a discretization artifact would GROW with element size (it doesn't,
+ruling out "coarse mesh" and the Method-1-as-escape-from-a-coarse-mesh-
+artifact reasoning); a discretization artifact is a static offset, not
+something that relaxes over ~2s toward the right answer (this one visibly
+does) -- relaxation means the system isn't starting in equilibrium. Method
+2 (what tpv30 already, correctly, runs per spec) demonstrably WORKS and
+produces a properly equilibrated state at every resolution the owner
+published. Switching to Method 1 would abandon a proven method to dodge a
+defect nobody has actually located yet.
+
+**Both prior fix attempts retracted before landing, worktrees KEPT (not
+reaped) per instruction:** the discrete-equilibrium correction-offset
+(`agent-a2d9003fa3ce1790f`) and the literal Method-1 switch
+(`agent-a746fa7807cf3485e`, still in flight when this landed -- will not
+act on its report when it returns). Corrected `README.md`'s v5.11.0 note a
+THIRD time -- since `2e42b4b` was already pushed and CI was tracking it,
+this required a genuine follow-up commit (`b63b959`), not an amend; CI
+re-triggered fresh on it (README.md is deliberately in the CI path-trigger
+set, unlike `pathway_forward.md`/`PROJECT_RULES.md`) -- holding the tag for
+THIS commit's green, discarding `2e42b4b`'s now-stale green as the tag
+target. Wrote the new wording deliberately conservatively (states the
+established facts -- resolution-independence, no relaxation in the
+published data, everything upstream of the fault nodes exonerated -- without
+committing to an unconfirmed specific mechanism) given how many times this
+exact paragraph has had to be rewritten today.
+
+Dispatched, in parallel: `zofia-kaminska` (agent `abda203611685ab45`, edits
+master directly, no isolated worktree) for the pathway_forward.md
+correction (sixth pass, retracting Method 1/2, recording the fault-node
+force-balance reframing and the class-split residual data); `lars-eriksson`
+(agent `ac82ac98e71d89979`, isolated worktree) for the NEW, sharper
+localization task -- fault-node force imbalance in the C_elastic=0 path,
+using the class-split residual probe (interior max 0.0066, boundary max 11,
+near-fault max 594/mean 5-13.5) as the lead, explicitly barred from
+re-chasing the now-exonerated list (tensor, gradients, morph, arn/masses,
+un/us/ud, the strike-vector formula, the FE assembly algorithm itself).
+Both not yet returned.
 
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
