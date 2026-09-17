@@ -117,6 +117,18 @@ CASE_BOUND = {
     # 1e-6 is ~127x the worst observation, the same headroom ratio
     # test.tpv8 carries (1e-8 / 8.23e-11).
     'test.tpv36': 1e-6,
+    # test.tpv37: identical wedge-degeneration machinery as tpv36 (same
+    # dip=15, dx=500, par.term=6, C_degen=par.dip) -- only par.tpv=37 and one
+    # initial-stress-taper coefficient differ from tpv36's compset (confirmed
+    # by diff: 0.001875e6 vs tpv36's 0.0005e6 in on_fault_vars[iz,ix,4]).
+    # Same coarse-regression-gate reasoning as tpv36 (rule 17 step 4, NOT a
+    # SCEC-standings accuracy claim). Fortran cell bit-exact against a
+    # freshly-frozen reference (max|diff|=0.0). Measured fresh, this commit:
+    # python-jax 5.256410e-09, python-numpy 6.929140e-09 (both near-zero
+    # peak-slip-rate-type components on marginally-ruptured nodes -- roundoff,
+    # not physics, same shape as tpv36's own observation). 1e-6 is ~144x the
+    # worst observation, in the same headroom family as tpv8/tpv36.
+    'test.tpv37': 1e-6,
 }
 
 GATE = {
@@ -128,6 +140,7 @@ GATE = {
     'test.meng2023cb': 'abs-max',
     'test.tpv29': 'abs-max',
     'test.tpv36': 'abs-max',
+    'test.tpv37': 'abs-max',
     # test.drv.a6 (C_elastic==0 viscoplastic, friclaw==4, fractal-rough, long
     # duration) has genuinely bistable rupture arrivals, so a scalar max-abs
     # bound cannot distinguish "a few hundred marginal nodes flipped" from
@@ -285,7 +298,10 @@ CI_CELLS = (
 #     tuple's own construction above) the moment the case was re-gated
 #     (item 19a, after the jax-only regression that had reverted it was
 #     found and fixed -- see pathway_forward.md).
-# A green CI run therefore means 20 of 27 cells, and says so.
+#   * test.tpv37 x python-numpy/python-jax: same reason as tpv36 -- peak RSS
+#     not yet measured on CI's runner. tpv37's fortran cell joined CI_CELLS
+#     the same automatic way the moment it was gated (item 19a, second half).
+# A green CI run therefore means 21 of 30 cells, and says so.
 
 
 def is_supported(case, backend):
