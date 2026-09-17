@@ -27,15 +27,93 @@ on:
       - 'docs/**'
   pull_request:
 
+# ONE job on ONE ubuntu-22.04 runner used to do apt install + build + unit +
+# regression + e2e-ci back to back: 11 min wall clock, 591s of it ("Run
+# tests") fully sequential and 90% of the total (measured on run 35147230900
+# and consistently across 14 runs the same day). Splitting into a build job
+# plus parallel test jobs pays twice: wall clock drops to roughly the
+# slowest single job instead of the sum, AND each job gets its own 7 GB
+# runner instead of one runner holding the Fortran build, mpirun, AND every
+# python/jax cell at once -- which is the actual reason CI_CELLS was capped
+# at 10 of 24 cells (testsys/matrix.py's own comment: the all-cells run got
+# SIGTERM'd, exit 143, no output). More jobs is how a per-job memory ceiling
+# gets solved; a bigger single runner is not offered by GitHub-hosted
+# runners at all.
+#
+# Coverage is UNCHANGED by this split: e2e-ci-fortran-a, e2e-ci-fortran-b and
+# e2e-ci-python together select exactly matrix.CI_CELLS
+# (test_ci_workflow_coverage.py proves this by parsing this file and the
+# table, so a future edit that silently drops or double-runs a cell fails the
+# regression tier). Widening CI_CELLS itself is a separate, measured decision
+# -- not something this split changes.
+#
+# The fortran slice is further split in two (not left as one job): measured
+# on run 35150197402, one e2e-ci-fortran job running all 8 cases serially
+# (a GitHub-hosted runner's core count is at run_e2e.py's --jobs reservation
+# floor, which forces serial execution regardless) took 332.3s and was 89% of
+# that run's 450s total pipeline wall clock -- unambiguously the critical
+# path. Splitting it into two ~4-case, similarly-sized-by-measured-seconds
+# groups running in parallel jobs roughly halves it with no coverage change.
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Update package list
+      run: sudo apt-get update
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get install git vim make mpich
+        sudo apt-get install libnetcdf-dev libnetcdff-dev
+        sudo apt-get install python3 python3-pip
+
+    # Exec bits are tracked in git (PROJECT_RULES.md rule 13) and guarded by
+    # testsys/regression/test_create_newcase.py.
+    - name: Build eqdyna
+      run: ./install-eqdyna.sh -m ubuntu
+
+    # Every other job downloads THIS binary rather than rebuilding: rebuilding
+    # per job would pay the compile cost N times for no benefit, and would
+    # mean N separate exercises of the build-and-install path instead of one
+    # -- this way a build failure is unambiguous (the build job itself goes
+    # red) instead of appearing as N similar-looking failures downstream.
+    - name: Upload eqdyna binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: eqdyna-bin
+        path: bin/eqdyna
+        if-no-files-found: error
+        retention-days: 1
+
+  # unit (seconds) + regression (rule 10: one guard per past incident) in one
+  # job. Kept together, matching testsys/run.py's own 'unit regression'
+  # grouping (rule 1: not a second copy of that sequencing). This job needs
+  # the FULL build toolchain, not just the artifact: several regression
+  # guards do their OWN independent compiles --
+  # test_make_default_goal.py (bare `make` in a temp dir),
+  # test_fault_geometry_guard.py (builds src/eqdyna directly with mpif90),
+  # test_drucker_prager_kernel.py (compiles 4 .f90 files with plain gfortran)
+  # -- and test_stop_exit_status.py's real-binary probe needs bin/eqdyna
+  # present or it SKIPS (that skip was itself a past incident, closed
+  # 2026-09-16; this job downloads the artifact specifically so it stays
+  # closed).
+  unit-regression:
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
         python-version: '3.x'
 
@@ -49,54 +127,199 @@ jobs:
         sudo apt-get install python3 python3-pip
         # scipy: scripts/convertFaultGeometry's interpolation paths
         # (RegularGridInterpolator, griddata). Imported lazily there, so the
-        # exact-decimation path works without it -- but the unit tier exercises
-        # interpolation, and its absence is what turned v5.6.1's CI red.
+        # exact-decimation path works without it -- but the unit tier
+        # exercises interpolation, and its absence is what turned v5.6.1's
+        # CI red.
         #
-        # jax: the e2e sweep's python-jax column. Since the no-fallback change
-        # (v5.6.2) a missing jaxlib is a hard failure rather than a quiet
-        # demotion to numpy -- which is the point: CI must not report "jax
-        # passed" while having run numpy. CPU wheel only; the runner has no
-        # GPU, so this exercises the XLA CPU path.
+        # jax: the e2e sweep's python-jax column, and several unit tests
+        # import it directly (test_backend_jax.py). Since the no-fallback
+        # change (v5.6.2) a missing jaxlib is a hard failure rather than a
+        # quiet demotion to numpy. CPU wheel only.
         pip install numpy scipy netCDF4 matplotlib xarray pytest
         pip install --upgrade numpy
         # jax LAST: it pins a numpy range, and `--upgrade numpy` above would
         # otherwise move numpy out from under it after the fact.
         pip install jax
 
-    # Exec bits are tracked in git (PROJECT_RULES.md rule 13) and guarded by
-    # testsys/regression/test_create_newcase.py — no chmod here. Exit codes
-    # gate directly: testsys/run.py exits non-zero on failure.
-    - name: Run tests
+    - name: Download eqdyna binary
+      uses: actions/download-artifact@v4
+      with:
+        name: eqdyna-bin
+        path: bin
+
+    # actions/upload-artifact's zip round-trip does not reliably preserve the
+    # executable bit on Linux -- set it explicitly rather than assume.
+    - name: Restore exec bit on eqdyna binary
+      run: chmod +x bin/eqdyna
+
+    - name: Run unit + regression tests
       env:
         # test_release_complete.py's check_network_side calls `gh release
         # view` to confirm rule 15 step 9 (gh release create) actually ran --
         # the guard exists BECAUSE that step was skipped on both v5.8.0 and
         # v5.8.1. Without a token it reports UNVERIFIED and never actually
-        # checks anything in the one place this runs automatically (found
-        # 2026-09-16 auditing v5.8.2's tag-triggered run, id 35122388271).
-        # GITHUB_TOKEN's default repo-read scope is enough for `gh release
-        # view` on this public repo.
+        # checks anything in the one place this runs automatically. This is
+        # the regression job specifically because check_network_side lives in
+        # the regression tier -- keep GH_TOKEN here if this tier ever moves.
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        ./install-eqdyna.sh -m ubuntu 2>&1 | tee -a testRunLog.txt
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
         set -o pipefail
-        # e2e-ci runs testsys/matrix.py's CI_CELLS: every case on the fortran
-        # backend, plus test.tpv8 on BOTH python backends. Which cells, and
-        # why, is declared in that table with the measured peak RSS next to
-        # each one -- not in an env var here. A GitHub ubuntu-22.04 runner has
-        # 7 GB and is already holding the Fortran build; the python/jax column
-        # peaks at 3.2-7.4 GB for the other cases, and running them all once
-        # got the job SIGTERM'd with no output (exit 143), which is a resource
-        # kill, not a test result.
-        #
-        # The sweep prints the cells it ran and the cells it did not, so a
-        # green CI run states its own coverage instead of implying the full
-        # 24-cell table. The full sweep is `python3 testsys/run.py all`, run
-        # locally or on a bigger runner. Widening CI_CELLS needs a memory
-        # measurement first, not a guess.
-        python3 testsys/run.py unit regression e2e-ci 2>&1 | tee -a testRunLog.txt
+        python3 testsys/run.py unit regression 2>&1 | tee -a testRunLog.txt
+
+    - name: Print testRunLog.txt
+      if: always()
+      run: cat testRunLog.txt
+
+  # The fortran slice of matrix.CI_CELLS, all 8 cases on the fortran/MPI
+  # backend, SPLIT ACROSS TWO JOBS. A single such job was measured (run
+  # 35150197402, 2026-09-16) at 332.3s serial -- 89% of that run's 450s total
+  # pipeline wall clock and by far the critical path, because a GitHub-hosted
+  # runner's core count is at or below run_e2e.py's --jobs reservation floor
+  # (cores-4), which forces budget=1 and every fortran cell to run one after
+  # another even though they are independent. Two jobs each get their own
+  # runner, so the SAME 8 cells run as two SERIAL-4 groups in PARALLEL instead
+  # of one SERIAL-8 group -- coverage is identical, wall clock roughly halves.
+  #
+  # The two --cases lists below are a balanced (LPT) partition of that run's
+  # own per-cell seconds (not the README's 64-core-box numbers, which are a
+  # different environment -- rule 6, measure on the thing you are deciding
+  # about): tpv29 104.4, drv.a6 65.6, meng2023a 34.6, meng2023cb 34.3,
+  # tpv1053d 30.6, tpv10 28.6, tpv104 24.6, tpv8 9.6 (seconds). Group A =
+  # tpv29+tpv1053d+tpv104+tpv8 = 169.2s; Group B =
+  # drv.a6+meng2023a+meng2023cb+tpv10 = 163.1s. Re-balance if a future case's
+  # cost shifts this badly out of true -- it is a scheduling nicety, not a
+  # correctness requirement, and test_ci_workflow_coverage.py already proves
+  # the union of every `--ci` invocation in this file is exactly
+  # matrix.CI_CELLS regardless of how the groups are drawn.
+  #
+  # Both use the build job's binary via EQDYNA_E2E_BIN so neither rebuilds --
+  # the build-and-install path is exercised exactly once, in the `build` job,
+  # and a failure there is what should turn red for a broken build (rule 16
+  # concern: EQDYNA_E2E_BIN skipping the build path here is fine only because
+  # a sibling job in the SAME run always exercises it).
+  e2e-ci-fortran-a:
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Update package list
+      run: sudo apt-get update
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install mpich
+        sudo apt-get install libnetcdf-dev libnetcdff-dev
+        sudo apt-get install python3 python3-pip
+        pip install numpy netCDF4 matplotlib xarray
+        pip install --upgrade numpy
+
+    - name: Download eqdyna binary
+      uses: actions/download-artifact@v4
+      with:
+        name: eqdyna-bin
+        path: bin
+
+    - name: Restore exec bit on eqdyna binary
+      run: chmod +x bin/eqdyna
+
+    - name: Run e2e-ci (fortran cells, group A)
+      run: |
+        export EQDYNAROOT=$(pwd)
+        export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        export EQDYNA_E2E_BIN=$EQDYNAROOT/bin/eqdyna
+        set -o pipefail
+        python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8 2>&1 | tee -a testRunLog.txt
+
+    - name: Print testRunLog.txt
+      if: always()
+      run: cat testRunLog.txt
+
+  e2e-ci-fortran-b:
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Update package list
+      run: sudo apt-get update
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install mpich
+        sudo apt-get install libnetcdf-dev libnetcdff-dev
+        sudo apt-get install python3 python3-pip
+        pip install numpy netCDF4 matplotlib xarray
+        pip install --upgrade numpy
+
+    - name: Download eqdyna binary
+      uses: actions/download-artifact@v4
+      with:
+        name: eqdyna-bin
+        path: bin
+
+    - name: Restore exec bit on eqdyna binary
+      run: chmod +x bin/eqdyna
+
+    - name: Run e2e-ci (fortran cells, group B)
+      run: |
+        export EQDYNAROOT=$(pwd)
+        export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        export EQDYNA_E2E_BIN=$EQDYNAROOT/bin/eqdyna
+        set -o pipefail
+        python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10 2>&1 | tee -a testRunLog.txt
+
+    - name: Print testRunLog.txt
+      if: always()
+      run: cat testRunLog.txt
+
+  # The python slice of matrix.CI_CELLS: today just test.tpv8 on python-numpy
+  # and python-jax (the only python cells measured under the runner's 7 GB --
+  # see matrix.MEASURED_PEAK_RSS_GB). No fortran cell is selected, so
+  # run_e2e.py never builds anything and this job needs no `needs: build`,
+  # no mpich, no netCDF dev headers -- it starts immediately in parallel with
+  # `build` instead of waiting on it.
+  e2e-ci-python:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Update package list
+      run: sudo apt-get update
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install python3 python3-pip
+        pip install numpy scipy netCDF4 matplotlib xarray
+        pip install --upgrade numpy
+        pip install jax
+
+    - name: Run e2e-ci (python cells)
+      run: |
+        export EQDYNAROOT=$(pwd)
+        export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        set -o pipefail
+        python3 testsys/e2e/run_e2e.py --ci --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt
       if: always()
