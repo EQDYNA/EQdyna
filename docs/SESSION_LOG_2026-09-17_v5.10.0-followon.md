@@ -607,6 +607,37 @@ to decide. Not fixing, not regenerating anything, not touching
 `test.drv.a6`'s gate. Surfacing this to the coordinator/owner as the
 top-priority open item.
 
+## Update: owner decided option B (resolve setPlasticStress onto the local
+## fault normal, not drop C_elastic), dispatched to dunyu-liu
+
+Owner independently re-verified all three of my escalated claims (the
+`C_elastic` multiplier sites, drv.a6's declared 40e6/-120e6, its actual
+24.6801/76.8865 MPa reference) before ruling. Chose option B because the
+element tensor is already correct (reproduces the spec's 93%-of-yield check)
+and the defect is specifically its RESOLUTION onto the nominal plane instead
+of the local rough-fault normal (spec line 436 endorses this architecture).
+Flagged that `C_elastic`'s multiplier has no recorded rationale but a
+plausible one (avoiding double-counting if the element stress already
+reaches fault nodes via the split-node formulation) -- ordered a source
+trace of that premise FIRST, before any fix code, with instructions to stop
+and report back if it doesn't hold.
+
+Dispatched to `dunyu-liu` with: the Step-1 trace requirement (cheap, must
+not be skipped), the local-normal fix using the already-shipped per-node
+`dy/dx`/`dy/dz` gradients (`readInputFiles.f90:316`), both backends,
+validation against the SPEC (tpv29-vs-tpv30 matched-dx comparison + the 93%
+check) rather than against any reference (references currently encode the
+bug), explicit prohibition on touching `test.drv.a6`'s reference/gate as
+part of this fix (that regen is its own separate, reviewed commit per rule
+7, after this lands), and a flag requirement if drv.a6's own compset
+declarations become inert for plastic cases (a release-note-worthy
+contract change).
+
+**Rate-limit note (third occurrence this session of the identical
+pattern):** first dispatch attempt hit the same Fable-5 429 immediately.
+Re-dispatched the identical mission with `model: "sonnet"` override. Not
+yet returned.
+
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
 
