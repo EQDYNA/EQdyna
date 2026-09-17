@@ -109,7 +109,70 @@ rank mismatch doesn't look silently overridden.
   precedent of docs-only commits landing without a tag (e.g. `e845ad0`).
 - No code changed. No test tier run (nothing to gate). No tag cut.
 
-## Open at end of this pass
+## Update: F3, kai's pruning pass landed, item 19(c) closed (not demoted)
+
+`0b4684c`: F3 landed in `testsys/perf/run_numa_scaling.py` per owner decision
+("if the box has ample space, then that's idle") -- replaced the absolute
+`load1 <= 1.0` ceiling (refused at load 1.28 on this 64-core box, ~98% idle,
+unmeasurable by construction with `train.py` pinned to one core) with
+`cpu_busy_fractions()`/`require_idle(cpus, ...)`, gating PER CONFIGURATION on
+`/proc/stat` sampled for exactly the cpus about to be used. Refusal without
+override now SKIPS just that configuration rather than aborting the whole
+run. Verified live on the real contended box, not just `ast.parse`: cpus
+[0,1] measured 0-3% busy despite whole-box load 2.4+, correctly passed;
+cpu 63 measured 87-100% busy (the actual hot core) and was correctly
+REFUSED at the same default ceiling; override still forces a refused config
+through. Same commit pins numpy's BLAS threads (`OMP/OPENBLAS/MKL/
+NUMEXPR_NUM_THREADS=1`) on all three CI steps that run a python-numpy cell
+(item 40 follow-up, one-line env change, no port change).
+
+Ran item 33 for real afterward (my own background process, not an agent):
+within-node 1/2/4 cores measured cleanly (616/405/360 ms/step, 1.52x/1.71x
+speedup), but within-node-8 and every larger config were correctly SKIPPED
+mid-run when specific target cpus went busy from Mira's and Kai's own
+concurrent legitimate work -- the fix behaved exactly as designed under real
+contention. Verdict on the NUMA-locality question is inconclusive pending a
+re-run once the box is quieter; not yet handed to zofia for the board since
+it's a partial result and a clean re-run is cheap once available.
+
+`656e66f`: corrected zofia's own immediately-prior uncommitted edit on item
+19(c) from "demoted below P4" to "CLOSED, NOT DEFERRED" -- the owner
+decision (tpv34/35 sources predate this repo, `scec_archive/` publication
+history exists but the implementation does not, `git log --all -S"TPV==34"`
+finds nothing) went further than demotion. `SendMessage` was unavailable to
+correct her mid-flight, so this landed as a same-day follow-up commit on the
+same row rather than a single edit -- named explicitly here so it doesn't
+read as two independent events.
+
+`9fe4a54`: kai-fischer's pruning pass (owner-requested, 46:1 added:deleted
+since v5.8.2). Comment/blank-line-only pass on `Dockerfile` (71->52 lines),
+`.github/workflows/test.yml` (457->428), `.github/workflows/publish.yml`
+(126->112). Verified independently before landing (not just his report):
+non-comment/non-blank lines byte-identical to current master in all three
+files, both before and after cherry-pick; YAML still parses;
+`test_ci_workflow_coverage.py`'s own parser still finds the same 21-cell
+coverage post-edit. His fresh full sweep (30/30 cells, 1796.5s) was not
+re-run here -- two attempts timed out under real concurrent Mira/item-33
+load on the shared box -- but the mechanical comment-only proof is the
+load-bearing evidence for this class of change and was independently
+produced, not taken from his report. Guard audit (task 2 of his brief): all
+17 `testsys/regression/*.py` guards reviewed, deletion set EMPTY -- every
+guard either has direct catch-evidence or pins a named past incident (rule
+8), full verdict table in his completion report. Docs-duplication task
+(task 3) deliberately not done by him -- flagged low-confidence rather than
+guessed, per his own brief's "if in doubt, leave it."
+
+Mira (tpv30 gate) still in flight as of this update -- confirmed alive by
+fresh file activity (`test.reference.results/test.tpv30/frt.canonical.txt`,
+a promoted `testsys/parity/evidence_tpv30_vs_tpv29_contrast.py`, and
+`src/fortran/faulting.f90`/`src/python/eqdyna/faulting.py` both modified,
+consistent with the `TPV==30` branch fix asked for) even though her
+`NOTES_tpv30_gate.md` checkpoint is ~35 min stale -- checked broadly with
+`find -newer` before treating that staleness as a stall, per the babysitting
+rule (file/proc progress, not just the one checkpoint file).
+
+## Open as of this point in the session (superseded further below — see the
+## later "Update" sections for what actually happened after haruto reported)
 
 - Waiting on haruto's item 33/40 report — his measurement window is still
   open (confirmed alive by process, not message, as of 07:58). Do not run
