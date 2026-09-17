@@ -40,20 +40,35 @@ on:
 # gets solved; a bigger single runner is not offered by GitHub-hosted
 # runners at all.
 #
-# Coverage is UNCHANGED by this split: e2e-ci-fortran-a, e2e-ci-fortran-b and
-# e2e-ci-python together select exactly matrix.CI_CELLS
-# (test_ci_workflow_coverage.py proves this by parsing this file and the
-# table, so a future edit that silently drops or double-runs a cell fails the
-# regression tier). Widening CI_CELLS itself is a separate, measured decision
-# -- not something this split changes.
+# Coverage was 10 of 24 cells at the first cut of this matrix (2026-09-16),
+# unchanged from the one-job workflow it replaced -- e2e-ci-fortran-a,
+# e2e-ci-fortran-b and (then) one e2e-ci-python job together selected exactly
+# matrix.CI_CELLS. WIDENED the same day, after the split itself removed the
+# constraint that had set CI_CELLS at 10: tpv10/tpv104/tpv1053d x python-jax
+# (3.2-4.0 GB each) and, newly measured, meng2023a/meng2023cb/tpv29 on both
+# python backends. 19 of 24 cells now. test_ci_workflow_coverage.py proves the
+# union of every `run_e2e.py --ci` invocation in this file is exactly
+# matrix.CI_CELLS by parsing this file and the table directly, so a future
+# edit that silently drops or double-runs a cell fails the regression tier
+# regardless of how many jobs or invocations this grows to.
 #
-# The fortran slice is further split in two (not left as one job): measured
-# on run 35150197402, one e2e-ci-fortran job running all 8 cases serially
-# (a GitHub-hosted runner's core count is at run_e2e.py's --jobs reservation
+# The fortran slice is split in two (not left as one job): measured on run
+# 35150197402, one e2e-ci-fortran job running all 8 cases serially (a
+# GitHub-hosted runner's core count is at run_e2e.py's --jobs reservation
 # floor, which forces serial execution regardless) took 332.3s and was 89% of
 # that run's 450s total pipeline wall clock -- unambiguously the critical
 # path. Splitting it into two ~4-case, similarly-sized-by-measured-seconds
 # groups running in parallel jobs roughly halves it with no coverage change.
+#
+# The python slice is split in three for the same reason, sized very
+# differently: test.tpv29 x python-numpy alone (1711.0 s measured) is an
+# order of magnitude more expensive than any other python cell and cannot be
+# shrunk by splitting -- it is isolated in its own job
+# (e2e-ci-python-tpv29) specifically so its cost is the new critical path on
+# its own, not stacked on top of anything else. See matrix.py's CI_CELLS
+# comment for why the per-job-memory argument that used to exclude the
+# tpv10/tpv104/tpv1053d/meng2023a/meng2023cb/tpv29 python cells no longer
+# holds once cells run one job at a time.
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -287,13 +302,28 @@ jobs:
       if: always()
       run: cat testRunLog.txt
 
-  # The python slice of matrix.CI_CELLS: today just test.tpv8 on python-numpy
-  # and python-jax (the only python cells measured under the runner's 7 GB --
-  # see matrix.MEASURED_PEAK_RSS_GB). No fortran cell is selected, so
-  # run_e2e.py never builds anything and this job needs no `needs: build`,
-  # no mpich, no netCDF dev headers -- it starts immediately in parallel with
-  # `build` instead of waiting on it.
-  e2e-ci-python:
+  # The python slice of matrix.CI_CELLS, WIDENED 2026-09-16 and split across
+  # THREE jobs by measured cost (`/usr/bin/time -v`, full-length, one at a
+  # time, this development box -- see matrix.MEASURED_PEAK_RSS_GB for every
+  # number and its provenance). No fortran cell is selected in any of the
+  # three, so run_e2e.py never builds anything and none needs `needs: build`,
+  # mpich, or netCDF dev headers -- all three start immediately in parallel
+  # with `build` instead of waiting on it.
+  #
+  # Each case's two backends are DELIBERATELY not always in the same job: a
+  # `--backends` filter applies uniformly to every `--cases` entry in one
+  # invocation, so a job that mixes "both backends for case X" with "jax only
+  # for case Y" needs two `run_e2e.py --ci` calls in its one step, not one.
+  # test_ci_workflow_coverage.py's line-based parser sees both calls as
+  # separate invocations and unions them, so this composes cleanly.
+  #
+  # test.tpv29 x python-numpy alone (1711.0 s measured locally) dwarfs every
+  # other python cell combined (the other 8 sum to 1348.7 s) and cannot be
+  # made to run faster by more splitting -- it is one sequential simulation.
+  # Isolating it in its own job (e2e-ci-python-tpv29) means its irreducible
+  # cost sets the new CI critical path on its own, rather than also queuing
+  # behind or ahead of anything else.
+  e2e-ci-python-cheap:
     runs-on: ubuntu-22.04
 
     steps:
@@ -314,12 +344,94 @@ jobs:
         pip install --upgrade numpy
         pip install jax
 
-    - name: Run e2e-ci (python cells)
+    # tpv8 (both backends, the two original CI cells) + the tpv10/tpv104/
+    # tpv1053d jax cells (3.2-4.0 GB each, previously excluded for a shared-
+    # runner reason that no longer applies once each job has its own 7 GB --
+    # see matrix.py's CI_CELLS comment). Their numpy columns stay excluded:
+    # never measured, so the "no cell without a measured RSS" rule still
+    # applies to them.
+    - name: Run e2e-ci (python cells, cheap group)
       run: |
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
         set -o pipefail
-        python3 testsys/e2e/run_e2e.py --ci --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
+        python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
+        python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax 2>&1 | tee -a testRunLog.txt
+
+    - name: Print testRunLog.txt
+      if: always()
+      run: cat testRunLog.txt
+
+  e2e-ci-python-meng:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Update package list
+      run: sudo apt-get update
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install python3 python3-pip
+        pip install numpy scipy netCDF4 matplotlib xarray
+        pip install --upgrade numpy
+        pip install jax
+
+    # meng2023a + meng2023cb, both backends (newly measured, 2.5 GB numpy /
+    # 4.0 GB jax each) -- plus test.tpv29 x python-jax (198.0 s measured),
+    # deliberately NOT test.tpv29 x python-numpy, which is isolated in its
+    # own job below because it is an order of magnitude more expensive than
+    # everything else in this group combined.
+    - name: Run e2e-ci (python cells, meng2023a/cb + tpv29-jax)
+      run: |
+        export EQDYNAROOT=$(pwd)
+        export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        set -o pipefail
+        python3 testsys/e2e/run_e2e.py --ci --cases test.meng2023a,test.meng2023cb --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
+        python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-jax 2>&1 | tee -a testRunLog.txt
+
+    - name: Print testRunLog.txt
+      if: always()
+      run: cat testRunLog.txt
+
+  e2e-ci-python-tpv29:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Update package list
+      run: sudo apt-get update
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install python3 python3-pip
+        pip install numpy scipy netCDF4 matplotlib xarray
+        pip install --upgrade numpy
+        pip install jax
+
+    # test.tpv29 x python-numpy ALONE: 1711.0 s measured locally, by far the
+    # single most expensive cell in the table (matrix.MEASURED_PEAK_RSS_GB).
+    # This job's own wall clock is the new CI critical path; that is expected
+    # and reported, not a regression to chase away by further splitting --
+    # there is nothing left to parallelize inside one sequential simulation.
+    - name: Run e2e-ci (python cells, tpv29-numpy)
+      run: |
+        export EQDYNAROOT=$(pwd)
+        export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        set -o pipefail
+        python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-numpy 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt
       if: always()

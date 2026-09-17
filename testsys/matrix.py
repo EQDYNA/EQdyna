@@ -164,11 +164,14 @@ UNSUPPORTED = {
     # smoothed forced-rupture branch at the same time.
 }
 
-# Cells CI runs, and the measured reason the rest are left out. A GitHub
-# ubuntu-22.04 runner has 7 GB and is already holding the Fortran build;
-# exceeding it produced a SIGTERM with no output (exit 143), which is a
-# resource kill and not a test result. This is a declared, measured decision
-# with the numbers next to it -- not an env var whose value nobody can audit.
+# Cells CI runs, and the measured reason the rest are left out. Historically
+# (one job) a GitHub ubuntu-22.04 runner's 7 GB was shared by the Fortran
+# build and every python/jax cell at once; exceeding it produced a SIGTERM
+# with no output (exit 143), which is a resource kill and not a test result.
+# As of 2026-09-16 the workflow is matrixed into parallel jobs, each with its
+# own 7 GB runner -- see the CI_CELLS comment below for what that changed and
+# what it did not. This is a declared, measured decision with the numbers
+# next to it -- not an env var whose value nobody can audit.
 MEASURED_PEAK_RSS_GB = {
     # Full-length runs, one case at a time on the 64-core development box.
     # The two CI cells were measured with `/usr/bin/time -v` (exact peak):
@@ -185,25 +188,66 @@ MEASURED_PEAK_RSS_GB = {
     # cannot run on a 7 GB runner; the newer, larger number is recorded
     # because that is the one a widening decision must be made against.
     ('test.drv.a6', 'python-jax'): 9.57,
+    # Measured 2026-09-16 (haruto, CI-widening pass), `/usr/bin/time -v`,
+    # full-length, one at a time, against the CURRENT tree (a first attempt
+    # ran against a tree that still had mira's since-reverted C_degen merge
+    # and was discarded and re-measured fresh -- rule 4, a stale-tree run is
+    # not evidence). Every one of these also PASSED its bound on this same
+    # run (testsys.compare.compare_cell), not just produced a number:
+    # meng2023a numpy/jax 4.628301e-09/3.229082e-09, meng2023cb numpy/jax
+    # 5.054473e-09/4.395842e-09, tpv29 numpy/jax 9.876230e-15/1.276548e-13,
+    # all against THRESHOLD=1e-3.
+    ('test.meng2023a', 'python-numpy'): 2.545,    # 313.4 s wall
+    ('test.meng2023a', 'python-jax'): 4.025,      # 70.7 s wall
+    ('test.meng2023cb', 'python-numpy'): 2.543,   # 419.7 s wall
+    ('test.meng2023cb', 'python-jax'): 4.020,     # 65.1 s wall
+    ('test.tpv29', 'python-numpy'): 2.705,   # 1711.0 s wall -- by far the
+                                              # most expensive cell in the
+                                              # table; isolated in its own CI
+                                              # job (e2e-ci-python-tpv29) so
+                                              # nothing else queues behind it
+                                              # and it never queues behind
+                                              # anything else.
+    ('test.tpv29', 'python-jax'): 4.052,     # 198.0 s wall
 }
 CI_RUNNER_RAM_GB = 7.0
+# WIDENED 2026-09-16 (haruto, per owner instruction). The reasoning that
+# excluded tpv10/tpv104/tpv1053d x python-jax was STALE: it was written when
+# ONE job held the Fortran build, mpirun, AND every python/jax cell at once,
+# so their 3.2-4.0 GB looked like it was competing with everything else for
+# the same 7 GB. Once the workflow is matrixed (this repo, 2026-09-16) each
+# job gets its own 7 GB, AND run_e2e.py's own core-budget allocator already
+# forces every cell in a job to run ONE AT A TIME on a small runner (verified
+# on two real CI runs: job logs show cells finishing back-to-back, wall clock
+# == sum of per-cell seconds, never a "running N cells concurrently" line) --
+# so a job's peak memory is the single LARGEST cell it holds, not a sum, and
+# always was, even in the original one-job workflow. On the measured numbers
+# alone only test.drv.a6 x python-jax (9.57 GB) actually exceeds a 7 GB
+# runner; the rest below were excluded by a constraint the matrix removed.
 CI_CELLS = (
     tuple((c, 'fortran') for c in CASES)
-    + (('test.tpv8', 'python-numpy'), ('test.tpv8', 'python-jax'))
+    + (('test.tpv8', 'python-numpy'), ('test.tpv8', 'python-jax'),
+       ('test.tpv10', 'python-jax'), ('test.tpv104', 'python-jax'),
+       ('test.tpv1053d', 'python-jax'),
+       ('test.meng2023a', 'python-numpy'), ('test.meng2023a', 'python-jax'),
+       ('test.meng2023cb', 'python-numpy'), ('test.meng2023cb', 'python-jax'),
+       ('test.tpv29', 'python-numpy'), ('test.tpv29', 'python-jax'))
 )
 # WHAT THIS LIST LEAVES OUT, AND WHY -- said here rather than implied. Every
-# exclusion below is a MEASURED memory decision; none is a case that fails.
-#   * python cells for tpv10/tpv104/tpv1053d: measured 3.2-4.0 GB above,
-#     against a 7 GB runner already holding the Fortran build. A resource kill
-#     (SIGTERM, exit 143, no output) is not a test result.
-#   * python cells for drv.a6: 9.57 GB measured, the largest cell in the table.
-#   * python cells for tpv29: peak RSS has never been measured for them. That
-#     is the whole reason -- rule 6 says the number travels with the decision,
-#     so a cell whose cost is unknown is not added to a 7 GB runner on a guess.
-#     They PASS in the full sweep (both backends; the case's forced-rupture
-#     nucleation gap was fixed -- see src/faulting.f90's swtwNucleation), so
-#     measuring them is the only thing standing between here and wider CI.
-# A green CI run therefore means 10 of 24 cells, and says so.
+# exclusion below is a MEASURED-or-genuinely-unmeasured decision; none is a
+# case that fails.
+#   * test.drv.a6 x python-jax: 9.57 GB measured -- the one real exclusion.
+#   * test.drv.a6 x python-numpy: never measured. Not chased this round (owner
+#     instruction, 2026-09-16): drv.a6 is the largest/most expensive case in
+#     the table by a wide margin and its jax column already leaves a 7 GB
+#     runner with zero margin; a larger runner is a separate decision.
+#   * test.tpv10/tpv104/tpv1053d x python-NUMPY (their jax columns are now IN
+#     CI_CELLS, see above): never measured. The rule stays literal -- a cell
+#     without a measured RSS does not go into CI, and "numpy is probably in
+#     the same ballpark as jax" is exactly the kind of guess rule 6 forbids.
+#     Cheapest next step for whoever widens further: measure these three the
+#     same way as the entries above.
+# A green CI run therefore means 19 of 24 cells, and says so.
 
 
 def is_supported(case, backend):
