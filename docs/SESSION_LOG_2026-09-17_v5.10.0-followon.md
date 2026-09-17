@@ -1033,7 +1033,16 @@ offset-corrected), both backends, verified against the same full-window
 stability check I already validated, plus drv.a6's declared 40/-120 MPa
 confirmed to go LIVE under Method 1 (a real, expected behavior change).
 Explicitly told to leave the rejected offset worktree untouched -- I reap
-it only once the Method-1 build is verified, not before. Not yet returned.
+it only once the Method-1 build is verified, not before.
+
+Sixth occurrence of the identical Fable-5 429 pattern this campaign, on the
+very first attempt at this mission. Re-dispatched immediately with
+`model:"sonnet"` override (agent `a746fa7807cf3485e`), no orphaned worktree
+left behind by the failed attempt. Not yet returned. CI on the release
+commit (`2e42b4b`, run `35279131717`) still green on every job that has
+finished (build, both fortran groups, unit-regression); the three python
+jobs (meng, cheap, tpv29) still in progress -- holding the tag until all
+are green.
 
 ## Update: TPV30 gate attempted per coordinator instruction, reproduced the
 ## known divergence, REVERTED rather than forced
