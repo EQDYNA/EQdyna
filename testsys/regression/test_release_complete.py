@@ -123,17 +123,37 @@ def check_tag_is_annotated(v):
     if rc == 0 and out == 'commit':
         rc2, out2 = _git('ls-remote', '--tags', 'origin',
                          'refs/tags/v' + v, 'refs/tags/v' + v + '^{}')
+        if rc2 != 0:
+            # NOT the same as "confirmed lightweight" -- rc2!=0 means the
+            # remote round-trip itself failed (found 2026-09-16, v5.8.6's
+            # verify-published-image run: a container built via `docker
+            # build` then run on a LATER, separate job/runner has whatever
+            # git credential state got baked into its .git config at build
+            # time, which is not guaranteed valid for that later job's
+            # network context -- `git ls-remote origin` errored outright,
+            # rc=128, not "0 lines" from a real answer). Treating a failed
+            # network call as proof of "not annotated" was the bug: this
+            # is exactly the class of check check_network_side already
+            # handles below with UNVERIFIED, not FAIL, for the identical
+            # reason (rule 2: "I could not check this" and "this is fine"
+            # must not share an exit code, but an unreachable network is
+            # not evidence of failure either).
+            print('  UNVERIFIED  v%s tag-annotation status (git ls-remote failed, '
+                  'rc=%d -- local cat-file said "commit", ambiguous without the '
+                  'remote peel; not a pass, not a fail) -- re-run where the '
+                  'remote is reachable with valid credentials' % (v, rc2))
+            return
         lines = [l for l in out2.splitlines() if l.strip()]
-        if rc2 == 0 and len(lines) == 2:
+        if len(lines) == 2:
             print('  PASS  v%s is an annotated tag (local checkout fetched it as '
                   'a bare ref -- confirmed via remote peel instead)' % v)
             return
         raise AssertionError(
             'v%s is not an ANNOTATED tag -- confirmed via the remote: '
-            '`git ls-remote --tags origin` returned %d line(s) for it (rc=%d), '
-            'not the 2 an annotated tag always shows (the ref plus its peeled '
-            '`^{}` commit). Release notes live in the tag body; a lightweight '
-            'tag carries none.' % (v, len(lines), rc2))
+            '`git ls-remote --tags origin` returned %d line(s) for it, not the 2 '
+            'an annotated tag always shows (the ref plus its peeled `^{}` '
+            'commit). Release notes live in the tag body; a lightweight '
+            'tag carries none.' % (v, len(lines)))
     raise AssertionError(
         'v%s is not an ANNOTATED tag (git cat-file -t says %r). Release '
         'notes live in the tag body; a lightweight tag carries none.'
