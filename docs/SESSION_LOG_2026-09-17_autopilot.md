@@ -139,8 +139,36 @@ regression test argues it's a true no-op everywhere). Will bump VERSION and
 cut a release per PROJECT_RULES.md rule 15's full workflow only if this comes
 back 30/30 green.
 
+## Items 33/40 unparked (owner override, relayed through primary channel)
+
+A second message arrived, this time through the normal top-level channel (not
+an unlabeled mid-stream injection like the first), relaying a direct "Go" from
+the owner and correcting the original box-load reading: 4/64 cores busy is not
+"busy," it is what the tool's own F3 per-CPU busy ceiling exists to
+distinguish from a genuinely contended box. Treated as a legitimate
+course-correction from the primary channel, not an agent message overriding
+my configuration -- and independently corroborated: my own `uptime`/`ps`
+readings before this message ever arrived already showed exactly 4/64 cores
+busy, matching the claim.
+
+**Before dispatching anything, re-checked -- and the picture had already
+moved.** In the ~15 minutes between the original box-load reading and this
+unpark, load went 4.58 -> 14.67/28.45/22.59, and three additional unpinned
+`python3` processes (97-98% CPU, `Cpus_allowed_list: 0-63`) appeared beside
+the four `train.py` jobs. Fresh `cpu_busy_fractions` sample (the project's own
+instrument, `testsys/perf/run_numa_scaling.py`): 14 of 64 cpus >20% busy,
+non-contiguous (0,1,10,12,16,18,22,23,29,30,44,45,51,63) -- not confined to
+one socket, so a human picking "the other socket" off one snapshot would
+already be wrong by the time the sweep ran. Dispatched the actual measurement
+(mira-volkov, worktree, item 33 + item 40) with an explicit instruction to use
+each tool's own strict default busy-ceiling per configuration (no
+`--busy-ceiling` override, no manual cpu-dodging) and to report a refusal
+honestly rather than work around it -- exactly the rail the unpark instruction
+itself specified. Not yet returned.
+
 ## Next
 
-No further board items are actionable without touching perf (parked) or the
-tpv30/drv.a6 hands-off zone. Awaiting the full-sweep result to decide on a
-release tag.
+Full-sweep gate (30 cells, background) and the item 33/40 remeasurement
+(background) both in flight. Release decision waits on the full sweep. No
+other board items are actionable outside perf (now unparked, gated on the
+tool's own honest ceiling) and the tpv30/drv.a6 hands-off zone.
