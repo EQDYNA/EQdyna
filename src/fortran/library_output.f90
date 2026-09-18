@@ -23,26 +23,36 @@ subroutine output_onfault_st
     if(numOfOnFaultStCount>0) then
         do i=1,numOfOnFaultStCount
             j=anonfs(3,i)
-            if(j==1)  then  !main fault stations
-                sttmp = '    '
-                dptmp = '   '
-                ! Sign-aware strike field (item 22): (i3.3) overflowed to '***'
-                ! for negative-x stations, colliding half of e.g. TPV29's list.
-                ! SCEC convention: signed strike distance, zero-padded magnitude.
-                if (nint(xonfs(1,anonfs(2,i),j)/100.d0) < 0) then
-                    write(sttmp,'(a1,i3.3)') '-', abs(nint(xonfs(1,anonfs(2,i),j)/100.d0))
-                else
-                    write(sttmp,'(i3.3)') nint(xonfs(1,anonfs(2,i),j)/100.d0)
-                endif
-                write(dptmp,'(i3.3)') nint(abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,1))/100.d0) 
-                open(51,file='faultst'//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
-
-                sttmp = '      '
-                dptmp = '      '
-                write(sttmp,'(f5.1)') xonfs(1,anonfs(2,i),j)/1000.d0 
-                write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j)/1000.d0) 
-                stLocStamp = '# location = on fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km down-dip'        
+            ! FIX (pathway_forward.md item 9): unit 51 used to be opened only
+            ! when j==1 ("main fault stations") but written to unconditionally
+            ! below -- for a station on fault 2+ (j>1) that skipped this whole
+            ! block, so the write(51,...) a few lines down hit an unopened (or
+            ! a previous station's already-closed) unit. This block is
+            ! self-contained per loop iteration i already (open here, write
+            ! below, close(51) at the bottom of this same iteration), so it
+            ! must run for every station regardless of which fault j it is on
+            ! -- there is nothing "main-fault-only" about building this
+            ! station's own filename/header. No-op for the only case that
+            ! currently runs (ntotft==1): there j is always 1, so this block
+            ! always executed before too.
+            sttmp = '    '
+            dptmp = '   '
+            ! Sign-aware strike field (item 22): (i3.3) overflowed to '***'
+            ! for negative-x stations, colliding half of e.g. TPV29's list.
+            ! SCEC convention: signed strike distance, zero-padded magnitude.
+            if (nint(xonfs(1,anonfs(2,i),j)/100.d0) < 0) then
+                write(sttmp,'(a1,i3.3)') '-', abs(nint(xonfs(1,anonfs(2,i),j)/100.d0))
+            else
+                write(sttmp,'(i3.3)') nint(xonfs(1,anonfs(2,i),j)/100.d0)
             endif
+            write(dptmp,'(i3.3)') nint(abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,1))/100.d0)
+            open(51,file='faultst'//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
+
+            sttmp = '      '
+            dptmp = '      '
+            write(sttmp,'(f5.1)') xonfs(1,anonfs(2,i),j)/1000.d0
+            write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j)/1000.d0)
+            stLocStamp = '# location = on fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km down-dip'
             write(51,*) '# Project=',projectname
             write(51,*) '# Author=',author
             call date_and_time(values=dateTimeStamp)
