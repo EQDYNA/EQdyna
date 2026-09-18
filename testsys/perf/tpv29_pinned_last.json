@@ -1,0 +1,41 @@
+{
+  "case": "test.tpv29",
+  "core": "0",
+  "n_lo": 20,
+  "n_hi": 60,
+  "busy_ceiling": 0.2,
+  "overridden": false,
+  "timestamp": "2026-09-17 20:40:49",
+  "load_avg": [
+    7.033203125,
+    8.1640625,
+    11.18115234375
+  ],
+  "other_users": [
+    "cisco-amp-scan-svc",
+    "cosmo",
+    "cshyu",
+    "enze",
+    "junlin",
+    "lp",
+    "markw",
+    "messagebus",
+    "rdomeyko",
+    "ron",
+    "yukoo",
+    "zjia"
+  ],
+  "cpu_busy": {
+    "0": 0.0
+  },
+  "affinity_check": "[0]",
+  "cpu_busy_before_jax": {
+    "0": 0.0
+  },
+  "status": "OK",
+  "numpy_ms_per_step": 2083.8108122348785,
+  "jax_ms_per_step": 626.0650932788849,
+  "numpy_fixed_s": 16.183507561683655,
+  "jax_fixed_s": 16.47225558757782,
+  "numpy_over_jax": 3.3284251663375057
+}
