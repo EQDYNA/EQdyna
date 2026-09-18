@@ -1,13 +1,13 @@
 {
  "case": "test.tpv104",
- "sha": "f892ac0",
+ "sha": "87cf37a",
  "host": "cotopaxi",
  "loadavg": [
-  8.06005859375,
-  8.4482421875,
-  11.36962890625
+  7.23828125,
+  5.64794921875,
+  5.06494140625
  ],
- "date": "2026-09-17 20:40",
+ "date": "2026-09-17 22:24",
  "topology": {
   "0": [
    0,
@@ -92,44 +92,9 @@
  },
  "busy_ceiling": 0.2,
  "overridden": false,
- "n_lo": 20,
- "n_hi": 60,
+ "n_lo": 10,
+ "n_hi": 25,
  "skipped": [
-  {
-   "label": "python-numpy th=1   compact",
-   "cpus": [
-    0
-   ]
-  },
-  {
-   "label": "python-numpy th=2   compact",
-   "cpus": [
-    0,
-    1
-   ]
-  },
-  {
-   "label": "python-numpy th=4   compact",
-   "cpus": [
-    0,
-    1,
-    2,
-    3
-   ]
-  },
-  {
-   "label": "python-numpy th=8   compact",
-   "cpus": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
-   ]
-  },
   {
    "label": "python-numpy th=16  compact",
    "cpus": [
@@ -150,9 +115,91 @@
     14,
     15
    ]
+  }
+ ],
+ "rows": [
+  {
+   "engine": "python-numpy",
+   "n": 1,
+   "policy": "compact",
+   "ms_per_step": 1719.7746117909749,
+   "speedup": 1.0,
+   "fixed_s": 5.525703827540081,
+   "cpus": [
+    0
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
   },
   {
-   "label": "python-numpy th=32  compact",
+   "engine": "python-numpy",
+   "n": 2,
+   "policy": "compact",
+   "ms_per_step": 1722.1439997355144,
+   "speedup": 0.9986241638649827,
+   "fixed_s": 5.53561766942342,
+   "cpus": [
+    0,
+    1
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-numpy",
+   "n": 4,
+   "policy": "compact",
+   "ms_per_step": 1704.022963841756,
+   "speedup": 1.009243800279373,
+   "fixed_s": 5.716894308725994,
+   "cpus": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-numpy",
+   "n": 8,
+   "policy": "compact",
+   "ms_per_step": 1705.7837168375652,
+   "speedup": 1.0082020333617372,
+   "fixed_s": 5.674794514973957,
+   "cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-numpy",
+   "n": 32,
+   "policy": "compact",
+   "ms_per_step": 1698.7719217936196,
+   "speedup": 1.0123634548746132,
+   "fixed_s": 5.730713208516441,
    "cpus": [
     0,
     1,
@@ -170,14 +217,6 @@
     13,
     14,
     15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
     24,
     25,
     26,
@@ -185,82 +224,279 @@
     28,
     29,
     30,
-    31
-   ]
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39
+   ],
+   "nodes": [
+    0,
+    1,
+    3,
+    4
+   ],
+   "n_lo": 10,
+   "n_hi": 25
   },
   {
-   "label": "python-numpy th=8   spread",
+   "engine": "python-numpy",
+   "n": 1,
+   "policy": "spread",
+   "ms_per_step": 1699.3899504343667,
+   "speedup": 1.0,
+   "fixed_s": 5.774238665898643,
+   "cpus": [
+    0
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-numpy",
+   "n": 2,
+   "policy": "spread",
+   "ms_per_step": 2756.034517288208,
+   "speedup": 0.6166069183003109,
+   "fixed_s": -4.748504161834717,
+   "cpus": [
+    0,
+    8
+   ],
+   "nodes": [
+    0,
+    1
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-numpy",
+   "n": 4,
+   "policy": "spread",
+   "ms_per_step": 1716.3192749023438,
+   "speedup": 0.9901362615245697,
+   "fixed_s": 5.716615915298462,
    "cpus": [
     0,
     8,
-    16,
     24,
-    32,
-    40,
-    48,
-    56
-   ]
+    32
+   ],
+   "nodes": [
+    0,
+    1,
+    3,
+    4
+   ],
+   "n_lo": 10,
+   "n_hi": 25
   },
   {
-   "label": "python-numpy th=16  spread",
+   "engine": "python-numpy",
+   "n": 8,
+   "policy": "spread",
+   "ms_per_step": 1714.4834677378335,
+   "speedup": 0.9911964637819566,
+   "fixed_s": 5.6701508363088,
    "cpus": [
     0,
     8,
-    16,
     24,
     32,
     40,
-    48,
+    56,
+    1,
+    9
+   ],
+   "nodes": [
+    0,
+    1,
+    3,
+    4,
+    5,
+    7
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-numpy",
+   "n": 16,
+   "policy": "spread",
+   "ms_per_step": 2545.279089609782,
+   "speedup": 0.667663501959976,
+   "fixed_s": -2.7340301672617606,
+   "cpus": [
+    0,
+    8,
+    24,
+    32,
+    40,
     56,
     1,
     9,
-    17,
     25,
     33,
     41,
-    49,
-    57
-   ]
-  },
-  {
-   "label": "python-numpy th=32  spread",
-   "cpus": [
-    0,
-    8,
-    16,
-    24,
-    32,
-    40,
-    48,
-    56,
-    1,
-    9,
-    17,
-    25,
-    33,
-    41,
-    49,
     57,
     2,
     10,
-    18,
+    26,
+    34
+   ],
+   "nodes": [
+    0,
+    1,
+    3,
+    4,
+    5,
+    7
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-numpy",
+   "n": 32,
+   "policy": "spread",
+   "ms_per_step": 1711.0620657602947,
+   "speedup": 0.9931784383749157,
+   "fixed_s": 5.734829982121784,
+   "cpus": [
+    0,
+    8,
+    24,
+    32,
+    40,
+    56,
+    1,
+    9,
+    25,
+    33,
+    41,
+    57,
+    2,
+    10,
     26,
     34,
     42,
-    50,
     58,
     3,
     11,
-    19,
     27,
     35,
     43,
-    51,
-    59
-   ]
+    59,
+    4,
+    12,
+    28,
+    36,
+    44,
+    60,
+    5,
+    13
+   ],
+   "nodes": [
+    0,
+    1,
+    3,
+    4,
+    5,
+    7
+   ],
+   "n_lo": 10,
+   "n_hi": 25
   },
   {
-   "label": "python-jax th=16  compact",
+   "engine": "python-jax",
+   "n": 1,
+   "policy": "compact",
+   "ms_per_step": 607.5027942657471,
+   "speedup": 1.0,
+   "fixed_s": 9.003127574920654,
+   "cpus": [
+    0
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-jax",
+   "n": 2,
+   "policy": "compact",
+   "ms_per_step": 405.658483505249,
+   "speedup": 1.4975720192423543,
+   "fixed_s": 8.535918235778809,
+   "cpus": [
+    0,
+    1
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-jax",
+   "n": 4,
+   "policy": "compact",
+   "ms_per_step": 353.9783000946045,
+   "speedup": 1.7162147908597374,
+   "fixed_s": 8.572197437286377,
+   "cpus": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-jax",
+   "n": 8,
+   "policy": "compact",
+   "ms_per_step": 317.8953806559245,
+   "speedup": 1.9110148534158176,
+   "fixed_s": 8.609597047170002,
+   "cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-jax",
+   "n": 16,
+   "policy": "compact",
+   "ms_per_step": 241.01235071818033,
+   "speedup": 2.5206293057408913,
+   "fixed_s": 8.841332991917929,
    "cpus": [
     0,
     1,
@@ -278,10 +514,21 @@
     13,
     14,
     15
-   ]
+   ],
+   "nodes": [
+    0,
+    1
+   ],
+   "n_lo": 10,
+   "n_hi": 25
   },
   {
-   "label": "python-jax th=32  compact",
+   "engine": "python-jax",
+   "n": 32,
+   "policy": "compact",
+   "ms_per_step": 306.8498293558756,
+   "speedup": 1.9798048952511644,
+   "fixed_s": 8.228127559026083,
    "cpus": [
     0,
     1,
@@ -299,14 +546,6 @@
     13,
     14,
     15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
     24,
     25,
     26,
@@ -314,302 +553,196 @@
     28,
     29,
     30,
-    31
-   ]
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39
+   ],
+   "nodes": [
+    0,
+    1,
+    3,
+    4
+   ],
+   "n_lo": 10,
+   "n_hi": 25
   },
   {
-   "label": "python-jax th=32  spread",
+   "engine": "python-jax",
+   "n": 1,
+   "policy": "spread",
+   "ms_per_step": 605.9797922770183,
+   "speedup": 1.0,
+   "fixed_s": 9.060682137807209,
+   "cpus": [
+    0
+   ],
+   "nodes": [
+    0
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-jax",
+   "n": 2,
+   "policy": "spread",
+   "ms_per_step": 619.5793310801189,
+   "speedup": 0.9780503672073882,
+   "fixed_s": 6.154710133870442,
+   "cpus": [
+    0,
+    8
+   ],
+   "nodes": [
+    0,
+    1
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-jax",
+   "n": 4,
+   "policy": "spread",
+   "ms_per_step": 353.0012448628744,
+   "speedup": 1.7166505815366602,
+   "fixed_s": 8.581055084864298,
    "cpus": [
     0,
     8,
-    16,
+    24,
+    32
+   ],
+   "nodes": [
+    0,
+    1,
+    3,
+    4
+   ],
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-jax",
+   "n": 8,
+   "policy": "spread",
+   "ms_per_step": 256.54802322387695,
+   "speedup": 2.3620520815637285,
+   "fixed_s": 8.786221265792847,
+   "cpus": [
+    0,
+    8,
     24,
     32,
     40,
-    48,
     56,
     1,
-    9,
-    17,
-    25,
-    33,
-    41,
-    49,
-    57,
-    2,
-    10,
-    18,
-    26,
-    34,
-    42,
-    50,
-    58,
-    3,
-    11,
-    19,
-    27,
-    35,
-    43,
-    51,
-    59
-   ]
-  }
- ],
- "rows": [
-  {
-   "engine": "python-numpy",
-   "n": 1,
-   "policy": "spread",
-   "ms_per_step": 1755.0382852554321,
-   "speedup": 1.0,
-   "fixed_s": 6.4584269523620605,
-   "cpus": [
-    0
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-numpy",
-   "n": 2,
-   "policy": "spread",
-   "ms_per_step": 1250.0970602035522,
-   "speedup": 1.4039216162700685,
-   "fixed_s": 37.17688179016113,
-   "cpus": [
-    0,
-    8
-   ],
-   "nodes": [
-    0,
-    1
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-numpy",
-   "n": 4,
-   "policy": "spread",
-   "ms_per_step": 3537.1753811836243,
-   "speedup": 0.4961694278976221,
-   "fixed_s": -24.64416217803955,
-   "cpus": [
-    0,
-    8,
-    16,
-    24
+    9
    ],
    "nodes": [
     0,
     1,
-    2,
-    3
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-jax",
-   "n": 1,
-   "policy": "compact",
-   "ms_per_step": 613.9378726482391,
-   "speedup": 1.0,
-   "fixed_s": 9.332523226737976,
-   "cpus": [
-    0
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-jax",
-   "n": 2,
-   "policy": "compact",
-   "ms_per_step": 402.7768909931183,
-   "speedup": 1.5242629018126284,
-   "fixed_s": 9.312933802604675,
-   "cpus": [
-    0,
-    1
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-jax",
-   "n": 4,
-   "policy": "compact",
-   "ms_per_step": 366.8531596660614,
-   "speedup": 1.673524832679903,
-   "fixed_s": 8.628033757209778,
-   "cpus": [
-    0,
-    1,
-    2,
-    3
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-jax",
-   "n": 8,
-   "policy": "compact",
-   "ms_per_step": 322.5232005119324,
-   "speedup": 1.9035463857290023,
-   "fixed_s": 9.074509382247925,
-   "cpus": [
-    0,
-    1,
-    2,
     3,
     4,
     5,
-    6,
     7
    ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-jax",
-   "n": 1,
-   "policy": "spread",
-   "ms_per_step": 611.2058818340302,
-   "speedup": 1.0,
-   "fixed_s": 9.703569531440735,
-   "cpus": [
-    0
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-jax",
-   "n": 2,
-   "policy": "spread",
-   "ms_per_step": 348.193222284317,
-   "speedup": 1.7553640987731525,
-   "fixed_s": 17.535794377326965,
-   "cpus": [
-    0,
-    8
-   ],
-   "nodes": [
-    0,
-    1
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-jax",
-   "n": 4,
-   "policy": "spread",
-   "ms_per_step": 288.9883279800415,
-   "speedup": 2.1149846642811196,
-   "fixed_s": 9.000743389129639,
-   "cpus": [
-    0,
-    8,
-    16,
-    24
-   ],
-   "nodes": [
-    0,
-    1,
-    2,
-    3
-   ],
-   "n_lo": 20,
-   "n_hi": 60
-  },
-  {
-   "engine": "python-jax",
-   "n": 8,
-   "policy": "spread",
-   "ms_per_step": 280.7351529598236,
-   "speedup": 2.177161910042312,
-   "fixed_s": 8.720095992088318,
-   "cpus": [
-    0,
-    8,
-    16,
-    24,
-    32,
-    40,
-    48,
-    56
-   ],
-   "nodes": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
-   ],
-   "n_lo": 20,
-   "n_hi": 60
+   "n_lo": 10,
+   "n_hi": 25
   },
   {
    "engine": "python-jax",
    "n": 16,
    "policy": "spread",
-   "ms_per_step": 433.4979474544525,
-   "speedup": 1.4099395058802424,
-   "fixed_s": 5.35202944278717,
+   "ms_per_step": -160.51619847615558,
+   "speedup": -3.775194017985889,
+   "fixed_s": 19.62449796994527,
    "cpus": [
     0,
     8,
-    16,
     24,
     32,
     40,
-    48,
     56,
     1,
     9,
-    17,
     25,
     33,
     41,
-    49,
-    57
+    57,
+    2,
+    10,
+    26,
+    34
    ],
    "nodes": [
     0,
     1,
-    2,
     3,
     4,
     5,
-    6,
     7
    ],
-   "n_lo": 20,
-   "n_hi": 60
+   "n_lo": 10,
+   "n_hi": 25
+  },
+  {
+   "engine": "python-jax",
+   "n": 32,
+   "policy": "spread",
+   "ms_per_step": 740.9017403920492,
+   "speedup": 0.817894950491496,
+   "fixed_s": 4.377104202906291,
+   "cpus": [
+    0,
+    8,
+    24,
+    32,
+    40,
+    56,
+    1,
+    9,
+    25,
+    33,
+    41,
+    57,
+    2,
+    10,
+    26,
+    34,
+    42,
+    58,
+    3,
+    11,
+    27,
+    35,
+    43,
+    59,
+    4,
+    12,
+    28,
+    36,
+    44,
+    60,
+    5,
+    13
+   ],
+   "nodes": [
+    0,
+    1,
+    3,
+    4,
+    5,
+    7
+   ],
+   "n_lo": 10,
+   "n_hi": 25
   }
  ]
 }

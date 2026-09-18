@@ -101,6 +101,12 @@ def main():
         raise SystemExit(f'FAIL: one engine did not produce a timing (numpy={ps_numpy}, jax={ps_jax})')
 
     ratio = ps_numpy / ps_jax
+    # n_lo/n_hi are ALREADY in `result` (set unconditionally above, before either
+    # engine runs) precisely so a ms/step figure can never be reported without
+    # the step-count pair that produced it -- the earlier relayed 4.0x figure
+    # this script re-checks had no recorded n_lo/n_hi at all, and this pass's
+    # own 3.328x not matching it is otherwise unexplainable. Do not move
+    # n_lo/n_hi into this update() or any other conditional branch below.
     result.update(status='OK', numpy_ms_per_step=ps_numpy * 1e3, jax_ms_per_step=ps_jax * 1e3,
                   numpy_fixed_s=fixed_numpy, jax_fixed_s=fixed_jax,
                   numpy_over_jax=ratio)

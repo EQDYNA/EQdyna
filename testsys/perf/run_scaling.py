@@ -56,12 +56,29 @@ let the pin speak for itself, exactly like the numa tool does.
 TWO PLACEMENT POLICIES, so a knee can be attributed (same idea as
 `run_numa_scaling.py`'s within-node/spread contrast, generalised to every
 core count instead of one):
-  COMPACT -- fill node 0's cpus, then node 1's, etc. Minimum NUMA spread
+  COMPACT -- fill one node's cpus, then the next, etc. Minimum NUMA spread
              for a given core count.
-  SPREAD  -- round-robin across every node (0,1,2,...,7,0,1,...). Maximum
-             NUMA spread for the SAME core count. If compact scales and
-             spread does not, the knee is locality; if both flatten
-             together, it is the solver running out of parallel work.
+  SPREAD  -- round-robin across nodes (one per node, then a second pass,
+             ...). Maximum NUMA spread for the SAME core count. If compact
+             scales and spread does not, the knee is locality; if both
+             flatten together, it is the solver running out of parallel work.
+
+NODE SELECTION IS NOW FREE-FIRST, NOT NODE0-FIRST (F4, 2026-09-17 remeasurement
+of item 33). Both policies used to iterate `sorted(nodes)`, i.e. always start
+at node 0. On this box node 0 (and neighbours) intermittently carry foreign
+tenants -- a same-session sweep saw cpu 0/1/10/16-19/30/40-41 busy across four
+attempts and skipped 12 of 24 configs, even though 60 of 64 cores were free
+the whole time on nodes elsewhere. The tool was asking for the wrong 32, not
+finding that the box lacked room. `free_node_map()` probes every cpu's busy
+fraction ONCE per configuration (reusing `run_numa_scaling.cpu_busy_fractions`,
+not reimplementing it) and restricts BOTH policies to nodes that are ENTIRELY
+under the busy ceiling right now; `compact_cpus`/`spread_cpus` then run
+unchanged over that filtered, still-node0-first-if-node0-is-free set. If the
+free set cannot supply the requested core count, the configuration is SKIPPED
+and recorded exactly as a busy-cpu skip is -- this widens WHERE the tool looks
+for room, it does not loosen what it demands of that room (the ceiling itself,
+`--busy-ceiling`, is untouched). When node 0 already has room this reduces to
+the old behaviour exactly, since node 0 sorts first among the free nodes too.
 
 PER-CPU BUSY CHECK BEFORE EVERY POINT, same discipline and same function
 (`cpu_busy_fractions`/`require_idle`, imported from `run_numa_scaling.py`
@@ -162,6 +179,55 @@ def numactl_prefix(cpus, node_map):
     nodes = nodes_of(node_map, cpus)
     return ['numactl', '--physcpubind=%s' % ','.join(str(c) for c in cpus),
             '--membind=%s' % ','.join(str(n) for n in nodes)]
+
+
+def free_node_map(all_nodes, busy_ceiling, override):
+    """{node: cpus} restricted to nodes whose cpus are ALL currently under
+    `busy_ceiling`, so `compact_cpus`/`spread_cpus` build placements out of
+    room that actually exists right now instead of always starting at node 0
+    (see module docstring, F4). Probes fresh on every call -- occupancy moves
+    over the course of a multi-minute sweep, so a configuration built early
+    from a stale free-set could target a node that has since gone busy (the
+    per-cpu `require_idle` check downstream still catches that case, but
+    asking for the wrong node in the first place is the defect being fixed).
+
+    `override` mirrors `--i-know-the-box-is-busy`: if the busy ceiling itself
+    is being bypassed, there is nothing to filter FOR, so this reverts to the
+    full topology in node-number order -- identical to pre-fix behaviour.
+
+    Raises SystemExit if per-cpu utilisation could not be read at all (same
+    hard-failure discipline as `cpu_busy_fractions`/`require_idle`: a check
+    that cannot evaluate must fail, not silently call every node free)."""
+    if override:
+        return dict(all_nodes)
+    all_cpus = sorted(c for cs in all_nodes.values() for c in cs)
+    busy = numa.cpu_busy_fractions(all_cpus)
+    if not busy:
+        raise SystemExit(
+            'FAIL: could not read per-cpu utilisation for cpus %s from '
+            '/proc/stat -- cannot tell which NUMA nodes are free (rule 2: a '
+            'check that cannot evaluate must fail).' % all_cpus)
+    free = {}
+    for n, cpus in all_nodes.items():
+        fracs = [busy.get(c) for c in cpus]
+        if any(f is None for f in fracs):
+            continue
+        if max(fracs) <= busy_ceiling:
+            free[n] = cpus
+    return free
+
+
+def select_cpus(free_nodes, k, policy):
+    """cpus for a config of size k, built from ONLY currently-free NUMA nodes
+    (point 2/3 of the fix). Returns None -- not an exception -- if the free
+    set cannot supply k cpus under the given policy; the caller records this
+    exactly like a busy-cpu skip. This widens where the tool looks for room;
+    it never lowers what it demands of that room."""
+    fn = compact_cpus if policy == 'compact' else spread_cpus
+    try:
+        return fn(free_nodes, k)
+    except ValueError:
+        return None
 
 
 # --------------------------------------------------------------------------
@@ -341,8 +407,15 @@ def main():
         base = {}
         for policy in policies:
             for n in fortran_ranks:
-                cpus = compact_cpus(nodes, n) if policy == 'compact' else spread_cpus(nodes, n)
+                free = free_node_map(nodes, a.busy_ceiling, a.i_know_the_box_is_busy)
                 label = f'fortran np={n:<3} {policy}'
+                cpus = select_cpus(free, n, policy)
+                if cpus is None:
+                    print(f'  {label:<28} SKIPPED (no {n}-cpu {policy} placement among '
+                          f'currently-free NUMA nodes {sorted(free)})')
+                    skipped.append(dict(label=label, reason='no_free_node_placement',
+                                        n=n, policy=policy, free_nodes=sorted(free)))
+                    continue
                 chk = measure_once(label, cpus)
                 if chk is None:
                     continue
@@ -367,8 +440,15 @@ def main():
         base = {}
         for policy in policies:
             for n in py_threads:
-                cpus = compact_cpus(nodes, n) if policy == 'compact' else spread_cpus(nodes, n)
+                free = free_node_map(nodes, a.busy_ceiling, a.i_know_the_box_is_busy)
                 label = f'{py_backend} th={n:<3} {policy}'
+                cpus = select_cpus(free, n, policy)
+                if cpus is None:
+                    print(f'  {label:<28} SKIPPED (no {n}-cpu {policy} placement among '
+                          f'currently-free NUMA nodes {sorted(free)})')
+                    skipped.append(dict(label=label, reason='no_free_node_placement',
+                                        n=n, policy=policy, free_nodes=sorted(free)))
+                    continue
                 chk = measure_once(label, cpus)
                 if chk is None:
                     continue
