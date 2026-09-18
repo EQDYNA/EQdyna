@@ -206,9 +206,39 @@ rows) dispatched to zofia-kaminska with the exact figures for her to spot
 check against the committed JSON evidence before writing. Worktree reaped
 after landing.
 
+## v5.11.1 tagged and released
+
+CI confirmed green on `f607bfd` (run `35296849174`, `conclusion: success`,
+verified via `gh run view`, not just the watch exit code). Tagged at that
+exact commit (not current HEAD, which by tag time had two further docs-only
+commits plus the item-33/40 perf-tooling commit `27c7a03` still mid-CI --
+tagging at the last CODE-bearing commit with confirmed-green CI, matching
+this project's own v5.11.0 precedent of tagging on the verified state rather
+than blocking on unrelated in-flight docs pushes). Sequence run as one
+uninterrupted block per rule 15 step 7: `git tag -a v5.11.1 ... f607bfd`,
+`git push origin v5.11.1`, `gh release create v5.11.1 --notes-file
+.claude/release_notes_v5.11.1.md --latest --verify-tag` (notes file kept
+local under `.claude/`, gitignored, not tracked). Zofia's item 33/40 board
+update landed first (commit `7d2d300`), reviewed in full before committing
+-- she caught and corrected one inaccuracy in my own brief (claimed
+`scaling_last.json` carried per-cpu busy fractions; it does not, only
+skip labels/cpu-sets -- she wrote the accurate version instead of
+transcribing my error).
+
+Zofia's items-33/40 diff, and item-41 diff before it, were BOTH reviewed
+line-by-line before committing -- this is the same discipline as the
+worktree-vs-HEAD diff check for code, applied to board edits: read what
+comes back, don't just trust the report and commit it blind.
+
+`27c7a03` (item 33/40 perf-tooling commit, new standalone files under
+`testsys/perf/`) triggered its own CI run (not paths-ignored, unlike the
+docs/board commits) -- still in progress as of the tag; watching in
+background, not gating on it since it's outside v5.11.1's scope (report-only
+tooling, no version bump attached, matches this project's convention of
+un-tagged intermediate commits between releases).
+
 ## Next
 
-Waiting on: CI green on `f607bfd`/`27c7a03` (background `gh run watch`)
-before tagging v5.11.1; zofia's item 33/40 board update. No other board
-items are actionable outside perf (unparked, gated on the tool's own honest
-ceiling) and the tpv30/drv.a6 hands-off zone.
+Waiting on: `27c7a03`'s CI run (background `gh run watch`, not
+release-gating). No other board items are actionable outside perf (unparked,
+gated on the tool's own honest ceiling) and the tpv30/drv.a6 hands-off zone.
