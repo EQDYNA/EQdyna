@@ -103,11 +103,44 @@ non-hands-off next step and were dispatched this session (below): item 34
 Neither mission touches a file the other touches (driver.py/testsys/regression
 vs a scratch tpv37 run) — no collision.
 
+## Landed this session
+
+- **Item 41 fix** — commit `63ea37c`. `src/python/eqdyna/driver.py:182`
+  `xp.asarray(inv['stress_i0'])` -> `.copy()`. Landed by a general-purpose
+  worktree agent (`agent-a72b9d36cb1834d6a`, commit `dd66f0b`), cherry-picked
+  (`git cherry-pick --no-commit`), diffed clean against master (only the
+  1-line fix + new test, no staleness). Re-verified myself, not just the
+  report: fresh `testsys/regression/test_stress_i0_carry_aliasing.py`
+  SUCCESS both backends; fresh `testsys/run.py unit regression` SUCCESS (249
+  unit); fresh `testsys/e2e/run_e2e.py --cases test.tpv8 --backends
+  python-numpy,python-jax` — max|diff| 3.861189e-10 / 4.119873e-10,
+  byte-identical to the subagent's reported before/after numbers. Pushed.
+- **Item 34 board update** — commit `6e31432`. C_hg=2 does not work as a
+  drop-in ringing fix (over-damps the rupture itself: 3/12 sampled stations
+  arrest, survivors lose 30-67% slip); `C_hg` confirmed not exposed as a case
+  parameter. Relayed from dunyu-liu's worktree report (model sonnet, after a
+  429 on fable-5 for the first dispatch attempt — no worktree was ever
+  created for that dead attempt, confirmed via `git worktree list` before
+  treating it as gone), NOT independently re-run by this session — flagged as
+  such in the row per the item-40 disclosure convention. Zofia-kaminska wrote
+  the row text (I supplied the finding + verified the worktree evidence
+  first); I reviewed her diff (single row, exactly the supplied text) and
+  committed it myself.
+- Both worktrees (`agent-a3300e15776133865`, `agent-a72b9d36cb1834d6a`)
+  reaped after landing — nothing uncommitted/unpushed left in either.
+
+## In flight
+
+Full `python3 testsys/run.py all` (30-cell sweep) launched in background on
+`6e31432` before considering a version bump, per rule 15 step 1 ("never tag
+over a red gate," and the fast tiers alone don't exercise the other 9 gated
+cases this driver.py change could in principle touch even though the
+regression test argues it's a true no-op everywhere). Will bump VERSION and
+cut a release per PROJECT_RULES.md rule 15's full workflow only if this comes
+back 30/30 green.
+
 ## Next
 
-Land each mission's result through the merge gate (fresh oracle re-run,
-worktree-vs-HEAD diff for staleness) as it reports back; update
-pathway_forward.md via zofia-kaminska with the literal command output for
-items 34 and 41; consider a patch tag once item 41 lands (real bug fix with
-regression test, gate green). No perf work, no tpv30/drv.a6 re-investigation,
-per brief.
+No further board items are actionable without touching perf (parked) or the
+tpv30/drv.a6 hands-off zone. Awaiting the full-sweep result to decide on a
+release tag.
