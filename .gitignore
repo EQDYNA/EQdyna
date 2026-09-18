@@ -26,6 +26,7 @@ testsys/perf/perf_case/
 # run_scaling.py) rather than reusing run_perf.py's case dir.
 testsys/perf/numa_case/
 testsys/perf/scaling_case/
+testsys/perf/perf_case_tpv29/
 testsys/parity/probe_case/
 # 484 MB of fetched submissions; the TOOLING is tracked at scripts/scec/.
 # NOTE (2026-09-16, v5.8.2 audit): a trailing inline comment on this pattern's
