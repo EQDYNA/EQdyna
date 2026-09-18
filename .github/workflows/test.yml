@@ -22,6 +22,20 @@ on:
       - 'docs/**'
   pull_request:
 
+# Item 35: a push to a branch with an open PR fires BOTH `push` and
+# `pull_request` for the identical commit, giving two full 7-job runs created
+# within a second of each other. Grouping by the ACTUAL head commit (not by
+# ref, which differs between the two events -- `pull_request` runs against a
+# synthetic merge ref) puts both events' runs in the same concurrency group,
+# so the second one queued cancels the first rather than both running to
+# completion. This does not touch trigger scope (`paths-ignore` above is
+# unchanged, still deliberately narrow -- see its own comment) and does not
+# reduce coverage: a genuinely different commit gets its own group and is
+# never cancelled by an unrelated one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
 # ONE job on ONE ubuntu-22.04 runner used to do apt install + build + unit +
 # regression + e2e-ci back to back, with the test step fully sequential and
 # by far the largest share of total wall clock. Splitting into a build job
