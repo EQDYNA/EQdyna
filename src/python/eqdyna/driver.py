@@ -179,7 +179,7 @@ def run(S, nsteps=None, verbose=True, xp=np):
     N = S['N']; NEQ = S['NEQ']; nftnd = S['nftnd']
     z = (lambda *a: xp.zeros(*a))
     carry0 = (z(NEQ + 1), z((N, 3)), z((N, 3)), z(NEQ + 1),
-              xp.asarray(inv['stress_i0']), z((inv['Ep'], 15)),
+              xp.asarray(inv['stress_i0']).copy(), z((inv['Ep'], 15)),
               xp.asarray(S['fric_init'].copy()),
               xp.full(nftnd, gv.FNFT_SENTINEL),
               xp.asarray(0.0),
