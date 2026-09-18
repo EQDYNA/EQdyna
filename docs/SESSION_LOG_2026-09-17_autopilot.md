@@ -166,9 +166,49 @@ each tool's own strict default busy-ceiling per configuration (no
 honestly rather than work around it -- exactly the rail the unpark instruction
 itself specified. Not yet returned.
 
+## Full sweep result -> v5.11.1 cut
+
+`python3 testsys/run.py all` on `6e31432`: **30/30 e2e SUCCESS**, unit 249,
+regression, wall clock 2275.0s. Item 41's fix confirmed a true no-op across
+the entire gated table, not just `test.tpv8`. Cut v5.11.1 (patch): VERSION
+bump, README/pastReleaseNotes notes moved per rule 15, runtime banner
+(`eqdyna3d.f90:17`) bumped 5.11.0->5.11.1 (own source change, so rebuilt and
+re-verified: fresh unit+regression SUCCESS including `test_version_banner`,
+and a fresh `test.tpv8 x fortran` spot check came back byte-identical
+`max|diff|=3.051760e-11` to the pre-rebuild number, confirming the banner
+text is output-neutral -- did not re-run the full 30-cell/38-min sweep a
+second time for a provably print-only change, a deliberate, stated skip per
+the v5.8.5 precedent, not a silent one). pathway_forward.md item 41 marked
+RESOLVED + Tasks-done row, via zofia-kaminska, diff reviewed before
+committing. Landed as commit `f607bfd`, pushed, CI watch (`gh run watch`)
+launched in background before tagging -- rule 15 step 6/7, tag only after
+CI green on this exact pushed SHA.
+
+## Item 33/40 remeasurement landed (report-only, no gate change)
+
+mira-volkov's worktree (`agent-a728ce7e21fae1067`) diffed clean against
+current master (only `.gitignore` + 3 new standalone files: `.gitignore`
+addition for `perf_case_tpv29/`, `run_tpv29_pinned_compare.py`,
+`scaling_last.json`, `tpv29_pinned_last.json`) -- cherry-picked directly,
+committed `27c7a03`, pushed. Findings: item 33's standing 2.35x-at-32-cores
+JAX figure is UNCONFIRMED, not reproduced or refuted -- no 32-core point
+survived the strict busy-ceiling in 4 attempts on this session's genuinely
+volatile box (12/24 configs skipped, honestly reported per-cpu, no
+override); best clean point, 2.18x at 8 cores, REGRESSES to 1.41x at 16 --
+a declining trend that argues for skepticism of the 2.35x claim, not
+confirmation. NumPy anti-scaling reproduces and is worse than previously
+characterized (collapses 1.40x->0.50x between 2 and 4 cores, i.e. slower
+than 1 core). Item 40: fresh independent measurement (not relayed this
+time) gives numpy/jax ratio 3.328x on tpv29, same order/direction as the
+previously-relayed 4.0x but not an exact match -- most likely a different
+step-count pair, not independently confirmed. Board update (item 33/40
+rows) dispatched to zofia-kaminska with the exact figures for her to spot
+check against the committed JSON evidence before writing. Worktree reaped
+after landing.
+
 ## Next
 
-Full-sweep gate (30 cells, background) and the item 33/40 remeasurement
-(background) both in flight. Release decision waits on the full sweep. No
-other board items are actionable outside perf (now unparked, gated on the
-tool's own honest ceiling) and the tpv30/drv.a6 hands-off zone.
+Waiting on: CI green on `f607bfd`/`27c7a03` (background `gh run watch`)
+before tagging v5.11.1; zofia's item 33/40 board update. No other board
+items are actionable outside perf (unparked, gated on the tool's own honest
+ceiling) and the tpv30/drv.a6 hands-off zone.
