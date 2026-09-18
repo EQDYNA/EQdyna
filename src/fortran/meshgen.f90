@@ -218,16 +218,49 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
     
     integer (kind = 4) :: bndl,bndr,bndf,bndb,bndd,bndu, nx, ny, nz, mex, mey, mez
     integer (kind = 4) :: totalNumFaultNode, iFault, i
+    integer (kind = 4) :: newFltnum(6)
     ! Initialize fltMPI(6) to .false.
     fltMPI=.false.
-    
-    if(fltnum(1) /= 0) allocate(fltl(fltnum(1)))
-    if(fltnum(2) /= 0) allocate(fltr(fltnum(2)))
-    if(fltnum(3) /= 0) allocate(fltf(fltnum(3)))
-    if(fltnum(4) /= 0) allocate(fltb(fltnum(4)))
-    if(fltnum(5) /= 0) allocate(fltd(fltnum(5)))
-    if(fltnum(6) /= 0) allocate(fltu(fltnum(6)))
-    
+
+    ! FIX (pathway_forward.md item 10): fltnum(1:6) coming INTO this call is
+    ! stale -- either the PREVIOUS fault's own per-boundary counts (this
+    ! subroutine is called once per fault, from meshgen's `do ift=1,ntotft`
+    ! loop, and used to leave fltnum holding fault ift-1's counts on exit) or,
+    ! on the very first call, createMasterNode's running tally across every
+    ! fault. Allocating fltl..fltu sized off that stale value -- and without
+    ! deallocating an array a previous call to this subroutine already
+    ! allocated -- aborts on the second and subsequent faults (Fortran
+    ! `allocate` on an already-allocated object is a runtime error). Count
+    ! THIS fault's own per-boundary membership first, from fltgm (which the
+    ! fill loop below also reads, over the same 1..totalNumFaultNode range),
+    ! then deallocate any previous allocation and (re)allocate to that size.
+    ! No-op for ntotft==1: there is only ever one call, fltl..fltu start
+    ! unallocated, and newFltnum here is identical to the fltnum this block
+    ! used to read (both counted from the same fltgm entries).
+    newFltnum = 0
+    do i = 1, totalNumFaultNode
+        if(mod(fltgm(i),10)==1 ) newFltnum(1) = newFltnum(1) + 1
+        if(mod(fltgm(i),10)==2 ) newFltnum(2) = newFltnum(2) + 1
+        if(mod(fltgm(i),100)-mod(fltgm(i),10)==10 ) newFltnum(3) = newFltnum(3) + 1
+        if(mod(fltgm(i),100)-mod(fltgm(i),10)==20 ) newFltnum(4) = newFltnum(4) + 1
+        if(fltgm(i)-mod(fltgm(i),100)==100 ) newFltnum(5) = newFltnum(5) + 1
+        if(fltgm(i)-mod(fltgm(i),100)==200 ) newFltnum(6) = newFltnum(6) + 1
+    enddo
+
+    if (allocated(fltl)) deallocate(fltl)
+    if (allocated(fltr)) deallocate(fltr)
+    if (allocated(fltf)) deallocate(fltf)
+    if (allocated(fltb)) deallocate(fltb)
+    if (allocated(fltd)) deallocate(fltd)
+    if (allocated(fltu)) deallocate(fltu)
+
+    if(newFltnum(1) /= 0) allocate(fltl(newFltnum(1)))
+    if(newFltnum(2) /= 0) allocate(fltr(newFltnum(2)))
+    if(newFltnum(3) /= 0) allocate(fltf(newFltnum(3)))
+    if(newFltnum(4) /= 0) allocate(fltb(newFltnum(4)))
+    if(newFltnum(5) /= 0) allocate(fltd(newFltnum(5)))
+    if(newFltnum(6) /= 0) allocate(fltu(newFltnum(6)))
+
     fltnum = 0
     do i = 1, totalNumFaultNode
         if(mod(fltgm(i),10)==1 ) then 
