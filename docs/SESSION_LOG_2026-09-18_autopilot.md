@@ -116,3 +116,114 @@ landed after v5.11.1 with no intermediate tag).
 Worktrees: `agent-a437a272308248b00` (item 33 mission) -- fully committed and
 cherry-picked to master (`2ad69c4` -> `036b4ba`), safe to reap, no unlanded
 work in it. Reaping now.
+
+## Continuation, same date -- new conductor session, 24h/48h autopilot
+
+Budget: read as 24h, extended by the coordinator mid-session to 48h. Grant:
+patch/minor on non-default branch per default autonomous-mode reading; no
+release cut planned this leg.
+
+**Housekeeping.** Pushed 3 commits that were sitting unpushed on master since
+the prior session's close (`036b4ba`/`90fdc12`/`b4f1189` -- item 33 scatter
+probe + its corrected verdict + worktree-reap note). Report-only/doc, nothing
+to gate.
+
+**Item 16 -- CLOSED, verified fresh.** `meng2023a`/`meng2023cb`/`tpv36`/`tpv37`
+all `True` in `testNameList.nameList` and gated (bound `1e-06`) in
+`testsys/matrix.py`'s `CASE_BOUND`; `frt.canonical.txt` exists for all four
+under `test.reference.results/`. Handing this exact output to zofia-kaminska
+for the board row (I do not author board rows, rule 19).
+
+**Item 35 -- landed, corrected diagnosis.** The brief's stated mechanism
+("push AND pull_request both firing") does not match the evidence: `gh run
+list --workflow=test.yml --limit 150` shows **zero** `pull_request`-event runs
+in this repo's entire visible history -- every run is `event: push`. The real
+duplicate pattern (confirmed on `335e21d0`/`238f1acc`/`9950ae1c`/`bccfb845`,
+already named in `PROJECT_RULES.md` rule 15's own rationale as "a separate,
+unexplained duplicate-push artifact") is **two `push` events for the identical
+commit, ~1 second apart**. Root cause found: `git remote -v` showed `origin`
+pointing at `https://github.com/EQdyna/EQdyna.git` (old, case-different),
+which every push in this and the prior session's history redirected through
+("This repository moved. Please use the new location:
+https://github.com/EQDYNA/EQdyna.git" -- printed on literally every push this
+session before the fix). A repository-transfer redirect is a known cause of
+duplicate webhook-triggered Actions runs (the push can be processed by both
+the old and new repository records). Fixed locally: `git remote set-url
+origin https://github.com/EQDYNA/EQdyna.git` -- confirmed via `git ls-remote
+origin HEAD`, no redirect notice, resolves directly. Git worktrees share this
+repo's `.git/config`, so this covers the dispatched agents' worktrees too.
+All in-repo references (`README.md`, `Docker.guide.md`, `pastReleaseNotes.md`)
+already used the canonical URL -- nothing to commit for this part, it was
+purely local git config.
+
+Landed the originally-planned mitigation anyway (`82d68d8`, pushed clean via
+the corrected remote, no redirect) as defense-in-depth: a `concurrency: group:
+${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha
+}}` block, which dedupes by commit SHA regardless of which event(s) fired --
+correct for the ACTUAL push+push mechanism found, not just the originally
+suspected push+pull_request one. Verified before commit: YAML parses,
+`paths-ignore` diff-checked untouched (only the concurrency block was added,
+confirmed via `git diff` showing zero lines removed), `python3 testsys/run.py
+unit regression` SUCCESS both tiers, `test_ci_workflow_coverage.py` still PASS
+(25 cells, no overlap) confirming the guard that parses this file is unaffected.
+
+**Correction for whoever reads the commit message on `82d68d8`:** it states
+the push+pull_request mechanism from the original brief; the real mechanism,
+per the evidence above, is the stale-remote redirect. Recording the
+correction here rather than rewriting pushed history.
+
+**Item 38 -- investigated, not closed; genuinely bounded by environment access, not by effort.**
+Confirmed first: this is a real FAIL path, not a silent skip -- `probe_real_binary()`
+returns `None` (a skip) only when the binary or `mpirun` executable is entirely
+absent (lines ~261-264, ~276-278), and the board's own recorded evidence for
+the one occurrence states the exit code was already correctly checked as 21
+(`ERR_INPUT_FILE_MISSING`) -- meaning the probe had already passed both skip
+checks and reached the real run before the FATAL-text check flaked. Confirmed
+`abortRun` (`src/fortran/errorCodes.f90:120-170`) already calls `flush(6)`
+immediately before `MPI_Abort` -- the Fortran side is not the gap.
+
+Attempted local reproduction: 40x `mpirun -np 2 bin/eqdyna` in a fresh empty
+tempdir each time (the exact probe scenario) under this box's real ambient
+load (~load 22 from another user's jobs) -- **0/40 reproduced.** This number
+is not informative about CI's actual race, for a reason found mid-investigation:
+this dev box's `mpirun` is **Open MPI 4.1.1** (`mpirun --version`), while
+`.github/workflows/test.yml` installs **mpich** via `apt-get install mpich` on
+ubuntu-22.04 -- a different MPI implementation with a different stdout-forwarding
+architecture. No sudo on this box (`sudo -n true` fails) to install a matching
+mpich, and no working local mpich install was found (`find` turned up only
+ancient TACC-era `mpich-1.2.x`/`mpich2-1.4.x` trees, none usable). So the 40
+local runs tested the wrong launcher entirely and are recorded here as a
+methodology note, not as evidence the race doesn't exist.
+
+**Standing, honest verdict:** root mechanism is diagnosed at the level of
+"what class of race" -- MPI_Abort's process-group teardown can, in some MPI
+implementations, race ahead of the launcher's own stdout-forwarding relay for
+an aborting (or sibling) rank, independent of the writing rank's own
+already-correct `flush(6)` (which only guarantees the rank's local libc buffer
+reached its own fd, not that the launcher's proxy has relayed that fd's
+content to the aggregated parent stdout before job teardown). This is
+consistent with one occurrence in months of CI history and zero in 40
+same-scenario local trials under a different launcher. **No code change
+made** -- a speculative synchronization delay in `abortRun` could not be
+verified against an actual reproduction (this box cannot run CI's mpich), and
+Cardinal-rule discipline here cuts against shipping an unverifiable "fix" to a
+load-bearing exit path across two compiler toolchains (`mpif90`/`mpiifort`)
+for uncertain benefit. Left OPEN for zofia's board update with this exact
+finding; recommend the row's "next occurrence" instruction be sharpened to
+"capture the FULL raw combined stdout+stderr immediately, not just the derived
+problems list, and note whether the CI runner's mpich version matches
+`mpichversion` on record" so a second occurrence is actually diagnosable.
+
+**Items 7/9/10 and item 33 (jax-only, 16-core cap) dispatched in parallel**
+(disjoint files: `src/fortran/{netcdf_io,library_output,meshgen}.f90` +new
+regression tests vs. `testsys/perf/run_scaling.py`), both worktree-isolated.
+Results pending; will re-verify each against gate axes 3/4 before landing,
+per standing discipline -- not on the subagents' own reports.
+
+Coordinator has since queued, in order after the above: jax-vs-Fortran
+ms/step report (matched cores 1-16, before/after any jax fix), then three
+SERIAL `kai-fischer` refactor rounds (comments/prose, then guard-inventory
+audit, then board/log/comment duplication), each gated on the full sweep
+before the next starts. numpy scaling work is explicitly DROPPED by owner
+decision -- record as an accepted property (flat 1.0x, element-wise numpy +
+`np.add.at` single-threaded by construction) rather than a gap.
