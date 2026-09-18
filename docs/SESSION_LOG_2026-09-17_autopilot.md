@@ -237,8 +237,29 @@ background, not gating on it since it's outside v5.11.1's scope (report-only
 tooling, no version bump attached, matches this project's convention of
 un-tagged intermediate commits between releases).
 
+`27c7a03`'s CI run confirmed green (`35296909045`, `conclusion: success`).
+
+## Follow-up: NUMA placement fix for item 33 (owner-relayed via primary channel)
+
+A further message via the same channel that relayed the "Go" pointed out a
+real tooling gap, consistent with the discipline already established (kept
+the strict ceiling, no override requested, stays clear of tpv30/drv.a6):
+`run_scaling.py`'s compact/spread placement always starts allocation at
+node0, and this box's foreign tenants happen to sit on node0 -- so 16/32-core
+configs were being skipped not because the box lacks room (60/64 cores free)
+but because the tool kept asking for the busy 32. Dispatched mira-volkov to
+make placement choose from currently-free NUMA nodes (reusing the existing
+F3 `cpu_busy_fractions` probe, not duplicating it), keep the strict ceiling
+and skip-recording unchanged, record which nodes were actually used per
+data point (placement is now data-dependent), and re-measure item 33
+targeting a clean 16/32-core point. Also asked for a small, low-risk
+structural fix to `run_tpv29_pinned_compare.py`: make it always record its
+own `n_lo`/`n_hi` step counts in its JSON output, since item 40's 3.328x
+vs the relayed 4.0x discrepancy is explained by exactly that omission in
+the original run. In flight.
+
 ## Next
 
-Waiting on: `27c7a03`'s CI run (background `gh run watch`, not
-release-gating). No other board items are actionable outside perf (unparked,
-gated on the tool's own honest ceiling) and the tpv30/drv.a6 hands-off zone.
+Waiting on mira-volkov's placement-fix mission. No other board items are
+actionable outside perf (unparked, gated on the tool's own honest ceiling)
+and the tpv30/drv.a6 hands-off zone.
