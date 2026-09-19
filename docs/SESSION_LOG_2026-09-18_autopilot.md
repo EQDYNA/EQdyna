@@ -227,3 +227,81 @@ audit, then board/log/comment duplication), each gated on the full sweep
 before the next starts. numpy scaling work is explicitly DROPPED by owner
 decision -- record as an accepted property (flat 1.0x, element-wise numpy +
 `np.add.at` single-threaded by construction) rather than a gap.
+
+## Items 7/9/10 -- landed, gate axes 3/4 done myself
+
+General-purpose agent's fix (all three bugs, three new compiled-driver
+regression tests) reviewed and landed as `4d5e58e`. Staleness check: worktree
+base `b4f1189` vs current origin/master at merge time -- the three touched
+Fortran files were byte-identical between those two commits (confirmed via
+`git diff b4f1189 origin/master -- <3 files>`, empty), so zero staleness
+despite the worktree being several commits behind overall. Reviewed all three
+diffs directly (not the subagent's description of them) -- each is exactly
+the described fix, nothing extraneous. Re-ran the gate myself from scratch:
+clean `./install-eqdyna.sh -m ubuntu` build, `testsys/run.py unit regression`
+SUCCESS both tiers including the 3 new tests (independently re-run each one
+directly too), `test.tpv8 x fortran` e2e smoke `max|diff|=3.051760e-11`
+against bound `1e-08` -- matched the subagent's own number exactly, confirming
+the no-op claim myself rather than trusting it.
+
+One process correction: the fixing agent was mistakenly briefed to draft
+`pathway_forward.md` prose itself (a rule-19 violation in the brief, my
+error) -- excluded that file from the cherry-pick (`git checkout HEAD --
+pathway_forward.md` after a `git cherry-pick -n`) and routed the actual board
+update through zofia-kaminska separately (`45e5fd5`), verified clean before
+landing (worktree built on exactly current master HEAD, diff touched only
+the item 7/9/10 rows and their P4 summary row).
+
+## Item 33 -- jax scaling, mira-volkov's mission landed with independent re-verification
+
+Mission: root-cause the 16-core jax plateau (thread-count hypothesis,
+scatter-add re-check, jax-vs-Fortran ms/step table), capped at 16 cores per
+owner mandate. Report: root cause is XLA CPU's compile-time
+`outer_dimension_partitions` cost model, confirmed via REAL DUMPED HLO (not
+inferred): partition count goes 1(serial)->2->3->4 across pins 1/4/8/16 --
+16x the cores buys only 4x the partitions, and this is baked into the shipped
+`libjax_common.so`, not exposed by any `XLA_FLAGS`/env var tried
+(`OMP_NUM_THREADS`, `TF_NUM_INTRA/INTEROP_THREADS` all measured zero-effect;
+setting `XLA_FLAGS` to ANY value at all made things ~3x WORSE, empirically
+justifying the tool's long-standing choice never to set it). Scatter-add
+hypothesis re-verified 5 fresh runs at 8->16 cores using the probe's own
+verdict logic: **5/5 verdict (b)** (bandwidth/general limitation), 0/5
+verdict (a) -- overturns the prior "NOT SETTLED, weakly scatter-leaning"
+reading, not merely reconfirms it.
+
+Landed three tooling fixes in `testsys/perf/run_scaling.py` (`75c2d19`) --
+no jax/solver code touched, since no env-level fix exists within scope (a
+real fix needs a jaxlib rebuild or reshaped op grain, both out of scope):
+per-cpu (not whole-node) busy filtering in `free_node_map` (this box's
+foreign load has no cpu affinity and gets smeared across every NUMA node, so
+whole-node filtering could select zero placements at ANY core count);
+`--bind-to none` added to the Fortran `mpirun` invocation; `run_fortran`
+takes its cpu list as a parameter instead of silently recomputing a
+possibly-different one.
+
+**Independently reproduced the `--bind-to none` bug/fix myself before
+landing** (gate axis 3, not the subagent's report alone) -- my first attempt
+at a manual repro gave a confusing, contradictory result (old-code path
+"succeeded", new-code path segfaulted) that turned out to be MY OWN
+shell-quoting bug (`bash -c '...'` nested-quote clash), caught by rereading
+rather than concluding the subagent was wrong; a clean rerun using real
+script files matched her claim exactly: without `--bind-to none`,
+`mpirun -np 4` with the per-rank numactl script fails with `libnuma: cpu
+argument 32 is out of range` (exit 1); with it, the identical command runs
+clean through to the expected refusal (exit 21, missing `bGlobal.txt`) on all
+4 ranks. Confirmed `run_scaling` stays in `testsys/run.py`'s `OPTIONAL_TIERS`
+only (`grep -n run_scaling testsys/run.py testsys/matrix.py`, checked myself)
+-- no full-gate run required for a report-only, opt-in-only tool.
+
+jax-vs-Fortran ms/step table (matched cores 1/2/4/8/16, `test.tpv104`,
+compact, n_lo=20/n_hi=60/repeats=2): jax speedup 1.00/1.49/1.83/2.46/**4.09x**
+at 16 cores; a second independent run gave 3.38x. Both exceed the previously
+recorded 2.52x, but this is explicitly NOT reported as a fix -- no jax
+execution-path code changed; the higher number is attributable to the
+now-correct measurement tool reaching genuinely-idle cpus and binding
+correctly, not to anything getting structurally faster. Handed to zofia as a
+spread, not a single number, with that caveat attached.
+
+Dispatched zofia-kaminska to append (not rewrite) item 33's row with this
+finding; landing her diff next, same gate-axis-4 discipline as every prior
+board update this session.
