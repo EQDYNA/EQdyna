@@ -2,17 +2,6 @@
 """
 Regression guard: ntotft > 1 must be REFUSED with a named reason (rules 2, 10).
 
-THE INCIDENT (measured 2026-09-16). A two-fault case built by `case.setup` and
-run under mpirun died with
-
-    At line 152 of file readInputFiles.f90 (unit = 1006, file = 'bStations.txt')
-    Fortran runtime error: Bad integer for item 2 in list input
-    Error termination.  Exit code: 2
-
-Exit 2, a raw gfortran I/O error naming neither ntotft nor the cause. The user
-sees a parse failure in a station file and has no way to learn that multi-fault
-is simply unimplemented.
-
 THE CAUSE, which is a WRITER/READER CONTRACT MISMATCH, not a parse bug:
 
     scripts/case.setup   writes ONE scalar (par.n_on_fault) on line 2
@@ -20,18 +9,15 @@ THE CAUSE, which is a WRITER/READER CONTRACT MISMATCH, not a parse bug:
 
 They agree only at ntotft == 1. At ntotft == 2 the list-directed read runs off
 the short line into the on-fault station coordinates and hits `0.0` where it
-wants an integer.
+wants an integer -- a raw gfortran I/O error naming neither ntotft nor the
+cause. `meshgen.f90:790`'s deliberate `abortRun(ERR_MESH_MULTIFAULT_MSNODE)`
+(exit 45) for this case is UNREACHABLE through the normal path: the input
+read above fails first.
 
-WHY THE DELIBERATE STOP DID NOT CATCH IT. meshgen.f90:790 has
-`abortRun(ERR_MESH_MULTIFAULT_MSNODE)` (exit 45) for exactly this case, and it
-is UNREACHABLE through the normal path: the input read above fails first. A
-guard behind an earlier crash is not a guard.
-
-WHY NOT JUST WRITE ntotft COPIES. `nonfs(i)` is the on-fault station count FOR
-FAULT i, and `par.st_coor_on_fault` is a flat list with no per-fault
-assignment. Emitting ntotft copies of one number would silence the crash and
-produce wrong station bookkeeping -- the silent-degrade pattern rule 2 forbids.
-The assignment is a design decision (pathway_forward item 17).
+Writing ntotft copies of the one count would silence the crash and produce
+wrong station bookkeeping: `nonfs(i)` is the on-fault station count FOR FAULT
+i, and `par.st_coor_on_fault` is a flat list with no per-fault assignment.
+That assignment is a design decision (pathway_forward item 17).
 
 WHAT THIS PINS. `case.setup` refuses ntotft > 1 with a non-zero exit and a
 message that names ntotft, the file, the reader, and the item. It also pins

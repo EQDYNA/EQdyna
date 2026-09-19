@@ -2,17 +2,9 @@
 """
 Regression guard: a released version must be released EVERYWHERE (rules 11, 15).
 
-THE INCIDENT (2026-09-16). v5.8.0 and v5.8.1 were both cut with a green gate,
-pushed, CI-verified, and tagged -- and then only half-released. Rule 15 has
-NINE steps; two were skipped on both:
-
-  * step 4, the Tasks-done row in pathway_forward.md -- never added.
-  * step 9, `gh release create` -- never run. The tags were on the remote and
-    correct, but the GitHub Releases page, which is what anyone actually
-    looks at, sat at v5.7.1 for six hours across two releases.
-
-The rule NAMED both steps. Following a nine-step checklist from memory failed
-twice in one day, which is the argument for checking it instead of reading it.
+Rule 15's checklist has been followed from memory and skipped steps (the
+Tasks-done row, `gh release create`) more than once with a green gate
+throughout -- the argument for checking it instead of reading it.
 
 WHAT THIS PINS, for the version currently in VERSION:
 

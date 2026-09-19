@@ -2,30 +2,17 @@
 """
 Regression guard: a bare `make` must build the binary (rules 2, 3, 10).
 
-Guards the v5.6.0 CI-red incident. `src/makefile` used to open with
+`install-eqdyna.sh:99` runs a bare `make`, relying on `.DEFAULT_GOAL :=
+eqdyna` in `src/makefile`; `clean` must NOT depend on `eqdyna` (that
+dependency previously made `clean` -- the first target in the file -- pull
+`eqdyna` in as a prerequisite, so a bare `make` built it by accident, and
+`make clean` built the binary before deleting the objects).
 
-    clean:eqdyna
-    	rm -r *.o
-
--- `clean` with no space before its prerequisite, so `clean` DEPENDED on
-`eqdyna`. Two consequences, one of them load-bearing by accident:
-
-  * `make clean` built the binary before deleting the objects (the bug that
-    was reported), and
-  * `clean` is the FIRST target in the file, and make builds the first target
-    when invoked with no arguments -- so a bare `make` ran `clean`, which
-    pulled in `eqdyna` as a prerequisite and therefore built it.
-
-`install-eqdyna.sh:99` runs a bare `make`. Fixing `clean` removed the accident
-that made that work: `make` then ran a clean that built nothing, `mv
-src/eqdyna bin/` failed, and every tier that needs a binary went red -- while
-the local gate stayed green, because it had always invoked `make eqdyna`
-explicitly and never the bare form the install script uses.
-
-The fix is `.DEFAULT_GOAL := eqdyna`. This test asserts the behaviour, not the
-spelling: it runs a real bare `make` in a scratch copy of src/ and requires a
-binary to appear, so any future reordering of targets that reintroduces the
-problem fails here regardless of how it is written.
+This test asserts the behaviour, not the spelling: it runs a real bare
+`make` in a scratch copy of src/ and requires a binary to appear, and runs
+`make clean` and requires no binary to appear, so any future reordering of
+targets that reintroduces either problem fails here regardless of how the
+makefile is written.
 
 Cheap-ish (rule 9): one full compile of src/ in a temp dir, ~20 s. That is the
 price of testing the actual build rather than grepping the makefile, and this

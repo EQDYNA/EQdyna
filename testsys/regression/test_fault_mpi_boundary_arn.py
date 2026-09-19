@@ -13,21 +13,17 @@ DOUBLE it (a genuine partial-sum recombination for x/z splits -- which
 genuinely divide the fault -- but a duplicate for y). Every on-fault traction
 term divides by arn (faulting.f90), so tractions came out at EXACTLY HALF
 their correct value whenever an MPI partition plane coincided with the fault
-plane (e.g. a symmetric y-domain split evenly by npy). Root-caused and fixed
-2026-09-14 (see pathway_forward.md and scratch/mira_faultmpi_guard for the
-arn dumps that pinned this down: arn = 2x the serial value at an identical
-physical fault node under a y-splitting decomposition, 1x under x/z splits).
+plane (e.g. a symmetric y-domain split evenly by npy). See pathway_forward.md
+item 26 for the fix's full history.
 
 Fix: syncArnBoundary now skips arn's add-back specifically when fltxyz shows
 zero nominal fault extent in that boundary's direction (the duplicate case),
 while still setting fltMPI(k) and still exchanging data, since fnms/
 nodalMassArr's addFaultBoundaryTerm (assembleGlobalMass.f90) depends on that
-regardless of what arn does with it (confirmed by direct dump: fnms itself is
-NOT affected by this bug -- bit-identical serial vs. a fault-splitting
-decomposition). A defense-in-depth hard stop, checkFaultMPIAlignment
-(eqdyna3d.f90), still fires for the one residual case this fix does not
-reason about: a y-boundary fault with NON-degenerate y-extent (not producible
-by any case in this codebase today).
+regardless of what arn does with it. A defense-in-depth hard stop,
+checkFaultMPIAlignment (eqdyna3d.f90), still fires for the one residual case
+this fix does not reason about: a y-boundary fault with NON-degenerate
+y-extent.
 
 This test builds ONE tiny hand-written flat-fault case (symmetric y-domain --
 the hazard condition) and runs it at four decompositions that hold the mesh
@@ -46,23 +42,9 @@ Asserts:
      invariance is what actually proves the fix landed, not just the gate
      staying quiet.
 
-CI investigation (v5.5.0 release audit, 2026-09-14): CI (mpich) failed this
-exact-equality check on commits 12c8274/e6ad307 -- ysplit's shear traction
-3.791069 MPa vs serial 3.791525 MPa (diff 4.56e-4, rel 1.2e-4). Root cause
-was NOT residual floating-point non-determinism or an over-tight
-comparison: those two commits added this test and the pathway_forward.md
-"FIXED" claim, but never actually committed the source fix itself
-(`git show 12c8274:src/meshgen.f90` / `e6ad307:...` both lack the `dimId`
-parameter and `checkFaultMPIAlignment` -- confirmed directly). CI was
-correctly running the UNFIXED source and correctly failing. Reproduced
-locally: reverting src/meshgen.f90+src/eqdyna3d.f90 to HEAD and rebuilding
-from clean gives ysplit=3.791069, serial=3.791525 on THIS box too -- an
-exact match to CI's numbers. With the actual fix in place (restored,
-verified below), serial==ysplit==3.791525 exactly, reproduced at 8x this
-test's term (40 dt, not just 5) with zero difference at every duration
-tried -- so EXACT equality is the correct, achievable gate; the v5.5.0
-release commit is what finally lands the source fix these two commits only
-described.
+EXACT equality (not a tolerance) is the gate here: with the fix in place,
+serial==ysplit exactly, reproduced at 8x this test's term with zero
+difference at every duration tried (see pathway_forward.md item 26).
 
 Cheap (rule 9): ~12x12x6-cell mesh, term = 5 dt, well under a second per run
 once src/eqdyna is built. Builds ONLY src/eqdyna (never bin/eqdyna -- other

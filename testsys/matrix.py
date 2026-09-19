@@ -11,12 +11,8 @@ There is one test in this repo -- the e2e sweep -- and it is two nested loops:
                                   committed reference for that case, at THAT
                                   CASE's bound
 
-`backend` is an axis of the sweep, not a tier. What used to be the separate
-`accept` tier (the same standalone solver, the same reference tree, a second
-alignment+comparison implementation, and a case list of 5 while e2e gated 8 --
-so "SUCCESS accept (5/5 cases)" meant five of five LISTED, jax only, i.e. 5 of
-16 case x backend combinations) is now two columns of this table. Adding a GPU
-backend is appending to BACKENDS, not writing a new runner.
+`backend` is an axis of the sweep, not a tier: it is a column of this table,
+not a separate runner. Adding a GPU backend is appending to BACKENDS.
 
 WHY THE TABLE IS DATA, NOT CONTROL FLOW
 A cell is either SUPPORTED -- it runs, and it is gated -- or it is DECLARED
@@ -199,58 +195,31 @@ DRV_A6 = {
 # Absence from this table means "supported"; presence means the sweep refuses
 # to pretend it covered the cell.
 UNSUPPORTED = {
-    # EMPTY, and that is a measured statement, not an oversight.
-    #
-    # It held four cells -- test.meng2023a and test.meng2023cb on both python
-    # backends -- with the reason "the Python port has no solveSWTW path".
-    # That reason is now FALSE: eqdyna/faulting.py has solveSWTW, dispatched at
-    # `if friclaw <= 2` exactly where faulting.f90:17 dispatches it, and
-    # eqdyna/fric.py has time_weak (slip_weak with slip/SW_D0 replaced by
-    # trupt/TW_T0; trupt = timeElapsed - fnft, and the 99999.0 sentinel makes
-    # trupt negative for an unruptured node so the fs arm fires with no special
-    # case). Leaving a stale entry here would be a lie about coverage.
-    #
-    # First python runs these two cases have ever had, against their 1e-3
-    # bound -- NOT tightened here; a bound is calibrated in its own commit,
-    # never in the change that first makes the cell green:
-    #     meng2023a  x python-numpy  4.628301e-09
-    #     meng2023a  x python-jax    3.150106e-09
-    #     meng2023cb x python-numpy  5.054473e-09
-    #     meng2023cb x python-jax    5.042553e-09
-    # Both cases also set par.tpv = 201, so they exercise swtwNucleation's
-    # smoothed forced-rupture branch at the same time.
+    # EMPTY, and that is a measured statement, not an oversight: every
+    # (case, backend) pair has a working, gated path. eqdyna/faulting.py has
+    # solveSWTW (dispatched at `if friclaw <= 2`, matching faulting.f90:17)
+    # and eqdyna/fric.py has time_weak, so meng2023a/meng2023cb run on both
+    # python backends.
 }
 
-# Cells CI runs, and the measured reason the rest are left out. Historically
-# (one job) a GitHub ubuntu-22.04 runner's 7 GB was shared by the Fortran
-# build and every python/jax cell at once; exceeding it produced a SIGTERM
-# with no output (exit 143), which is a resource kill and not a test result.
-# As of 2026-09-16 the workflow is matrixed into parallel jobs, each with its
-# own 7 GB runner -- see the CI_CELLS comment below for what that changed and
-# what it did not. This is a declared, measured decision with the numbers
-# next to it -- not an env var whose value nobody can audit.
+# Cells CI runs, and the measured reason the rest are left out. Exceeding a
+# GitHub ubuntu-22.04 runner's 7 GB produces a SIGTERM with no output (exit
+# 143), a resource kill and not a test result -- so this is a declared,
+# measured decision with the numbers next to it, not an env var nobody can
+# audit.
 MEASURED_PEAK_RSS_GB = {
-    # Full-length runs, one case at a time on the 64-core development box.
-    # The two CI cells were measured with `/usr/bin/time -v` (exact peak):
+    # Full-length runs, one case at a time on the 64-core development box,
+    # measured with `/usr/bin/time -v` (exact peak) unless noted otherwise.
     ('test.tpv8', 'python-numpy'): 1.45,   # 62.5 s wall
     ('test.tpv8', 'python-jax'): 1.91,     # 30.7 s wall
-    # The rest are from earlier per-case measurements on the same box, kept
-    # because they are what the CI exclusion rests on:
     ('test.tpv104', 'python-jax'): 3.42,
     ('test.tpv10', 'python-jax'): 3.23,
     ('test.tpv1053d', 'python-jax'): 3.95,
-    # drv.a6 x python-jax was re-measured during the full sweep by sampling
-    # the process RSS every 20 s: 9.57 GB, i.e. a LOWER BOUND on its true
-    # peak and well above the earlier 7.40 GB figure. Either way this cell
-    # cannot run on a 7 GB runner; the newer, larger number is recorded
-    # because that is the one a widening decision must be made against.
+    # Sampled every 20 s (not /usr/bin/time -v): a LOWER BOUND on true peak.
+    # Either way this cell cannot run on a 7 GB runner.
     ('test.drv.a6', 'python-jax'): 9.57,
-    # Measured 2026-09-16 (haruto, CI-widening pass), `/usr/bin/time -v`,
-    # full-length, one at a time, against the CURRENT tree (a first attempt
-    # ran against a tree that still had mira's since-reverted C_degen merge
-    # and was discarded and re-measured fresh -- rule 4, a stale-tree run is
-    # not evidence). Every one of these also PASSED its bound on this same
-    # run (testsys.compare.compare_cell), not just produced a number:
+    # Each of these also PASSED its bound on this same run
+    # (testsys.compare.compare_cell), not just produced a number:
     # meng2023a numpy/jax 4.628301e-09/3.229082e-09, meng2023cb numpy/jax
     # 5.054473e-09/4.395842e-09, tpv29 numpy/jax 9.876230e-15/1.276548e-13,
     # all against THRESHOLD=1e-3.
@@ -261,40 +230,22 @@ MEASURED_PEAK_RSS_GB = {
     ('test.tpv29', 'python-numpy'): 2.705,   # 1711.0 s wall -- by far the
                                               # most expensive cell in the
                                               # table; isolated in its own CI
-                                              # job (e2e-ci-python-tpv29) so
-                                              # nothing else queues behind it
-                                              # and it never queues behind
-                                              # anything else.
+                                              # job (e2e-ci-python-tpv29).
     ('test.tpv29', 'python-jax'): 4.052,     # 198.0 s wall
-    # Measured 2026-09-17 (wei-lin), `/usr/bin/time -v`, against current
-    # master. Peak RSS is a SETUP-time property here, not a full-run one: the
-    # numpy full-length run (par.term=6, 556 steps, 1415.9s wall, PASSED its
-    # bound at max|diff|=7.894064e-09 vs 1.0e-06) peaked at 3050252 KiB;
-    # a truncated par.term=0.3 (28 steps) run of the SAME cell peaked at
-    # 3047536 KiB -- 0.09% different, validating the truncated method on this
-    # exact cell before it was used for the remaining three (jax needs at
-    # least one full post-compile step; 28 is comfortably enough). tpv36 and
-    # tpv37 are the same dx=500/dip=15 mesh scale, so their numpy figures
-    # land within 0.05 GB of each other, as expected:
+    # Peak RSS is a SETUP-time property here, not a full-run one: a
+    # truncated par.term=0.3 (28 steps) run peaked within 0.09% of the
+    # full-length (par.term=6, 556 steps) run it stands in for -- jax needs
+    # at least one full post-compile step; 28 is comfortably enough.
     ('test.tpv36', 'python-numpy'): 2.91,   # 1415.9 s wall (full run, ground truth)
     ('test.tpv36', 'python-jax'): 4.34,     # 38.6 s wall (truncated, validated method)
     ('test.tpv37', 'python-numpy'): 2.91,   # 95.4 s wall (truncated, validated method)
     ('test.tpv37', 'python-jax'): 4.20,     # 30.1 s wall (truncated, validated method)
 }
 CI_RUNNER_RAM_GB = 7.0
-# WIDENED 2026-09-16 (haruto, per owner instruction). The reasoning that
-# excluded tpv10/tpv104/tpv1053d x python-jax was STALE: it was written when
-# ONE job held the Fortran build, mpirun, AND every python/jax cell at once,
-# so their 3.2-4.0 GB looked like it was competing with everything else for
-# the same 7 GB. Once the workflow is matrixed (this repo, 2026-09-16) each
-# job gets its own 7 GB, AND run_e2e.py's own core-budget allocator already
-# forces every cell in a job to run ONE AT A TIME on a small runner (verified
-# on two real CI runs: job logs show cells finishing back-to-back, wall clock
-# == sum of per-cell seconds, never a "running N cells concurrently" line) --
-# so a job's peak memory is the single LARGEST cell it holds, not a sum, and
-# always was, even in the original one-job workflow. On the measured numbers
-# alone only test.drv.a6 x python-jax (9.57 GB) actually exceeds a 7 GB
-# runner; the rest below were excluded by a constraint the matrix removed.
+# run_e2e.py's core-budget allocator forces every cell in a job to run ONE AT
+# A TIME, so a job's peak memory is the single LARGEST cell it holds, not a
+# sum. On the measured numbers alone only test.drv.a6 x python-jax (9.57 GB)
+# exceeds a 7 GB runner.
 CI_CELLS = (
     tuple((c, 'fortran') for c in CASES)
     + (('test.tpv8', 'python-numpy'), ('test.tpv8', 'python-jax'),
@@ -310,22 +261,12 @@ CI_CELLS = (
 # exclusion below is a MEASURED-or-genuinely-unmeasured decision; none is a
 # case that fails.
 #   * test.drv.a6 x python-jax: 9.57 GB measured -- the one real exclusion.
-#   * test.drv.a6 x python-numpy: never measured. Not chased this round (owner
-#     instruction, 2026-09-16): drv.a6 is the largest/most expensive case in
-#     the table by a wide margin and its jax column already leaves a 7 GB
-#     runner with zero margin; a larger runner is a separate decision.
-#   * test.tpv10/tpv104/tpv1053d x python-NUMPY (their jax columns are now IN
-#     CI_CELLS, see above): never measured. The rule stays literal -- a cell
-#     without a measured RSS does not go into CI, and "numpy is probably in
-#     the same ballpark as jax" is exactly the kind of guess rule 6 forbids.
-#     Cheapest next step for whoever widens further: measure these three the
-#     same way as the entries above.
-#   * test.tpv36/test.tpv37 x python-numpy/python-jax: RESOLVED 2026-09-17
-#     (wei-lin) -- measured 2.91-4.34 GB (see MEASURED_PEAK_RSS_GB above),
-#     comfortably under 7 GB even alongside the cheap group's existing
-#     largest member (tpv1053d-jax, 3.95 GB); admitted to CI_CELLS. Their
-#     fortran cells were already in CI_CELLS automatically since item 19(a)
-#     gated the cases.
+#   * test.drv.a6 x python-numpy: never measured; its jax column already
+#     leaves a 7 GB runner with zero margin, so a larger runner is a
+#     separate decision.
+#   * test.tpv10/tpv104/tpv1053d x python-NUMPY (their jax columns are IN
+#     CI_CELLS): never measured. The rule stays literal -- a cell without a
+#     measured RSS does not go into CI.
 # A green CI run therefore means 25 of 30 cells, and says so.
 
 

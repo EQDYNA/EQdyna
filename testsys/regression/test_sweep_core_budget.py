@@ -2,23 +2,11 @@
 """
 Regression guard: the sweep's core budget must not deadlock (rules 2, 10).
 
-THE INCIDENT (2026-09-15). The parallel sweep hung for 80 minutes with 14 of
-24 cells unrun -- parent process alive at 0.1% CPU, zero children, log frozen.
-No error, no timeout, no failing cell. A gate that hangs is worse than a gate
-that fails: it reports nothing at all, and "still running" looks like progress.
-
-THE CAUSE. Cells cost more than one core -- a fortran cell costs its MPI rank
-count (4 for every gated case) -- and the reservation was spelled
-
-    for _ in range(cost):
-        sem.acquire()
-
-on a threading.Semaphore. That takes units ONE AT A TIME. With budget 6 and
-two fortran cells wanting 4 each, both can end up holding 3 and waiting
-forever for a fourth the other holds. Textbook partial-acquisition deadlock,
-and it only bites when enough multi-core cells are queued at once -- which is
-why it survived earlier runs where the python cells (cost 1) happened to drain
-first.
+Cells cost more than one core (a fortran cell costs its MPI rank count), and
+a reservation spelled as a loop of single-unit `sem.acquire()` calls on a
+threading.Semaphore is a textbook partial-acquisition deadlock: with budget 6
+and two fortran cells wanting 4 each, both can end up holding 3 and waiting
+forever for a fourth the other holds.
 
 WHAT THIS PINS. The allocator must be ALL-OR-NOTHING: a thread takes its whole
 cost atomically or waits. This file exercises the real thing under the exact
