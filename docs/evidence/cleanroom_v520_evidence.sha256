@@ -1,0 +1,54 @@
+# Manifest: scratch/cleanroom-v520-evidence/ -- gitignored, irreplaceable
+#
+# WHAT: the independent clean-room SCEC-verified v5.2.0 baseline behind
+#       pathway_forward.md items 12 and 8, plus the gfortran build patch.
+# WHY OUT OF GIT: .gitignore:3 ignores scratch/. Same call the owner made
+#       for scec_archive -- it is an asset: hash it, do not commit the bytes.
+# WHY THIS FILE: bytes out of git, provenance IN git. Nothing in
+#       pathway_forward.md or PROJECT_RULES.md referenced this directory by
+#       any name before 2026-09-19, so an rm -rf scratch/ would have
+#       destroyed it silently and no document would have shown the loss.
+# VERIFY: cd $EQDYNAROOT/scratch/cleanroom-v520-evidence \
+#         && sha256sum -c ../../docs/evidence/cleanroom_v520_evidence.sha256
+# GENERATED: 2026-09-19, by wei-lin, on the tree as it stood at eb03be5.
+#
+dc2e216b449b5497567fe49751d57b48269d254db683962d92dd51a9ca924748  ./BASE_COMMIT.txt
+cceb1125af4c5f66a3f67bb594bcf1aa11ffef51456278e84e77be0553024200  ./README.txt
+1c3fc7ef476e9e4e05131fb00e40cf83494d77bce372d0c61ca0edac0c946ed2  ./run/body-060st-120dp000.txt
+d0b038e63357aec9a8501c2373fa5fed5989d6676a4478852365be18e24b06ef  ./run/body-060st120dp000.txt
+6dbc47ed53189af9a54ecc8d8a25bc0af59a48ea15a15e8f05859af3ffc19109  ./run/body060st-120dp000.txt
+58dcfcfc40e8c8b9ba58c0a45f5f23e54c728cd65a16f5182cabbbd6ce8dbcd3  ./run/body060st120dp000.txt
+f80644a4c9f15f651035da600f1cb19d31404ddf032d385318a4569dbe79c0b9  ./run/body-090st000dp000.txt
+f4f71fec93d4aa43bc30345f2ba892d36c1a271dfc6e51fc9dacfd07b3f9794f  ./run/body090st000dp000.txt
+7ba84ad50db9bc5724e01f298f691e129efcdfdb27e9cc6be55d95ed0f773d91  ./run/compare_v520.py
+8dc26f845024d456067d0cbd8950eedd78cd47f45707640ad9199f46597f2621  ./run/faultst000dp030.txt
+dcc0a6e70bfc12bda7b6462dcacf34a4afb765625690c0eb86b6173a4446aade  ./run/faultst000dp075.txt
+6f68077a14d1acf9328320262cdfe873fc153e2d89105cdf5b0e1810b4dba454  ./run/faultst000dp120.txt
+1b136c5edccb847f14ad640dd0b32e590349f086d5f6b3cadeadd19a196d3c1e  ./run/faultst-090dp075.txt
+de48b4489a0d338aeb123309eaf3a4100d4873bf9055d07494c4d8d307d0d097  ./run/faultst090dp075.txt
+07cb9406464558f395c56c62c65684dfe020f47ab84f78c3c8ed824aceafb2f7  ./run/faultst-120dp030.txt
+85f095792a7aae377d564393642012cf0c34adc7b451a370038461c4d9abbc24  ./run/faultst120dp030.txt
+9a3098ddda3a9b82d0f5bd0df29ddaca91c8da2773a3e3b955228ca5a72d70e5  ./run/faultst-120dp120.txt
+38c184783c7567232085e3add6525b5641588b6b701aa8a7dabf80f34e2b57d3  ./run/faultst120dp120.txt
+081308f6ca271be5523894e7b6051b061eb1c6bc7ce768a3b2524336d8e49039  ./run/faultst-150dp075.txt
+4ae8bd0235fb3c06fb890ad1adb0425521298512b05c13013ebbd443d1a39a93  ./run/faultst150dp075.txt
+fdbdb41ffaba6fbc571c77818a4b44a25bcee92a43ac1d3709b74cae7b61de51  ./run/faultst-180dp075.txt
+8367a251f414b78cf412626a2da4e9990731e270aff6ee8c552e41e1d74f1944  ./run/faultst180dp075.txt
+4f78999a9cc7431daaf08021224c4d795a279442f45db23a4d511aaacae2b332  ./run/FE_Fault_Geometry.txt
+b31aafb98e651bd8f2a3cbe5de4f1eaf45a4f260690cd2da64100ba1750eeabf  ./run/FE_Fric.txt
+425a47bc80317a157d24f40c7c2c490fa4e1df02abefdda2577270690a19f537  ./run/FE_Global.txt
+cc56ef4536f481861355d5fd9087a30714caa3c9b11fa03a5e4df4a8b2ffad6b  ./run/FE_Material.txt
+db8ae29c3d5150868cbb51e7e76565ed2f9f113fc7225277d41e02033e8b2682  ./run/FE_Model_Geometry.txt
+7a5e47a2223290d8833b210f82b756a07dc80eb64b3302846ad2d5eb7e7d09a1  ./run/FE_Stations.txt
+185477643f952335c60606b4d9025ada673fd9a69d0abf32e0759871073fa7ae  ./run/fort.51
+1bd6e83a3943c1b951416f1caa945a4e20d5f26aa2c527716f59c3a46667c2b3  ./run/frt.txt0
+18dd609c713f4433eb7596c9d79ff0d2dbb84872ec7170d295f635ed7033c88a  ./run/frt.txt2
+1949b3692178cb1aabd6b2a438962cd6f59f2cc1091644395441b40607e0c38a  ./run/run_eqdyna3d
+453db5d536f06776c54a5df2d183027837a56546cff103466773dcf6ab87bf7e  ./run/run.log
+9cd111c85ecb3cdabb4edd94e2402f96f42c53e72ad744a4af9fdeebb4c1fc67  ./run/rupture_front_overlay.png
+ca2e0153096f9966f093a4817bb2d3089de6180b8a8631b1b175576e1a56d7bd  ./run/station_faultst000dp075_overlay.png
+a8d67df462ff1eaae738556b6872913aa94f6687e6479767bfebd8427818d59f  ./run/timeinfo0
+7a86677f3b14be90922c898166c0ccd6852c5c6b0350239715011c64f2c83faa  ./run/timeinfo1
+477ca8e023583f3cb4990b17c666f057a3e44b17a77ef5f3d76aebe736e7c5a3  ./run/timeinfo2
+d02019e19bb7d4a0dfe9cba595ca1dec130081ad287206acd0fd47d4a4329893  ./run/timeinfo3
+66f657fd08a89d5f57a3d3bcab0aae6b6d6abe37535e71f30dac23453185df96  ./v520-modern-gfortran-build-fix.patch
