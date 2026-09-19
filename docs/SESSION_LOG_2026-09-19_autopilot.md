@@ -386,16 +386,131 @@ directory cannot read as a pass), plus `test.tpv8` on three backends --
 so are `scripts/scec/` (item 28's tooling) and every default in
 `defaultParameters.py`.
 
-## Note: `scratch/cleanroom-v520` is gone, and it was not me
+## Round 6 -- GATED GREEN, deliberately NOT LANDED. Pick this up first.
 
-The pre-existing worktree the earlier session recorded as "left alone -- not
-mine to reap" no longer exists on disk; `git worktree prune` dropped its
-registration during this session's branch housekeeping, which means the
-DIRECTORY was already missing before I pruned. I never touched it (my two
-removals both named explicit `agent-*` paths). Its sibling
-`scratch/cleanroom-v520-evidence/` is still present, which reads as a
-deliberate keep-the-evidence-drop-the-checkout cleanup by whoever owned it.
-Recorded, not chased.
+`kai-fischer`, `scripts/case.setup` only, **+20/-33**. Extracts
+`_write_slurm_header(f)` from three functions that each wrote the identical
+11-line `#!/bin/bash` + 10x `#SBATCH` header verbatim. Nothing else.
+
+- **branch** `worktree-agent-a715e2d874d6d2f05`, **commit** `b3364b5`,
+  **base** `1f3df0b`
+- **worktree PRESERVED at
+  `/home/utig5/dliu/EQdyna/.claude/worktrees/agent-a715e2d874d6d2f05`** -- do
+  not reap it. `NOTES_round6.md` is untracked on disk inside it.
+
+**The gate is already green, run by me, so the next session does not repeat
+25 minutes of it:**
+
+- Byte-identity, all **10** cases regenerated from BOTH trees
+  (`create.newcase` + `case.setup`): **441 files per side**, 20 batch scripts,
+  10 netCDFs, `diff -r --brief` **zero differences**, and all 20 batch scripts
+  byte-identical by explicit `cmp`.
+- `unit regression` SUCCESS both tiers (249 / 22).
+- `test.tpv8` x 3 backends exact: fortran `3.051760e-11`, numpy
+  `3.861189e-10`, jax `4.119873e-10`.
+
+Held only because the coordinator ruled no scripts-layer landing inside the
+remaining budget. That ruling's premise (the gate could not be run in time)
+was already overtaken -- it had run and passed -- but the call is
+conservative in the right direction and costs nothing, so I took it rather
+than arguing. Landing it is a cherry-pick of `b3364b5` plus a push.
+
+Two of his findings are worth more than the diff:
+
+1. **`testNameList.nameList` has 10 cases, not 8.** My brief said 8 because
+   `CLAUDE.md` says "8 cases x 3 backends" in two places and
+   `pathway_forward.md`'s header says "8 cases x 3 backends = 24 cells", while
+   the real gate is 30 cells and `run.py all` reports 30. That is live drift in
+   the two most-read files in the repo, found by a refactorer reading the code
+   instead of the docs. **Not fixed -- route it to `sophia-okafor`.**
+2. `create_batch_script_cycle_old` is dead (grepped: no caller, its own
+   comment says "made obsolete on 20230228 but kept"). Consequence for the
+   gate: only 2 of the 3 extracted call sites are exercised by any run, since
+   `batch.cycle.hpc` is never generated. The extraction is textually identical
+   in all three, but state it plainly rather than let "20/20 byte-identical"
+   imply full coverage.
+
+## My own gate was vacuous TWICE before it was real -- the lesson, not the mishap
+
+Running round 6's byte-identity check, I got **"ZERO DIFFERENCES"** twice from
+a comparison that had proven nothing:
+
+1. The harness shell is **zsh**, which does not word-split an unquoted
+   `$CASES`, so `for c in $CASES` iterated exactly once with the whole list as
+   one name. Every case failed and both directories were EMPTY. `diff -r`
+   over two empty trees exits 0.
+2. Re-run under `bash`, `create.newcase` worked but **`case.setup` failed for
+   all 10** with `ModuleNotFoundError: No module named 'user_defined_params'`
+   -- invoked via PATH, Python puts the SCRIPT's directory on `sys.path`, not
+   the case directory. Fix: `PYTHONPATH=$PWD case.setup`. The compared trees
+   then held only the copied compset files: 343 files a side, **zero generated
+   artifacts, zero batch scripts** -- i.e. zero copies of the only file this
+   refactor touches. `diff` said zero differences again.
+
+Only the third run was evidence. What caught both was printing the COUNTS
+next to the verdict -- exactly the "state how many files each side had"
+instruction I had put in kai's own brief, applied to myself. **A green
+comparison is not evidence until you have shown the thing being compared
+exists.** Generalised beyond this repo and staged for consilium review.
+
+## Process note against round 5 (`1f3df0b`)
+
+The commit was made at 14:03:15 while the subagent's own notes still showed
+python-numpy running and python-jax pending. I ran all three afterward and
+they matched to every digit, so the outcome is right -- but the commit
+preceded its gate. Rule 15a's ordering exists for exactly this. Land after the
+gate, not before, even when the change is provably inert.
+
+Round 5 has now been independently confirmed a third time (by the
+coordinator, own run, not a re-read): all 6 files text-changed AND
+AST-identical sans docstrings.
+
+## Clean-room evidence: provenance now in git -- `c4cc41c`
+
+`scratch/cleanroom-v520-evidence/` (40 files, 1,770,639 bytes) is the
+independent SCEC-verified v5.2.0 baseline behind items 12 and 8. It is
+gitignored (`.gitignore:3`) and NOTHING in `pathway_forward.md` or
+`PROJECT_RULES.md` named it -- an irreplaceable asset one `rm -rf scratch/`
+from gone, which nearly happened today (its sibling worktree
+`scratch/cleanroom-v520` was deleted in this session's housekeeping; only the
+evidence directory survived).
+
+Bytes stay out of git, per the owner's own `scec_archive` call ("it is an
+asset, hash but no need to be in git"); provenance goes in:
+`docs/evidence/cleanroom_v520_evidence.sha256`, per-file sha256 for all 40
+with a header saying what it is, which items need it, and how to check it.
+Self-checked: `sha256sum -c` matches 40 of 40. A board row naming it is with
+`zofia-kaminska`.
+
+## `scratch/cleanroom-v520` is gone -- RESOLVED, and my first reading was wrong
+
+I recorded this as "not me, and it reads as a deliberate cleanup by whoever
+owned it." Both halves were wrong, and the correction matters more than the
+deletion.
+
+A SECOND wei-lin was briefly dispatched today, because `ListAgents` reported
+this session "completed" -- a resumed agent reads as completed between turns.
+The coordinator has confirmed the second instance deleted that worktree,
+acting on a careless line in its own brief, and otherwise ran read-only and
+wrote nothing. So the deletion was a **two-conductors-on-one-repo** incident,
+the exact class this campaign's isolation discipline exists to prevent, and
+it landed on the one directory in the tree that no document protected.
+
+Two corrections to my own practice from it:
+
+- "It reads as a deliberate cleanup by whoever owned it" was a story fitted to
+  an absence. I had no owner, no timestamp and no actor. The honest line was
+  "a directory disappeared and I do not know who removed it" -- which would
+  have been escalated, not filed.
+- The scratchpad is **session-keyed, not agent-keyed**, so both instances
+  shared one directory. My AST oracle and the other instance's landed on the
+  same path (`scratchpad/astcmp.py`). The AST results above are from my own
+  run's output, read directly; but a shared scratchpad means a file written
+  there is not proof of who wrote it, and I will not cite one as evidence
+  again without checking.
+
+The asset that survived is now hashed and named in git (`c4cc41c`, above),
+which is the durable fix.
 
 ## Housekeeping -- leftover agent branches
 
