@@ -111,3 +111,69 @@ resources this session doesn't have (33 -- needs a genuinely idle box for
 the matched-cores ms/step figure; this box carried ~25 load the entire
 session). Nothing else in the queue. Stopping rather than manufacturing
 work.
+
+---
+
+# Continuation, same date (wei-lin, new invocation)
+
+Resumed at `origin/master` == local `b47e2fe`, tree clean. Board rows
+17/19/24/29/33/34/36/38 re-confirmed unactionable (deferred/closed/hands-off),
+consistent with the prior session's close-out above. Standing work per owner
+instruction: serial refactor rounds. Dispatched round 4 (`kai-fischer`,
+worktree `agent-ad4246f41491e3c61`, isolated) scoped to case_input
+tpv36/tpv37 near-duplication, `src/python/eqdyna/` docstrings, and non-perf
+`testsys/` helper duplication -- `testsys/perf/` explicitly off-limits, live
+item-33 work in progress there (`haruto-nakamura`, worktree
+`agent-a98251453a27e55fe`, detached HEAD at `737358f`).
+
+## Item 33/43 landed -- `88f5227`, `07452a6`
+
+haruto reported item 33 complete (relayed via coordinator). Corroborated
+independently before acting (nothing taken on the report alone):
+
+- **Metric-bias fix** (`testsys/perf/run_scaling.py`): confirmed
+  `737358f` is an ancestor of current master and the file was byte-identical
+  at that base vs current master (no staleness) before copying the diff
+  over. The bug is real: Fortran's branch reported `wall/n_hi` for a single
+  run while jax's branch already differenced two runs to cancel fixed cost
+  (interpreter/mesh/MPI/netCDF startup) -- a one-way bias in jax's favour,
+  worst at the short step counts this tool uses (measured: old metric read
+  1168 ms/step at np=1, new by-difference metric reads 931.65). Fix makes
+  Fortran difference two runs the same way. Landed as `88f5227` after a
+  fresh `python3 testsys/run.py unit regression` (SUCCESS both tiers -- the
+  applicable gate for a perf-tooling-only change, not the full sweep, since
+  no solver/`CASE_BOUND`/reference file is touched).
+- **Item 43 board row**: zofia-kaminska had already authored it in worktree
+  `agent-a9c2f1b6c53ec6308` (base `b47e2fe`, confirmed non-stale for
+  `pathway_forward.md` against current master before copying). Verified the
+  row's numbers against haruto's report line-for-line before landing as
+  `07452a6`: **Fortran overtakes jax between 2 and 4 cores, reaches 14.39x
+  speedup at 16 cores against jax's 2.76x plateau** (`test.tpv104`,
+  `737358f`/v5.12.0, compact placement, strict busy ceiling). Scatter
+  inventory corrected in the same row: 3 sites, all in
+  `src/python/eqdyna/backend.py` (line 55 `scatter_add` 21/38 HLO scatters,
+  line 63 `setat` 16/38, line 73 `addat` 1/38) -- the earlier "41 sites
+  across 5 files" matched docstring prose, not code. Zero of 38 scatters get
+  XLA's implicit partition annotation at any core count; fusions partition
+  only to round(sqrt(N)). Amdahl on the measured partition counts caps any
+  decomposition scheme at 6.7-10x, below Fortran's measured 14.39x --
+  recorded as the reason to fix the scatter-add kernel before attempting
+  `shard_map`, with the row explicitly marking `shard_map` itself as
+  UNVERIFIED (the Amdahl estimate is not a demonstration).
+
+Both worktrees' only diffs were exactly what got landed (`git status
+--porcelain -uall` checked before removal, matched); force-removed and
+recorded here by name: `agent-a98251453a27e55fe` (haruto) and
+`agent-a9c2f1b6c53ec6308` (zofia).
+
+## Round 4 refactor -- still in flight
+
+`kai-fischer`'s worktree (`agent-ad4246f41491e3c61`) delegated its mandatory
+full 30-cell sweep to a background job (confirmed genuinely running via PID,
+not hung) and will re-notify on completion. Interim diff on disk, NOT yet
+reviewed for merge: 7 files, +21/-277, including a new `tpv36_37_common.py`
+duplicated **in both** `case_input/test.tpv36/` and `test.tpv37/` -- flagged
+for hard scrutiny at landing time (same filename in two places is the shape
+of a second duplication under a new name, not a real shared module, unless
+the two copies are byte-identical AND a single location is what everything
+imports). Not merged; nothing decided yet.
