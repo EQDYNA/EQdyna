@@ -173,7 +173,7 @@ def build_grid_lines(params):
 
 def _dip_plane_distance(y, z, c_degen):
     """checkIsOnFault/wedge()'s shared dipping-plane distance formula
-    (meshgen.f90:765-766, library_degeneration.f90:10-11):
+    (meshgen.f90:825-826, library_degeneration.f90:10-11):
     `abs(z + y*tan(c_degen deg)) / sqrt(1+tan(c_degen deg)**2)`. `c_degen`
     is in degrees, matching the Fortran's own `C_degen/180.d0*pi` (division
     before multiplication, reproduced in that order here even though it is
@@ -207,7 +207,7 @@ def _check_is_on_fault_vec(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax,
 
 def is_on_fault(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax, tol, c_degen=0.0, dx=None):
     """Port of checkIsOnFault. C_degen==0: planar fault at y=0 (tpv8/
-    tpv104). C_degen>3: distance-to-dipping-plane test (meshgen.f90:763-767;
+    tpv104). C_degen>3: distance-to-dipping-plane test (meshgen.f90:823-828;
     tpv36/tpv37's wedge-degeneration branch) -- `dx` is required then (the
     Fortran uses `dx/100.d0`, NOT the module `tol`=1e-5 the box test uses).
     Any other c_degen (0<c_degen<=3) raises: the Fortran itself falls into
@@ -1145,7 +1145,7 @@ def build_fault_geometry(xline, yline, zline, params, nsmp):
     for a single (ntotft==1) fully rectangular fault -- planar
     (C_degen<=3, insertFaultType==0: angle-based un/us/ud, tpv8/tpv104's
     branch) OR dipping/rough (insertFaultType>0: pfx/pfz-derived un/us/ud
-    from func_lib.f90's insertFaultInterface via meshgen.f90:804-817,
+    from func_lib.f90's insertFaultInterface via meshgen.f90:925-938,
     tpv10/drv.a6's branch -- ud = us x un, matching the Fortran's explicit
     cross-product component formulas exactly). For insertFaultType>0, the
     fault surface's actual y-coordinate is `peak` (from
@@ -1234,7 +1234,7 @@ def build_fault_geometry(xline, yline, zline, params, nsmp):
         y_geo = ycoor  # planar branch: the fault's actual y IS 0 here.
         if insert_fault_type > 0:
             # insertFaultType>0: createMasterNode's un/us/ud branch
-            # (meshgen.f90:804-817) OVERWRITES the angle-based un/us/ud
+            # (meshgen.f90:925-938) OVERWRITES the angle-based un/us/ud
             # above with pfx/pfz-derived values, per fault node -- and the
             # fault's actual (warped) y-coordinate is `peak`, not 0, which
             # matters for arn's corner-distance formula below (meshCoor

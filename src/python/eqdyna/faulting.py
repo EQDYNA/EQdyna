@@ -1,7 +1,7 @@
 """faulting.py <- src/faulting.f90.
 
 ONE faulting routine, and the friclaw dispatch is INSIDE it, exactly as
-faulting.f90:17-18 does it:
+faulting.f90:21-22 does it:
 
     if (friclaw<=2) call solveSWTW(...)
     if (friclaw>=3) call solveRSF(...)
@@ -35,7 +35,7 @@ def build(S):
     """Per-fault-node invariants. Host/numpy side, like assembleGlobalKU.build.
 
     `nuc_radius` is the distance from each fault node to the hypocentre,
-    computed from the SLAVE node coordinate to match faulting.f90:388's
+    computed from the SLAVE node coordinate to match faulting.f90:392-394's
     meshCoor(:, nsmp(1,...)). It is geometry, so it is computed once here
     rather than every step as the scalar Fortran does.
     """
@@ -70,17 +70,17 @@ def build(S):
 def nucleation_enabled(finv):
     """Whether swtwNucleation/rsfNucleation does anything for this case.
 
-    faulting.f90:125 and :151 both gate on `C_nuclea==1 .and. ift==nucfault`.
+    faulting.f90:129 and :155 both gate on `C_nuclea==1 .and. ift==nucfault`.
     ntotft==1 throughout this port, so ift is always 1.
     """
     return finv['C_nuclea'] == 1 and finv['nucfault'] == 1
 
 
 # ---------------------------------------------------------------------------
-# faulting.f90:382-417  swtwNucleation
+# faulting.f90:386-427  swtwNucleation
 # ---------------------------------------------------------------------------
 def forced_rupture_time(xp, finv):
-    """tr per fault node -- faulting.f90:392-404. Loop-invariant (geometry
+    """tr per fault node -- faulting.f90:392-414. Loop-invariant (geometry
     only), so the caller computes it once outside the step.
 
     THE FORMULA (TPV29 spec, TPV29_30_Description_v06 Part 6; TPV36/37/201
@@ -122,7 +122,7 @@ def forced_rupture_time(xp, finv):
 
 
 def swtwNucleation(xp, fric, fricCoeff, tr, timeElapsed):
-    """faulting.f90:406-413 -- drive mu from fs toward fd over t0 after tr.
+    """faulting.f90:416-423 -- drive mu from fs toward fd over t0 after tr.
 
     With tr at its 1e9 default this reduces EXACTLY to min(fs, fricCoeff):
     timeElapsed < tr, so tc == 0.0, so fs + (fd-fs)*0.0 == fs.
@@ -140,7 +140,7 @@ def swtwNucleation(xp, fric, fricCoeff, tr, timeElapsed):
 
 
 # ---------------------------------------------------------------------------
-# faulting.f90:54-130  getNsdSlipSliprateTraction
+# faulting.f90:58-134  getNsdSlipSliprateTraction
 # ---------------------------------------------------------------------------
 def _rot(vx, vy, vz, dirvec):
     """Project an xyz nodal vector onto one fault-local direction."""
@@ -148,7 +148,7 @@ def _rot(vx, vy, vz, dirvec):
 
 
 def getNsdSlipSliprateTraction(xp, finv, fric, velArr, dispArr, force, dt):
-    """faulting.f90:54-130 -- slip, slip rate and traction on every fault
+    """faulting.f90:58-134 -- slip, slip rate and traction on every fault
     split-node pair, in fault-local (normal, strike, dip) coordinates.
 
     Returns (fric, comps) where comps carries everything solveSWTW/solveRSF
@@ -183,7 +183,7 @@ def getNsdSlipSliprateTraction(xp, finv, fric, velArr, dispArr, force, dt):
 
     slipN = dN_m - dN_s; slipS = dS_m - dS_s; slipD = dD_m - dD_s
     srN = vN_m - vN_s; srS = vS_m - vS_s; srD = vD_m - vD_s
-    srMag = xp.sqrt(srN ** 2 + srS ** 2 + srD ** 2)   # 3-component, faulting.f90:101
+    srMag = xp.sqrt(srN ** 2 + srS ** 2 + srD ** 2)   # 3-component, faulting.f90:105
 
     fric = B.setat(xp, fric, (slice(None), gv.SLIP_STRIKE), slipS)
     fric = B.setat(xp, fric, (slice(None), gv.SLIP_DIP), slipD)
@@ -219,14 +219,14 @@ def getNsdSlipSliprateTraction(xp, finv, fric, velArr, dispArr, force, dt):
 
 
 # ---------------------------------------------------------------------------
-# faulting.f90:132-180  solveSWTW   (friclaw 1 and 2)
+# faulting.f90:136-184  solveSWTW   (friclaw 1 and 2)
 # ---------------------------------------------------------------------------
 def solveSWTW(xp, finv, fric, fnft, comps, force, timeElapsed, tr, friclaw):
-    """faulting.f90:132-180 -- slip-weakening (friclaw 1) or time-weakening
+    """faulting.f90:136-184 -- slip-weakening (friclaw 1) or time-weakening
     (friclaw 2) friction, then the fault-node force update.
 
     The friclaw 1-vs-2 choice is a TRACE-TIME Python branch on a static int
-    (faulting.f90:144-149), so it costs nothing inside jit.
+    (faulting.f90:148-153), so it costs nothing inside jit.
     """
     un, us, ud, arn = finv['un'], finv['us'], finv['ud'], finv['arn']
     Tn, Ts, Td = comps['Tn'], comps['Ts'], comps['Td']
@@ -234,7 +234,7 @@ def solveSWTW(xp, finv, fric, fnft, comps, force, timeElapsed, tr, friclaw):
     if friclaw == 1:
         fricCoeff = F.slip_weak(xp, fric[:, gv.CUM_SLIP], fric)
     elif friclaw == 2:
-        # faulting.f90:147 -- trupt = timeElapsed - fnft. An unruptured node
+        # faulting.f90:151 -- trupt = timeElapsed - fnft. An unruptured node
         # still carries the 99999.0 sentinel, giving a large NEGATIVE trupt,
         # so time_weak's first arm returns fs and no special case is needed.
         fricCoeff = F.time_weak(xp, timeElapsed - fnft, fric)
@@ -244,7 +244,7 @@ def solveSWTW(xp, finv, fric, fnft, comps, force, timeElapsed, tr, friclaw):
     if tr is not None:
         fricCoeff = swtwNucleation(xp, fric, fricCoeff, tr, timeElapsed)
 
-    # faulting.f90:153-158. Slot 6 (the retired "surface pore pressure" field,
+    # faulting.f90:157-162. Slot 6 (the retired "surface pore pressure" field,
     # globalvar.f90:27) is NOT added: the Fortran removed those dead reads and
     # the column is identically 0.0 -- verified column-wise on the real case,
     # not assumed. The ports this replaces still carried `Tn + fric[:, 5]`.
@@ -253,7 +253,7 @@ def solveSWTW(xp, finv, fric, fnft, comps, force, timeElapsed, tr, friclaw):
     Tmag = xp.sqrt(Ts ** 2 + Td ** 2)
     over = Tmag > trialShear
     # DEVIATION FROM THE REFERENCE, pre-existing and deliberately PRESERVED
-    # so that this restructure changes nothing on its own: faulting.f90:162
+    # so that this restructure changes nothing on its own: faulting.f90:166
     # computes Ts*trialShear/Tmag, i.e. (Ts*trialShear)/Tmag, while this
     # computes Ts*(trialShear/Tmag). Different associations of the same
     # product, not bit-identical. Correcting it is a separate gated change,
@@ -275,7 +275,7 @@ def solveSWTW(xp, finv, fric, fnft, comps, force, timeElapsed, tr, friclaw):
                      axis=1) * arn[:, None]
     delta_f = xTrac - xInit * finv['C_elastic']
 
-    # faulting.f90:174-177: slave += delta, master -= delta. For a split-node
+    # faulting.f90:178-181: slave += delta, master -= delta. For a split-node
     # fault each node belongs to exactly one pair, so these indices are unique
     # within each direction and one scatter over the concatenated blocks
     # accumulates exactly what six separate ones would.
@@ -295,21 +295,21 @@ def solveSWTW(xp, finv, fric, fnft, comps, force, timeElapsed, tr, friclaw):
 
 
 # ---------------------------------------------------------------------------
-# faulting.f90:302-314  storeRuptureTime
+# faulting.f90:306-318  storeRuptureTime
 # ---------------------------------------------------------------------------
 def storeRuptureTime(xp, finv, fnft, srMag, timeElapsed):
-    """faulting.f90:302-314 -- first time a node reaches slipRateThres.
+    """faulting.f90:306-318 -- first time a node reaches slipRateThres.
     `fnft > 5000.0` is the Fortran's own test against the 99999.0 sentinel."""
     need = fnft > gv.FNFT_UNRUPTURED_ABOVE
     return xp.where(need & (srMag >= finv['slipRateThres']), timeElapsed, fnft)
 
 
 # ---------------------------------------------------------------------------
-# faulting.f90:3-25  faulting  -- THE dispatch
+# faulting.f90:3-29  faulting  -- THE dispatch
 # ---------------------------------------------------------------------------
 def faulting(xp, finv, fric, fnft, velArr, dispArr, force, dt, timeElapsed,
              tr, nt):
-    """faulting.f90:3-25, with the friclaw dispatch INSIDE it (lines 17-18).
+    """faulting.f90:3-29, with the friclaw dispatch INSIDE it (lines 21-22).
 
     finv['friclaw'] is a static Python int, so under jit both branches are
     resolved at trace time and only one is ever compiled.
@@ -328,10 +328,10 @@ def faulting(xp, finv, fric, fnft, velArr, dispArr, force, dt, timeElapsed,
 
 
 # ---------------------------------------------------------------------------
-# faulting.f90:340-380  rsfNucleation
+# faulting.f90:344-384  rsfNucleation
 # ---------------------------------------------------------------------------
 def rsfNucleation(xp, finv, fric, Tn, Ts, Td, srS, srD, timeElapsed, nt):
-    """faulting.f90:340-380 -- the smooth space-time stress perturbation that
+    """faulting.f90:344-384 -- the smooth space-time stress perturbation that
     starts an RSF rupture. Returns (fric, Ts).
 
     F and G are the Fortran's own expressions verbatim, including that F is
@@ -350,7 +350,7 @@ def rsfNucleation(xp, finv, fric, Tn, Ts, Td, srS, srD, timeElapsed, nt):
         dtau = finv['nucdtau0'] * Fr * G
     elif TPV == 2802:
         # drv.a6, C_elastic==0 (plastic). On the VERY FIRST step only,
-        # faulting.f90:365-373 re-derives the RSF state variable and theta_pc
+        # faulting.f90:369-377 re-derives the RSF state variable and theta_pc
         # from the ACTUAL post-elastic-solve traction: on_fault_vars_input.nc's
         # initial STATE/THETA_PC are set up for the C_elastic==1 perturbation
         # convention and are not consistent with C_elastic==0's absolute-stress
@@ -377,11 +377,11 @@ def rsfNucleation(xp, finv, fric, Tn, Ts, Td, srS, srD, timeElapsed, nt):
 
 
 # ---------------------------------------------------------------------------
-# faulting.f90:433-496  NewtonRaphson
+# faulting.f90:443-506  NewtonRaphson
 # ---------------------------------------------------------------------------
 def NewtonRaphson(xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm,
                   trialMag, T_coeff, dt):
-    """faulting.f90:433-496 -- solve for next-step slip rate.
+    """faulting.f90:443-506 -- solve for next-step slip rate.
 
     A fixed 20-iteration loop with a per-node `done` mask, which reproduces
     the scalar Fortran's `exit` EXACTLY rather than approximately. The
@@ -413,13 +413,13 @@ def NewtonRaphson(xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm,
 
         if friclaw < 5:
             # thetaPcTmp is re-seeded from the frozen baseline every iteration
-            # (faulting.f90:460), not carried forward.
+            # (faulting.f90:470), not carried forward.
             thetaPc_this, _ = F.rate_state_normal_stress(
                 xp, v_trial, thetaPc0, tnrm, fric, dt)
             taoc_this = xmu * thetaPc_this
             drsfeqdv = 1.0 + T_coeff * (dxmudv * thetaPc_this) * 0.5
         else:
-            # faulting.f90:466-468. MIN(tnrm, 0) is written literally to match
+            # faulting.f90:476-478. MIN(tnrm, 0) is written literally to match
             # the source's own guard, even though tnrm is already clamped <= 0
             # upstream, so it is a no-op here rather than a divergence.
             thetaPc_this = thetaPc0
@@ -428,7 +428,7 @@ def NewtonRaphson(xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm,
             drsfeqdv = 1.0 + T_coeff * (-dxmudv * tn0) * 0.5
 
         rsfeq = v_trial + T_coeff * (taoc_this * 0.5 - trialMag)
-        # Both exit criteria, ANDed, exactly as faulting.f90:474.
+        # Both exit criteria, ANDed, exactly as faulting.f90:484.
         exit_now = ((xp.abs(rsfeq / drsfeqdv) < 1.0e-14 * xp.abs(v_trial))
                     & (xp.abs(rsfeq) < 1.0e-6 * xp.abs(v_trial)) & (~done))
         done_after = done | exit_now
@@ -444,10 +444,10 @@ def NewtonRaphson(xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm,
 
 
 # ---------------------------------------------------------------------------
-# faulting.f90:182-300  solveRSF   (friclaw 3, 4 and 5)
+# faulting.f90:186-304  solveRSF   (friclaw 3, 4 and 5)
 # ---------------------------------------------------------------------------
 def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
-    """faulting.f90:182-300 -- rate-and-state friction.
+    """faulting.f90:186-304 -- rate-and-state friction.
 
     One function for friclaw 3 (ageing), 4 (slip law with strong rate
     weakening) and 5 (4 + thermal pressurization). Every friclaw branch below
@@ -456,7 +456,7 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
     Two subtleties this reproduces deliberately:
 
     1. solveRSF REDEFINES the slip-rate magnitude as strike+dip only
-       (faulting.f90:218), dropping the normal component -- and it is THAT
+       (faulting.f90:222), dropping the normal component -- and it is THAT
        value, not the 3-component one, that storeRuptureTime then sees. The
        fric slots 71-77 written back in getNsdSlipSliprateTraction keep the
        3-component magnitude, because they were written before this point.
@@ -479,11 +479,11 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
 
     # --- normal traction: TP offset, geometry caps, positivity clamp ---
     if friclaw == 5:
-        tnrm = Tn + fric[:, gv.TP_NORM_TP]        # faulting.f90:194-195
+        tnrm = Tn + fric[:, gv.TP_NORM_TP]        # faulting.f90:198-199
     else:
         tnrm = Tn
     if finv['insertFaultType'] > 0 and finv['C_elastic'] == 1:
-        # faulting.f90:201-208. min_norm > max_norm, so the two arms are
+        # faulting.f90:205-212. min_norm > max_norm, so the two arms are
         # mutually exclusive and values strictly between max_norm and
         # min_norm pass through UNTOUCHED. That gap is the Fortran's, kept.
         #
@@ -493,9 +493,9 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
         # closes that gap by construction rather than by a second edit.
         tnrm = xp.where(tnrm >= gv.MIN_NORM, gv.MIN_NORM,
                         xp.where(tnrm <= gv.MAX_NORM, gv.MAX_NORM, tnrm))
-    tnrm = xp.where(tnrm > 0.0, 0.0, tnrm)        # faulting.f90:211
+    tnrm = xp.where(tnrm > 0.0, 0.0, tnrm)        # faulting.f90:215
 
-    # --- background (creep) slip rate on top, faulting.f90:215-218 ---
+    # --- background (creep) slip rate on top, faulting.f90:219-222 ---
     vini_n = fric[:, gv.VINI_N]; vini_s = fric[:, gv.VINI_X]
     vini_d = fric[:, gv.VINI_Z]
     slipN = slipN0 + vini_n * timeElapsed
@@ -508,7 +508,7 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
     state0 = fric[:, gv.STATE]
     thetaPc0 = fric[:, gv.THETA_PC]
 
-    # --- pre-loop xmu -> taoc_old (faulting.f90:237-251) ---
+    # --- pre-loop xmu -> taoc_old (faulting.f90:241-255) ---
     if friclaw == 3:
         xmu_pre, _, _ = F.rate_state_ageing_law(xp, v_trial, state0, fric, dt)
     else:
@@ -528,7 +528,7 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
         xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm, trialMag,
         T_coeff, dt)
 
-    # faulting.f90:491 -- creeping-rate floor. Only TPV==105 reaches it; for
+    # faulting.f90:501 -- creeping-rate floor. Only TPV==105 reaches it; for
     # every other TPV this is a documented no-op, evaluated as a trace-time
     # Python branch so it is not merely masked.
     if finv['TPV'] == 105:
@@ -537,7 +537,7 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
 
     fric = B.setat(xp, fric, (slice(None), gv.STATE), state_out)
     if friclaw < 5:
-        # faulting.f90:264. friclaw==5 never evolves theta_pc (NewtonRaphson's
+        # faulting.f90:268. friclaw==5 never evolves theta_pc (NewtonRaphson's
         # friclaw==5 branch does not call rate_state_normal_stress), so the
         # slot is left untouched rather than written back unchanged.
         fric = B.setat(xp, fric, (slice(None), gv.THETA_PC), thetaPc_out)
@@ -552,7 +552,7 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
     fric = B.setat(xp, fric, (slice(None), gv.SHEAR_MAG),
                    xp.sqrt(Ts ** 2 + Td ** 2))
 
-    # --- relative acceleration -> nodal forces (faulting.f90:277-298) ---
+    # --- relative acceleration -> nodal forces (faulting.f90:281-302) ---
     accN = -srN / dt - slipN / dt / dt
     accS = (v_trial * (trialS / trialMag) - srS) / dt
     accD = (v_trial * (trialD / trialMag) - srD) / dt
@@ -566,10 +566,10 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
     massSlave = finv['massSlave']; massMaster = finv['massMaster']
     idxF_s, idxF_m = finv['idxF_s'], finv['idxF_m']
     # solveRSF REPLACES the fault-node force (it does not accumulate into it
-    # the way solveSWTW does) -- faulting.f90:292-293.
+    # the way solveSWTW does) -- faulting.f90:296-297.
     # The bracketed acceleration terms are shared by the force write
-    # (faulting.f90:292-293, scaled by mr) and the stored master/slave
-    # velocities (:296-297, scaled by dt). They are computed ONCE, here, and
+    # (faulting.f90:296-297, scaled by mr) and the stored master/slave
+    # velocities (:300-301, scaled by dt). They are computed ONCE, here, and
     # used by both -- NOT recovered from the force by dividing mr back out,
     # which would be a multiply and a divide instead of the Fortran's single
     # multiply and would not be bit-identical.
