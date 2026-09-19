@@ -2,11 +2,6 @@
 """
 Regression guard: every third-party import must be installed in CI (rules 2, 3).
 
-Guards the v5.6.1 CI-red incident. `scripts/convertFaultGeometry` used
-`scipy.interpolate` for its two interpolation paths. scipy was installed on the
-development box and NOT in `.github/workflows/test.yml`, so the unit tier passed
-locally and failed in CI with `ModuleNotFoundError: No module named 'scipy'`.
-
 The general defect: a new third-party dependency can be added anywhere under
 scripts/ or testsys/ and nothing connects it to CI's `pip install` line. The
 local environment silently supplies it. This test is that connection.

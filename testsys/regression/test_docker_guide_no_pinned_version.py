@@ -2,14 +2,9 @@
 """
 Regression guard: Docker.guide.md must not pin a specific version (rules 2, 11).
 
-THE INCIDENT this guards against: `dunyuliu/eqdyna:v5.3.1` on Docker Hub sat
-seven minor versions behind the repo before `publish.yml`/`ghcr.io` replaced
-that hand-`docker commit` workflow (see the root `Dockerfile`'s own comment).
-`Docker.guide.md` had the SAME failure mode waiting to happen the ordinary
-way: it hardcoded `ghcr.io/eqdyna/eqdyna:v5.8.2` in four places (found
-2026-09-16/17, while the repo was already at v5.9.0) -- a doc that quotes one
-version number as its running example goes stale the next time anyone tags a
-release, silently, because nothing reads it and nothing runs it.
+A doc that quotes a real version number as its running example goes stale
+the next time anyone tags a release, silently, because nothing reads it and
+nothing runs it.
 
 WHAT THIS PINS: no `vX.Y.Z`-shaped version string appears anywhere in
 Docker.guide.md. `:latest` and a generic `:vX.Y.Z` placeholder (for the "pin a

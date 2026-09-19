@@ -1,17 +1,10 @@
 name: Automatic Testing of EQdyna
 
 # paths-ignore is deliberately NARROW, not a blanket '**.md': README.md is
-# read by testsys/regression/test_readme_commands.py (checks its documented
-# tiers/compsets actually exist) and, together with pathway_forward.md, by
-# test_release_complete.py's release-completeness checks -- so README.md
-# stays in the trigger set unconditionally. pathway_forward.md and
-# PROJECT_RULES.md are excluded: nothing parses PROJECT_RULES.md's content
-# today, and pathway_forward.md-only edits cannot silently bypass
-# test_release_complete.py's Tasks-done-row check because that check only
-# fires once a tag for VERSION exists, and VERSION only changes in a release
-# commit -- which always also touches non-md files (src/fortran/eqdyna3d.f90's
-# banner, at minimum) and so always still triggers CI regardless of this
-# list.
+# read by test_readme_commands.py and test_release_complete.py, so it stays
+# in the trigger set unconditionally. pathway_forward.md and
+# PROJECT_RULES.md are excluded -- a release commit always also touches
+# non-md files (e.g. VERSION), so it still triggers CI regardless.
 on:
   push:
     paths-ignore:
@@ -22,30 +15,18 @@ on:
       - 'docs/**'
   pull_request:
 
-# Item 35: a push to a branch with an open PR fires BOTH `push` and
-# `pull_request` for the identical commit, giving two full 7-job runs created
-# within a second of each other. Grouping by the ACTUAL head commit (not by
-# ref, which differs between the two events -- `pull_request` runs against a
-# synthetic merge ref) puts both events' runs in the same concurrency group,
-# so the second one queued cancels the first rather than both running to
-# completion. This does not touch trigger scope (`paths-ignore` above is
-# unchanged, still deliberately narrow -- see its own comment) and does not
-# reduce coverage: a genuinely different commit gets its own group and is
-# never cancelled by an unrelated one.
+# A push to a branch with an open PR fires BOTH `push` and `pull_request`
+# for the identical commit. Grouping by the ACTUAL head commit (not by ref,
+# which differs between the two events) puts both runs in the same
+# concurrency group, so the second one cancels the first instead of both
+# running to completion.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
-# ONE job on ONE ubuntu-22.04 runner used to do apt install + build + unit +
-# regression + e2e-ci back to back, with the test step fully sequential and
-# by far the largest share of total wall clock. Splitting into a build job
-# plus parallel test jobs pays twice: wall clock drops to roughly the
-# slowest single job instead of the sum, AND each job gets its own 7 GB
-# runner instead of one runner holding the Fortran build, mpirun, AND every
-# python/jax cell at once -- which is the actual reason CI_CELLS is capped
-# below the full matrix (see testsys/matrix.py's CI_CELLS comment). More jobs
-# is how a per-job memory ceiling gets solved; a bigger single runner is not
-# offered by GitHub-hosted runners at all.
+# Build runs once in its own job; unit/regression and each e2e-ci slice run
+# in parallel jobs downstream, each with its own runner memory budget (see
+# testsys/matrix.py's CI_CELLS comment).
 #
 # test_ci_workflow_coverage.py proves the union of every `run_e2e.py --ci`
 # invocation in this file is exactly matrix.CI_CELLS by parsing this file and
@@ -53,21 +34,10 @@ concurrency:
 # cell fails the regression tier regardless of how many jobs or invocations
 # this grows to.
 #
-# The fortran slice is split in two (not left as one job): a GitHub-hosted
-# runner's core count is at or below run_e2e.py's --jobs reservation floor,
-# which forces serial execution of all 8 cases in one job -- unambiguously
-# the critical path. Splitting it into two similarly-sized-by-measured-
-# seconds groups running in parallel jobs roughly halves it with no coverage
-# change.
-#
-# The python slice is split in three for the same reason, sized very
-# differently: test.tpv29 x python-numpy alone is an order of magnitude more
-# expensive than any other python cell and cannot be shrunk by splitting --
-# it is isolated in its own job (e2e-ci-python-tpv29) specifically so its
-# cost is the new critical path on its own, not stacked on top of anything
-# else. See matrix.py's CI_CELLS comment for why the per-job-memory argument
-# that used to exclude some python cells no longer holds once cells run one
-# job at a time.
+# The fortran slice is split into two jobs (group A/B) and the python slice
+# into three (cheap/meng/tpv29), balanced by measured per-cell cost with
+# test.tpv29 x python-numpy isolated in its own job because it is an order
+# of magnitude more expensive than any other python cell.
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -94,11 +64,8 @@ jobs:
     - name: Build eqdyna
       run: ./install-eqdyna.sh -m ubuntu
 
-    # Every other job downloads THIS binary rather than rebuilding: rebuilding
-    # per job would pay the compile cost N times for no benefit, and would
-    # mean N separate exercises of the build-and-install path instead of one
-    # -- this way a build failure is unambiguous (the build job itself goes
-    # red) instead of appearing as N similar-looking failures downstream.
+    # Every other job downloads THIS binary rather than rebuilding, so a
+    # build failure is unambiguous (only the build job goes red).
     - name: Upload eqdyna binary
       uses: actions/upload-artifact@v4
       with:
@@ -107,18 +74,12 @@ jobs:
         if-no-files-found: error
         retention-days: 1
 
-  # unit (seconds) + regression (rule 10: one guard per past incident) in one
-  # job. Kept together, matching testsys/run.py's own 'unit regression'
-  # grouping (rule 1: not a second copy of that sequencing). This job needs
-  # the FULL build toolchain, not just the artifact: several regression
-  # guards do their OWN independent compiles --
-  # test_make_default_goal.py (bare `make` in a temp dir),
-  # test_fault_geometry_guard.py (builds src/eqdyna directly with mpif90),
-  # test_drucker_prager_kernel.py (compiles 4 .f90 files with plain gfortran)
-  # -- and test_stop_exit_status.py's real-binary probe needs bin/eqdyna
-  # present or it SKIPS (that skip was itself a past incident, closed
-  # 2026-09-16; this job downloads the artifact specifically so it stays
-  # closed).
+  # unit + regression in one job, matching testsys/run.py's own
+  # 'unit regression' grouping. Needs the FULL build toolchain, not just the
+  # artifact: several regression guards do their OWN independent compiles
+  # (test_make_default_goal.py, test_fault_geometry_guard.py,
+  # test_drucker_prager_kernel.py), and test_stop_exit_status.py's
+  # real-binary probe needs bin/eqdyna present or it SKIPS.
   unit-regression:
     needs: build
     runs-on: ubuntu-22.04
@@ -140,15 +101,10 @@ jobs:
         sudo apt-get install libnetcdf-dev libnetcdff-dev
         sudo apt-get install python3 python3-pip
         # scipy: scripts/convertFaultGeometry's interpolation paths
-        # (RegularGridInterpolator, griddata). Imported lazily there, so the
-        # exact-decimation path works without it -- but the unit tier
-        # exercises interpolation, and its absence is what turned v5.6.1's
-        # CI red.
-        #
-        # jax: the e2e sweep's python-jax column, and several unit tests
-        # import it directly (test_backend_jax.py). Since the no-fallback
-        # change (v5.6.2) a missing jaxlib is a hard failure rather than a
-        # quiet demotion to numpy. CPU wheel only.
+        # (RegularGridInterpolator, griddata), imported lazily there but
+        # exercised by the unit tier.
+        # jax: the e2e sweep's python-jax column and test_backend_jax.py.
+        # A missing jaxlib is a hard failure, not a fallback to numpy.
         pip install numpy scipy netCDF4 matplotlib xarray pytest
         pip install --upgrade numpy
         # jax LAST: it pins a numpy range, and `--upgrade numpy` above would
@@ -169,12 +125,8 @@ jobs:
     - name: Run unit + regression tests
       env:
         # test_release_complete.py's check_network_side calls `gh release
-        # view` to confirm rule 15 step 9 (gh release create) actually ran --
-        # the guard exists BECAUSE that step was skipped on both v5.8.0 and
-        # v5.8.1. Without a token it reports UNVERIFIED and never actually
-        # checks anything in the one place this runs automatically. This is
-        # the regression job specifically because check_network_side lives in
-        # the regression tier -- keep GH_TOKEN here if this tier ever moves.
+        # view` to confirm rule 15 step 9 (gh release create) actually ran.
+        # Without a token it reports UNVERIFIED rather than checking anything.
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         export EQDYNAROOT=$(pwd)
@@ -187,27 +139,10 @@ jobs:
       run: cat testRunLog.txt
 
   # The fortran slice of matrix.CI_CELLS, all 8 cases on the fortran/MPI
-  # backend, SPLIT ACROSS TWO JOBS -- see the top-of-file comment above the
-  # `jobs:` key for why (core-count-forced serial execution). Two jobs each
-  # get their own runner, so the SAME 8 cells run as two SERIAL-4 groups in
-  # PARALLEL instead of one SERIAL-8 group -- coverage is identical, wall
-  # clock roughly halves.
-  #
-  # The two --cases lists below are a balanced (LPT) partition of measured
-  # per-cell seconds on this repo's own CI runner (not the README's
-  # 64-core-box numbers, which are a different environment -- rule 6, measure
-  # on the thing you are deciding about), stale by tpv36's and tpv37's own
-  # fortran cells joining later without a full re-measurement -- a scheduling
-  # nicety, not a correctness requirement. Re-balance if a future case's cost
-  # shifts this badly out of true -- test_ci_workflow_coverage.py already
-  # proves the union of every `--ci` invocation in this file is exactly
-  # matrix.CI_CELLS regardless of how the groups are drawn.
-  #
-  # Both use the build job's binary via EQDYNA_E2E_BIN so neither rebuilds --
-  # the build-and-install path is exercised exactly once, in the `build` job,
-  # and a failure there is what should turn red for a broken build (rule 16
-  # concern: EQDYNA_E2E_BIN skipping the build path here is fine only because
-  # a sibling job in the SAME run always exercises it).
+  # backend, split across two jobs (balanced by measured per-cell seconds on
+  # this CI runner, not the README's 64-core-box numbers -- rule 6) so they
+  # run as two parallel SERIAL-4 groups instead of one SERIAL-8 group.
+  # Both use the build job's binary via EQDYNA_E2E_BIN so neither rebuilds.
   e2e-ci-fortran-a:
     needs: build
     runs-on: ubuntu-22.04
@@ -296,25 +231,11 @@ jobs:
       if: always()
       run: cat testRunLog.txt
 
-  # The python slice of matrix.CI_CELLS, split across THREE jobs by measured
-  # cost (see matrix.MEASURED_PEAK_RSS_GB for every number and its
-  # provenance). No fortran cell is selected in any of the three, so
-  # run_e2e.py never builds anything and none needs `needs: build`, mpich, or
-  # netCDF dev headers -- all three start immediately in parallel with
-  # `build` instead of waiting on it.
-  #
-  # Each case's two backends are DELIBERATELY not always in the same job: a
-  # `--backends` filter applies uniformly to every `--cases` entry in one
-  # invocation, so a job that mixes "both backends for case X" with "jax only
-  # for case Y" needs two `run_e2e.py --ci` calls in its one step, not one.
-  # test_ci_workflow_coverage.py's line-based parser sees both calls as
-  # separate invocations and unions them, so this composes cleanly.
-  #
-  # test.tpv29 x python-numpy alone dwarfs every other python cell combined
-  # and cannot be made to run faster by more splitting -- it is one
-  # sequential simulation. Isolating it in its own job (e2e-ci-python-tpv29)
-  # means its irreducible cost sets the new CI critical path on its own,
-  # rather than also queuing behind or ahead of anything else.
+  # The python slice of matrix.CI_CELLS, split across three jobs by measured
+  # cost (see matrix.MEASURED_PEAK_RSS_GB). No fortran cell is selected in
+  # any of the three, so none needs `needs: build`, mpich, or netCDF dev
+  # headers. test.tpv29 x python-numpy alone dwarfs every other python cell
+  # and is isolated in its own job (e2e-ci-python-tpv29) below.
   e2e-ci-python-cheap:
     runs-on: ubuntu-22.04
 
@@ -336,24 +257,17 @@ jobs:
         pip install --upgrade numpy
         pip install jax
 
-    # tpv8 (both backends, the two original CI cells) + the tpv10/tpv104/
-    # tpv1053d jax cells, previously excluded for a shared-runner reason that
-    # no longer applies once each job has its own 7 GB -- see matrix.py's
-    # CI_CELLS comment. Their numpy columns stay excluded: never measured, so
-    # the "no cell without a measured RSS" rule still applies to them.
-    # tpv36/tpv37 (both backends) measured 2026-09-17 at 2.91-4.34 GB, added
-    # here rather than a new job: this group's existing peak (tpv1053d-jax,
-    # 3.95 GB) already sets the job's memory footprint, so tpv36-jax's 4.34
-    # GB is the only new peak and it still clears 7 GB with margin.
+    # tpv8 (both backends) + tpv10/tpv104/tpv1053d jax-only (numpy columns
+    # never measured, so excluded per matrix.py's "no cell without a
+    # measured RSS" rule) + tpv36/tpv37 (both backends, measured at
+    # 2.91-4.34 GB, still under this job's 3.95 GB existing peak + margin).
     - name: Run e2e-ci (python cells, cheap group)
       run: |
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-        # Pin numpy's own BLAS thread pools (item 40, haruto-nakamura,
-        # 2026-09-17): unpinned numpy scattered 2072-3747 ms/step with NO
-        # dependence on step count, while pinned is linear to 0.2%. This
-        # buys determinism, not speed -- it removes the bad placement draw
-        # that made a single-run number look like a real perf gap.
+        # Pin numpy's own BLAS thread pools: unpinned numpy scattered
+        # 2072-3747 ms/step with NO dependence on step count, while pinned
+        # is linear to 0.2%. This buys determinism, not speed.
         export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
         set -o pipefail
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
@@ -393,8 +307,7 @@ jobs:
       run: |
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-        # Pin numpy's own BLAS thread pools (item 40) -- see the cheap-group
-        # job above for the measurement this is based on.
+        # Pin numpy's own BLAS thread pools -- see the cheap-group job above.
         export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
         set -o pipefail
         python3 testsys/e2e/run_e2e.py --ci --cases test.meng2023a,test.meng2023cb --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
@@ -426,18 +339,16 @@ jobs:
         pip install jax
 
     # test.tpv29 x python-numpy ALONE: by far the single most expensive cell
-    # in the table (matrix.MEASURED_PEAK_RSS_GB). This job's own wall clock is
-    # the new CI critical path; that is expected and reported, not a
-    # regression to chase away by further splitting -- there is nothing left
-    # to parallelize inside one sequential simulation.
+    # in the table (matrix.MEASURED_PEAK_RSS_GB). This job's own wall clock
+    # is the new CI critical path -- there is nothing left to parallelize
+    # inside one sequential simulation.
     - name: Run e2e-ci (python cells, tpv29-numpy)
       run: |
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-        # Pin numpy's own BLAS thread pools (item 40) -- this is the exact
-        # cell haruto-nakamura measured: unpinned 2072-3747 ms/step scattered
-        # with no dependence on step count (the source of this job's own
-        # 950-1711 s wall-clock spread); pinned 2072 ms/step, linear to 0.2%.
+        # Pin numpy's own BLAS thread pools: unpinned 2072-3747 ms/step
+        # scattered with no dependence on step count; pinned 2072 ms/step,
+        # linear to 0.2%.
         export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
         set -o pipefail
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-numpy 2>&1 | tee -a testRunLog.txt

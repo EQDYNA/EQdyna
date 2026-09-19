@@ -1,17 +1,9 @@
 name: Publish EQdyna Docker image
 
 # Builds and publishes the image described by the root Dockerfile to GHCR.
-# Gated strictly on the tag push for anything that reaches the REGISTRY, not
-# on push-to-master (contrast .github/workflows/test.yml, which runs on every
-# push/PR): an image is only ever PUSHED for a released, tagged commit, so its
-# version cannot drift from the tag (see Docker.guide.md).
-#
-# workflow_dispatch lets `gh workflow run publish.yml --ref master` exercise
-# build+gate without a tag push, but it is build+gate ONLY: the push step and
-# the `:latest` tag are both gated on `github.event_name == 'push'` below, so
-# a manual run never reaches the registry and can't publish
-# `ghcr.io/eqdyna/eqdyna:master` or clobber `:latest` with an unreleased
-# commit.
+# Push to the REGISTRY is gated on a tag push only (see Docker.guide.md);
+# workflow_dispatch runs build+gate without publishing (push and `:latest`
+# below are both gated on `github.event_name == 'push'`).
 on:
   push:
     tags:
@@ -23,8 +15,7 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: read
-      packages: write   # GITHUB_TOKEN needs this to push to ghcr.io -- no
-                         # separate secret to configure, unlike Docker Hub.
+      packages: write   # GITHUB_TOKEN needs this to push to ghcr.io
 
     steps:
     - uses: actions/checkout@v2
@@ -32,10 +23,9 @@ jobs:
     - name: Log in to ghcr.io
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-    # On a real tag push, GITHUB_REF_NAME IS the version (e.g. v5.8.6). On a
-    # workflow_dispatch, GITHUB_REF_NAME is whatever branch --ref named (e.g.
-    # "master") -- not a version, and never used as one below: it only names
-    # a local, never-pushed build tag for this run.
+    # On a tag push, GITHUB_REF_NAME IS the version (e.g. v5.8.6). On a
+    # workflow_dispatch it is a branch name, not a version -- used only as a
+    # local, never-pushed build tag.
     - name: Compute image tag
       run: |
         if [ "${{ github.event_name }}" = "push" ]; then
@@ -51,16 +41,10 @@ jobs:
           docker tag ghcr.io/eqdyna/eqdyna:"${TAG}" ghcr.io/eqdyna/eqdyna:latest
         fi
 
-    # Gate BEFORE push: a `--version`-only smoke test proves the binary
-    # linked, not that the shipped image runs EQdyna correctly. Run the
-    # repo's own unit+regression tiers and one real e2e case (fortran
-    # backend -- the image deliberately excludes jax, same rationale as
-    # the Dockerfile's jax-exclusion note) INSIDE the just-built image.
-    # pytest/scipy are installed here, not in the Dockerfile: they are a
-    # CI-only overlay, not a production dependency this image should carry.
-    # No --break-system-packages: the base image is ubuntu:22.04, whose stock
-    # pip3 (22.0.2) predates that flag (pip 23.0.1+, PEP 668).
-    # A failing gate stops the job here; the push step below never runs.
+    # Gate BEFORE push: run the repo's own unit+regression tiers and one
+    # real e2e case (fortran backend; image excludes jax, see Dockerfile)
+    # INSIDE the just-built image. pytest/scipy are CI-only, not shipped in
+    # the image itself. A failing gate stops the job; push never runs.
     - name: Gate the image on the repo's own test tiers (not a --version smoke test)
       run: |
         docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
@@ -71,22 +55,16 @@ jobs:
           python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran
         '
 
-    # Dispatch runs stop here: build + gate, nothing pushed, nothing to
-    # verify-pull. That is deliberate (see the `on:` comment above), not a
-    # skipped check -- a dispatch run has no tag/version to publish under.
+    # Dispatch runs stop here: build + gate, nothing pushed.
     - name: Push image
       if: github.event_name == 'push'
       run: |
         docker push ghcr.io/eqdyna/eqdyna:"${TAG}"
         docker push ghcr.io/eqdyna/eqdyna:latest
 
-  # Separate job -> a FRESH runner with no local build cache and nothing
-  # this workflow built still in memory. Pulls the image the job above just
-  # pushed and re-runs the same gate, so a registry-roundtrip-only failure
-  # (wrong manifest, layer squashing, auth) is caught the same way a human
-  # pulling `ghcr.io/eqdyna/eqdyna:vX.Y.Z` into an empty directory would hit
-  # it. Skipped entirely on a dispatch run: build-and-push pushed nothing for
-  # it to pull.
+  # Separate job -> a FRESH runner. Pulls the image just pushed and re-runs
+  # the same gate, catching a registry-roundtrip-only failure (manifest,
+  # layer squashing, auth). Skipped on a dispatch run: nothing was pushed.
   verify-published-image:
     needs: build-and-push
     if: github.event_name == 'push'
@@ -101,8 +79,6 @@ jobs:
     - name: Re-run the gate against the pulled image
       run: |
         TAG="${GITHUB_REF_NAME}"
-        # No --break-system-packages here either -- same reasoning as the
-        # build-and-push job's identical gate step above.
         docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
           set -e
           pip3 install pytest scipy

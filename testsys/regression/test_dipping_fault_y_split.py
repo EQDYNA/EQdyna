@@ -22,19 +22,12 @@ dip -- the two ways checkIsOnFault selects fault nodes give opposite answers:
       of grid y, fltxyz y-extent is faultWidth*cos(dip), a y boundary CROSSES
       it, each rank holds a PARTIAL area -> DIVIDE, add back. THIS FILE.
 
-HISTORY. checkFaultMPIAlignment (eqdyna3d.f90) made the DIVIDE case a hard stop
-(exit 51) from v5.5.0 until 2026-09-16, because the reasoning had never been
-audited for it -- its comment claimed the case was "not producible by any case
-in this codebase today", a survey that covered only the eight GATED cases.
-test.tpv36 and test.tpv37 produce it immediately. The audit:
-
-    tpv36, (npx,npy,npz) = (2,2,1) vs (2,1,2), term 1.0 s
-    tnrm / tstk / tdip ratio  1.000000  (min 1.0000, max 1.0000)
-    max |diff| over all 22 canonical columns  1.0e-08  = output precision
-
-A duplicated fault surface would have doubled arn and halved every traction --
-a clean 0.5. So the add-back was already right, and the guard was
-over-conservative. It is now a NOTICE carrying this evidence.
+checkFaultMPIAlignment (eqdyna3d.f90) treats the DIVIDE case as a rank-0
+NOTICE, not a hard stop: a duplicated fault surface would have doubled arn
+and halved every traction (a clean 0.5), and audited evidence (tpv36,
+(npx,npy,npz)=(2,2,1) vs (2,1,2): tnrm/tstk/tdip ratio 1.000000, max|diff|
+over all 22 canonical columns 1.0e-08 = output precision) confirms the
+add-back is correct.
 
 arn is a MESH-TIME quantity, computed once before any time stepping, so a
 short run is a complete test of it: were arn doubled, the t=0 tractions would

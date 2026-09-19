@@ -3,24 +3,12 @@
 Regression guard: CI's matrix jobs must cover matrix.CI_CELLS exactly --
 no cell dropped, none silently run twice (rules 2, 6).
 
-THE INCIDENT THIS PREVENTS. .github/workflows/test.yml used to be one job
-running `python3 testsys/run.py unit regression e2e-ci` -- 11 minutes wall
-clock, 591s of it ("Run tests") fully sequential and 90% of the total
-(measured on run 35147230900, consistently across 14 runs). It was split into
-a `build` job plus parallel test jobs, with the e2e-ci selection itself split
-across `e2e-ci-fortran` (--backends fortran) and `e2e-ci-python`
-(--backends python-numpy,python-jax) so each gets its own runner instead of
-one runner holding the Fortran build, mpirun, AND every python/jax cell at
-once.
-
-Splitting a declared cell list across job command lines is exactly the shape
-of defect that drifts silently: a later edit to matrix.CI_CELLS (widening it,
-per testsys/matrix.py's own comment that this is a "separate commit with a
-per-cell memory measurement") has no mechanical reason to also update the
-workflow's `--backends`/`--cases` filters, and a later edit to the workflow
-has no mechanical reason to stay in sync with the table. Either drift is
-invisible in a green run: a dropped cell just quietly stops being gated, and
-CLAUDE.md/README.md's stated coverage becomes a lie nothing catches.
+The e2e-ci selection is split across several jobs' `--backends`/`--cases`
+filters so each gets its own runner. Splitting a declared cell list across
+job command lines is exactly the shape of defect that drifts silently: a
+later edit to matrix.CI_CELLS has no mechanical reason to also update the
+workflow's filters, and vice versa -- a dropped cell would just quietly stop
+being gated with a green run to show for it.
 
 WHAT THIS PINS. It parses test.yml for every `run_e2e.py --ci ...` invocation,
 applies the SAME --backends/--cases filtering run_e2e.py's own select() uses,

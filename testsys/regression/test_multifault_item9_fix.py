@@ -3,26 +3,13 @@
 Regression guard (PROJECT_RULES.md rule 10; pathway_forward.md item 9) for
 `output_onfault_st` (`src/fortran/library_output.f90`) opening unit 51 only
 for "main fault" (j==1) stations while writing to it unconditionally for
-every station.
+every station -- see item 9 for the incident this fixed.
 
-Background: the subroutine loops over every on-fault station `i` and reads
-its fault index `j = anonfs(3,i)`. Building the station's filename/header
-(and the `open(51, file=..., ...)` call) used to be guarded by `if (j==1)`,
-labeled "!main fault stations" -- but the `write(51,...)` calls a few lines
-below run unconditionally, and `close(51)` runs at the end of every loop
-iteration `i` regardless of `j`. So for a station on fault 2+ (`j>1`), the
-open was skipped but the write/close were not: this hits an unconnected (or
-already-closed-by-the-previous-iteration) unit. Whether that aborts or
-silently writes to a compiler-default file (e.g. gfortran's `fort.51`) is
-compiler-dependent -- either way it is not the intended per-station output
-file. On `ntotft==1` (the only case that runs today) `j` is always 1, so this
-was never observed.
-
-Fix: the whole filename/header/open block now runs for EVERY station
-regardless of `j` -- it was already fully self-contained per loop iteration
-`i` (open here, write below, close(51) at the bottom of the SAME iteration),
-so there was nothing "main-fault-only" about it. No-op for ntotft==1 (there
-`j` is always 1, so the block always ran before too).
+The fix: the filename/header/open block now runs for EVERY station
+regardless of `j = anonfs(3,i)` -- it is fully self-contained per loop
+iteration (open, write, close(51) all within the same pass over station
+`i`), so there was nothing "main-fault-only" about it. No-op for ntotft==1
+(there `j` is always 1, so the block always ran before too).
 
 This bug is LATENT and cannot be exercised end-to-end (case.setup refuses
 ntotft>1, pathway_forward.md item 17 -- deliberately left refused, not
