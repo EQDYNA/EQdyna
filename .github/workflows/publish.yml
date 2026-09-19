@@ -43,13 +43,20 @@ jobs:
 
     # Gate BEFORE push: run the repo's own unit+regression tiers and one
     # real e2e case (fortran backend; image excludes jax, see Dockerfile)
-    # INSIDE the just-built image. pytest/scipy are CI-only, not shipped in
-    # the image itself. A failing gate stops the job; push never runs.
+    # INSIDE the just-built image. pytest/scipy/jax are CI-only, not shipped
+    # in the image itself -- jax added here because the item-41
+    # regression guard (test_stress_i0_carry_aliasing.py) exercises BOTH
+    # backends, including jax, even though the e2e case below stays
+    # fortran-only; a missing jax must FAIL that guard, never skip it (rule
+    # 2 -- test_stop_exit_status.py already burned this project once on a
+    # guard that skipped instead of failing). A failing gate stops the job;
+    # push never runs.
     - name: Gate the image on the repo's own test tiers (not a --version smoke test)
       run: |
         docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
           set -e
           pip3 install pytest scipy
+          pip3 install jax
           cd /opt/eqdyna
           python3 testsys/run.py unit regression
           python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran
@@ -82,6 +89,7 @@ jobs:
         docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
           set -e
           pip3 install pytest scipy
+          pip3 install jax
           cd /opt/eqdyna
           python3 testsys/run.py unit regression
           python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran
