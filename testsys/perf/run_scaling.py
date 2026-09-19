@@ -182,22 +182,41 @@ def numactl_prefix(cpus, node_map):
 
 
 def free_node_map(all_nodes, busy_ceiling, override):
-    """{node: cpus} restricted to nodes whose cpus are ALL currently under
+    """{node: cpus} restricted to the individual cpus currently under
     `busy_ceiling`, so `compact_cpus`/`spread_cpus` build placements out of
     room that actually exists right now instead of always starting at node 0
     (see module docstring, F4). Probes fresh on every call -- occupancy moves
     over the course of a multi-minute sweep, so a configuration built early
-    from a stale free-set could target a node that has since gone busy (the
+    from a stale free-set could target a cpu that has since gone busy (the
     per-cpu `require_idle` check downstream still catches that case, but
-    asking for the wrong node in the first place is the defect being fixed).
+    asking for the wrong cpu in the first place is the defect being fixed).
+
+    PER-CPU, NOT WHOLE-NODE (2026-09-18 fix, item 33 thread-scaling
+    investigation). The original version required EVERY cpu on a node to be
+    idle before offering ANY of that node's cpus -- correct for a box where
+    interference clusters by node, wrong for THIS box: ~20-28 foreign
+    single-core jobs with no cpu affinity of their own, so the Linux
+    scheduler smears them across all 8 nodes and no node is ever seen fully
+    idle in a snapshot even though ~40+ of 64 cores are free at any instant
+    (measured: `free_node_map` returned `{}` on 6 consecutive samples over
+    12s with `nproc` idle cores in the 40s the whole time). Requiring
+    whole-node freedom in that regime means the tool can never select ANY
+    placement, at ANY core count including k=1, and every run silently
+    starves on SKIPPED rather than measuring -- worse than the coarse
+    placement F4 fixed. Cpu-level filtering keeps `compact_cpus` filling
+    node-by-node in cpu-id order exactly as before (so it stays AS compact
+    as the actually-free cpus allow) but no longer demands more idle room
+    than a configuration actually needs.
 
     `override` mirrors `--i-know-the-box-is-busy`: if the busy ceiling itself
     is being bypassed, there is nothing to filter FOR, so this reverts to the
     full topology in node-number order -- identical to pre-fix behaviour.
 
-    Raises SystemExit if per-cpu utilisation could not be read at all (same
+    Raises SystemExit if per-cpu utilisation could not be read AT ALL (same
     hard-failure discipline as `cpu_busy_fractions`/`require_idle`: a check
-    that cannot evaluate must fail, not silently call every node free)."""
+    that cannot evaluate must fail, not silently call every cpu free). An
+    individual cpu whose utilisation could not be read is dropped from the
+    free set (not assumed free, not used to invalidate cpus that WERE read)."""
     if override:
         return dict(all_nodes)
     all_cpus = sorted(c for cs in all_nodes.values() for c in cs)
@@ -205,15 +224,13 @@ def free_node_map(all_nodes, busy_ceiling, override):
     if not busy:
         raise SystemExit(
             'FAIL: could not read per-cpu utilisation for cpus %s from '
-            '/proc/stat -- cannot tell which NUMA nodes are free (rule 2: a '
+            '/proc/stat -- cannot tell which cpus are free (rule 2: a '
             'check that cannot evaluate must fail).' % all_cpus)
     free = {}
     for n, cpus in all_nodes.items():
-        fracs = [busy.get(c) for c in cpus]
-        if any(f is None for f in fracs):
-            continue
-        if max(fracs) <= busy_ceiling:
-            free[n] = cpus
+        idle_cpus = [c for c in cpus if busy.get(c) is not None and busy[c] <= busy_ceiling]
+        if idle_cpus:
+            free[n] = idle_cpus
     return free
 
 
@@ -272,7 +289,23 @@ def fortran_cmd(n, cpus, node_map, binary):
     sched_setaffinity to any online cpu, which is not blocked by a plain
     affinity mask the way a cgroup would block it) -- so each rank pins
     itself explicitly via OMPI_COMM_WORLD_LOCAL_RANK, the correct and
-    portable way to combine OpenMPI with numactl."""
+    portable way to combine OpenMPI with numactl.
+
+    `--bind-to none` IS REQUIRED (2026-09-18 fix, item 33 investigation):
+    without it, OpenMPI's OWN default binding (--bind-to core, applied
+    automatically whenever np>1) restricts each rank's cpu affinity mask
+    to ITS OWN choice of core BEFORE the numactl call below ever runs. Our
+    numactl then tries to move the rank to `cpus[rank]`, which is very
+    often a DIFFERENT cpu than the one OpenMPI already bound it to --
+    libnuma refuses with 'cpu argument N is out of range' (relative to the
+    already-narrowed mask, not the system total) and the whole mpirun job
+    aborts. Measured: `mpirun -np 2` with no `--bind-to` flag fails this
+    way on rank 1 every time; adding `--bind-to none` (verified directly,
+    not assumed) lets the explicit per-rank numactl below be the ONLY
+    binding authority, exactly as this function's docstring already
+    intended. n=1 never showed this bug (no second rank has to move to a
+    non-default core), so `fortran np=1` cells passed silently while every
+    n>1 fortran cell failed outright."""
     cpu_list = ' '.join(str(c) for c in cpus[:n])
     cpu2node = {c: nd for nd, cs in node_map.items() for c in cs}
     node_list = ' '.join(str(cpu2node[c]) for c in cpus[:n])
@@ -280,14 +313,22 @@ def fortran_cmd(n, cpus, node_map, binary):
              '--physcpubind=${CPUS[$OMPI_COMM_WORLD_LOCAL_RANK]} '
              '--membind=${NODES[$OMPI_COMM_WORLD_LOCAL_RANK]} %s'
              % (cpu_list, node_list, binary))
-    return "mpirun -np %d bash -c '%s'" % (n, inner)
+    return "mpirun --bind-to none -np %d bash -c '%s'" % (n, inner)
 
 
-def run_fortran(work, n, policy, node_map, term):
+def run_fortran(work, n, policy, cpus, node_map, term):
+    """`cpus` MUST be the already-selected, already-busy-checked cpu list
+    from the caller (`select_cpus(free, n, policy)` + `measure_once`) --
+    this function used to recompute cpus itself via
+    `compact_cpus(node_map, n)` on the FULL, unfiltered topology, silently
+    discarding the free-node-aware selection main() had just validated. On
+    a box with scattered per-cpu (not per-node) foreign load that meant the
+    busy check and the actual mpirun pin could target two different cpu
+    sets -- the check passed on cpus the binary never used. Fixed by taking
+    `cpus` as a parameter instead of a second, divergent computation."""
     nx, ny, nz = DECOMP[n]
     d = os.path.join(work, f'f{n}_{policy}')
     make_case(d, nx, ny, nz, term=term)
-    cpus = compact_cpus(node_map, n) if policy == 'compact' else spread_cpus(node_map, n)
     binary = os.path.join(ROOT, 'bin', 'eqdyna')
     if not os.path.exists(binary):
         raise SystemExit(f'FAIL: {binary} missing -- build it first '
@@ -421,7 +462,7 @@ def main():
                     continue
                 best = None
                 for rep in range(a.repeats):
-                    t, used_cpus, used_nodes = run_fortran(work, n, policy, nodes, term)
+                    t, used_cpus, used_nodes = run_fortran(work, n, policy, cpus, nodes, term)
                     best = t if best is None else min(best, t)
                 base.setdefault(policy, best)
                 ps = best / a.n_hi
