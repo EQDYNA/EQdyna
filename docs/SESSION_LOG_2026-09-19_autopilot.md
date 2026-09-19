@@ -177,3 +177,84 @@ for hard scrutiny at landing time (same filename in two places is the shape
 of a second duplication under a new name, not a real shared module, unless
 the two copies are byte-identical AND a single location is what everything
 imports). Not merged; nothing decided yet.
+
+---
+
+# Continuation, same date (wei-lin, third invocation)
+
+Resumed with `origin/master` == local at `572f640`, tree clean (`git status
+--porcelain` 0), round 4 gated-and-committed at `45446d0` on branch
+`worktree-agent-ad4246f41491e3c61`, rebased onto `572f640`, with its 6
+tpv36/37 e2e cells in flight.
+
+## Round 4 landed -- `45446d0` (fast-forward, pushed)
+
+The "duplicated in both dirs" flag above **resolved as a non-issue, by
+inspection not assumption**: `case_input/test.tpv37/tpv36_37_common.py` is a
+SYMLINK (`git ls-tree` shows mode `120000`), not a second copy. There is one
+real 136-line file, in `test.tpv36/`. `create.newcase`'s `shutil.copy`
+resolves it, so a created case directory still gets a real 6466-byte file and
+stays self-contained.
+
+Gate, all four axes:
+
+- **Axis 4 (stale base)** -- `git merge-base --is-ancestor 572f640 45446d0`
+  YES; `git diff --stat 572f640 45446d0` is exactly 9 files, +158/-277, with
+  no reverted lines and no dtype/flag change.
+- **Axis 1 (no signal removal)** -- read the whole `testsys/unit/` half of the
+  diff line by line. It moves `REPO_ROOT`/`sys.path` boilerplate out of four
+  test files into `conftest.py`. **Zero assertions removed**, zero tolerances
+  touched, one `sys.path.insert` deleted from inside a test body that
+  `conftest` now covers. Required the post-edit unit COUNT, not just exit 0,
+  because a silently uncollected file reads as a pass.
+- **Axis 3 (own re-run, not the report)** -- `python3 testsys/run.py unit
+  regression` run by me in the candidate worktree: SUCCESS both tiers.
+- **Axis 2 (gate exercises the new path)** -- the new path is the generated
+  case inputs, so the e2e cells for both cases on all three backends are the
+  gate. 6/6 SUCCESS, exit 0, 1391.1s: `test.tpv36` fortran `0.000000e+00` /
+  numpy `7.894064e-09` / jax `5.867293e-09`; `test.tpv37` fortran
+  `0.000000e+00` / numpy `6.929140e-09` / jax `5.256410e-09`; bound `1.0e-06`,
+  3477 fault nodes each. **Both fortran cells are exactly 0.000000e+00 --
+  bit-identical, not merely in-bound** -- which is the real confirmation that
+  byte-identical generated inputs produce a bit-identical run. Every python
+  figure is unmoved to the last digit from the 2026-09-17 TPV37 gating run
+  already on the board.
+
+No tag cut for this landing, matching this campaign's own cadence (the two
+prior landings `88f5227`/`07452a6` carry none either; tags come at rule-15
+milestones, not per merge).
+
+Worktree `agent-ad4246f41491e3c61` checked before reaping -- `git status
+--porcelain -uall` 0, `git log master..HEAD` 0 commits, i.e. nothing unlanded
+-- then unlocked, force-removed and its branch deleted, recorded here by name.
+
+## Two accepted risks, flagged at merge time, not discovered after
+
+Neither vetoed the merge; both are on the board as their own row (routed to
+`zofia-kaminska`, rule 19):
+
+1. `45446d0` introduces the repo's **first tracked symlink**. On a
+   `core.symlinks=false` checkout it materialises as a text stub and
+   `case.setup` dies on the import. Ubuntu CI and the owner's boxes are
+   unaffected, which is exactly why nothing catches it.
+2. `test.tpv37` can no longer survive deletion or rename of
+   `case_input/test.tpv36/`, and nothing tests that coupling. The 6 gated
+   cells catch it on any sweep, which is why it is a note and not a veto, but
+   a dangling symlink is a far less legible failure than a missing parameter.
+
+## Dispatched next
+
+- `zofia-kaminska` (worktree) -- the round-4 landing row plus the new row for
+  the two risks above, with the literal 6-cell evidence block and today's
+  date. Step 0 stale-base re-sync of `pathway_forward.md` required in her
+  brief.
+- `kai-fischer` (worktree) -- refactor **round 5**, scoped to
+  `src/python/eqdyna/`: docstrings that contradict the code (this project has
+  already lost a board item to one -- backend.py's "41 scatter sites across 5
+  files" against an actual 3) and local duplication. Hard constraint is ZERO
+  numerical change, gated A/B in her own worktree: `test.tpv8` on all three
+  backends must reproduce each max|diff| to every digit (jax `4.119873e-10`,
+  fortran `0.000000e+00`), and the unit test count must be unchanged.
+  `backend.py`'s three scatter sites are code-frozen (open item 43, owner
+  decision); `compare.py`/`matrix.py`/`testNameList.py`/references/`perf/` are
+  out of scope. Round 6 does not start until round 5 lands or is rejected.
