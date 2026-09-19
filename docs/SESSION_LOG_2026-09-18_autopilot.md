@@ -353,3 +353,116 @@ item 38's reproduction).
 Stopping here. Tags this leg: none (all patch-level tooling/doc/bugfix
 commits, batched, no version bump -- consistent with this project's own
 established precedent of batching several small commits between tags).
+
+## Continuation, 2026-09-19 -- new conductor session, kai-fischer slimming campaign
+
+Owner's queued instruction (relayed via coordinator, this brief's opening
+dispatch): three SERIAL kai-fischer refactor rounds to slim the repo down
+(comment/prose bloat, then guard inventory, then board/log/comment
+duplication), each gated on the full 30-cell sweep before the next starts;
+item 33 jax-vs-Fortran ms/step table (numpy dropped by owner decision,
+recorded as an accepted 1.0x property, not a gap); item 38 re-confirmed.
+
+**Item 38**: re-confirmed still env-blocked (no sudo, no matching mpich).
+Landed `059d2db` (1-line addition to the existing row, via zofia-kaminska,
+diff verified clean before push).
+
+**Item 33 -- jax vs Fortran ms/step, matched cores, `test.tpv104`, compact
+placement, box load ~25-27 at capture (provisional -- a second attempt
+minutes later found the box at load 86, zero free placements, correctly
+skipped rather than overridden):**
+
+| cores | Fortran ms/step | jax ms/step |
+|---|---|---|
+| 1 | 965.02 | 617.06 (jax 1.56x faster) |
+| 2 | 501.60 | SKIPPED (busy) |
+| 4 | 273.01 | 337.44 (Fortran 1.24x faster) |
+| 8 | 161.79 | 267.62 (Fortran 1.65x faster) |
+| 16 | SKIPPED (busy) | SKIPPED (no free 16-cpu compact placement) |
+
+Genuine reversal, not previously reported this way (prior sessions reported
+speedup ratios only, never ms/step): jax only beats Fortran at 1 thread/rank;
+Fortran (MPI) pulls ahead from 4 cores and the gap widens by 8. No 16-core
+point obtained this session on either backend -- do not quote one. Fortran
+is MPI-parallel, jax is threads-in-one-process; matched core count is the
+fair axis, not the same mechanism.
+
+## Round 1 -- comment/prose bloat, landed `a3c18b9`
+
+Dispatched kai-fischer (worktree `agent-a2d5bfa89f162c560`, base `b23ce0e`).
+Scope: cut narrated historical-incident replay from CI workflows, Dockerfile,
+testsys/matrix.py and regression-guard docstrings where the same story
+already lives in pathway_forward.md/git log; keep magic-number rationale,
+function contracts, anything a reader needs that the commit message won't be
+read at. No CASE_BOUND/GATE/reference-data touch, no src/ touch.
+
+Verified myself before landing (gate axes 3+4, not the subagent's report
+alone): diffed all 14 touched files against current master at merge time --
+empty (zero staleness, `b23ce0e` -> `059d2db` touched none of them). Read the
+full diff directly: comment/docstring lines only, no assertion, tolerance,
+regex, or value changed in any file. Built clean on the worktree
+(`install-eqdyna.sh -m ubuntu` exit 0), fast tiers SUCCESS.
+
+**Full 30-cell sweep needed three attempts to complete, due to my own timeout
+sizing, not a code or box defect -- recorded here in full rather than
+smoothed over:**
+1. `python3 testsys/run.py all`, background timeout 40 min -- killed at 40
+   min with 28/30 cells at fresh SUCCESS (0 FAIL) and 2 cells
+   (`test.drv.a6`, `test.tpv29` x python-numpy) still genuinely computing
+   (confirmed R-state, real CPU, not hung) when the timeout fired.
+2. Re-ran just those two cells, background timeout 60 min --
+   `test.tpv29 x python-numpy` completed SUCCESS (1088.1s); `test.drv.a6 x
+   python-numpy` was killed again at 60 min, again while genuinely computing.
+3. Re-ran `test.drv.a6 x python-numpy` alone, timeout 3h -- completed
+   SUCCESS in 585.9s (under 10 minutes), flips 423/450 within budget. The
+   two prior timeouts were CPU oversubscription from concurrently running
+   heavy jobs (this session's own full sweep + item-33 measurement passes
+   stacking on the same box), not evidence the cell or the box cannot
+   support the gate -- no board row needed once isolated.
+
+All 30 cells hold a fresh `SUCCESS` across the three invocations, same
+worktree commit, zero code change in between. Also caught and reverted an
+unintended side effect of my own item-33 measurement commands: they were run
+directly against the main checkout (not a worktree) and had left
+`testsys/perf/scaling_last.json` modified in the main tree -- `git checkout
+--` before touching anything else, confirmed clean after.
+
+Committed in the worktree (`7ff5f16`), diffed clean, cherry-picked onto
+master (`a3c18b9`): **14 files changed, 201 insertions(+), 491 deletions(-),
+net -290 lines.** `Dockerfile` rewrite 68%. Re-verified on master itself
+(rule 16): clean build, `unit regression` SUCCESS. Pushed. Worktree reaped
+(fully committed, nothing unlanded).
+
+## Round 2 -- guard inventory verdict, ZERO deletions
+
+Read all 21 `testsys/regression/*.py` guards directly (not delegated --
+independence wasn't needed for a read-only classification). For each: does
+it pin a real, dated past incident or a specifically reproduced pre-fix
+defect, or does it assert something no plausible change would break?
+
+**Verdict: KEEP all 21. Zero deletion candidates.** Every guard names a
+dated incident (CI-red commits, a measured 29 MPa PML error, a v5.6.0 banner
+two releases stale, three README-drift incidents in one day, an 80-minute
+deadlock, `test_stop_exit_status.py`'s 13 live silently-exit-0 sites found
+on its own first real scan) or reproduces a specific pre-fix failure against
+the real unfixed subroutine (the three latent multifault guards -- item
+7/9/10 -- each demonstrably crashes/corrupts on the pre-fix code before
+asserting the fix, even though the end-to-end path stays refused behind item
+17). None is speculative, none is a plausible-change tautology, none
+duplicates another guard's coverage. Full per-guard table is in this
+session's chat transcript; not re-typed here since the verdict (nothing to
+cut) is the load-bearing fact, not the enumeration.
+
+Round 2 as scoped ("delete what's never caught anything") has no diff to
+land on this project: the guard suite is already lean and incident-driven,
+unlike the comment/prose layer Round 1 addressed. Not treated as a failure
+to find work -- a lean gate reporting itself lean is exactly what rule 8
+("delete nothing that pins a past incident") is for.
+
+## Round 3 -- board/session-log/comment duplication, dispatched next
+
+Scope per the queued brief: consolidate the now-multiple session logs for
+this multi-day campaign (this file alone is now large; `docs/
+SESSION_LOG_2026-09-17_v5.10.0-followon.md` at 1215 lines substantially
+restates board rows and commit messages), without deleting history. Gated
+the same way: full 30-cell sweep before merge, report lines added/deleted.
