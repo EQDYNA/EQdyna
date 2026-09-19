@@ -227,20 +227,27 @@ def netcdf_write_on_fault_vars():
   var23[:,:] = par.on_fault_vars[:,:,49] # init_dip_shear
   ds.close()
   
+def _write_slurm_header(f):
+    # Common SBATCH header shared by every batch script this module writes
+    # (create_LS6batch_script, create_batch_script_cycle_old,
+    # create_batch_script_cycle) -- was written out three times, byte for
+    # byte, with only the target filename differing.
+    f.write("#! /bin/bash" + "\n")
+    f.write("#SBATCH -J " + str(par.casename) + "\n")
+    f.write("#SBATCH -o a.eqdyna.log%j" + "\n")
+    f.write("#SBATCH -N " + str(par.HPC_nnode) + "\n")
+    f.write("#SBATCH -n " + str(par.HPC_ncpu) + "\n")
+    f.write("#SBATCH -p " + str(par.HPC_queue) + "\n")
+    f.write("#SBATCH -t " + str(par.HPC_time) + "\n")
+    f.write("#SBATCH -A " + str(par.HPC_account) + "\n")
+    f.write("#SBATCH --mail-user=" + str(par.HPC_email) + "\n")
+    f.write("#SBATCH --mail-type=begin" + "\n")
+    f.write("#SBATCH --mail-type=end" + "\n")
+
 def create_LS6batch_script():
     # Function to create batch script used by HPC system.
     with open("batch.hpc", "w") as f:
-        f.write("#! /bin/bash" + "\n")
-        f.write("#SBATCH -J " + str(par.casename) + "\n")
-        f.write("#SBATCH -o a.eqdyna.log%j" + "\n")
-        f.write("#SBATCH -N " + str(par.HPC_nnode) + "\n")
-        f.write("#SBATCH -n " + str(par.HPC_ncpu) + "\n")
-        f.write("#SBATCH -p " + str(par.HPC_queue) + "\n")
-        f.write("#SBATCH -t " + str(par.HPC_time) + "\n")
-        f.write("#SBATCH -A " + str(par.HPC_account) + "\n")
-        f.write("#SBATCH --mail-user=" + str(par.HPC_email) + "\n")
-        f.write("#SBATCH --mail-type=begin" + "\n")
-        f.write("#SBATCH --mail-type=end" + "\n")
+        _write_slurm_header(f)
         # Executable part.
         f.write("  ibrun -np 1 python clean.py" + "\n")
         f.write("  ibrun -np " + str(par.nx*par.ny*par.nz) + " eqdyna" + "\n")
@@ -268,17 +275,7 @@ def create_batch_script_cycle_old():
     # Function to create batch script used by HPC system.
     # made obsolete on 20230228 but kept.
     with open("batch.cycle.hpc", "w") as f:
-        f.write("#! /bin/bash" + "\n")
-        f.write("#SBATCH -J " + str(par.casename) + "\n")
-        f.write("#SBATCH -o a.eqdyna.log%j" + "\n")
-        f.write("#SBATCH -N " + str(par.HPC_nnode) + "\n")
-        f.write("#SBATCH -n " + str(par.HPC_ncpu) + "\n")
-        f.write("#SBATCH -p " + str(par.HPC_queue) + "\n")
-        f.write("#SBATCH -t " + str(par.HPC_time) + "\n")
-        f.write("#SBATCH -A " + str(par.HPC_account) + "\n")
-        f.write("#SBATCH --mail-user=" + str(par.HPC_email) + "\n")
-        f.write("#SBATCH --mail-type=begin" + "\n")
-        f.write("#SBATCH --mail-type=end" + "\n")
+        _write_slurm_header(f)
         # Executable part.
         f.write("  read i < currentcycle.txt" + "\n")
         f.write("  cp \"../Q$((i-1))/\"*.r.nc ./" + "\n")
@@ -295,17 +292,7 @@ def create_batch_script_cycle_old():
 def create_batch_script_cycle():
     # Function to create batch script used by HPC system.
     with open("batch.cycle.eqdyna.hpc", "w") as f:
-        f.write("#! /bin/bash" + "\n")
-        f.write("#SBATCH -J " + str(par.casename)       + "\n")
-        f.write("#SBATCH -o a.eqdyna.log%j"         + "\n")
-        f.write("#SBATCH -N " + str(par.HPC_nnode)      + "\n")
-        f.write("#SBATCH -n " + str(par.HPC_ncpu)       + "\n")
-        f.write("#SBATCH -p " + str(par.HPC_queue)      + "\n")
-        f.write("#SBATCH -t " + str(par.HPC_time)       + "\n")
-        f.write("#SBATCH -A " + str(par.HPC_account)    + "\n")
-        f.write("#SBATCH --mail-user=" + str(par.HPC_email) + "\n")
-        f.write("#SBATCH --mail-type=begin"         + "\n")
-        f.write("#SBATCH --mail-type=end"           + "\n")
+        _write_slurm_header(f)
         # Executable part.
         f.write("  read i < currentcycle.txt"       + "\n")
         f.write("# fetch input files from /eqdyna"  + "\n")
