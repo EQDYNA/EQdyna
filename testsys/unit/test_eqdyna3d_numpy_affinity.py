@@ -18,14 +18,10 @@ change the sweep cannot see (same reasoning as test_backend_jax.py's own
 module docstring).
 """
 import os
-import sys
 
 import pytest
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
-
-from eqdyna import eqdyna3d as E  # noqa: E402
+from eqdyna import eqdyna3d as E
 
 pytestmark = pytest.mark.skipif(
     not hasattr(os, 'sched_getaffinity'),

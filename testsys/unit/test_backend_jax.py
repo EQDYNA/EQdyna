@@ -16,13 +16,9 @@ exactly the kind of drift a tolerance gate cannot see). PROJECT_RULES rule 2
 is the reason the cache switch must raise rather than carry on.
 """
 import os
-import sys
 
 import numpy as np
 import pytest
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
 
 jax = pytest.importorskip('jax', reason='these cover the JAX backend; without '
                                         'jaxlib there is no time loop to test')
