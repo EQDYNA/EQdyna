@@ -299,6 +299,34 @@ unenforceable-as-written.
   `pastReleaseNotes.md` and the dated session logs alone: those are history
   as-of-that-date, not drift.
 
+## Round 5 halted on MY error, corrected, re-dispatched
+
+`kai-fischer` stopped before making a single edit, exactly as briefed, because
+his measured baseline disagreed with the one I gave him. **He was right and my
+brief was wrong.** I told him `test.tpv8 x fortran` should read
+`0.000000e+00`; it reads `3.051760e-11`, reproducibly, to six figures across
+two independent invocations, well inside its `1.0e-08` bound. I had carried
+the figure over from the tpv36/tpv37 fortran cells, which ARE bit-exact for an
+unrelated reason (byte-identical generated inputs), and assumed it
+generalised. This log already records the true value: the v5.12.0 banner-fix
+entry above cites a `test.tpv8 x fortran` spot check at exactly
+`3.051760e-11`. I had the number in front of me and used a different one.
+
+Recorded loudly rather than quietly fixed, because the failure it nearly
+caused is the expensive kind: had he trusted the brief over his measurement,
+the "correct" move would have been to hunt a nonexistent regression, or worse,
+to treat a drifting number as normal later. The halt cost ~20 minutes; the
+alternative costs a session. His full baseline, now the recorded one:
+`test.tpv8` fortran `3.051760e-11`, python-numpy `3.861189e-10`, python-jax
+`4.119873e-10`; unit 249; regression now 22 scripts (the symlink guard).
+
+Re-dispatched with the corrected table and a single cheap pre-edit
+confirmation (the fortran cell alone) rather than a full three-backend
+re-baseline, since nothing landed since his run touches a solver file. One
+wasted dispatch on my side too: a fork launched with a placeholder prompt
+instead of a directive -- it did nothing and returned nothing, noted here so
+its notification is not mistaken later for a real mission.
+
 ## Housekeeping -- leftover agent branches
 
 33 `worktree-agent-*` branches had accumulated from earlier sessions whose
