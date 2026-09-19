@@ -95,9 +95,15 @@ in separate fresh processes (jax caches compiled code in-process, so a
 second call in the same interpreter would pay no compile and cancel the
 wrong term) and divide the wall-time difference by the step-count
 difference, so fixed cost (interpreter start, case load, XLA compile)
-cancels exactly. Fortran gets a single end-to-end wall time instead: it is
-a compiled binary with no JIT to amortise, and its fixed cost (mesh
-read/broadcast) is genuinely small next to a multi-second MPI solve.
+cancels exactly. FORTRAN NOW USES THE SAME TECHNIQUE (`per_step_fortran`,
+2026-09-19). It previously took one wall-clock run and reported
+`wall / n_hi`, justified here as "no JIT to amortise, and its fixed cost is
+genuinely small next to a multi-second MPI solve" -- true of a long
+production run, false of the 20-60 step runs this tool actually does, where
+mesh generation, input read, MPI init and netCDF open are a large fraction
+of the wall time. Charging Fortran for its fixed cost while subtracting
+jax's is a one-way bias in jax's favour and made the headline verdict a
+property of the metric. Both engines now difference two runs.
 
 Usage:
     python3 testsys/perf/run_scaling.py [--case test.tpv104]
@@ -316,7 +322,7 @@ def fortran_cmd(n, cpus, node_map, binary):
     return "mpirun --bind-to none -np %d bash -c '%s'" % (n, inner)
 
 
-def run_fortran(work, n, policy, cpus, node_map, term):
+def run_fortran(work, n, policy, cpus, node_map, term, nsteps):
     """`cpus` MUST be the already-selected, already-busy-checked cpu list
     from the caller (`select_cpus(free, n, policy)` + `measure_once`) --
     this function used to recompute cpus itself via
@@ -327,15 +333,51 @@ def run_fortran(work, n, policy, cpus, node_map, term):
     sets -- the check passed on cpus the binary never used. Fixed by taking
     `cpus` as a parameter instead of a second, divergent computation."""
     nx, ny, nz = DECOMP[n]
-    d = os.path.join(work, f'f{n}_{policy}')
+    d = os.path.join(work, f'f{n}_{policy}_{nsteps}')
     make_case(d, nx, ny, nz, term=term)
     binary = os.path.join(ROOT, 'bin', 'eqdyna')
     if not os.path.exists(binary):
         raise SystemExit(f'FAIL: {binary} missing -- build it first '
                          '(./install-eqdyna.sh -m ubuntu).')
     t0 = time.time()
-    sh(fortran_cmd(n, cpus, node_map, binary), cwd=d)
-    return time.time() - t0, cpus, nodes_of(node_map, cpus)
+    r = sh(fortran_cmd(n, cpus, node_map, binary), cwd=d)
+    wall = time.time() - t0
+    shutil.rmtree(d, ignore_errors=True)
+    return wall, r.stdout
+
+
+def per_step_fortran(work, n, policy, cpus, node_map, dt, n_lo, n_hi):
+    """PER-STEP BY DIFFERENCE for Fortran too (2026-09-19 fix, item 33
+    headline measurement).
+
+    This function did not exist: the Fortran branch took ONE wall-clock run
+    of `n_hi` steps and reported `wall / n_hi` as ms/step, while the python
+    branch used `per_step_py` and subtracted its fixed cost exactly. That is
+    not a comparison -- it charges Fortran for mesh generation, input read,
+    MPI setup and netCDF open, and charges jax for none of its equivalents.
+    The bias runs ONE WAY, in jax's favour, and it is large at the short step
+    counts this tool uses: measured at np=1/n_hi=15, `wall/n_hi` gave 1168
+    ms/step against a by-difference value several times smaller. Any "jax
+    beats Fortran" verdict taken off the old number was an artifact of the
+    metric, not a property of either solver.
+
+    The module docstring's original justification -- "a compiled binary with
+    no JIT to amortise, and its fixed cost is genuinely small next to a
+    multi-second MPI solve" -- is true only for a LONG run. At 15-60 steps
+    the fixed cost is a large fraction of the wall time, so it must cancel
+    the same way it cancels for python: two runs, separate processes, same
+    pin, divide the difference.
+
+    `term` is set to `dt * nsteps` because the solver computes
+    `nstep = idnint(term/dt)` (readInputFiles.f90), so the requested step
+    count is exact rather than approximate. Both step counts are returned
+    with the figure -- item 40's 4.0x is permanently unreproducible for
+    exactly the lack of them."""
+    t_lo, out_lo = run_fortran(work, n, policy, cpus, node_map, dt * n_lo, n_lo)
+    t_hi, out_hi = run_fortran(work, n, policy, cpus, node_map, dt * n_hi, n_hi)
+    ps = (t_hi - t_lo) / float(n_hi - n_lo)
+    fixed = t_lo - n_lo * ps
+    return ps, fixed, t_lo, t_hi, out_lo, out_hi
 
 
 # --------------------------------------------------------------------------
@@ -384,10 +426,10 @@ def per_step_py(case_dir, cpus, node_map, backend, n_lo, n_hi):
     t_lo = time_one_py(case_dir, n_lo, cpus, node_map, backend)
     t_hi = time_one_py(case_dir, n_hi, cpus, node_map, backend)
     if t_lo is None or t_hi is None:
-        return None, None
+        return None, None, None, None
     ps = (t_hi - t_lo) / float(n_hi - n_lo)
     fixed = t_lo - n_lo * ps
-    return ps, fixed
+    return ps, fixed, t_lo, t_hi
 
 
 def main():
@@ -443,8 +485,6 @@ def main():
         make_case(d0, 1, 1, 1)
         _, dt = read_term_dt(d0)
         shutil.rmtree(d0, ignore_errors=True)
-        term = dt * a.n_hi  # a single wall-clock run of n_hi steps (see docstring: no
-                             # JIT to amortise, so no per-step-difference needed here)
         base = {}
         for policy in policies:
             for n in fortran_ranks:
@@ -460,19 +500,24 @@ def main():
                 chk = measure_once(label, cpus)
                 if chk is None:
                     continue
-                best = None
+                best_ps, best_fixed, best_lo, best_hi = None, None, None, None
                 for rep in range(a.repeats):
-                    t, used_cpus, used_nodes = run_fortran(work, n, policy, cpus, nodes, term)
-                    best = t if best is None else min(best, t)
-                base.setdefault(policy, best)
-                ps = best / a.n_hi
-                speedup = base[policy] / best
-                row = dict(engine='fortran', n=n, policy=policy, ms_per_step=ps * 1e3,
-                          speedup=speedup, cpus=used_cpus, nodes=used_nodes,
-                          steps=a.n_hi, wall_s=best)
+                    ps, fixed, t_lo, t_hi, _o1, _o2 = per_step_fortran(
+                        work, n, policy, cpus, nodes, dt, a.n_lo, a.n_hi)
+                    if best_ps is None or ps < best_ps:
+                        best_ps, best_fixed, best_lo, best_hi = ps, fixed, t_lo, t_hi
+                base.setdefault(policy, best_ps)
+                speedup = base[policy] / best_ps
+                used_nodes = nodes_of(nodes, cpus)
+                row = dict(engine='fortran', n=n, policy=policy, ms_per_step=best_ps * 1e3,
+                          speedup=speedup, fixed_s=best_fixed, cpus=cpus, nodes=used_nodes,
+                          n_lo=a.n_lo, n_hi=a.n_hi, wall_lo_s=best_lo, wall_hi_s=best_hi,
+                          busy=chk, loadavg=os.getloadavg())
                 rows.append(row)
-                print(f'  {label:<28} {ps*1e3:9.2f} ms/step  speedup {speedup:5.2f}x  '
-                      f'cpus={used_cpus} nodes={used_nodes}', flush=True)
+                print(f'  {label:<28} {best_ps*1e3:9.2f} ms/step  speedup {speedup:5.2f}x  '
+                      f'fixed {best_fixed:6.2f}s  n_lo/n_hi {a.n_lo}/{a.n_hi}  '
+                      f'wall {best_lo:.1f}/{best_hi:.1f}s  cpus={cpus} nodes={used_nodes}',
+                      flush=True)
 
     for backend in backends:
         py_backend = 'python-%s' % backend
@@ -493,13 +538,14 @@ def main():
                 chk = measure_once(label, cpus)
                 if chk is None:
                     continue
-                best_ps, best_fixed = None, None
+                best_ps, best_fixed, best_lo, best_hi = None, None, None, None
                 for rep in range(a.repeats):
-                    ps, fixed = per_step_py(case_dir, cpus, nodes, backend, a.n_lo, a.n_hi)
+                    ps, fixed, t_lo, t_hi = per_step_py(case_dir, cpus, nodes, backend,
+                                                        a.n_lo, a.n_hi)
                     if ps is None:
                         continue
                     if best_ps is None or ps < best_ps:
-                        best_ps, best_fixed = ps, fixed
+                        best_ps, best_fixed, best_lo, best_hi = ps, fixed, t_lo, t_hi
                 if best_ps is None:
                     print(f'  {label:<28} FAILED')
                     continue
@@ -508,10 +554,13 @@ def main():
                 used_nodes = nodes_of(nodes, cpus)
                 row = dict(engine=py_backend, n=n, policy=policy, ms_per_step=best_ps * 1e3,
                           speedup=speedup, fixed_s=best_fixed, cpus=cpus, nodes=used_nodes,
-                          n_lo=a.n_lo, n_hi=a.n_hi)
+                          n_lo=a.n_lo, n_hi=a.n_hi, wall_lo_s=best_lo, wall_hi_s=best_hi,
+                          busy=chk, loadavg=os.getloadavg())
                 rows.append(row)
                 print(f'  {label:<28} {best_ps*1e3:9.2f} ms/step  speedup {speedup:5.2f}x  '
-                      f'fixed {best_fixed:6.2f}s  cpus={cpus} nodes={used_nodes}', flush=True)
+                      f'fixed {best_fixed:6.2f}s  n_lo/n_hi {a.n_lo}/{a.n_hi}  '
+                      f'wall {best_lo:.1f}/{best_hi:.1f}s  cpus={cpus} nodes={used_nodes}',
+                      flush=True)
 
     meta = dict(case=CASE, sha=sha, host=host, loadavg=os.getloadavg(),
                date=time.strftime('%Y-%m-%d %H:%M'),

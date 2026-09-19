@@ -1,13 +1,13 @@
 {
  "case": "test.tpv104",
- "sha": "87cf37a",
+ "sha": "737358f",
  "host": "cotopaxi",
  "loadavg": [
-  7.23828125,
-  5.64794921875,
-  5.06494140625
+  95.72265625,
+  58.037109375,
+  37.23828125
  ],
- "date": "2026-09-17 22:24",
+ "date": "2026-09-19 11:39",
  "topology": {
   "0": [
    0,
@@ -92,657 +92,79 @@
  },
  "busy_ceiling": 0.2,
  "overridden": false,
- "n_lo": 10,
- "n_hi": 25,
+ "n_lo": 40,
+ "n_hi": 160,
  "skipped": [
   {
-   "label": "python-numpy th=16  compact",
-   "cpus": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15
-   ]
+   "label": "python-jax th=2   compact",
+   "reason": "no_free_node_placement",
+   "n": 2,
+   "policy": "compact",
+   "free_nodes": []
+  },
+  {
+   "label": "python-jax th=8   compact",
+   "reason": "no_free_node_placement",
+   "n": 8,
+   "policy": "compact",
+   "free_nodes": []
+  },
+  {
+   "label": "python-jax th=16  compact",
+   "reason": "no_free_node_placement",
+   "n": 16,
+   "policy": "compact",
+   "free_nodes": []
   }
  ],
  "rows": [
   {
-   "engine": "python-numpy",
-   "n": 1,
-   "policy": "compact",
-   "ms_per_step": 1719.7746117909749,
-   "speedup": 1.0,
-   "fixed_s": 5.525703827540081,
-   "cpus": [
-    0
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 2,
-   "policy": "compact",
-   "ms_per_step": 1722.1439997355144,
-   "speedup": 0.9986241638649827,
-   "fixed_s": 5.53561766942342,
-   "cpus": [
-    0,
-    1
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 4,
-   "policy": "compact",
-   "ms_per_step": 1704.022963841756,
-   "speedup": 1.009243800279373,
-   "fixed_s": 5.716894308725994,
-   "cpus": [
-    0,
-    1,
-    2,
-    3
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 8,
-   "policy": "compact",
-   "ms_per_step": 1705.7837168375652,
-   "speedup": 1.0082020333617372,
-   "fixed_s": 5.674794514973957,
-   "cpus": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 32,
-   "policy": "compact",
-   "ms_per_step": 1698.7719217936196,
-   "speedup": 1.0123634548746132,
-   "fixed_s": 5.730713208516441,
-   "cpus": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    24,
-    25,
-    26,
-    27,
-    28,
-    29,
-    30,
-    31,
-    32,
-    33,
-    34,
-    35,
-    36,
-    37,
-    38,
-    39
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 1,
-   "policy": "spread",
-   "ms_per_step": 1699.3899504343667,
-   "speedup": 1.0,
-   "fixed_s": 5.774238665898643,
-   "cpus": [
-    0
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 2,
-   "policy": "spread",
-   "ms_per_step": 2756.034517288208,
-   "speedup": 0.6166069183003109,
-   "fixed_s": -4.748504161834717,
-   "cpus": [
-    0,
-    8
-   ],
-   "nodes": [
-    0,
-    1
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 4,
-   "policy": "spread",
-   "ms_per_step": 1716.3192749023438,
-   "speedup": 0.9901362615245697,
-   "fixed_s": 5.716615915298462,
-   "cpus": [
-    0,
-    8,
-    24,
-    32
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 8,
-   "policy": "spread",
-   "ms_per_step": 1714.4834677378335,
-   "speedup": 0.9911964637819566,
-   "fixed_s": 5.6701508363088,
-   "cpus": [
-    0,
-    8,
-    24,
-    32,
-    40,
-    56,
-    1,
-    9
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4,
-    5,
-    7
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 16,
-   "policy": "spread",
-   "ms_per_step": 2545.279089609782,
-   "speedup": 0.667663501959976,
-   "fixed_s": -2.7340301672617606,
-   "cpus": [
-    0,
-    8,
-    24,
-    32,
-    40,
-    56,
-    1,
-    9,
-    25,
-    33,
-    41,
-    57,
-    2,
-    10,
-    26,
-    34
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4,
-    5,
-    7
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-numpy",
-   "n": 32,
-   "policy": "spread",
-   "ms_per_step": 1711.0620657602947,
-   "speedup": 0.9931784383749157,
-   "fixed_s": 5.734829982121784,
-   "cpus": [
-    0,
-    8,
-    24,
-    32,
-    40,
-    56,
-    1,
-    9,
-    25,
-    33,
-    41,
-    57,
-    2,
-    10,
-    26,
-    34,
-    42,
-    58,
-    3,
-    11,
-    27,
-    35,
-    43,
-    59,
-    4,
-    12,
-    28,
-    36,
-    44,
-    60,
-    5,
-    13
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4,
-    5,
-    7
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
    "engine": "python-jax",
    "n": 1,
    "policy": "compact",
-   "ms_per_step": 607.5027942657471,
+   "ms_per_step": 1126.7519513765972,
    "speedup": 1.0,
-   "fixed_s": 9.003127574920654,
+   "fixed_s": -10.418890396753952,
    "cpus": [
-    0
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 2,
-   "policy": "compact",
-   "ms_per_step": 405.658483505249,
-   "speedup": 1.4975720192423543,
-   "fixed_s": 8.535918235778809,
-   "cpus": [
-    0,
     1
    ],
    "nodes": [
     0
    ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 4,
-   "policy": "compact",
-   "ms_per_step": 353.9783000946045,
-   "speedup": 1.7162147908597374,
-   "fixed_s": 8.572197437286377,
-   "cpus": [
-    0,
-    1,
-    2,
-    3
+   "n_lo": 40,
+   "n_hi": 160,
+   "wall_lo_s": 34.65118765830994,
+   "wall_hi_s": 169.8614218235016,
+   "busy": [
+    28.3203125,
+    27.65478515625,
+    25.1552734375,
+    [
+     "cisco-amp-scan-svc",
+     "cosmo",
+     "cshyu",
+     "dduncan",
+     "enze",
+     "geoclue",
+     "junlin",
+     "kehua",
+     "lp",
+     "markw",
+     "messagebus",
+     "rdomeyko",
+     "ron",
+     "yukoo",
+     "zjia"
+    ],
+    {
+     "1": 0.0
+    }
    ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 8,
-   "policy": "compact",
-   "ms_per_step": 317.8953806559245,
-   "speedup": 1.9110148534158176,
-   "fixed_s": 8.609597047170002,
-   "cpus": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 16,
-   "policy": "compact",
-   "ms_per_step": 241.01235071818033,
-   "speedup": 2.5206293057408913,
-   "fixed_s": 8.841332991917929,
-   "cpus": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15
-   ],
-   "nodes": [
-    0,
-    1
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 32,
-   "policy": "compact",
-   "ms_per_step": 306.8498293558756,
-   "speedup": 1.9798048952511644,
-   "fixed_s": 8.228127559026083,
-   "cpus": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    24,
-    25,
-    26,
-    27,
-    28,
-    29,
-    30,
-    31,
-    32,
-    33,
-    34,
-    35,
-    36,
-    37,
-    38,
-    39
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 1,
-   "policy": "spread",
-   "ms_per_step": 605.9797922770183,
-   "speedup": 1.0,
-   "fixed_s": 9.060682137807209,
-   "cpus": [
-    0
-   ],
-   "nodes": [
-    0
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 2,
-   "policy": "spread",
-   "ms_per_step": 619.5793310801189,
-   "speedup": 0.9780503672073882,
-   "fixed_s": 6.154710133870442,
-   "cpus": [
-    0,
-    8
-   ],
-   "nodes": [
-    0,
-    1
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 4,
-   "policy": "spread",
-   "ms_per_step": 353.0012448628744,
-   "speedup": 1.7166505815366602,
-   "fixed_s": 8.581055084864298,
-   "cpus": [
-    0,
-    8,
-    24,
-    32
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 8,
-   "policy": "spread",
-   "ms_per_step": 256.54802322387695,
-   "speedup": 2.3620520815637285,
-   "fixed_s": 8.786221265792847,
-   "cpus": [
-    0,
-    8,
-    24,
-    32,
-    40,
-    56,
-    1,
-    9
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4,
-    5,
-    7
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 16,
-   "policy": "spread",
-   "ms_per_step": -160.51619847615558,
-   "speedup": -3.775194017985889,
-   "fixed_s": 19.62449796994527,
-   "cpus": [
-    0,
-    8,
-    24,
-    32,
-    40,
-    56,
-    1,
-    9,
-    25,
-    33,
-    41,
-    57,
-    2,
-    10,
-    26,
-    34
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4,
-    5,
-    7
-   ],
-   "n_lo": 10,
-   "n_hi": 25
-  },
-  {
-   "engine": "python-jax",
-   "n": 32,
-   "policy": "spread",
-   "ms_per_step": 740.9017403920492,
-   "speedup": 0.817894950491496,
-   "fixed_s": 4.377104202906291,
-   "cpus": [
-    0,
-    8,
-    24,
-    32,
-    40,
-    56,
-    1,
-    9,
-    25,
-    33,
-    41,
-    57,
-    2,
-    10,
-    26,
-    34,
-    42,
-    58,
-    3,
-    11,
-    27,
-    35,
-    43,
-    59,
-    4,
-    12,
-    28,
-    36,
-    44,
-    60,
-    5,
-    13
-   ],
-   "nodes": [
-    0,
-    1,
-    3,
-    4,
-    5,
-    7
-   ],
-   "n_lo": 10,
-   "n_hi": 25
+   "loadavg": [
+    94.13134765625,
+    57.09228515625,
+    36.82373046875
+   ]
   }
  ]
 }
