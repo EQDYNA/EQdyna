@@ -19,14 +19,8 @@ test catches it every time.
 
 Rule 2 note: nothing here is a tolerance. Every assertion is on BYTES.
 """
-import os
-import sys
-
 import numpy as np
 import pytest
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
 
 
 def _blocks(seed, nblk=6, nrow=97, ntarget=41):

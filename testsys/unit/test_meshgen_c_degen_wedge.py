@@ -16,16 +16,10 @@ Rule 2 note: `test_build_elements_vectorized_matches_scalar_oracle`
 asserts byte-equality (np.array_equal), not a tolerance -- this is the
 scalar-vs-vectorized invariant, not a physics comparison.
 """
-import os
-import sys
-
 import numpy as np
 import pytest
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
-
-from eqdyna import meshgen  # noqa: E402
+from eqdyna import meshgen
 
 
 def _small_c_degen36_params(dip=15.0, dx=500.0, n_dip_steps=6):
@@ -244,7 +238,6 @@ class TestEqdyna3dGuards:
     C_elastic==0, and with a mesh that actually contains wedge elements)."""
 
     def test_c_degen_gt_3_plus_c_elastic_0_refused(self, monkeypatch):
-        sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
         from eqdyna import eqdyna3d, readInputFiles
 
         def fake_build_params(case_dir):
