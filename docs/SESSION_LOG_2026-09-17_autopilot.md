@@ -169,42 +169,31 @@ itself specified. Not yet returned.
 ## Full sweep result -> v5.11.1 cut
 
 `python3 testsys/run.py all` on `6e31432`: **30/30 e2e SUCCESS**, unit 249,
-regression, wall clock 2275.0s. Item 41's fix confirmed a true no-op across
-the entire gated table, not just `test.tpv8`. Cut v5.11.1 (patch): VERSION
-bump, README/pastReleaseNotes notes moved per rule 15, runtime banner
-(`eqdyna3d.f90:17`) bumped 5.11.0->5.11.1 (own source change, so rebuilt and
-re-verified: fresh unit+regression SUCCESS including `test_version_banner`,
-and a fresh `test.tpv8 x fortran` spot check came back byte-identical
-`max|diff|=3.051760e-11` to the pre-rebuild number, confirming the banner
-text is output-neutral -- did not re-run the full 30-cell/38-min sweep a
-second time for a provably print-only change, a deliberate, stated skip per
-the v5.8.5 precedent, not a silent one). pathway_forward.md item 41 marked
-RESOLVED + Tasks-done row, via zofia-kaminska, diff reviewed before
-committing. Landed as commit `f607bfd`, pushed, CI watch (`gh run watch`)
-launched in background before tagging -- rule 15 step 6/7, tag only after
-CI green on this exact pushed SHA.
+regression, wall clock 2275.0s -- confirms item 41's fix is a true no-op
+across the entire gated table (full numbers in pathway_forward.md's v5.11.1
+Tasks-done row). Cut v5.11.1 (patch): VERSION bump, README/pastReleaseNotes
+notes moved per rule 15, runtime banner bumped and re-verified output-neutral
+(did not re-run the full sweep a second time for a provably print-only
+change, a deliberate, stated skip per the v5.8.5 precedent). pathway_forward.md
+item 41 marked RESOLVED + Tasks-done row, via zofia-kaminska, diff reviewed
+before committing. Landed as commit `f607bfd`, pushed, CI watch (`gh run
+watch`) launched in background before tagging -- rule 15 step 6/7, tag only
+after CI green on this exact pushed SHA.
 
 ## Item 33/40 remeasurement landed (report-only, no gate change)
 
 mira-volkov's worktree (`agent-a728ce7e21fae1067`) diffed clean against
-current master (only `.gitignore` + 3 new standalone files: `.gitignore`
-addition for `perf_case_tpv29/`, `run_tpv29_pinned_compare.py`,
-`scaling_last.json`, `tpv29_pinned_last.json`) -- cherry-picked directly,
-committed `27c7a03`, pushed. Findings: item 33's standing 2.35x-at-32-cores
-JAX figure is UNCONFIRMED, not reproduced or refuted -- no 32-core point
-survived the strict busy-ceiling in 4 attempts on this session's genuinely
-volatile box (12/24 configs skipped, honestly reported per-cpu, no
-override); best clean point, 2.18x at 8 cores, REGRESSES to 1.41x at 16 --
-a declining trend that argues for skepticism of the 2.35x claim, not
-confirmation. NumPy anti-scaling reproduces and is worse than previously
-characterized (collapses 1.40x->0.50x between 2 and 4 cores, i.e. slower
-than 1 core). Item 40: fresh independent measurement (not relayed this
-time) gives numpy/jax ratio 3.328x on tpv29, same order/direction as the
-previously-relayed 4.0x but not an exact match -- most likely a different
-step-count pair, not independently confirmed. Board update (item 33/40
-rows) dispatched to zofia-kaminska with the exact figures for her to spot
-check against the committed JSON evidence before writing. Worktree reaped
-after landing.
+current master (only `.gitignore` + 3 new standalone files) -- cherry-picked
+directly, committed `27c7a03`, pushed. Findings (full figures in
+pathway_forward.md items 33 and 40's updates for this commit): item 33's
+standing 2.35x-at-32-cores JAX figure is neither confirmed nor refuted this
+pass, and this pass's own declining trend past 8 cores argues for
+skepticism of it; NumPy anti-scaling reproduces and is worse than previously
+characterized; item 40's numpy/jax ratio on tpv29 is in the same
+order/direction as the previously-relayed figure but not an exact match,
+most likely a different step-count pair. Board update dispatched to
+zofia-kaminska with the exact figures for her to spot check against the
+committed JSON evidence before writing. Worktree reaped after landing.
 
 ## v5.11.1 tagged and released
 
@@ -262,23 +251,12 @@ the original run. In flight.
 
 Root cause of the prior pass's 12/24-skip rate: `run_scaling.py`'s
 `compact_cpus`/`spread_cpus` always started allocation at node 0 regardless
-of where the box's free capacity actually was; this box's foreign tenants
-happen to sit on node0/2/6 intermittently, so the tool kept asking for the
-busy 32 while 60/64 cores sat free elsewhere. Fixed: `free_node_map()`
-probes per-cpu occupancy fresh per configuration and restricts placement to
-nodes entirely under the ceiling; `select_cpus()` returns `None` (recorded
-as a skip, same as before) if the free set can't supply the request. Ceiling
-itself untouched. Re-measurement: 23/24 configs (up from 12/24), first-ever
-clean 32-core point on all 4 numpy/jax x compact/spread combos. jax compact
-peaks at 16 (2.52x) with mild falloff at 32 (1.98x) -- CONTRADICTS the prior
-pass's "regressing to 1.41x at 16," which never actually reached a clean 16.
-jax spread noisy at 16/32 (flagged unreliable, not a locality verdict).
-NumPy flat ~1.70-1.72 s/step across the whole range -- also contradicts the
-prior pass's reported collapse, measured on the old node0-first tool under
-different transient contention; the two passes are stated as NOT comparable,
-neither superseding the other, pending a clean run at the tool's own 20/60
-default step count (this pass used 10/25, disclosed as a limitation, not
-hidden).
+of where the box's free capacity actually was. Fix (`free_node_map()`,
+`select_cpus()` change) and the re-measured numbers (23/24 configs, jax
+compact peaking at 16 cores, NumPy flat across the range, and why this
+pass's figures are NOT comparable to the prior pass's) are recorded in full
+in pathway_forward.md item 33's own update for this commit -- not repeated
+here.
 
 Landing discipline: reviewed mira's own pathway_forward.md addition
 line-by-line before accepting it (matches her commit message exactly,

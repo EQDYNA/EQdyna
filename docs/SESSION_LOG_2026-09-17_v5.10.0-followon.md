@@ -185,31 +185,11 @@ rule (file/proc progress, not just the one checkpoint file).
 
 ## Update: haruto reported, coordinator relayed at ~08:05
 
-Haruto's actual finding on item 33: not just a load problem — TWO real
-defects in `testsys/perf/run_numa_scaling.py` would have produced a
-misleading answer even on an idle box (F1: generated an all-64-core config,
-contradicting the owner's "at most 32, not 64"; F2: no 16-core point,
-4x gap between spread-8 and socket-32). He left a corrected driver at
-`/tmp/claude-16759/.../scratchpad/item33_driver.py`; promoted its fix
-(config-generation only, ceiling/override logic untouched) into
-`testsys/perf/run_numa_scaling.py`, verified by `ast.parse` + `--help` (no
-idle box yet to run the actual measurement), committed `03ba055`, pushed.
-Item 33 itself is STILL not measured — tooling is now trustworthy, the box
-is not yet idle enough to trust the number.
-
-Item 40 answered by haruto (relayed, not independently re-run by me):
-numpy-pinned 2072 ms/step (linear, 0.2% repeatable), jax-pinned 524 ms/step
-(4.0x), jax-unpinned 365 ms/step (5.7x, the board's old "~6x"). Key finding:
-unpinned numpy is UNSTABLE (2.08-3.75 s/step, no step-count dependence) while
-pinned is linear — CI's 950-1711s tpv29 spread IS this instability
-(1711/950=1.80 matches worst-unpinned/pinned ratio almost exactly), so CI's
-critical-path number is a placement lottery, not a fixed cost. Optimization
-targets identified but NOT applied: `assembleGlobalKU.py:466`
-`calcHourglassResist` 38%/step, `:256` `assembleGlobalKU` 29%/step; separately
-`meshgen.py:323 build_node_coordinates` is an 8.76s ONE-TIME (not per-step)
-cost, backend-independent (identical numpy/jax profiles), flagged as the
-cheapest real win precisely because a per-step metric will never show it
-moving.
+Haruto's item 33/40 findings landed as commit `03ba055` (two tooling defects
+in `run_numa_scaling.py` fixed; item 33 itself still not measured; item 40's
+numpy/jax per-step numbers and optimization targets identified) -- full
+figures in pathway_forward.md items 33 and 40 (relayed, not independently
+re-run by me, flagged as such there).
 
 Dispatched `zofia-kaminska` (agent a83d0da3d39a106bb) to write pathway_forward
 rows for items 29 (stash drop, done — `git stash list` empty), 19(c) (rule 17
@@ -242,16 +222,11 @@ touch before dispatching a second one.
 ## Update: Mira's TPV30 mission — a real STOP-and-report, landed partially
 
 Mira did NOT gate TPV30 (rule 17 steps 4/7 not satisfied) and said so
-plainly rather than force a pass. Finding: a full 3-backend sweep showed
-python-numpy and python-jax agreeing with each other to ~1e-3 over the whole
-3321-node canonical grid at t=20s while BOTH disagree with the Fortran
-reference by up to 4.0e8 Pa (~30% relative) at 3310/3321 nodes -- a real,
-deterministic port divergence, not per-backend chaos (chaos would not leave
-numpy and jax bit-close to each other while both are far from Fortran).
-Binary-search localized: bit-exact across all three backends at t=1s (24
-steps, confirms item 24(b)/(c)'s new Tv/taper/Drucker-Prager plumbing is
-correctly ported), already diverged with a rupture-arrival flip by t=6s
-(144 steps). Not narrowed further inside her session budget.
+plainly rather than force a pass. Finding (full numbers in
+pathway_forward.md item 19(b)/39): a real, deterministic port divergence
+between the Fortran reference and both Python backends, binary-search
+localized to between t=1s (bit-exact all three) and t=6s (already
+diverged). Not narrowed further inside her session budget.
 
 Verified independently before landing (not on her report alone): diffed
 `src/fortran/faulting.f90` / `src/python/eqdyna/faulting.py` against current
@@ -390,14 +365,11 @@ mandate after that.
 ## Update: TPV30 SCEC validation landed (f110c75, c3dace7); item 33 dispatched
 
 Mira's TPV30 validation mission returned cleanly: two separate findings, not
-conflated. (A) physics validity ROUGHLY MATCHES the owner's own published
-100m 2015 submission (99.2% rupture-extent overlap, area ratio 0.978/1.013,
-median slip diff 6.3% over 24 stations, Mw 7.026 computed fresh) -- framed
-explicitly as a regression check (the owner's own 100m submission ranks
-14/14 among 14 cross-code submissions). (B) port correctness (numpy/jax vs
-Fortran, up to 30% divergence by t=20s) UNCHANGED, still unresolved. Gate
-action: none, correctly -- both must hold, only (A) does. Independently
-re-run by me in the main checkout (scec_archive/ is gitignored, absent from
+conflated -- (A) physics validity roughly matches the owner's published 100m
+2015 submission, (B) port correctness (numpy/jax vs Fortran) unchanged,
+still unresolved; full numbers in pathway_forward.md item 39's `f110c75`
+update. Gate action: none, correctly -- both must hold, only (A) does.
+Independently re-run by me in the main checkout (scec_archive/ is gitignored, absent from
 her worktree; she used a temporary symlink, removed before finishing) before
 landing `f110c75` -- numbers reproduced exactly. Worktree reaped after
 confirming its uncommitted content matched what I'd already landed
@@ -420,56 +392,24 @@ physics change). Not yet returned.
 ## gate-axis-3 review before it could land
 
 She delivered honestly and disclosed her own gaps rather than overclaiming:
-`run_scaling.py` rewritten (PY_THREADS to 32, numactl replacing taskset --
-including a genuinely new numactl-rankfile mechanism for the Fortran/MPI
-path since a bare `mpirun --bind-to` can be reissued past an outer numactl
-restriction by OpenMPI's own hwloc binder -- smoke-tested, not just written),
-compact/spread placement, per-cpu busy-check reused (not reimplemented) from
-`run_numa_scaling.py`. Measured (disclosed as taken with `--busy-ceiling 0.9`
-override, not the tool's strict 0.2 default, since the box was never
-idle): jax gains a real, if modest, 2.35x at 32 cores (cross-checked against
-this session's own earlier clean 1-4 core numbers); numpy anti-scales,
-mechanism verified by direct microbenchmark (OpenBLAS reads thread count at
-`import numpy` time only, confirmed by testing env-var-after-import vs
-numactl-pinned-before-start) rather than asserted. jax HLO dumped and read
-directly: one `fori_loop`, 1717 fusion + 556 scatter ops on arrays up to
-`f64[3818584]` -- real structural parallelism exists, ruling out
-"nothing to parallelize" as the explanation for the plateau past 8 cores.
-Both known project failure modes (HLO literals, jit-in-a-loop) checked
-against the actual code and ruled out, not assumed. Fix landed:
-`_narrow_numpy_affinity()` in `eqdyna3d.py`, pins the numpy backend to a
-single cpu (bounds the NUMA-migration worst case; does not claim to make
-numpy scale, since nothing can with its current single-threaded kernels --
-correctly scoped, a real kernel rewrite is out of scope here). New unit
-test added. She explicitly flagged that only 1 of 10 numpy cells (tpv8) was
-re-verified against its frozen reference before she had to kill her own
-`testsys/run.py all` run under this session's box contention (10 concurrent
-numpy cells at ~10% cpu each), and recommended completing verification
-before landing rather than claiming it done.
+`run_scaling.py` rewritten (PY_THREADS to 32, numactl replacing taskset,
+compact/spread placement, per-cpu busy-check reused from
+`run_numa_scaling.py`) and `_narrow_numpy_affinity()` landed in
+`eqdyna3d.py`. Measured numbers (jax 2.35x at 32 cores, numpy anti-scaling
+mechanism, HLO dump) are in pathway_forward.md item 33's own update for this
+commit, not repeated here. She explicitly flagged that only 1 of 10 numpy
+cells (tpv8) was re-verified against its frozen reference before she had to
+kill her own `testsys/run.py all` run under this session's box contention,
+and recommended completing verification before landing rather than claiming
+it done.
 
 **Gate-axis-3 review (wei-lin) caught a real defect her own testing didn't
-reach: concurrent numpy cells collide on ONE cpu.** `min(current)` always
-picks the SAME lowest-numbered cpu for every process. Verified directly,
-not inferred: launched two `python3 -m eqdyna` processes concurrently,
-read `/proc/<pid>/status`'s `Cpus_allowed_list` for both -- both `0`. This
-exactly explains the ~10%-cpu-each pileup observed during her own 10-cell
-parallel sweep, and would have silently made every future concurrent local
-sweep (`run_e2e.py --jobs N>1`, this project's own wider gate) serialize
-onto one physical core while dozens sit idle -- a real throughput
-regression to this project's own verification workflow, not caught by her
-brief (which asked her to test the scaling-tool's sequential use case, not
-concurrent sweep invocation) or by her one single-cell correctness check
-(which doesn't exercise concurrency at all). Fixed directly (small, bounded,
-well-diagnosed -- judged not worth a second full dispatch round-trip):
-`ordered[os.getpid() % len(ordered)]` instead of `min(current)`, still
-narrows to exactly one cpu (NUMA-migration fix unchanged) but different
-processes now land on different cpus. Re-verified both ways: her own unit
-test rewritten (the old one asserted "always narrows to lowest", which
-would have been PID-order-dependent and occasionally wrong under the
-corrected behavior -- replaced with a PID-aware assertion plus a new test
-simulating two different-parity pids), and the real concurrent-process
-check repeated post-fix: two processes now land on cpus 25 and 27, not both
-0. All 5 unit tests pass.
+reach: concurrent numpy cells collide on ONE cpu** (`min(current)` picked the
+same lowest cpu for every process -- full repro/fix detail in
+pathway_forward.md item 33). Fixed directly (small, bounded, well-diagnosed
+-- judged not worth a second full dispatch round-trip) rather than sent
+back. Re-verified both ways (rewritten unit test, repeated concurrent-process
+check). All 5 unit tests pass.
 
 Now running (background, `bdqqn40em`) the actual gate: the 9 numpy cells
 her mission didn't re-verify (`drv.a6, tpv10, tpv104, tpv1053d, meng2023a,
@@ -515,23 +455,13 @@ short the message looks.
 Coordinator fetched `scratch/specs/TPV29_30_Description_v06.pdf` directly
 (rule 17 step 1 had never actually been done for tpv30 -- an omission this
 whole campaign's tpv30 work carried without anyone catching it until now)
-and audited the initial-stress setup line by line. Spec states twice
-(lines 28, 424) "the material properties are the only difference between
-the two benchmarks" -- same stress tensor, same b-coefficients, same
-friction/nucleation. Parameters (Tv, taper, cohesion, bulk friction,
-deviatoric ratio, the spec's own 93%-of-yield check) all independently
-verified correct. But on-fault initial shear at station
-`faultst000dp120` disagrees: our tpv30 measures ~18% HIGH at t=0 (33.05 MPa)
-vs both our own tpv29 (27.79 MPa, dx=200) AND the published SCEC v3.1 tpv30
-(28.18 MPa, 100m) -- which agree with EACH OTHER. Our tpv30 then visibly
-relaxes down to ~28.75 MPa over 2s, consistent with starting ABOVE yield
-(spec sets initial state at 93% of yield; an 18% overshoot exceeds it) --
-reframing the earlier-documented "relaxation" as a SYMPTOM of a wrong
-initial condition, not a resolution artifact. Mechanism candidate (not
-established): `par.C_elastic` selects two different on-fault initial-stress
-code paths (tpv29 never calls `setPlasticStress`; tpv30 does,
-`meshgen.f90:104` region) and the spec requires them to produce an
-IDENTICAL tensor.
+and audited the initial-stress setup line by line against it. Finding
+(numbers and mechanism candidate in pathway_forward.md item 39's row): our
+tpv30's on-fault initial shear at `faultst000dp120` disagrees with both our
+own tpv29 and the published SCEC v3.1 tpv30, which agree with each other,
+then visibly relaxes toward the target over ~2s -- reframing the
+earlier-documented "relaxation" as a symptom of a wrong initial condition,
+not a resolution artifact.
 
 This directly means, if confirmed: my `d51a2a4` revert was right for a
 stronger reason than known at the time (not just "an unexplained
@@ -560,38 +490,27 @@ Verdict: confirmed, root-caused, NOT fixed. Landed the notes file
 decision not to fix without an owner call.
 
 **Mechanism, independently verified by wei-lin (not taken from the report):**
-`src/fortran/faulting.f90` lines 119/123/127
-(`nsdInitTractionVector(1..3)*C_elastic`) and 179/180
-(`xyzInitTractionVector(j)*C_elastic`) -- read directly, confirmed present
-exactly as reported. For `C_elastic=0` (tpv30, drv.a6), this multiplies the
-CORRECT, spec-matching analytic on-fault initial traction by zero, so the
-fault's actual initial state instead comes from an off-fault-element-stress
-interpolation (`setPlasticStress`'s volumetric tensor, not locally rotated
-to the rough fault normal) -- which does not match.
+confirmed directly by reading `src/fortran/faulting.f90` (the
+`*C_elastic` multiplier zeroing the analytic on-fault initial traction for
+`C_elastic=0` cases) -- full mechanism and the drv.a6 declared-vs-actual
+numbers are in pathway_forward.md item 39's "the stakes" paragraph, not
+repeated here.
 
 **A real detour that resolved IN FAVOR of the finding, recorded because it
 could easily have gone the other way and I want the reasoning on record:**
-while independently checking this, `netcdf_io.f90`'s
-`netcdf_read_on_fault_eqdyna` appeared to read on-fault init stress from
-slot 19/20 while drv.a6's own `case.setup` writes its stated 40e6/-120e6 to
-Python-side slots 7/8 -- looked like a SEPARATE writer/reader slot mismatch,
-which would have meant dunyu-liu's "same mechanism as tpv30" claim for
-drv.a6 was wrong. Traced `scripts/case.setup`'s actual on_fault_vars
-netCDF-write remap table (lines 199-227) before concluding anything: it
-explicitly writes Python slot 8 -> netCDF `var18` (`init_strike_shear`) and
-slot 7 -> `var19` (`init_normal_stress`), which IS what the Fortran reader's
-positions 19/20 read. No mismatch -- the analytic value IS set correctly
-before the `C_elastic` multiplier discards it. This resolves the detour in
-favor of, not against, dunyu-liu's finding.
+while independently checking this, a suspected netCDF slot mismatch between
+`case.setup`'s writer and `netcdf_io.f90`'s reader for drv.a6's on-fault
+init stress looked like it might invalidate dunyu-liu's "same mechanism as
+tpv30" claim for drv.a6. Traced `scripts/case.setup`'s actual remap table
+(lines 199-227) before concluding anything: no mismatch -- the analytic
+value IS set correctly before the `C_elastic` multiplier discards it. This
+resolves the detour in favor of, not against, dunyu-liu's finding.
 
 **Blast radius CONFIRMED directly against the real file, not inferred:**
-`test.drv.a6` (`C_elastic=0`, currently GATED and SHIPPED) states 40e6 Pa
-shear / -120e6 Pa normal in its own compset
-(`case_input/test.drv.a6/user_defined_params.py:134-135`). Its own
-committed, currently-PASSING reference
-(`test.reference.results/test.drv.a6/faultst000dp075.txt`, t=0.0417s, read
-directly) shows **24.6801 MPa shear / 76.8865 MPa normal** -- confirmed
-exact match to dunyu-liu's cited figures, from the actual file.
+`test.drv.a6` (`C_elastic=0`, currently GATED and SHIPPED) is affected --
+its declared compset values and its actual passing reference disagree,
+matching dunyu-liu's cited figures exactly (see item 39's row for both
+numbers).
 
 **ESCALATING rather than proceeding.** This is a real, independently
 confirmed correctness bug in a case this project has already shipped and
@@ -643,19 +562,12 @@ Re-dispatched the identical mission with `model: "sonnet"` override.
 Per the mission's own explicit branch ("if the premise is wrong, stop and
 report"), dunyu-liu did not write a fix. Verified independently by wei-lin
 before accepting this (it overturns an owner-approved plan, so it needed
-the same scrutiny as the original escalation): `un`/`us`/`ud` -- the local
-rough-fault-normal projection vectors -- are built from `pfx`/`pfz`
-(`src/fortran/meshgen.f90:892-905`) gated ONLY by `insertFaultType>0`, with
-NO branch on `C_elastic` anywhere in that construction. Read directly,
-confirmed. The FE-reconstruction path that projects nodal quantities onto
-those vectors (`faulting.f90:89-97`) is likewise unconditional on
-`C_elastic`. So the local rough normal is ALREADY applied identically for
-both `C_elastic=1` (tpv29) and `C_elastic=0` (tpv30, drv.a6) -- there is no
-"resolves onto the nominal plane instead of the local normal" defect for
-option B to target. `setPlasticStress`'s element tensor and the analytic
-on-fault path were checked term-for-term (by the mission, algebra verified
-against this compset's own constants) to already be identical once
-resolved onto that same shared local normal, from the same source file.
+the same scrutiny as the original escalation): the local rough-fault-normal
+projection is already applied identically for `C_elastic=1` and `C_elastic=0`
+cases -- no branch on `C_elastic` exists anywhere in that construction (read
+directly, confirmed; see pathway_forward.md item 39's exonerated-hypothesis
+list for the file:line detail) -- so there is no "resolves onto the nominal
+plane instead of the local normal" defect for option B to target.
 
 Landed the notes file only (`72a353b`), no source change -- correctly
 matching the mission's own stop condition. Residual mismatch is now
@@ -688,30 +600,16 @@ as a documented `C_elastic=0` property; not converging means a real defect.
 **Ran it myself (mechanical, no dispatch needed), stated cost first (mesh-gen
 dominated once truncated to `par.term=0.2`, ~1-4s at dx=200/dx=100 case.setup
 plus a short mpirun since only ~24 steps are needed for the first output
-row, not the full 20s duration):**
-
-- dx=500 (already known, dunyu-liu's Step 1): **33.1126 MPa**
-- dx=200: **FAILED** -- `case.setup`'s own fault-geometry writer produced a
-  self-inconsistent dx=200 decimation (`validateFaultRoughGeometry` rejected
-  its own freshly-written `bFault_Rough_Geometry.txt`: derivative columns
-  disagree with the surface column by 2.0x the bound at 2 of 202 boundary
-  nodes). Reproducible, not a stale-file artifact (timestamps confirm the
-  file was written fresh by this exact run). A real, separate finding --
-  the geometry decimation path has a bug at dx=200 specifically. Not
-  investigated further this pass (out of scope for the physics question);
-  worth its own board row.
-- dx=100 (native shipped resolution, no decimation, so immune to the dx=200
-  bug): **28.0546 MPa**, t=0.00833s first output row.
-- Published (SCEC v3.1, 100m, cited by the owner): 28.18 MPa.
-- Analytic (bit-identical between tpv29/tpv30's own on_fault_vars_input.nc,
-  per dunyu-liu's Step 1): 27.79 MPa.
-
-**33.11 -> 28.05, converging tightly onto the published 28.18 (0.46% off)
-and close to the analytic 27.79.** Strong support for "FE-reconstruction
-discretization error that shrinks with resolution," not a defect -- though
-the middle point (200m) is missing due to the unrelated geometry bug above,
-so this is not yet a complete three-point convergence curve. Scratch dirs:
-`scratch/tpv30_convergence/test.tpv30.dx100`,
+row, not the full 20s duration):** dx=500 (already known from dunyu-liu's
+Step 1), dx=200 FAILED (a separate, reproducible `validateFaultRoughGeometry`
+rejection of its own freshly-written dx=200 decimation -- same bug pinned in
+pathway_forward.md item 39's row, affects both tpv29 and tpv30 identically),
+dx=100 succeeded. **The dx=500->dx=100 trend converges tightly onto the
+published value** (full numbers in item 39) -- strong support for
+"FE-reconstruction discretization error that shrinks with resolution," not a
+defect -- though the middle point (200m) is missing due to the geometry bug
+above, so this is not yet a complete three-point convergence curve. Scratch
+dirs: `scratch/tpv30_convergence/test.tpv30.dx100`,
 `scratch/tpv30_convergence/test.tpv30.dx200` (failed case.setup, kept as
 evidence of the geometry bug).
 
@@ -829,26 +727,14 @@ release commit.
 ## a documented property of C_elastic=0. Corrected the release wording
 ## before it shipped.
 
-Full explanation, verified by the owner via source read: `eqdyna3d.f90:153`
-initializes element stress to zero; `meshgen.f90:104` only fills it (via
-`setPlasticStress`) when `C_elastic==0`. So for elastic cases (tpv29), the
-FE reconstruction contributes ~0 and the fault sees the EXACT analytic
-projection (27.79 MPa, resolution-independent -- confirmed identical at
-dx=200 and dx=500). For plastic cases (tpv30), the elements already carry
-real stress, so the FE split-node reconstruction ALREADY supplies a fault
-traction (33.05 MPa at 500m) -- the analytic value is computed and
-correctly DISCARDED, because applying both would double-count
-(33.05+27.79=60.8, not physical). The `C_elastic` gate is correct by
-design. The ~19% gap is two representations of the same physical state
-(exact projection vs. FE reconstruction on a rough 500m mesh with 1.7km of
-relief) -- explains every observation six earlier hypotheses didn't: normal
-agrees to 0.25% (dominated by strVert, reconstructs cleanly), shear is off
-19% (purely deviatoric, exactly what roughness perturbs); tpv29 is
-resolution-independent, tpv30 isn't; the published 100m run (28.18 MPa) and
-this session's own fresh dx=100 measurement (28.05 MPa) both reconstruct
-closer because the mesh is finer. Fault MORPH also verified exact (max
-|y_mesh-y_file|=5.0e-04m across all 3321 nodes) -- geometry ruled out as an
-error source.
+Full explanation, verified by the owner via source read (mechanism and every
+supporting number now in pathway_forward.md item 39's row): elastic cases
+see the exact analytic projection, plastic cases see an FE reconstruction of
+`setPlasticStress`'s field instead (the analytic value is computed and
+correctly discarded to avoid double-counting), and the ~19% gap is two
+valid representations of the same physical state on a rough mesh, not a
+defect -- this explained every observation six earlier hypotheses hadn't.
+Fault morph also verified exact -- geometry ruled out as an error source.
 
 **Corrected before shipping, not after:** edited `README.md`'s v5.11.0 news
 block myself (still uncommitted at that point) from "confirmed defect" to
@@ -871,22 +757,15 @@ regression into e2e.
 ## retracted; a real fix direction (discrete-equilibrium correction) given
 ## and dispatched to dunyu-liu
 
-Owner: tpv29 is ITSELF FE-reconstructed at dx=500 after t=0 and shows no
-comparable error there, so "500m is too coarse" cannot explain the INITIAL
-state specifically -- "gate it finer" is REJECTED, not just softened.
-Mechanism stands (elastic=exact projection since elements start at zero;
-plastic=FE reconstruction of setPlasticStress's field, since elements
-already carry real stress). New, sharper framing: `case.setup` ALREADY
-computes the exact analytic projection for tpv30 (writes it to
-`on_fault_vars[7]`/`[8]`) and it is discarded by the `C_elastic` multiplier
--- the answer is sitting in the input file, unused. Real problem: a uniform
-far-field tensor on a FACETED rough fault is not in discrete equilibrium,
-so FE reconstruction disagrees with the exact projection by an amount
-scaling with facet geometry (this is the "4.3 MPa pre-arrival relaxation").
-Fix direction (NOT a specified fix, needs a numerics read first): `T_init`
-carries `(analytic projection - FE reconstruction at t=0)` instead of being
-zeroed, so the fault sees the exact traction while the element field stays
-intact for the yield calculation.
+Owner: "gate it finer" is REJECTED, not just softened -- tpv29 is itself
+FE-reconstructed at dx=500 after t=0 and shows no comparable error there, so
+mesh coarseness cannot explain the initial state specifically. New, sharper
+framing (full reasoning in pathway_forward.md item 39): a uniform far-field
+tensor on a faceted rough fault is not in discrete equilibrium, so FE
+reconstruction disagrees with the exact analytic projection `case.setup`
+already computes and discards. Fix direction (not a specified fix, needs a
+numerics read first): carry `(analytic projection - FE reconstruction at
+t=0)` as a correction offset instead of zeroing it.
 
 Corrected `README.md`'s v5.11.0 note myself (removed "gate finer"/dx=100
 wording, replaced with the mechanism + "fix is a design question in
@@ -906,17 +785,11 @@ pattern), re-dispatched with `model:"sonnet"` override (agent
 ## extraction, ratio 1.18926. Routing corrected from dunyu-liu to
 ## lars-eriksson (mechanical bug hunt, not new-physics research).
 
-Sharper evidence this round: tpv29 gives the EXACT target (27.791 MPa
-shear, 181.504 MPa normal at `faultst000dp120`, dx=500); tpv30 gives
-33.051/181.960. Every input checked identical between the two cases
-(tensor to 1e-6 relative, gradients bit-identical/copied not recomputed,
-mesh morph exact to 5e-4m, spec's 93%-of-yield invariant, `str1ToFaultAngle`
-correct). Normal is right to 0.25%, shear off by exactly 1.18926 -- same
-masses/arn/un feed both, ruling out a scalar error, isolating the defect to
-`us` or the strike-projection of nodal forces specifically
-(`src/fortran/faulting.f90` ~89-97/117-127). Seven hypotheses already
-measured and rejected (sigma_xy/sigma_zx slot swap, element-depth effect,
-unnormalized `us`, recomputed gradients, the morph, the tensor, the angle).
+Sharper evidence this round (full numbers in pathway_forward.md item 39's
+"established by measurement" list): every input checked identical between
+tpv29 and tpv30 except the shear component, off by exactly ratio 1.18926 --
+isolating the defect to `us` or the strike-projection of nodal forces
+specifically. Seven hypotheses already measured and rejected.
 
 **Coordinator corrected the routing mid-thread**: this is `lars-eriksson`'s
 surface (bounded expression, known-correct target, sign/convention error to
@@ -945,16 +818,13 @@ down to single-digit remaining cells, still green so far.
 `lars-eriksson` reported the bug was in `us`'s normalization
 (`meshgen.f90:896-897`, missing a `pfz` term), predicting the measured
 1.18926 ratio. Checked his arithmetic myself before relaying it: `us` as
-ACTUALLY shipped is a unit vector for any `pfx`/`pfz` (self-normalizing --
-`(1+pfx^2)/(1+pfx^2)=1` exactly, verified numerically), not the
-0.840-magnitude vector his prediction requires -- his number came from a
-hypothetical alternate formula he never confirmed was the shipped one.
-Decisively: the analytic Python path
-(`case_input/test.tpv30/user_defined_params.py:275`) uses the IDENTICAL
-`[1,pfx,0]/sqrt(1+pfx^2)` construction, and that path produces tpv29's
-confirmed-correct 27.791 MPa -- if this formula were the bug, tpv29 would
-be wrong too, and it isn't. Did not relay this as the located bug; reported
-the disproof back instead.
+ACTUALLY shipped is self-normalizing, not the vector his prediction
+requires -- his number came from a hypothetical alternate formula he never
+confirmed was the shipped one. Decisively: the analytic Python path uses the
+IDENTICAL construction and produces tpv29's confirmed-correct value -- if
+this formula were the bug, tpv29 would be wrong too, and it isn't (matches
+the disproof recorded in pathway_forward.md item 39's exonerated list). Did
+not relay this as the located bug; reported the disproof back instead.
 
 **Coordinator then found the REAL root cause independently: tpv30 is
 running a half-implemented SPEC METHOD, not a numerics bug in a shared
@@ -1008,24 +878,19 @@ already green as of this checkpoint, the three python e2e jobs (meng,
 cheap, tpv29) still in progress -- holding the tag until all are green.
 
 `dunyu-liu`'s discrete-equilibrium-correction mission (`a2d9003fa3ce1790f`)
-returned. Independently verified myself, not just his report: pulled the
-actual pre-arrival window from his worktree's `faultst000dp120.txt`
-(t=0.04 to 1.25s) -- genuinely stable at 27.7906-27.7915 MPa, no relaxation,
-matching the target. But confirmed via diff that `assembleGlobalKU.f90`'s
-gravity gate is BYTE-IDENTICAL to before -- his fix is a persistent
-correction-offset (computed once at step 1, added back every step) with
-gravity left on, not the decided Method-1 architecture. Reported this
-plainly rather than landing a numerically-correct-but-differently-built fix
-or silently redoing it myself -- this is a "what does the physics
+returned. Independently verified myself, not just his report: his fix is a
+persistent correction-offset (computed once at step 1, added back every
+step) with gravity left on, not the decided Method-1 architecture -- stable
+and matching the target numerically, but confirmed via diff that
+`assembleGlobalKU.f90`'s gravity gate is byte-identical to before. Reported
+this plainly rather than landing a numerically-correct-but-differently-built
+fix or silently redoing it myself -- this is a "what does the physics
 represent" decision, not mine to make. Owner ruled: **do the literal Method
-1 switch**, backed by new evidence (independently rebuilt the FE force
-assembly from the morphed surface's own facet geometry, reproduced the
-code's nodal force to <0.2%/0.03% -- so 33.05 MPa is a CORRECT
-facet-weighted FE traction and 27.79 MPa is a CORRECT point projection; two
+1 switch**, backed by new evidence that the FE force assembly itself is
+correct (full re-derivation numbers in pathway_forward.md item 39's
+"established by measurement" list) -- 33.05 MPa and 27.79 MPa are two
 different physically-valid quantities that only converge as dx->0, not a
-bug in the assembly. All 1921 common fault nodes checked -- arn/masses
-identical to tpv29 to 0.000e+00, un/us/ud bit-identical -- confirming the
-ONLY difference is which quantity feeds the fault's traction). Re-dispatched
+bug in the assembly. Re-dispatched
 `dunyu-liu` (agent `a50faafb5e0d2f44e`) fresh for the literal switch: drop
 the gravity body force for `C_elastic=0`, keep `setPlasticStress` for yield
 only, apply `T_init` directly with the `*C_elastic` gating REMOVED (not
@@ -1088,19 +953,16 @@ made its own release-note wording stale.
 ## force-balance defect, not an architecture question
 
 Coordinator compared the owner's three published TPV30 submissions
-(100/50/25m) at `faultst000dp120`: t=0 shear 28.176/27.888/27.815 MPa,
-pre-arrival CHANGE +0.636/+0.640/+0.636 -- resolution-independent (1.3%
-spread over 4x refinement) and showing NO relaxation at any published
-resolution. This build's 500m run: t=0 33.051 MPa, change **-4.30**. Two
-kills: a discretization artifact would GROW with element size (it doesn't,
-ruling out "coarse mesh" and the Method-1-as-escape-from-a-coarse-mesh-
-artifact reasoning); a discretization artifact is a static offset, not
-something that relaxes over ~2s toward the right answer (this one visibly
-does) -- relaxation means the system isn't starting in equilibrium. Method
-2 (what tpv30 already, correctly, runs per spec) demonstrably WORKS and
-produces a properly equilibrated state at every resolution the owner
-published. Switching to Method 1 would abandon a proven method to dodge a
-defect nobody has actually located yet.
+(100/50/25m): resolution-independent, showing NO relaxation at any
+published resolution (full numbers in pathway_forward.md item 39's row).
+This build's 500m run relaxes visibly instead. Two kills: a discretization
+artifact would grow with element size (it doesn't); a discretization
+artifact is a static offset, not something that relaxes toward the right
+answer over time (this one does) -- relaxation means the system isn't
+starting in equilibrium. Method 2 (what tpv30 already, correctly, runs per
+spec) demonstrably WORKS and produces a properly equilibrated state at every
+resolution the owner published. Switching to Method 1 would abandon a
+proven method to dodge a defect nobody has actually located yet.
 
 **Both prior fix attempts retracted before landing, worktrees KEPT (not
 reaped) per instruction:** the discrete-equilibrium correction-offset
@@ -1134,26 +996,14 @@ Both not yet returned.
 ## it myself again, with a cleaner argument this time
 
 He reported `replaceSlaveWithMasterNode` (`meshgen.f90:760-773`) as the
-defect: its condition checks element y-coordinate against `dy` (grid
-spacing) rather than the fault's own stored coordinate, allegedly causing
-near-fault elements to mis-route slave/master node references. Rejected,
-two independent reasons, neither requiring a re-run: (1) the check is
-CORRECT as written -- both tpv29 and tpv30 have their fault at nominal
-y=0 (`fltxyz(1,2,1)=fltxyz(2,2,1)=0`), so "one grid cell past the fault"
-sits exactly at `y=dy`; comparing against `dy` IS the right reference point
-for this geometry, not a hardcoded mistake. (2) Decisively: this routine
-has NO `C_elastic` dependency anywhere in it -- it runs identically
-regardless of rheology. Since tpv29 (`C_elastic=1`) is confirmed correct
-and traverses this exact same code with the exact same geometry, any defect
-here would already show up in tpv29 too, and it doesn't. Also independently
-corroborated by the coordinator's own measurement already on record:
-`massSlave`/`massMaster` bit-identical (0.000e+00 rel. diff) between tpv29
-and tpv30 across all 1921 common fault nodes -- if this routine
-mis-assigned node references differently between the two cases, that would
-show up as a mass difference, and it doesn't. Not relayed. Root cause
-remains unlocated -- four plausible mechanisms have now failed against
-direct measurement (strike-vector formula, FE-assembly algorithm, the
-architectural method choice, and this). CI on the release commit
+defect. Rejected, two independent reasons, neither requiring a re-run (both
+now recorded in pathway_forward.md item 39's exonerated-hypothesis list):
+(1) the check is geometrically correct for this fault's nominal y=0 geometry;
+(2) the routine has no `C_elastic` dependency, so any defect here would
+already show up in the confirmed-correct tpv29 too, and it doesn't -- also
+corroborated by the bit-identical mass measurement already on record. Not
+relayed. Root cause remains unlocated -- four plausible mechanisms have now
+failed against direct measurement. CI on the release commit
 (`b63b959`) still in progress; `dunyu-liu`'s retracted Method-1 mission
 (`a746fa7807cf3485e`) still in flight, will not be landed when it returns.
 

@@ -25,21 +25,14 @@ published as GitHub Releases) and invalidates every existing clone —
 ## OPEN, found this session, not yet closed
 
 **C_degen dynamics kernel is a separate, still-unported gap.** Mira's mesh
-port is exact, but `build_solver_state` (`eqdyna3d.py`) now HARD-REFUSES any
-run whose mesh contains an elemTypeArr 11/12 (wedge) element, because
-`calcGlobalShapeFunc.f90:22-28`'s shape-function merge (`globalShapeFunc(i,3)
-+= (i,4); (i,4)=0`, same for 7/8, for elemTypeArr 11/12) is not ported into
-`assembleGlobalMass.py`'s `compute_element_shape`. **This means tpv36/tpv37
-CANNOT actually be gated yet** — any attempt to run them dynamically on the
-Python backends will hit this refusal immediately, since both cases are
-100% wedge-degenerate (C_degen=15). The coordinator's latest sequencing
-message treats the C_degen port as fully unblocking tpv36/37 gating; it does
-not yet, and I am not attempting the gate until this second piece lands.
-Scoped and ready to dispatch: port `calcGlobalShapeFunc.f90:22-28`'s
-elemTypeArr 11/12 branch into `compute_element_shape`
-(`src/python/eqdyna/assembleGlobalMass.py`), verify against a real dynamic
-run (not just mesh counts this time — the previous verification couldn't
-reach this code at all, since the refusal fires first).
+port is exact, but `build_solver_state` (`eqdyna3d.py`) hard-refuses any run
+with a wedge element, since `calcGlobalShapeFunc.f90:22-28`'s shape-function
+merge is not ported into `compute_element_shape`. This means tpv36/tpv37
+cannot actually be gated yet -- full scoping detail (exact source lines,
+what's ready to dispatch) is in pathway_forward.md item 19(a)'s row, not
+repeated here. The coordinator's latest sequencing message treats the
+C_degen port as fully unblocking tpv36/37 gating; it does not yet, and I am
+not attempting the gate until this second piece lands.
 
 ## Narrowed scope (owner, superseding an earlier wider catalog)
 
@@ -61,18 +54,18 @@ tpv8's element count), and stating in each new compset's README that a
 Verified rather than trusted both closed items from the prior instance's
 final commits (gate axis 3): item 23's kernel test and item 28's comparison
 script both re-run fresh, matching. Item 28's re-run went further and found
-a real error in the recorded claim itself -- Mw 7.45 has no reproducible
-provenance and is physically impossible for this run by 4.7x in moment;
-corrected to 7.034 in both the script and the board (see commit `5960281`).
+a real error in the recorded claim itself (Mw correction; full derivation
+in pathway_forward.md item 28's row) -- corrected in both the script and
+the board (commit `5960281`).
 
 Found an uncommitted, unverified C_degen DYNAMICS port sitting in the stale
 worktree `agent-a4a8ccb6ca1ec356e` -- not started per my own initial scoping,
-but actually drafted, just never landed or genuinely parity-checked (its own
-"verified" claim in code comments has no evidence behind it: attempt_dynamic()
-only checks that the call doesn't raise). Not landed; worktree preserved
-(excluded from this session's cleanup of 5 other, confirmed-superseded stale
-worktrees); see `d07d85f` and pathway_forward.md item 19(a) for the full
-account. tpv36/tpv37 remain ungated.
+but actually drafted, just never landed or genuinely parity-checked. Full
+account (what the draft got right, why its own "verified" claim doesn't
+hold up) is in pathway_forward.md item 19(a)'s row. Not landed; worktree
+preserved (excluded from this session's cleanup of 5 other,
+confirmed-superseded stale worktrees); see `d07d85f`. tpv36/tpv37 remain
+ungated.
 
 Fixed a real gate gap in `.github/workflows/publish.yml` (`7b2790a`): the
 Docker image built and published to ghcr.io with no verification beyond the
