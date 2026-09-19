@@ -58,7 +58,7 @@ S-dict provenance, field by field:
                                     in. Flagged, not silently worked around.
 
 C_elastic==0 (test.drv.a6) additionally needs ccosphi/sinphi/tv
-(readInputFiles.f90's readmaterial) and init_stress (meshgen.f90:103's
+(readInputFiles.f90's readmaterial) and init_stress (meshgen.f90:104's
 setPlasticStress lithostatic pre-stress). Both are computed here, once,
 before the loop, exactly as the Fortran does; assembleGlobalKU.build gates
 their USE on C_elastic==0 and raises loudly if they are missing rather than
@@ -87,7 +87,7 @@ from . import backend as _backend
 # differs.
 # The friction laws this port implements. EVERY one of them is served by the
 # SAME code -- eqdyna/{driver,faulting,fric,assembleGlobalKU,backend}.py --
-# with the friclaw dispatch inside faulting.py exactly where faulting.f90:17-18
+# with the friclaw dispatch inside faulting.py exactly where faulting.f90:21-22
 # puts it, and with the backend as an argument rather than a second module.
 #
 # This used to be two tables of three modules each: driver.py
@@ -251,7 +251,7 @@ def build_solver_state(case_dir):
             'verified; C_elastic==1 (tpv36/tpv37) is unaffected since elem_depth/'
             'init_stress are never read then.')
     # (The insertFaultType>0 x friclaw==5 refusal that stood here is GONE, and
-    # not by relaxing it: faulting.f90:201-208's min_norm/max_norm clamp was
+    # not by relaxing it: faulting.f90:205-212's min_norm/max_norm clamp was
     # ported in port_rsf.py and missing from port_tp.py, so the combination was
     # genuinely unimplemented. There is now one solveRSF, the clamp is in it,
     # and every friclaw reaches the same code -- so there is nothing left to
@@ -324,7 +324,7 @@ def build_solver_state(case_dir):
     sinphi = np.sin(np.arctan(g['bulk']))
     tv = g['tv']
 
-    # meshgen.f90:103's setPlasticStress (called for EVERY element, both
+    # meshgen.f90:104's setPlasticStress (called for EVERY element, both
     # interior and PML, only when C_elastic==0): lithostatic per-element
     # pre-stress, Voigt order [xx,yy,zz,yz,xz,xy] (calcB.f90's b(4,*)/
     # b(5,*)/b(6,*) confirm 4=yz,5=xz,6=xy) -- ALWAYS computed (cheap,
@@ -539,7 +539,7 @@ def run(S, nsteps=None, verbose=True, backend='numpy'):
     This is eqdyna3d.f90's call to driver, with the ONE argument the Fortran
     does not have. There is no per-backend and no per-friclaw solver module
     to pick between any more: driver.py is the single time loop and
-    faulting.py dispatches friclaw inside it, exactly as faulting.f90:17-18
+    faulting.py dispatches friclaw inside it, exactly as faulting.f90:21-22
     does.
     """
     return driver.run(S, nsteps=nsteps, verbose=verbose,

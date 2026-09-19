@@ -69,7 +69,7 @@ NUC_VR_TO_VS = 0.7       # nucleation rupture-speed-to-Vs ratio
 MAX_NORM = -40.0e6
 MIN_NORM = -10.0e6
 
-# eqdyna3d.f90:139 -- fnft's "never ruptured" sentinel, and the >5000 test
-# storeRuptureTime uses against it (faulting.f90:308).
+# eqdyna3d.f90:140 -- fnft's "never ruptured" sentinel, and the >5000 test
+# storeRuptureTime uses against it (faulting.f90:312).
 FNFT_SENTINEL = 99999.0
 FNFT_UNRUPTURED_ABOVE = 5000.0

@@ -15,7 +15,7 @@ One loop, for every friction law and every backend, in driver.f90's order:
 What this replaces: six loops (port.py, port_rsf.py, port_tp.py and a JAX
 twin of each), all of them this loop with a different `faulting` inlined and
 the friclaw branch hoisted to module level. The friclaw branch belongs where
-faulting.f90:17-18 puts it -- inside faulting -- and because friclaw is a
+faulting.f90:21-22 puts it -- inside faulting -- and because friclaw is a
 static Python int it is resolved at TRACE time under jit and costs nothing.
 
 MPI is absent by construction: this port is serial (npx=npy=npz=1, enforced
@@ -36,7 +36,7 @@ from . import updateThermalPressurization as TP
 
 
 def velDispUpdate(xp, inv, v1, velArr, dispArr, force, dt):
-    """driver.f90:101-169 -- integrate velocity and displacement.
+    """driver.f90:92-164 -- integrate velocity and displacement.
 
     Two node kinds: interior (3 dof) and PML (12 dof, 9 split components
     plus 3 velocity components, with the split components damped by the

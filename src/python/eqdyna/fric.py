@@ -57,7 +57,7 @@ def time_weak(xp, trupt, fric):
     ordered, and the last is a plain else rather than a second overriding
     `if`.
 
-    `trupt = timeElapsed - fnft` (faulting.f90:147). An unruptured node has
+    `trupt = timeElapsed - fnft` (faulting.f90:151). An unruptured node has
     fnft at its 99999.0 sentinel, so trupt is hugely negative, so the first
     arm fires and xmu = fs. That is why unruptured nodes need no special
     case here -- the sentinel does the work. It also means TW_T0 is divided
@@ -117,7 +117,7 @@ def rate_state_slip_law(xp, V2, psi, fric, dt):
 
 
 def rate_state_normal_stress(xp, V2, theta_pc, tnrm, fric, dt):
-    """faulting.f90:35-52 -- Shi & Day (2013) eq. B8 normal-stress state.
+    """faulting.f90:39-56 -- Shi & Day (2013) eq. B8 normal-stress state.
 
     Lives in faulting.f90 rather than fric.f90 in the Fortran, but it is a
     constitutive update like the three above and is only ever called from
