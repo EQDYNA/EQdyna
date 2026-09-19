@@ -386,6 +386,44 @@ directory cannot read as a pass), plus `test.tpv8` on three backends --
 so are `scripts/scec/` (item 28's tooling) and every default in
 `defaultParameters.py`.
 
+## Release gate RUN AND GREEN, tag deliberately NOT cut. Read this first.
+
+`python3 testsys/run.py all` on this session's master: **30/30 e2e cells
+SUCCESS, unit SUCCESS, regression SUCCESS, exit 0, wall clock 1555.1s**
+(log kept at `scratchpad/sweep_v513.log` for the session's lifetime; the
+numbers are here because the scratchpad is not).
+
+That is **rule 15 step 1 satisfied**. The sweep ran on the tree at `eb03be5`;
+everything committed after it is docs-only, verified rather than asserted --
+`git diff --stat eb03be5 HEAD -- src/ scripts/ testsys/ case_input/
+test.reference.results/ testNameList.py install-eqdyna.sh .github/ VERSION`
+is EMPTY, and the only changed paths are
+`docs/SESSION_LOG_2026-09-19_autopilot.md`,
+`docs/evidence/cleanroom_v520_evidence.sha256` and `pathway_forward.md`. So
+the artifact applies to current HEAD, the same reasoning v5.12.0 used for its
+own doc-only interval.
+
+**No tag was cut, on purpose.** Rule 15 step 6 requires CI green on the
+PUSHED release commit before the tag, and the remaining budget could not hold
+a 15-25 minute CI run after the 26-minute sweep. A green untagged master
+costs nothing; a tag ahead of its CI makes the Releases page the
+authoritative wrong answer (rule 15's own rationale, paid for at v5.7.0).
+
+**The next session tags v5.13.0 with steps 2-7 only, reusing the sweep
+above** -- do not re-run it unless a non-doc path has changed by then (re-run
+the `git diff --stat` above; if it is still empty, the artifact still holds).
+Version strings live in exactly three places plus the notes:
+`VERSION` (`5.12.0`), `src/fortran/eqdyna3d.f90:17` (the runtime banner --
+`test_version_banner.py` WILL catch a missed bump, as it did at v5.12.0), and
+`README.md`'s news block (move the v5.12.0 block down into
+`pastReleaseNotes.md`, keep the pointer line). The Tasks-done row is
+`zofia-kaminska`'s to write (rule 19) but must land IN the release commit
+(rule 15 step 5), so ask her for the row text and include it rather than
+committing it separately. v5.12.0's Docker fix (`9d1977d`) rides this tag.
+
+**Minor, not patch**: rounds 4 and 5, rule 18 plus its guard, item 44/45 and
+the evidence manifest are accumulated real work, not one patch-sized change.
+
 ## Round 6 -- GATED GREEN, deliberately NOT LANDED. Pick this up first.
 
 `kai-fischer`, `scripts/case.setup` only, **+20/-33**. Extracts
