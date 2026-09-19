@@ -18,7 +18,7 @@ today -- if one does not, that is a bug in this file.
 
 Current layout, for reading the older rows: Fortran is `src/fortran/`, the
 Python solver is `src/python/eqdyna/` (14 modules, one per Fortran file), and
-there is ONE test -- `testsys/run.py e2e`, 8 cases x 3 backends = 24 cells.
+there is ONE test -- `testsys/run.py e2e`, 10 cases x 3 backends = 30 cells.
 
 ## Priority order (set 2026-09-16)
 

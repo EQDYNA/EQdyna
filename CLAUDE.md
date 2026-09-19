@@ -58,7 +58,7 @@ Rule 16 was itself wrong about this until 2026-09-16.
 The e2e sweep, and backend is an AXIS of it, not a tier:
 
 ```
-for case in testNameList.nameList:        # 8 cases
+for case in testNameList.nameList:        # 10 cases
     for backend in (fortran, python-numpy, python-jax):
         run → canonical frt → compare against ONE committed reference
               at THAT CASE's bound
