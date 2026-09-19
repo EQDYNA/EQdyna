@@ -258,3 +258,57 @@ Neither vetoed the merge; both are on the board as their own row (routed to
   `backend.py`'s three scatter sites are code-frozen (open item 43, owner
   decision); `compare.py`/`matrix.py`/`testNameList.py`/references/`perf/` are
   out of scope. Round 6 does not start until round 5 lands or is rejected.
+
+## Board rows landed -- `98cc4fd`
+
+`zofia-kaminska`'s two rows (round-4 landing in Tasks done; **new item 44,
+P4**, for the two accepted risks). Her Step 0 re-sync showed no drift under
+her. She flagged, correctly without acting on it, that no rule in
+`PROJECT_RULES.md` covers a refactor introducing a new filesystem dependency
+between previously-independent artifacts, and proposed a rule 18.
+
+## Enforcement first, then the rule -- `8d5261e`, then `4849bfc`
+
+Deliberate order, and the reason is on the record here: this project's own
+claim is that its rules are **enforced by `testsys/regression/`**, not merely
+written down, so commissioning rule 18 before anything could check it would
+have produced exactly the kind of rule `zofia-kaminska`'s own audits flag as
+unenforceable-as-written.
+
+- **`8d5261e`** (`iris-vermeulen`) --
+  `testsys/regression/test_symlink_integrity.py`, 157 lines. Enumerates every
+  tracked symlink from `git ls-files -s` (mode 120000, never a hardcoded
+  list) and asserts each is a real symlink, resolves to an existing path,
+  stays inside the repo, and -- where `.py` -- actually imports. **Zero
+  tracked symlinks is itself a hard FAIL**, so the guard cannot pass quietly
+  if its own mechanism breaks. No `skipif`, no swallowing `except`.
+  Re-verified by me, not taken on her report: `unit regression` SUCCESS both
+  tiers, and I reproduced the **bite** myself by moving
+  `case_input/test.tpv36/tpv36_37_common.py` aside -- exit 1, naming the file
+  and the resolved missing target -- then restored it and got exit 0 and a
+  clean `git status` back. A guard nobody has watched fail is a guard nobody
+  knows works.
+- **`4849bfc`** (`zofia-kaminska`) -- rule 18 written AROUND that guard, plus
+  item 44 updated in place (risk 2 GUARDED; risk 1 only partly, since nothing
+  exercises an actual `core.symlinks=false` clone and the owner call between
+  a `case.setup` guard and documenting the requirement is still open), plus
+  `CLAUDE.md`'s now-stale "17 rules". The rule names the guard for its
+  symlink half and states plainly that its non-symlink half (a shared config,
+  a directory coupling with no symlink) is enforced by REVIEW ONLY -- an
+  honest enforcement gap beats an overstated one. She left the rule counts in
+  `pastReleaseNotes.md` and the dated session logs alone: those are history
+  as-of-that-date, not drift.
+
+## Housekeeping -- leftover agent branches
+
+33 `worktree-agent-*` branches had accumulated from earlier sessions whose
+worktrees were already reaped. Checked before deleting, not assumed scratch:
+`git cherry master <branch>` on each. 30 were fully landed; the 3 that showed
+unlanded patches were each verified individually -- an experiment branch whose
+net diff against its own base is EMPTY (experiment + its revert), the items
+7/9/10 fix branch whose only remaining delta against master is one stale
+version-banner line (the fix itself landed as `4d5e58e`), and the v5.12.0
+Tasks-done row branch whose row is in master (folded into the release commit,
+as this log already records). All 33 deleted; only `kai-fischer`'s live round-5
+branch remains. Worktrees on disk: round 5's, and the pre-existing
+`scratch/cleanroom-v520` (not mine, left alone).
