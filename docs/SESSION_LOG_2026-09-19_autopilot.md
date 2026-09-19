@@ -327,6 +327,76 @@ wasted dispatch on my side too: a fork launched with a placeholder prompt
 instead of a directive -- it did nothing and returned nothing, noted here so
 its notification is not mistaken later for a real mission.
 
+## Round 5 landed -- `1f3df0b`
+
+`kai-fischer`, 6 files in `src/python/eqdyna/`, +57/-57, every line inside a
+docstring or a `#` comment. The content is ~45 stale `foo.f90:N` citations:
+the Fortran gained explanatory comment blocks after the port's docstrings
+were written, shifting most subroutine bodies down, so the port's
+"read me beside my Fortran counterpart" property had quietly rotted. Examples:
+`fric.py`'s `trupt` cited `faulting.f90:147`, actual 151; `meshgen.py`'s
+`createMasterNode` un/us/ud overwrite cited `meshgen.f90:804-817`, which is
+actually the END of `replaceSlaveWithMasterNode` -- the real branch is at
+925-938.
+
+Gate, my own runs:
+
+- **"Comment-only" PROVEN, not trusted.** Wrote a throwaway AST oracle
+  (`scratchpad/astcmp.py`): parse each file at `HEAD~1` and `HEAD`, delete
+  every module/function/class docstring node, compare `ast.dump`. Comments
+  never enter an AST at all, so identical stripped ASTs means the executable
+  content is untouched. **6 of 6 SAME-AST, 0 code-differing.** This is the
+  check worth keeping for any future comment-only claim -- a reviewer's eye
+  over a 114-line diff is not the same evidence.
+- **Citations spot-checked at the source.** Seven of his corrected line
+  numbers printed straight out of the Fortran: `faulting.f90:151` is indeed
+  `trupt = timeElapsed - fnft(...)`; `eqdyna3d.f90:140` is `fnft = 99999.0d0`;
+  `faulting.f90:21-22` are the `friclaw<=2` / `friclaw>=3` dispatch;
+  `faulting.f90:312` the `>5000.0d0` test; `meshgen.f90:104` the
+  `setPlasticStress` call (103 is `replaceSlaveWithMasterNode`'s, exactly as
+  he said); `meshgen.f90:825-826` the `distToFault` formula; `meshgen.f90:925`
+  the `insertFaultType>0` branch. All seven land on the claimed content.
+- **Numerics unmoved.** `unit regression` SUCCESS both tiers; `test.tpv8` all
+  three backends reproduce to every digit -- fortran `3.051760e-11`,
+  python-numpy `3.861189e-10`, python-jax `4.119873e-10`, bound `1.0e-08`,
+  1891 fault nodes.
+- **Base current**: his base `31fb8c6`; master had moved only by this very
+  session log file.
+
+Three things he deliberately did NOT do, all correct: left
+`assembleGlobalKU.py:14`'s "148 scatter entries per element" alone because his
+own arithmetic would not reproduce 148 and he would have been guessing; left
+`backend.py`'s "five helpers"/"four core helpers" tension alone as not cleanly
+falsifiable; and skipped priority-2 duplication work entirely, because the
+code's own comments repeatedly explain that the apparent repetition
+(block-at-a-time scatters, repeated `B.setat`, non-DRY index arithmetic) is
+preserved deliberately for bit-identity. Declining to refactor is the right
+answer when the duplication is load-bearing.
+
+## Round 6 dispatched -- `scripts/`
+
+Last of the serial three. Scope is the case-construction layer
+(`case.setup`, `create.newcase`, `lib.py`, `meshGenLib.py`,
+`plotRuptureDynamics`), which has accumulated duplication across several
+campaigns. Gate is byte-identity of EVERY generated artifact across ALL 8
+gated cases (`diff -r --brief`, file counts reported both sides so an empty
+directory cannot read as a pass), plus `test.tpv8` on three backends --
+`plotRuptureDynamics` is in the e2e path, not just the solver. `case.setup`'s
+`ntotft > 1` refusal is explicitly untouchable (item 17, owner-deferred);
+so are `scripts/scec/` (item 28's tooling) and every default in
+`defaultParameters.py`.
+
+## Note: `scratch/cleanroom-v520` is gone, and it was not me
+
+The pre-existing worktree the earlier session recorded as "left alone -- not
+mine to reap" no longer exists on disk; `git worktree prune` dropped its
+registration during this session's branch housekeeping, which means the
+DIRECTORY was already missing before I pruned. I never touched it (my two
+removals both named explicit `agent-*` paths). Its sibling
+`scratch/cleanroom-v520-evidence/` is still present, which reads as a
+deliberate keep-the-evidence-drop-the-checkout cleanup by whoever owned it.
+Recorded, not chased.
+
 ## Housekeeping -- leftover agent branches
 
 33 `worktree-agent-*` branches had accumulated from earlier sessions whose
