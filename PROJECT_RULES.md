@@ -19,6 +19,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 15. Releases follow the documented workflow, notes lead the README.
 16. Test what you commit, not what is in your working tree.
 17. Reviving or adding a TPV benchmark.
+18. A refactor that couples two previously-independent artifacts must say so.
 
 ---
 
@@ -504,3 +505,50 @@ declared-unsupported for months, and closing it turned out to be ~20 lines of
 **How to apply**: `python3 testsys/e2e/run_e2e.py --cases test.tpvNN` for the
 new case alone while iterating, then `python3 testsys/run.py all` before
 committing the reference.
+
+---
+
+## 18. A refactor that couples two previously-independent artifacts must say so
+
+If a change makes one artifact's correctness depend on the filesystem
+location or content of another that it did not depend on before — a symlink,
+a shared config file, a directory that must exist relative to another — the
+same commit states the new dependency in writing and names what breaks if the
+target moves, is renamed, or the platform can't represent the mechanism used
+(e.g. a checkout with `core.symlinks=false`).
+
+**This rule's symlink half is enforced**, by
+`testsys/regression/test_symlink_integrity.py`: it enumerates every
+git-tracked symlink from `git ls-files -s` (mode 120000, never a hardcoded
+list, so a second symlink is picked up automatically and "zero tracked
+symlinks" is itself a hard FAIL rather than a quiet pass), and for each
+asserts the working-tree entry really is a symlink, the target resolves to an
+existing in-repo path, and — where the target is a `.py` file — it actually
+imports. **Its non-symlink half is not enforced by any guard.** A shared
+config file two artifacts now both read, or a directory-level coupling with
+no symlink in it, is caught by review only, the same as any other
+refactor-introduced coupling; do not read "rule 18" on a commit as proof the
+non-symlink case was checked.
+
+**Rationale**: `45446d0` (2026-09-19) de-duplicated the `test.tpv36` /
+`test.tpv37` compsets by turning `case_input/test.tpv37/tpv36_37_common.py`
+into a symlink (this repo's first tracked one) to
+`case_input/test.tpv36/tpv36_37_common.py`. Two risks followed and were named
+in `pathway_forward.md` item 44 at merge time, not discovered later: a
+`core.symlinks=false` checkout materialises the symlink as a text stub
+containing the target path string, so `case.setup` dies importing it with no
+useful message; and `test.tpv37` can no longer survive deletion or rename of
+`case_input/test.tpv36/`, a directory-level coupling that did not exist
+before. Naming both at merge time is what let the second one become a guard
+instead of a future mystery failure.
+
+**How to apply**: when a refactor introduces this kind of dependency, name it
+in the commit (or the board row it lands under) the way item 44 was named —
+not as an afterthought landing note, but as its own statement of what now
+breaks and how. If the coupling is a tracked symlink,
+`test_symlink_integrity.py` already covers it; run
+`git ls-files -s | awk '$1==120000'` yourself first if you are unsure whether
+you just added one. If it is a shared config or a directory coupling with no
+symlink, say so in the commit and route the "should this be guarded
+mechanically" question to a reviewer — this rule does not claim a check
+exists for that case, because none does.
