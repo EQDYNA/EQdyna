@@ -283,3 +283,80 @@ Derived from the measurements above, not from preference:
    the hazard retracted above, because the retraction is conditional on
    binding and the print is what would catch it regressing.
 
+## 12:05 — PREREQUISITE MET: Fortran re-baselined on today's box. The denominator holds.
+
+Promoted from queued follow-up to prerequisite by the coordinator, on the
+reasoning that my bandwidth probe implied a ~9.5x straggler ceiling while
+Fortran had measured 14.39x on this same box — both cannot describe one
+machine unless the real solver is far less bandwidth-bound than a 30.5 MB
+streaming sum. That was my own stated caveat, and this settles it.
+
+**Fortran source is bit-identical between `737358f` (`v5.12.0`, the 14.39x
+baseline) and HEAD** — `git diff --stat 737358f..HEAD -- src/fortran/` is
+empty — and `bin/eqdyna` is still the 2026-09-19 15:00 build. So this
+measurement changes exactly one variable: today's tenancy.
+
+Run from the clean main checkout (`git status --porcelain | wc -l` = 0),
+per-step by difference at n_lo/n_hi 40/160, compact placement, ceiling 0.45:
+
+| np | ms/step today | speedup today | 09-19 (item 43) | delta |
+|---|---|---|---|---|
+| 1 | 937.41 | 1.00x | 931.65 | +0.6% |
+| 2 | 467.08 | 2.01x | 466.64 | +0.1% |
+| 4 | SKIPPED (cpu 1 at 87%) | — | 237.62 | — |
+| 8 | SKIPPED (cpu 1 at 87%) | — | 117.07 | — |
+| 16 | **65.89** | **14.23x** | 64.74 / 14.39x | **+1.8% / -1.1%** |
+
+**VERDICT: Fortran reads ~14x today, not ~9x.** Per the coordinator's own
+decision tree, that means: the ~9.5x straggler ceiling **does not bind the
+real solver**, near-linear remains a live target, the bar stays at 12-14x,
+and item 43's 14.39x denominator is confirmed rather than replaced. My
+probe's upper-bound caveat was the correct reading of it.
+
+**The tension is now resolved with numbers on both sides, not papered over.**
+A pure-streaming kernel loses 1.68x to stragglers on this box; the FEM solver
+loses ~1% — and it did so while spread across **three NUMA nodes** (np=16
+took cpus 0,1,3,4,5,6,8,10,11,12,13,15,17,18,19,20 = nodes 0,1,2) at whole-box
+load 26-30 with 15 other tenants named in the tool's own roster. Element-local
+FEM work has cache reuse a 30.5 MB streaming sum cannot; the solver is
+therefore not bandwidth-limited at 16 ranks, measured, not assumed.
+
+**Gate honesty:** 2 of 5 points were SKIPPED, correctly — the tool refused
+`np=4`/`np=8` because cpu 1 read **87%** against the 45% ceiling, printing
+"REFUSING TO MEASURE ... Taken while one of them is busy the number measures
+that process, not us." That is the gate working, and it is the third
+independent confirmation that this box cannot deliver a full strict-ceiling
+sweep. The three surviving points are the ones that matter: the 1-core anchor
+and the 16-core target, both reproducing to within 1.8%. `--repeats 2` was
+requested; the tool emitted one line per config.
+
+**A reframing the owner should rule on (not a blocker, no action taken).**
+The bar "12-14x at 16 cores" is a *ratio* target, and because jax's 1-core
+kernel is already faster than Fortran's (611.00 vs 937.41 ms/step), the two
+readings of the goal are not the same thing:
+
+- **Ratio parity** (12-14x) requires jax at ~43.6 ms/step — which would be
+  **1.5x FASTER than Fortran's absolute 16-core time** of 65.89.
+- **Absolute parity** with Fortran at 16 cores needs only 65.89 ms/step, i.e.
+  **9.3x** — below the stated bar, and arguably what the science cares about.
+
+So 9.3x is the point where jax stops being slower than the production solver,
+and 12-14x is the point where it scales as well. The owner's wording ("scale
+largely linearly, like the Fortran/MPI solver does") asks for the ratio, so
+the bar is unchanged and stands at 12-14x; recording the 9.3x crossover
+because it is a real milestone that will be passed on the way, and a run that
+reaches 9.3x and stops has still delivered a jax backend that beats Fortran
+at 16 cores.
+
+Reproduce: `python3 testsys/perf/run_scaling.py --case test.tpv104
+--fortran-ranks 1,2,4,8,16 --py-threads '' --policies compact --n-lo 40
+--n-hi 160 --busy-ceiling 0.45 --repeats 2`
+
+**Cost disclosed:** Mira was mid-pass (short single-process jax probes, her own
+worktree, `cwd` verified). The coordinator authorised pausing her for this and
+I have no channel to deliver the pause, so her probes ran concurrently with my
+sweep. My numbers are protected — `run_scaling.py` busy-checks per cpu and
+routed around her — but any jax figure she took between 11:24 and 11:35 is
+contaminated and should be discarded, not averaged. Stating it rather than
+hoping the pinning covered both sides.
+
