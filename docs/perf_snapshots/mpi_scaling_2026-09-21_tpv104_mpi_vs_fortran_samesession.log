@@ -1,0 +1,243 @@
+/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+Estimated total cells in the model is 231040
+Estimated memory required is about 0.35580160000000005 GBs
+case test.tpv104  sha 0fa04c9  host cotopaxi  n_lo/n_hi 40/160  max-busy 0.60
+
+-- 1 rank(s) -- cpus [21]  busy {21: 0.48}  worst 0.48 (max-busy 0.60), whole-box load 51.6
+  jax-mpi/halo         795.05 ms/step (by difference)  fixed  24.53s  wall 56.3/151.7s
+             per-rank ms/step [799.86]
+             max/mean 1.00x  exchange [0.188] ms/step  barrier wait [0.01] ms/step
+             EFFECTIVE_CORES [1.0]  threads [9]  cpus_allowed [1]
+             per-rank Ei [516096]  Ep [218904]  halo eqs [0]
+  jax-mpi/allreduce    785.37 ms/step (by difference)  fixed  19.72s  wall 51.1/145.4s
+             per-rank ms/step [798.78]
+             max/mean 1.00x  exchange [19.856] ms/step  barrier wait [0.01] ms/step
+             EFFECTIVE_CORES [1.0]  threads [9]  cpus_allowed [1]
+             per-rank Ei [516096]  Ep [218904]  halo eqs [0]
+  fortran      1034.50 ms/step (by difference)  fixed   0.62s  wall 42.0/166.1s  decomp (1, 1, 1)
+
+-- 2 rank(s) -- cpus [3, 17]  busy {3: 0.52, 17: 0.59}  worst 0.59 (max-busy 0.60), whole-box load 26.4
+  jax-mpi/halo         499.49 ms/step (by difference)  fixed  18.48s  wall 38.5/98.4s
+             per-rank ms/step [484.44, 484.53]
+             max/mean 1.00x  exchange [1.606, 1.445] ms/step  barrier wait [35.11, 13.82] ms/step
+             EFFECTIVE_CORES [0.93, 0.92]  threads [9, 9]  cpus_allowed [1, 1]
+             per-rank Ei [258048, 258048]  Ep [109452, 109452]  halo eqs [24831, 24831]
+  jax-mpi/allreduce    423.32 ms/step (by difference)  fixed  23.54s  wall 40.5/91.3s
+             per-rank ms/step [445.17, 445.16]
+             max/mean 1.00x  exchange [28.684, 28.224] ms/step  barrier wait [0.21, 29.31] ms/step
+             EFFECTIVE_CORES [1.0, 1.0]  threads [9, 9]  cpus_allowed [1, 1]
+             per-rank Ei [258048, 258048]  Ep [109452, 109452]  halo eqs [24831, 24831]
+  fortran       504.83 ms/step (by difference)  fixed   2.61s  wall 22.8/83.4s  decomp (2, 1, 1)
+
+-- 4 rank(s) -- cpus [3, 15, 60, 63]  busy {3: 0.14, 15: 0.14, 60: 0.1, 63: 0.1}  worst 0.14 (max-busy 0.60), whole-box load 40.0
+driver.run_mpi rank 3/4: 40 steps, friclaw=4, elements Ei=104832 Ep=62790 E=167622 (work 25.0% of total), nodes=177685 eqs=974664 halo=25620 (2.63% of eqs), neighbours=[2], fault computed=0 owned=0
+driver.run_mpi rank 0/4: 40 steps, friclaw=4, elements Ei=104112 Ep=63030 E=167142 (work 25.0% of total), nodes=177199 eqs=974667 halo=25035 (2.57% of eqs), neighbours=[1], fault computed=0 owned=0
+driver.run_mpi rank 2/4: 40 steps, friclaw=4, elements Ei=153216 Ep=46662 E=199878 (work 25.0% of total), nodes=212273 eqs=972663 halo=50451 (5.19% of eqs), neighbours=[1, 3], fault computed=1369 owned=1332
+driver.run_mpi rank 1/4: 40 steps, friclaw=4, elements Ei=153936 Ep=46422 E=200358 (work 25.0% of total), nodes=212759 eqs=972075 halo=49866 (5.13% of eqs), neighbours=[0, 2], fault computed=1369 owned=1369
+driver.run_mpi rank 0: 15.544 s, 388.597 ms/step (sync=halo: 0.481 ms/step exchanging, 130.103 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [3]
+driver.run_mpi rank 1: 15.545 s, 388.628 ms/step (sync=halo: 0.697 ms/step exchanging, 70.256 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [15]
+driver.run_mpi rank 3: 15.553 s, 388.818 ms/step (sync=halo: 1.282 ms/step exchanging, 75.089 ms/step waiting at the barrier), EFFECTIVE_CORES 0.93, threads=10, cpus_allowed=1 [63]
+driver.run_mpi rank 2: 15.553 s, 388.825 ms/step (sync=halo: 1.463 ms/step exchanging, 9.847 ms/step waiting at the barrier), EFFECTIVE_CORES 0.95, threads=10, cpus_allowed=1 [60]
+rank 1/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=388.6284091277048 mpi_ms_per_step=0.6970106507651508 wait_ms_per_step=70.25565763469785 sync=halo threads=10 cpus_allowed=1
+rank 2/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=388.82516062585637 mpi_ms_per_step=1.4626878895796835 wait_ms_per_step=9.846630436368287 sync=halo threads=10 cpus_allowed=1
+
+ine 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+    main()
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+    path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+    library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+    raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
+ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+    main()
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+    path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+    library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+    raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
+ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
+--------------------------------------------------------------------------
+Primary job  terminated normally, but 1 process returned
+a non-zero exit code. Per user-direction, the job has been aborted.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+mpirun detected that one or more processes exited with non-zero status, thus causing
+the job to be terminated. The first process to do so was:
+
+  Process name: [[13340,1],3]
+  Exit code:    1
+--------------------------------------------------------------------------
+
+driver.run_mpi rank 0/4: 160 steps, friclaw=4, elements Ei=104112 Ep=63030 E=167142 (work 25.0% of total), nodes=177199 eqs=974667 halo=25035 (2.57% of eqs), neighbours=[1], fault computed=0 owned=0
+driver.run_mpi rank 3/4: 160 steps, friclaw=4, elements Ei=104832 Ep=62790 E=167622 (work 25.0% of total), nodes=177685 eqs=974664 halo=25620 (2.63% of eqs), neighbours=[2], fault computed=0 owned=0
+driver.run_mpi rank 1/4: 160 steps, friclaw=4, elements Ei=153936 Ep=46422 E=200358 (work 25.0% of total), nodes=212759 eqs=972075 halo=49866 (5.13% of eqs), neighbours=[0, 2], fault computed=1369 owned=1369
+driver.run_mpi rank 2/4: 160 steps, friclaw=4, elements Ei=153216 Ep=46662 E=199878 (work 25.0% of total), nodes=212273 eqs=972663 halo=50451 (5.19% of eqs), neighbours=[1, 3], fault computed=1369 owned=1332
+driver.run_mpi rank 0: 38.646 s, 241.536 ms/step (sync=halo: 0.446 ms/step exchanging, 51.055 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [3]
+driver.run_mpi rank 1: 38.647 s, 241.544 ms/step (sync=halo: 0.652 ms/step exchanging, 41.073 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [15]
+driver.run_mpi rank 3: 38.649 s, 241.554 ms/step (sync=halo: 1.033 ms/step exchanging, 15.843 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [63]
+driver.run_mpi rank 2: 38.657 s, 241.604 ms/step (sync=halo: 1.310 ms/step exchanging, 1.100 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [60]
+rank 1/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=241.54418125690427 mpi_ms_per_step=0.6524891548906453 wait_ms_per_step=41.07311145780841 sync=halo threads=9 cpus_allowed=1
+rank 2/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=241.60354923224077 mpi_ms_per_step=1.3095587826683186 wait_ms_per_step=1.1000306025380269 sync=halo threads=9 cpus_allowed=1
+
+ine 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+    main()
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+    path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+    library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+    raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
+ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+    main()
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+    path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+    library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+    raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
+ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
+--------------------------------------------------------------------------
+Primary job  terminated normally, but 1 process returned
+a non-zero exit code. Per user-direction, the job has been aborted.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+mpirun detected that one or more processes exited with non-zero status, thus causing
+the job to be terminated. The first process to do so was:
+
+  Process name: [[12034,1],0]
+  Exit code:    1
+--------------------------------------------------------------------------
+
+  jax-mpi/halo      FAILED
+driver.run_mpi rank 0/4: 40 steps, friclaw=4, elements Ei=104112 Ep=63030 E=167142 (work 25.0% of total), nodes=177199 eqs=974667 halo=25035 (2.57% of eqs), neighbours=[1], fault computed=0 owned=0
+driver.run_mpi rank 3/4: 40 steps, friclaw=4, elements Ei=104832 Ep=62790 E=167622 (work 25.0% of total), nodes=177685 eqs=974664 halo=25620 (2.63% of eqs), neighbours=[2], fault computed=0 owned=0
+driver.run_mpi rank 2/4: 40 steps, friclaw=4, elements Ei=153216 Ep=46662 E=199878 (work 25.0% of total), nodes=212273 eqs=972663 halo=50451 (5.19% of eqs), neighbours=[1, 3], fault computed=1369 owned=1332
+driver.run_mpi rank 1/4: 40 steps, friclaw=4, elements Ei=153936 Ep=46422 E=200358 (work 25.0% of total), nodes=212759 eqs=972075 halo=49866 (5.13% of eqs), neighbours=[0, 2], fault computed=1369 owned=1369
+driver.run_mpi rank 0: 11.749 s, 293.728 ms/step (sync=allreduce: 33.991 ms/step exchanging, 43.744 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [3]
+driver.run_mpi rank 1: 11.750 s, 293.762 ms/step (sync=allreduce: 33.991 ms/step exchanging, 38.385 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [15]
+driver.run_mpi rank 3: 11.752 s, 293.806 ms/step (sync=allreduce: 34.534 ms/step exchanging, 6.751 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [63]
+driver.run_mpi rank 2: 11.754 s, 293.839 ms/step (sync=allreduce: 34.925 ms/step exchanging, 3.761 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [60]
+rank 1/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=293.76244322629645 mpi_ms_per_step=33.990720711881295 wait_ms_per_step=38.384920661337674 sync=allreduce threads=9 cpus_allowed=1
+rank 2/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=293.83851980092004 mpi_ms_per_step=34.92520182626322 wait_ms_per_step=3.761216945713386 sync=allreduce threads=9 cpus_allowed=1
+
+line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+    main()
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+    path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+    library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+    raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
+ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+    main()
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+    path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+    library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+    raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
+ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
+--------------------------------------------------------------------------
+Primary job  terminated normally, but 1 process returned
+a non-zero exit code. Per user-direction, the job has been aborted.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+mpirun detected that one or more processes exited with non-zero status, thus causing
+the job to be terminated. The first process to do so was:
+
+  Process name: [[9094,1],3]
+  Exit code:    1
+--------------------------------------------------------------------------
+
+driver.run_mpi rank 3/4: 160 steps, friclaw=4, elements Ei=104832 Ep=62790 E=167622 (work 25.0% of total), nodes=177685 eqs=974664 halo=25620 (2.63% of eqs), neighbours=[2], fault computed=0 owned=0
+driver.run_mpi rank 0/4: 160 steps, friclaw=4, elements Ei=104112 Ep=63030 E=167142 (work 25.0% of total), nodes=177199 eqs=974667 halo=25035 (2.57% of eqs), neighbours=[1], fault computed=0 owned=0
+driver.run_mpi rank 2/4: 160 steps, friclaw=4, elements Ei=153216 Ep=46662 E=199878 (work 25.0% of total), nodes=212273 eqs=972663 halo=50451 (5.19% of eqs), neighbours=[1, 3], fault computed=1369 owned=1332
+driver.run_mpi rank 1/4: 160 steps, friclaw=4, elements Ei=153936 Ep=46422 E=200358 (work 25.0% of total), nodes=212759 eqs=972075 halo=49866 (5.13% of eqs), neighbours=[0, 2], fault computed=1369 owned=1369
+driver.run_mpi rank 0: 43.269 s, 270.430 ms/step (sync=allreduce: 35.646 ms/step exchanging, 34.849 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [3]
+driver.run_mpi rank 1: 43.269 s, 270.433 ms/step (sync=allreduce: 35.647 ms/step exchanging, 33.145 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [15]
+driver.run_mpi rank 3: 43.272 s, 270.453 ms/step (sync=allreduce: 36.377 ms/step exchanging, 3.707 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [63]
+driver.run_mpi rank 2: 43.273 s, 270.459 ms/step (sync=allreduce: 36.597 ms/step exchanging, 1.688 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [60]
+rank 1/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=270.4332241875818 mpi_ms_per_step=35.646550882665906 wait_ms_per_step=33.144881244516 sync=allreduce threads=9 cpus_allowed=1
+rank 2/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=270.45864557439927 mpi_ms_per_step=36.59654694638448 wait_ms_per_step=1.6884626442333683 sync=allreduce threads=9 cpus_allowed=1
+
+line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+    main()
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+    path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+    library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+    raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
+ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+    main()
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+    path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+    library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
+  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+    raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
+ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
+--------------------------------------------------------------------------
+Primary job  terminated normally, but 1 process returned
+a non-zero exit code. Per user-direction, the job has been aborted.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+mpirun detected that one or more processes exited with non-zero status, thus causing
+the job to be terminated. The first process to do so was:
+
+  Process name: [[7056,1],0]
+  Exit code:    1
+--------------------------------------------------------------------------
+
+  jax-mpi/allreduce FAILED

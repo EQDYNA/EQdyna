@@ -1,0 +1,25 @@
+/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+Estimated total cells in the model is 231040
+Estimated memory required is about 0.35580160000000005 GBs
+case test.tpv104  sha c4afa78  host cotopaxi  n_lo/n_hi 20/60  max-busy 0.50
+
+-- 1 rank(s) -- cpus [8]  busy {8: 0.0}  worst 0.00 (max-busy 0.50), whole-box load 19.5
+Traceback (most recent call last):
+  File "/home/utig5/dliu/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 298, in <module>
+    main()
+  File "/home/utig5/dliu/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 232, in main
+    r = per_step_jax_mpi(case_dir, cpus, n, a.n_lo, a.n_hi, sync)
+  File "/home/utig5/dliu/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 161, in per_step_jax_mpi
+    wait_ms=[d['wait_ms_per_step'] for d in hi[1]],
+  File "/home/utig5/dliu/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 161, in <listcomp>
+    wait_ms=[d['wait_ms_per_step'] for d in hi[1]],
+KeyError: 'wait_ms_per_step'
