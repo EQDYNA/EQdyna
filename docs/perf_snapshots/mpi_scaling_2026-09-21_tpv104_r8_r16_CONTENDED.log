@@ -1,0 +1,25 @@
+/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+Estimated total cells in the model is 231040
+Estimated memory required is about 0.35580160000000005 GBs
+case test.tpv104  sha 86895bd  host cotopaxi  n_lo/n_hi 40/160  max-busy 1.00
+
+-- 8 rank(s) -- cpus [2, 3, 4, 5, 6, 7, 8, 9]  busy {2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0, 6: 1.0, 7: 1.0, 8: 1.0, 9: 1.0}  worst 1.00 (max-busy 1.00), whole-box load 94.8
+  jax-mpi/halo         685.37 ms/step (by difference over rank solve time; wall-based    115.91)  compile  4.50s  solve 31.9/114.2s  wall 215.7/229.6s
+             per-rank ms/step [712.72, 713.22, 713.17, 713.32, 713.48, 713.25, 713.18, 713.19]
+             max/mean 1.00x  exchange [12.527, 51.787, 31.909, 72.477, 75.876, 17.47, 25.274, 40.77] ms/step  barrier wait [352.57, 315.59, 356.71, 126.03, 70.1, 349.45, 338.35, 323.45] ms/step
+             EFFECTIVE_CORES [0.52, 0.55, 0.6, 0.23, 0.22, 0.54, 0.56, 0.54]  threads [9, 9, 9, 9, 9, 9, 9, 9]  cpus_allowed [1, 1, 1, 1, 1, 1, 1, 1]
+             per-rank Ei [27153, 76608, 76977, 27999, 76833, 76959, 76959, 76608]  Ep [39816, 23331, 23208, 39534, 23256, 23214, 23214, 23331]  halo eqs [25035, 51351, 49980, 25035, 50655, 50070, 50184, 50562]
+  jax-mpi/allreduce    707.95 ms/step (by difference over rank solve time; wall-based    694.10)  compile  8.72s  solve 37.0/122.0s  wall 140.7/224.0s
+             per-rank ms/step [762.28, 762.29, 762.26, 762.36, 762.15, 762.33, 762.36, 762.46]
+             max/mean 1.00x  exchange [272.089, 215.006, 215.138, 223.807, 218.451, 224.024, 215.669, 273.388] ms/step  barrier wait [132.71, 304.25, 300.67, 279.76, 252.2, 285.98, 280.01, 123.64] ms/step
+             EFFECTIVE_CORES [0.35, 0.77, 0.74, 0.78, 0.72, 0.77, 0.75, 0.35]  threads [9, 9, 9, 9, 9, 9, 9, 9]  cpus_allowed [1, 1, 1, 1, 1, 1, 1, 1]
+             per-rank Ei [27999, 76959, 27153, 76608, 76959, 76608, 76977, 76833]  Ep [39534, 23214, 39816, 23331, 23214, 23331, 23208, 23256]  halo eqs [25035, 50070, 25035, 51351, 50184, 50562, 49980, 50655]

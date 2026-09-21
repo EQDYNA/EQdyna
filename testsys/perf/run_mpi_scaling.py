@@ -156,13 +156,46 @@ def jax_mpi_once(case_dir, nsteps, cpus, ranks, sync):
 
 
 def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync):
+    """Per-step by difference over two step counts -- but over the RANKS' OWN
+    SOLVE TIME, not over mpirun's wall clock.
+
+    MEASURED REASON. At 4 ranks on test.tpv104 the wall-clock version returned
+    -41.67 ms/step (wall 95.4 s for 40 steps, 90.4 s for 160). Every rank
+    builds the full serial mesh before the solve, so the fixed cost is ~100 s
+    at 4 ranks against a ~40 s solve, and it fluctuates run to run by more
+    than the whole step delta. A difference of two numbers dominated by a
+    noisy common term is noise, and it announced itself here only because it
+    went negative -- at 8 or 16 ranks it would have returned a plausible
+    wrong number instead.
+    driver.run_mpi's own clock starts after decompose and to_device and ends
+    after block_until_ready, so it excludes the mesh build entirely and
+    includes XLA compile -- which is exactly the term the difference is meant
+    to subtract. The slowest rank sets the step, so the max over ranks is the
+    figure; the wall-based number is kept beside it as a cross-check.
+    """
     lo = jax_mpi_once(case_dir, n_lo, cpus, ranks, sync)
     hi = jax_mpi_once(case_dir, n_hi, cpus, ranks, sync)
     if lo[0] is None or hi[0] is None:
         return None
     ps = (hi[0] - lo[0]) / float(n_hi - n_lo)
     ms = [d['ms_per_step'] for d in hi[1]]
-    return dict(ms_per_step=ps * 1e3, fixed_s=lo[0] - n_lo * ps,
+    ms_lo = [d['ms_per_step'] for d in lo[1]]
+    solve_lo = max(ms_lo) * n_lo / 1e3
+    solve_hi = max(ms) * n_hi / 1e3
+    ps_solve = (solve_hi - solve_lo) / float(n_hi - n_lo)
+    if ps_solve <= 0:
+        raise RuntimeError(
+            'per-step by difference over rank solve time came out %.3f ms at '
+            '%d ranks (solve %.2f s at %d steps, %.2f s at %d steps). That is '
+            'not a slow measurement, it is an invalid one -- refusing to '
+            'record it.' % (ps_solve * 1e3, ranks, solve_lo, n_lo,
+                            solve_hi, n_hi))
+    return dict(ms_per_step=ps_solve * 1e3,
+                ms_per_step_wall=ps * 1e3,
+                compile_s=solve_lo - n_lo * ps_solve,
+                solve_lo_s=solve_lo, solve_hi_s=solve_hi,
+                rank_ms_lo=ms_lo,
+                fixed_s=lo[0] - n_lo * ps,
                 wall_lo_s=lo[0], wall_hi_s=hi[0],
                 rank_ms=ms, rank_ms_max=max(ms), rank_ms_mean=sum(ms) / len(ms),
                 straggler=max(ms) / (sum(ms) / len(ms)),
@@ -256,10 +289,12 @@ def main():
             row['jax_' + sync] = best
             if sync == syncs[0]:
                 row['jax'] = best
-            print('  jax-mpi/%-9s %9.2f ms/step (by difference)  fixed %6.2fs  '
-                  'wall %.1f/%.1fs' % (sync, best['ms_per_step'], best['fixed_s'],
-                                       best['wall_lo_s'], best['wall_hi_s']),
-                  flush=True)
+            print('  jax-mpi/%-9s %9.2f ms/step (by difference over rank '
+                  'solve time; wall-based %9.2f)  compile %5.2fs  solve '
+                  '%.1f/%.1fs  wall %.1f/%.1fs'
+                  % (sync, best['ms_per_step'], best['ms_per_step_wall'],
+                     best['compile_s'], best['solve_lo_s'], best['solve_hi_s'],
+                     best['wall_lo_s'], best['wall_hi_s']), flush=True)
             print('             per-rank ms/step %s' % [round(x, 2) for x in best['rank_ms']],
                   flush=True)
             print('             max/mean %.2fx  exchange %s ms/step  barrier '
