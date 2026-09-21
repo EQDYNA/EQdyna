@@ -339,7 +339,10 @@ def run_time_loop(xp, build_step, inv, carry, n):
 
 SHARD_AXIS = 'd'          # the mesh axis name; 'ranks', spelled for jax
 _DEVICES_ENV = 'EQDYNA_JAX_DEVICES'
-_host_devices = None      # set once by _configure_host_devices at import
+_NOT_CONFIGURED = object()   # sentinel: _configure_host_devices not yet run;
+                             # None is a real cached answer (env var unset),
+                             # so it cannot double as "not yet computed".
+_host_devices = _NOT_CONFIGURED   # set once by _configure_host_devices at import
 
 # Which leading-axis count each element-axis array in assembleGlobalKU.build's
 # dict is indexed by. EVERY key in that dict must appear here or in
@@ -451,6 +454,26 @@ def jax_device_count():
 def _configure_host_devices():
     """Turn EQDYNA_JAX_DEVICES=N into N host CPU devices, BEFORE jax imports.
 
+    Returns None when EQDYNA_JAX_DEVICES is UNSET. An absent label is not a
+    request for one device -- it makes no claim about device count at all,
+    so array_module must not assert against jax.devices() in that case and
+    jax is left to initialise on whatever platform it finds (GPU included).
+    Returns the validated N (>=1) when the env var IS set; that is an
+    explicit claim and stays checked strictly, including N==1.
+
+    An explicit N pins the CPU platform (`JAX_PLATFORMS=cpu`) as well as the
+    device count: `--xla_force_host_platform_device_count` only changes how
+    many devices the CPU *backend* reports, so on a box with GPUs jax would
+    otherwise still hand back the GPU devices and the count downstream would
+    be comparing N host-CPU devices against however many GPUs are visible --
+    the wrong comparison, and the reason the old assertion's wording ("N host
+    CPU devices were requested") was a lie whenever nothing was requested and
+    misleading even when something was: it named CPU devices while reporting
+    whatever jax actually initialised. A pre-existing JAX_PLATFORMS pin to
+    something other than 'cpu' is a second authority for the platform and is
+    refused rather than silently overridden, the same stance already taken
+    below for a pre-existing XLA_FLAGS.
+
     `--xla_force_host_platform_device_count` is read by XLA when the CPU
     backend is first INITIALISED (the first jax.devices()), not when jax is
     imported -- so `import jax` having happened already is harmless, but a
@@ -472,9 +495,21 @@ def _configure_host_devices():
     the flag twice."""
     import os
     global _host_devices
-    if _host_devices is not None:
+    if _host_devices is not _NOT_CONFIGURED:
         return _host_devices
+    if _DEVICES_ENV not in os.environ:
+        _host_devices = None
+        return None
     n = jax_device_count()
+    cur_platforms = os.environ.get('JAX_PLATFORMS', '')
+    if cur_platforms and cur_platforms != 'cpu':
+        raise RuntimeError(
+            'JAX_PLATFORMS=%r is already set and %s=%d needs JAX_PLATFORMS=cpu '
+            'to make the requested host CPU device count the platform jax '
+            'actually initialises. Two authorities for the platform is one '
+            'too many -- unset JAX_PLATFORMS or set it to cpu.'
+            % (cur_platforms, _DEVICES_ENV, n))
+    os.environ['JAX_PLATFORMS'] = 'cpu'
     if n == 1:
         _host_devices = 1
         return 1
@@ -661,6 +696,11 @@ def array_module(name):
     float64 is enabled BEFORE jax.numpy is imported. Silent float32 would
     fake a speedup and break parity against the double-precision Fortran;
     the ordering is the reason this import lives here and not at module top.
+
+    Device count is asserted ONLY when EQDYNA_JAX_DEVICES is explicitly set
+    (_configure_host_devices returns None otherwise): an absent label makes
+    no claim about device count, so jax is left to initialise on whatever
+    platform/device count it finds -- GPUs included, and unconstrained.
     """
     if name == 'numpy':
         return np
@@ -676,11 +716,12 @@ def array_module(name):
             "Install jaxlib, or ask for 'numpy' explicitly. This does NOT "
             "fall back: a run reported as jax must have been jax." % exc)
     jax.config.update('jax_enable_x64', True)
-    if len(jax.devices()) != n:
+    if n is not None and len(jax.devices()) != n:
         raise RuntimeError(
-            '%s=%d host CPU devices were requested but jax initialised %d (%r). '
-            'Running on fewer devices than the label says makes every scaling '
-            'number wrong, so this does not proceed.'
+            '%s=%d host CPU devices were explicitly requested (JAX_PLATFORMS '
+            'pinned to cpu) but jax initialised %d device(s) (%r) instead. '
+            'Running on a different device count than the label says makes '
+            'every scaling number wrong, so this does not proceed.'
             % (_DEVICES_ENV, n, len(jax.devices()), jax.devices()))
     import jax.numpy as jnp
     return jnp
@@ -723,6 +764,7 @@ def store_into(xp, out, src):
 
 # Set --xla_force_host_platform_device_count at PACKAGE IMPORT, the earliest
 # point available to us and before any eqdyna module initialises the jax
-# backend. A no-op (not even an env write) unless EQDYNA_JAX_DEVICES asks for
-# more than one device, so the serial and numpy paths are untouched.
+# backend. A no-op (not even an env write) unless EQDYNA_JAX_DEVICES is
+# explicitly set, so the default (unset) serial/numpy/jax-on-whatever-jax-
+# finds paths are untouched.
 _configure_host_devices()
