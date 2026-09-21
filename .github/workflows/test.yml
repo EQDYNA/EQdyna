@@ -105,7 +105,12 @@ jobs:
         # exercised by the unit tier.
         # jax: the e2e sweep's python-jax column and test_backend_jax.py.
         # A missing jaxlib is a hard failure, not a fallback to numpy.
-        pip install numpy scipy netCDF4 matplotlib xarray pytest
+        # mpi4py: eqdyna3d.py's --mpi path, MPI4NodalQuant.py's _MPI(), and
+        # testsys/perf/probe_mpi_reproducibility.py all `from mpi4py import
+        # MPI` (deliberately uncaught ImportError, not a fallback) --
+        # test_ci_dependencies.py scans for exactly this and needs it real,
+        # not just declared.
+        pip install numpy scipy netCDF4 matplotlib xarray pytest mpi4py
         pip install --upgrade numpy
         # jax LAST: it pins a numpy range, and `--upgrade numpy` above would
         # otherwise move numpy out from under it after the fact.
