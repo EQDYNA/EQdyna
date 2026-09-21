@@ -49,8 +49,73 @@ writes frt.txt<rank>, which testsys/frt_canonical.py already globs.
   cost.
 - TRAP FOUND AND FIXED: breaking the fused fori_loop open costs 3x per step
   unless the carry is DONATED (11 arrays, ~120 MB of copy per step on tpv104).
-- OPEN: MPI_Allreduce reduction order is not guaranteed reproducible. Must be
-  checked bit-for-bit before that mode can be a gated path.
+- ANSWERED 09-21: allreduce reproducibility. test.tpv8, 4 ranks, 20 steps, two
+  runs per mode, compared TWO ways:
+    * frt.txt0..3 byte-for-byte: identical a vs b in BOTH modes, and identical
+      ACROSS modes (allreduce == halo).
+    * float64 state (sha256 of velArr/dispArr/force/fric/fnft as raw bytes,
+      because frt is E18.7E4 = 7 digits and a byte-equal frt does NOT prove the
+      reduction was bit-stable): allreduce identical a vs b, 4/4 ranks hashed.
+  VERDICT: bit-stable as measured. But MPI does not PROMISE reduction order,
+  and this is one box, one Open MPI build, one message size. So: the gated
+  path is sync=halo, which is deterministic BY CONSTRUCTION (Sendrecv with
+  each neighbour in ascending rank order, summed in that order); allreduce
+  stays a measurement mode. The ordering guarantee is a property of the code
+  in halo mode and only an observation in allreduce mode.
+  Probe kept at scratchpad hashrun.py; the frt-level half is what the gate
+  would run, so it belongs in the MPI cell's own test, not here.
+- MEASUREMENT TRAP (third of the class): `grep '^HASH'` dropped one rank of
+  four because the X11 'Invalid MIT-MAGIC-COOKIE-1 key' noise mpirun emits has
+  no trailing newline and prefixes a rank's line. Two empty files then diffed
+  EQUAL -- a vacuously green reproducibility check. The probe now counts the
+  hashes and fails if it did not get one per rank. Same shape as the -np
+  guard already in run_mpi_scaling.py: a multi-process comparison goes vacuous
+  by losing ranks, not by erroring.
+- RUNNER BUG FIXED: eqdyna3d's per-rank summary line did not print
+  wait_ms_per_step or sync, so run_mpi_scaling.py died with KeyError after the
+  first 160-step point (log mpi_scaling_2026-09-21_tpv104.log, sha c4afa78).
+  Both keys are in the print now.
+
+## The gate gap, and the invocation contract a cell would need
+The 30-cell sweep CANNOT exercise this path as built: testsys/e2e/run_e2e.py's
+`run_cell` sends every python backend through `run_standalone`, which is
+literally `python3 -m eqdyna <case_dir> --backend <numpy|jax>` in-process --
+one rank, no mpirun, by construction. So no amount of passing the existing
+sweep says anything about driver.run_mpi. What the cell needs (I am NOT
+building it; this is the contract for whoever does):
+
+1. A FOURTH value on the backend axis, `python-jax-mpi`, not a flag on
+   `python-jax`. Backend is the sweep's axis and a cell is (case, backend);
+   a hidden flag would make one cell name mean two different solves.
+2. Invocation:
+     mpirun --bind-to none -np <matrix.PY_MPI_RANKS[case]> \
+       python3 -m eqdyna <case_dir> --backend jax --mpi
+   with env EQDYNA_MPI_SYNC=halo. `halo` is the deterministic-by-construction
+   mode (see the reproducibility entry above); the gate must PIN it rather
+   than inherit whatever the environment holds -- a gated path that reads a
+   mode from the environment is two paths.
+3. Case build: `make_serial_case` unchanged. Its "forced serial" edit writes
+   Fortran decomposition parameters, which the port does not read -- every
+   rank builds the full serial mesh and restricts it. Worth one assertion in
+   the cell that the python ranks' summed element count equals the serial
+   totalNumOfElements, so a decomposition that quietly drops elements cannot
+   pass by writing a short frt.
+4. Comparison: NONE OF IT IS NEW. Each rank writes `frt.txt<rank>` holding the
+   nodes it OWNS, `frt_canonical.frt_rank_files` already globs `frt.txt*` and
+   sorts numerically, and `compare.compare_cell` already compares the
+   canonical array against the one committed reference at that case's
+   CASE_BOUND. A 4-rank python run compares like a 4-rank Fortran run.
+5. The vacuity guard the cell must carry: assert it counted
+   `PY_MPI_RANKS[case]` frt files AND that the ranks together owned
+   `nftnd` fault nodes. driver.run_mpi already raises on the second (it
+   allreduces the owned count against nftnd), so the cell needs the first.
+   Without it, a launch that silently started 1 rank produces a perfectly
+   green canonical comparison -- because a 1-rank run of this path is also
+   correct, just not what the cell claims to test.
+6. Cost: it is 10 new cells if added for every case, and CI memory is the
+   binding constraint (the python cells were admitted at 2.91-4.34 GB
+   EACH, times the rank count here). Start with the cheap cases and
+   register in matrix.py's GATE, not CI_CELLS, until measured.
 
 ## Box conditions (they matter here more than the code does)
 - Thread oversubscription is NOT the problem: pinned to one cpu a rank holds

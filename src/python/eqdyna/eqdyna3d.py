@@ -579,7 +579,8 @@ def main():
               % (comm.Get_rank(), comm.Get_size(), path,
                  ' '.join('%s=%s' % (k, report[k]) for k in
                           ('Ei', 'Ep', 'halo_eqs', 'ms_per_step',
-                           'mpi_ms_per_step', 'threads', 'cpus_allowed'))))
+                           'mpi_ms_per_step', 'wait_ms_per_step', 'sync',
+                           'threads', 'cpus_allowed'))))
         return
     if args.backend == 'jax':
         _select_device(args.device)
