@@ -227,3 +227,59 @@ and does not bind explicit sharding — it is not grounds to decline the attempt
   lost this way. Use `tr '\r' '\n' | grep -o "rank .*"`, never a `^` anchor,
   on any mpirun stdout from this box.
 
+- **11:45 — the recommended mechanism VERIFIED in code, not assumed.** I told
+  the coordinator to reuse `run_scaling.py`'s pinning rather than reimplement
+  it; before letting that stand I read it. `free_node_map()`
+  (`testsys/perf/run_scaling.py:190`) is already **per-cpu, not whole-node** —
+  fixed 2026-09-18 for exactly this box's behaviour, with the reasoning in its
+  own docstring ("~20-28 foreign single-core jobs with no cpu affinity of
+  their own, so the Linux scheduler smears them across all 8 nodes and no node
+  is ever seen fully idle"). It re-probes fresh on every call, and a per-cpu
+  `require_idle` re-check runs immediately before the mpirun pin. It also
+  already has `--repeats`. So the recommendation stands on read code. This
+  matters because per-NODE selection would NOT work here: cpu 44 and cpu 46
+  are both on NUMA node 5 and measured 7.94 vs 21.22 ms/step — 2.7x apart
+  within one node. Topology (8 nodes x 8 cpus, 2 sockets, no SMT) is not the
+  discriminator; the tenant's per-core occupancy is.
+
+- **11:50 — and the constraint that decides what is measurable in the next 24
+  h: the harness's own strict ceiling cannot select a single cpu today.** Two
+  independent 8 s samples: **0 of 64 cpus under the `--busy-ceiling 0.2`
+  default, both times.** At 0.35 -> 11 then 5 cpus. At 0.45 -> 32 then 28. So
+  a strict-ceiling 16-rank point is IMPOSSIBLE at today's tenancy: it will
+  SKIP, which is exactly what item 33 kept recording ("no 32-core point
+  survived the busy check in any of the 4 attempts"). A valid 16-rank number
+  today needs the ceiling at ~0.45, and that choice must be printed with the
+  number, not buried.
+
+  Set stability, measured because the re-probe design depends on it: between
+  consecutive 8 s samples the under-0.45 set went 6 cpus out, 2 in, 26 stable
+  — ~80% stable over 8 s but drifting, so `free_node_map`'s re-probe-before-pin
+  is necessary. **It is not sufficient, and this is the subtle part:** cpus 46
+  and 47 both sat UNDER 0.45 in the pre-check and still produced the 21.2
+  ms/step stragglers. A pre-sample does not predict a rank's throughput,
+  because the binding constraint is shared memory bandwidth over the run, not
+  cpu occupancy at one instant. **Therefore the per-rank spread must be
+  printed from the run itself. No pre-check can substitute for it.**
+
+## Standing requirements for any scaling number this campaign produces
+
+Derived from the measurements above, not from preference:
+
+1. **Rank count and per-rank element count printed** beside every number. A
+   multi-process harness that silently runs on one rank produces plausible
+   figures (coordinator's concern; it is the right one).
+2. **Per-rank ms/step printed for every rank, plus max/mean.** A 16-rank mean
+   with a 2.68x hidden spread is not a scaling measurement.
+3. **`EFFECTIVE_CORES` = cpu_used/wall per rank.** This is what separates "the
+   rank was starved of cpu" (0.51, fixable by pinning) from "the rank had a
+   full core and was still slow" (1.00, bandwidth, not fixable here).
+4. **The busy ceiling actually used, printed.** 0.2 selects nothing today; a
+   number taken at 0.45 or under `--i-know-the-box-is-busy` is a different
+   claim and must say so.
+5. **Per-step cost by DIFFERENCE over two step counts**, both backends
+   (`88f5227`'s fix — it read 91.25 vs a true 64.74 ms/step at 16 ranks).
+6. **Thread count per rank printed**, per the coordinator — kept even though
+   the hazard retracted above, because the retraction is conditional on
+   binding and the print is what would catch it regressing.
+
