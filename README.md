@@ -1,12 +1,10 @@
 # News in 2026
-* 20260919 v5.12.0 release notes
-  * Fix - **three latent `ntotft>=2` (multi-fault) bugs in the Fortran solver, guarded by new regression tests** (pathway items 7/9/10). Confirmed true no-ops for the `ntotft==1` case every currently-gated benchmark runs. Still not exercisable end-to-end: multi-fault input is refused loudly at `case.setup` (pathway item 17, deferred by owner decision), so these fixes have no gated case to prove them end-to-end yet.
-  * Fix - **CI ran the same commit twice** on any push to a branch with an open PR (`push` and `pull_request` firing independently). Grouped the workflow's concurrency key by head commit so the second run cancels the first instead of both completing (pathway item 35).
-  * Change - **JAX/NumPy core-scaling tooling (item 33): NUMA placement fixed twice more.** `run_scaling.py` now probes per-cpu occupancy fresh per configuration and places work on genuinely free NUMA nodes instead of always starting at node 0, and MPI ranks are pinned via a per-rank `numactl` rankfile rather than relying on `mpirun --bind-to` alone. Cleanest measurement to date: JAX compact placement peaks at 2.52x (16 cores), 1.98x (32 cores); NumPy remains flat (no multi-core benefit) across the same range. The standing "why does JAX plateau past 8 cores" question (scatter-add vs memory-bandwidth) stayed genuinely open after a follow-up microbenchmark's own re-verification found its first result did not reproduce across repeat runs on this shared box -- recorded as NOT SETTLED rather than closed on a single pass.
-  * Refactor - **three-round duplication-trim pass across code comments and session-log docs, no behaviour change.** Round 1 trimmed comment/prose bloat in source; round 2 audited every regression-test guard for a deletable duplicate and found none (each ties to a dated incident); round 3 consolidated restated detail across three older session logs into pointers at `pathway_forward.md`'s own item rows. Net -356 lines across the three rounds (18 files touched total). Each round gated on a fresh full 30/30 `python3 testsys/run.py all` before landing.
-  * Known issue - **`test.tpv30` is not gated: a fault-local equilibrium defect in the `C_elastic=0` (viscoplastic) path, root cause still under investigation.** Its initial on-fault shear at `faultst000dp120`, dx=500 m, reads 33.05 MPa and relaxes 4.3 MPa toward 27.79 MPa over the first ~2 s of simulated time. The owner's own three published TPV30 submissions (100/50/25 m) all read a stable, resolution-independent ~27.8-27.9 MPa with NO comparable relaxation -- ruling out a coarse-mesh discretization artifact (which would grow with element size) as the explanation. See `pathway_forward.md` items 39/19(b) for the full, still-evolving investigation record.
-  * Known issue - **grid-scale on-fault stress ringing at 500 m is still not damped** -- the one alternative hourglass control this code ships (`C_hg=2`) over-damps the rupture itself instead of selectively suppressing the mesh-scale mode (unchanged from v5.11.1). See `pathway_forward.md` item 34.
-  * CORRECTION - **the Docker image did NOT actually publish for v5.12.0.** The tag's publish run (`publish.yml`) failed its own pre-push gate: `test_stress_i0_carry_aliasing.py` (item 41's guard) exercises both backends, and the image deliberately ships without jax (`Dockerfile:25-27`) -- neither change was wrong on its own, they simply had not met until this tag. `test.yml`'s main test tier is unaffected and stayed green throughout; only the container did not ship. Fix (`9d1977d`: add jax to `publish.yml`'s CI-only gate overlay) verified via `workflow_dispatch` (build+gate, no push) without burning a second tag; it rides the next tag. Same pattern as v5.8.3/v5.8.4 -- a release whose code is fine but whose image needs a follow-up tag to actually publish.
+* 20260921 v5.13.1 release notes
+  * Fix - **v5.13.0 shipped with no version bump at all, so its tagged tree declares itself 5.12.0 at runtime.** No commit in `v5.12.0..v5.13.0` touched `VERSION` (`git log --oneline v5.12.0..v5.13.0 -- VERSION` is empty), and the runtime banner and README's News block were stale to match, so a v5.13.0 binary prints `Welcome to EQdyna 5.12.0` and misattributes every run to the previous release. The tag is annotated and pushed and is **not** being re-pointed (rule 8): v5.13.0's tree stays permanently self-inconsistent, and that is recorded here and in `pastReleaseNotes.md` rather than hidden. v5.13.1 is the next tag whose tree names its own version again. v5.13.0 also never got a GitHub Release object (`gh release view v5.13.0` -> `release not found`), so the Releases page skips from v5.12.0 to v5.13.1.
+  * Fix - **`test_release_complete.py` could not see that failure, by construction -- the more important half of this release.** It keyed every check off `VERSION` and SKIPPED entirely when no tag matched it, so the only direction it tested was "VERSION ahead of the tags". The direction that failed was the mirror image: VERSION *behind* an already-released tag. At `b014178` the guard was green throughout, re-verifying v5.12.0 -- a release that was already complete -- and never looked at v5.13.0. New check `check_version_not_behind_newest_tag` compares `VERSION` against the highest semver tag reachable from HEAD (`git tag --merged HEAD`, so an unmerged maintenance tag is not a false positive) and runs **before and independently of** the skip. A dropped bump now fails the cheap regression tier at the first commit after the tag instead of surviving to the next release.
+  * Docs - **README's sweep counts corrected against the code, not against other docs.** The sweep is 10 cases x 3 backends = **30 cells** (`nameList` in `testNameList.py` at the repo root, `len(matrix.CASE_BOUND)`), not the 8 x 3 = 24 README claimed; CI gates **25 of 30** (`len(matrix.CI_CELLS)`), not 19 of 24 -- `testsys/matrix.py`'s own closing comment already said 25 of 30 while README said otherwise. The e2e-ci job descriptions now match `.github/workflows/test.yml`: the two fortran groups pass **5 cases each of 10** (`test.yml:184`, `:228`, both named in full), and the cheap python group also runs `test.tpv36`/`test.tpv37` on both python backends (`test.yml:275`), which README omitted entirely. `test.tpv36`/`test.tpv37` are also now named beneath the benchmark table, which lists 8 of the 10 cases.
+  * Docs - **the "~1100 s" full-sweep figure was a 24-cell-era number with no provenance (rule 6), and is replaced by measurements that name their source.** The three most recent recorded 30-cell sweeps on this box: 2263.3 s (v5.11.0's gate, `docs/SESSION_LOG_2026-09-17_v5.10.0-followon.md:689`), 2171.3 s (2026-09-19, reused as v5.12.0's gate), 2123.2 s (v5.10.0's gate). The spread, not any one figure, is the number -- wall clock on this shared box tracks other tenants' load (`pathway_forward.md` item 42). Two unmeasured timings (`test.tpv36`/`test.tpv37` per-backend fast-tier seconds) are recorded as unmeasured rather than estimated.
+  * Note - **v5.13.0's own contents are written up retroactively in `pastReleaseNotes.md`**, since that tag shipped without notes: refactor rounds 4, 5 and 6 (round 5 a provable no-op -- AST-identical after docstring strip; round 6 byte-identical across all three batch-script writers); `run_scaling.py`'s Fortran metric-bias fix; the tpv36/tpv37 symlink-coupling regression guard plus `PROJECT_RULES.md` rule 18; and the `publish.yml` fix for v5.12.0's Docker image never publishing. No physics changed and no reference was regenerated in v5.13.0 or in v5.13.1.
   * For past release notes, please refer to pastReleaseNotes.md.
 
 
@@ -62,13 +60,18 @@ JAX), and every cell is compared against the same committed reference for that
 case, at that case's one tolerance. The run prints which cells it covered and
 which it did not, so a green result states its own scope. CI runs the subset
 this table declares memory-safe (`testsys/matrix.py`'s `CI_CELLS` /
-`MEASURED_PEAK_RSS_GB`, 19 of 24 cells as of 2026-09-16), split across
-parallel jobs so each cell group gets its own 7 GB runner rather than sharing
-one, and so no case queues behind another that does not need to
+`MEASURED_PEAK_RSS_GB`, 25 of 30 cells as of 2026-09-21 -- `len(matrix.CI_CELLS)`
+is the number, and `testsys/matrix.py`'s own closing comment states it), split
+across parallel jobs so each cell group gets its own 7 GB runner rather than
+sharing one, and so no case queues behind another that does not need to
 (`.github/workflows/test.yml`: `build`, then `unit-regression`
-[`testsys/run.py unit regression`]; `e2e-ci-fortran-a`/`-b`
-[`testsys/e2e/run_e2e.py --ci --backends fortran --cases <4 of the 8>` each];
-`e2e-ci-python-cheap` [tpv8 both backends + tpv10/tpv104/tpv1053d x jax];
+[`testsys/run.py unit regression`]; `e2e-ci-fortran-a`
+[`--backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8,test.tpv37`]
+and `e2e-ci-fortran-b`
+[`--backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36`]
+-- 5 of the 10 cases each;
+`e2e-ci-python-cheap` [tpv8 both backends + tpv10/tpv104/tpv1053d x jax +
+tpv36/tpv37 both backends];
 `e2e-ci-python-meng` [meng2023a/meng2023cb both backends + tpv29 x jax]; and
 `e2e-ci-python-tpv29` [tpv29 x python-numpy alone -- 1711 s measured locally,
 an order of magnitude past every other python cell, isolated so its
@@ -90,6 +93,14 @@ their jax columns are the ones now in CI).
 | [test.meng2023a](case_input/test.meng2023a/README.md) | layered velocity structure | internal | 400m/4/49.7/400.1/99.0 | excluded (no published spec) |
 | [test.meng2023cb](case_input/test.meng2023cb/README.md) | layered velocity, multi-patch | internal | 400m/4/50.7/346.3/113.9 | excluded (no published spec) |
 | [test.tpv29](case_input/test.tpv29/README.md) | strike-slip, fractal rough fault | [TPV29](https://strike.scec.org/cvws/tpv29_30docs.html) | 500m/4/148.3/1108.5/229.4 | 50m/20s |
+
+`test.tpv36` and `test.tpv37` are the ninth and tenth gated cases (dipping
+thrust, wedge degeneration; `abs-max` gate at 1e-6, registered 2026-09-17 at
+v5.10.0) and are absent from the table above only because their per-backend
+fast-tier wall times have never been recorded as a sweep measurement -- an
+unrecorded number is left unrecorded rather than estimated (rule 6).
+`testsys/matrix.py` is the authoritative cell list: 10 cases, `CASE_BOUND` and
+`GATE` per case.
 
 # Environment
 *Optional (Python solver on GPU)*: `pip install "jax[cuda12]"` — the Python solver (`python3 -m eqdyna <case_dir> --backend jax`) then runs on NVIDIA GPUs; verify with `python3 testsys/run.py gpu`.
@@ -118,10 +129,12 @@ chmod 755 install-eqdyna.sh
 ./install-eqdyna.sh -m ubuntu # ubuntu/ls6/macos
 export EQDYNAROOT=$(pwd)
 PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-python3 testsys/run.py all # unit + regression + the sweep: 8 cases x 3 backends
+python3 testsys/run.py all # unit + regression + the sweep: 10 cases x 3 backends
                            # (fortran, python-numpy, python-jax) against one
-                           # canonical reference each, 24 cells.
-                           # Cells run concurrently; ~1100 s on a 64-core box.
+                           # canonical reference each, 30 cells.
+                           # Cells run concurrently. The three most recent
+                           # recorded 30-cell sweeps on this 64-core box took
+                           # 2263.3 s, 2171.3 s and 2123.2 s wall clock.
                            # It prints which cells it ran, so a pass states its scope.
 ```
 For bash, please insert the following lines in .bashrc
@@ -162,10 +175,16 @@ the cells that fit a 7 GB runner):
 | test.tpv1053d | -- | 3.95 GB |
 | test.drv.a6 | -- | 9.57 GB |
 
-**Full sweep**: 24 cells in ~1100 s wall clock at `--jobs 16` on this 64-core
-box (`python3 testsys/e2e/run_e2e.py --jobs 16`). Cells are independent and
-each uses about one core, so sweep throughput comes from running many at once,
-not from scaling one cell.
+**Full sweep**: 30 cells. The three most recent recorded sweeps on this
+64-core box, each a release gate run of `python3 testsys/run.py all`, took
+**2263.3 s** (v5.11.0's gate, `docs/SESSION_LOG_2026-09-17_v5.10.0-followon.md:689`),
+**2171.3 s** (2026-09-19, reused as v5.12.0's gate) and **2123.2 s** (v5.10.0's
+gate). Wall clock varies with this box's foreground load, which other tenants
+supply -- see `pathway_forward.md` item 42 -- so treat the spread, not any one
+figure, as the number. The older "24 cells in ~1100 s" claim here was a
+24-cell-era figure carrying no provenance and has been dropped rather than
+rescaled. Cells are independent and each uses about one core, so sweep
+throughput comes from running many at once, not from scaling one cell.
 
 **Core scaling of a single jax-CPU run is NOT currently characterised.** One
 ratio is measured on current code -- 193 ms/step on 1 core vs 13.8 ms/step

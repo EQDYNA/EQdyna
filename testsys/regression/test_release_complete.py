@@ -23,9 +23,22 @@ nor should a regression tier fail because a laptop is offline: an unverifiable
 network check prints UNVERIFIED and does not affect the exit code, while every
 local check is mandatory.
 
-A version still in development trips none of this: the guard SKIPS entirely
-unless a tag for VERSION already exists, so it fires on released versions and
-stays quiet while VERSION is ahead of the tags.
+A version still in development trips none of the checks above: they SKIP unless
+a tag for VERSION already exists, so they fire on released versions and stay
+quiet while VERSION is ahead of the tags.
+
+THAT SKIP IS WHAT LET v5.13.0 THROUGH, so one check now runs before it and
+always. Keying everything off VERSION tested exactly one direction -- VERSION
+ahead of the tags -- and the direction that failed for real was the mirror
+image: v5.13.0 was tagged, annotated and pushed 21 commits past v5.12.0 with
+NO commit touching VERSION, so the tagged tree printed "Welcome to EQdyna
+5.12.0" and this guard was green the whole time, cheerfully re-verifying
+v5.12.0, a release that was already complete. A guard that reports on the
+version named in a file cannot see a release that the file was never told
+about. `check_version_not_behind_newest_tag` compares VERSION against the
+highest semver tag REACHABLE FROM HEAD and runs unconditionally, so a dropped
+bump fails the cheap tier at the first commit after the tag instead of
+surviving to the next release.
 
 Cheap (rule 9): file reads plus at most two short `gh` calls.
 """
@@ -49,6 +62,67 @@ def _git(*args):
 def tag_exists(v):
     rc, out = _git('tag', '-l', 'v' + v)
     return rc == 0 and out.strip() == 'v' + v
+
+
+def newest_reachable_tag():
+    """The highest semver `vX.Y.Z` tag reachable from HEAD, as a tuple, or
+    None if this history carries no release tag at all.
+
+    `--merged HEAD` deliberately, not `git tag -l`: a tag on some branch this
+    tree is not descended from says nothing about whether THIS tree declares
+    its own version correctly, and failing on one would be a false positive on
+    any maintenance branch.
+    """
+    rc, out = _git('tag', '--merged', 'HEAD', '-l', 'v*')
+    if rc != 0:
+        return None
+    best = None
+    for line in out.splitlines():
+        m = re.match(r'^v(\d+)\.(\d+)\.(\d+)$', line.strip())
+        if not m:
+            continue                       # -rc/-dev and other non-releases
+        t = tuple(int(g) for g in m.groups())
+        if best is None or t > best:
+            best = t
+    return best
+
+
+def check_version_not_behind_newest_tag(v):
+    """VERSION must not be BEHIND a tag that is already released.
+
+    The direction every other check in this file is blind to. v5.13.0 was
+    annotated, pushed and 21 commits past v5.12.0 with no commit touching
+    VERSION, so the tagged tree announced itself as 5.12.0 at runtime while
+    this guard read VERSION, found v5.12.0 released and complete, and passed.
+
+    Runs before -- and independently of -- the `tag_exists(VERSION)` skip,
+    because that skip is precisely the hole: "no tag for VERSION" was read as
+    "in development" without ever asking whether a LATER tag exists.
+    """
+    newest = newest_reachable_tag()
+    if newest is None:
+        print('  SKIP  no vX.Y.Z tag reachable from HEAD -- nothing released '
+              'for VERSION to be behind')
+        return
+    m = re.match(r'^(\d+)\.(\d+)\.(\d+)$', v)
+    if not m:
+        raise AssertionError('VERSION is %r, not a bare X.Y.Z semver -- every '
+                             'check here and the release tag name derive from '
+                             'it' % v)
+    mine = tuple(int(g) for g in m.groups())
+    newest_s = '%d.%d.%d' % newest
+    if mine < newest:
+        raise AssertionError(
+            'VERSION says %s but v%s is already released and reachable from '
+            'HEAD. That release\'s tree declares itself as an OLDER version: '
+            'the runtime banner, README and VERSION all name %s, so a v%s '
+            'binary misattributes every run to %s. This is the v5.13.0 '
+            'failure -- the bump was dropped, not deliberately held, and a '
+            'pushed tag cannot be re-pointed (rule 8). Bump VERSION, the '
+            'banner and README together (rule 11) and cut the next patch.'
+            % (v, newest_s, v, newest_s, v))
+    print('  PASS  VERSION %s is not behind the newest reachable tag (v%s)'
+          % (v, newest_s))
 
 
 def check_banner_matches(v):
@@ -187,20 +261,32 @@ def check_network_side(v):
 def main():
     v = version()
     print('Regression guard: release completeness for VERSION %s' % v)
-    if not tag_exists(v):
-        print('  SKIP  no tag v%s yet -- VERSION is ahead of the tags, so this '
-              'is a version in development, not a half-finished release.' % v)
-        print('\nSUCCESS test_release_complete (nothing released to check)')
-        return 0
     failures = []
-    for c in (check_banner_matches, check_readme_news_leads_with_this_version,
-              check_pathway_tasks_done_row, check_tag_is_annotated,
-              check_network_side):
-        try:
-            c(v)
-        except AssertionError as e:
-            failures.append('%s: %s' % (c.__name__, e))
-            print('  FAIL  %s: %s' % (c.__name__, e))
+
+    # UNCONDITIONAL, and before the skip. Every other check reports on the
+    # version VERSION names; this one is the only one that can see a release
+    # VERSION was never told about, which is what v5.13.0 was.
+    try:
+        check_version_not_behind_newest_tag(v)
+    except AssertionError as e:
+        failures.append('check_version_not_behind_newest_tag: %s' % e)
+        print('  FAIL  check_version_not_behind_newest_tag: %s' % e)
+
+    if not tag_exists(v):
+        print('  SKIP  no tag v%s yet -- VERSION is ahead of every reachable '
+              'tag, so this is a version in development, not a half-finished '
+              'release. The check above already ruled out the other '
+              'direction.' % v)
+    else:
+        for c in (check_banner_matches,
+                  check_readme_news_leads_with_this_version,
+                  check_pathway_tasks_done_row, check_tag_is_annotated,
+                  check_network_side):
+            try:
+                c(v)
+            except AssertionError as e:
+                failures.append('%s: %s' % (c.__name__, e))
+                print('  FAIL  %s: %s' % (c.__name__, e))
     if failures:
         print('\nFAIL test_release_complete (%d check(s))' % len(failures))
         return 1
