@@ -87,7 +87,9 @@ fail, they were testing the fallback.
 Named commands, named pass criteria:
 
 - Build: `cd src/fortran && make` (via `./install-eqdyna.sh -m <machine>`) must exit 0.
-- Test: `python3 testsys/run.py all` — the sweep (8 cases x 3 backends).
+- Test: `python3 testsys/run.py all` — the sweep (10 cases x 3 backends = 30
+  cells, as of 2026-09-21; the table itself is `testsys/matrix.py`, which is
+  authoritative over this count).
   Pass means every
   printed line for every `testid` in `testNameList.nameList` reads `SUCCESS`,
   with **no** `FAIL` string, for every file in `fileNameList`.
@@ -151,10 +153,22 @@ unfalsifiable against the current `src/`.
 
 ## 7. Reference data is read-only
 
-`test.reference.results/` (`test.drv.a6`, `test.meng2023a`, `test.meng2023cb`,
-`test.tpv10`, `test.tpv104`, `test.tpv1053d`, `test.tpv29`, `test.tpv8` — one
-`frt.canonical.txt` per case) is ground truth. Nothing writes through it —
-not the sweep, not a debug run, not manually.
+`test.reference.results/` is ground truth — one `frt.canonical.txt` per case.
+Nothing writes through it — not the sweep, not a debug run, not manually.
+As of 2026-09-21 it holds 11 case directories, and the enumeration below is a
+reader's aid, not the authority: `ls test.reference.results/` is.
+
+- The 10 GATED cases, every one of them covered by this rule: `test.drv.a6`,
+  `test.meng2023a`, `test.meng2023cb`, `test.tpv10`, `test.tpv104`,
+  `test.tpv1053d`, `test.tpv29`, `test.tpv8`, and — added when they were
+  gated in v5.9.0/v5.10.0 and read-only on exactly the same terms as the
+  other eight — `test.tpv36` and `test.tpv37`.
+- `test.tpv30` is an eleventh committed reference belonging to a case that is
+  DELIBERATELY NOT REGISTERED in `testNameList.py`/`matrix.py` (pathway item
+  19(b): an unresolved fault-local equilibrium defect in the `C_elastic=0`
+  path). Being ungated does not make it writable: it is the frozen artifact
+  that investigation's evidence is measured against, so it is read-only for
+  the same reason as the rest. Do not regenerate it to close the divergence.
 
 **Rationale**: `check.test.py` sets `refRoot='test.reference.results'` and
 `testRoot='test'` as two distinct trees precisely so a run's scratch output
@@ -192,8 +206,9 @@ will otherwise overwrite `test.prev/`.
 
 `testNameList.py` already sequences small, fast, low-core cases
 (`test.drv.a6`, `test.tpv8`, `test.tpv10`, `test.tpv104`, `test.tpv1053d`,
-`test.meng2023a`, `test.meng2023cb`, `test.tpv29` — 4 ranks each) ahead of any
-HPC-scale allocation.
+`test.meng2023a`, `test.meng2023cb`, `test.tpv29`, `test.tpv36`,
+`test.tpv37` — 10 cases, 4 ranks each, in that order) ahead of any HPC-scale
+allocation. Read the order from `testNameList.nameList`, not from this list.
 
 **Rationale**: a TPV36-class run at 512 cores on Lonestar6 costs hours of
 allocation; a mesh, friction-law, or I/O regression is almost always visible
@@ -297,7 +312,11 @@ first, and re-run the cited command rather than trusting the recorded line.
 The release workflow, in order:
 
 1. Green gate first (rule 3): `./install-eqdyna.sh -m ubuntu` exits 0 and
-   `python3 testsys/run.py all` reports 24/24 cells SUCCESS. Never tag over a
+   `python3 testsys/run.py all` reports every cell in the table SUCCESS —
+   30/30 as of 2026-09-21 (10 cases x 3 backends). The number is
+   `len(matrix.CASE_BOUND) * 3`, not a constant in this rule: a releaser who
+   accepts a green count smaller than the current table has accepted a
+   partial sweep. Never tag over a
    red gate, and never tag before CI is green on the pushed commit (rule 15).
 2. Bump `VERSION`.
 3. Release notes: add a `* YYYYMMDD vX.Y.Z release notes` block under a
@@ -397,8 +416,10 @@ the code did not support.
 **Second incident, v5.6.0**: the commit was complete, the tree was clean, and
 the commit itself was re-verified in a fresh worktree — and CI still went red.
 The gate had been run by invoking the tiers directly (`testsys/run.py e2e` with
-`EQDYNA_E2E_BIN=src/eqdyna`, and `make eqdyna` by name), while CI runs
-`./install-eqdyna.sh -m ubuntu` and then `testsys/run.py unit regression e2e-ci`.
+`EQDYNA_E2E_BIN=src/eqdyna`, and `make eqdyna` by name), while CI at the time
+ran `./install-eqdyna.sh -m ubuntu` and then
+`testsys/run.py unit regression e2e-ci` (CI's shape as of v5.6.0; today's
+seven-job layout is below).
 A change to
 `src/makefile` made a BARE `make` stop producing a binary, which only the
 install path exercises. Testing the right commit is not enough if you invoke it
@@ -411,19 +432,48 @@ with the full list read back from the diff, or `git add -u` scoped to the
 directories the change touched.
 
 Before pushing a release, run CI's own entry point, not a convenient subset of
-it — read `.github/workflows/test.yml` and reproduce the commands verbatim:
+it — read `.github/workflows/test.yml` and reproduce the commands verbatim.
 
-    ./install-eqdyna.sh -m ubuntu
+**CI is not one invocation, and no single command reproduces it.** As of
+2026-09-21 it is SEVEN parallel jobs (`build`, `unit-regression`,
+`e2e-ci-fortran-a`, `e2e-ci-fortran-b`, `e2e-ci-python-cheap`,
+`e2e-ci-python-meng`, `e2e-ci-python-tpv29`), and the e2e jobs call
+`run_e2e.py --ci` directly — CI never runs `run.py e2e-ci`, and never runs
+`run.py unit regression e2e-ci` as one line. What it actually runs, with the
+line of `test.yml` each command sits on:
+
+    ./install-eqdyna.sh -m ubuntu                                           # :65
     export EQDYNAROOT=$(pwd); export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-    python3 testsys/run.py unit regression e2e-ci
+    python3 testsys/run.py unit regression                                  # :135
+    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8,test.tpv37        # :184
+    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36 # :228
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax                                        # :273
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax                          # :274
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36,test.tpv37 --backends python-numpy,python-jax                            # :275
+    python3 testsys/e2e/run_e2e.py --ci --cases test.meng2023a,test.meng2023cb --backends python-numpy,python-jax                   # :313
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-jax                                                    # :314
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-numpy                                                  # :354
 
-That last line is what `.github/workflows/test.yml:64` actually runs, and it
-is NARROWER than `run.py all`: `e2e-ci` runs `matrix.CI_CELLS`, 10 of the 24
-cells, because the rest do not fit a 7 GB runner. Run `run.py all` too — it is
-the wider local gate and the one that speaks for the whole table — but do not
-mistake it for a reproduction of CI. This rule was itself wrong about this
-until 2026-09-16, telling the reader to reproduce CI with a command CI does
-not run: the exact substitution it exists to forbid.
+Those line numbers move; re-read the workflow rather than trusting them, and
+note the python jobs also export thread-pinning env vars in the same step.
+
+The union of the `--ci` invocations is `matrix.CI_CELLS`, **25 of the 30
+cells** as of 2026-09-21 — the remaining 5 do not fit a 7 GB runner. That
+union is proved mechanically by
+`testsys/regression/test_ci_workflow_coverage.py`, which is authoritative over
+any count written in prose, this rule's included. `run.py e2e-ci` is a local
+convenience that runs the same cell list; it is not what CI invokes, so a
+green `run.py e2e-ci` is a close model of CI, not a reproduction of it. Run
+`run.py all` too — it is the wider local gate and the one that speaks for the
+whole table — but do not mistake it for CI either.
+
+This rule was wrong about its own subject twice. On 2026-09-16 it told the
+reader to reproduce CI with a command CI does not run — the exact substitution
+it exists to forbid. The 2026-09-16 correction then left behind a claim that
+`test.yml:64` runs `run.py unit regression e2e-ci`; :64-65 is the BUILD step,
+and that single line appears nowhere in the workflow. Corrected 2026-09-21
+against the file itself. A rule whose whole purpose is quoting CI verbatim has
+to be re-read against CI whenever CI's job layout changes.
 
 Shortcuts like `EQDYNA_E2E_BIN=src/eqdyna` exist to keep a gate from disturbing
 a running job; they skip the build-and-install path, so a green run under them
