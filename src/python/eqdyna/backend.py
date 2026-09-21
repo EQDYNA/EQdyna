@@ -307,6 +307,349 @@ def run_time_loop(xp, build_step, inv, carry, n):
     return out
 
 
+# ---------------------------------------------------------------------------
+# EXPLICIT DOMAIN DECOMPOSITION (shard_map) -- what MPI does, in jax
+#
+# Fortran runs one rank per subdomain, assembles its own elements, and calls
+# MPI4NodalQuant(nodalForceArr, 3) (driver.f90:27) to sum contributions at
+# nodes shared between ranks. This section is that, with N host CPU devices
+# standing in for N ranks:
+#
+#   ranks           -> jax.sharding.Mesh over N CPU devices
+#   subdomain       -> a contiguous slab of the ELEMENT arrays, sharded on
+#                      their leading axis inside shard_map
+#   MPI4NodalQuant  -> nodal_sync() below, a collective at the same point in
+#                      the step that driver.f90 calls MPI4NodalQuant
+#
+# The element kernel is UNCHANGED: assembleGlobalKU.py and faulting.py do not
+# know this exists. What the decomposition needs from them is only that every
+# element-axis array be sharded consistently, which is what _ELEM_GROUP
+# declares, and that the nodal sum happen once per step, which is the one
+# line added to driver.step.
+#
+# WHAT THIS DOES *NOT* DECOMPOSE, and it is the measured ceiling: the NODAL
+# stages (velDispUpdate, faulting, the mass divide) stay REPLICATED -- every
+# device computes all of them on the full nodal arrays. That is correct
+# (every device holds the same post-collective force, so it computes the same
+# nodal answer) and it is why the collective can be a plain psum. It also
+# caps the speedup at Amdahl's law on the nodal fraction. See
+# testsys/perf/run_shard_scaling.py for the measurement, and the session
+# report for why the halo variant needs local equation renumbering to beat it.
+# ---------------------------------------------------------------------------
+
+SHARD_AXIS = 'd'          # the mesh axis name; 'ranks', spelled for jax
+_DEVICES_ENV = 'EQDYNA_JAX_DEVICES'
+_host_devices = None      # set once by _configure_host_devices at import
+
+# Which leading-axis count each element-axis array in assembleGlobalKU.build's
+# dict is indexed by. EVERY key in that dict must appear here or in
+# _REPLICATED: _split_sharded raises on an unclassified key rather than
+# guessing, because guessing wrong means an array sharded that should be
+# replicated (wrong answer, no error) or the reverse (shape error at best).
+_ELEM_GROUP = {
+    # interior elements (Ei)
+    'lam_i': 'Ei', 'miu_i': 'Ei', 'dNx_i': 'Ei', 'dNy_i': 'Ei', 'dNz_i': 'Ei',
+    'constk_w_i': 'Ei', 'conn_i': 'Ei', 'idxIx': 'Ei', 'idxIy': 'Ei',
+    'idxIz': 'Ei', 'm_e_i': 'Ei', 'stress_i0': 'Ei',
+    # PML elements (Ep)
+    'lam_p': 'Ep', 'miu_p': 'Ep', 'dNx_p': 'Ep', 'dNy_p': 'Ep', 'dNz_p': 'Ep',
+    'det_w_p': 'Ep', 'wx_p': 'Ep', 'wy_p': 'Ep', 'wz_p': 'Ep',
+    'neg_det_w_p': 'Ep', 'conn_p': 'Ep', 'a1': 'Ep', 'a2': 'Ep', 'a3': 'Ep',
+    'b1': 'Ep', 'b2': 'Ep', 'b3': 'Ep', 'idxP12': 'Ep', 'idxP3': 'Ep',
+    'm_e_p': 'Ep', 'pml_init6': 'Ep',
+    # all elements (E) -- hourglass control runs over every element
+    'conn': 'E', 'phi': 'E', 'ss': 'E', 'idxH0': 'E', 'idxH1': 'E', 'idxH2': 'E',
+}
+
+# Nodal or scalar: identical on every device.
+_REPLICATED = (
+    'N', 'dt', 'rdampk', 'NEQ', 'NEQ1', 'int_nodes_idx', 'idx3_v',
+    'pml_nodes_idx', 'idx12_v', 'a9', 'b9', 'Ei', 'Ep', 'E', 'C_elastic',
+    'grav_const', 'ccosphi', 'sinphi', 'tv', 'shard_axis', 'shard_sync',
+)
+
+# The NODE-axis arrays velDispUpdate loops over. Sharding these as well is a
+# MEASUREMENT MODE ONLY (EQDYNA_SHARD_MODE=element+nodal) and it computes the
+# WRONG ANSWER: each device would then update only its own slice of the nodal
+# arrays, so every device's velArr/dispArr is valid on its own nodes and stale
+# elsewhere, while the next step's element kernel gathers velocities at the
+# nodes of ITS elements -- which include nodes another device owns. Making it
+# correct is exactly the halo problem (own + ghost node lists per device, and
+# a boundary exchange instead of a full psum); this mode exists to measure
+# what that would BUY before paying for it, and driver.run refuses to write
+# output under it. Group lengths come from the arrays themselves, not from a
+# second count that could drift.
+_NODAL_GROUP = {'int_nodes_idx': 'Nint', 'idx3_v': 'Nint',
+                'pml_nodes_idx': 'Npml', 'idx12_v': 'Npml',
+                'a9': 'Npml', 'b9': 'Npml'}
+_PAD_ONE_NODAL = ('b9',)
+MODE_ENV = 'EQDYNA_SHARD_MODE'
+SYNC_ENV = 'EQDYNA_SHARD_SYNC'
+MODES = ('element', 'element+nodal')
+SYNCS = ('psum', 'none')
+
+# Index arrays that build() stores already .ravel()ed to (n*8,). They must be
+# (n, 8) to be sharded on the element axis, and are ravelled back to (n_local*8,)
+# INSIDE the shard_map body -- so the kernel sees exactly what it sees serially,
+# and the scatter's within-device index order is unchanged.
+_RAVELLED = ('idxIx', 'idxIy', 'idxIz', 'idxH0', 'idxH1', 'idxH2',
+             'idxP12', 'idxP3')
+
+# Padded-element fill. Zero everywhere makes a pad element contribute EXACTLY
+# 0.0 (dN=0 -> every block is 0.0, and the scatter target is index 0, the sink
+# that calcHourglassResist already scrubs), so padding cannot move a bit.
+# EXCEPT the three PML divisors b1/b2/b3: calcPMLElemKU divides by them, and
+# 0/0 is NaN, which would propagate through the scatter. They pad with 1.0.
+_PAD_ONE = ('b1', 'b2', 'b3') + _PAD_ONE_NODAL
+
+
+def shard_mode():
+    """'element' (default, correct) or 'element+nodal' (timing only)."""
+    import os
+    m = os.environ.get(MODE_ENV, 'element')
+    if m not in MODES:
+        raise ValueError('%s=%r: must be one of %r' % (MODE_ENV, m, MODES))
+    return m
+
+
+def shard_sync():
+    """'psum' (default, correct) or 'none' (collective removed; timing only).
+
+    'none' exists to ATTRIBUTE the step cost: the difference between the two
+    is the collective, measured rather than inferred. It computes the wrong
+    answer -- each device keeps only its own elements' partial nodal sums --
+    so it is refused for anything that writes results."""
+    import os
+    s = os.environ.get(SYNC_ENV, 'psum')
+    if s not in SYNCS:
+        raise ValueError('%s=%r: must be one of %r' % (SYNC_ENV, s, SYNCS))
+    return s
+
+
+def timing_only():
+    """True when a knob is set that makes the ANSWER invalid but the TIMING
+    valid. Callers that persist results must refuse, or mark, the output."""
+    return shard_mode() != 'element' or shard_sync() != 'psum'
+
+
+def jax_device_count():
+    """How many CPU devices the decomposition was asked for. 1 = serial.
+
+    NO FALLBACK: a non-integer or <1 value raises. Silently running serial
+    after being asked for 16 devices would put a 1-core number in a scaling
+    table under a 16-core label."""
+    import os
+    raw = os.environ.get(_DEVICES_ENV)
+    if raw is None:
+        return 1
+    n = int(raw)   # ValueError on garbage, deliberately uncaught
+    if n < 1:
+        raise ValueError('%s=%r: device count must be >= 1' % (_DEVICES_ENV, raw))
+    return n
+
+
+def _configure_host_devices():
+    """Turn EQDYNA_JAX_DEVICES=N into N host CPU devices, BEFORE jax imports.
+
+    `--xla_force_host_platform_device_count` is read by XLA when the CPU
+    backend is first INITIALISED (the first jax.devices()), not when jax is
+    imported -- so `import jax` having happened already is harmless, but a
+    prior jax.devices() is not: the flag becomes a silent no-op and the run
+    reports N-core timings for a 1-device execution.
+
+    That case is not detected here (there is no public "is the backend up"
+    predicate, and guessing from sys.modules rejected legitimate callers --
+    eqdyna3d imports jax before the solver runs). It is caught instead where
+    it is exactly checkable: array_module compares jax.devices() against the
+    count requested and raises. One check, at the only point where the answer
+    is knowable.
+
+    Called ONCE at the bottom of this module, i.e. at `import eqdyna.backend`,
+    which is the earliest moment the package can act and is before any
+    eqdyna module touches jax (eqdyna3d.Profile initialises the jax backend
+    inside run_case, which is why doing this from array_module was too late).
+    Idempotent: the second call returns the first answer instead of appending
+    the flag twice."""
+    import os
+    global _host_devices
+    if _host_devices is not None:
+        return _host_devices
+    n = jax_device_count()
+    if n == 1:
+        _host_devices = 1
+        return 1
+    cur = os.environ.get('XLA_FLAGS', '')
+    if 'xla_force_host_platform_device_count' in cur:
+        raise RuntimeError(
+            'XLA_FLAGS already sets xla_force_host_platform_device_count (%r) '
+            'and %s=%d also asks for it. Two authorities for the device count '
+            'is one too many -- pass it exactly one way.' % (cur, _DEVICES_ENV, n))
+    os.environ['XLA_FLAGS'] = (cur + ' --xla_force_host_platform_device_count=%d' % n).strip()
+    _host_devices = n
+    return n
+
+
+def nodal_sync(xp, inv, arr):
+    """driver.f90:27's MPI4NodalQuant(nodalForceArr, 3).
+
+    Serial (shard_axis None): identity, no copy, no collective -- the serial
+    path is bit-for-bit what it was before this existed.
+
+    Sharded: an all-reduce over the device mesh. Each device has assembled
+    only ITS elements, so a node shared between subdomains holds a partial
+    sum on each device that touches it; psum makes every device's nodal array
+    the complete one, which is the postcondition every later stage
+    (velDispUpdate, faulting, the mass divide) relies on.
+
+    This is an O(NEQ) all-reduce where MPI moves O(boundary). Measured on
+    test.tpv104 (NEQ+1 = 3.82e6 doubles = 30.5 MB): 14.8 ms at 4 devices,
+    18.0 at 8, 19.4 at 16 -- see testsys/perf/run_shard_scaling.py."""
+    axis = inv['shard_axis']
+    if axis is None:
+        return arr
+    if inv['shard_sync'] == 'none':
+        return arr                      # timing-only; see shard_sync()
+    import jax
+    return jax.lax.psum(arr, axis_name=axis)
+
+
+def _pad_to(a, n, fill):
+    """`a` extended along axis 0 to length n with `fill`."""
+    if a.shape[0] == n:
+        return a
+    pad = [(0, n - a.shape[0])] + [(0, 0)] * (a.ndim - 1)
+    return np.pad(np.asarray(a), pad, constant_values=fill)
+
+
+def pad_counts(inv, ndev):
+    """{group: padded length} -- each group's count rounded UP to a multiple
+    of ndev, because shard_map requires the sharded axis to divide evenly."""
+    raw = {'Ei': int(inv['Ei']), 'Ep': int(inv['Ep']), 'E': int(inv['E']),
+           'Nint': int(inv['int_nodes_idx'].shape[0]),
+           'Npml': int(inv['pml_nodes_idx'].shape[0])}
+    return {g: -(-n // ndev) * ndev for g, n in raw.items()}
+
+
+def _prep(key, v, ndev, counts, groups):
+    """One inv value, host-side, ready to be sharded: element-axis arrays
+    un-ravelled to (n, 8) where build() had flattened them, then padded."""
+    n = counts[groups[key]]
+    fill = 1.0 if key in _PAD_ONE else 0
+    if key in _RAVELLED:
+        v = np.asarray(v).reshape(-1, 8)
+    return _pad_to(np.asarray(v), n, fill)
+
+
+def _split_sharded(inv, ndev, counts, groups):
+    """(dynamic, static, specs) for the sharded path.
+
+    Unlike promote(), EVERY array is dynamic here -- an element-axis array
+    closed over as an HLO literal would enter the manual region at its GLOBAL
+    shape and could not be sharded at all. Raises on any key that is in
+    neither table: a new entry in build()'s dict must be classified
+    deliberately, not defaulted."""
+    from jax.sharding import PartitionSpec as P
+    unknown = [k for k in inv if k not in groups and k not in _REPLICATED]
+    if unknown:
+        raise KeyError(
+            'backend._split_sharded: %r appear in assembleGlobalKU.build\'s '
+            'invariants but are classified neither element-axis (_ELEM_GROUP) '
+            'nor replicated (_REPLICATED). Classify them: sharding an array '
+            'that should be replicated gives a wrong answer with no error.'
+            % sorted(unknown))
+    # `inv` has already been through to_device, so its values are jax Arrays,
+    # not np.ndarray -- test for array-ness by dtype+ndim rather than by type,
+    # or every array silently lands in `sta` (closed over at its GLOBAL shape)
+    # and the kernel gets full-length operands against sharded carry entries.
+    def isarr(x):
+        return hasattr(x, 'dtype') and getattr(x, 'ndim', 0) >= 1
+
+    dyn, sta, specs = {}, {}, {}
+    for k, v in inv.items():
+        elem = k in groups
+        if isinstance(v, (list, tuple)) and len(v) and all(isarr(x) for x in v):
+            dyn[k] = [_prep(k, x, ndev, counts, groups) for x in v] if elem else list(v)
+            specs[k] = [P(SHARD_AXIS) if elem else P()] * len(v)
+        elif isarr(v):
+            dyn[k] = _prep(k, v, ndev, counts, groups) if elem else v
+            specs[k] = P(SHARD_AXIS) if elem else P()
+        else:
+            sta[k] = v
+    return dyn, sta, specs
+
+
+def _restore_ravelled(d):
+    """Undo _prep's (n, 8) reshape inside the body, so the kernel receives the
+    flat index arrays it receives serially."""
+    out = dict(d)
+    for k in _RAVELLED:
+        if k not in out:
+            continue
+        v = out[k]
+        out[k] = [x.reshape(-1) for x in v] if isinstance(v, list) else v.reshape(-1)
+    return out
+
+
+def run_time_loop_sharded(xp, build_step, inv, carry, n, ndev, carry_shard):
+    """run_time_loop's explicitly-decomposed twin. N devices, one element slab
+    each, one nodal collective per step at driver.f90:27's position.
+
+    `carry_shard` is a tuple parallel to `carry`, naming the element group of
+    each entry that lives on the element axis ('Ei'/'Ep') and None for the
+    nodal ones. driver.run states it next to carry0, where the shapes are;
+    this module must not guess it from a shape (Ei == Ep is possible)."""
+    import jax
+    from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+    if len(jax.devices()) != ndev:
+        raise RuntimeError(
+            'run_time_loop_sharded: asked for %d devices, jax has %d (%r). '
+            'The device count must come from EQDYNA_JAX_DEVICES before jax is '
+            'imported (see _configure_host_devices) -- a mismatch here means '
+            'the flag did not take.' % (ndev, len(jax.devices()), jax.devices()))
+    enable_compilation_cache()
+    mesh = Mesh(np.array(jax.devices()), (SHARD_AXIS,))
+    groups = dict(_ELEM_GROUP)
+    if shard_mode() == 'element+nodal':
+        groups.update(_NODAL_GROUP)
+    counts = pad_counts(inv, ndev)
+    dyn, sta, specs = _split_sharded(inv, ndev, counts, groups)
+    sta['shard_axis'] = SHARD_AXIS
+    sta['shard_sync'] = shard_sync()
+
+    if len(carry_shard) != len(carry):
+        raise ValueError('run_time_loop_sharded: carry_shard has %d entries for '
+                         'a %d-entry carry' % (len(carry_shard), len(carry)))
+    carry_p, cspecs = [], []
+    for v, g in zip(carry, carry_shard):
+        if g is None:
+            carry_p.append(v); cspecs.append(P())
+        else:
+            carry_p.append(xp.asarray(_pad_to(np.asarray(v), counts[g], 0)))
+            cspecs.append(P(SHARD_AXIS))
+    carry_p = tuple(carry_p); cspecs = tuple(cspecs)
+
+    def put(v, s):
+        return jax.device_put(xp.asarray(v), NamedSharding(mesh, s))
+
+    dyn = {k: ([put(x, s) for x, s in zip(v, specs[k])] if isinstance(v, list)
+               else put(v, specs[k])) for k, v in dyn.items()}
+    carry_p = tuple(put(v, s) for v, s in zip(carry_p, cspecs))
+
+    def body(dyn_arrays, c, steps):
+        step = build_step({**sta, **_restore_ravelled(dyn_arrays)})
+        return time_loop(xp, step, c, steps)
+
+    f = jax.jit(jax.shard_map(body, mesh=mesh,
+                              in_specs=(specs, cspecs, P()), out_specs=cspecs,
+                              check_vma=False))
+    out = f(dyn, carry_p, xp.asarray(n))
+    jax.block_until_ready(out)
+    # Un-pad the element-axis carry entries, so callers see the real element
+    # counts and a padded run is indistinguishable from an unpadded one.
+    return tuple(v[:int(inv[g])] if g is not None else v
+                 for v, g in zip(out, carry_shard))
+
+
 def array_module(name):
     """'numpy' | 'jax' -> the array module the whole port is written against.
 
@@ -324,6 +667,7 @@ def array_module(name):
     if name != 'jax':
         raise ValueError("backend.array_module: name must be 'numpy' or 'jax' "
                          "(got %r)" % (name,))
+    n = _configure_host_devices()
     try:
         import jax
     except ImportError as exc:
@@ -332,6 +676,12 @@ def array_module(name):
             "Install jaxlib, or ask for 'numpy' explicitly. This does NOT "
             "fall back: a run reported as jax must have been jax." % exc)
     jax.config.update('jax_enable_x64', True)
+    if len(jax.devices()) != n:
+        raise RuntimeError(
+            '%s=%d host CPU devices were requested but jax initialised %d (%r). '
+            'Running on fewer devices than the label says makes every scaling '
+            'number wrong, so this does not proceed.'
+            % (_DEVICES_ENV, n, len(jax.devices()), jax.devices()))
     import jax.numpy as jnp
     return jnp
 
@@ -369,3 +719,10 @@ def store_into(xp, out, src):
         return src
     np.copyto(out, src)
     return out
+
+
+# Set --xla_force_host_platform_device_count at PACKAGE IMPORT, the earliest
+# point available to us and before any eqdyna module initialises the jax
+# backend. A no-op (not even an env write) unless EQDYNA_JAX_DEVICES asks for
+# more than one device, so the serial and numpy paths are untouched.
+_configure_host_devices()

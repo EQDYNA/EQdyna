@@ -24,6 +24,8 @@ so driver.f90:27's MPI4NodalQuant has no work to do.
 That is a scope limit, not an omission that could silently mislead -- a
 multi-rank case is refused before it reaches here.
 """
+import os
+import sys
 import time
 
 import numpy as np
@@ -81,15 +83,31 @@ def velDispUpdate(xp, inv, v1, velArr, dispArr, force, dt):
     return v1, velArr, dispArr
 
 
-def make_step(xp, inv, finv, tp, mass, scratch):
-    """Build the per-step closure. Called by backend.run_time_loop INSIDE
-    the jit on the jax path, so that `inv`'s arrays resolve to jit arguments
-    rather than closed-over HLO literals."""
+# Position of nodalForceArr in the carry tuple. Named because two callers
+# reach into the carry to exchange exactly that entry (make_step's in-process
+# nodal_sync and run_mpi's out-of-process MPI4NodalQuant), and the same
+# integer literal in two places is one place for them to disagree.
+FORCE = 3
+
+
+def make_step_parts(xp, inv, finv, tp, mass, scratch):
+    """The step, split at driver.f90:27 -- MPI4NodalQuant's position.
+
+    part_a: timeElapsed, velDispUpdate, zero the force, both element kernels.
+    part_b: thermal pressurization, faulting, the mass divide.
+
+    ONE body, split rather than copied, because the two callers need the seam
+    in a different place in the STACK, not in the code: make_step closes the
+    seam with backend.nodal_sync (identity when serial, a device-mesh
+    collective under shard_map) and keeps ONE jitted time loop, while run_mpi
+    must leave the jit at the seam to make an MPI call and therefore jits the
+    two halves separately. Both perform the same operations, in the same
+    order, on the same operands."""
     dt = inv['dt']; rdampk = inv['rdampk']
     tr = finv['tr']
     friclaw = finv['friclaw']
 
-    def step(carry, nt):
+    def part_a(carry, nt):
         (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
          sliprate_hist, shear_hist) = carry
         timeElapsed = timeElapsed + dt                       # driver.f90:12
@@ -102,7 +120,21 @@ def make_step(xp, inv, finv, tp, mass, scratch):
             xp, inv, velArr, force, stress_i, s_p, dt, rdampk, scratch)
         force = KU.calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk)
 
-        if friclaw == 5:                                     # driver.f90:28
+        # driver.f90:27 -- MPI4NodalQuant(nodalForceArr, 3). Identity when the
+        # run is serial (one device, one subdomain, nothing to exchange); an
+        # all-reduce over the device mesh when backend.run_time_loop_sharded
+        # has cut the element arrays across devices. Its POSITION is the
+        # Fortran's: after both element kernels, before faulting, which is
+        # what lets faulting and the mass divide be plain replicated nodal
+        # work on a force array that is already complete.
+        return (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft,
+                timeElapsed, sliprate_hist, shear_hist)
+
+    def part_b(carry, nt):
+        (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
+         sliprate_hist, shear_hist) = carry
+
+        if friclaw == 5:                                   # driver.f90:28
             fric = TP.updateThermalPressurization(
                 xp, tp, fric, sliprate_hist, shear_hist, nt, dt)
 
@@ -128,6 +160,28 @@ def make_step(xp, inv, finv, tp, mass, scratch):
 
         return (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft,
                 timeElapsed, sliprate_hist, shear_hist)
+
+    return part_a, part_b
+
+
+def make_step(xp, inv, finv, tp, mass, scratch):
+    """Build the per-step closure. Called by backend.run_time_loop INSIDE
+    the jit on the jax path, so that `inv`'s arrays resolve to jit arguments
+    rather than closed-over HLO literals."""
+    part_a, part_b = make_step_parts(xp, inv, finv, tp, mass, scratch)
+
+    def step(carry, nt):
+        carry = part_a(carry, nt)
+        # driver.f90:27 -- MPI4NodalQuant(nodalForceArr, 3). Identity when the
+        # run is serial (one subdomain, nothing to exchange); an all-reduce
+        # over the device mesh when backend.run_time_loop_sharded has cut the
+        # element arrays across devices. Its POSITION is the Fortran's: after
+        # both element kernels, before faulting, which is what lets faulting
+        # and the mass divide be plain local work on a force array that is
+        # already complete.
+        force = B.nodal_sync(xp, inv, carry[FORCE])
+        carry = carry[:FORCE] + (force,) + carry[FORCE + 1:]
+        return part_b(carry, nt)
 
     return step
 
@@ -185,13 +239,39 @@ def run(S, nsteps=None, verbose=True, xp=np):
               xp.asarray(0.0),
               z((nftnd, hist_w)), z((nftnd, hist_w)))
 
+    # Which carry entries live on the ELEMENT axis, and therefore get cut
+    # across devices under explicit decomposition. Stated here, beside
+    # carry0, because this is where the shapes are; backend must not infer it
+    # from a shape (Ei == Ep is possible on a small mesh).
+    carry_shard = (None, None, None, None, 'Ei', 'Ep',
+                   None, None, None, None, None)
+
+    ndev = B.jax_device_count()
+    if ndev > 1 and not B.is_jax(xp):
+        raise RuntimeError(
+            'EQDYNA_JAX_DEVICES=%d requests explicit domain decomposition, which '
+            'exists only on the jax backend, but this run is numpy. Refusing '
+            'rather than running serial under a %d-device label.' % (ndev, ndev))
+
+    if ndev > 1 and B.timing_only():
+        # Loud, on stderr, EVERY run -- one of the measurement knobs is set
+        # and the answer this run produces is not the physics. eqdyna3d.run_case
+        # additionally refuses to write it to the normal frt path.
+        print('driver.run: *** TIMING-ONLY RUN, RESULT IS NOT VALID PHYSICS *** '
+              '(%s=%s, %s=%s)' % (B.MODE_ENV, B.shard_mode(),
+                                  B.SYNC_ENV, B.shard_sync()), file=sys.stderr)
     if verbose:
-        print('driver.run: %d steps, backend=%s, friclaw=%d'
-              % (nsteps, xp.__name__, S['friclaw']))
+        print('driver.run: %d steps, backend=%s, friclaw=%d, devices=%d, mode=%s/%s'
+              % (nsteps, xp.__name__, S['friclaw'], ndev,
+                 B.shard_mode(), B.shard_sync()))
     t0 = time.perf_counter()
     scratch = KU.alloc_scratch(xp, inv)
-    carry = B.run_time_loop(xp, lambda i: make_step(xp, i, finv, tp, mass, scratch),
-                            inv, carry0, nsteps)
+    mk = lambda i: make_step(xp, i, finv, tp, mass, scratch)   # noqa: E731
+    if ndev > 1:
+        carry = B.run_time_loop_sharded(xp, mk, inv, carry0, nsteps, ndev,
+                                        carry_shard)
+    else:
+        carry = B.run_time_loop(xp, mk, inv, carry0, nsteps)
     elapsed = time.perf_counter() - t0
     if verbose:
         print('driver.run: %.3f s, %.3f ms/step' % (elapsed, elapsed / nsteps * 1e3))
@@ -201,3 +281,209 @@ def run(S, nsteps=None, verbose=True, xp=np):
     return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr),
                 fnft=np.asarray(fnft), fric=np.asarray(fric),
                 force=np.asarray(force))
+
+
+def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
+    """The whole solve, ONE PROCESS PER RANK -- Fortran's decomposition, with
+    jax owning only the local element kernel.
+
+    Structure, and why it is not `run` with a flag: `run` hands the entire
+    time loop to XLA as one jitted fori_loop, which is exactly what makes the
+    serial jax kernel beat Fortran's (611 vs 931 ms/step). An MPI call cannot
+    happen inside that. So the step is jitted in TWO halves either side of
+    driver.f90:27, and MPI4NodalQuant runs between them on the host:
+
+        part_a (jit)   velDispUpdate, zero force, both element kernels
+                       + gather this rank's halo equations, on device
+        MPI            Sendrecv the halo values with each neighbour
+        part_b (jit)   add the received partials, faulting, mass divide
+
+    The two jits are built ONCE, before the loop -- a jax.jit constructed
+    inside the loop recompiles every call. The halo gather is an extra OUTPUT
+    of part_a and the received delta an extra ARGUMENT of part_b, so the only
+    host traffic per step is the halo itself (O(boundary)), and the 30.5 MB
+    force array is never copied to the host or re-scattered eagerly.
+
+    Every rank builds the full serial mesh and then restricts it
+    (MPI4NodalQuant.decompose), so global node and equation numbering is
+    shared by all ranks and every index array comes from the gated serial
+    path. See that module for the trade and for what is NOT bit-identical.
+
+    Returns the same dict `run` returns, plus the fault-row selectors the
+    caller needs to write this rank's `frt.txt<rank>`, plus `report` -- the
+    per-rank counts any multi-rank measurement must print to be checkable."""
+    import jax
+    from . import MPI4NodalQuant as MQ
+
+    rank = comm.Get_rank(); nranks = comm.Get_size()
+    if not B.is_jax(xp):
+        raise RuntimeError('driver.run_mpi: the MPI path exists for the jax '
+                           'backend only (numpy is explicitly out of scope); '
+                           'got xp=%s' % xp.__name__)
+    nsteps = nsteps or S['nstep']
+
+    inv = KU.build(S)
+    finv = FLT.build(S)
+    tp = TP.build(S, nsteps) if S['friclaw'] == 5 else None
+    hist_w = nsteps if S['friclaw'] == 5 else 0
+    finv['tr'] = (FLT.forced_rupture_time(np, finv)
+                  if FLT.nucleation_enabled(finv) else None)
+
+    loc = MQ.decompose(S, inv, finv, rank, nranks)
+    inv_l, finv_l = loc['inv'], loc['finv']
+    computed = loc['fault_computed_rows']
+    if tp is not None:
+        tp = MQ.restrict_rows(tp, computed, int(finv['nftnd']))
+
+    # Every fault node must be written by exactly one rank, or the frt files
+    # the gate reads are short and nothing says so.
+    owned_total = comm.allreduce(int(loc['fault_rows'].shape[0]))
+    if owned_total != int(finv['nftnd']):
+        raise RuntimeError(
+            'driver.run_mpi: the ranks together own %d of %d fault nodes. '
+            'frt.txt* would be missing %d rows and the canonical comparison '
+            'would silently compare a shorter file.'
+            % (owned_total, int(finv['nftnd']), int(finv['nftnd']) - owned_total))
+
+    mass = np.concatenate(([1.0], S['nodalMassArr']))
+    bad = int(np.count_nonzero(mass[1:] <= 0.0))
+    if bad:
+        raise ValueError(
+            'driver.run_mpi: %d of %d lumped nodal masses are <= 0. '
+            'driver.f90:30 divides by them unconditionally.'
+            % (bad, mass.shape[0] - 1))
+
+    B.check_index_width(inv_l)
+    inv_l = B.to_device(xp, inv_l)
+    finv_l = B.to_device(xp, finv_l)
+    if tp is not None:
+        tp = B.to_device(xp, tp)
+    mass = xp.asarray(mass)
+
+    N = S['N']; NEQ = S['NEQ']; nftnd_l = int(finv_l['nftnd'])
+    z = (lambda *a: xp.zeros(*a))
+    carry = (z(NEQ + 1), z((N, 3)), z((N, 3)), z(NEQ + 1),
+             xp.asarray(inv_l['stress_i0']).copy(), z((inv_l['Ep'], 15)),
+             xp.asarray(S['fric_init'][computed].copy()),
+             xp.full(nftnd_l, gv.FNFT_SENTINEL),
+             xp.asarray(0.0),
+             z((nftnd_l, hist_w)), z((nftnd_l, hist_w)))
+
+    B.enable_compilation_cache()
+    scratch = KU.alloc_scratch(xp, inv_l)
+    dyn, sta = B.promote(xp, inv_l)
+    halo = xp.asarray(loc['halo_idx'])
+    nbrs = loc['neighbours']
+
+    def a_body(dyn_arrays, c, nt, h):
+        part_a, _ = make_step_parts(xp, {**sta, **dyn_arrays}, finv_l, tp,
+                                    mass, scratch)
+        c = part_a(c, nt)
+        return c, c[FORCE][h]
+
+    def b_body(dyn_arrays, c, nt, h, delta):
+        _, part_b = make_step_parts(xp, {**sta, **dyn_arrays}, finv_l, tp,
+                                    mass, scratch)
+        force = B.addat(xp, c[FORCE], h, delta)     # MPI4NodalQuant's sum
+        c = c[:FORCE] + (force,) + c[FORCE + 1:]
+        return part_b(c, nt)
+
+    # DONATE THE CARRY. Without donation each of the two calls allocates a
+    # fresh buffer for every one of the 11 carry entries -- ~120 MB of copy
+    # per step on test.tpv104 -- because XLA may not write into an input it
+    # does not own. The fused fori_loop of the serial path updates its carry
+    # in place and pays none of that, which is why breaking the loop open for
+    # MPI costs 3x per step until the carry is donated. Safe here: `carry` is
+    # rebound from the return value immediately and the previous value is
+    # never read again.
+    a_jit = jax.jit(a_body, donate_argnums=(1,))
+    b_jit = jax.jit(b_body, donate_argnums=(1,))
+    sync = MQ.sync_mode()
+    # Under 'allreduce' the force is already complete when part_b runs, so
+    # part_b's halo add is a no-op -- kept (rather than branching part_b) so
+    # BOTH sync modes execute the identical jitted code and a difference
+    # between their timings is the exchange and nothing else.
+    zero_delta = xp.zeros(halo.shape[0])
+
+    rep = loc['report']
+    if verbose:
+        print('driver.run_mpi rank %d/%d: %d steps, friclaw=%d, elements '
+              'Ei=%d Ep=%d E=%d (work %.1f%% of total), nodes=%d eqs=%d '
+              'halo=%d (%.2f%% of eqs), neighbours=%s, fault computed=%d '
+              'owned=%d'
+              % (rank, nranks, nsteps, S['friclaw'], rep['Ei'], rep['Ep'],
+                 rep['E'], 100.0 * rep['work'] / rep['work_total'],
+                 rep['nodes'], rep['eqs'], rep['halo_eqs'],
+                 100.0 * rep['halo_frac'], rep['neighbours'],
+                 rep['fault_computed'], rep['fault_owned']), flush=True)
+
+    comm.Barrier()
+    c0 = os.times()
+    t0 = time.perf_counter()
+    t_mpi = t_wait = 0.0
+    for nt in range(1, nsteps + 1):
+        carry, hv = a_jit(dyn, carry, nt, halo)
+        # BLOCK BEFORE STARTING THE MPI CLOCK. jax dispatch is asynchronous,
+        # so a_jit returns before part_a has run and the first thing that
+        # touches hv absorbs the whole element kernel. Timing the exchange
+        # without this reported 298 of 471 ms/step "in MPI4NodalQuant" on a
+        # ONE-rank run with zero neighbours -- i.e. it was measuring the
+        # solver, not the exchange.
+        jax.block_until_ready(hv)
+        # Barrier FIRST, timed separately. Without it the fastest rank's
+        # "exchange" time is mostly waiting for the slowest rank, and on this
+        # box the per-rank spread is real (cpu 61 measured EFFECTIVE_CORES
+        # 0.50 against cpu 60's 0.97 on identical work): rank 0 reported 296
+        # of 622 ms/step "in MPI4NodalQuant" while rank 1 reported 0.5 ms for
+        # the same exchange. Charging that to the collective would be a
+        # measurement error in the exact shape this campaign is trying to
+        # avoid, so load imbalance is t_wait and the exchange is t_mpi.
+        t_w = time.perf_counter()
+        comm.Barrier()
+        t_wait += time.perf_counter() - t_w
+        t1 = time.perf_counter()
+        if sync == 'allreduce':
+            # The simple version: no ownership bookkeeping at all. Assembly
+            # is a SUM, so every rank can hold the full-length partial array
+            # and ONE Allreduce makes every rank's copy the complete one.
+            # Moves O(NEQ) where the halo moves O(boundary); both are measured
+            # side by side in testsys/perf/run_mpi_scaling.py.
+            total = MQ.allreduce(comm, np.asarray(jax.device_get(carry[FORCE])))
+            t_mpi += time.perf_counter() - t1
+            carry = carry[:FORCE] + (xp.asarray(total),) + carry[FORCE + 1:]
+            carry = b_jit(dyn, carry, nt, halo, zero_delta)
+        else:
+            delta = MQ.exchange(comm, nbrs, np.asarray(jax.device_get(hv)))
+            t_mpi += time.perf_counter() - t1
+            carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
+    jax.block_until_ready(carry)
+    elapsed = time.perf_counter() - t0
+    c1 = os.times()
+    # EFFECTIVE_CORES: cpu seconds this process consumed per wall second. A
+    # rank pinned to one cpu should read ~1.0; below that it was starved (it
+    # shared its cpu with a foreign tenant, or it was waiting on the halo),
+    # and that is invisible in a wall-clock number alone.
+    eff = ((c1[0] - c0[0]) + (c1[1] - c0[1])) / elapsed if elapsed > 0 else 0.0
+
+    (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
+     sliprate_hist, shear_hist) = carry
+    rep = dict(rep, ms_per_step=elapsed / nsteps * 1e3, solve_s=elapsed,
+               mpi_ms_per_step=t_mpi / nsteps * 1e3,
+               wait_ms_per_step=t_wait / nsteps * 1e3,
+               sync=sync, nsteps=nsteps, effective_cores=eff,
+               threads=len(os.listdir('/proc/%d/task' % os.getpid())),
+               cpus=sorted(os.sched_getaffinity(0)),
+               cpus_allowed=len(os.sched_getaffinity(0)))
+    if verbose:
+        print('driver.run_mpi rank %d: %.3f s, %.3f ms/step (sync=%s: %.3f '
+              'ms/step exchanging, %.3f ms/step waiting at the barrier), '
+              'EFFECTIVE_CORES %.2f, threads=%d, cpus_allowed=%d %s'
+              % (rank, elapsed, rep['ms_per_step'], sync,
+                 rep['mpi_ms_per_step'], rep['wait_ms_per_step'],
+                 eff, rep['threads'], rep['cpus_allowed'], rep['cpus']),
+              flush=True)
+    return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr),
+                fnft=np.asarray(fnft), fric=np.asarray(fric),
+                force=np.asarray(force),
+                fault_rows=loc['fault_rows'],
+                own_in_computed=loc['own_in_computed'], report=rep)
