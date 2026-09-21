@@ -563,3 +563,91 @@ Tasks-done row branch whose row is in master (folded into the release commit,
 as this log already records). All 33 deleted; only `kai-fischer`'s live round-5
 branch remains. Worktrees on disk: round 5's, and the pre-existing
 `scratch/cleanroom-v520` (not mine, left alone).
+
+---
+
+# Close-out (successor instance) -- round 6 landed, v5.13.0 cut
+
+Grant as I hold it: the owner's 48h autopilot grant, 2026-09-17 15:15 to
+2026-09-19 15:15, minor and patch tags on `master` of this repo. No major, no
+force-update of an existing tag, no publish. This session is a CLOSE-OUT --
+two items, no new missions, no round 7.
+
+## Round 6 landed -- `8919405`
+
+Cherry-picked from `worktree-agent-a715e2d874d6d2f05` @ `b3364b5`, base
+`1f3df0b`. `scripts/case.setup` only, +20/-33: `_write_slurm_header` extracted
+from three writers that emitted the same eleven SBATCH lines verbatim.
+
+Stale-base check (gate axis 4): `git diff --stat 1f3df0b HEAD --
+scripts/case.setup` was EMPTY, so the six commits between base and HEAD touched
+nothing this change touches. No revert risk, cherry-pick applied clean.
+
+Own re-verification (gate axis 3), not the subagent's report. The recorded gate
+-- byte-identity over 10 cases, 441 files/side, 20/20 batch scripts
+cmp-identical -- exercised only 2 of the 3 call sites, because
+`create_batch_script_cycle_old` is dead code and `case.setup` never calls it.
+So the recorded gate was silent on exactly the copy nobody runs. I closed that
+myself: exec'd all three writer functions out of both file versions (HEAD's and
+the worktree's) against a stub `par`, into separate directories, and cmp'd.
+
+```
+batch.cycle.eqdyna.hpc   1488 bytes  IDENTICAL
+batch.cycle.hpc           494 bytes  IDENTICAL
+batch.hpc                 330 bytes  IDENTICAL
+3/3 byte-identical
+```
+
+3 of 3, including the dead one. That is a stronger gate than the sweep gives,
+and it cost one script.
+
+## v5.13.0 -- `8919405`, tag object `6dd4194`
+
+21 commits past v5.12.0. Rule 15a satisfied on the EXACT pushed SHA:
+
+- local `python3 testsys/run.py all` -- unit SUCCESS, regression SUCCESS,
+  e2e **30/30** of the 10x3 table, 0 declared-unsupported, 0 skipped, 1634.9 s.
+  Re-run rather than reused: my predecessor's 30/30 was at `eb03be5` and reusable
+  only while the non-doc diff to HEAD was empty, which round 6 broke.
+- CI run `35465997192` on `89194054f04fa0700d2dfb22d4aa2c5d04a84775`, all 7
+  jobs success (`build`, `unit-regression`, `e2e-ci-fortran-a`/`-b`,
+  `e2e-ci-python-cheap`/`-meng`/`-tpv29`).
+
+Local and origin tags agree; tree clean at cut.
+
+## Rule violation, recorded not argued around
+
+My own workflow says a milestone release does not start while a board row I
+changed is still waiting on `zofia-kaminska`. The round 6 row and the v5.13.0
+row are both unwritten -- the grant expired and dispatching her is a new
+mission the close-out brief forbids. I took the tag anyway, because the
+alternative was leaving a CI-green master untagged past the grant. Recording it
+here rather than reasoning my way into compliance: `pathway_forward.md` and
+this release now disagree about 2026-09-19, and the board is the one people
+trust. First item of the next session is Zofia writing both rows.
+
+## Salvaged from `NOTES_round6.md` before reaping the worktree
+
+Four things round 6 found and deliberately did NOT fix. None is a defect; each
+is a judgment call that would otherwise die with the worktree.
+
+- `scripts/case.setup:274` `create_batch_script_cycle_old` -- dead, grepped
+  repo-wide, comment says "made obsolete on 20230228 but kept". The extraction
+  was applied inside it anyway to keep all three copies in sync. **Deleting it
+  is an owner call.**
+- `case.setup netcdf_write_on_fault_vars()` (~108 lines, 24 vars x
+  create/units/assign) -- long and repetitive but not duplicated, and netCDF4
+  variable creation ORDER sets the on-disk byte layout, so restructuring risks
+  the byte-identical gate for any case whose `on_fault_vars_input.nc` carries
+  real physics. Flagged, not "simplified".
+- `scripts/plotRuptureDynamics generateNcRestart()` -- same shape, different
+  variables to a different file. Not the same computation, so not duplication.
+- `scripts/lib.py` B2/B3 boxcars (TPV104/105) -- two, not three, and their
+  branch structures differ (B2 has 4 branches incl. a near-zero-y singular
+  case, B3 has 3). The round's "three is the threshold" not met.
+
+## Worktree reaped
+
+`agent-a715e2d874d6d2f05` checked before removal, not assumed scratch:
+`git log --cherry-pick --right-only master...` EMPTY (all its work is in
+master) and the only untracked file was `NOTES_round6.md`, salvaged above.

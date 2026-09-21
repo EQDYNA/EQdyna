@@ -1,0 +1,63 @@
+topology: 8 NUMA node(s) x 8 cpu(s)
+
+-- Fortran MPI (test.tpv104) --
+    cpus [0] busy: {0: '10%'}  (whole-box load 32.77/33.66/34.12, other users: cisco-amp-scan-svc, cosmo, cshyu, dduncan, enze, geoclue, junlin, kehua, lp, markw, messagebus, rdomeyko, ron, yukoo, zjia)
+    cpu 0 worst at 10% <= 45% ceiling -- free enough
+  fortran np=1   compact          937.41 ms/step  speedup  1.00x  fixed   2.12s  n_lo/n_hi 40/160  wall 39.6/152.1s  cpus=[0] nodes=[0]
+    cpus [1, 2] busy: {1: '0%', 2: '3%'}  (whole-box load 23.20/26.22/30.32, other users: cisco-amp-scan-svc, cosmo, cshyu, dduncan, enze, geoclue, junlin, kehua, lp, markw, messagebus, rdomeyko, ron, yukoo, zjia)
+    cpu 2 worst at 3% <= 45% ceiling -- free enough
+  fortran np=2   compact          467.08 ms/step  speedup  2.01x  fixed   1.77s  n_lo/n_hi 40/160  wall 20.4/76.5s  cpus=[1, 2] nodes=[0]
+    cpus [0, 1, 2, 3] busy: {0: '59%', 1: '41%', 2: '10%', 3: '3%'}  (whole-box load 26.48/27.17/29.93, other users: cisco-amp-scan-svc, cosmo, cshyu, dduncan, enze, geoclue, junlin, kehua, lp, markw, messagebus, rdomeyko, ron, yukoo, zjia)
+    REFUSING TO MEASURE cpus [0, 1, 2, 3]: cpu 0 is 59% busy, ceiling is 45%.
+    Other users with processes: cisco-amp-scan-svc, cosmo, cshyu, dduncan, enze, geoclue, junlin, kehua, lp, markw, messagebus, rdomeyko, ron, yukoo, zjia
+    A core-scaling measurement is a MEMORY BANDWIDTH measurement on THESE cpus.
+    Taken while one of them is busy the number measures that process, not us --
+    not wrong-but-usable, meaningless. pathway item 33 exists because earlier
+    figures were taken exactly this way.
+    Wait for these cpus to free up, or pass --i-know-the-box-is-busy to record
+    a number that must NOT be quoted as this repo's scaling curve.
+  fortran np=4   compact       SKIPPED (cpus busy, not overridden)
+    cpus [1, 2, 3, 4, 5, 6, 8, 10] busy: {1: '87%', 2: '3%', 3: '7%', 4: '7%', 5: '23%', 6: '13%', 8: '7%', 10: '3%'}  (whole-box load 26.48/27.17/29.93, other users: cisco-amp-scan-svc, cosmo, cshyu, dduncan, enze, geoclue, junlin, kehua, lp, markw, messagebus, rdomeyko, ron, yukoo, zjia)
+    REFUSING TO MEASURE cpus [1, 2, 3, 4, 5, 6, 8, 10]: cpu 1 is 87% busy, ceiling is 45%.
+    Other users with processes: cisco-amp-scan-svc, cosmo, cshyu, dduncan, enze, geoclue, junlin, kehua, lp, markw, messagebus, rdomeyko, ron, yukoo, zjia
+    A core-scaling measurement is a MEMORY BANDWIDTH measurement on THESE cpus.
+    Taken while one of them is busy the number measures that process, not us --
+    not wrong-but-usable, meaningless. pathway item 33 exists because earlier
+    figures were taken exactly this way.
+    Wait for these cpus to free up, or pass --i-know-the-box-is-busy to record
+    a number that must NOT be quoted as this repo's scaling curve.
+  fortran np=8   compact       SKIPPED (cpus busy, not overridden)
+    cpus [0, 1, 3, 4, 5, 6, 8, 10, 11, 12, 13, 15, 17, 18, 19, 20] busy: {0: '10%', 1: '3%', 3: '20%', 4: '41%', 5: '0%', 6: '10%', 8: '3%', 10: '3%', 11: '6%', 12: '3%', 13: '3%', 15: '0%', 17: '0%', 18: '10%', 19: '0%', 20: '3%'}  (whole-box load 26.48/27.17/29.93, other users: cisco-amp-scan-svc, cosmo, cshyu, dduncan, enze, geoclue, junlin, kehua, lp, markw, messagebus, rdomeyko, ron, yukoo, zjia)
+    cpu 4 worst at 41% <= 45% ceiling -- free enough
+  fortran np=16  compact           65.89 ms/step  speedup 14.23x  fixed   3.48s  n_lo/n_hi 40/160  wall 6.1/14.0s  cpus=[0, 1, 3, 4, 5, 6, 8, 10, 11, 12, 13, 15, 17, 18, 19, 20] nodes=[0, 1, 2]
+
+-- python-numpy --
+/home/utig5/dliu/EQdyna/testsys/perf/scaling_case/test.tpv104 test.tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+Estimated total cells in the model is 231040
+Estimated memory required is about 0.35580160000000005 GBs
+
+-- python-jax --
+/home/utig5/dliu/EQdyna/testsys/perf/scaling_case/test.tpv104 test.tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+Estimated total cells in the model is 231040
+Estimated memory required is about 0.35580160000000005 GBs
+
+provenance: test.tpv104 @ 8045db7 on cotopaxi, loadavg (27.384765625, 27.271484375, 29.83447265625); saved /home/utig5/dliu/EQdyna/testsys/perf/scaling_last.json
+2 configuration(s) SKIPPED as busy (not measured, not silently dropped): ['fortran np=4   compact', 'fortran np=8   compact']
