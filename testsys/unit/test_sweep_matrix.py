@@ -53,18 +53,35 @@ def test_default_selection_accounts_for_every_cell_in_the_table():
     assert len(runnable) + len(unsupported) == len(matrix.CASES) * len(matrix.BACKENDS)
 
 
-def test_unsupported_table_is_empty_but_the_mechanism_still_works(monkeypatch):
-    """UNSUPPORTED is EMPTY now -- friclaw=2 was the last gap, and closing it
-    made test.meng2023a/test.meng2023cb runnable on both python backends for
-    the first time. So this pins the MECHANISM against a synthetic entry
-    rather than against whichever real gap happens to be open.
+def test_unsupported_table_is_exactly_the_mpi_opt_outs(monkeypatch):
+    """UNSUPPORTED is no longer empty: python-jax-mpi (an OPTIONAL execution
+    mode of python-jax, not a fourth full backend every case must support --
+    see matrix.py's _MPI_OPT_IN_REASON) has exactly one case opted in
+    (matrix.PY_MPI_RANKS), so every OTHER case x python-jax-mpi is declared
+    unsupported with that one recorded reason.
 
-    Pinning a regression test to a real gap is how it dies the moment the gap
-    is fixed: the previous version asserted `runnable == []` for
-    test.meng2023a x python-jax and would now fail because that cell works.
+    This pins the CONTENT of that specific, real gap (so an accidental opt-in
+    or opt-out is caught) and then pins the MECHANISM against a synthetic
+    entry layered on top, same as the previous version of this test did
+    against a since-closed friclaw=2 gap -- pinning a regression test to a
+    real gap is how it dies the moment the gap is closed, so the synthetic
+    half must survive that.
     """
-    assert matrix.UNSUPPORTED == {}, \
-        'a newly declared-unsupported cell needs its reason reviewed here'
+    expected_unsupported_backend_pairs = {
+        (c, 'python-jax-mpi') for c in matrix.CASES
+        if c not in matrix.PY_MPI_RANKS
+    }
+    assert set(matrix.UNSUPPORTED) == expected_unsupported_backend_pairs
+    assert len(matrix.UNSUPPORTED) == len(matrix.CASES) - len(matrix.PY_MPI_RANKS)
+    # every one of those entries carries the SAME recorded policy reason --
+    # a per-case ad-hoc reason here would mean the exclusion is a coverage
+    # gap being rationalised case by case rather than one stated policy.
+    reasons = set(matrix.UNSUPPORTED.values())
+    assert len(reasons) == 1
+    assert 'not opted into the optional MPI execution mode' in next(iter(reasons))
+    # no case outside python-jax-mpi is unsupported: the three original
+    # backends (fortran, python-numpy, python-jax) still cover every case.
+    assert all(b == 'python-jax-mpi' for _c, b in matrix.UNSUPPORTED)
 
     monkeypatch.setitem(matrix.UNSUPPORTED, ('test.tpv8', 'python-jax'),
                         'synthetic reason for this test')
@@ -77,13 +94,21 @@ def test_unsupported_table_is_empty_but_the_mechanism_still_works(monkeypatch):
     assert reason == 'synthetic reason for this test'
 
 
-def test_every_gated_cell_runs_now_that_nothing_is_unsupported():
-    """The sweep covers every cell of the gated table. Recorded as an
-    assertion so losing coverage requires deleting a test, not just quietly
-    editing a table."""
+def test_every_cell_runs_except_the_declared_mpi_opt_outs():
+    """The sweep covers every cell of the gated table except the python-jax-
+    mpi cells that have not opted in. Recorded as an assertion so losing
+    coverage on the three original backends requires deleting a test, not
+    just quietly editing a table -- and so widening PY_MPI_RANKS is visible
+    here as a runnable-count change rather than silent.
+    """
     runnable, unsupported = matrix.cells()
-    assert unsupported == []
-    assert len(runnable) == len(matrix.CASES) * len(matrix.BACKENDS)
+    total = len(matrix.CASES) * len(matrix.BACKENDS)
+    n_opted_in = len(matrix.PY_MPI_RANKS)
+    n_opted_out = len(matrix.CASES) - n_opted_in
+    assert len(unsupported) == n_opted_out
+    assert len(runnable) == total - n_opted_out
+    # nothing outside python-jax-mpi is ever declared unsupported
+    assert all(b == 'python-jax-mpi' for _c, b, _r in unsupported)
 
 
 def test_unsupported_reason_raises_for_a_supported_cell():
