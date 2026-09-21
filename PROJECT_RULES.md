@@ -313,11 +313,23 @@ The release workflow, in order:
 
 1. Green gate first (rule 3): `./install-eqdyna.sh -m ubuntu` exits 0 and
    `python3 testsys/run.py all` reports every cell in the table SUCCESS —
-   30/30 as of 2026-09-21 (10 cases x 3 backends). The number is
-   `len(matrix.CASE_BOUND) * 3`, not a constant in this rule: a releaser who
-   accepts a green count smaller than the current table has accepted a
-   partial sweep. Never tag over a
+   31/31 as of 2026-09-21 (10 cases x 3 backends, plus one opt-in
+   `python-jax-mpi` cell). The number is
+   `len(matrix.CASE_BOUND) * 3 + len(matrix.PY_MPI_RANKS)`, not a constant in
+   this rule: a releaser who accepts a green count smaller than the current
+   table has accepted a partial sweep. Never tag over a
    red gate, and never tag before CI is green on the pushed commit (rule 15).
+
+   **Corrected 2026-09-21**: item 43 (jax MPI parallelism) added a fourth
+   backend axis, `python-jax-mpi`, opt-in per case via `matrix.PY_MPI_RANKS`
+   (currently one case, `test.tpv8` at 4 ranks; the other 9 are DECLARED
+   UNSUPPORTED for that mode with a recorded reason). The table therefore now
+   declares 40 cells, of which 31 run — this is a correction of the FORMULA
+   for what the table declares, because the table grew; it does not relax
+   what a green gate must cover. This is not a mandate to opt every case into
+   the new mode: see CLAUDE.md's "There is ONE test" and rule 17 step 7's own
+   note on the distinction between a backend implementation and an optional
+   execution mode of one.
 2. Bump `VERSION`.
 3. Release notes: add a `* YYYYMMDD vX.Y.Z release notes` block under a
    `# News in <year>` heading at the TOP of `README.md`, ending with the
@@ -552,6 +564,14 @@ ALREADY exists on a case already gated -- it is not a runway for new ones. The
 friclaw-2 gap is the worked example: test.meng2023a and test.meng2023cb sat
 declared-unsupported for months, and closing it turned out to be ~20 lines of
 `time_weak`. Had this rule been in force, that gap would never have opened.
+
+**Scope note added 2026-09-21 (item 43)**: this step is about the three
+backend IMPLEMENTATIONS -- fortran, python-numpy, python-jax. It does not
+require every case to opt into a new OPTIONAL execution mode of one of those
+backends (e.g. `python-jax-mpi`, per-case opt-in via `matrix.PY_MPI_RANKS`).
+A case fully supported per this step may still be declared UNSUPPORTED for
+such a mode; expanding that opt-in is a suite-cost decision for the owner,
+not a requirement this step imposes on new landings.
 
 **How to apply**: `python3 testsys/e2e/run_e2e.py --cases test.tpvNN` for the
 new case alone while iterating, then `python3 testsys/run.py all` before

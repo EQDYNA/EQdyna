@@ -17,7 +17,9 @@ solver**:
 
 ```
 src/fortran/   26 .f90 + makefile     — the production solver, MPI
-src/python/    eqdyna/ — 14 .py       — a serial port, numpy and jax backends
+src/python/    eqdyna/ — 15 .py       — numpy/jax serial backends, plus a
+                                         real-MPI jax execution mode (one
+                                         process per rank, opt-in per case)
 ```
 
 Every Python module is named after its Fortran counterpart and is meant to be
@@ -26,7 +28,9 @@ read beside it: `faulting.py` ↔ `faulting.f90`, `fric.py` ↔ `fric.f90`,
 `backend.py` (the numpy/jax array-module adapter) and `__main__.py`.
 `assembleGlobalKU.py` covers four Fortran files (`assembleGlobalKU`,
 `calcElemKU`, `calcHourglassResist`, `calcElemMass`) because they are one fused
-loop in the port.
+loop in the port. `MPI4NodalQuant.py` (added 2026-09-21, item 43) corresponds
+to the `MPI4NodalQuant` subroutine embedded in
+`src/fortran/assembleGlobalMass.f90:58-245`, not to a Fortran file of its own.
 
 When you change physics, change it in BOTH or say plainly which one you
 changed and why. The port exists so a fix can be verified twice.
@@ -63,6 +67,20 @@ for case in testNameList.nameList:        # 10 cases
         run → canonical frt → compare against ONE committed reference
               at THAT CASE's bound
 ```
+
+A fourth backend, `python-jax-mpi` (real MPI, one process per rank; landed
+2026-09-21, item 43), joined as a per-case OPT-IN via `matrix.PY_MPI_RANKS`,
+not a fourth row of the loop above. As of that landing exactly one case is
+opted in (`test.tpv8` at 4 ranks); the other 9 are DECLARED UNSUPPORTED for
+that mode with a recorded reason, the same contract as any other UNSUPPORTED
+cell. So the table carries 40 cells (10 cases x 3 backends, plus 10 cases x
+the opt-in 4th axis), of which 31 run. The new cell is NOT in CI (4 ranks x
+~1.9 GB measured jax `test.tpv8` exceeds the 7 GB runner). **This is not a
+40-cell sweep obligation**: PROJECT_RULES rule 17 step 7 ("all three backends
+must pass") is about a case being supported on every backend
+IMPLEMENTATION — it does not require every case to opt into a new optional
+execution mode; widening the opt-in beyond `test.tpv8` is a suite-cost
+decision for the owner, not something this landing owes.
 
 `testsys/matrix.py` is the table (which cells exist, the one bound per case).
 `testsys/compare.py` is the only comparison. A cell is SUPPORTED or DECLARED
@@ -106,7 +124,11 @@ reason each step exists:
    never added with its Python columns declared UNSUPPORTED to be filled in
    later. If the port lacks a feature the case needs, port the feature first.
    `UNSUPPORTED` records a gap that already exists; it is not a runway for new
-   ones.
+   ones. This step is about the three backend IMPLEMENTATIONS (fortran,
+   python-numpy, python-jax); it does not extend to `python-jax-mpi`, an
+   optional per-case execution mode of the jax backend (see "There is ONE
+   test" above) -- a case can be fully supported per this step while declared
+   UNSUPPORTED for that mode.
 
 ## Things that will bite you
 
@@ -133,6 +155,21 @@ reason each step exists:
   difference over two step counts. A total-wall-clock number mixes in XLA
   compile (15% of a 114-step jax run, 2% of a numpy one) and drifts without the
   solver changing.
+- **Per-step-by-difference breaks at >=4 MPI ranks.** ~100 s of fixed cost
+  (MPI init, mesh, netCDF open) differenced against a ~40 s per-rank solve
+  returned a negative per-step figure (-41.67 ms/step) in the item 43 MPI
+  scaling work. Difference over each RANK'S OWN SOLVE TIME, not the wrapper's
+  wall clock, and treat a non-positive result as a bug to raise on, not a
+  number to report.
+- **`/proc/stat` "idle" does not mean fast.** cpu 0 and cpu 1 both read busy
+  0.00 and then delivered `EFFECTIVE_CORES` 0.39 -- 1859 vs 605 ms/step for
+  identical work in the same session (item 43). Exclude cpus by MEASUREMENT
+  (`EFFECTIVE_CORES`, `--exclude-cpus`), never by trusting the idle read.
+- **A rank whose element slab never touches the fault owns 0 fault nodes**,
+  and Fortran writes no `frt` file for such a rank -- the jax-MPI port matches
+  that contract deliberately (`write_frt` refuses `nftnd==0`). 2 ranks could
+  not reproduce this; 4 could (item 43) -- a bug shape that exists only above
+  the rank count you happened to smoke-test at.
 
 ## Measure, do not infer
 
