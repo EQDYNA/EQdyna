@@ -352,6 +352,55 @@ Reproduce: `python3 testsys/perf/run_scaling.py --case test.tpv104
 --fortran-ranks 1,2,4,8,16 --py-threads '' --policies compact --n-lo 40
 --n-hi 160 --busy-ceiling 0.45 --repeats 2`
 
+## 12:15 — GATE GAP: the 30-cell sweep cannot exercise an MPI-parallel python backend
+
+Found by reading `testsys/e2e/run_e2e.py`, not at merge time. The two backend
+paths are not symmetric:
+
+- **Fortran, line 170:** `[MPIRUN, '-np', str(matrix.FORTRAN_RANKS[case_name]),
+  eqdyna_cmd]` — MPI-aware, rank count per case from `matrix.FORTRAN_RANKS`.
+- **Python, line 147:** `subprocess.call([sys.executable, '-u', '-m', 'eqdyna',
+  ...])` — a **single process**. No `mpirun`, no rank count, no equivalent of
+  `FORTRAN_RANKS`.
+
+So if Mira's work makes jax run under `mpirun -np 16`, `python3 testsys/run.py
+all` will still run all 20 python cells single-process. That means **the full
+30-cell sweep, on its own, is exactly the "passes by falling through to the OLD
+code path" gate my own axis 2 forbids.** It would come back 30/30 green while
+testing none of the new code.
+
+Consequences, both directions, because the news is not all bad:
+
+- **The sweep remains VALID and REQUIRED as a no-regression gate.** It exercises
+  the single-process path, which must stay bit-identical. That is a real and
+  necessary check — it is just not sufficient.
+- **A second gate is needed and does not exist:** at least one cell that
+  actually runs a python backend under `mpirun -np N`, N>1, compared against
+  **the same committed `frt.canonical.txt`** at that case's existing bound.
+- **The reference design already supports this, so no reference moves and rule 7
+  is not in play.** `frt.canonical.txt` is deduped on rounded (x,y,z) then
+  lexsorted precisely so "a result is a statement about the PHYSICS and not
+  about the decomposition" — which is what lets a 4-rank Fortran run, a serial
+  Fortran run and a serial Python run all compare to one artifact. A 16-rank
+  Python run is the same class of thing. The missing piece is purely a harness
+  hook, not a new ground truth.
+
+**Two landing preconditions for Mira, to be relayed:**
+
+1. **Rank-1 must fall back to today's exact code path**, so the 30-cell sweep
+   stays meaningful as the no-regression gate. If `-np 1` takes a new branch,
+   the sweep stops being a control.
+2. **Her landing must come with the harness hook** (an `EQDYNA_PY_RANKS` /
+   `--python-ranks` path in `run_e2e.py`, mirroring `FORTRAN_RANKS`) **plus one
+   gated cell that uses it**, or it cannot be merged under axis 2. I am not
+   asking her to design the test pyramid — but the invocation contract is hers,
+   and nobody can write the hook until that contract exists.
+
+`iris-vermeulen` owns the gate cell itself and will be dispatched once Mira's
+invocation contract is fixed. Dispatching her now would have her guess at an
+interface that does not exist yet, which is how a gate ends up testing the
+harness instead of the solver.
+
 **Cost disclosed:** Mira was mid-pass (short single-process jax probes, her own
 worktree, `cwd` verified). The coordinator authorised pausing her for this and
 I have no channel to deliver the pause, so her probes ran concurrently with my
