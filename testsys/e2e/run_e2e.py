@@ -60,7 +60,7 @@ REPO_ROOT = os.path.dirname(TESTSYS)
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from testsys import compare, matrix  # noqa: E402
+from testsys import compare, frt_canonical, matrix  # noqa: E402
 
 # Line-buffered stdout. Redirected to a file or through `tee`, Python block-
 # buffers its OWN prints while subprocess children write straight to the fd --
@@ -156,6 +156,85 @@ def run_standalone(case_dir, backend, device='cpu', env=None):
     return frt
 
 
+def run_python_jax_mpi(case_name, case_dir, env):
+    """`mpirun -np <ranks> python3 -m eqdyna <case_dir> --backend jax --mpi`
+    -- the real-MPI execution mode of the python-jax backend (matrix.py's
+    `python-jax-mpi` column). `ranks` is matrix.PY_MPI_RANKS[case_name]; the
+    case must have opted in or this is not called (see run_cell).
+
+    EQDYNA_MPI_SYNC=halo is PINNED here, not inherited from the calling
+    environment and not left to the solver's own default: `allreduce` exists
+    in the solver but is measurement-only (MPI does not promise a fixed
+    reduction order), and a gate that silently ran whichever mode the shell
+    happened to export would not be testing what it claims to.
+
+    This is the vacuous-gate guard for this cell: a launch that silently
+    started fewer workers than `ranks` still writes SOME frt.txt<rank> files
+    and can still compare green against the reference if the surviving
+    rank(s) happen to own every fault node once -- exactly the failure this
+    cell exists to catch. Two checks, both against matrix.py DATA rather than
+    an assumption baked into this function:
+      1. the number of frt.txt<rank> files actually written must equal
+         matrix.PY_MPI_EXPECTED_FRT_FILES[(case, ranks)] -- NOT `== ranks`,
+         because a rank whose element slab never touches the fault legitimately
+         writes none (see that dict's comment in matrix.py).
+      2. the PRE-DEDUP total row count across those files -- before
+         frt_canonical's dedup-by-coordinate collapses any double-ownership --
+         must equal the committed reference's own (already-deduped) row
+         count. Canonicalisation's dedupe assumes every physically-shared node
+         is written once per owning rank and agrees byte-for-byte across
+         owners (true for Fortran's face-shared boundary nodes); this port's
+         partition instead assigns each fault node to exactly one rank, so a
+         correct run's pre-dedup total must land exactly ON the reference
+         count, not merely at or above it. A node owned twice (with identical
+         values, so `align()`'s own duplicate-value check would not fire)
+         would silently inflate this total past the reference count and be
+         deduped away unnoticed by everything downstream -- this check is the
+         only place that number is ever looked at.
+    """
+    ranks = matrix.PY_MPI_RANKS[case_name]
+    env = dict(env)
+    env['PYTHONPATH'] = os.path.join(REPO_ROOT, 'src', 'python')
+    env['PYTHONUNBUFFERED'] = '1'
+    env['EQDYNA_MPI_SYNC'] = 'halo'  # pinned -- see docstring; never inherited
+    cmd = [MPIRUN, '-np', str(ranks), sys.executable, '-u', '-m', 'eqdyna',
+           case_dir, '--backend', 'jax', '--mpi']
+    rc = _run(cmd, REPO_ROOT, env)
+    if rc != 0:
+        raise RuntimeError('%s exited %d' % (' '.join(cmd), rc))
+
+    frt_files = frt_canonical.frt_rank_files(case_dir)
+    expected_files = matrix.PY_MPI_EXPECTED_FRT_FILES.get((case_name, ranks))
+    if expected_files is None:
+        raise RuntimeError(
+            'no matrix.PY_MPI_EXPECTED_FRT_FILES entry for (%r, %d) -- this '
+            'cell cannot be gated without a measured expected file count '
+            '(rule 2: "could not check" must not read as "passed")'
+            % (case_name, ranks))
+    if len(frt_files) != expected_files:
+        raise RuntimeError(
+            'python-jax-mpi %s at %d ranks: observed %d frt.txt<rank> '
+            'file(s) (%s), expected %d (matrix.PY_MPI_EXPECTED_FRT_FILES). A '
+            'launch that started fewer real workers than %d ranks must not '
+            'be able to compare green.'
+            % (case_name, ranks, len(frt_files),
+               ', '.join(os.path.basename(p) for p in frt_files),
+               expected_files, ranks))
+
+    pre_dedup_rows = frt_canonical.load_frt(frt_files).shape[0]
+    ref_rows = compare.load_reference(case_name).shape[0]
+    if pre_dedup_rows != ref_rows:
+        raise RuntimeError(
+            'python-jax-mpi %s at %d ranks: %d fault-node row(s) written '
+            'across %d rank file(s) BEFORE dedup, expected exactly %d '
+            '(the reference row count) -- this partition assigns every '
+            'fault node to exactly one rank, so any node owned twice (even '
+            'with identical values, which dedup would then silently '
+            'collapse) must fail here.'
+            % (case_name, ranks, pre_dedup_rows, len(frt_files), ref_rows))
+    return case_dir
+
+
 def run_fortran(case_name, case_dir, eqdyna_cmd, env):
     """create.newcase -> case.setup -> mpirun -> plotRuptureDynamics.
 
@@ -183,8 +262,17 @@ def run_cell(case, backend, test_dir, eqdyna_cmd, env, device):
         run_fortran(case, case_dir, eqdyna_cmd, env)
         return case_dir
     case_dir = os.path.join(test_dir, '%s.%s' % (case, backend))
+    # make_serial_case is UNCHANGED for python-jax-mpi: the case setup (one
+    # serial-decomposition set of bFile/netCDF inputs) is identical to the
+    # other python backends. Only the launch differs -- driver.run_mpi does
+    # its OWN Fortran-style domain decomposition of that same serial case
+    # across MPI ranks; par.nx/ny/nz above is a different, unrelated
+    # decomposition (the Fortran binary's, which never runs here).
     make_serial_case(case, case_dir, env)
-    run_standalone(case_dir, backend, device=device, env=env)
+    if backend == 'python-jax-mpi':
+        run_python_jax_mpi(case, case_dir, env)
+    else:
+        run_standalone(case_dir, backend, device=device, env=env)
     return case_dir
 
 
@@ -356,6 +444,10 @@ def main(argv=None):
         if backend == 'fortran':
             # its real rank count from testNameList.coreNumList, not a guess
             return max(1, matrix.FORTRAN_RANKS.get(case, 4))
+        if backend == 'python-jax-mpi':
+            # its real rank count from matrix.PY_MPI_RANKS, same reasoning as
+            # the fortran branch above: it is genuinely N processes, not one.
+            return max(1, matrix.PY_MPI_RANKS[case])
         return 1
 
     cells = [(c, b) for c in matrix.CASES for b in matrix.BACKENDS

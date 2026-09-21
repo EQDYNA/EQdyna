@@ -49,7 +49,7 @@ from testNameList import nameList as _NAME_LIST, coreNumList as _CORE_NUM_LIST
 CASES = tuple(_NAME_LIST)
 FORTRAN_RANKS = dict(zip(_NAME_LIST, _CORE_NUM_LIST))
 
-BACKENDS = ('fortran', 'python-numpy', 'python-jax')
+BACKENDS = ('fortran', 'python-numpy', 'python-jax', 'python-jax-mpi')
 
 # Which artifacts each backend produces, and therefore what gets compared.
 #   frt -- the canonical fault-node table (testsys/frt_canonical.py). Every
@@ -66,6 +66,43 @@ ARTIFACTS = {
     'fortran': ('frt', 'nc'),
     'python-numpy': ('frt',),
     'python-jax': ('frt',),
+    'python-jax-mpi': ('frt',),
+}
+
+# python-jax-mpi is a FOURTH value on the `backend` axis: real MPI (one
+# process per rank, driver.run_mpi + MPI4NodalQuant.py owning the Fortran-
+# style domain decomposition, jax owning the local element kernel), launched
+# under mpirun rather than as a single serial process. It is NOT a flag on
+# python-jax, NOT a new tier and NOT a new comparison -- it produces the same
+# frt artifact, canonicalised and compared against the SAME one reference at
+# the SAME CASE_BOUND every other backend uses (no per-backend bound, see the
+# module docstring's WHY above).
+#
+# PY_MPI_RANKS: which cases opt into this backend, and at how many ranks. A
+# case absent here has NO python-jax-mpi cell -- it is DECLARED UNSUPPORTED
+# below, not silently missing. Opting more cases in is the owner's suite-cost
+# call (see the UNSUPPORTED reason string), not a policy requirement.
+PY_MPI_RANKS = {
+    'test.tpv8': 4,
+}
+
+# PY_MPI_EXPECTED_FRT_FILES: the number of `frt.txt<rank>` files a cell must
+# produce, keyed by (case, ranks) -- DATA, not `== ranks` assumed in code.
+# A rank whose element slab never touches the fault owns 0 fault nodes and
+# writes NO frt file, by design (eqdyna3d.py:run_case_mpi's `if n_own == 0:
+# return None, ...`, mirroring Fortran's own contract) -- so this number CAN
+# be less than the rank count, and a launch that silently started fewer
+# workers than asked must not be indistinguishable from one that started the
+# expected count and had an empty-fault rank.
+#
+# Measured directly (mpirun -np 4 python3 -m eqdyna <serial tpv8 case> \
+# --backend jax --mpi, EQDYNA_MPI_SYNC=halo, this session, 2026-09-21):
+# every one of the 4 ranks logged `fault computed=... owned=...` with
+# owned > 0 (132, 829, 806, 124) and wrote its own frt.txt<rank>, so 4 of 4
+# ranks produced a file here -- unlike test.tpv104 at 4 ranks, where a
+# fault-free slab was observed and one rank wrote none.
+PY_MPI_EXPECTED_FRT_FILES = {
+    ('test.tpv8', 4): 4,
 }
 
 THRESHOLD = 1e-3  # PROJECT_RULES rule 5's one outer sanity bound.
@@ -194,12 +231,22 @@ DRV_A6 = {
 # DECLARED UNSUPPORTED CELLS. A reason, verified in the source, not a guess.
 # Absence from this table means "supported"; presence means the sweep refuses
 # to pretend it covered the cell.
+_MPI_OPT_IN_REASON = (
+    'not opted into the optional MPI execution mode (no PY_MPI_RANKS entry). '
+    'PROJECT_RULES rule 17 step 7 requires a CASE to be supported on every '
+    'BACKEND IMPLEMENTATION; python-jax-mpi is an optional execution MODE of '
+    'the python-jax backend, whose own cell is supported and gated here. '
+    'Opting more cases in is a suite-cost decision for the owner, not a '
+    'policy requirement -- it is not a 40-cell obligation.'
+)
 UNSUPPORTED = {
-    # EMPTY, and that is a measured statement, not an oversight: every
-    # (case, backend) pair has a working, gated path. eqdyna/faulting.py has
-    # solveSWTW (dispatched at `if friclaw <= 2`, matching faulting.f90:17)
-    # and eqdyna/fric.py has time_weak, so meng2023a/meng2023cb run on both
-    # python backends.
+    # Every case except test.tpv8 has not opted into python-jax-mpi
+    # (PY_MPI_RANKS above). This is NOT the same finding as the empty block
+    # this table used to be for the three original backends -- those three
+    # ARE covered for every case; python-jax-mpi is an optional execution mode
+    # of python-jax and only test.tpv8 has been gated on it so far.
+    (c, 'python-jax-mpi'): _MPI_OPT_IN_REASON
+    for c in _NAME_LIST if c not in PY_MPI_RANKS
 }
 
 # Cells CI runs, and the measured reason the rest are left out. Exceeding a
@@ -240,6 +287,17 @@ MEASURED_PEAK_RSS_GB = {
     ('test.tpv36', 'python-jax'): 4.34,     # 38.6 s wall (truncated, validated method)
     ('test.tpv37', 'python-numpy'): 2.91,   # 95.4 s wall (truncated, validated method)
     ('test.tpv37', 'python-jax'): 4.20,     # 30.1 s wall (truncated, validated method)
+    # python-jax-mpi, test.tpv8, 4 ranks: SUM of per-rank RSS, sampled every
+    # 5 s (not /usr/bin/time -v -- that tool's getrusage(RUSAGE_CHILDREN)
+    # does not aggregate mpirun's grandchildren, so it read 1.4 GB total on
+    # this same run, the single-rank figure, not the sum), this session
+    # 2026-09-21: per-rank samples peaked at 1345896/1426012/1424436/1404488
+    # KiB = 5.34 GB summed. A 5 s sampling interval is a LOWER BOUND on true
+    # peak, same caveat as test.drv.a6's 20 s sampling above -- and it is
+    # already 76% of a 7 GB runner with zero margin for the runner's other
+    # overhead, consistent with the ~7.6 GB extrapolated from the
+    # single-rank 1.91 GB figure two rows up. NOT added to CI_CELLS.
+    ('test.tpv8', 'python-jax-mpi'): 5.34,
 }
 CI_RUNNER_RAM_GB = 7.0
 # run_e2e.py's core-budget allocator forces every cell in a job to run ONE AT
@@ -267,7 +325,15 @@ CI_CELLS = (
 #   * test.tpv10/tpv104/tpv1053d x python-NUMPY (their jax columns are IN
 #     CI_CELLS): never measured. The rule stays literal -- a cell without a
 #     measured RSS does not go into CI.
-# A green CI run therefore means 25 of 30 cells, and says so.
+#   * test.tpv8 x python-jax-mpi: 5.34 GB measured (sum of 4 ranks, see
+#     MEASURED_PEAK_RSS_GB above) -- does not fit a 7 GB runner with any
+#     margin, so it is excluded exactly like test.drv.a6 x python-jax, on the
+#     same "measured, not assumed" basis. The other 9 cases x python-jax-mpi
+#     are DECLARED UNSUPPORTED (not opted in), not CI exclusions.
+# A green CI run therefore means 25 of the 30-cell {fortran, python-numpy,
+# python-jax} sub-table -- unchanged by python-jax-mpi joining BACKENDS, since
+# the full table is now 40 cells (10 cases x 4 backends) and CI_CELLS names no
+# python-jax-mpi cell.
 
 
 def is_supported(case, backend):
