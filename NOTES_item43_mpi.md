@@ -76,6 +76,82 @@ writes frt.txt<rank>, which testsys/frt_canonical.py already globs.
   first 160-step point (log mpi_scaling_2026-09-21_tpv104.log, sha c4afa78).
   Both keys are in the print now.
 
+## THE NUMBER (test.tpv104, 735000 elements, friclaw 4, 2026-09-21 session)
+Fortran measured SAME SESSION on the same cpu-selection rule, not against the
+09-19 figure. Per-step by difference over two step counts (40/160), one
+process per rank, `--cpu-set <least-loaded, cpu 0/1 excluded> --bind-to
+cpu-list:ordered`.
+
+  ranks  jax/halo  jax/allreduce  fortran   jax best vs fortran  cpus (busy)
+      1    795.05         785.37  1034.50   1.32x FASTER         [21] 0.48
+      2    499.49         423.32   504.83   1.19x FASTER         [3,17] 0.52/0.59
+      4    192.60              -   250.17   1.30x FASTER         [3,15,60,63] 0.10-0.14
+      8         -              -        -   NOT MEASURED (tenancy)
+     16         -              -        -   NOT MEASURED (tenancy)
+
+  ms/step. EFFECTIVE_CORES 1.0 (1 rank), 0.92-1.00 (2), 0.93-1.00 (4);
+  threads/rank 9-10; per-rank element count equal to within the PML work
+  weight (4 ranks: Ei 104112/104832/153216/153936 with Ep compensating,
+  per-rank ms/step 237.19-237.27, max/mean 1.00x); halo 1.29%/3.4-6.9% of
+  equations. Ceiling: 0.60 at the 1- and 2-rank points, 0.14 actual at 4.
+  Evidence: docs/perf_snapshots/mpi_scaling_2026-09-21_tpv104_mpi_vs_fortran_samesession.{log,json}
+  (1 and 2 ranks, and the 4-rank fortran column in ..._r4_8_16.log); the
+  4-rank jax number is the rank-solve difference of 388.597 ms/step at 40
+  steps and 241.536 at 160 from the same session's r4_8_16 log.
+  jax/allreduce at 4 ranks has only the 40-step run (the other died on the
+  nftnd==0 bug fixed in 86895bd), so it has no by-difference value and is
+  not reported. Do not fill that cell by halving something.
+
+SCALING, each metric against itself: fortran 1034.50 -> 504.83 -> 250.17 =
+4.14x at 4 ranks. jax on the rank-solve metric 733 (1 rank, from the 20-step
+spot minus its 4.5 s compile) -> 192.60 = 3.8x at 4. So at 4 ranks the MPI
+route tracks Fortran's curve and beats it in absolute ms/step -- which is
+exactly what the shard_map route could NOT do (2.76x at 16, bounded by
+replicated nodal work and an O(NEQ) collective).
+
+BOTH BARS: the milestone bar (absolute parity with Fortran) is MET at every
+rank count measured -- jax is faster at 1, 2 and 4. The ratio bar (~12-14x at
+16, "largely linear like fortran") is ON TRACK at 4 and UNPROVEN above it. It
+cannot be claimed from a 4-rank point; 8 and 16 are the whole question and
+they are the two rows I could not take.
+
+WHY 8 AND 16 ARE EMPTY, and it is not a choice: from ~15:50 a foreign tenant
+(60+ single-core MATLAB jobs plus a 687%-cpu photogrammetry job) took the box
+to loadavg 94-100 with 63 of 64 cpus reading busy 1.00 -- against loadavg 27
+at the 11:35 Fortran re-baseline. Measured under that, the 8-rank point gave
+685.37 ms/step with EFFECTIVE_CORES 0.22-0.60 per rank and 70-357 ms/step of
+barrier wait: it is a record of the tenancy, not of the solver, and it is
+kept in ..._r8_r16_CONTENDED.log labelled as such rather than promoted into
+the table. The re-run is one command and needs 16 cpus under ~0.3:
+  EQDYNAROOT=$PWD PATH=$PWD/bin:$PWD/scripts:$PATH \
+  EQDYNA_SNAPSHOT_TAG=tpv104_r8_r16 python3 testsys/perf/run_mpi_scaling.py \
+    --case test.tpv104 --ranks 8,16 --n-lo 40 --n-hi 160 --max-busy 0.45 \
+    --syncs halo,allreduce --exclude-cpus 0,1
+
+## METRIC TRAP (the fourth of the class, and the worst)
+Per-step by difference over MPIRUN'S WALL CLOCK breaks at >= 4 ranks: every
+rank builds the full serial mesh, so the fixed cost is ~100 s at 4 ranks
+against a ~40 s solve and it fluctuates run to run by more than the whole
+step delta. It returned -41.67 ms/step, which is how it got caught; at 8 or
+16 it would have returned a plausible wrong number instead. The tool now
+differences the RANKS' OWN solve time (driver.run_mpi's clock starts after
+decompose/to_device, so it excludes the mesh build and includes XLA compile --
+which is the term the difference is there to remove), takes the max over ranks
+because the slowest rank sets the step, keeps the wall number beside it as a
+cross-check, and REFUSES a non-positive result instead of recording it.
+Contended 8-rank point: solve-metric 685.37 vs wall-metric 115.91 -- a 6x
+disagreement, in the direction that flatters.
+
+## PARITY AT 4 RANKS (the merge evidence, not a timing)
+test.tpv8, FULL gated run (114 steps, friclaw 1), 4 ranks, sync=halo, frt
+written per rank and compared through testsys/compare.compare_frt against the
+one committed reference:
+  PASS -- max|diff| 1.220703e-10 against bound 1.0e-08, 1891 fault nodes
+  compared (132+829+806+124 = 1891 owned, so every node was written exactly
+  once). The reference's own serial python-jax observation is 8.23e-11, so
+  4-rank MPI sits in the same order of magnitude, 82x inside the bound.
+No reference was regenerated (rule 7).
+
 ## The gate gap, and the invocation contract a cell would need
 The 30-cell sweep CANNOT exercise this path as built: testsys/e2e/run_e2e.py's
 `run_cell` sends every python backend through `run_standalone`, which is

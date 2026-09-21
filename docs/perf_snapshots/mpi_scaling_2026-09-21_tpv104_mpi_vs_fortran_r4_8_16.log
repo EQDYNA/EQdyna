@@ -1,0 +1,28 @@
+/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+Estimated total cells in the model is 231040
+Estimated memory required is about 0.35580160000000005 GBs
+case test.tpv104  sha 86895bd  host cotopaxi  n_lo/n_hi 40/160  max-busy 0.60
+
+-- 4 rank(s) -- cpus [4, 8, 11, 20]  busy {4: 0.0, 8: 0.0, 11: 0.0, 20: 0.0}  worst 0.00 (max-busy 0.60), whole-box load 26.4
+  jax-mpi/halo         -41.67 ms/step (by difference)  fixed  97.05s  wall 95.4/90.4s
+             per-rank ms/step [237.19, 237.19, 237.23, 237.27]
+             max/mean 1.00x  exchange [0.722, 1.582, 1.436, 1.114] ms/step  barrier wait [42.09, 41.41, 2.15, 1.76] ms/step
+             EFFECTIVE_CORES [1.0, 1.0, 1.0, 1.0]  threads [10, 10, 9, 9]  cpus_allowed [1, 1, 1, 1]
+             per-rank Ei [104112, 104832, 153216, 153936]  Ep [63030, 62790, 46662, 46422]  halo eqs [25035, 25620, 50451, 49866]
+  jax-mpi/allreduce     -2.13 ms/step (by difference)  fixed 126.04s  wall 126.0/125.7s
+             per-rank ms/step [290.02, 290.02, 290.04, 290.05]
+             max/mean 1.00x  exchange [35.363, 36.073, 35.026, 35.947] ms/step  barrier wait [43.5, 40.36, 11.84, 9.53] ms/step
+             EFFECTIVE_CORES [0.98, 0.95, 0.97, 0.98]  threads [10, 10, 9, 9]  cpus_allowed [1, 1, 1, 1]
+             per-rank Ei [104112, 104832, 153936, 153216]  Ep [63030, 62790, 46422, 46662]  halo eqs [25035, 25620, 49866, 50451]
+  fortran       250.17 ms/step (by difference)  fixed   2.09s  wall 12.1/42.1s  decomp (2, 2, 1)
+
+-- 8 rank(s) -- cpus [8, 11, 12, 13, 15, 16, 19, 22]  busy {8: 0.0, 11: 0.0, 12: 0.0, 13: 0.0, 15: 0.0, 16: 0.0, 19: 0.0, 22: 0.0}  worst 0.00 (max-busy 0.60), whole-box load 30.0
