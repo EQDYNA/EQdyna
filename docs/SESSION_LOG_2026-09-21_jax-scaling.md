@@ -144,3 +144,86 @@ and does not bind explicit sharding — it is not grounds to decline the attempt
 
   Verify: `mpirun -np 16 --bind-to core python3 <scratchpad>/rankcheck.py`.
 
+- **11:25-11:40 — RETRACTION of my own 11:20 finding, and the measurement that
+  replaces it.** I reported 8 threads/rank as a confirmed oversubscription
+  hazard; the coordinator reasonably elevated it to the campaign's central
+  finding and told Mira to fix it first. **It does not survive being measured,
+  and the instruction should be withdrawn.** I reported a thread COUNT and
+  called it contention, which is the exact error CLAUDE.md's "Measure, do not
+  infer" section is about — four claims in this repo failed this way and two
+  nearly became fixes. This would have been the fifth, and it was mine.
+
+  What the count is worth, measured per rank from `/proc/self/task/*/stat`
+  over a 12 s window (`<scratchpad>/threadprobe.py`): threads=8, but peak
+  thread states are **`{R: 2, S: 7}`** — never more than 2 runnable — and
+  **`EFFECTIVE_CORES` (cpu_used/wall) = 0.96-1.00 on all 16 ranks** with
+  `cpus_allowed=1`. Eight threads consume one core's worth. The pool is
+  overwhelmingly parked. Under core binding the 8 threads cost nothing.
+
+  Scope of the retraction, stated so it is not over-read: this was measured
+  BOUND (`cpus_allowed=1`). Whether those threads become runnable and
+  contend when UNBOUND is unmeasured — the `--bind-to none` arm produced no
+  parseable output (see the papercut below). Since the recommended
+  configuration is bound, the hazard is moot for the chosen path. It is not
+  "disproven in general"; it is "costs nothing in the configuration we will
+  use."
+
+- **11:40 — my read on `--bind-to core --map-by core`, which the coordinator
+  asked for: NECESSARY BUT NOT SUFFICIENT, and blind binding is actively worse
+  than none here.** Two measurements.
+
+  1. **What mpirun picks vs what is busy.** `--bind-to core --map-by core
+     --report-bindings` selects socket 0, cores 0-15, always. Per-cpu
+     utilization over a 4 s window: **0 of 64 cpus are below 5% utilized** —
+     there is no idle cpu on this box, only less-loaded ones — 29 of 64 are
+     over 50%, 12 of 64 over 90%. Within mpirun's own pick of 0-15: cpu 5 and
+     cpu 8 at **1.00**, cpu 11 at 0.81 (an earlier sample had cpus 0, 6, 10,
+     14 at 1.00). So binding lands ranks on top of the tenant.
+  2. **What that costs, measured, not inferred.** In the 2-rank `--bind-to
+     core` run, rank 0 landed on a saturated cpu and read
+     **`EFFECTIVE_CORES=0.51`, ms/step 18.31 against rank 1's 9.10 — 2.01x
+     slower on identical work** (`elems=3818584` both). In a halo-synchronised
+     solver the slowest rank sets the step, so one unlucky rank in sixteen
+     halves the whole measurement. That is why blind binding is worse than
+     none: it converts a fluctuating average into a pinned straggler.
+
+  **What does work, measured:** `mpirun --cpu-set <16 measured-least-loaded
+  cpus> --bind-to cpu-list:ordered` → 16/16 ranks, `cpus_allowed=1` each,
+  `EFFECTIVE_CORES` 0.96-1.00 across the board. The 0.51 straggler is gone.
+  The cpu set must be re-measured immediately before each run: no cpu here is
+  ever idle, the least-loaded set MOVES (item 33 already records the busy set
+  shifting mid-session), and a stale pin list silently reintroduces case 2.
+  The repo already has this mechanism — `run_scaling.py`'s free-node-aware
+  `numactl` pinning — and it should be reused, not reimplemented.
+
+- **11:40 — the finding that actually bounds this campaign, and it is about the
+  BOX, not about jax.** With all 16 ranks correctly pinned to least-loaded
+  cpus and all 16 at `EFFECTIVE_CORES` ~1.00 — i.e. nobody starved of cpu
+  time — per-rank cost still spread **7.94 to 21.25 ms/step, a 2.68x spread**,
+  on identical per-rank work. Ranks are not short of CPU; they are short of
+  **memory bandwidth**, which is shared with the tenant and cannot be pinned.
+
+  Mean 12.62 ms, max 21.25, so **max/mean = 1.68x lost to straggler alone**.
+  For a perfectly parallel 16-rank job with a zero-cost collective, that turns
+  an ideal 16x into **~9.5x** before any serial fraction or any collective is
+  charged. If that transfers to the solver, **the 12-14x bar is not measurable
+  on this box at this tenancy, however good the implementation is.**
+
+  **The caveat that keeps this honest, and it is a big one:** my probe is
+  `(a*c+0.5).sum()` over a 30.5 MB array — a pure streaming kernel, maximally
+  bandwidth-bound, so 1.68x is an UPPER bound on straggler severity, not the
+  solver's figure. Fortran's own measured **14.39x at 16 ranks on this same
+  box under load 22-34** (item 43) is direct evidence the real solver is much
+  less bandwidth-sensitive than this probe. So: not "the bar is unreachable" —
+  rather **"no 16-rank number on this box is interpretable without its
+  per-rank spread printed beside it."** That is now a harness requirement, not
+  a caveat.
+
+- **Papercut, and a vacuous-gate near-miss of my own:** X11's `Invalid
+  MIT-MAGIC-COOKIE-1 key` is emitted with NO trailing newline, so it
+  concatenates onto the first line of real stdout. My `grep -E "^rank"`
+  therefore matched nothing and I was one step from reporting the probe as
+  broken when it had run perfectly. Both arms of the bind-mode comparison were
+  lost this way. Use `tr '\r' '\n' | grep -o "rank .*"`, never a `^` anchor,
+  on any mpirun stdout from this box.
+
