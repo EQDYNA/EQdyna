@@ -352,6 +352,35 @@ Reproduce: `python3 testsys/perf/run_scaling.py --case test.tpv104
 --fortran-ranks 1,2,4,8,16 --py-threads '' --policies compact --n-lo 40
 --n-hi 160 --busy-ceiling 0.45 --repeats 2`
 
+## Reporting contract for Mira's numbers (owner ruling, 2026-09-21 — enforced at the gate, not requested)
+
+**RATIO is the bar.** The owner said it twice in his own words — "jax should be
+largely linear too up to 16 cores like fortran" and "should be linear". So the
+target is **~12-14x at 16 cores**, not 65.89 ms/step.
+
+The two framings do not conflict — ratio parity strictly implies absolute
+victory. jax at 14x from its 611.00 ms/step single-core lands at **~43.6
+ms/step against Fortran's 65.89, i.e. jax beats Fortran outright by ~1.5x**,
+which is the prize its faster kernel has promised since the first measurement.
+Ratio is simply the harder and better bar.
+
+**9.3x / 65.89 ms/step is a MILESTONE, not the finish.** At 9.3x jax matches
+Fortran's wall clock while running one process per rank in Python — a real
+result and a safe checkpoint, worth landing and tagging on its own. It is not
+success, and the campaign does not stop there.
+
+Every number reported from here carries **both figures against both bars**, in
+one table, plus the **Allreduce-vs-halo comparison** in the same table:
+
+| cores | jax ms/step | speedup | vs ratio bar (12-14x) | vs absolute bar (65.89) | collective |
+|---|---|---|---|---|---|
+| … | … | …x | under / met | slower / faster | naive `psum` \| halo |
+
+Each row also carries the six standing print requirements above (rank count,
+per-rank element count, per-rank ms/step + max/mean, `EFFECTIVE_CORES`, the
+busy ceiling used, threads/rank). **A 16-rank number without its per-rank
+spread does not land** — owner's words, and item 47 is why.
+
 ## 12:15 — GATE GAP: the 30-cell sweep cannot exercise an MPI-parallel python backend
 
 Found by reading `testsys/e2e/run_e2e.py`, not at merge time. The two backend
