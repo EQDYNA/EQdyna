@@ -76,13 +76,23 @@ import run_scaling as rs             # noqa: E402
 RANK_RE = re.compile(r'rank (\d+)/(\d+) wrote (\S+)\s+(.*)')
 
 
-def least_loaded_cpus(nodes, k):
+def least_loaded_cpus(nodes, k, exclude=()):
     """The k least-loaded cpus right now, with their busy fractions.
 
     Ordered by (busy fraction, node, cpu) so that among equally idle cpus the
     choice is still as NUMA-compact as the free set allows, and the tenant's
-    hot cpus are avoided rather than taken because they sort first."""
-    all_cpus = sorted(c for cs in nodes.values() for c in cs)
+    hot cpus are avoided rather than taken because they sort first.
+
+    `exclude` drops named cpus from the candidate set. MEASURED REASON, not a
+    preference: /proc/stat read cpu 0 and cpu 1 at busy 0.00, and a 2-rank
+    tpv104 run placed there took 1859 ms/step with rank 0 reporting
+    EFFECTIVE_CORES 0.39, against 605 ms/step on cpus 8,9 and 591 on 8,16
+    (20 steps each, same case, same binary, same session). A cpu that reads
+    idle and then delivers 0.39 cores is not idle; it is stalled on something
+    /proc/stat does not see, and in a halo-synchronised solver the slowest
+    rank sets the step. Excluded cpus are recorded in the snapshot."""
+    all_cpus = sorted(c for cs in nodes.values() for c in cs
+                      if c not in set(exclude))
     busy = numa.cpu_busy_fractions(all_cpus)
     if not busy:
         raise SystemExit('FAIL: could not read per-cpu utilisation from '
@@ -182,6 +192,12 @@ def main():
                          'bookkeeping. Both are correct; the difference is '
                          'the whole question.')
     ap.add_argument('--skip-fortran', action='store_true')
+    ap.add_argument('--exclude-cpus', default='',
+                    help='comma-separated cpus never to place a rank on. See '
+                         'least_loaded_cpus: cpu 0 and cpu 1 read busy 0.00 '
+                         'and then delivered 0.39 effective cores (1859 vs '
+                         '605 ms/step on identical work), so excluding them '
+                         'is a measurement, not a preference.')
     a = ap.parse_args()
     ranks = [int(x) for x in a.ranks.split(',') if x]
     syncs = [s for s in a.syncs.split(',') if s]
@@ -192,6 +208,7 @@ def main():
         if n > 16:
             raise SystemExit('FAIL: %d ranks requested -- capped at 16.' % n)
 
+    excl = [int(x) for x in a.exclude_cpus.split(',') if x.strip()]
     nodes = numa.numa_topology()
     if not nodes:
         raise SystemExit('FAIL: numactl --hardware gave no topology.')
@@ -211,7 +228,7 @@ def main():
           flush=True)
     rows = []
     for n in ranks:
-        cpus, busy = least_loaded_cpus(nodes, n)
+        cpus, busy = least_loaded_cpus(nodes, n, exclude=excl)
         worst = max(busy.values())
         print('\n-- %d rank(s) -- cpus %s  busy %s  worst %.2f (max-busy %.2f), '
               'whole-box load %.1f'
@@ -288,7 +305,8 @@ def main():
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     json.dump(dict(case=a.case, sha=sha, host=os.uname().nodename,
                    date=time.strftime('%Y-%m-%d %H:%M'), n_lo=a.n_lo,
-                   n_hi=a.n_hi, max_busy=a.max_busy, rows=rows),
+                   n_hi=a.n_hi, max_busy=a.max_busy, excluded_cpus=excl,
+                   rows=rows),
               open(OUT, 'w'), indent=1)
     print('\nsaved %s' % OUT)
     shutil.rmtree(work, ignore_errors=True)

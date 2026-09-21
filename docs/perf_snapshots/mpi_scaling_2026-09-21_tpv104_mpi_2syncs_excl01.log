@@ -1,0 +1,24 @@
+/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+Estimated total cells in the model is 231040
+Estimated memory required is about 0.35580160000000005 GBs
+case test.tpv104  sha 0fa04c9  host cotopaxi  n_lo/n_hi 40/160  max-busy 0.45
+
+-- 1 rank(s) -- cpus [2]  busy {2: 0.97}  worst 0.97 (max-busy 0.45), whole-box load 76.7
+  SKIPPED: the 1 least-loaded cpus include one at 0.97 > 0.45. Not measured, not silently included.
+
+-- 2 rank(s) -- cpus [2, 3]  busy {2: 1.0, 3: 1.0}  worst 1.00 (max-busy 0.45), whole-box load 76.7
+  SKIPPED: the 2 least-loaded cpus include one at 1.00 > 0.45. Not measured, not silently included.
+
+-- 4 rank(s) -- cpus [2, 3, 4, 5]  busy {2: 1.0, 3: 1.0, 4: 0.9, 5: 1.0}  worst 1.00 (max-busy 0.45), whole-box load 76.7
+  SKIPPED: the 4 least-loaded cpus include one at 1.00 > 0.45. Not measured, not silently included.
+
+-- 8 rank(s) -- cpus [3, 4, 8, 14, 20, 24, 25, 28]  busy {3: 0.4, 4: 0.4, 8: 0.4, 14: 0.4, 20: 0.4, 24: 0.4, 25: 0.38, 28: 0.37}  worst 0.40 (max-busy 0.45), whole-box load 76.7

@@ -1,0 +1,27 @@
+/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+Estimated total cells in the model is 231040
+Estimated memory required is about 0.35580160000000005 GBs
+case test.tpv104  sha fb6b8e1  host cotopaxi  n_lo/n_hi 40/160  max-busy 0.45
+
+-- 1 rank(s) -- cpus [0]  busy {0: 0.0}  worst 0.00 (max-busy 0.45), whole-box load 16.7
+  jax-mpi/halo         772.01 ms/step (by difference)  fixed  11.49s  wall 42.4/135.0s
+             per-rank ms/step [785.35]
+             max/mean 1.00x  exchange [0.195] ms/step  barrier wait [0.01] ms/step
+             EFFECTIVE_CORES [1.0]  threads [9]  cpus_allowed [1]
+             per-rank Ei [516096]  Ep [218904]  halo eqs [0]
+  jax-mpi/allreduce    784.01 ms/step (by difference)  fixed  10.00s  wall 41.4/135.4s
+             per-rank ms/step [792.86]
+             max/mean 1.00x  exchange [21.3] ms/step  barrier wait [0.01] ms/step
+             EFFECTIVE_CORES [1.0]  threads [9]  cpus_allowed [1]
+             per-rank Ei [516096]  Ep [218904]  halo eqs [0]
+
+-- 2 rank(s) -- cpus [0, 1]  busy {0: 0.0, 1: 0.0}  worst 0.00 (max-busy 0.45), whole-box load 16.3

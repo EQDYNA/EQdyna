@@ -458,6 +458,18 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     rows = out['fault_rows']
     sel = out['own_in_computed']
     n_own = int(rows.shape[0])
+    if n_own == 0:
+        # A rank whose element slab never touches the fault owns no fault
+        # node, and Fortran writes NO frt.txt for such a rank -- which is why
+        # library_output.write_frt refuses nftnd==0. Mirror that: write
+        # nothing and say so. This cannot hide lost nodes: driver.run_mpi has
+        # already allreduced the owned counts and raised unless they sum to
+        # nftnd, so a missing file means "this rank owned none", never
+        # "these nodes went missing". Found at 4 ranks on test.tpv104 (2
+        # ranks is not enough to produce a fault-free slab) -- the shape of
+        # bug that only exists above the rank count you smoke-tested at.
+        prof.nelem = out['report']['E']
+        return None, out['report']
     fric_1idx = np.zeros((n_own + 1, 101))
     fric_1idx[1:, 1:101] = out['fric'][sel]
     fnft_1idx = np.zeros(n_own + 1)
@@ -575,8 +587,12 @@ def main():
         if args.profile:
             prof.report(nsteps=args.nsteps, nelem=prof.nelem or None,
                         stream=sys.stdout)
+        # `path` is None for a rank that owns no fault node (see
+        # run_case_mpi): it wrote nothing, exactly as Fortran does, and the
+        # line says so rather than printing a bare None that reads like a bug.
         print('rank %d/%d wrote %s  %s'
-              % (comm.Get_rank(), comm.Get_size(), path,
+              % (comm.Get_rank(), comm.Get_size(),
+                 path or 'NO-FRT-OWNS-0-FAULT-NODES',
                  ' '.join('%s=%s' % (k, report[k]) for k in
                           ('Ei', 'Ep', 'halo_eqs', 'ms_per_step',
                            'mpi_ms_per_step', 'wait_ms_per_step', 'sync',
