@@ -436,6 +436,52 @@ class Profile(dict):
         return self
 
 
+def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
+    """run_case's one-process-per-rank twin: Fortran's decomposition, jax
+    owning the local element kernel (driver.run_mpi, MPI4NodalQuant.py).
+
+    Each rank writes `frt.txt<rank>` holding exactly the fault nodes it OWNS,
+    which is the same output shape a 4-rank Fortran run produces and what
+    testsys/frt_canonical.py already globs for -- so an N-rank python run is
+    compared against the SAME committed reference, through the same
+    canonicalisation, with no new comparison path.
+
+    Returns (path, report) -- the report carries this rank's element counts,
+    halo size and ms/step, which every multi-rank measurement must print."""
+    prof = profile if profile is not None else Profile('jax')
+    with prof.phase('setup (mesh+input)'):
+        S, mesh = build_solver_state(case_dir)
+    with prof.phase('solve'):
+        out = driver.run_mpi(S, comm, nsteps=nsteps, verbose=verbose,
+                             xp=_backend.array_module('jax'))
+
+    rows = out['fault_rows']
+    sel = out['own_in_computed']
+    n_own = int(rows.shape[0])
+    if n_own == 0:
+        # A rank whose element slab never touches the fault owns no fault
+        # node, and Fortran writes NO frt.txt for such a rank -- which is why
+        # library_output.write_frt refuses nftnd==0. Mirror that: write
+        # nothing and say so. This cannot hide lost nodes: driver.run_mpi has
+        # already allreduced the owned counts and raised unless they sum to
+        # nftnd, so a missing file means "this rank owned none", never
+        # "these nodes went missing". Found at 4 ranks on test.tpv104 (2
+        # ranks is not enough to produce a fault-free slab) -- the shape of
+        # bug that only exists above the rank count you smoke-tested at.
+        prof.nelem = out['report']['E']
+        return None, out['report']
+    fric_1idx = np.zeros((n_own + 1, 101))
+    fric_1idx[1:, 1:101] = out['fric'][sel]
+    fnft_1idx = np.zeros(n_own + 1)
+    fnft_1idx[1:] = out['fnft'][sel]
+    path = os.path.join(case_dir, 'frt.txt%d' % comm.Get_rank())
+    with prof.phase('write frt'):
+        library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
+                                 fnft_1idx, fric_1idx)
+    prof.nelem = out['report']['E']
+    return path, out['report']
+
+
 def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
              profile=None):
     """Builds S (zero pydump reads), dispatches to the friclaw-appropriate
@@ -464,7 +510,14 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     fnft_1idx = np.zeros(nftnd + 1)
     fnft_1idx[1:] = out['fnft']
 
-    frt_path = os.path.join(case_dir, 'frt.txt0')
+    # A run made under one of backend.py's timing-only sharding knobs computes
+    # the wrong answer by construction, so it must not be able to land on the
+    # path every comparison tool reads. It is still written (the measurement
+    # wants a completed run, and a silently skipped write is its own defect),
+    # under a name nothing gates on.
+    name = ('frt.txt0.TIMING-ONLY-INVALID' if _backend.timing_only()
+            else 'frt.txt0')
+    frt_path = os.path.join(case_dir, name)
     with prof.phase('write frt'):
         library_output.write_frt(frt_path, mesh['meshCoor'], mesh['nsmp'],
                              fnft_1idx, fric_1idx)
@@ -513,7 +566,38 @@ def main():
                           'so one-time cost and per-step cost cannot be '
                           'confused. JAX phases are synchronised, so the '
                           'numbers are compute, not queue submission.')
+    ap.add_argument('--mpi', action='store_true',
+                     help='one process per rank, Fortran-style domain '
+                          'decomposition, jax owning the local element kernel '
+                          '(driver.run_mpi). Launch under mpirun. Writes '
+                          'frt.txt<rank>. No fallback: --mpi with mpi4py '
+                          'missing is an error, and --mpi outside mpirun is a '
+                          'legal 1-rank run, not a silent serial demotion.')
     args = ap.parse_args()
+    if args.mpi:
+        if args.backend != 'jax':
+            raise SystemExit('--mpi is implemented for --backend jax only '
+                             '(numpy is out of scope for the MPI path)')
+        _select_device('cpu' if args.device == 'auto' else args.device)
+        from mpi4py import MPI      # ImportError is deliberate, not caught
+        comm = MPI.COMM_WORLD
+        prof = Profile('jax')
+        path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+                                    profile=prof)
+        if args.profile:
+            prof.report(nsteps=args.nsteps, nelem=prof.nelem or None,
+                        stream=sys.stdout)
+        # `path` is None for a rank that owns no fault node (see
+        # run_case_mpi): it wrote nothing, exactly as Fortran does, and the
+        # line says so rather than printing a bare None that reads like a bug.
+        print('rank %d/%d wrote %s  %s'
+              % (comm.Get_rank(), comm.Get_size(),
+                 path or 'NO-FRT-OWNS-0-FAULT-NODES',
+                 ' '.join('%s=%s' % (k, report[k]) for k in
+                          ('Ei', 'Ep', 'halo_eqs', 'ms_per_step',
+                           'mpi_ms_per_step', 'wait_ms_per_step', 'sync',
+                           'threads', 'cpus_allowed'))))
+        return
     if args.backend == 'jax':
         _select_device(args.device)
     elif args.device != 'auto':

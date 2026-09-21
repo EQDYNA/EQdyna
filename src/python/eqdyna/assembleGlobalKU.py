@@ -228,6 +228,11 @@ def build(S):
         m_e_i=m_e_all[E_int], m_e_p=m_e_all[E_pml],
         stress_i0=stress_i0, pml_init6=pml_init6,
         ccosphi=ccosphi, sinphi=sinphi, tv=tv,
+        # None = serial, one subdomain, no nodal exchange (the only value the
+        # numpy backend and single-device jax ever see).
+        # backend.run_time_loop_sharded overrides it with the mesh axis name,
+        # which is what makes driver.step's nodal_sync an actual collective.
+        shard_axis=None,
     )
 
 

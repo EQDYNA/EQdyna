@@ -1,0 +1,37 @@
+/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+Estimated total cells in the model is 231040
+Estimated memory required is about 0.35580160000000005 GBs
+case test.tpv104  sha 86895bd  host cotopaxi  n_lo/n_hi 40/160  max-busy 0.60
+
+-- 1 rank(s) -- cpus [2]  busy {2: 1.0}  worst 1.00 (max-busy 0.60), whole-box load 99.3
+  SKIPPED: the 1 least-loaded cpus include one at 1.00 > 0.60. Not measured, not silently included.
+
+-- 2 rank(s) -- cpus [2, 3]  busy {2: 1.0, 3: 1.0}  worst 1.00 (max-busy 0.60), whole-box load 99.3
+  SKIPPED: the 2 least-loaded cpus include one at 1.00 > 0.60. Not measured, not silently included.
+
+-- 4 rank(s) -- cpus [2, 3, 4, 5]  busy {2: 1.0, 3: 0.97, 4: 1.0, 5: 1.0}  worst 1.00 (max-busy 0.60), whole-box load 99.3
+  SKIPPED: the 4 least-loaded cpus include one at 1.00 > 0.60. Not measured, not silently included.
+
+-- 8 rank(s) -- cpus [2, 3, 4, 5, 6, 7, 8, 40]  busy {2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0, 6: 1.0, 7: 1.0, 8: 1.0, 40: 0.97}  worst 1.00 (max-busy 0.60), whole-box load 99.3
+  SKIPPED: the 8 least-loaded cpus include one at 1.00 > 0.60. Not measured, not silently included.
+
+-- 16 rank(s) -- cpus [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 40]  busy {2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0, 6: 1.0, 7: 1.0, 8: 1.0, 9: 1.0, 10: 1.0, 11: 1.0, 12: 1.0, 13: 1.0, 14: 1.0, 15: 1.0, 16: 1.0, 40: 0.97}  worst 1.00 (max-busy 0.60), whole-box load 99.3
+  SKIPPED: the 16 least-loaded cpus include one at 1.00 > 0.60. Not measured, not silently included.
+
+ranks         fortran   speedup      jax_halo   speedup jax_allreduce   speedup jax/fortran
+1                   -         -             -         -             -         -         -
+2                   -         -             -         -             -         -         -
+4                   -         -             -         -             -         -         -
+8                   -         -             -         -             -         -         -
+16                  -         -             -         -             -         -         -
+
+saved /home/utig5/dliu/wt-jaxshard/docs/perf_snapshots/mpi_scaling_2026-09-21_tpv104_mpi_vs_fortran_solvemetric.json
