@@ -20,6 +20,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 16. Test what you commit, not what is in your working tree.
 17. Reviving or adding a TPV benchmark.
 18. A refactor that couples two previously-independent artifacts must say so.
+19. A shared mutable `*_last.*` artifact is not evidence until pinned to a commit.
 
 ---
 
@@ -552,3 +553,70 @@ you just added one. If it is a shared config or a directory coupling with no
 symlink, say so in the commit and route the "should this be guarded
 mechanically" question to a reviewer — this rule does not claim a check
 exists for that case, because none does.
+
+---
+
+## 19. A shared mutable `*_last.*` artifact is not evidence until pinned to a commit
+
+A tool-written file whose name says "last" (`testsys/perf/scaling_last.json`,
+`testsys/perf/scatter_bandwidth_last.json`, `testsys/perf/tpv29_pinned_last.json`,
+or any future `*_last.*`) holds the most recent run **by design** and carries
+no guarantee of being the run anyone cited. Being tracked in git does not make
+it durable evidence — only one specific commit of it is.
+
+- A `pathway_forward.md` row may not cite a `*_last.*` path as evidence
+  without a commit SHA pinning the content it means. A bare path is a
+  citation to whatever ran most recently, not to what the row describes.
+- Durable evidence goes to a dated, immutable name, never the `_last` file
+  itself: `docs/perf_snapshots/<tool>_<date>_<what>.{json,log}`. That is what
+  a row cites when it needs to survive the next run of the tool.
+- Before committing a tool-written shared artifact, inspect the committed
+  version first: `git show HEAD:<path>` and compare a property of the content
+  — not the mtime, not "looks similar" — against what you are about to write.
+  If another artifact or board row depends on the committed content, confirm
+  you are not about to replace it.
+- Two agents or sessions must not run a tool that writes a committed shared
+  artifact concurrently. The write has no lock: whichever commits second
+  silently discards the other's run, and nothing raises an error either time.
+  A conductor dispatching parallel missions that both touch the same
+  `*_last.*` path must serialize them or redirect their output to different
+  paths — git will not detect the collision, let alone merge it.
+
+**Rationale**: `testsys/perf/scaling_last.json` was last committed by
+`88f5227` (2026-09-19) from a python-only run — the string `fortran` appears
+in it zero times. Item 33's board row cites this exact path for its
+per-config skip records. On 2026-09-21 a Fortran re-baseline sweep
+(`run_scaling.py`) was about to overwrite it with a run containing `fortran`
+five times, which would have silently destroyed the evidence item 33's row
+points at while the row kept reading as maintained — caught only by
+inspecting `git show HEAD:testsys/perf/scaling_last.json` before committing,
+not by any mechanical check. At the same moment a second agent had the same
+file dirty in a separate worktree; whichever of the two commits landed second
+would have overwritten the other's results with no warning either way. A
+`*_last` filename is not a bug in the tool — it correctly means "the last
+run" — the defect is citing a deliberately-transient file as durable evidence
+and running such a tool from two places at once.
+
+**Incident (2026-09-21)**: the day's run was preserved under
+`docs/perf_snapshots/scaling_2026-09-21_fortran_rebaseline_tpv104.json` (plus
+its `.log`), and `scaling_last.json` was restored to its committed content
+with `git checkout --` so item 33's citation kept resolving to the data it
+describes (`3a46ab8`).
+
+**Enforceable vs procedural.** Only the first bullet is mechanical: a
+regression test can scan `pathway_forward.md` for a `*_last.*` citation and
+fail any that has no commit SHA next to it. The other three bullets —
+inspecting `HEAD:<path>` before committing, redirecting durable results to
+`docs/perf_snapshots/`, and not running two writers of the same path
+concurrently — rest on discipline. Nothing in this repo today detects a
+skipped `git show HEAD:<path>` check or two agents racing on the same file;
+reading this rule as enforcing them would be false, the same standard this
+rule book applies to any other unchecked claim.
+
+**How to apply**: before citing a `*_last.*` path in `pathway_forward.md`,
+add the commit SHA that produced the content you mean, in the row's own text
+(e.g. `` `testsys/perf/scaling_last.json` (committed at `88f5227`) ``); before
+running a tool that writes one, `git show HEAD:<path>` and diff a real
+property of the content, not the mtime, against what your run is about to
+produce; before dispatching a second agent, check whether its mission writes
+the same shared path and serialize or redirect if so.
