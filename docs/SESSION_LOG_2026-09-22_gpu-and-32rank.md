@@ -290,6 +290,124 @@ construction in `test.tpv29` and `test.tpv30` is identical, TPV29 has the same
 9.2%, and TPV29 is gated, passing and validated against the owner's published
 SCEC results.
 
+## THE ROOT CAUSE OF THE CAMPAIGN'S 32-RANK FAILURES, and it is not compile
+
+This is the most important thing in this log. The shared persistent XLA cache
+**wedges multi-rank runs**, and the 2026-09-21 diagnosis of "~50 minutes in XLA
+COMPILE" at 32 ranks was a **misreading of that wedge**.
+
+Three observations of the same signature, in one session:
+
+| what | ranks | symptom | outcome |
+|---|---|---|---|
+| e2e `test.tpv8 x python-jax-mpi` | 4 | 1 rank `hrtimer_nanosleep`, 3 spinning 100%, log mtime frozen **29 min** | killed by PID |
+| scaling run A, 2-rank point | 2 | 1 rank `hrtimer_nanosleep` with **11,862,131 voluntary ctxt switches**, 1 spinning 100%, log mtime frozen **31 min** | killed by PID |
+| 2026-09-21, 32-rank point | 32 | 1 rank 100% userspace w/ jax loaded, others `hrtimer_nanosleep` with **19.9M** voluntary ctxt switches | ran an hour, produced nothing |
+
+The predecessor read the third as LLVM codegen ("single-threaded, 100%
+userspace, no syscalls, jax loaded = LLVM codegen. Not a deadlock, and not a
+solve") and concluded the jax-MPI path pays ~an hour of compile at 32-way
+sharding. That reading is wrong, and the disproof is direct:
+
+- Measured compile at **1 rank: 0.42 s**. One rank cannot race with itself.
+- The 4-rank cell that hung for 29 minutes completed in **12.4 seconds** with
+  `EQDYNA_JAX_CACHE_DIR=off`.
+- The full 1→32 sweep, cache off, finished **every point including 32 ranks**
+  in ~20 minutes total, with measured compile of **4.43–4.93 s at every rank
+  count including 32**.
+
+So there is no compile cliff. There is a lock/cache race with no timeout, in
+which one rank stalls and every other rank waits for it forever. `backend.py:167`
+is where it surfaces when it surfaces at all (`driver.py:391` calls
+`enable_compilation_cache`); when it does not raise, it simply hangs.
+
+This is the same hazard already recorded for GPU — "ranks racing on the SHARED
+persistent XLA cache wedge intermittently (one rank spinning in MPI, another in
+`hrtimer_nanosleep`)", 2 hangs with the cache on, 3/3 clean with it off. It was
+filed as a GPU/allocator peculiarity. **It is not platform-specific and it is
+the reason the 32-rank point never landed.** Two runs were lost to it last
+night and a third this morning; all three were attributed to something else.
+
+The code is not at fault: the refusal at `backend.py:167` is correctly designed
+with no silent fallback, and says so in its own error text. Concurrent EQdyna
+ranks sharing one cache directory are at fault.
+
+**Consequence for the gated cell, and it needs an owner decision:** the
+`test.tpv8 x python-jax-mpi` cell in the sweep is exposed to this whenever
+anything else on the box is running jax. It passed in 12.4 s today only because
+I set the cache off by hand. That is a latent intermittent hang in a gated
+cell, not a perf footnote.
+
+## The 1→32 deliverable (`ce0b9af`, snapshot `mpi_scaling_2026-09-22_012512_tpv104_1to32_cacheoff.json`)
+
+Both engines, same session, same cpu set per point, ceiling 0.45, per-step by
+difference over the ranks' own solve time at n_lo/n_hi 40/160,
+`--exclude-cpus 0,1`, `--syncs halo`. Box tenancy 11/64 cpus over the ceiling;
+**every selected cpu read busy 0.00** — the cleanest tenancy this campaign has
+measured, and the reason a strict-ish sweep was possible today when it selected
+0 of 64 twice on Sunday.
+
+| ranks | Fortran ms/step | speedup | jax-MPI ms/step | speedup | jax/fortran |
+|---|---|---|---|---|---|
+| 1 | 922.27 | 1.00x | 756.92 | 1.00x | **0.82x** |
+| 2 | 463.87 | 1.99x | 444.87 | 1.70x | 0.96x |
+| 4 | 233.01 | 3.96x | 315.31 | 2.40x | 1.35x |
+| 8 | 115.70 | 7.97x | 211.29 | 3.58x | 1.83x |
+| 16 | 59.13 | 15.60x | 150.04 | 5.04x | 2.54x |
+| 32 | **24.71** | **37.33x** | **143.27** | **5.28x** | 5.80x |
+
+### Verdict on the ratio bar: NOT MET, and not marginally
+
+jax-MPI reads **5.04x at 16** against the 12-14x bar, and **5.28x at 32** — it
+has plateaued, not fallen short. Fortran reads 15.60x at 16 and 37.33x at 32
+(a per-rank efficiency above 1.0, i.e. mildly superlinear, consistent with each
+rank's working set fitting progressively better in cache).
+
+Absolute parity, the milestone recorded on 2026-09-21 as worth landing on its
+own, is met only at 1 and 2 ranks (jax 756.92 vs Fortran 922.27; 444.87 vs
+463.87) and is lost from 4 ranks upward.
+
+### The mechanism, named with its measurement — the owner's stopping rule
+
+At 32 ranks, and this is not the mechanism the campaign expected:
+
+- **per-rank ms/step: 172.53 to 172.62 across all 32 ranks. max/mean = 1.00x.**
+  There is no straggler. The 2.68x per-rank spread that dominated the
+  2026-09-21 analysis is **absent on a quiet box** — it was tenancy, not the
+  solver.
+- **`EFFECTIVE_CORES` = 1.00 on 31 of 32 ranks** (0.99 on one). No rank is
+  starved of cpu, so this is not placement and not the foreign tenant.
+- **barrier wait: 4.65 to 105.09 ms of a 172.6 ms step** — up to **61% of the
+  step** spent waiting.
+- **exchange: 1.33 to 11.08 ms/step.** Transport is small and is NOT the bound.
+- **decomposition imbalance is the cause:** per-rank interior element counts
+  `Ei` are **ZERO on four of the 32 ranks** (ranks 0, 2, 6, 7) against ~19,000
+  on the rest; `Ep` 12217 vs 5586; halo equations 126120 vs 49977, a 2.5x
+  spread. Four ranks own no interior work at all, and the 28 that do wait on
+  the boundary work those four own.
+
+This **independently confirms on CPU** what the 4-A100 measurement concluded:
+the fix is decomposition BALANCE, not transport. Two different machines, two
+different interconnects, same verdict. That is worth more than either
+measurement alone, and it is the concrete next mission.
+
+### The A100 comparison is now a MEASUREMENT, not an extrapolation
+
+The inherited figure was an extrapolation — 31.3 ms/step for 32-core Fortran at
+perfect linearity, break-even ~37 cores — and the brief was explicit that it
+must not be quoted as measured. Measured:
+
+| | ms/step |
+|---|---|
+| one A100 | 27.26 |
+| **Fortran, 32 cores** | **24.71** |
+| 4 A100s | 9.54 (6.66 in the multi-device run) |
+
+**32-core Fortran BEATS one A100 by 1.10x.** Break-even is BELOW 32 cores, not
+~37 — the extrapolation erred against Fortran. Four A100s remain 2.6-3.7x
+faster than 32 CPU cores, so multi-GPU is where the headroom is, and its
+blocker is the same decomposition balance problem.
+
 ## Carried forward unchanged
 
 `tpv30` and `test.drv.a6` reference/bound HANDS OFF (drv.a6's 40/-120 vs
