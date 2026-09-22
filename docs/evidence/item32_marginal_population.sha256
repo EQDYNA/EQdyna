@@ -1,0 +1,30 @@
+# Manifest: scratch/item32-evidence/ -- gitignored, IRREPLACEABLE (sole copy)
+#
+# WHAT: the three frt artifacts that pathway item 32's evidence command
+#       (testsys/parity/evidence_drv_a6_marginal_population.py) reads. They are
+#       measurements taken 2026-09-16 and CANNOT be regenerated cheaply:
+#       drv.a6 is one of the two largest cases in the project.
+#
+# WHY THIS EXISTS: until 2026-09-21 these lived ONLY in
+#       /tmp/claude-16759/.../scratchpad, a path scoped to a single agent
+#       session id. The script hardcodes that path. A /tmp reap, or simply a
+#       different session, would have made item 32's Command unrunnable and the
+#       row uncheckable -- with nothing anywhere recording the loss. That is
+#       rule 19's class exactly (evidence pinned to a mutable/ephemeral path),
+#       and it is the same failure mode item 45 exists to prevent.
+#
+# NOT YET FIXED: the script still hardcodes the /tmp path. Repointing it at
+#       scratch/item32-evidence/ is a code change that needs its own gate;
+#       recorded for the morning rather than slipped in unverified.
+#
+# VERIFIED 2026-09-21: the command reproduces the board's numbers exactly --
+#       fortran-serial vs 4-rank 372; python-jax 415; python-numpy 423;
+#       python-jax vs serial 442; python-numpy vs serial 450 (bound 450).
+#
+# VERIFY: cd $EQDYNAROOT/scratch/item32-evidence \
+#         && sha256sum -c ../../docs/evidence/item32_marginal_population.sha256
+# GENERATED: 2026-09-21 by wei-lin, tree at 6ca6a7f.
+#
+3bfabca30d61f6e5b3a4da54f88585f16bd709265d589309e2ac3be31cda49e9  ./drv_py_jax/test.drv.a6/frt.txt0
+6710075abe0af1ba8f09b4813c7c35e3f4522cb9d6640534ae6303fac64e9771  ./drv_py_numpy/test.drv.a6/frt.txt0
+d71e18ff9b3f2845283e4ef573d449db51b2d38d5aaa39264af50d71f9a66fb6  ./drv_serial_fortran_ref.frt
