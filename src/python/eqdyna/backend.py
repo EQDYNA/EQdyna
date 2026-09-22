@@ -134,9 +134,10 @@ _PROMOTED_FLOAT = ('phi', 'ss', 'dNx_i', 'dNy_i', 'dNz_i',
 _I32_MAX = 2 ** 31 - 1
 _CACHE_ENV = 'EQDYNA_JAX_CACHE_DIR'
 _cache_enabled = False
+_cache_path = None
 
 
-def enable_compilation_cache():
+def enable_compilation_cache(subdir=None):
     """Point JAX's on-disk compilation cache at a real directory.
 
     XLA backend compilation of this time loop costs 13.9 s (GPU) / 4.7 s
@@ -146,17 +147,45 @@ def enable_compilation_cache():
     NO silent fallback: a named directory that cannot be written raises.
     Quietly running uncached would report a compile time nobody could
     account for. EQDYNA_JAX_CACHE_DIR=off runs uncached deliberately.
+
+    `subdir` GIVES THE CALLER ITS OWN CACHE DIRECTORY, and the MPI path uses
+    it (driver.run_mpi passes 'rank<n>'). MEASURED REASON, not hygiene: with
+    N ranks sharing one cache directory, `test.tpv8` x python-jax-mpi wedged
+    intermittently -- three runs over three days lost -- and the same cell
+    completed in 12.4 s with the cache off. JAX's persistent cache takes a
+    per-key lock inside the cache directory, and the ranks contend on it
+    whenever they compile at the same instant (which, after comm.Barrier(),
+    is always) or whenever a foreign jax process on the box holds it.
+
+    AND THERE IS NOTHING TO SHARE. Rank r's part_a/part_b are traced against
+    rank r's OWN element counts (inv_l['Ei'], inv_l['Ep'], the halo length),
+    so every rank compiles a DIFFERENT program and no two ranks could ever hit
+    each other's entry. A shared directory buys exactly zero reuse and pays
+    the whole lock contention, so splitting it loses nothing measurable. Reuse
+    ACROSS runs -- the reuse that actually pays -- is preserved: rank r at the
+    same rank count re-traces the same shapes and hits its own warm entry.
     """
-    global _cache_enabled
-    if _cache_enabled:
-        return
+    global _cache_enabled, _cache_path
     import os
-    import jax
-    want = os.environ.get(_CACHE_ENV)
-    if want == 'off':
-        _cache_enabled = True
+    if _cache_enabled:
+        # Loud on a second, DIFFERENT request. Returning silently would leave
+        # the MPI path sharing the directory it asked not to share, which is
+        # the wedge this argument exists to remove -- and it would look fixed.
+        if subdir is not None and _cache_path != _resolved_cache_path(subdir):
+            raise RuntimeError(
+                'backend.enable_compilation_cache: the JAX compilation cache '
+                'is already pointed at %r, but %r was requested. The first '
+                'caller wins in JAX (jax.config is process-global and the '
+                'cache is read at first compile), so honouring this silently '
+                'would run under the wrong directory. Call this once, before '
+                'the first compile.' % (_cache_path, _resolved_cache_path(subdir)))
         return
-    path = want or os.path.join(os.path.expanduser('~'), '.cache', 'eqdyna-jax')
+    import jax
+    if os.environ.get(_CACHE_ENV) == 'off':
+        _cache_enabled = True
+        _cache_path = 'off'
+        return
+    path = _resolved_cache_path(subdir)
     try:
         os.makedirs(path, exist_ok=True)
         probe = os.path.join(path, '.eqdyna-write-probe')
@@ -174,6 +203,19 @@ def enable_compilation_cache():
     jax.config.update('jax_persistent_cache_min_compile_time_secs', 0.5)
     jax.config.update('jax_persistent_cache_min_entry_size_bytes', 0)
     _cache_enabled = True
+    _cache_path = path
+
+
+def _resolved_cache_path(subdir=None):
+    """The directory enable_compilation_cache would use. Separate so the
+    already-enabled check above compares the same string the setter stores,
+    rather than re-deriving it slightly differently."""
+    import os
+    want = os.environ.get(_CACHE_ENV)
+    if want == 'off':
+        return 'off'
+    path = want or os.path.join(os.path.expanduser('~'), '.cache', 'eqdyna-jax')
+    return os.path.join(path, subdir) if subdir else path
 
 
 def to_device(xp, inv):
