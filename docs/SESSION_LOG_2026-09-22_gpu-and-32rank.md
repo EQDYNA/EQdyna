@@ -879,3 +879,67 @@ session logs, not at the repo root.
 No version bump, same reason as above: VERSION 5.15.0 is a prepared,
 CI-green, deliberately untagged release and moving it would invalidate
 `54e0697`'s standing as the thing that gets tagged.
+
+## Rule 4b — the rule MY briefing paid for (`5d9d03d`, merge of `2b6c7fd`)
+
+> **An exclusion names the metric that produced it; a metric blind to a
+> mechanism cannot exclude it.**
+
+I handed Mira a "ruled out with numbers, do not re-run" list. Two of its entries
+excluded contention on a per-rank WALL spread of 1.00x — **an identity of a
+barrier-synchronised loop** — and on `EFFECTIVE_CORES` 1.00, which **cannot see
+a memory stall**. Contention was the largest single term in the step (~45 ms of
+~124). Item 60 had carried "so it is NOT contention" as fact. Neither instrument
+could have observed it, and three missions over two days were aimed everywhere
+else.
+
+Rule 4a governs a proposed CAUSE and asks for the outcome curve; 4b governs the
+NEGATIVE claim and asks which instrument produced it. Same failure both times: a
+number measured correctly, about the wrong quantity. Board now: 26 `## `
+headings, 20 numbered rules, six lettered (2a, 4a, 4b, 15a, 20a, 20b) — both
+greps re-run by me on the merged tree.
+
+Items 59 (demoted cause → hypothesis, the A100 evidence is all defect-side and
+nobody recut), 48 (both halves of its mechanism sentence were wrong) and 55
+(closed) landed with it.
+
+### She corrected me on four points; I confirmed three against the artifacts before merging
+
+1. **My item-55 ledger numbers were read from a DIRTY tree**, before the day's
+   landings: I quoted 63 rows / 46815 bytes; the clean merged tree reads **70
+   rows / 52490 bytes**, `PASS`, byte-equal to HEAD. Same verdict, wrong counts.
+   This is the interrupted-command lesson arriving by a different door — the
+   discipline is `git status --porcelain | wc -l` BEFORE quoting a number, not
+   only after an interruption.
+2. **The pre-registered `div` prediction held on 4 of 5 ranks, not 5.**
+   Confirmed in the committed artifact (`docs/NOTES_plateau_32rank_2026-09-22.md`,
+   the 32-rank table): rank 16 reads `div` = **15.65 ms** against 7.23-7.54 on
+   every other rank — and rank 16 is the very row supplying the 51.62 ms
+   "uncontended max" that the 1.90x inflation divides by. Either that row is
+   contaminated (inflation is then 97.94/50.11 = **1.95x**, which does not
+   change the verdict) or `div` is not flat. The artifact does not say which.
+   The headline survives either way; the row carries the caveat.
+3. **The "0.5% profiling perturbation" is an 8-rank figure only.** At 32 ranks
+   profiled reads 123-125 ms against the committed unprofiled 143.27 (~13%),
+   under box load 17.8 vs 10.6, with no control run.
+4. `probe_mpi_step_split.py` landed at `61e54d7`; `f278056` is the merge.
+
+She also declined a sixth `CLAUDE.md` entry on the grounds that this pass's
+collapsed claim is the EXCLUSION and its home is rule 4b's incident — one fact,
+one document. Correct, and it is her call.
+
+## Worktrees
+
+Reaped the two docs worktrees (clean, merged, nothing but their branches).
+**Kept `agent-ab87d1965ff24e21d`**: its gitignored `scratch/plateau` holds 1.6 MB
+of raw run logs behind the numbers the owner is about to rule on, against 124 KB
+of named snapshots that landed. Evidence stays until the decision it supports is
+taken (rule 8). 25 worktrees remain, unchanged otherwise; `scaling32`'s `231454c`
+still must never be landed.
+
+## What needs the owner, unchanged plus one
+
+His five open items stand as handed over, and the plateau adds a sixth: the FIX
+— shrinking the carry from global to rank-local extent — changes the memory
+layout of a gated path and is product behaviour, not a queued mission. It is
+recorded on item 60 as awaiting his ruling and deliberately not dispatched.
