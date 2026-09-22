@@ -388,7 +388,11 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
              xp.asarray(0.0),
              z((nftnd_l, hist_w)), z((nftnd_l, hist_w)))
 
-    B.enable_compilation_cache()
+    # PER-RANK CACHE DIRECTORY. Every rank traces part_a/part_b against its
+    # own Ei/Ep/halo shapes, so no two ranks can share a cache entry -- a
+    # shared directory buys no reuse and pays JAX's per-key lock, which is
+    # what wedged this cell three times (see backend.enable_compilation_cache).
+    B.enable_compilation_cache(subdir='rank%d' % rank)
     scratch = KU.alloc_scratch(xp, inv_l)
     dyn, sta = B.promote(xp, inv_l)
     halo = xp.asarray(loc['halo_idx'])
