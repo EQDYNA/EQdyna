@@ -943,3 +943,268 @@ His five open items stand as handed over, and the plateau adds a sixth: the FIX
 — shrinking the carry from global to rank-local extent — changes the memory
 layout of a gated path and is product behaviour, not a queued mission. It is
 recorded on item 60 as awaiting his ruling and deliberately not dispatched.
+
+---
+
+# Resumption, 2026-09-22 — conductor #4 (worktree hygiene; the counters are not readable)
+
+Deliberately narrow scope: everything substantive is blocked on the owner (his
+six, restated unchanged at the end). Nothing tagged, nothing landed that
+changes product behaviour, no new campaign started.
+
+State verified rather than assumed at handover: `git status --porcelain | wc -l`
+= 0, `git log --oneline -1 origin/master` = `806bd9f` = local HEAD, VERSION
+5.15.0, no tag for it, ledger 70 rows.
+
+**Grant restated before the first commit:** patch and minor tags on `master` of
+this repo. No major, no publish, no force-update of an existing tag. Campaign
+sign-off is the owner's. Both of tonight's tasks sit inside it.
+
+## TASK 2 FIRST, because its answer was allowed to be "no" — and it is
+
+**DRAM bandwidth cannot be separated from shared-LLC capacity on this box, and
+the reason is privilege, not physics.** Four independent probes, all run:
+
+```
+$ cat /proc/sys/kernel/perf_event_paranoid
+4
+$ perf stat -e LLC-load-misses,LLC-loads,cache-references -- /bin/true
+Access to performance monitoring and observability operations is limited.
+... without CAP_PERFMON, CAP_SYS_PTRACE or CAP_SYS_ADMIN
+$ sudo -n true
+sudo: a password is required
+$ ls /sys/bus/event_source/devices/
+breakpoint cpu ibs_fetch ibs_op kprobe msr power software tracepoint uprobe
+```
+
+Two distinct blockers, and the second is the more important one:
+
+1. `perf_event_paranoid = 4` denies unprivileged use of the core PMU outright
+   (>= 3 disallows it; 4 is Ubuntu's extra-restrictive value). No CAP_PERFMON,
+   no password. So `LLC-loads` / `LLC-load-misses` / `cache-references` are
+   unreadable **even on my own child process**.
+2. **There is no memory-controller PMU node at all.** On AMD Rome the DRAM
+   counters live in the Data Fabric PMU (`amd_df`); the enumeration above has
+   `cpu`, `ibs_*` and `msr`, and **no `amd_df`, `amd_umc` or `uncore_imc`**. So
+   even with `paranoid=0` the perf route would still not produce a
+   DRAM-bandwidth number on this box. `/dev/cpu/*/msr` is root-only, closing
+   the manual route too.
+
+**No proxy was substituted.** Per the brief, this is a measurement task whose
+answer is permitted to be "cannot measure here", and that is the answer. No
+ledger row and no snapshot were written, because no number was produced and a
+ledger row for "unreadable" would be a claim dressed as a measurement.
+
+### Rule 4b applied to my own exclusion, since it binds me too
+
+The metric that produced this is `perf_event_open` returning EACCES plus a
+sysfs enumeration. Those are facts about **instrument availability**, not about
+the mechanism. So, stated explicitly so nobody inherits it wrongly: **nothing
+here excludes DRAM bandwidth and nothing here excludes LLC capacity.** Both
+remain live, item 60's honest edge is exactly where `mira-volkov` left it, and
+her refusal to claim the split stands as the correct call.
+
+### The one root action that WOULD answer it, and it is better than perf
+
+This CPU advertises `cqm_llc`, `cqm_occup_llc`, `cqm_mbm_total` and
+`cqm_mbm_local` (AMD QoS monitoring), and the kernel supports the filesystem
+that exposes them:
+
+```
+$ grep resctrl /proc/filesystems
+nodev	resctrl
+$ ls /sys/fs/resctrl/            # mount point exists, EMPTY -- not mounted
+$ mount -t resctrl resctrl /sys/fs/resctrl
+mount: /sys/fs/resctrl: must be superuser to use mount.
+```
+
+Mounted, resctrl gives **per-process-group `llc_occupancy` and
+`mbm_local_bytes`/`mbm_total_bytes` in BYTES** — which is not a proxy for the
+owner's question, it is the question: `llc_occupancy` measures shared-LLC
+capacity directly and `mbm_local_bytes` measures DRAM traffic directly, per
+rank, at 1/4/8/16/32. That is strictly better than the LLC-miss-rate proxy
+originally specified, and it is the ONLY route on this box, since `amd_df` is
+absent. **One root command unblocks it**, and it is a request for the owner,
+not something I can or should work around:
+
+```
+sudo mount -t resctrl resctrl /sys/fs/resctrl      # preferred
+sudo sysctl -w kernel.perf_event_paranoid=0        # alternative, core PMU only,
+                                                   # still no DRAM counter
+```
+
+### Cache geometry, recorded as arithmetic and explicitly NOT as an exclusion
+
+2x AMD EPYC 7532, 64 cores, 8 NUMA nodes, **L3 512 MiB in 32 instances = 16 MiB
+per instance, 2 cores per instance.** On Rome the L3 is per-CCX and is NOT a
+box-wide shared LLC.
+
+Consequences for the hypothesis space, with the limits of each stated:
+
+- The 97.75 MB per-rank carry is **~6.1x a whole 16 MiB L3 instance**. It does
+  not fit in L3 at ANY rank count, including 1.
+- Per-rank L3 slice goes from 16 MiB (1 rank, idle sibling) to ~8 MiB (32 ranks
+  on one socket, 2 ranks per instance) — a **2x** reduction in a resource
+  already 6x too small.
+- The Data Fabric and memory controllers ARE shared 32-way; the L3 is shared
+  only 2-way.
+
+Read together those numbers *suggest* the 32-way-shared path is the likelier
+seat of the measured 1.90x inflation than the 2-way-shared one. **That is
+inference from sizes, not a measurement, and under rule 4b it excludes
+nothing.** It is recorded to constrain the next experiment's design, not to
+close a door.
+
+## TASK 1 — worktree hygiene: 22 reaped, 2 kept, nothing lost
+
+**The load-bearing mechanical fact, because it changes what "careful" means
+here:** `git worktree remove` deletes a working directory, **not a branch**. So
+every COMMITTED thing in all 24 worktrees survives reaping by construction, and
+the only genuine loss risk was the five trees' uncommitted files. Those were
+inspected individually first.
+
+### Containment proved per branch, not assumed from a merge commit
+
+`git merge-base --is-ancestor <tip> master` for each, plus `git rev-list --count
+master..<branch>`. **20 of 24 tips are ancestors of master.** The four that are
+not:
+
+| branch | tip | where it survives | verdict |
+|---|---|---|---|
+| `scaling32` | `231454c` | local branch only | **NEVER LAND.** Confirmed again by diff: it re-adds the rank cap lift already on master via `7de3ccd` and would REMOVE the GPU polling code that landed later in `feda7c9`. Stale-base duplicate, same shape as `a7d281f`. Worktree reaped, branch retained. |
+| `worktree-agent-a40ab3dc8bab919fc` | `2ce6c0d` | `origin/mira/mpi-balance-and-cache-2026-09-22` | **This is the owner's open item 3** (`14f0b7f`, the per-rank XLA cache fix) plus `b6106af` and its evidence. Verified on the REMOTE, not on a tracking ref: `git ls-remote origin` returns `2ce6c0d55fa...` for that branch. Safe; worktree reaped. |
+| `board-v5140` | `a7d281f` | `origin/board-v5140` (`ls-remote` confirmed) | the known 69 KB stale-base board revert. Never land. Worktree reaped, branch and remote retained. |
+| `worktree-agent-a5e3345b`, `-a9f04c`, `-ad763d` | `4991b23`, `b4b9194`, `bcab79e` | local branches only | one board/rules commit each, superseded by later board landings. Worktrees reaped, branches retained so the commits remain recoverable. |
+
+### The five dirty trees, each resolved before its tree was touched
+
+| worktree | uncommitted | disposition |
+|---|---|---|
+| `agent-a062e5e0` (item 32, locked) | `NOTES_item32_refinement.md`, 120 lines + 15 MB `scratch/item32` | **KEPT, and it held a finished experiment nobody had read — see below.** |
+| `agent-a2731503` (scaling32, locked) | `run32.sh`, 7 lines | scratch: a wrapper whose every path points INTO the worktree, worthless once it is gone. Reproduced verbatim in the appendix; unlocked and reaped. |
+| `agent-a2dd14dd` | `NOTES_perf_ledger.md`, 20 lines | its own header says "worktree checkpoint, not for commit"; its content is fully superseded by the landed `ledger.py` + guard (`ad8c95e`, `24b47ba`). Verbatim in the appendix; reaped. |
+| `agent-a599e70` (equil-diagnostic) | `NOTES_equil_diagnostic.md`, 8 lines | landed work's checkpoint (`9083a81`, an ancestor of master); the question it served is closed. Verbatim in the appendix; reaped. |
+| `wt-mira-tpv30v31` | `M src/fortran/driver.f90`, +48 | **proved not to be unlanded work**: `diff <(git show master:src/fortran/driver.f90) <worktree copy>` is **EMPTY**. The uncommitted edit is byte-identical to what landed as `9083a81`. Reaped, with its 113 MB of `scratch` — TPV30's equilibrium question is closed, so under rule 8 that raw output no longer supports a pending decision. Flagged here in case the owner disagrees, because it is gone. |
+
+### What the hygiene pass actually found: a completed P1 experiment, unread
+
+`agent-a062e5e0` was the item-32 dx=250 mesh-refinement mission whose agent was
+rate-limited mid-run. The board's P1 item-32 row reads "dx=250 run in flight
+2026-09-21, result pending". **It was not in flight. Both runs had finished** —
+`dx250_serial/time.log` ends `Exit status: 0`, written 00:04 — and the flip
+comparison, which is the experiment's entire deliverable, had never been run.
+No process of it was alive.
+
+Recovered by running the experiment's own `flips.py`, which imports the
+committed `testsys.compare.flip_decomposition` and `matrix.DRV_A6` verbatim —
+no new flip definition was introduced for this. **Instrument verified on a known
+answer before the new number was quoted:** the dx=500 baseline re-derives as
+`372 flips / 5151 / 7.222% / median 0.0417 s / phys_max 2.122e7`, matching item
+18/21's recorded `A=372` to every printed digit.
+
+| | dx=500 | dx=250 |
+|---|---|---|
+| nodes | 5151 | 20301 (x3.94) |
+| TOTAL FLIPS | 372 | **2342** (x6.30) |
+| FRACTION | 7.222% | **11.536%** (x1.60) |
+| median \|dfnft\| | 0.0417 s | **0.0208 s** (exactly half = one time step at half dx) |
+
+**The discretisation-artifact hypothesis is refuted, and not marginally.** The
+pre-registered criterion for it was a constant COUNT (~370, fraction ~1.8%);
+the count grew 6.30x against a node count that grew 3.94x, so the marginal
+population grew *super-proportionally* to resolution. The bistability branch
+had the direction right and the magnitude low.
+
+Full record, with the design, the kill criteria as pre-registered, the caveat
+that the two comparisons are not perfectly matched (and why that asymmetry can
+only inflate the dx=500 number, so it cannot manufacture the growth), landed at
+`docs/NOTES_item32_dx250_refinement_2026-09-22.md`.
+
+**Not closed here.** This is a measurement; whether it settles the item-32
+numerics question, and whether a fault that is bistable at this roughness
+should be gated by a flip BUDGET at all, is the owner's call. `test.drv.a6`'s
+reference and bound were not touched and must not be.
+
+**The worktree is therefore NOT reaped**, for the same reason
+`agent-ab87d1965ff24e21d` is not: it holds the only copy of the raw `frt`
+artifacts (8.1 MB serial, two 4-rank files) behind a result the owner is about
+to rule on. Evidence stays until the decision it supports is taken.
+
+### Kept, both deliberately
+
+- `agent-ab87d1965ff24e21d` [`mira/plateau-32rank-2026-09-22`] — 1.6 MB of raw
+  plateau logs behind the numbers in the owner's item 2. Unchanged from
+  conductor #3's decision.
+- `agent-a062e5e0475453665` [`item32-dx250-refinement`] — 15 MB of raw dx=250
+  `frt` artifacts, as above. Stays locked.
+
+## The owner's six, unchanged — I decided none of them
+
+1. `v5.15.0` tag + `gh release create v5.15.0`. CI-green at `54e0697`, 7/7.
+   Still untagged: `check_network_side` fires the instant a tag exists for
+   VERSION and demands a resolvable Release, which is a publish. The
+   VERSION-bump workaround remains refused — it satisfies the guard's letter
+   and defeats its purpose.
+2. The carry fix (rank-local extent) — a gated path's memory layout.
+3. The per-rank XLA cache fix, `14f0b7f` on
+   `origin/mira/mpi-balance-and-cache-2026-09-22` (remote presence re-verified
+   tonight by `ls-remote` before its worktree was reaped).
+4. `eqdyna3d.py:581` forces CPU under `--mpi` with default `--device auto`.
+5. `test.drv.a6 x jax` not gateable on GPU (468/458/445 vs budget 450).
+6. `v5.13.0` still has no GitHub Release object.
+
+**And one new thing for him, which is a request rather than an item:** the root
+mount above, without which the DRAM-vs-LLC question cannot be answered on this
+box by any route.
+
+## Appendix — the three scratch files reproduced verbatim before their trees were reaped
+
+`agent-a2731503fec99fbd3/run32.sh`:
+
+```bash
+#!/bin/bash
+# scaling32 mission wrapper: pin all writes (ledger, snapshots, cases) to THIS worktree.
+WT=/home/utig5/dliu/EQdyna/.claude/worktrees/agent-a2731503fec99fbd3
+export EQDYNAROOT=$WT
+export PATH=$WT/bin:$WT/scripts:$PATH
+export EQDYNA_SNAPSHOT_TAG=$1; shift
+exec python3 $WT/testsys/perf/run_mpi_scaling.py "$@"
+```
+
+`agent-a2dd14dd10a84c8da/NOTES_perf_ledger.md`:
+
+```
+# NOTES_perf_ledger (worktree checkpoint, not for commit)
+
+1. Read PROJECT_RULES.md (19 rules), run_scaling.py, run_mpi_scaling.py,
+   run.py, the two committed JSON snapshots. Branch worktree-agent-* at 23971a8.
+2. Built testsys/perf/ledger.py: JSONL, validate-then-append,
+   flock(LOCK_EX) + single O_APPEND write; converters for both snapshot
+   schemas; backfill CLI restricted to docs/perf_snapshots/.
+3. Wired run_scaling.py (adds dated snapshot beside scaling_last.json +
+   ledger rows) and run_mpi_scaling.py (OUT now carries HHMMSS; ledger rows
+   after json.dump). No heavy run performed; converters tested synthetically.
+4. Backfilled: scaling_2026-09-21_fortran_rebaseline_tpv104.json -> 3 rows
+   (sha 8045db7, fortran 1/2/16 ranks); solvemetric mpi snapshot -> 0 rows
+   (all configs SKIPPED in the snapshot; correct answer). backfilled rows
+   carry backfilled_from + null tenancy (not recorded then).
+5. Guard testsys/regression/test_perf_ledger.py: 26 checks, content
+   properties printed. Negative-tested by mutating O_APPEND -> O_TRUNC:
+   5 checks FAIL, exit 1; restored: 26 PASS, exit 0.
+6. run.py all per-cell seconds: NOT captured -- gate would mutate a
+   committed file on every run (reasoning in final report).
+7. Ran unit+regression gate; committed.
+```
+
+`agent-a599e709f625e7a3a/NOTES_equil_diagnostic.md`:
+
+```
+# NOTES equil diagnostic landing
+
+- Step 1 DONE: branch equil-diagnostic from 23971a8, patch applied clean (driver.f90 +48). Build via install-eqdyna.sh -m ubuntu exit 0.
+- Step 2 DONE: probe run (tiny arn-test fixture, serial): dump 8140 rows x 8 cols, tag1=15 tag2=15 == frt.txt0 rows == analytic 5x3 fault grid; 8125 unique coords = rows-15.
+- Step 3 DONE: testsys/regression/test_equilibrium_dump.py -- 4 runs (env unset / env=0 / serial env=1 / np=2 env=1). Regression tier; ~4 solver runs at <1 s each after build, same shape as test_fault_mpi_boundary_arn.py.
+- Step 4 DONE: negative-tested -- with call dumpNodalAccel commented out, test FAILED (exit 1, dump files [] on both env=1 runs); restored, test exit 0.
+- Step 5 DONE: python3 testsys/run.py unit regression -- SUCCESS both tiers.
+- No defect found in the patch; fails-closed verified for unset AND for value 0.
+```
