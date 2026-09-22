@@ -194,10 +194,19 @@ necessary, not sufficient.
 
 ## Measure, do not infer
 
-Four claims in this repo turned out not to hold when finally measured: the
+Five claims in this repo turned out not to hold when finally measured: the
 "exactly HALF" traction blocker (item 24a — actual ratio 1.0018), a 33% JAX
 regression (an artifact of compile time in the metric), a friclaw-4 coverage
-gap (friclaw 4 is drv.a6 and tpv104, the two largest cases), and a
-compile-fraction figure taken in the wrong environment. Two nearly became
-fixes. Prefer a measurement over a plausible mechanism, and when you report a
-number, say what produced it.
+gap (friclaw 4 is drv.a6 and tpv104, the two largest cases), a
+compile-fraction figure taken in the wrong environment, and decomposition
+IMBALANCE as the cause of the jax-MPI 32-rank plateau (item 60 — `PML_WEIGHT =
+3.0` at `src/python/eqdyna/MPI4NodalQuant.py:85` really is five times the
+measured ~0.6 cost ratio, recutting really did take predicted work spread from
+3.350x to 1.004x and zero-`Ei` ranks from 4 to 0, and the scaling curve did not
+move: 134.12 → 132.20 ms at 32 ranks, 1.4%, inside this box's run-to-run
+variation). Two nearly became fixes. The fifth is the second time a fix that
+WORKED failed to buy what it was built to buy — the defect was real, the repair
+was real, the consequence was not — so falsify a proposed cause against the
+OUTCOME curve, never against only the defect it predicts (rule 4a). Prefer a
+measurement over a plausible mechanism, and when you report a number, say what
+produced it.
