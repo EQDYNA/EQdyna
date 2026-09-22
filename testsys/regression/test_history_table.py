@@ -155,8 +155,12 @@ no tool reads them.
 This file is that timeline, parsed out of those messages.
 
 **It is a record, not a repair.** Restoring the true author dates would
-rewrite every downstream SHA (%(total)d commits, %(tags)d tags, both forks);
-item 36 decided against a history rewrite and that stands. `git notes` was
+rewrite every downstream SHA -- 724 commits and 20 tags as of 2026-09-22,
+and both forks; item 36 decided against a history rewrite and that stands.
+(That count is a dated measurement, deliberately not regenerated: a document
+that re-derives the repo's own size goes stale on the next commit, and a
+guard that fails on every commit teaches people to ignore it. This file
+found that out the hard way at 667dba0.) `git notes` was
 the other cheap option and was rejected: notes live in a ref most clones
 never fetch and most viewers never show.
 
@@ -191,12 +195,28 @@ and importing it would add a second flat wall rather than fix the first.
 
 
 def build_doc(data):
-    tags = len(git('tag').split())
-    total = int(git('rev-list', '--count', 'HEAD').strip())
+    """The whole file, for first creation only. Everything the test CHECKS
+    lives between the BEGIN/END markers; the prose above them is a human
+    document and is neither regenerated nor compared."""
     dated = [r['date'] for r in data if r['date']]
     head = PREAMBLE % {'n': len(data), 'first': min(dated), 'last': max(dated),
-                       'stamp': IMPORT_AUTHOR_DATE, 'total': total, 'tags': tags}
+                       'stamp': IMPORT_AUTHOR_DATE}
     return head + render_table(data) + '\n'
+
+
+def splice_table(existing, data):
+    """Replace only the generated block, keeping the prose around it."""
+    if BEGIN not in existing or END not in existing:
+        raise RuntimeError('%s has lost its generated-table markers' % DOC)
+    before = existing.split(BEGIN)[0]
+    after = existing.split(END, 1)[1]
+    return before + render_table(data) + after
+
+
+def extract_table(text):
+    if BEGIN not in text or END not in text:
+        return None
+    return BEGIN + text.split(BEGIN, 1)[1].split(END, 1)[0] + END
 
 
 def main(argv):
@@ -223,16 +243,27 @@ def main(argv):
 
     if regen:
         os.makedirs(os.path.dirname(DOC), exist_ok=True)
-        open(DOC, 'w').write(build_doc(data))
-        print('regenerated %s (%d rows)' % (DOC, len(data)))
+        if os.path.exists(DOC):
+            text = splice_table(open(DOC, errors='replace').read(), data)
+        else:
+            text = build_doc(data)
+        open(DOC, 'w').write(text)
+        print('regenerated the table in %s (%d rows); prose left alone'
+              % (DOC, len(data)))
         return 1 if problems else 0
 
     print('Regression guard: docs/HISTORY.md matches the commit messages')
     if not os.path.exists(DOC):
         print('\nFAIL: %s does not exist -- run with --regenerate' % DOC)
         return 1
-    have = open(DOC, errors='replace').read()
-    want = build_doc(data)
+    # Only the generated block is compared. The prose around it is a human
+    # document; checking it would make this guard fail on every edit to a
+    # sentence, which is how a guard gets ignored.
+    have = extract_table(open(DOC, errors='replace').read())
+    want = extract_table(render_table(data))
+    if have is None:
+        print('\nFAIL: %s has lost its generated-table markers' % DOC)
+        return 1
     if have != want:
         problems.append('docs/HISTORY.md does not match what the commit '
                         'messages say -- regenerate it (--regenerate) and '
