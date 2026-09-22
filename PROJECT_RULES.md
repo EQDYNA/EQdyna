@@ -198,8 +198,11 @@ reader's aid, not the authority: `ls test.reference.results/` is.
   other eight — `test.tpv36` and `test.tpv37`.
 - `test.tpv30` is an eleventh committed reference belonging to a case that is
   DELIBERATELY NOT REGISTERED in `testNameList.py`/`matrix.py` (pathway item
-  19(b): an unresolved fault-local equilibrium defect in the `C_elastic=0`
-  path). Being ungated does not make it writable: it is the frozen artifact
+  19(b); the equilibrium question that first blocked it was closed 2026-09-21
+  — measured as the fault frictionally failing at t=0, not a force-balance
+  defect — but the case stays unregistered while the python-port divergence
+  and the rule-17 steps-4/7 registration decision stand). Being ungated does
+  not make it writable: it is the frozen artifact
   that investigation's evidence is measured against, so it is read-only for
   the same reason as the rest. Do not regenerate it to close the divergence.
 
@@ -458,7 +461,11 @@ inferred from a run that happens to complete afterward.
 `paths-ignore` list cannot trigger its own CI run, by construction, and must
 be recognized as such rather than tagged anyway.** Such a commit has to be
 tagged either by pointing at an earlier, already-green commit (fine only if
-that earlier commit is what actually gets tagged) or by accepting that the
+that earlier commit is what actually gets tagged), or by accepting the nearest
+ancestor's completed green run as the evidence — the guard's
+`--ack-paths-ignored-parent` flag is the sanctioned form of this: it verifies
+that ancestor's run and prints the evidence SHA into the record, so the
+acceptance is written down rather than remembered — or by accepting that the
 only CI evidence for it will be the tag-push run itself, which happens after
 the tag already exists — never by asserting, from memory or by pattern-match
 to the normal case, that "a release commit always also touches a non-ignored
@@ -487,7 +494,14 @@ nothing before this rule mechanically noticed the difference.
 the strength of a parent commit's green run, and do not manufacture a trigger
 by touching an unrelated non-ignored file just to get CI to run. If the SHA's
 own diff is paths-ignore-only, either retarget the tag at the last commit that
-did get a real pre-tag run, or accept and record — as this rule requires,
+did get a real pre-tag run; or re-run the guard with
+`--ack-paths-ignored-parent`, which accepts the nearest ancestor commit's
+completed green run as the evidence and prints that ancestor's SHA — keep the
+printed line with the release record (amended 2026-09-21: the guard has
+provided this third path since it landed and this rule omitted it — a rule
+that hides a mechanism its own enforcement offers sends the next releaser
+down a path the tool already solved; verified working the same day, see
+pathway items 50/51); or accept and record — as this rule requires,
 not as an afterthought — that the tag's only CI evidence is the tag-push run
 itself.
 
