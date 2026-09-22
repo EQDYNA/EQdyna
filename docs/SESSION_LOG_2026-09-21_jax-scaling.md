@@ -537,3 +537,189 @@ CI: 4 ranks measured 5.34 GB aggregate against a 7 GB runner.
 - **v5.13.0 has no GitHub Release object.** `gh release create v5.13.0
   --verify-tag` is an outward-facing publish, outside the autonomous grant,
   escalated to the owner and deliberately not blocking anything.
+
+# Part 3 — overnight autopilot (20:35 →)
+
+Conductor: wei-lin. Base at handover: `154aa0f`, VERSION 5.14.0, tag `v5.14.0`
+@ `813b952`.
+
+## Budget reading, stated before spending it
+
+24 h unattended. Grant = **patch and minor tags on `master` of this repo only**.
+Explicitly outside it and therefore untouched tonight: any major bump, any
+publish (so `gh release create v5.13.0 --verify-tag` is NOT run), any tag
+force-update or rewrite, and any of the three owner decisions below. The board
+belongs to `zofia-kaminska` (rule 19); I land work and hand her literal command
+output plus the date. A row closes on a command that ran.
+
+## Two corrections to the handover, on evidence
+
+1. **The "two unpushed commits" were already pushed.** `origin/master` =
+   `154aa0f` = local HEAD at handover; `git log origin/master..HEAD` is empty.
+   Nothing to push. The verification below was still owed and was done.
+2. **Rules 18, refactor rounds 4/5/6 and the symlink-coupling guard are not in
+   today's commit range.** `git log --since="2026-09-21 00:00"` starts at
+   `985c2e3` 11:03 and contains rule **19** (`b5b2b06`), the doc/rule-book drift
+   fixes (`e83c02e`, `732331c`), v5.13.1 and v5.14.0 — but no refactor rounds,
+   no rule 18, no symlink guard. Those landed in an earlier session and belong
+   to that session's log. Not backfilled here; a log entry invented from a
+   handover summary is indistinguishable from one written from the commits.
+
+## The pre-tag CI guard (`a976ec7`, merged `154aa0f`) — negative-tested
+
+Rule 15a ("tag only on green for that exact SHA") had no mechanism; v5.13.1 was
+tagged at `dfee14d` while the only run for that SHA was the one the tag push
+itself triggered. `testsys/ci_status.py` + `testsys/regression/check_pretag_ci.py`
+close it with five distinct exit codes.
+
+A guard that has not been shown to FAIL when it should is the vacuous-gate
+pattern this campaign hit four times today, so all five outcomes were driven
+from **real CI history on this repo** — no stubs, no synthetic runs. The
+content property is printed beside each verdict, which is the thing that caught
+all four vacuous gates:
+
+| SHA | content property (real runs for that exact SHA) | verdict | exit |
+|---|---|---|---|
+| `c782c2e` | completed / **failure**, branch `master`, run 35428208759 | FAIL | 1 |
+| `9950ae1` | completed / **failure**, run 34920714277 | FAIL | 1 |
+| `dfee14d` | exactly ONE run, 35667535066, branch `v5.13.1` = the **tag's own push**, conclusion `success` | **PATHS_IGNORED** | 3 |
+| `813b952` | completed / success on branch `master`, run 35669818523 | PASS | 0 |
+| `154aa0f` | run 35676386267 **in_progress** at test time | PENDING | 2 |
+
+The `dfee14d` row is the load-bearing one: that run concluded **success**, and
+the guard still refused, because `drop_tag_triggered_runs` excluded it as
+tag-triggered. That is precisely the evidence path that let the original
+violation read as green. Corpus size stated so the verdicts are falsifiable:
+139 runs fetched for workflow "Automatic Testing of EQdyna" — 120 success, 17
+failure, 2 in_progress.
+
+## Full sweep launched on `154aa0f`
+
+`python3 testsys/run.py all`, pid 779367, log
+`scratchpad/sweep_154aa0f.log`, SHA recorded to file before launch. Box at
+launch: 64 cores, loadavg 12.35, other users' MATLAB/metashape accounting for
+~12 — not stacked against another heavy job of mine (item 42). No heavy
+subagent dispatched while it runs, for the same reason.
+
+## Mira's TPV30 result — status: HANDOVER-REPORTED, not yet re-run by me
+
+Recorded so it is not lost, and labelled so it is not mistaken for verified:
+three-way control at dx=500, 4 ranks, `C_elastic=0` — rough geometry mean
+1.949e-01 / max 1.448e+01; roughness zeroed 3.5e-14; rough + fault **LOCKED**
+5.74e-14. The third row is the keystone: same geometry, same pre-stress, same
+gravity, same split nodes, only friction changed, so the FE force balance on the
+rough fault is exact. The 594 m/s^2 was the fault frictionally failing at t=0 on
+304 of 3321 nodes (9.2%). **There is no TPV30 equilibrium defect.**
+
+Per merge-gate axis 3 this does not close a board row on her report alone. The
+re-run is blocked on landing her diagnostic, which is the instrument that
+produces the number — see below.
+
+## Decision: land the `EQDYNA_DUMP_EQUIL` diagnostic
+
+Mira's worktree `/home/utig5/dliu/wt-mira-tpv30v31` (branch `mira-tpv30-v31`),
+uncommitted, one file, +48 lines in `src/fortran/driver.f90`. Static since
+20:06 — mission complete, safe to salvage.
+
+Landing it, for three reasons: the measurement that settled TPV30 is currently
+unreproducible without it; it exists nowhere else; and it is the instrument any
+future equilibrium claim on this code will need. Reviewed against the gate:
+env-gated on `EQDYNA_DUMP_EQUIL=1`, **fails closed** (`character(len=8)` truncates
+a longer value, `trim(envval) /= '1'` then returns and writes nothing), unit 9911
+so no stdout conflict, and `git diff 98dd6a2 154aa0f -- src/fortran/driver.f90`
+is **empty** — her base is not stale for this file, so no stale-base revert
+risk.
+
+It does NOT land as-is. Axis 2: the new path is the `EQDYNA_DUMP_EQUIL=1`
+branch, and nothing in the sweep sets that variable, so the existing gate would
+pass while testing none of it — the exact failure mode of the day. It lands with
+a test that sets the variable and asserts a property of the produced content.
+Fortran-only, with no Python counterpart: stated plainly per CLAUDE.md, because
+it is a diagnostic and not physics.
+
+## Amendments to Part 3, after the coordinator's corrections
+
+### The guard's `--ack-paths-ignored-parent` path, exercised
+
+The remaining half of the negative test. On `dfee14d` (touches exactly one
+file, `pathway_forward.md`):
+
+```
+without the flag:  EXIT=3   (PATHS_IGNORED)
+with the flag:     EXIT=0   PASS -- evidence sha e9c3fa2..., NOT dfee14d itself
+                   "reached by walking up 1 paths-ignore-only commit(s)"
+```
+
+It does not fall back silently: the default refuses, the fallback must be asked
+for by name, and when granted it prints the SHA the evidence actually came from
+rather than letting the caller believe `dfee14d` was verified. All six behaviours
+(FAIL ×2, PATHS_IGNORED, PASS, PENDING, ack-parent PASS) are now demonstrated
+against real CI history.
+
+### Zofia's manifest — her numbers are right; my first count was the wrong property
+
+I initially read 2323 lines and 1874 unique hashes against her reported 2291 and
+flagged a discrepancy. The discrepancy was mine. Exact accounting:
+
+```
+total lines:       2323   = 32 comment lines + 2291 hash entries
+hash entries:      2291
+unique paths:      2291
+find -type f:      2291        <- matches
+du -sb:      216,812,603       <- matches the corrected byte count exactly
+unique hashes:     1873   (so 418 files are content-duplicates of another file)
+```
+
+And I ran the verification myself rather than accepting "2291 OK":
+`sha256sum -c docs/evidence/legacy_import_archive.sha256` → **exit 0, 2291 OK,
+0 FAILED**. The corrected size (216,812,603 bytes / 2291 files, not 104 MB —
+that was the zip) is the one carried forward.
+
+The 418 duplicate-content files are a property of the archive, not a defect, and
+are recorded here so a future reader does not rediscover them as one.
+
+### Owner decision #1 is CLOSED — and the evidence is stronger than the claim
+
+The claim handed to me was that the on-fault initial stress construction in
+`case_input/test.tpv29/user_defined_params.py` and `.../test.tpv30/...` is
+byte-identical, "21 lines, slots 7/8/49". I could not confirm that description
+literally — `grep -n 'fric\['` returns **zero** hits in either file, so the
+slot-7/8/49 framing does not correspond to text in these files. The raw `diff`
+is 195 lines, not clean.
+
+The substance nevertheless holds, and holds more strongly than stated. Stripping
+comments and blank lines (96 vs 107 executable lines) the two cases differ in
+exactly **two** places:
+
+```
+par.C_elastic = 1   ->  par.C_elastic = 0   + an 11-line off-fault plasticity block
+                        (coheplas, bulk, gamar, roumax, output_plastic,
+                         viscoplasticRelaxTime, devStrTaperDepth{Start,End},
+                         plasticOutputHalfWidth, str1ToFaultAngle,
+                         devStrToStrVertRatio)
+par.tpv = 29        ->  par.tpv = 30
+```
+
+Nothing else. The entire on-fault initial stress construction, the friction, the
+nucleation, the stations, `par.dx` — identical. So TPV30 is TPV29 plus off-fault
+viscoplasticity and its own tpv id, exactly as the spec says ("the material
+properties are the only difference"), and **the 9.2% at-strength fault-node
+fraction cannot be a TPV30 property**: TPV29 has the identical construction, is
+gated, passes, and is validated against the owner's published SCEC results.
+
+The spec's frictional cohesion (1.20 MPa at the surface, 0.40 MPa below 4 km,
+linearly tapered) IS applied by the solver at `faulting.f90:162`, so those nodes
+fail with C0 included; Mira's prose omitted C0 but her measurement did not.
+
+**Owner decision #1 requires no owner.** Not escalated. One inference is flagged
+as an inference rather than a measurement: the two cases ship differently
+decimated copies of the same official 25 m surface (50 m for TPV29, 100 m for
+TPV30), and I am reasoning that both decimate to the same nodes at the shared
+`par.dx = 500` rather than having measured that they do.
+
+### TPV35 correction carried
+
+"TPV35 may be a port rather than new physics" is withdrawn: `tpv34`/`tpv35`
+return 0 hits across all 2291 archive files, and neither implementation has a
+`TPV==34/35` branch. Both are new builds from spec; the archive contributes
+validation and era-context only.
