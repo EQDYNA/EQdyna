@@ -495,3 +495,65 @@ Both briefs carry a mandatory Step 0 re-sync from `origin/master` at `09da166`,
 because an agent worktree branches from whatever base the harness picked and a
 stale `pathway_forward.md` copied back wholesale is a 69 KB revert — the
 near-miss `a7d281f` produced last night.
+
+## The tag is prepared and NOT pushed, and the reason is a collision between two of the owner's own constraints
+
+Everything rule 15 asks for is done and green:
+
+| step | state |
+|---|---|
+| 1 build | `./install-eqdyna.sh -m ubuntu` exits 0, `bin/eqdyna` fresh, binary prints `Welcome to EQdyna 5.15.0` |
+| 1 sweep | 31/31 cells SUCCESS at `d3762cd`; **zero source files changed after that SHA** (`git diff --name-only d3762cd..HEAD` is three `docs/` paths) |
+| 2 VERSION | 5.14.0 -> 5.15.0, banner `src/fortran/eqdyna3d.f90:17` with it |
+| 3 notes | v5.15.0 block leads `README.md`; v5.14.0 block moved to `pastReleaseNotes.md`, pointer line dropped |
+| guards | `test_version_banner` PASS, `test_release_complete` PASS |
+
+What I did NOT do is run `git tag`. Not caution — the two instructions I was
+given cannot both be satisfied:
+
+1. The owner's brief says a GitHub Release object is **a PUBLISH, outside my
+   grant** (it says so about v5.13.0's missing one, and nothing distinguishes
+   v5.15.0's).
+2. `test_release_complete.py:237-252` (`check_network_side`) SKIPS while no tag
+   exists for `VERSION` and **fires the instant one does** — it then requires
+   both the pushed tag and a resolvable `gh release view v5.15.0`. Rule 15
+   step 7 says the same thing and says WHY: v5.8.2's tag-push run
+   `35122388271` went red on exactly this check, in exactly this window.
+
+So tagging without publishing does not merely skip a step — it turns the
+regression tier red, on CI and for anyone running `run.py regression`
+afterwards, and a pushed tag cannot be re-pointed (rule 8). The options were
+break a gate knowingly or exceed the grant. I did neither.
+
+The state I left instead is the one `test_release_complete` is explicitly
+designed to tolerate: **VERSION ahead of every reachable tag = "a version in
+development, not a half-finished release"**, all guards green. The tag and the
+Release then go as ONE action (rule 15 step 7) the moment the owner says the
+word, with no rework — the release commit is already the thing that gets
+tagged.
+
+This is logged as a deviation from the resumption brief's "THEN TAG", with its
+evidence, rather than resolved by my own judgement in either direction.
+
+## Two things deliberately not run, and why
+
+- **The full fast tier.** `run.py unit regression` touches jax, and the known
+  wedge is that `test.tpv8 x python-jax-mpi` hangs whenever anything else on
+  the box runs jax. Running it while `mira-volkov` measures the MPI path would
+  risk wedging her run to gate a banner string. The release commit's own CI run
+  covers unit+regression on the runner, which is the evidence rule 15a actually
+  wants. The two jax-free guards that bear on this commit were run directly.
+- **A local `test.tpv8 x fortran` cell.** 4 ranks, ~27 s, and Fortran-only so
+  no wedge risk — but Mira may have a 32-rank point in flight and item 42 says
+  never stack two heavy jobs. My predecessor violated that once tonight and
+  contaminated a 2-rank point. Deferred rather than risked.
+
+## Box tenancy, checked rather than assumed
+
+Eight orphaned `python3` processes, six of them 14 h old, all
+`run.WR313.py` belonging to user `kehua` — the foreign tenant behind item 47's
+2.68x spread. All sleeping at 0.0% CPU and ~13 MB RSS, so not contending now,
+and not mine to kill. I checked them specifically because orphaned jax
+processes holding the shared XLA cache would have been a candidate mechanism
+for the intermittent MPI hang; none of them is jax, so that hypothesis is dead
+and was not pursued further.
