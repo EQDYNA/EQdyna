@@ -239,9 +239,17 @@ def main():
     for s in syncs:
         if s not in ('halo', 'allreduce'):
             raise SystemExit('FAIL: unknown sync mode %r' % s)
+    # CAP LIFTED 2026-09-22 to 32, on the owner's instruction ("finish up the
+    # Jax and Fortran scaling up to 32"). The old 16 was this campaign's scope,
+    # not a property of the code: run_scaling.DECOMP and FORTRAN_RANKS have
+    # carried a 32 entry ((4,4,2)) the whole time, so the Fortran column was
+    # already able to produce the point the jax column refused to ask for.
+    # 32 remains a cap rather than being removed: this box has 64 cpus with a
+    # permanent foreign tenant, and a 64-rank point would place ranks on cpus
+    # that are never free -- which measures the tenant, not us.
     for n in ranks:
-        if n > 16:
-            raise SystemExit('FAIL: %d ranks requested -- capped at 16.' % n)
+        if n > 32:
+            raise SystemExit('FAIL: %d ranks requested -- capped at 32.' % n)
 
     excl = [int(x) for x in a.exclude_cpus.split(',') if x.strip()]
     nodes = numa.numa_topology()
