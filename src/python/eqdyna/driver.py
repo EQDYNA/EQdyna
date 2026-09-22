@@ -83,6 +83,25 @@ def velDispUpdate(xp, inv, v1, velArr, dispArr, force, dt):
     return v1, velArr, dispArr
 
 
+def _device_peak_gb(jax):
+    """This rank's peak DEVICE memory, in GB, from the allocator itself.
+
+    Why not nvidia-smi: XLA preallocates ~75% of the card by default, so
+    nvidia-smi reports ~30 GB for a run whose working set is a fraction of
+    that -- a figure that answers "is the card busy", not "does this case
+    fit". memory_stats()['peak_bytes_in_use'] is the allocator's own
+    high-water mark and is the number a capacity claim has to be made on.
+
+    -1.0 means the backend exposes no memory_stats (the CPU backend does
+    not). A distinguishable sentinel rather than 0.0, because a printed 0.0
+    would read as "this run used no memory" and get quoted as one.
+    """
+    st = jax.devices()[0].memory_stats()
+    if not st or 'peak_bytes_in_use' not in st:
+        return -1.0
+    return round(st['peak_bytes_in_use'] / 1e9, 3)
+
+
 # Position of nodalForceArr in the carry tuple. Named because two callers
 # reach into the carry to exchange exactly that entry (make_step's in-process
 # nodal_sync and run_mpi's out-of-process MPI4NodalQuant), and the same
@@ -471,6 +490,7 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
                mpi_ms_per_step=t_mpi / nsteps * 1e3,
                wait_ms_per_step=t_wait / nsteps * 1e3,
                sync=sync, nsteps=nsteps, effective_cores=eff,
+               device_peak_gb=_device_peak_gb(jax),
                threads=len(os.listdir('/proc/%d/task' % os.getpid())),
                cpus=sorted(os.sched_getaffinity(0)),
                cpus_allowed=len(os.sched_getaffinity(0)))
