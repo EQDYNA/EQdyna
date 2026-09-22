@@ -62,8 +62,10 @@ TESTSYS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get('EQDYNAROOT') or os.path.dirname(os.path.dirname(TESTSYS))
 PYTHON_PKG = os.path.join(ROOT, 'src', 'python')
 OUT = os.path.join(ROOT, 'docs', 'perf_snapshots',
-                   'mpi_scaling_%s_%s.json' % (time.strftime('%Y-%m-%d'),
+                   'mpi_scaling_%s_%s.json' % (time.strftime('%Y-%m-%d_%H%M%S'),
                                           os.environ.get('EQDYNA_SNAPSHOT_TAG', 'tpv104')))
+# Timestamp (not just date) in the name: a same-day rerun must land beside the
+# earlier snapshot, never on top of it -- the ledger points at these files.
 # PROJECT_RULES rule 19: dated and immutable, never a shared *_last.* file.
 # A path whose name says "last" cites whatever ran most recently, so it is
 # not evidence a board row can point at; two tools writing one such file
@@ -338,12 +340,24 @@ def main():
         print(line)
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    json.dump(dict(case=a.case, sha=sha, host=os.uname().nodename,
-                   date=time.strftime('%Y-%m-%d %H:%M'), n_lo=a.n_lo,
-                   n_hi=a.n_hi, max_busy=a.max_busy, excluded_cpus=excl,
-                   rows=rows),
-              open(OUT, 'w'), indent=1)
+    meta = dict(case=a.case, sha=sha, host=os.uname().nodename,
+                date=time.strftime('%Y-%m-%d %H:%M'), n_lo=a.n_lo,
+                n_hi=a.n_hi, max_busy=a.max_busy, excluded_cpus=excl,
+                rows=rows)
+    json.dump(meta, open(OUT, 'w'), indent=1)
     print('\nsaved %s' % OUT)
+
+    # Every measured point also becomes one appended line in the append-only
+    # perf ledger (docs/perf_ledger.jsonl), pointing back at this dated
+    # snapshot -- a number that has to be transcribed will eventually be
+    # transcribed wrong. Skipped configs stay in the snapshot only.
+    import ledger
+    tenancy = ledger.box_tenancy(a.max_busy)
+    nledger = ledger.append_rows(ledger.rows_from_mpi_scaling_snapshot(
+        meta, os.path.relpath(OUT, ROOT), tenancy))
+    print('%d ledger row(s) appended to %s (box tenancy %d/%d cpus over %.2f)'
+          % (nledger, ledger.LEDGER_RELPATH, tenancy['busy'],
+             tenancy['total'], a.max_busy))
     shutil.rmtree(work, ignore_errors=True)
 
 

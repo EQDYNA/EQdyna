@@ -569,6 +569,27 @@ def main():
                n_lo=a.n_lo, n_hi=a.n_hi, skipped=skipped, rows=rows)
     json.dump(meta, open(OUT, 'w'), indent=1)
     print(f'\nprovenance: {CASE} @ {sha} on {host}, loadavg {os.getloadavg()}; saved {OUT}')
+
+    # Durable copy + ledger index (PROJECT_RULES rule 19 and its positive
+    # counterpart). scaling_last.json stays what its name says -- the last
+    # run -- but the run ALSO lands under a dated, immutable name, and every
+    # measured point becomes one appended line in docs/perf_ledger.jsonl so
+    # no number depends on someone transcribing it. Timestamp in the filename
+    # so a same-day rerun cannot overwrite the earlier snapshot.
+    import ledger
+    snap_rel = os.path.join('docs', 'perf_snapshots', 'scaling_%s_%s.json'
+                            % (time.strftime('%Y-%m-%d_%H%M%S'),
+                               os.environ.get('EQDYNA_SNAPSHOT_TAG', CASE)))
+    snap_abs = os.path.join(ROOT, snap_rel)
+    os.makedirs(os.path.dirname(snap_abs), exist_ok=True)
+    json.dump(meta, open(snap_abs, 'w'), indent=1)
+    tenancy = ledger.box_tenancy(a.busy_ceiling)
+    nledger = ledger.append_rows(
+        ledger.rows_from_scaling_snapshot(meta, snap_rel, tenancy))
+    print('snapshot %s; %d ledger row(s) appended to %s (box tenancy %d/%d '
+          'cpus over %.2f)' % (snap_rel, nledger, ledger.LEDGER_RELPATH,
+                               tenancy['busy'], tenancy['total'],
+                               a.busy_ceiling))
     if skipped:
         print(f'{len(skipped)} configuration(s) SKIPPED as busy (not measured, not silently '
               f'dropped): {[s["label"] for s in skipped]}')
