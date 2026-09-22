@@ -436,11 +436,26 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
                  100.0 * rep['halo_frac'], rep['neighbours'],
                  rep['fault_computed'], rep['fault_owned']), flush=True)
 
+    # STEP ATTRIBUTION, off by default (MPI4NodalQuant.step_profile). The two
+    # accumulators below cost two perf_counter calls per step when on and
+    # nothing when off, and they do NOT add a block_until_ready -- t_compute
+    # brackets exactly the dispatch-plus-block the loop already performs, so
+    # the profiled run measures the same step the production run does.
+    #
+    # WHAT t_compute MEANS, exactly, because it is easy to over-read: jax
+    # dispatch is asynchronous and nothing blocks on part_b, so the
+    # block_until_ready(hv) below drains part_b of the PREVIOUS step as well as
+    # part_a of this one. t_compute is therefore ALL jitted compute per step,
+    # a and b together, not part_a alone. That is the quantity the plateau
+    # question needs (compute vs not-compute); splitting a from b costs an
+    # extra block per step and is what probe_mpi_step_split.py is for.
+    prof = MQ.step_profile()
     comm.Barrier()
     c0 = os.times()
     t0 = time.perf_counter()
-    t_mpi = t_wait = 0.0
+    t_mpi = t_wait = t_compute = t_d2h = 0.0
     for nt in range(1, nsteps + 1):
+        ta0 = time.perf_counter() if prof else 0.0
         carry, hv = a_jit(dyn, carry, nt, halo)
         # BLOCK BEFORE STARTING THE MPI CLOCK. jax dispatch is asynchronous,
         # so a_jit returns before part_a has run and the first thing that
@@ -449,6 +464,8 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         # ONE-rank run with zero neighbours -- i.e. it was measuring the
         # solver, not the exchange.
         jax.block_until_ready(hv)
+        if prof:
+            t_compute += time.perf_counter() - ta0
         # Barrier FIRST, timed separately. Without it the fastest rank's
         # "exchange" time is mostly waiting for the slowest rank, and on this
         # box the per-rank spread is real (cpu 61 measured EFFECTIVE_CORES
@@ -472,7 +489,18 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
             carry = carry[:FORCE] + (xp.asarray(total),) + carry[FORCE + 1:]
             carry = b_jit(dyn, carry, nt, halo, zero_delta)
         else:
-            delta = MQ.exchange(comm, nbrs, np.asarray(jax.device_get(hv)))
+            if prof:
+                # Split the halo device-to-host copy out of the exchange, so
+                # t_mpi is PURE MPI under the profile. The default path leaves
+                # them fused exactly as they were, because moving the clock
+                # would redefine an already-published number.
+                tg0 = time.perf_counter()
+                hv_host = np.asarray(jax.device_get(hv))
+                t_d2h += time.perf_counter() - tg0
+                t1 = time.perf_counter()
+                delta = MQ.exchange(comm, nbrs, hv_host)
+            else:
+                delta = MQ.exchange(comm, nbrs, np.asarray(jax.device_get(hv)))
             t_mpi += time.perf_counter() - t1
             carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
     jax.block_until_ready(carry)
@@ -494,6 +522,23 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
                threads=len(os.listdir('/proc/%d/task' % os.getpid())),
                cpus=sorted(os.sched_getaffinity(0)),
                cpus_allowed=len(os.sched_getaffinity(0)))
+    if prof:
+        # The residual is elapsed MINUS everything attributed, so the five
+        # buckets sum to the step by construction and an unattributed cost
+        # cannot hide in a gap between two clocks. It covers the Python loop
+        # itself, pytree flatten/unflatten on both dispatches, and
+        # xp.asarray(delta).
+        acc = t_compute + t_wait + t_mpi + t_d2h
+        rep = dict(rep, step_profile=True,
+                   compute_ms_per_step=t_compute / nsteps * 1e3,
+                   d2h_ms_per_step=t_d2h / nsteps * 1e3,
+                   host_ms_per_step=(elapsed - acc) / nsteps * 1e3)
+        print('driver.run_mpi rank %d STEP PROFILE (ms/step): compute %.2f '
+              '(a+b, see comment) | barrier %.2f | mpi %.2f | halo d2h %.2f '
+              '| host residual %.2f | TOTAL %.2f'
+              % (rank, rep['compute_ms_per_step'], rep['wait_ms_per_step'],
+                 rep['mpi_ms_per_step'], rep['d2h_ms_per_step'],
+                 rep['host_ms_per_step'], rep['ms_per_step']), flush=True)
     if verbose:
         print('driver.run_mpi rank %d: %.3f s, %.3f ms/step (sync=%s: %.3f '
               'ms/step exchanging, %.3f ms/step waiting at the barrier), '
