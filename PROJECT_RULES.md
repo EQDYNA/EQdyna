@@ -8,6 +8,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 3. Gate every stage; pass before moving on.
 4. Only fresh runs are evidence.
 4a. A proposed CAUSE is falsified by the outcome curve, not by the defect it predicts.
+4b. An exclusion names the metric that produced it; a metric blind to a mechanism cannot exclude it.
 5. One calibrated definition of "pass" — never invent a metric.
 6. Every performance number carries its provenance.
 7. Reference data is read-only.
@@ -30,8 +31,9 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 20 numbered rules
-(1-20) plus five lettered sub-rules (2a, 4a, 15a, 20a, 20b) — 25 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 25;
+(1-20) plus six lettered sub-rules (2a, 4a, 4b, 15a, 20a, 20b) — 26 `## `
+headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 26;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 20.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -201,6 +203,55 @@ and the outcome delta when reporting. One measurement per point on a shared box
 supports neither an improvement nor a regression claim — say "unresolved". A
 candidate cause supported only by defect-side evidence goes on the board as a
 hypothesis, never into a doc as the cause.
+
+---
+
+## 4b. An exclusion names the metric that produced it; a metric blind to a mechanism cannot exclude it
+
+A written exclusion — "contention is ruled out", "transport is not it", "compile
+is not a factor" — carries, in the same sentence, the METRIC that produced it
+and the value that metric read. An exclusion with no metric attached cannot be
+re-audited: the next session inherits it as a closed door and spends its budget
+everywhere else. And a metric that cannot OBSERVE a mechanism cannot exclude
+it, however clean its number. Two instruments in this repo are known blind and
+must be named as such wherever they appear in an exclusion:
+
+- **`EFFECTIVE_CORES` is blind to memory stalls.** A core spinning on cache
+  misses still bills one cpu-second per wall second and reads 1.00. It measures
+  whether a cpu was HANDED to the process, not whether the process made
+  progress.
+- **A per-rank WALL-time spread under a barrier is an identity, not a
+  measurement.** Every rank leaves the same barrier at the same instant, so a
+  spread of 1.00x is what the loop's structure guarantees regardless of what
+  the ranks did. The observable is the per-rank COMPUTE spread underneath it.
+
+**Rationale**: an exclusion is a permission to stop looking — the cheapest
+claim in a campaign to make and the most expensive to be wrong about. Rule 4a
+governs a proposed CAUSE and asks for the outcome curve; this sub-rule governs
+the NEGATIVE claim and asks which instrument produced it. The two fail the same
+way: a number measured correctly, about the wrong quantity.
+
+**Incident (2026-09-22)**: the 32-rank plateau mission was briefed with a
+"ruled out with numbers, do not re-run" list that excluded contention on
+exactly those two instruments — a per-rank wall spread of 1.00x and
+`EFFECTIVE_CORES` 1.00 on 31 of 32 ranks — and `pathway_forward.md` item 60
+carried the exclusion as fact ("so it is NOT contention"). Measured, contention
+is the largest single term in the step: the compute spread underneath the
+barrier is **2.90x** (33.73-97.94 ms) against a work spread of 1.41x, and 32
+concurrent zero-communication processes reproduce the in-situ per-rank cost to
+**3.7%** (94.30 vs 97.94 ms) — roughly 45 ms of a ~124 ms step, behind a door
+the campaign had closed. Neither instrument could have seen it. Three missions
+over two days were aimed at the mechanisms that were still open.
+
+**How to apply**: write an exclusion as "X is excluded by <metric>, which read
+<value>", never as "X is ruled out". Before inheriting one, ask whether that
+metric can observe the mechanism — if it cannot, the entry is not an exclusion
+and goes back on the board as open. When handing a ruled-out list to another
+agent, hand the metric with each entry and ask for the contradiction rather
+than the agreement. Tier: a norm for how claims are written, not mechanically
+gated — no script can tell a metric from the mechanism it is blind to. The
+nearest mechanical backstop is the board's own `Command` column (rule 14): an
+exclusion whose command still runs is at least re-checkable.
 
 ---
 
