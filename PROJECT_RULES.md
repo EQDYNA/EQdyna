@@ -23,6 +23,8 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 17. Reviving or adding a TPV benchmark.
 18. A refactor that couples two previously-independent artifacts must say so.
 19. A shared mutable `*_last.*` artifact is not evidence until pinned to a commit.
+20. Heavy runs are launched detached and polled by artifact, never by process.
+20a. A tool that writes its results file only at the end is a partial-loss hazard; prefer several smaller invocations that each land their own artifact.
 
 ---
 
@@ -787,3 +789,55 @@ running a tool that writes one, `git show HEAD:<path>` and diff a real
 property of the content, not the mtime, against what your run is about to
 produce; before dispatching a second agent, check whether its mission writes
 the same shared path and serialize or redirect if so.
+
+---
+
+## 20. Heavy runs are launched detached and polled by artifact, never by process
+
+A heavy run — anything expected to exceed a few minutes: a sweep, a scaling
+point, a solver run, a native or XLA compile — is launched DETACHED, with
+stdout+stderr redirected to a FILE, and its progress is judged by its
+ARTIFACT, never by its process. The mechanism:
+
+    setsid nohup <cmd> > <logfile> 2>&1 < /dev/null &
+
+The one-command tell, run BEFORE walking away:
+
+    ls -l /proc/<pid>/fd/1
+
+If that shows `pipe:[...]` instead of a real path, the run's output is going
+to a pipe that dies with the launching turn — nothing will ever read it, and
+the run's entire record dies with it. Verify fd 1 points at a path first; a
+correctly detached run reads `-> /.../scaling_A.log` or similar.
+
+Liveness is the artifact advancing — the log file's mtime moving, new rows
+appearing, a NOTES checkpoint landing — not CPU%, not the process existing,
+and not a foreground wait on the command.
+
+**20a. A tool that writes its results file only at the very END of all its
+work is a partial-loss hazard.** Prefer several smaller invocations that each
+land their own artifact over one long invocation that lands one — a killed
+end-writer loses everything, a killed N-th invocation loses only the N-th.
+The 2026-09-22 scaling deliverable was split into two runs for exactly this
+reason.
+
+**Rationale**: an agent's turn — and with it every pipe and foreground child
+it holds — can end at any time. A rule that assumes the launcher outlives the
+run has now lost work FOUR times in one campaign.
+
+**Incident (four, cumulative)**: (1) round 6's `NOTES_*` checkpoints, lost
+with their worktree. (2) mira's untracked files, lost the same way.
+(3) 2026-09-21: item 32's dx=250 serial run, killed at ~40 min when its
+agent's turn ended — "external stop, not a solver error". (4) 2026-09-21: a
+32-rank scaling point ran a FULL HOUR with `mpirun`'s stdout on
+`pipe:[80141375]` that nobody was left reading — no file, no NOTES
+checkpoint, no ledger row. An hour of a 32-way run, gone.
+
+**How to apply**: before launching anything over a few minutes, wrap it in
+the `setsid nohup ... > <logfile> ... &` form above, check
+`ls -l /proc/<pid>/fd/1` resolves to a real path, then poll the logfile and
+the run's output artifacts on a schedule. When designing or invoking a tool
+for a long campaign, split it so each stage commits its own artifact (20a).
+Tier: the fd-1 check is mechanical per launch; the rule as a whole is a norm
+for how sessions launch work — no repo-wide gate can see a foreground pipe
+after the fact, which is exactly why the check happens at launch time.
