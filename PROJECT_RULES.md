@@ -7,6 +7,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 2a. A scripted edit to a tracked document asserts on its shape, not a substring of it.
 3. Gate every stage; pass before moving on.
 4. Only fresh runs are evidence.
+4a. A proposed CAUSE is falsified by the outcome curve, not by the defect it predicts.
 5. One calibrated definition of "pass" — never invent a metric.
 6. Every performance number carries its provenance.
 7. Reference data is read-only.
@@ -29,8 +30,8 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 20 numbered rules
-(1-20) plus four lettered sub-rules (2a, 15a, 20a, 20b) — 24 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 24;
+(1-20) plus five lettered sub-rules (2a, 4a, 15a, 20a, 20b) — 25 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 25;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 20.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -162,6 +163,44 @@ release note unchanged once the code underneath has moved.
 
 **How to apply**: before repeating a timing or verification claim in a new
 release note, rerun it, or mark it explicitly as inherited/unverified.
+
+---
+
+## 4a. A proposed CAUSE is falsified by the outcome curve, not by the defect it predicts
+
+A causal claim — "X is why this is slow" — is settled by measuring the OUTCOME
+the claim is about (the scaling curve, the per-step cost, the pass rate) with X
+removed, not by measuring the defect X names. A before/after on the defect
+metric (a work-spread ratio, a straggler factor, a zero-owner count) shows only
+that the defect existed and was repaired; it carries no information about
+whether the defect mattered. Until the outcome number moves by more than that
+machine's own run-to-run variation, the mechanism stays a hypothesis and the
+repair is written up as "defect fixed, consequence unmeasured."
+
+**Rationale**: the defect metric is cheap and the outcome metric expensive,
+which is exactly the pressure that makes a team stop at the cheap one. Two
+numbers can both be measured correctly and be unrelated.
+
+**Incident (2026-09-22)**: `pathway_forward.md` item 60 asserted decomposition
+imbalance as the cause of the jax-MPI 32-rank plateau on evidence that was
+entirely defect-side — four of 32 ranks owning zero interior elements, barrier
+wait 105 ms of a 172.6 ms step. `PML_WEIGHT = 3.0`
+(`src/python/eqdyna/MPI4NodalQuant.py:85`, documented in source as a guess) was
+then measured at ~0.6, five times too high; recutting took zero-`Ei` ranks 4 ->
+0 and predicted work spread 3.350x -> 1.004x. The defect was real and was
+repaired completely. Per-step cost at 32 ranks went 134.12 -> 132.20 ms: 1.4%,
+inside this box's run-to-run variation, with two mid-range points moving the
+wrong way. The plateau is still unexplained, and the board stated a disproved
+mechanism as fact until someone measured the curve. Second occurrence of this
+shape in the repo — a fix that worked and bought nothing (see `CLAUDE.md`,
+"Measure, do not infer").
+
+**How to apply**: name the outcome metric and its run-to-run spread on that
+machine BEFORE removing the suspected cause, and quote both the defect delta
+and the outcome delta when reporting. One measurement per point on a shared box
+supports neither an improvement nor a regression claim — say "unresolved". A
+candidate cause supported only by defect-side evidence goes on the board as a
+hypothesis, never into a doc as the cause.
 
 ---
 
