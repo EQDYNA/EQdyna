@@ -88,9 +88,10 @@ jobs:
     # fetch-depth: 0 -- this job, alone among the seven, needs real git
     # HISTORY, not just the tree. test_pretag_ci_negative.py drives the
     # pre-tag guard against named past commits (their parents, their
-    # changed-path sets), and checkout@v4's default depth of 1 would leave
-    # those SHAs unresolvable, turning a guard-of-a-guard into a vacuous
-    # pass. The repo is 723 commits; the full fetch costs seconds.
+    # changed-path sets) and test_history_table.py re-parses the eight
+    # legacy commit messages; checkout@v4's default depth of 1 would leave
+    # those commits unreachable, turning both guards into vacuous passes.
+    # The repo is 723 commits; the full fetch costs seconds.
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
