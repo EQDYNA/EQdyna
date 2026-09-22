@@ -590,13 +590,25 @@ def main():
         # `path` is None for a rank that owns no fault node (see
         # run_case_mpi): it wrote nothing, exactly as Fortran does, and the
         # line says so rather than printing a bare None that reads like a bug.
+        # backend=/device= on EVERY rank, the same line the serial path
+        # prints, because active_device's own contract is that a timing row
+        # carries what ACTUALLY ran -- and this branch was the one place that
+        # printed no device at all. Measured consequence: a 1-rank tpv104
+        # point launched with JAX_PLATFORMS=cuda recorded 812.78 ms/step with
+        # zero bytes allocated on any GPU, because this branch's
+        # `--device auto` maps to cpu (line above) and nothing downstream
+        # said so. One line per rank; note that under a per-rank
+        # CUDA_VISIBLE_DEVICES every rank legitimately reports gpu:0, so this
+        # line proves the PLATFORM, and it is the per-device memory poll in
+        # testsys/perf/run_mpi_scaling.py that proves four distinct devices.
+        print('backend=%s device=%s' % (args.backend, active_device(args.backend)))
         print('rank %d/%d wrote %s  %s'
               % (comm.Get_rank(), comm.Get_size(),
                  path or 'NO-FRT-OWNS-0-FAULT-NODES',
                  ' '.join('%s=%s' % (k, report[k]) for k in
                           ('Ei', 'Ep', 'halo_eqs', 'ms_per_step',
                            'mpi_ms_per_step', 'wait_ms_per_step', 'sync',
-                           'threads', 'cpus_allowed'))))
+                           'device_peak_gb', 'threads', 'cpus_allowed'))))
         return
     if args.backend == 'jax':
         _select_device(args.device)
