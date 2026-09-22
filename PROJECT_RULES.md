@@ -25,6 +25,17 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 19. A shared mutable `*_last.*` artifact is not evidence until pinned to a commit.
 20. Heavy runs are launched detached and polled by artifact, never by process.
 20a. A tool that writes its results file only at the end is a partial-loss hazard; prefer several smaller invocations that each land their own artifact.
+20b. A heavy run's artifacts are not landed until they are committed, and a run finishing does not mean anyone is still there to commit them.
+
+Count, stated so a heading-shape grep does not undercount it again (that
+undercount happened twice in one night, 2026-09-21/22): 20 numbered rules
+(1-20) plus four lettered sub-rules (2a, 15a, 20a, 20b) — 24 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 24;
+`grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
+suffix) reads 20.
+A count that greps only `^## [0-9]` and calls it "the rules" will silently
+drop every lettered sub-rule — read this index's own list, don't re-derive
+the count from heading shape alone.
 
 ---
 
@@ -814,12 +825,15 @@ Liveness is the artifact advancing — the log file's mtime moving, new rows
 appearing, a NOTES checkpoint landing — not CPU%, not the process existing,
 and not a foreground wait on the command.
 
-**20a. A tool that writes its results file only at the very END of all its
-work is a partial-loss hazard.** Prefer several smaller invocations that each
-land their own artifact over one long invocation that lands one — a killed
-end-writer loses everything, a killed N-th invocation loses only the N-th.
-The 2026-09-22 scaling deliverable was split into two runs for exactly this
-reason.
+## 20a. A tool that writes its results file only at the very end of all its work is a partial-loss hazard
+
+Prefer several smaller invocations that each land their own artifact over one
+long invocation that lands one — a killed end-writer loses everything, a
+killed N-th invocation loses only the N-th. The 2026-09-22 scaling deliverable
+was split into two runs for exactly this reason. (This sub-rule previously
+had no `## ` heading of its own — a bolded lead sentence only — which is
+exactly the shape gap that let a heading-based grep miscount the rule set
+twice in one night; see 20b below and the index's count note.)
 
 **Rationale**: an agent's turn — and with it every pipe and foreground child
 it holds — can end at any time. A rule that assumes the launcher outlives the
@@ -841,3 +855,39 @@ for a long campaign, split it so each stage commits its own artifact (20a).
 Tier: the fd-1 check is mechanical per launch; the rule as a whole is a norm
 for how sessions launch work — no repo-wide gate can see a foreground pipe
 after the fact, which is exactly why the check happens at launch time.
+
+---
+
+## 20b. A heavy run's artifacts are not landed until they are committed, and finishing does not mean anyone is still there to commit them
+
+Rule 20 covers launching a heavy run detached so it survives the launching
+turn. Rule 20a covers writing its artifact incrementally so a kill loses only
+the latest stage. Neither says whose job it is to commit the artifact once
+the run has actually finished — and a run finishing green is not the same
+event as a person being present to `git add`/`git commit` it. Until that
+commit happens, the evidence exists only in one working tree, owned by
+whichever session happens to still be around, which may be nobody.
+
+**Rationale**: a detached run's whole point is to survive its launching
+turn — but that same property means it can also *finish* after its launching
+turn has ended, with no session left that knows to commit what it produced.
+Rule 19 already treats an uncommitted, unpinned perf-ledger row as not
+evidence; this rule states the general case, for any heavy-run artifact, not
+only the ledger.
+
+**Incident (2026-09-22)**: a full `testsys/run.py all` sweep (3839.6s, 31 of
+40 cells) finished green and sat with two uncommitted artifacts — an
+appended `docs/perf_ledger.jsonl` and a new perf snapshot — because the
+agent that launched it had already exited before it finished. Caught before
+the next heavy run could have overwritten or raced it; the next version of
+this gap loses the full sweep's evidence outright, the same shape of loss as
+20a's incident (4), one stage later in the lifecycle.
+
+**How to apply**: when launching a heavy run detached, name who checks on it
+and commits its artifacts, and treat "the run finished" as the trigger to
+commit immediately — not as a state that persists safely until someone next
+looks. Do not treat a finished background job as self-sufficient just
+because it produced its file. Tier: a norm, not mechanically gated — no
+repo-wide check can see evidence sitting uncommitted in a worktree nobody is
+in; the nearest mechanical backstop is rule 19's own guard (unpinned ledger
+row rejected), which this rule generalises from the ledger to any artifact.
