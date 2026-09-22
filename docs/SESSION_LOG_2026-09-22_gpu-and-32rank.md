@@ -1208,3 +1208,29 @@ exec python3 $WT/testsys/perf/run_mpi_scaling.py "$@"
 - Step 5 DONE: python3 testsys/run.py unit regression -- SUCCESS both tiers.
 - No defect found in the patch; fails-closed verified for unset AND for value 0.
 ```
+
+## Landed: `8fb5937` (merge of `zofia-kaminska`'s board+rules pass)
+
+Dispatched docs-only because the board is hers and not mine, and because a P1
+row asserting "result pending" about a result I was holding is the precise
+failure a board exists to prevent.
+
+| axis | evidence |
+|---|---|
+| 4 (stale base) | her worktree branched from `f1bf23a` — **current master exactly**, so there was no stale-base exposure at all this time. Post-merge `f1bf23a..HEAD` is `PROJECT_RULES.md +63/-3`, `pathway_forward.md +2/-1` and nothing else. |
+| 1 (degenerate) | docs only; no source, testsys, reference, ledger, VERSION, README or pastReleaseNotes. No existing rule weakened — rule 20c is added, and the count block was UPDATED with it rather than left to undercount. Grepped her added rows for a budget/reference change (`budget bump`, `regenerate`, `re-freeze`, `CASE_BOUND`, `flip_budget`): **zero hits**, as instructed. |
+| 3 (my own re-run) | `grep -c '^## '` = **27**, `grep -c '^## [0-9]*\. '` = **20**, lettered = **7** — her row's own evidence commands, run by me on the merged tree. Five jax-free doc guards on the merged tree all OK. |
+
+**She left the edits UNCOMMITTED in her worktree**, which is rule 20b's own
+hazard one document later — the rule she had just written about artifacts,
+arriving as dirty rules text in a reapable tree. Committed on her branch with
+authorship attributed, then merged `--no-ff`; never copied.
+
+Her one declared non-verification is correct and worth keeping: the "~21 h"
+figure is carried from my own NOTES, not independently derived — the documents
+give the 00:04 exit but no clock time for the recovery. Read it as "most of a
+day", not as a measurement.
+
+No version bump. A docs-only landing has no backing artifact to earn one, and
+VERSION 5.15.0 must not move — it would invalidate `54e0697`'s standing as the
+commit that gets tagged when the owner rules.
