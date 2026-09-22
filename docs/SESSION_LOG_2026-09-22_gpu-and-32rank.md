@@ -587,7 +587,7 @@ is gone.
 
 The curve did not care.
 
-| ranks | BEFORE w=3.0 | AFTER w=0.6 |
+| ranks | BEFORE w=3.0 | AFTER recut at w=0.56 |
 |---|---|---|
 | 8 | 172.63 ms, 4.35x | 202.90 ms, 3.73x |
 | 16 | 171.64 ms, 4.37x | 180.80 ms, 4.18x |
@@ -724,3 +724,59 @@ contradiction with my framing, not agreement with it.
 
 One heavy job only (item 42), cache off by hand (`EQDYNA_JAX_CACHE_DIR=off`)
 because the shared-cache wedge is still unfixed and item 61 is the owner's call.
+
+### Landed: `9715dcf` (merge of `bbac0c0`, `zofia-kaminska`)
+
+| gate axis | evidence |
+|---|---|
+| 4 (stale base) | branch base `12c5be0`; her own change set 3 files +58/-9. The two-point diff `master..bbac0c0` reads **-72 lines of this very session log** — work that landed after her base. Merged with `--no-ff`, never copied; post-merge `c246e0d..HEAD` is exactly those 3 files and no deletions outside them. |
+| 1 (degenerate) | no source, testsys, reference, ledger, VERSION, README or pastReleaseNotes touched. The rules-count block was UPDATED with the rule rather than left to undercount — the failure it exists to prevent. |
+| 3 (my own re-run, not her report) | `grep -c '^## ' PROJECT_RULES.md` = **25**, `grep -c '^## [0-9]*\. '` = **20** — the row's own evidence command, run by me on the merged tree. Five jax-free doc guards on the merged tree: `test_readme_commands`, `test_release_complete`, `test_version_banner`, `test_docker_guide_no_pinned_version`, `test_symlink_integrity` all OK. |
+
+No version bump. A docs-only landing has no backing artifact to earn one (rule
+19's shape), and VERSION 5.15.0 is a prepared-and-CI-green release awaiting the
+owner's publish ruling — moving it would invalidate `54e0697`'s standing as the
+thing that gets tagged.
+
+**Rule 4a now exists**: a proposed CAUSE is falsified by the OUTCOME curve, not
+by the defect it predicts. Written from this incident by its owner, with the
+incident in it. That is the rule this campaign actually bought.
+
+### Three corrections she found that I had relayed, and one is mine
+
+1. **This log's own table was mislabelled.** The text says the recut was at
+   **w=0.56**; the header said **w=0.6**, which is the measured cost RATIO, a
+   different number. Fixed in place above — the header now reads "AFTER recut at
+   w=0.56". I had repeated the conflation into her brief.
+2. **"Same mechanism, different hardware, same fix" no longer holds and this log
+   did not retract it.** Nobody recut on the A100s, so the 4xA100 48% element
+   spread is now a defect with an UNMEASURED consequence, exactly like the CPU
+   one was. **Item 59 still asserts the fix framing and is stale in the same way
+   item 60 was** — she declined to rewrite it in this pass and flagged it
+   instead, which is the right scope discipline. Routed as the next board
+   correction.
+3. **The compile figures do not reconcile**: 0.42 s at 1 rank (this log) vs
+   4.43-4.93 s at every rank count cache-off. The 0.42 s was almost certainly
+   cache-WARM and is therefore describing something else. Left unreconciled in
+   item 61 on purpose; whoever rules on `14f0b7f` should say which measurement
+   the 0.42 belongs to.
+
+### One stale row found by running its own code rather than reading it
+
+**Item 55 (P2, "perf-ledger row schema has NO platform/device column") is
+RESOLVED and the board does not say so.** `testsys/perf/ledger.py` carries
+`platform`, `platform_evidence`, `devices`, `gpu_peak_mib`, `gpu_delta_mib` and
+`device_peak_gb`, landed at `24b47ba` (`iris-vermeulen`), with a `_check_platform`
+validator that refuses a GPU claim without per-device memory evidence. Verified
+by running the guard, not by reading the diff:
+
+```
+$ python3 testsys/regression/test_perf_ledger.py
+PASS -- committed ledger: 63 row(s) all validate (19 backfilled); problems: none
+PASS -- history: HEAD ledger (46815 bytes) is a byte-prefix of the working copy
+SUCCESS test_perf_ledger: ledger append-only, validated, concurrency-safe
+```
+
+Checking this BEFORE dispatching is what stopped a duplicate `iris-vermeulen`
+onto `ledger.py` while `mira-volkov` is writing ledger rows from her own runs.
+A stale board row is not free: it is a mission someone will run twice.
