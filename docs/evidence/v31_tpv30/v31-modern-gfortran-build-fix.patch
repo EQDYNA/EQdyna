@@ -1,0 +1,42 @@
+--- /home/utig5/dliu/EQdyna/scratch/legacy_import/Examples/EQdyna_3.1/code/qdcshg.f90	2018-11-26 12:25:40.000000000 -0600
++++ qdcshg.f90	2026-09-22 14:18:34.754343890 -0500
+@@ -50,7 +50,7 @@
+   if(det <= 0.0) then
+     write(*,1000) nel
+     write(*,*) 'det=',det
+-    stop	!non-positive det: terminate
++    stop !non-positive det: terminate
+   endif
+   !...derivatives of global shape function
+   shlg = shg
+--- /home/utig5/dliu/EQdyna/scratch/legacy_import/Examples/EQdyna_3.1/code/eqdyna3d.f90	2018-11-26 12:25:42.000000000 -0600
++++ eqdyna3d.f90	2026-09-22 14:18:34.757343906 -0500
+@@ -472,7 +472,7 @@
+     if(abs(x(3,ien(5,i)))<1) then  !at surface
+       if(x(1,ien(5,i))>fltxyz(1,1,1)-3000 .and. x(1,ien(5,i))<fltxyz(2,1,1)+3000 &
+         .and. x(2,ien(5,i))>=-10000 .and. x(2,ien(5,i))<=10000) then
+-        if(dpyn==.false.) then
++        if(dpyn.eqv..false.) then
+           dpyn=.true.
+           open(unit=ioutdp,file=outdp,status='unknown')
+         endif
+@@ -481,7 +481,7 @@
+       endif
+     endif
+   enddo
+-  if(dpyn==.true.) close(ioutdp)
++  if(dpyn.eqv..true.) close(ioutdp)
+   !...write out rupture time for multiple faults.
+   ! also, final slip strike, dip, normal components. B.D. 6/2/12 
+   if(nftnd(1) > 0) then
+--- /home/utig5/dliu/EQdyna/scratch/legacy_import/Examples/EQdyna_3.1/code/meshgen.f90	2018-11-26 12:25:40.000000000 -0600
++++ meshgen.f90	2026-09-22 14:18:34.760343921 -0500
+@@ -478,7 +478,7 @@
+           if(nelement>nelement1) then
+             write(*,*) 'more elements in meshgen than in mesh4num'
+             write(*,*) 'x,y,z',xcoor,ycoor,zcoor
+-            pause
++            stop
+           endif
+           mat(nelement) = 1  !homogeneous half space
+           ien(1,nelement) = plane1(iy-1,iz-1)
