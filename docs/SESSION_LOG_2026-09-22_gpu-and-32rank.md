@@ -652,3 +652,75 @@ shows it would REMOVE the GPU polling code that landed later in `feda7c9`. It
 is a stale-base duplicate, not lost work, and it must never be landed. Same
 shape as `a7d281f`. Nothing reaped; the list is recorded so the next session
 does not have to re-derive it.
+
+---
+
+# Resumption, 2026-09-22 — conductor #3 (the negative result onto the board; the plateau's additive constant)
+
+State verified rather than assumed at handover: `git status --porcelain | wc -l`
+= 0, `git log --oneline -1 origin/master` = `12c5be0` = local HEAD, VERSION
+5.15.0, no tag for it. 64 cpus, load 10.6.
+
+**Grant restated before touching anything:** patch and minor tags on `master`
+of this repo. No major, no publish, no force-update of an existing tag.
+Campaign sign-off is the owner's.
+
+**The tag stays unpushed, and this is the second conductor in a row to decline
+it for the same reason.** `test_release_complete.py`'s `check_network_side`
+skips while no tag exists for VERSION and fires the instant one does, then
+demands a resolvable `gh release view v5.15.0` — a PUBLISH, outside the grant.
+VERSION ahead of every reachable tag with all guards green is the state that
+guard is built to tolerate. The question is with the owner; nothing here is
+blocked on it.
+
+## The board did not carry the campaign's most valuable result
+
+Grepped `pathway_forward.md` for `PML_WEIGHT`, `1.004` and `symptom`: **zero
+hits.** Item 60 still read "decomposition BALANCE, not contention or exchange --
+mission now in flight" — i.e. the board asserted, as its live P2 claim, a cause
+that had already been disproved by measurement in the section above this one. A
+negative result that lives only in a session log is one a future session pays
+for again.
+
+Routed to `zofia-kaminska` (docs-only, worktree, Step 0 re-sync from `12c5be0`)
+with the literal evidence, because she owns the board and I do not. Commissioned
+in the same brief: the **fifth** entry in `CLAUDE.md`'s "Measure, do not infer"
+section, named — PML_WEIGHT=3.0 at `MPI4NodalQuant.py:85` being 5x the measured
+ratio, fixed to a 1.004x work spread, with the scaling curve unmoved. That
+section has said "four claims" since it was written; this is the fifth, and it
+is the second time a fix that *worked* failed to buy what it was built to buy.
+
+## The plateau reframed: a rank-INDEPENDENT ~116 ms per step
+
+Before dispatching, I fitted the committed 1→32 table to `T(N) = T1/N + C` with
+`T1` = 756.92 ms, so the next mission starts from arithmetic rather than from
+the closed imbalance door:
+
+| ranks | measured ms/step | scalable part `T1/N` | residual `C` |
+|---|---|---|---|
+| 2 | 444.87 | 378.5 | 66.4 |
+| 4 | 315.31 | 189.2 | 126.1 |
+| 8 | 211.29 | 94.6 | 116.7 |
+| 16 | 150.04 | 47.3 | 102.7 |
+| 32 | 143.27 | 23.7 | 119.6 |
+| 32 (w=0.6 recut) | 132.20 | 23.7 | 108.5 |
+
+For N >= 4, `C` = 103-126 ms, mean **116.3 ms**, with no trend in N. At 32 ranks
+the scalable work is ~24 ms and `C` is ~5x larger than it. **That additive
+constant IS the plateau**, and it is rank-independent, so it is either per-step
+work every rank does regardless of N or per-step fixed overhead in the
+host/dispatch path. Neither is imbalance, which is consistent with the recut
+buying nothing.
+
+Dispatched to `mira-volkov` (worktree, Step 0 re-sync) with the ruled-out list
+carried so she cannot spend the box re-deriving it, and with three ordered
+experiments: split the step into jitted-compute / D2H-H2D / exchange / barrier /
+host-Python (env-gated instrumentation only); quantify bytes moved per step and
+check whether `donate_argnums` at `driver.py:418-419` is in fact EFFECTIVE on
+the MPI path, since the MPI path cannot fuse the time loop the way the serial
+`fori_loop` does; and only if those are inconclusive, an MPI-free concurrency
+probe to separate box saturation from orchestration cost. She reports the
+contradiction with my framing, not agreement with it.
+
+One heavy job only (item 42), cache off by hand (`EQDYNA_JAX_CACHE_DIR=off`)
+because the shared-cache wedge is still unfixed and item 61 is the owner's call.
