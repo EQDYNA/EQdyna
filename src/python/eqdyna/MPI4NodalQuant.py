@@ -121,13 +121,109 @@ def _take_ravelled(a, sel):
     return np.asarray(a).reshape(-1, 8)[sel].reshape(-1)
 
 
+# WHICH INDEX SPACE each integer index array addresses -- the table that makes
+# the global->local remap below total rather than a list somebody remembered to
+# extend. Every integer ARRAY in assembleGlobalKU.build's dict must appear in
+# _INDEX_SPACE and every one in faulting.build's in _FAULT_INDEX_SPACE, or
+# _relabel_all raises: an unremapped index array is not a crash, it is a read
+# from (or a scatter into) whatever local slot that global number happens to
+# land on -- a wrong answer with nothing to attribute it to. Same discipline,
+# and the same reason, as backend._ELEM_GROUP.
+_INDEX_SPACE = {
+    # node-indexed: they address velArr / dispArr, which are (N_local, 3)
+    'conn': 'node', 'conn_i': 'node', 'conn_p': 'node',
+    'int_nodes_idx': 'node', 'pml_nodes_idx': 'node',
+    # equation-indexed: they address v1 / force / mass, which are (NEQ_local+1,)
+    'idx3_v': 'eq', 'idx12_v': 'eq',
+    'idxIx': 'eq', 'idxIy': 'eq', 'idxIz': 'eq',
+    'idxP12': 'eq', 'idxP3': 'eq',
+    'idxH0': 'eq', 'idxH1': 'eq', 'idxH2': 'eq',
+}
+_FAULT_INDEX_SPACE = {
+    'nsmp1': 'node', 'nsmp2': 'node',
+    'idxF_s': 'eq', 'idxF_m': 'eq',
+}
+
+
+def _is_index_array(v):
+    """An integer ARRAY (or list of them), i.e. something that addresses a
+    nodal or equation array. Excludes the integer SCALARS in the same dicts
+    (N, NEQ, Ei, friclaw, TPV, ...), which are counts and trace-time
+    branches, not indices."""
+    if isinstance(v, (list, tuple)):
+        return bool(len(v)) and all(_is_index_array(x) for x in v)
+    return (isinstance(v, np.ndarray) and v.ndim >= 1
+            and v.dtype.kind in 'iu')
+
+
+def _relabel(name, v, g2l, space, n_local):
+    """`v` with every global index replaced by its local one.
+
+    A gather or a scatter reproduces exactly the same additions, in the same
+    order, under an INJECTIVE relabelling of its index array: duplicate
+    structure and array order are untouched, only the addresses change. That
+    is why this remap is expected to be BIT-IDENTICAL to the global-extent
+    run at the same rank count, and it is gated as such rather than at the
+    case bound (see NOTES_item43_mpi.md).
+    """
+    if isinstance(v, (list, tuple)):
+        return [_relabel(name, x, g2l, space, n_local) for x in v]
+    a = np.asarray(v)
+    if a.size and int(a.min()) < 0:
+        raise ValueError(
+            'MPI4NodalQuant._relabel: %r holds a negative %s index (min %d). '
+            'Fancy-indexing the global->local table with it would wrap to a '
+            'VALID-looking local index and scatter into the wrong slot.'
+            % (name, space, int(a.min())))
+    out = g2l[a]
+    nbad = int(np.count_nonzero(out < 0))
+    if nbad:
+        raise ValueError(
+            'MPI4NodalQuant._relabel: %d of %d entries of %r address a %s '
+            'this rank does not hold, so it cannot be sized into the local '
+            '%s set (%d entries). The element restriction and the touched-set '
+            'are out of step; do not clamp -- the clamped write would land on '
+            'a real node.' % (nbad, out.size, name, space, space, n_local))
+    return out
+
+
+def _relabel_all(d, table, g2l_node, g2l_eq, n_node, n_eq):
+    """`d` with every classified index array remapped, in place."""
+    for k in list(d):
+        v = d[k]
+        if not _is_index_array(v):
+            continue
+        space = table.get(k)
+        if space is None:
+            raise KeyError(
+                'MPI4NodalQuant._relabel_all: %r is an integer index array '
+                'that is classified neither node-indexed nor equation-indexed. '
+                'Add it to _INDEX_SPACE / _FAULT_INDEX_SPACE. Leaving it at '
+                'GLOBAL numbering against a rank-local array is a silent '
+                'wrong-slot access, not an error.' % (k,))
+        d[k] = _relabel(k, v, g2l_node if space == 'node' else g2l_eq,
+                        space, n_node if space == 'node' else n_eq)
+    return d
+
+
 def decompose(S, inv, finv, rank, nranks):
     """Rank-local `inv`, `finv`, exchange plan and output row selection.
 
     Returns a dict with
         inv, finv      -- the same dicts, element rows and fault-node rows
-                          restricted to this rank
-        halo_idx       -- equation indices this rank exchanges (int32)
+                          restricted to this rank, and EVERY index array
+                          renumbered into this rank's local node / equation
+                          space (inv['N'], inv['NEQ'], inv['NEQ1'] are the
+                          local extents, which is what driver.run_mpi sizes
+                          the carry on)
+        local_nodes    -- global node id of each local node, ascending
+        local_eqs      -- global equation id of each local equation,
+                          ascending; local equation j+1 is global
+                          local_eqs[j], and local 0 is the sink, as globally
+        halo_idx       -- LOCAL equation indices this rank exchanges (int32)
+        halo_eq_global -- the same equations as GLOBAL ids; the only form in
+                          which two ranks can agree on a shared equation, so
+                          it is what the symmetry invariant is checked on
         neighbours     -- [(rank, positions-into-halo_idx), ...], ascending
         fault_rows     -- fault-node rows this rank OWNS and therefore writes
         report         -- counts for the measurement to print (rule: a
@@ -231,6 +327,46 @@ def decompose(S, inv, finv, rank, nranks):
     computed = np.nonzero(fault_touched)[0]
     own_in_computed = np.nonzero(np.isin(computed, fault_rows))[0]
 
+    # --- global -> local renumbering ---------------------------------------
+    # WHY THIS EXISTS. Restricting the index ARRAYS (above) shrinks the work;
+    # it does not shrink the arrays those indices address. The carry stayed at
+    # global extent -- v1+velArr+dispArr+force = 97.75 MB on test.tpv104,
+    # BYTE-IDENTICAL at 1 rank and at 32, 98.5% of the 32-rank carry -- so
+    # compute fell with rank count and memory traffic did not, and from 4
+    # ranks up the step was memory-system-bound (measured: 32 concurrent
+    # INDEPENDENT zero-communication processes reproduce the in-situ per-step
+    # cost to 3.7%, which excludes MPI, barrier and exchange outright).
+    # Fortran goes SUPERLINEAR to 37.33x on 32 ranks precisely because its
+    # per-rank working set shrinks into cache. Renumbering into the local node
+    # and equation sets is what makes that available here.
+    #
+    # The local sets are exactly what the restriction above already computed:
+    # `touched` (the nodes this rank's elements reach, own plus halo) and
+    # `my_eq` (their equations). Nothing new is derived.
+    #
+    # THE SINK STAYS AT INDEX 0. Equation 0 is the no-equation slot every
+    # masked-out contribution is scattered into and calcHourglassResist
+    # scrubs, mass[0] is its dummy 1.0, and driver's mass divide skips it by
+    # slicing [1:]. Mapping it anywhere else would either scrub a real
+    # equation or divide the sink by a real mass.
+    nodes_l = np.nonzero(touched)[0]
+    g2l_node = np.full(S['N'], -1, dtype=np.int64)
+    g2l_node[nodes_l] = np.arange(nodes_l.shape[0])
+    eqs_l = my_eq
+    g2l_eq = np.full(int(S['NEQ']) + 1, -1, dtype=np.int64)
+    g2l_eq[0] = 0
+    g2l_eq[eqs_l] = np.arange(1, eqs_l.shape[0] + 1)
+
+    n_node_l = int(nodes_l.shape[0]); n_eq_l = int(eqs_l.shape[0])
+    _relabel_all(inv_l, _INDEX_SPACE, g2l_node, g2l_eq, n_node_l, n_eq_l)
+    _relabel_all(finv_l, _FAULT_INDEX_SPACE, g2l_node, g2l_eq,
+                 n_node_l, n_eq_l)
+    inv_l['N'] = n_node_l
+    inv_l['NEQ'] = n_eq_l
+    inv_l['NEQ1'] = n_eq_l + 1
+    halo_global = halo_idx
+    halo_local = _relabel('halo_idx', halo_idx, g2l_eq, 'eq', n_eq_l)
+
     report = dict(rank=rank, nranks=nranks, elem_lo=lo, elem_hi=hi,
                   Ei=inv_l['Ei'], Ep=inv_l['Ep'], E=inv_l['E'],
                   work=float(w[lo:hi].sum()), work_total=float(w.sum()),
@@ -238,8 +374,12 @@ def decompose(S, inv, finv, rank, nranks):
                   halo_eqs=int(halo_idx.size),
                   halo_frac=float(halo_idx.size) / max(int(my_eq.size), 1),
                   neighbours=[int(s) for s, _ in neighbours],
-                  fault_computed=int(computed.size), fault_owned=int(fault_rows.size))
-    return dict(inv=inv_l, finv=finv_l, halo_idx=halo_idx.astype(np.int32),
+                  fault_computed=int(computed.size), fault_owned=int(fault_rows.size),
+                  N_local=n_node_l, NEQ_local=n_eq_l,
+                  N_global=int(S['N']), NEQ_global=int(S['NEQ']))
+    return dict(inv=inv_l, finv=finv_l, halo_idx=halo_local.astype(np.int32),
+                halo_eq_global=halo_global, local_nodes=nodes_l,
+                local_eqs=eqs_l,
                 neighbours=neighbours, fault_rows=fault_rows,
                 fault_computed_rows=computed,
                 own_in_computed=own_in_computed, report=report)
@@ -290,6 +430,15 @@ def sync_mode():
     """'halo' (default: O(boundary), MPI4NodalQuant's own pattern) or
     'allreduce' (O(NEQ), no ownership bookkeeping at all).
 
+    'allreduce' IS NO LONGER RUNNABLE and driver.run_mpi refuses it by name.
+    It reduced the FULL nodal array, which required every rank to hold that
+    array at global extent -- exactly the replication the rank-local
+    renumbering removed. Under local extent each rank's force has a different
+    length, and an Allreduce over unequal buffers is not a smaller version of
+    the same thing, it is undefined. The value is still PARSED, and still
+    rejected when misspelled, so an old command line fails with a sentence
+    instead of silently taking the halo path under an allreduce label.
+
     Both are CORRECT -- they compute the same sum, and the choice is purely
     how much is moved. They are not bit-identical to each other: 'halo' sums
     own + neighbours in ascending rank order, 'allreduce' lets the MPI
@@ -328,31 +477,6 @@ def step_profile():
     if v not in ('0', '1'):
         raise ValueError('%s=%r: must be "0" or "1"' % (STEP_PROFILE_ENV, v))
     return v == '1'
-
-
-def allreduce(comm, partial):
-    """The simple sync: one MPI_Allreduce(SUM) over the FULL nodal array.
-
-    Correctness needs no ownership information -- assembly is a sum, every
-    rank's array is zero where it assembled nothing, and the sum over ranks
-    is the complete array on every rank. That is the whole reason to try this
-    before the halo: it has no boundary-node lists, no neighbour topology and
-    no npx/npy/npz.
-
-    REPRODUCIBILITY IS NOT GUARANTEED HERE and is checked rather than
-    assumed: MPI does not promise a fixed reduction order, and float addition
-    is not associative, so the last bits may move run to run. See
-    testsys/unit/test_mpi_decomposition.py for the measured answer on this
-    installation (mpi4py 4.1.2 / OpenMPI) and driver.run_mpi's docstring for
-    which mode the gate uses."""
-    out = np.empty_like(partial)
-    comm.Allreduce(partial, out, op=_MPI().SUM)
-    return out
-
-
-def _MPI():
-    from mpi4py import MPI     # ImportError deliberately uncaught
-    return MPI
 
 
 def exchange(comm, neighbours, halo_vals):

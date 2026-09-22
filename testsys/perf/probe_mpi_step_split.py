@@ -73,16 +73,22 @@ def main():
     computed = loc['fault_computed_rows']
     build_s = time.perf_counter() - t0
 
-    mass_h = np.concatenate(([1.0], S['nodalMassArr']))
+    mass_g = np.concatenate(([1.0], S['nodalMassArr']))
+    mass_h = np.concatenate(([1.0], mass_g[loc['local_eqs']]))
     B.check_index_width(inv_l)
     inv_l = B.to_device(xp, inv_l)
     finv_l = B.to_device(xp, finv_l)
     mass = xp.asarray(mass_h)
 
-    N = S['N']; NEQ = S['NEQ']; nftnd_l = int(finv_l['nftnd'])
+    N = int(inv_l['N']); NEQ = int(inv_l['NEQ'])
+    N_g = int(S['N']); NEQ_g = int(S['NEQ'])
+    nftnd_l = int(finv_l['nftnd'])
     z = (lambda *a: xp.zeros(*a))
-    # EXACTLY driver.run_mpi:384-389 -- note v1/velArr/dispArr/force take
-    # their shapes from the GLOBAL S['N'] and S['NEQ'] on every rank.
+    # EXACTLY driver.run_mpi's carry -- and since the rank-local renumbering
+    # landed, v1/velArr/dispArr/force take their shapes from inv_l['N'] /
+    # inv_l['NEQ'], this RANK's node and equation counts. `carry_bytes_if_global`
+    # below keeps the old global figure beside the new one, because the whole
+    # claim of that change is the ratio between them.
     carry = (z(NEQ + 1), z((N, 3)), z((N, 3)), z(NEQ + 1),
              xp.asarray(inv_l['stress_i0']).copy(), z((inv_l['Ep'], 15)),
              xp.asarray(S['fric_init'][computed].copy()),
@@ -103,6 +109,8 @@ def main():
     cb = {n: int(np.asarray(a).nbytes) for n, a in zip(names, carry)}
     rep = dict(case=os.path.basename(case_dir), rank=rank, nranks=nranks,
                reps=reps, build_s=round(build_s, 2), N=int(N), NEQ=int(NEQ),
+               N_global=N_g, NEQ_global=NEQ_g,
+               carry_bytes_if_global=int(8 * (2 * (NEQ_g + 1) + 6 * N_g)),
                Ei=int(inv_l['Ei']), Ep=int(inv_l['Ep']), E=int(inv_l['E']),
                Ei_global=int(inv['Ei']), Ep_global=int(inv['Ep']),
                nodes_int=int(np.asarray(inv_l['int_nodes_idx']).shape[0]),

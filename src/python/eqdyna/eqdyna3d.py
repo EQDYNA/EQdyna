@@ -608,7 +608,14 @@ def main():
                  ' '.join('%s=%s' % (k, report[k]) for k in
                           ('Ei', 'Ep', 'halo_eqs', 'ms_per_step',
                            'mpi_ms_per_step', 'wait_ms_per_step', 'sync',
-                           'device_peak_gb', 'threads', 'cpus_allowed'))))
+                           'device_peak_gb', 'threads', 'cpus_allowed',
+                           # The per-rank working set, on the same line as the
+                           # per-step cost it explains. A scaling number
+                           # without it cannot distinguish "the work shrank"
+                           # from "the problem shrank"; these two rose and
+                           # fell together is the whole claim of the rank-local
+                           # carry, so they are recorded together by tooling.
+                           'N_local', 'NEQ_local', 'carry_bytes_total'))))
         return
     if args.backend == 'jax':
         _select_device(args.device)
