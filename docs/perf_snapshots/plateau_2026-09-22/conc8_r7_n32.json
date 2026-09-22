@@ -1,0 +1,76 @@
+{
+ "case": "test.tpv104",
+ "rank": 7,
+ "nranks": 32,
+ "reps": 12,
+ "build_s": 8.54,
+ "N": 763537,
+ "NEQ": 3818583,
+ "Ei": 19440,
+ "Ep": 5736,
+ "E": 25176,
+ "Ei_global": 516096,
+ "Ep_global": 218904,
+ "nodes_int": 24229,
+ "nodes_pml": 7060,
+ "nodes_int_global": 539341,
+ "nodes_pml_global": 224196,
+ "nftnd_local": 0,
+ "nftnd_global": 2701,
+ "halo_eqs": 50655,
+ "carry_bytes": {
+  "v1": 30548672,
+  "velArr": 18324888,
+  "dispArr": 18324888,
+  "force": 30548672,
+  "stress_i": 933120,
+  "s_p": 688320,
+  "fric": 0,
+  "fnft": 0,
+  "timeElapsed": 8,
+  "sliprate_hist": 0,
+  "shear_hist": 0
+ },
+ "carry_bytes_total": 99368568,
+ "carry_bytes_global_sized": 97747120,
+ "mass_bytes": 30548672,
+ "dyn_bytes": 21889760,
+ "sta_bytes": 4453248,
+ "cpus": [
+  14
+ ],
+ "compile_a_s": 1.84,
+ "compile_b_s": 0.93,
+ "donated_deleted_by_b": {
+  "v1": true,
+  "velArr": true,
+  "dispArr": true,
+  "force": true
+ },
+ "donated_deleted_by_a": {
+  "v1": true,
+  "velArr": true,
+  "dispArr": true,
+  "force": true
+ },
+ "mem_a": {
+  "temp": 70564545,
+  "arg": 121460948,
+  "out": 99773904,
+  "alias": 99368568
+ },
+ "mem_b": {
+  "temp": 202620,
+  "arg": 99976428,
+  "out": 99368656,
+  "alias": 99368568
+ },
+ "timings_ms": {
+  "a_ms": 58.879,
+  "b_ms": 6.289,
+  "ab_ms": 73.585,
+  "head_ms": 43.225,
+  "elem_ms": 12.981,
+  "div_ms": 8.676
+ }
+}

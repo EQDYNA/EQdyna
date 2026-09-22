@@ -1,0 +1,160 @@
+Invalid MIT-MAGIC-COOKIE-1 keyInvalid MIT-MAGIC-COOKIE-1 keydriver.run_mpi rank 30/32: 40 steps, friclaw=4, elements Ei=0 Ep=12217 E=12217 (work 3.1% of total), nodes=18005 eqs=207708 halo=126120 (60.72% of eqs), neighbours=[29, 31], fault computed=0 owned=0
+driver.run_mpi rank 0/32: 40 steps, friclaw=4, elements Ei=0 Ep=12217 E=12217 (work 3.1% of total), nodes=18004 eqs=144660 halo=63060 (43.59% of eqs), neighbours=[1], fault computed=0 owned=0
+driver.run_mpi rank 31/32: 40 steps, friclaw=4, elements Ei=0 Ep=12216 E=12216 (work 3.1% of total), nodes=18003 eqs=145536 halo=63060 (43.33% of eqs), neighbours=[30], fault computed=0 owned=0
+driver.run_mpi rank 1/32: 40 steps, friclaw=4, elements Ei=0 Ep=12217 E=12217 (work 3.1% of total), nodes=18005 eqs=207708 halo=126120 (60.72% of eqs), neighbours=[0, 2], fault computed=0 owned=0
+driver.run_mpi rank 29/32: 40 steps, friclaw=4, elements Ei=8124 Ep=9509 E=17633 (work 3.1% of total), nodes=23636 eqs=158322 halo=88026 (55.60% of eqs), neighbours=[28, 30], fault computed=0 owned=0
+driver.run_mpi rank 3/32: 40 steps, friclaw=4, elements Ei=19089 Ep=5853 E=24942 (work 3.1% of total), nodes=31051 eqs=142956 halo=50079 (35.03% of eqs), neighbours=[2, 4], fault computed=0 owned=0
+driver.run_mpi rank 2/32: 40 steps, friclaw=4, elements Ei=8064 Ep=9529 E=17593 (work 3.1% of total), nodes=23557 eqs=159036 halo=88104 (55.40% of eqs), neighbours=[1, 3], fault computed=0 owned=0
+driver.run_mpi rank 24/32: 40 steps, friclaw=4, elements Ei=19749 Ep=5634 E=25383 (work 3.1% of total), nodes=31498 eqs=142713 halo=50655 (35.49% of eqs), neighbours=[23, 25], fault computed=0 owned=0
+driver.run_mpi rank 27/32: 40 steps, friclaw=4, elements Ei=19028 Ep=5874 E=24902 (work 3.1% of total), nodes=31087 eqs=143025 halo=50070 (35.01% of eqs), neighbours=[26, 28], fault computed=0 owned=0
+driver.run_mpi rank 28/32: 40 steps, friclaw=4, elements Ei=19875 Ep=5592 E=25467 (work 3.1% of total), nodes=31584 eqs=142536 halo=50001 (35.08% of eqs), neighbours=[27, 29], fault computed=0 owned=0
+driver.run_mpi rank 14/32: 40 steps, friclaw=4, elements Ei=19028 Ep=5874 E=24902 (work 3.1% of total), nodes=31309 eqs=143691 halo=50292 (35.00% of eqs), neighbours=[13, 15], fault computed=222 owned=185
+driver.run_mpi rank 25/32: 40 steps, friclaw=4, elements Ei=19028 Ep=5874 E=24902 (work 3.1% of total), nodes=31087 eqs=143025 halo=50070 (35.01% of eqs), neighbours=[24, 26], fault computed=0 owned=0
+driver.run_mpi rank 26/32: 40 steps, friclaw=4, elements Ei=19028 Ep=5874 E=24902 (work 3.1% of total), nodes=31087 eqs=143025 halo=50070 (35.01% of eqs), neighbours=[25, 27], fault computed=0 owned=0
+driver.run_mpi rank 17/32: 40 steps, friclaw=4, elements Ei=19026 Ep=5875 E=24901 (work 3.1% of total), nodes=31291 eqs=143655 halo=50316 (35.03% of eqs), neighbours=[16, 18], fault computed=205 owned=167
+driver.run_mpi rank 11/32: 40 steps, friclaw=4, elements Ei=19791 Ep=5619 E=25410 (work 3.1% of total), nodes=31742 eqs=143286 halo=50655 (35.35% of eqs), neighbours=[10, 12], fault computed=216 owned=179
+driver.run_mpi rank 4/32: 40 steps, friclaw=4, elements Ei=19026 Ep=5875 E=24901 (work 3.1% of total), nodes=31086 eqs=143031 halo=50079 (35.01% of eqs), neighbours=[3, 5], fault computed=0 owned=0
+driver.run_mpi rank 19/32: 40 steps, friclaw=4, elements Ei=19530 Ep=5706 E=25236 (work 3.1% of total), nodes=31647 eqs=143646 halo=50886 (35.42% of eqs), neighbours=[18, 20], fault computed=222 owned=185
+driver.run_mpi rank 12/32: 40 steps, friclaw=4, elements Ei=19029 Ep=5874 E=24903 (work 3.1% of total), nodes=31293 eqs=143643 halo=50298 (35.02% of eqs), neighbours=[11, 13], fault computed=205 owned=167
+driver.run_mpi rank 13/32: 40 steps, friclaw=4, elements Ei=19028 Ep=5874 E=24902 (work 3.1% of total), nodes=31297 eqs=143655 halo=50295 (35.01% of eqs), neighbours=[12, 14], fault computed=210 owned=172
+driver.run_mpi rank 15/32: 40 steps, friclaw=4, elements Ei=19892 Ep=5586 E=25478 (work 3.1% of total), nodes=31816 eqs=143190 halo=49977 (34.90% of eqs), neighbours=[14, 16], fault computed=222 owned=185
+driver.run_mpi rank 16/32: 40 steps, friclaw=4, elements Ei=19026 Ep=5875 E=24901 (work 3.1% of total), nodes=31214 eqs=143328 halo=49989 (34.88% of eqs), neighbours=[15, 17], fault computed=204 owned=167
+driver.run_mpi rank 5/32: 40 steps, friclaw=4, elements Ei=19026 Ep=5875 E=24901 (work 3.1% of total), nodes=31086 eqs=143040 halo=50088 (35.02% of eqs), neighbours=[4, 6], fault computed=0 owned=0
+driver.run_mpi rank 6/32: 40 steps, friclaw=4, elements Ei=19467 Ep=5728 E=25195 (work 3.1% of total), nodes=31384 eqs=143064 halo=50664 (35.41% of eqs), neighbours=[5, 7], fault computed=0 owned=0
+driver.run_mpi rank 7/32: 40 steps, friclaw=4, elements Ei=19440 Ep=5736 E=25176 (work 3.1% of total), nodes=31289 eqs=143079 halo=50655 (35.40% of eqs), neighbours=[6, 8], fault computed=0 owned=0
+driver.run_mpi rank 8/32: 40 steps, friclaw=4, elements Ei=19029 Ep=5874 E=24903 (work 3.1% of total), nodes=31207 eqs=143385 halo=50184 (35.00% of eqs), neighbours=[7, 9], fault computed=119 owned=119
+driver.run_mpi rank 18/32: 40 steps, friclaw=4, elements Ei=19026 Ep=5875 E=24901 (work 3.1% of total), nodes=31308 eqs=143706 halo=50313 (35.01% of eqs), neighbours=[17, 19], fault computed=222 owned=184
+driver.run_mpi rank 21/32: 40 steps, friclaw=4, elements Ei=19028 Ep=5874 E=24902 (work 3.1% of total), nodes=31292 eqs=143640 halo=50298 (35.02% of eqs), neighbours=[20, 22], fault computed=205 owned=167
+driver.run_mpi rank 20/32: 40 steps, friclaw=4, elements Ei=19398 Ep=5751 E=25149 (work 3.1% of total), nodes=31471 eqs=143784 halo=50880 (35.39% of eqs), neighbours=[19, 21], fault computed=210 owned=173
+driver.run_mpi rank 22/32: 40 steps, friclaw=4, elements Ei=19028 Ep=5874 E=24902 (work 3.1% of total), nodes=31303 eqs=143673 halo=50295 (35.01% of eqs), neighbours=[21, 23], fault computed=216 owned=178
+driver.run_mpi rank 23/32: 40 steps, friclaw=4, elements Ei=19154 Ep=5832 E=24986 (work 3.1% of total), nodes=31321 eqs=143877 halo=50766 (35.28% of eqs), neighbours=[22, 24], fault computed=148 owned=111
+driver.run_mpi rank 9/32: 40 steps, friclaw=4, elements Ei=19028 Ep=5874 E=24902 (work 3.1% of total), nodes=31302 eqs=143670 halo=50295 (35.01% of eqs), neighbours=[8, 10], fault computed=215 owned=177
+driver.run_mpi rank 10/32: 40 steps, friclaw=4, elements Ei=19111 Ep=5847 E=24958 (work 3.1% of total), nodes=31366 eqs=143946 halo=50652 (35.19% of eqs), neighbours=[9, 11], fault computed=222 owned=185
+driver.run_mpi rank 0 STEP PROFILE (ms/step): compute 74.91 (a+b, see comment) | barrier 134.70 | mpi 1.17 | halo d2h 0.27 | host residual 27.72 | TOTAL 238.77
+driver.run_mpi rank 0: 9.551 s, 238.773 ms/step (sync=halo: 1.169 ms/step exchanging, 134.699 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [2]
+driver.run_mpi rank 3 STEP PROFILE (ms/step): compute 101.94 (a+b, see comment) | barrier 104.36 | mpi 2.20 | halo d2h 0.28 | host residual 30.05 | TOTAL 238.84
+driver.run_mpi rank 3: 9.553 s, 238.837 ms/step (sync=halo: 2.199 ms/step exchanging, 104.364 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [7]
+driver.run_mpi rank 1 STEP PROFILE (ms/step): compute 80.89 (a+b, see comment) | barrier 124.61 | mpi 1.75 | halo d2h 0.24 | host residual 31.38 | TOTAL 238.86
+driver.run_mpi rank 1: 9.555 s, 238.863 ms/step (sync=halo: 1.751 ms/step exchanging, 124.614 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [4]
+driver.run_mpi rank 2 STEP PROFILE (ms/step): compute 101.83 (a+b, see comment) | barrier 102.70 | mpi 1.97 | halo d2h 0.24 | host residual 32.14 | TOTAL 238.87
+driver.run_mpi rank 2: 9.555 s, 238.875 ms/step (sync=halo: 1.974 ms/step exchanging, 102.698 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [5]
+driver.run_mpi rank 4 STEP PROFILE (ms/step): compute 121.50 (a+b, see comment) | barrier 82.95 | mpi 2.28 | halo d2h 0.31 | host residual 31.86 | TOTAL 238.89
+driver.run_mpi rank 4: 9.556 s, 238.892 ms/step (sync=halo: 2.279 ms/step exchanging, 82.948 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [9]
+driver.run_mpi rank 30 STEP PROFILE (ms/step): compute 71.56 (a+b, see comment) | barrier 131.82 | mpi 9.03 | halo d2h 0.27 | host residual 26.27 | TOTAL 238.94
+driver.run_mpi rank 30: 9.558 s, 238.941 ms/step (sync=halo: 9.030 ms/step exchanging, 131.816 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [42]
+driver.run_mpi rank 31 STEP PROFILE (ms/step): compute 71.02 (a+b, see comment) | barrier 132.12 | mpi 9.07 | halo d2h 0.27 | host residual 26.47 | TOTAL 238.94
+driver.run_mpi rank 31: 9.558 s, 238.941 ms/step (sync=halo: 9.066 ms/step exchanging, 132.119 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [43]
+driver.run_mpi rank 11 STEP PROFILE (ms/step): compute 117.10 (a+b, see comment) | barrier 43.36 | mpi 4.02 | halo d2h 0.31 | host residual 74.15 | TOTAL 238.96
+driver.run_mpi rank 11: 9.558 s, 238.957 ms/step (sync=halo: 4.024 ms/step exchanging, 43.363 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [16]
+driver.run_mpi rank 17 STEP PROFILE (ms/step): compute 120.13 (a+b, see comment) | barrier 34.04 | mpi 5.42 | halo d2h 0.25 | host residual 79.15 | TOTAL 238.98
+driver.run_mpi rank 17: 9.559 s, 238.983 ms/step (sync=halo: 5.425 ms/step exchanging, 34.036 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [24]
+driver.run_mpi rank 14 STEP PROFILE (ms/step): compute 116.30 (a+b, see comment) | barrier 37.36 | mpi 4.63 | halo d2h 0.31 | host residual 80.37 | TOTAL 238.98
+driver.run_mpi rank 14: 9.559 s, 238.980 ms/step (sync=halo: 4.632 ms/step exchanging, 37.363 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [20]
+driver.run_mpi rank 5 STEP PROFILE (ms/step): compute 131.02 (a+b, see comment) | barrier 68.28 | mpi 2.67 | halo d2h 0.26 | host residual 36.76 | TOTAL 239.00
+driver.run_mpi rank 5: 9.560 s, 238.997 ms/step (sync=halo: 2.673 ms/step exchanging, 68.278 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [10]
+driver.run_mpi rank 6 STEP PROFILE (ms/step): compute 130.35 (a+b, see comment) | barrier 68.81 | mpi 2.81 | halo d2h 0.27 | host residual 36.76 | TOTAL 239.00
+driver.run_mpi rank 6: 9.560 s, 238.999 ms/step (sync=halo: 2.807 ms/step exchanging, 68.815 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [11]
+driver.run_mpi rank 24 STEP PROFILE (ms/step): compute 115.47 (a+b, see comment) | barrier 85.07 | mpi 7.04 | halo d2h 0.31 | host residual 31.13 | TOTAL 239.01
+driver.run_mpi rank 24: 9.561 s, 239.015 ms/step (sync=halo: 7.039 ms/step exchanging, 85.065 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [33]
+driver.run_mpi rank 12 STEP PROFILE (ms/step): compute 126.24 (a+b, see comment) | barrier 23.82 | mpi 4.20 | halo d2h 0.25 | host residual 84.54 | TOTAL 239.05
+driver.run_mpi rank 12: 9.562 s, 239.046 ms/step (sync=halo: 4.199 ms/step exchanging, 23.818 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [18]
+driver.run_mpi rank 13 STEP PROFILE (ms/step): compute 122.71 (a+b, see comment) | barrier 26.33 | mpi 4.55 | halo d2h 0.25 | host residual 85.22 | TOTAL 239.05
+driver.run_mpi rank 13: 9.562 s, 239.052 ms/step (sync=halo: 4.547 ms/step exchanging, 26.327 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [19]
+driver.run_mpi rank 7 STEP PROFILE (ms/step): compute 140.59 (a+b, see comment) | barrier 56.78 | mpi 2.93 | halo d2h 0.30 | host residual 38.45 | TOTAL 239.05
+driver.run_mpi rank 7: 9.562 s, 239.053 ms/step (sync=halo: 2.930 ms/step exchanging, 56.783 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [12]
+driver.run_mpi rank 16 STEP PROFILE (ms/step): compute 126.44 (a+b, see comment) | barrier 26.84 | mpi 5.06 | halo d2h 0.24 | host residual 80.48 | TOTAL 239.07
+driver.run_mpi rank 16: 9.563 s, 239.065 ms/step (sync=halo: 5.063 ms/step exchanging, 26.836 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [23]
+driver.run_mpi rank 9 STEP PROFILE (ms/step): compute 139.31 (a+b, see comment) | barrier 6.07 | mpi 3.58 | halo d2h 0.28 | host residual 89.83 | TOTAL 239.07
+driver.run_mpi rank 9: 9.563 s, 239.070 ms/step (sync=halo: 3.576 ms/step exchanging, 6.073 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [14]
+driver.run_mpi rank 15 STEP PROFILE (ms/step): compute 125.34 (a+b, see comment) | barrier 22.59 | mpi 4.92 | halo d2h 0.26 | host residual 85.97 | TOTAL 239.07
+driver.run_mpi rank 15: 9.563 s, 239.066 ms/step (sync=halo: 4.916 ms/step exchanging, 22.587 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [22]
+driver.run_mpi rank 8 STEP PROFILE (ms/step): compute 139.51 (a+b, see comment) | barrier 7.64 | mpi 3.18 | halo d2h 0.31 | host residual 88.43 | TOTAL 239.07
+driver.run_mpi rank 8: 9.563 s, 239.066 ms/step (sync=halo: 3.176 ms/step exchanging, 7.642 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [13]
+driver.run_mpi rank 29 STEP PROFILE (ms/step): compute 115.62 (a+b, see comment) | barrier 81.60 | mpi 8.65 | halo d2h 0.31 | host residual 32.88 | TOTAL 239.07
+driver.run_mpi rank 29: 9.563 s, 239.070 ms/step (sync=halo: 8.650 ms/step exchanging, 81.604 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [38]
+driver.run_mpi rank 18 STEP PROFILE (ms/step): compute 132.11 (a+b, see comment) | barrier 14.81 | mpi 5.56 | halo d2h 0.21 | host residual 86.38 | TOTAL 239.08
+driver.run_mpi rank 18: 9.563 s, 239.082 ms/step (sync=halo: 5.564 ms/step exchanging, 14.814 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [26]
+driver.run_mpi rank 19 STEP PROFILE (ms/step): compute 131.60 (a+b, see comment) | barrier 15.36 | mpi 5.85 | halo d2h 0.22 | host residual 86.05 | TOTAL 239.09
+driver.run_mpi rank 19: 9.563 s, 239.086 ms/step (sync=halo: 5.851 ms/step exchanging, 15.362 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [27]
+driver.run_mpi rank 26 STEP PROFILE (ms/step): compute 123.96 (a+b, see comment) | barrier 70.89 | mpi 7.54 | halo d2h 0.26 | host residual 36.46 | TOTAL 239.11
+driver.run_mpi rank 26: 9.564 s, 239.111 ms/step (sync=halo: 7.543 ms/step exchanging, 70.885 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [35]
+driver.run_mpi rank 25 STEP PROFILE (ms/step): compute 123.00 (a+b, see comment) | barrier 72.00 | mpi 7.43 | halo d2h 0.26 | host residual 36.42 | TOTAL 239.11
+driver.run_mpi rank 25: 9.564 s, 239.109 ms/step (sync=halo: 7.430 ms/step exchanging, 72.001 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [34]
+driver.run_mpi rank 28 STEP PROFILE (ms/step): compute 122.91 (a+b, see comment) | barrier 71.16 | mpi 7.95 | halo d2h 0.26 | host residual 36.84 | TOTAL 239.13
+driver.run_mpi rank 28: 9.565 s, 239.125 ms/step (sync=halo: 7.955 ms/step exchanging, 71.163 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [37]
+driver.run_mpi rank 27 STEP PROFILE (ms/step): compute 123.71 (a+b, see comment) | barrier 70.41 | mpi 7.81 | halo d2h 0.28 | host residual 36.93 | TOTAL 239.13
+driver.run_mpi rank 27: 9.565 s, 239.126 ms/step (sync=halo: 7.809 ms/step exchanging, 70.405 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [36]
+driver.run_mpi rank 10 STEP PROFILE (ms/step): compute 140.51 (a+b, see comment) | barrier 6.32 | mpi 3.60 | halo d2h 0.26 | host residual 88.45 | TOTAL 239.13
+driver.run_mpi rank 10: 9.565 s, 239.135 ms/step (sync=halo: 3.599 ms/step exchanging, 6.316 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [15]
+driver.run_mpi rank 21 STEP PROFILE (ms/step): compute 140.33 (a+b, see comment) | barrier 4.03 | mpi 6.42 | halo d2h 0.22 | host residual 88.17 | TOTAL 239.17
+driver.run_mpi rank 21: 9.567 s, 239.166 ms/step (sync=halo: 6.424 ms/step exchanging, 4.027 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [29]
+driver.run_mpi rank 20 STEP PROFILE (ms/step): compute 141.62 (a+b, see comment) | barrier 2.55 | mpi 5.98 | halo d2h 0.22 | host residual 88.79 | TOTAL 239.16
+driver.run_mpi rank 20: 9.567 s, 239.163 ms/step (sync=halo: 5.982 ms/step exchanging, 2.554 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [28]
+driver.run_mpi rank 23 STEP PROFILE (ms/step): compute 140.03 (a+b, see comment) | barrier 7.02 | mpi 6.83 | halo d2h 0.37 | host residual 84.92 | TOTAL 239.17
+driver.run_mpi rank 23: 9.567 s, 239.172 ms/step (sync=halo: 6.827 ms/step exchanging, 7.022 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [31]
+driver.run_mpi rank 22 STEP PROFILE (ms/step): compute 140.03 (a+b, see comment) | barrier 8.31 | mpi 6.64 | halo d2h 0.22 | host residual 83.97 | TOTAL 239.17
+driver.run_mpi rank 22: 9.567 s, 239.172 ms/step (sync=halo: 6.641 ms/step exchanging, 8.309 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [30]
+backend=jax device=cpu:0 (cpu)
+rank 30/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=0 Ep=12217 halo_eqs=126120 ms_per_step=238.9413025986869 mpi_ms_per_step=9.030188317410648 wait_ms_per_step=131.81644540745765 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 31/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=0 Ep=12216 halo_eqs=63060 ms_per_step=238.94050984526984 mpi_ms_per_step=9.065592905972153 wait_ms_per_step=132.11865448392928 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 0/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=0 Ep=12217 halo_eqs=63060 ms_per_step=238.77291950047947 mpi_ms_per_step=1.1688569327816367 wait_ms_per_step=134.69885846716352 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 4/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19026 Ep=5875 halo_eqs=50079 ms_per_step=238.89184057479724 mpi_ms_per_step=2.2791225172113627 wait_ms_per_step=82.94849038938992 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 1/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=0 Ep=12217 halo_eqs=126120 ms_per_step=238.86346512590535 mpi_ms_per_step=1.7514257167931646 wait_ms_per_step=124.61449259426445 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 14/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt14  Ei=19028 Ep=5874 halo_eqs=50292 ms_per_step=238.98017944884486 mpi_ms_per_step=4.632321221288294 wait_ms_per_step=37.36346966470592 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 3/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19089 Ep=5853 halo_eqs=50079 ms_per_step=238.83697087294422 mpi_ms_per_step=2.1994912531226873 wait_ms_per_step=104.36404954525642 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 2/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=8064 Ep=9529 halo_eqs=88104 ms_per_step=238.87481325073168 mpi_ms_per_step=1.9744594988878816 wait_ms_per_step=102.69758034846745 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 11/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt11  Ei=19791 Ep=5619 halo_eqs=50655 ms_per_step=238.95718145067804 mpi_ms_per_step=4.024236655095592 wait_ms_per_step=43.3632857457269 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 17/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt17  Ei=19026 Ep=5875 halo_eqs=50316 ms_per_step=238.9833106775768 mpi_ms_per_step=5.424793210113421 wait_ms_per_step=34.035787847824395 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 24/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19749 Ep=5634 halo_eqs=50655 ms_per_step=239.01468934491277 mpi_ms_per_step=7.03864223905839 wait_ms_per_step=85.06501997471787 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 12/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt12  Ei=19029 Ep=5874 halo_eqs=50298 ms_per_step=239.0459362999536 mpi_ms_per_step=4.199224559124559 wait_ms_per_step=23.818381020100787 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 13/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt13  Ei=19028 Ep=5874 halo_eqs=50295 ms_per_step=239.05170024954714 mpi_ms_per_step=4.547312890645117 wait_ms_per_step=26.326616533333436 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 15/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt15  Ei=19892 Ep=5586 halo_eqs=49977 ms_per_step=239.06639662454836 mpi_ms_per_step=4.915532248560339 wait_ms_per_step=22.587368194945157 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 5/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19026 Ep=5875 halo_eqs=50088 ms_per_step=238.99699979810975 mpi_ms_per_step=2.6734691113233566 wait_ms_per_step=68.27791894902475 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 6/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19467 Ep=5728 halo_eqs=50664 ms_per_step=238.99887877632864 mpi_ms_per_step=2.8072512592189014 wait_ms_per_step=68.81494623958133 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 16/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt16  Ei=19026 Ep=5875 halo_eqs=49989 ms_per_step=239.0652693749871 mpi_ms_per_step=5.062978516798466 wait_ms_per_step=26.836277288384736 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+backend=jax device=cpu:0 (cpu)
+rank 7/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19440 Ep=5736 halo_eqs=50655 ms_per_step=239.05253974953666 mpi_ms_per_step=2.9303434770554304 wait_ms_per_step=56.78344776970334 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 29/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=8124 Ep=9509 halo_eqs=88026 ms_per_step=239.06968457740732 mpi_ms_per_step=8.649863919708878 wait_ms_per_step=81.60415517631918 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 23/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt23  Ei=19154 Ep=5832 halo_eqs=50766 ms_per_step=239.1716618265491 mpi_ms_per_step=6.827335467096418 wait_ms_per_step=7.021825527772307 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 20/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt20  Ei=19398 Ep=5751 halo_eqs=50880 ms_per_step=239.16304539889097 mpi_ms_per_step=5.981849372619763 wait_ms_per_step=2.5536557019222528 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+backend=jax device=cpu:0 (cpu)
+rank 8/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt8  Ei=19029 Ep=5874 halo_eqs=50184 ms_per_step=239.06612585415132 mpi_ms_per_step=3.1763041799422354 wait_ms_per_step=7.641530729597434 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 18/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt18  Ei=19026 Ep=5875 halo_eqs=50313 ms_per_step=239.0821254462935 mpi_ms_per_step=5.56415431201458 wait_ms_per_step=14.814113965258002 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 22/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt22  Ei=19028 Ep=5874 halo_eqs=50295 ms_per_step=239.17216357658617 mpi_ms_per_step=6.6411560226697475 wait_ms_per_step=8.309377124533057 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 27/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19028 Ep=5874 halo_eqs=50070 ms_per_step=239.12635052693076 mpi_ms_per_step=7.808750600088388 wait_ms_per_step=70.40544778574258 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 21/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt21  Ei=19028 Ep=5874 halo_eqs=50298 ms_per_step=239.16623387485743 mpi_ms_per_step=6.423535960493609 wait_ms_per_step=4.0270641387905926 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 28/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19875 Ep=5592 halo_eqs=50001 ms_per_step=239.12500027217902 mpi_ms_per_step=7.954634691122919 wait_ms_per_step=71.1625803494826 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 25/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19028 Ep=5874 halo_eqs=50070 ms_per_step=239.10922645009123 mpi_ms_per_step=7.430002564797178 wait_ms_per_step=72.0007274125237 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+backend=jax device=cpu:0 (cpu)
+rank 26/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19028 Ep=5874 halo_eqs=50070 ms_per_step=239.11137067480013 mpi_ms_per_step=7.543360738782212 wait_ms_per_step=70.8852341864258 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 19/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt19  Ei=19530 Ep=5706 halo_eqs=50886 ms_per_step=239.08567042672075 mpi_ms_per_step=5.85065470659174 wait_ms_per_step=15.362192271277308 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 9/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt9  Ei=19028 Ep=5874 halo_eqs=50295 ms_per_step=239.0699805750046 mpi_ms_per_step=3.575615881709382 wait_ms_per_step=6.07261250843294 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+backend=jax device=cpu:0 (cpu)
+rank 10/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt10  Ei=19111 Ep=5847 halo_eqs=50652 ms_per_step=239.13464817451313 mpi_ms_per_step=3.5992716322652996 wait_ms_per_step=6.315602018730715 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
