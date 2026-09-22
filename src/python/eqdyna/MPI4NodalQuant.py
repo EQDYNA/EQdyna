@@ -303,6 +303,33 @@ def sync_mode():
     return s
 
 
+STEP_PROFILE_ENV = 'EQDYNA_MPI_STEP_PROFILE'
+
+
+def step_profile():
+    """True when driver.run_mpi must attribute each step's wall time to jitted
+    compute, the barrier, the MPI call, the halo device-to-host copy, and the
+    host-side remainder. OFF by default, and the default must stay off: this is
+    a measurement knob, not a feature.
+
+    Why it exists: the per-step cost of this path sits ~103-126 ms ABOVE T1/N
+    at every rank count >= 4, and transport (1.33-11.08 ms of a 132-172 ms
+    step), placement (EFFECTIVE_CORES 1.00 on 31 of 32 ranks) and element
+    balance (recut from a 3.350x work spread to 1.004x moved the 32-rank point
+    by 1.4%) have each been measured and each failed to account for it. A
+    residual that has survived three refutations gets attributed, not guessed
+    at a fourth time.
+
+    NO FALLBACK on a misspelled value: a run that silently profiled nothing
+    while labelled as profiling would print an empty attribution that reads as
+    "no overhead found"."""
+    import os
+    v = os.environ.get(STEP_PROFILE_ENV, '0')
+    if v not in ('0', '1'):
+        raise ValueError('%s=%r: must be "0" or "1"' % (STEP_PROFILE_ENV, v))
+    return v == '1'
+
+
 def allreduce(comm, partial):
     """The simple sync: one MPI_Allreduce(SUM) over the FULL nodal array.
 
