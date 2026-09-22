@@ -780,3 +780,102 @@ SUCCESS test_perf_ledger: ledger append-only, validated, concurrency-safe
 Checking this BEFORE dispatching is what stopped a duplicate `iris-vermeulen`
 onto `ledger.py` while `mira-volkov` is writing ledger rows from her own runs.
 A stale board row is not free: it is a mission someone will run twice.
+
+## THE PLATEAU HAS A MECHANISM, AND IT IS BYTES, NOT INSTRUCTIONS
+
+`mira-volkov`, branch `mira/plateau-32rank-2026-09-22`, merged at `f278056`.
+
+**The carry is allocated at the GLOBAL problem size on every rank.**
+`driver.py:382-389`: `v1 + velArr + dispArr + force` = **97.75 MB,
+byte-identical at 1 rank and at 32, and 98.5% of the entire 32-rank carry**.
+`mass` is global too (`driver.py:367`). `MPI4NodalQuant.py:183-190` restricts
+the index arrays but NOT the arrays they address — and `:36-52` documents this
+as a *memory* cost. Measured, it is a *bandwidth* cost, and it is the plateau:
+per-rank per-step memory traffic does not shrink with rank count, so from 4
+ranks up the step is memory-system-bound on replicated global nodal state
+rather than compute-bound on the element work that was actually divided.
+
+The measurement that makes it a mechanism and not a story:
+
+| probe | number |
+|---|---|
+| same rank-local work, ALONE | **51.62 ms** |
+| same rank-local work, in situ at 32 ranks | **97.94 ms** (1.90x) |
+| 32 concurrent INDEPENDENT, ZERO-COMMUNICATION processes | **94.30 ms** (3.7% of in situ) |
+
+The third row is the decisive one: with MPI, the barrier and the exchange
+removed entirely, the cost reproduces. Transport was never in it.
+
+A pre-registered falsifiable prediction, stated before measuring and held:
+`driver.py:177` costs **1.94 ns per global equation** on tpv104 vs **1.86 ns**
+on tpv8, and **7.40 ms at 1 rank vs 7.23-7.54 ms at 32** — a per-step cost
+indexed by the GLOBAL equation count, flat in rank count.
+
+Donation is **effective** (`is_deleted()` True on all four global arrays;
+`b_jit` alias = arg = out = 99.21 MB, temp 0.25 MB). So the ~120 MB/step carry
+copy `driver.py:410-417` warns about is **not being paid** and was never the
+story either.
+
+### My framing was wrong in three ways, and the corrections matter more than the agreement
+
+I briefed her with a "ruled out with numbers" list. Two entries on it did not
+survive her measurement, and she said so rather than agreeing:
+
+1. **Contention is NOT ruled out — it is the largest single term.** A per-rank
+   *wall* spread of 1.00x is **an identity of a barrier-synchronised loop**,
+   not evidence about compute. The compute spread underneath is **2.90x**
+   (33.73-97.94 ms) against a work spread of 1.41x. And `EFFECTIVE_CORES` is
+   **blind to memory stalls** — a core spinning on cache misses still bills
+   1.00. I quoted both metrics as exclusions; neither can see this mechanism.
+2. **My `T1/N + C` fit mis-attributes.** Max-over-ranks *uncontended* compute
+   at 32 ranks is **51.62 ms**, not the 23.65 ms `T1/N` predicts. C is not one
+   constant: ~30 ms replicated compute + ~45 ms contention + ~18 ms host
+   residual.
+3. **My dichotomy ("per-step work every rank does regardless of N" OR "host
+   overhead") was false.** The identical instruction stream costs 51.62 ms
+   alone and 97.94 ms with 31 siblings, which is not a property of a rank in
+   isolation. Neither branch describes it.
+4. `Ei = 0` is not even a handicap: **a zero-interior rank is the FASTEST
+   measured** (36.72 ms). That is why the `w=0.6` recut bought 1.4%, and it
+   sharpens item 62 rather than contradicting it.
+
+**The lesson, and it is mine, not hers:** an exclusion is only as good as the
+metric's ability to SEE the mechanism. `EFFECTIVE_CORES` at 1.00 and a wall
+spread of 1.00x are both compatible with every core stalling on memory.
+Inheriting a ruled-out list and passing it on as "do not re-run this" is how a
+door gets closed on a mechanism that was behind it the whole time. Commissioned
+to `zofia-kaminska` as the rule question this pays for.
+
+### What she did NOT close, stated as she stated it
+
+DRAM bandwidth vs shared-LLC capacity is **not separated**. A *fixed* workload
+degrades only **1.37x** from concurrency 1→32 (50.09 → 68.80 ms, flat for
+K=2..16), so part of the worst rank's 1.90x is position-dependent. Splitting
+that needs `perf` counters and she explicitly declined to claim it. Recorded as
+the honest edge of the finding, not as a gap in it.
+
+### The merge gate, run by me on the merged tree, not accepted from her report
+
+`f278056`. What landed is **instrumentation and evidence, NOT a fix** —
+shrinking the carry to rank-local extent is a real change to a gated path and
+is the owner's call.
+
+| axis | evidence |
+|---|---|
+| 4 (stale base) | base `12c5be0`; her own change set 5 files +677/-2. The two-point diff against master reads 72 files / -189 lines because master had moved; merged with `--no-ff`, never copied. |
+| 1 (degenerate) | env-gated via `MPI4NodalQuant.step_profile()`, and it **REFUSES a misspelled value** rather than defaulting to off: `EQDYNA_MPI_STEP_PROFILE='bogus'` → `ValueError`, verified by me. Default path byte-identical — the fused `device_get`/exchange clock is left exactly as published in the non-profiled branch. No added `block_until_ready`. |
+| 2 (the gate exercises the NEW path) | `EQDYNA_MPI_STEP_PROFILE=1` e2e run PRINTED the attribution on all four ranks and still passed: compute 52.85-55.67 \| barrier 1.64-5.94 \| mpi 0.37-0.84 \| d2h 0.22-0.25 \| host 7.17-8.45 \| TOTAL 66.58-66.59 ms. A flag-off parity pass alone would NOT have gated this change. |
+| 3 (my own oracle re-run) | `test.tpv8 x python-jax-mpi` max\|diff\| **1.220703e-10**, `x python-jax` **4.119873e-10**, bound 1.0e-08, 1891 fault nodes, 2/2 SUCCESS — and **identical to the 8th digit with the flag ON**, which is the proof the instrumentation does not perturb the result. `run.py unit regression` exit 0, both tiers SUCCESS. Her reported numbers reproduced exactly. |
+
+Launched detached per rule 20; `/proc/1895568/fd/1` verified as a real path
+before walking away from it. Its own 3 ledger rows landed at `8fd2252`, pinned
+to `f278056` — the tree I actually gated — rather than left dirty for the next
+session (rule 20a's gap, closed for this run).
+
+`NOTES_plateau.md` moved to `docs/NOTES_plateau_32rank_2026-09-22.md`
+(`fc35f77`, pure rename) — 374 lines of measurement record belongs beside the
+session logs, not at the repo root.
+
+No version bump, same reason as above: VERSION 5.15.0 is a prepared,
+CI-green, deliberately untagged release and moving it would invalidate
+`54e0697`'s standing as the thing that gets tagged.
