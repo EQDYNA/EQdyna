@@ -13,5 +13,6 @@ S, mesh = eqdyna3d.build_solver_state(case)
 out = driver.run_mpi(S, comm, nsteps=nsteps, verbose=False,
                      xp=B.array_module('jax'))
 h = {k: hashlib.sha256(out[k].tobytes()).hexdigest()[:16]
-     for k in ('velArr', 'dispArr', 'force', 'fric', 'fnft')}
+     for k in ('velArr_local', 'dispArr_local', 'force_local',
+               'fric', 'fnft')}
 print('HASH rank %d %s' % (comm.Get_rank(), ' '.join('%s=%s' % kv for kv in sorted(h.items()))), flush=True)

@@ -1,0 +1,21 @@
+{
+ "tool": "run_e2e",
+ "sha": "5cccff9",
+ "host": "cotopaxi",
+ "date": "2026-09-22 08:39",
+ "label": "explicit: cases=test.tpv8 backends=python-jax-mpi",
+ "device": "cpu",
+ "jobs_budget": 1,
+ "tenancy_ceiling": 0.5,
+ "cells": [
+  {
+   "case": "test.tpv8",
+   "backend": "python-jax-mpi",
+   "ok": true,
+   "seconds": 12.200047016143799,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "eqdyna3d --mpi with --device left at \"auto\" forces JAX_PLATFORMS=cpu (run_e2e passes no --device)"
+  }
+ ]
+}

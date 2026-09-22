@@ -329,6 +329,13 @@ def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync,
                 Ei=[int(d['Ei']) for d in hi[1]],
                 Ep=[int(d['Ep']) for d in hi[1]],
                 halo=[int(d['halo_eqs']) for d in hi[1]],
+                # PER-RANK CARRY BYTES. The primary check on the rank-local
+                # carry: this must fall roughly as 1/nranks. A timing win with
+                # an unchanged footprint means something other than the
+                # decomposition was measured.
+                carry_bytes=[int(d['carry_bytes_total']) for d in hi[1]],
+                N_local=[int(d['N_local']) for d in hi[1]],
+                NEQ_local=[int(d['NEQ_local']) for d in hi[1]],
                 platform=platform,
                 gpu_mem=hi[1][0].get('gpu_peak_mib'),
                 device_peak_gb=[d.get('device_peak_gb') for d in hi[1]],
@@ -344,12 +351,15 @@ def main():
     ap.add_argument('--n-hi', type=int, default=60)
     ap.add_argument('--max-busy', type=float, default=0.5)
     ap.add_argument('--repeats', type=int, default=1)
-    ap.add_argument('--syncs', default='halo,allreduce',
-                    help='nodal-sync modes to measure, in order. `halo` moves '
-                         'O(boundary) (MPI4NodalQuant\'s own pattern); '
-                         '`allreduce` moves O(NEQ) with no ownership '
-                         'bookkeeping. Both are correct; the difference is '
-                         'the whole question.')
+    ap.add_argument('--syncs', default='halo',
+                    help='nodal-sync modes to measure, in order. `halo` '
+                         '(O(boundary), MPI4NodalQuant\'s own pattern) is the '
+                         'only runnable mode: `allreduce` reduced the FULL '
+                         'nodal array and needed it replicated at global '
+                         'extent on every rank, which the rank-local '
+                         'renumbering removed, so driver.run_mpi now refuses '
+                         'it by name rather than silently taking the halo '
+                         'path under an allreduce label.')
     ap.add_argument('--platform', default='cpu', choices=('cpu', 'cuda'),
                     help='jax backend for the ranks. cuda gives each rank its '
                          'own GPU (one process per rank, jax owns the local '
@@ -370,7 +380,13 @@ def main():
     ranks = [int(x) for x in a.ranks.split(',') if x]
     syncs = [s for s in a.syncs.split(',') if s]
     for s in syncs:
-        if s not in ('halo', 'allreduce'):
+        if s == 'allreduce':
+            raise SystemExit(
+                'FAIL: --syncs allreduce is no longer runnable. It reduced the '
+                'full nodal array and required global-extent nodal arrays on '
+                'every rank; the carry is now rank-local, so the ranks\' '
+                'force arrays have different lengths. Use --syncs halo.')
+        if s != 'halo':
             raise SystemExit('FAIL: unknown sync mode %r' % s)
     # CAP LIFTED 2026-09-22 to 32, on the owner's instruction ("finish up the
     # Jax and Fortran scaling up to 32"). The old 16 was this campaign's scope,
