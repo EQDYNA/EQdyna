@@ -13,7 +13,13 @@ WHAT THIS PINS, for the version currently in VERSION:
      two can drift);
   2. README.md's leading `# News` block is THIS version, not a previous one;
   3. pathway_forward.md has a Tasks-done row naming it;
-  4. an annotated git tag `vX.Y.Z` exists locally.
+  4. an annotated git tag `vX.Y.Z` exists locally;
+  5. a completed, SUCCESSFUL CI run exists for the exact SHA the tag points
+     at (added 2026-09-21, see check_ci_green_for_tagged_sha below -- this is
+     the post-hoc half of the pre-tag gate in
+     testsys/regression/check_pretag_ci.py; that one runs BEFORE `git tag`
+     and blocks it, this one runs AFTER and catches a tag that landed on an
+     un-green or never-run SHA anyway).
 
 Steps that need the network -- the tag being pushed, CI being green on it, and
 the GitHub Release existing -- are checked ONLY when `gh` is available and
@@ -48,6 +54,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+from testsys import ci_status  # noqa: E402
 
 
 def version():
@@ -258,6 +266,69 @@ def check_network_side(v):
         print('  UNVERIFIED  %s -- not a pass; re-run where it can be checked' % u)
 
 
+def check_ci_green_for_tagged_sha(v):
+    """A completed, successful CI run must exist for the exact SHA `vX.Y.Z`
+    points at (rule 15 step 6/7's post-hoc half; testsys/regression/
+    check_pretag_ci.py is the pre-hoc half that runs BEFORE `git tag`).
+
+    Self-reference: when THIS check runs inside the very CI run that the tag
+    push just triggered, `gh run list` will show that run for the tagged SHA
+    with status=in_progress -- it cannot be "completed" because it is, right
+    now, the thing executing this line. Waiting for it would deadlock the job
+    waiting on itself; silently treating "no OTHER completed run yet" as PASS
+    would rubber-stamp exactly the ordering the 2026-09-21 incident showed is
+    unsafe. So: identify that run by GITHUB_RUN_ID and exclude only it before
+    judging the rest -- neither fail nor pass by accident on it.
+    """
+    try:
+        sha = ci_status.resolve_sha('v' + v)
+    except ValueError as exc:
+        raise AssertionError('cannot resolve tag v%s to a commit: %s' % (v, exc))
+
+    self_run_id = None
+    github_run_id = os.environ.get('GITHUB_RUN_ID')
+    github_sha = os.environ.get('GITHUB_SHA')
+    if github_run_id and github_sha == sha:
+        self_run_id = int(github_run_id)
+
+    try:
+        workflow_name = ci_status.parse_workflow_name()
+        runs = ci_status.find_ci_runs(sha, workflow_name)
+    except ci_status.GhUnavailable as exc:
+        print('  UNVERIFIED  CI status for tagged sha %s (%s) -- not a pass, '
+              'not a fail; re-run where gh can reach the API' % (sha, exc))
+        return
+
+    status = ci_status.classify_runs(runs, exclude_run_id=self_run_id)
+    if status == 'PASS':
+        print('  PASS  a completed, successful %s run exists for tagged sha '
+              '%s (v%s)' % (workflow_name, sha, v))
+        return
+    if status == 'FAIL':
+        raise AssertionError(
+            'v%s is tagged at %s but the completed %s run(s) for that exact '
+            'sha did not succeed -- this is the ordering rule 15 step 6/7 '
+            'exists to prevent: a released tag pointing at a red commit. A '
+            'pushed tag cannot be re-pointed (rule 8); this needs a human '
+            'decision, not a silent pass.' % (v, sha, workflow_name))
+    if self_run_id is not None and status in ('IN_PROGRESS', 'NONE'):
+        print('  UNVERIFIED  CI status for tagged sha %s (v%s) -- this check '
+              'is itself running inside run %d for that sha, which by '
+              'definition has not completed yet; excluding it leaves no '
+              'other run to judge. Re-run after this job finishes.'
+              % (sha, v, self_run_id))
+        return
+    if status == 'IN_PROGRESS':
+        print('  UNVERIFIED  a %s run for tagged sha %s (v%s) is still in '
+              'progress -- not provably green yet, not a fail either'
+              % (workflow_name, sha, v))
+        return
+    raise AssertionError(
+        'v%s is tagged at %s but no %s run exists for that exact sha at all '
+        '-- rule 15 step 6/7 requires CI to have run and gone green on it.'
+        % (v, sha, workflow_name))
+
+
 def main():
     v = version()
     print('Regression guard: release completeness for VERSION %s' % v)
@@ -281,7 +352,7 @@ def main():
         for c in (check_banner_matches,
                   check_readme_news_leads_with_this_version,
                   check_pathway_tasks_done_row, check_tag_is_annotated,
-                  check_network_side):
+                  check_ci_green_for_tagged_sha, check_network_side):
             try:
                 c(v)
             except AssertionError as e:
