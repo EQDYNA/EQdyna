@@ -416,3 +416,82 @@ no history rewrite; consilium off limits; `scec_archive` read-only; parity
 absolute, never regenerate a reference (rule 7); full sweep unbounded or >=90
 min, never stacked (item 42); rule 15a enforced by
 `testsys/regression/check_pretag_ci.py`.
+
+---
+
+# Resumption, 2026-09-22 — conductor #2 (the sweep's output, and v5.15.0)
+
+The previous conductor exited with the full sweep still running detached. It
+finished GREEN and then sat there: 31 of 40 cells ran, 31 passed, 0 failed, 9
+declared-unsupported (all `python-jax-mpi`, the per-case `PY_MPI_RANKS` opt-in
+working as designed), unit/regression/e2e all SUCCESS, exit 0, 3839.6 s wall.
+
+## Rule 20a in its mildest form, and the gap it exposes
+
+Two files were dirty on arrival and both were that sweep's own output —
+`docs/perf_ledger.jsonl` (32 -> 63 rows) and
+`docs/perf_snapshots/e2e_cells_2026-09-22_025620_1475080.json`. Nothing was
+wrong with them. They were uncommitted because **the agent that launched the
+run had exited before the run ended**, and no rule says who commits a detached
+run's artifacts or when.
+
+Rule 20 gets a heavy run launched so it survives its launcher. Rule 20a gets
+its artifacts written incrementally so a crash costs one increment. Neither
+says the run has to be LANDED, and a completed run whose artifacts are only in
+the working tree is one `git checkout` from never having happened. Tonight the
+cost was zero. The next instance of it costs a 3839-second sweep. Commissioned
+to `zofia-kaminska` as a rules question rather than written here.
+
+Landed at `09da166`, pushed. Every one of the 31 new ledger rows carries
+`sha=d3762cd`, which WAS HEAD when the sweep ran — so this is a statement about
+the code being tagged, not about a tree that has since moved. The rows were
+appended by `run_e2e` itself; nothing was transcribed.
+
+## The tag sequencing, and why the order is the whole trick
+
+`v5.13.1` was tagged at `dfee14d`, a commit touching only
+`pathway_forward.md` — one of `test.yml`'s own `paths-ignore` entries — so it
+could never have had a pre-tag CI run of its own. `docs/**` is on that same
+list, which means `09da166` (mine) and `d3762cd` (the session log) cannot have
+one either. The guard confirms it rather than my believing it:
+
+```
+check_pretag_ci.py --pre-tag 09da166  ->  PATHS_IGNORED, exit 3
+```
+
+The fix is ordering, not a flag. The Tasks-done row and the rules edits land
+FIRST, and the release commit — `VERSION` plus `README.md` plus
+`pastReleaseNotes.md` — lands LAST and on its own. That commit touches
+non-ignored files by construction, so it earns its own CI run and rule 15a is
+satisfied without `--ack-paths-ignored-parent` and without accepting a
+parent's evidence for a child's tree. v5.13.1 reached for the flag because it
+had already committed in the wrong order.
+
+CI health checked before committing to this plan: master is green at `ffbfbaf`
+(the last commit whose push carried a non-ignored file). `24b47ba` is a red in
+the recent list and was already fixed by `3004ab9`/`ffbfbaf`.
+
+One incidental finding worth recording, because it cuts against the guard's
+own model: `ffbfbaf` is docs-only and DOES have a successful run, because it
+was pushed in the same push as `59ee1ef`, which touches `testsys/`. GitHub's
+`paths-ignore` filters a PUSH by the files across its whole commit range, not
+each commit independently. So the guard is conservative in the safe direction
+— it can say PATHS_IGNORED about a commit that in fact has a run — and that is
+the right way round for a gate. Not acted on.
+
+## Dispatched
+
+- `mira-volkov` (worktree) — the decomposition-balance mission, plus a measured
+  proposal for the XLA-cache wedge, as two separate commits so they can land
+  independently. Brief carries the measured mechanism and withholds my own
+  reading of the cause, so her diagnosis is independent rather than
+  confirmatory.
+- `zofia-kaminska` (worktree) — the v5.15.0 Tasks-done row, the three corrected
+  facts (the false ~50-minute compile claim, item 47's tenancy attribution, the
+  now-measured A100 comparison), two new rows (the latent MPI hang, the balance
+  mission), the rule-count hygiene, and the rule 20/20a gap above.
+
+Both briefs carry a mandatory Step 0 re-sync from `origin/master` at `09da166`,
+because an agent worktree branches from whatever base the harness picked and a
+stale `pathway_forward.md` copied back wholesale is a 69 KB revert — the
+near-miss `a7d281f` produced last night.
