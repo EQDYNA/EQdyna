@@ -28,12 +28,13 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 20. Heavy runs are launched detached and polled by artifact, never by process.
 20a. A tool that writes its results file only at the end is a partial-loss hazard; prefer several smaller invocations that each land their own artifact.
 20b. A heavy run's artifacts are not landed until they are committed, and a run finishing does not mean anyone is still there to commit them.
+20c. A completed detached run is indistinguishable from one still in flight until something reads its artifact and updates the board — and until then its worktree is not reapable by default.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 20 numbered rules
-(1-20) plus six lettered sub-rules (2a, 4a, 4b, 15a, 20a, 20b) — 26 `## `
-headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 26;
+(1-20) plus seven lettered sub-rules (2a, 4a, 4b, 15a, 20a, 20b, 20c) — 27
+`## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 27;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 20.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -981,3 +982,62 @@ because it produced its file. Tier: a norm, not mechanically gated — no
 repo-wide check can see evidence sitting uncommitted in a worktree nobody is
 in; the nearest mechanical backstop is rule 19's own guard (unpinned ledger
 row rejected), which this rule generalises from the ledger to any artifact.
+
+---
+
+## 20c. A completed detached run is indistinguishable from one still in flight until something reads its artifact and updates the board — and until then its worktree is not reapable by default
+
+Rule 20 gets a heavy run launched so it survives its launching turn. Rule 20a
+gets its artifact written incrementally so a crash costs one increment. Rule
+20b gets a finished run's artifacts committed rather than left dirty in a
+tree nobody is watching. None of the three says who notices that the run has
+FINISHED, reads what it produced, and updates the board to say so — a board
+row can keep asserting "in flight" indefinitely about a process that exited
+hours or days ago, and nothing in the repo will contradict it until someone
+independently checks.
+
+**Rationale**: rule 20a's signal is the artifact ADVANCING; the matching
+signal at the other end — the artifact having reached a real terminal state
+(an `Exit status: 0` in a time.log, a snapshot file whose last row stopped
+changing) — is evidence of completion, and no rule currently assigns anyone
+to read it. The gap sits one stage past both 20a (produce the artifact) and
+20b (commit it): a run can finish, produce every file it was designed to
+produce, and still have its actual DELIVERABLE — the comparison, the
+analysis, the number the run existed to answer — never run, because the
+agent that would have run it was gone before it could. A worktree holding
+that unread result is then a single reap away from losing it, with nothing
+that flags it as different from any other stale worktree.
+
+**Incident (2026-09-22, one stage later than 20a's four and 20b's own)**:
+item 32's dx=250 mesh-refinement experiment (worktree
+`agent-a062e5e0475453665`) finished both its solver runs —
+`dx250_serial/time.log` reads `Exit status: 0`, written 2026-09-22 00:04 —
+while the board's P1 item-32 row kept asserting "dx=250 run in flight
+2026-09-21, result pending" for roughly 21 hours, because the agent that
+launched it was rate-limited before running the comparison. The run's entire
+deliverable — a 30-second `flips.py` comparison of artifacts already on
+disk — went unrun the whole time, and the worktree holding the only copy of
+those artifacts was not flagged as anything other than an ordinary reapable
+worktree. It was recovered only because an unrelated worktree-hygiene pass
+happened to open it and check.
+
+**How to apply**: when a heavy run is launched detached (rule 20), name —
+beside the launch, not only in a person's head — what "finished" looks like
+(an exit code in a log, a row count settling) and what the very next command
+is once that state is observed; a rule-20/20a-compliant launch is not done
+until that next command has actually run and the board reflects its answer.
+Treat a board row's "in flight" as a claim to verify against the process
+table and the artifact's own mtime before trusting it — the same discipline
+rule 4 already asks of any inherited conclusion, applied to the board's own
+words. A worktree holding the only copy of a run's raw artifacts behind a
+result nobody has read yet is not eligible for default reaping; it must be
+checked for a finished-but-unread run first, not assumed safe because
+nothing flagged it.
+
+**Tier**: a norm, not mechanically gated — no repo-wide check can watch a
+board claim go stale in real time or know that a given worktree is "the only
+copy" of something. The nearest mechanical backstop is the same one 20 and
+20a already lean on — `ls -l /proc/<pid>/fd/1`, the artifact's own mtime and
+exit code — checked by whoever next touches that worktree; a board row that
+names its own evidence command (rule 14) is at least falsifiable by
+re-running it, which is what caught this incident.
