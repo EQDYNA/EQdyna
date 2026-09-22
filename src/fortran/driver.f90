@@ -28,6 +28,13 @@ subroutine driver
         if (friclaw == 5) call updateThermalPressurization
         call faulting
         nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/nodalMassArr(1:totalNumOfEquations)
+
+        ! DIAGNOSTIC (scratch worktree only, never on a shipped path): at this
+        ! point nodalForceArr IS the nodal acceleration. At nt==1 velArr and
+        ! dispArr are still identically zero, so this is exactly the residual
+        ! acceleration of the INITIAL state -- the equilibrium defect measure.
+        ! Gated on EQDYNA_DUMP_EQUIL=1; absent/unset writes nothing.
+        if (nt == 1) call dumpNodalAccel
 !        if ((mod(nt,10) == 1) .and. (outputGroundMotion == 1)) then
          if (outputGroundMotion == 1) then
             call output_gm
@@ -36,6 +43,47 @@ subroutine driver
     enddo 
 
 end subroutine driver
+
+subroutine dumpNodalAccel
+! DIAGNOSTIC ONLY. Writes per-node coordinates and the residual acceleration
+! of the initial state, plus a fault-node tag and the node's dof count (so
+! 12-dof PML nodes can be excluded in analysis). One file per MPI rank.
+    use globalvar
+    implicit none
+
+    integer (kind = 4) :: i, j, eqn, ift, ifn
+    real (kind = dp) :: acc(3)
+    character (len = 64) :: fname
+    character (len = 8)  :: envval
+    integer (kind = 4), allocatable :: faultTag(:)
+
+    envval = ' '
+    call get_environment_variable('EQDYNA_DUMP_EQUIL', envval)
+    if (trim(envval) /= '1') return
+
+    allocate(faultTag(totalNumOfNodes))
+    faultTag = 0
+    do ift = 1, ntotft
+        do ifn = 1, nftnd(ift)
+            faultTag(nsmp(1,ifn,ift)) = 1
+            faultTag(nsmp(2,ifn,ift)) = 2
+        enddo
+    enddo
+
+    write(fname,'(A,I4.4,A)') 'equilibriumDump.', me, '.txt'
+    open(9911, file = trim(fname), status = 'replace')
+    do i = 1, totalNumOfNodes
+        acc = 0.0d0
+        do j = 1, 3
+            eqn = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
+            if (eqn > 0) acc(j) = nodalForceArr(eqn)
+        enddo
+        write(9911,'(6E22.13,2I4)') meshCoor(1,i), meshCoor(2,i), meshCoor(3,i), &
+            acc(1), acc(2), acc(3), faultTag(i), numOfDofPerNodeArr(i)
+    enddo
+    close(9911)
+    deallocate(faultTag)
+end subroutine dumpNodalAccel
 
 subroutine doubleCouplePointSource
     use globalvar 
