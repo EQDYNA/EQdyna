@@ -106,22 +106,115 @@ def least_loaded_cpus(nodes, k, exclude=()):
     return chosen, {c: busy[c] for c in chosen}
 
 
-def jax_mpi_once(case_dir, nsteps, cpus, ranks, sync):
-    """One mpirun of the jax MPI path. Returns (wall, [per-rank dicts])."""
+GPU_WRAP = os.path.join(TESTSYS, 'gpu_rank_wrap.sh')
+
+
+class _GpuPoll(object):
+    """Peak per-device memory.used, sampled from nvidia-smi while a run is up.
+
+    Why sampled rather than asked of jax: the ranks are separate processes and
+    each one's device allocator dies with it, so any in-process figure is gone
+    before this process could read it. nvidia-smi sees all four devices from
+    outside, which is also the figure that answers "does this fit in 40 GB".
+    The baseline (idle usage, ~450 MiB/device) is recorded at start and
+    reported beside the peak rather than subtracted, because a foreign
+    allocation appearing mid-run must be visible, not netted out.
+    NO SILENT FALLBACK: if nvidia-smi is not runnable the poller raises on
+    stop() rather than reporting a memory figure of 0.
+    """
+
+    QUERY = ['nvidia-smi', '--query-gpu=index,memory.used',
+             '--format=csv,noheader,nounits']
+
+    def __init__(self, interval=0.5):
+        self.interval = interval
+        self.peak = {}
+        self.base = self._sample()
+        self._stop = False
+        self._thr = None
+        self._err = None
+
+    def _sample(self):
+        r = subprocess.run(self.QUERY, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError('nvidia-smi failed (%s) -- refusing to report a '
+                               'device-memory number this tool did not read'
+                               % r.stderr.strip()[:200])
+        return {int(a): int(b) for a, b in
+                (ln.split(',') for ln in r.stdout.strip().splitlines())}
+
+    def start(self):
+        import threading
+        self.peak = dict(self.base)
+
+        def loop():
+            while not self._stop:
+                try:
+                    for k, v in self._sample().items():
+                        self.peak[k] = max(self.peak.get(k, 0), v)
+                except Exception as exc:              # noqa: BLE001
+                    self._err = exc
+                    return
+                time.sleep(self.interval)
+
+        self._thr = threading.Thread(target=loop, daemon=True)
+        self._thr.start()
+
+    def stop(self):
+        self._stop = True
+        if self._thr:
+            self._thr.join(timeout=5)
+        if self._err:
+            raise self._err
+        return dict(peak=self.peak, base=self.base,
+                    delta={k: self.peak[k] - self.base.get(k, 0)
+                           for k in self.peak})
+
+
+def jax_mpi_once(case_dir, nsteps, cpus, ranks, sync, platform='cpu'):
+    """One mpirun of the jax MPI path. Returns (wall, [per-rank dicts]).
+
+    `platform` selects the jax backend for the ranks: 'cpu' (the campaign's
+    default -- one cpu per rank, pinned) or 'cuda' (one GPU per rank, assigned
+    by GPU_WRAP from the rank's OMPI local rank, so rank k gets device k and
+    no two ranks share a device). The cpu pinning is kept in the cuda case
+    because the HOST side of a GPU rank is real work -- the serial mesh build,
+    the per-step device_get of the halo, and XLA dispatch -- and leaving it
+    unpinned puts it on whatever the box's foreign tenancy leaves free.
+    EQDYNA_JAX_DEVICES stays unset either way: it would pin JAX_PLATFORMS=cpu
+    (backend._configure_host_devices) and silently turn a GPU point into a CPU
+    one under a GPU label.
+    """
     env = dict(os.environ)
-    env['JAX_PLATFORMS'] = 'cpu'
+    env['JAX_PLATFORMS'] = platform
     env['EQDYNA_MPI_SYNC'] = sync
     env['PYTHONPATH'] = PYTHON_PKG + os.pathsep + env.get('PYTHONPATH', '')
     for key in ('XLA_FLAGS', 'OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
                 'EQDYNA_JAX_DEVICES'):
         env.pop(key, None)
+    launch = [sys.executable, '-m', 'eqdyna', case_dir, str(nsteps),
+              '--backend', 'jax', '--mpi']
+    if platform != 'cpu':
+        env.pop('CUDA_VISIBLE_DEVICES', None)
+        # --device gpu IS REQUIRED, and JAX_PLATFORMS alone is not enough.
+        # eqdyna3d.main's MPI branch calls _select_device('cpu' if
+        # args.device == 'auto' ...) -- i.e. the default 'auto' OVERWRITES
+        # JAX_PLATFORMS with 'cpu' after this tool set it to 'cuda'. Measured:
+        # a 1-rank tpv104 run launched with JAX_PLATFORMS=cuda and no --device
+        # returned 812.78 ms/step with a device-memory delta of 0 MiB on all
+        # four A100s -- a CPU number under a GPU label, which is the exact
+        # failure the per-device memory print below exists to catch.
+        launch = [GPU_WRAP] + launch + ['--device', 'gpu']
     cmd = ['mpirun', '--cpu-set', ','.join(str(c) for c in cpus),
-           '--bind-to', 'cpu-list:ordered', '-np', str(ranks),
-           sys.executable, '-m', 'eqdyna', case_dir, str(nsteps),
-           '--backend', 'jax', '--mpi']
+           '--bind-to', 'cpu-list:ordered', '-np', str(ranks)] + launch
+    poll = _GpuPoll() if platform != 'cpu' else None
+    if poll:
+        poll.start()
     t0 = time.time()
     r = subprocess.run(cmd, env=env, capture_output=True, text=True)
     wall = time.time() - t0
+    if poll:
+        gpu_peak = poll.stop()
     if r.returncode != 0:
         print(r.stdout[-2500:]); print(r.stderr[-2500:])
         return None, None
@@ -138,6 +231,22 @@ def jax_mpi_once(case_dir, nsteps, cpus, ranks, sync):
     # a change to either print cannot silently drop it.
     eff = dict((int(a), float(b)) for a, b in
                re.findall(r'rank (\d+): .*EFFECTIVE_CORES ([\d.]+)', r.stdout))
+    # WHAT ACTUALLY RAN, taken from the ranks' own eqdyna3d.active_device line
+    # (which reads jax.devices()[0]) and not from what was requested. One line
+    # per rank; every one must name the platform this point claims, or the
+    # number is discarded rather than recorded under the wrong label.
+    devs = re.findall(r'backend=(\S+) device=(\S+)', r.stdout)
+    want = 'gpu' if platform != 'cpu' else 'cpu'
+    if len(devs) != ranks or any(not d[1].startswith(want) for d in devs):
+        raise RuntimeError(
+            'asked for platform %r; the ranks reported %r (%d of %d ranks '
+            'printed a device line). A per-step number under the wrong device '
+            'label is worse than no number.'
+            % (platform, devs, len(devs), ranks))
+    if poll:
+        for d in per:
+            d['gpu_peak_mib'] = gpu_peak
+            d['device'] = devs[0][1]
     for d in per:
         if d['rank'] not in eff:
             raise RuntimeError('rank %d reported no EFFECTIVE_CORES -- a '
@@ -155,7 +264,8 @@ def jax_mpi_once(case_dir, nsteps, cpus, ranks, sync):
     return wall, per
 
 
-def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync):
+def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync,
+                     platform='cpu', warmup=False):
     """Per-step by difference over two step counts -- but over the RANKS' OWN
     SOLVE TIME, not over mpirun's wall clock.
 
@@ -173,8 +283,19 @@ def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync):
     to subtract. The slowest rank sets the step, so the max over ranks is the
     figure; the wall-based number is kept beside it as a cross-check.
     """
-    lo = jax_mpi_once(case_dir, n_lo, cpus, ranks, sync)
-    hi = jax_mpi_once(case_dir, n_hi, cpus, ranks, sync)
+    # WARM THE XLA COMPILATION CACHE BEFORE EITHER TIMED RUN. The difference
+    # is only valid if the fixed term is the SAME in both runs, and with a
+    # persistent cache it is not: the first run of a session compiles cold
+    # (13.9 s on GPU, 4.7 s on CPU -- backend.enable_compilation_cache) and
+    # the second hits a warm cache (6.5 / 2.8 s). Left cold, `lo` pays the
+    # cold compile and `hi` the warm one, so solve_hi - solve_lo subtracts
+    # 7 s too little and the per-step number comes out LOW -- silently, and
+    # roughly 3x more so on GPU than on CPU, which is exactly where this is
+    # being used. One discarded n_lo run puts both timed runs on the warm side.
+    if warmup:
+        jax_mpi_once(case_dir, n_lo, cpus, ranks, sync, platform)
+    lo = jax_mpi_once(case_dir, n_lo, cpus, ranks, sync, platform)
+    hi = jax_mpi_once(case_dir, n_hi, cpus, ranks, sync, platform)
     if lo[0] is None or hi[0] is None:
         return None
     ps = (hi[0] - lo[0]) / float(n_hi - n_lo)
@@ -206,6 +327,9 @@ def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync):
                 Ei=[int(d['Ei']) for d in hi[1]],
                 Ep=[int(d['Ep']) for d in hi[1]],
                 halo=[int(d['halo_eqs']) for d in hi[1]],
+                platform=platform,
+                gpu_mem=hi[1][0].get('gpu_peak_mib'),
+                device_peak_gb=[d.get('device_peak_gb') for d in hi[1]],
                 threads=[int(d['threads']) for d in hi[1]],
                 cpus_allowed=[int(d['cpus_allowed']) for d in hi[1]])
 
@@ -224,6 +348,15 @@ def main():
                          '`allreduce` moves O(NEQ) with no ownership '
                          'bookkeeping. Both are correct; the difference is '
                          'the whole question.')
+    ap.add_argument('--platform', default='cpu', choices=('cpu', 'cuda'),
+                    help='jax backend for the ranks. cuda gives each rank its '
+                         'own GPU (one process per rank, jax owns the local '
+                         'element kernel, MPI moves the halo through host '
+                         'memory) and records per-device memory beside every '
+                         'number.')
+    ap.add_argument('--warmup', action='store_true',
+                    help='discard one n_lo run first so BOTH timed runs hit a '
+                         'warm XLA compilation cache. See per_step_jax_mpi.')
     ap.add_argument('--skip-fortran', action='store_true')
     ap.add_argument('--exclude-cpus', default='',
                     help='comma-separated cpus never to place a rank on. See '
@@ -279,7 +412,8 @@ def main():
         for sync in syncs:
             best = None
             for _ in range(a.repeats):
-                r = per_step_jax_mpi(case_dir, cpus, n, a.n_lo, a.n_hi, sync)
+                r = per_step_jax_mpi(case_dir, cpus, n, a.n_lo, a.n_hi, sync,
+                                     a.platform, a.warmup)
                 if r is not None and (best is None
                                       or r['ms_per_step'] < best['ms_per_step']):
                     best = r
@@ -306,6 +440,12 @@ def main():
                      best['cpus_allowed']), flush=True)
             print('             per-rank Ei %s  Ep %s  halo eqs %s'
                   % (best['Ei'], best['Ep'], best['halo']), flush=True)
+            if best.get('gpu_mem'):
+                g = best['gpu_mem']
+                print('             platform %s  per-rank allocator peak GB %s'
+                      '  nvidia-smi MiB peak %s  idle baseline %s'
+                      % (best['platform'], best['device_peak_gb'],
+                         g['peak'], g['base']), flush=True)
         if not a.skip_fortran and n in rs.DECOMP:
             ps, fixed, lo, hi, _o1, _o2 = rs.per_step_fortran(
                 work, n, 'leastloaded', cpus, nodes, dt, a.n_lo, a.n_hi)
