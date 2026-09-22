@@ -10,6 +10,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 4a. A proposed CAUSE is falsified by the outcome curve, not by the defect it predicts.
 4b. An exclusion names the metric that produced it; a metric blind to a mechanism cannot exclude it.
 5. One calibrated definition of "pass" — never invent a metric.
+5a. A provably injective relabelling is gated at bit-identity, not at the case bound.
 6. Every performance number carries its provenance.
 7. Reference data is read-only.
 8. Never delete evidence unless the result is a confirmed pass.
@@ -32,9 +33,9 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 20 numbered rules
-(1-20) plus seven lettered sub-rules (2a, 4a, 4b, 15a, 20a, 20b, 20c) — 27
+(1-20) plus eight lettered sub-rules (2a, 4a, 4b, 5a, 15a, 20a, 20b, 20c) — 28
 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 27;
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 28;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 20.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -271,6 +272,40 @@ threshold (then `check.test.py`'s, today `testsys/matrix.py`'s `THRESHOLD`
 and per-case `CASE_BOUND`)
 or explains in writing why it differs; it never reports "pass" against an
 ad hoc number.
+
+---
+
+## 5a. A provably injective relabelling is gated at bit-identity, not at the case bound
+
+When a change touches only an INDEX array — a gather/scatter map, a
+relabelling of node or element IDs into a new numbering — and the relabelling
+is provably injective (each old index maps to exactly one new slot, nothing
+merges or drops), the correct pass criterion is exact equality on the
+compared output, not the case's numeric `CASE_BOUND`. A relabelling changes
+where a value is stored, not what it is; if the output differs by even one
+ULP under a pure re-indexing, the map is wrong, and a tolerance-based bound
+would let that bug pass as long as it stayed inside the case's ordinary
+roundoff budget.
+
+**Rationale (2026-09-22)**: `MPI4NodalQuant`'s rank-local carry
+(`pathway_forward.md` item 60/43/48/61, commit `01a1040`) renumbers every
+index array into the rank-local `touched`/`my_eq` sets the restriction had
+already computed — a pure relabelling, no arithmetic on the physics. It was
+gated at bit-identity rather than at `test.tpv8`'s bound, and held: four rank
+files (`frt.txt0`-`frt.txt3`) compared byte-for-byte and md5-equal against
+master's global-extent solver on the same case and placement, even though the
+four ranks now carry four DIFFERENT carry sizes (16.14/17.57/17.53/16.18 MB)
+where at global extent all four were byte-identical. Gating that at the
+1.0e-08 case bound instead would still have passed and would have hidden an
+off-by-one in the relabelling as long as it landed inside roundoff.
+
+**How to apply**: before gating a relabelling-only change, state the
+invariant that makes it injective (an explicit index-space partition, a
+`KeyError`-on-unclassified check, or equivalent), and compare the affected
+artifact byte-for-byte (`md5sum` or equivalent) rather than through
+`testsys/compare.py`'s bound. Cite both: the exact-equality result AND the
+case's own bound run unchanged, so a reader can tell a relabelling proof from
+an ordinary physics-preserving change.
 
 ---
 
