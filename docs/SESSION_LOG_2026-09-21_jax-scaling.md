@@ -723,3 +723,95 @@ TPV30), and I am reasoning that both decimate to the same nodes at the shared
 return 0 hits across all 2291 archive files, and neither implementation has a
 `TPV==34/35` branch. Both are new builds from spec; the archive contributes
 validation and era-context only.
+
+## Landings, 22:00–23:15
+
+Full sweep first, on `154aa0f`'s code, unstacked start to finish:
+`python3 testsys/run.py all` → **SUCCESS unit / SUCCESS regression / SUCCESS
+e2e, 74 SUCCESS lines, 0 FAILURE**. Everything below landed AFTER it, so that
+artifact gates an unmixed tree rather than one being edited underneath it. The
+sweep builds Fortran once (`run_e2e.py:399`; `bin/eqdyna` mtime 20:40:26 against
+a 20:38 start), so a `src/fortran` merge could not have corrupted it — I checked
+that and held the merge anyway, because the gain was an hour and the cost was
+muddying a 30-cell parity artifact.
+
+| commit | what | gate |
+|---|---|---|
+| `310da58` | zofia's board (item 49, 19(c) back-pointer) + legacy archive manifest | `sha256sum -c` exit 0, 2291 OK / 0 FAILED, re-run by me |
+| `23971a8` | session log part 3 | — |
+| `6c4391c` | **rules 2a + 15a**, salvaged from an abandoned worktree | unit + regression SUCCESS |
+| `607f3c9` | **EQDYNA_DUMP_EQUIL diagnostic** (merge of `9083a81`, mira) | unit + regression SUCCESS; new test ran and asserted real numbers |
+| `ad8c95e` | **append-only perf ledger** (merge of `7aad58a`, iris) | unit + regression SUCCESS |
+
+### The stranded rules — found by survey, not by memory
+
+Surveying all 13 worktrees for commits not on master turned up four candidates.
+`git cherry master <branch>` reported `-` (already upstream) for three and `+`
+for one: `a7d281f` in `/home/utig5/dliu/wt-zofia-v5140`, carrying **rules 2a and
+15a**, neither of which was on master.
+
+Master had rule 15a's ENFORCEMENT — the pre-tag guard, landed at `a976ec7` this
+evening — but not the RULE. The mechanism shipped and its rule did not, so the
+rule book never told anyone to use the thing the repo had just built, and every
+citation of "rule 15a" all day pointed at text that did not exist in
+`PROJECT_RULES.md`.
+
+Only the `PROJECT_RULES.md` hunk was taken. `a7d281f` also touches
+`pathway_forward.md` from a stale base; landing that hunk would have REVERTED
+the item 49 / 19(c) work at `310da58`. That is merge-gate axis 4 doing exactly
+what it exists for — the rules file was a pure 83-line addition against current
+master, the board file was a 69 KB revert waiting to happen, and they arrived in
+the same commit.
+
+### Three negative tests, each a break the author did not choose
+
+A gate is only worth what it refuses. For each landing I re-ran the author's
+gate AND broke the code myself in a way they had not tried:
+
+- **Diagnostic**: Mira broke the call site. I zeroed the fault tagger instead,
+  so the dump file still existed with 8140 rows × 8 correct columns and only the
+  tag counts were wrong → exit 1 on four independent cross-checks (tag1 vs tag2,
+  tag1 vs `frt.txt0`, tag1 vs the analytic 5×3 grid, and per-rank at np=2). A
+  gate that caught only its author's break would have been fitted to it.
+- **Ledger**: Iris broke `O_APPEND` → `O_TRUNC`. I defeated the rule-19 SHA
+  pinning instead, relaxing `_SHA_RE` to accept anything including `''` → exit 1,
+  `FAIL -- rejection: malformed sha raised ValueError`. So it enforces that a
+  perf row is PINNED, not merely that a `sha` key is present — which is the
+  distinction that let one of yesterday's four vacuous gates pass by comparing an
+  empty string to an empty string.
+- **Guard**: all six outcomes driven from real CI history (above).
+
+### A sixth vacuous green — mine, caught in the act
+
+The first merge of the diagnostic named the worktree's auto-branch
+(`worktree-agent-a599e709f625e7a3a`, still sitting at `23971a8`) instead of
+`equil-diagnostic` where Mira had actually committed. Git reported **"Already up
+to date"** and merged nothing. The only reason it did not pass as a successful
+merge is that the command printed the resulting SHA beside the verdict and the
+SHA had not moved.
+
+Naming a branch is not evidence that it holds the work. `git cherry master
+<branch>` is. That is the same lesson as the four gates yesterday, arriving
+through a door nobody was watching, and it is now the fifth and sixth instance
+in two days.
+
+### A citation I had to fix before pushing
+
+The rules commit cited `21f0e2f` as the board landing. No such commit exists —
+the board landed at `310da58`. Nothing had been pushed, so both local commits
+were rewritten rather than shipped with an uncheckable SHA in the record. In a
+repo whose entire discipline is that claims carry commands and SHAs you can
+re-run, a commit message citing a SHA that does not resolve is a small lie that
+future readers cannot distinguish from a big one.
+
+### Release deliberately NOT cut
+
+VERSION stays 5.14.0. The ledger is a new capability and would justify a minor
+bump, but the clean full sweep covers `154aa0f`'s code and `src/fortran/driver.f90`
+has changed since. The diagnostic is env-gated and provably a no-op when unset —
+but that is an argument, not a measurement, and this project has had four
+confident arguments collapse on first measurement. A minor tag waits for a full
+sweep on the code actually being tagged.
+
+The guard agrees, and this is its first use in anger rather than in a test:
+`check_pretag_ci.py --pre-tag ad8c95e` → **PENDING, exit 2**, CI still running.
