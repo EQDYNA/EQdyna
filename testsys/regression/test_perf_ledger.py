@@ -22,6 +22,26 @@ Checks:
   5. committed ledger -- every line of docs/perf_ledger.jsonl validates.
   6. history immutability -- HEAD's ledger content is a byte-prefix of the
                        working copy (append-only against git history).
+  7. platform identity -- (incident: 812.78 ms/step, a CPU measurement
+                       recorded under a cuda label, 2026-09-21 gpu1 snapshot)
+                       a row APPENDED without platform fields is refused; a
+                       'gpu' claim without positive per-device memory
+                       evidence is refused; legacy platform-less rows still
+                       validate when READ; unknown is never cpu.
+  8. evidence over label -- on the REAL committed GPU snapshots: gpu1 (label
+                       cuda, 0 MiB delta on all four A100s) converts to
+                       platform 'unknown', never cpu/gpu; gpu_final converts
+                       to 'gpu' with devices counted from the deltas; a
+                       gpu_final with its evidence stripped converts to
+                       'unknown', not to the label.
+  9. cell-wall-clock -- a cell row must carry wall_s and an explicitly-null
+                       ms_per_step (the metric-mixing that once produced a
+                       spurious 33% JAX regression must be structurally
+                       impossible); the e2e converter emits no row for a
+                       FAILED cell.
+ 10. sweep capture never gates -- capture_e2e_cells writes snapshot + rows on
+                       a clean path; with tenancy unreadable the _or_warn
+                       wrapper WARNS, appends nothing, and raises nothing.
 """
 import copy
 import json
@@ -54,6 +74,8 @@ def good_row(i=0, proc=0):
                 busy_ceiling=0.5, tenancy_busy=20, tenancy_total=64,
                 metric='per-step-by-difference', n_lo=20, n_hi=60,
                 snapshot='docs/perf_snapshots/scaling_2026-09-21_x.json',
+                platform='cpu', devices=None,
+                platform_evidence='synthetic test row: pinned to one cpu',
                 proc=proc, i=i)
 
 
@@ -203,6 +225,209 @@ def main():
           'converter(scaling): row backend=%r ms_per_step=%r ranks=%r policy=%r'
           % (conv2[0]['backend'], conv2[0]['ms_per_step'], conv2[0]['ranks'],
              conv2[0]['policy']))
+
+    # 7. platform identity. Incident: 812.78 ms/step -- a CPU measurement
+    # recorded under a cuda label (eqdyna3d --device auto overriding
+    # JAX_PLATFORMS=cuda; 0 MiB delta on all four A100s).
+    legacy = good_row()
+    for k in ('platform', 'platform_evidence', 'devices'):
+        del legacy[k]
+    try:
+        ledger.validate(legacy)
+        check(True, 'platform: legacy row (no platform key) validates when READ')
+    except ValueError as e:
+        check(False, 'platform: legacy row (no platform key) validates when '
+                     'READ (%s)' % e)
+    try:
+        ledger.append(legacy, path=led)
+        check(False, 'platform: APPENDING a platform-less row raises ValueError')
+    except ValueError:
+        check(True, 'platform: APPENDING a platform-less row raises ValueError')
+    naked_gpu = broken(platform='gpu', devices=1,
+                       platform_evidence='claims a GPU with no evidence')
+    try:
+        ledger.append(naked_gpu, path=led)
+        check(False, "platform: 'gpu' claim without gpu_delta_mib evidence "
+                     'raises ValueError')
+    except ValueError:
+        check(True, "platform: 'gpu' claim without gpu_delta_mib evidence "
+                    'raises ValueError')
+    evidenced_gpu = broken(platform='gpu', devices=2,
+                           platform_evidence='nvidia-smi delta on devices 0,1')
+    evidenced_gpu['gpu_delta_mib'] = {'0': 30842, '1': 30842}
+    try:
+        ledger.validate(evidenced_gpu, appending=True)
+        check(True, "platform: 'gpu' claim WITH per-device delta evidence "
+                    'validates')
+    except ValueError as e:
+        check(False, "platform: 'gpu' claim WITH per-device delta evidence "
+                     'validates (%s)' % e)
+    try:
+        ledger.append(broken(devices=3), path=led)
+        check(False, 'platform: a cpu row carrying devices=3 raises ValueError')
+    except ValueError:
+        check(True, 'platform: a cpu row carrying devices=3 raises ValueError')
+    unk = broken(platform='unknown',
+                 platform_evidence='snapshot records no device evidence')
+    try:
+        ledger.validate(unk, appending=True)
+        check(unk['platform'] not in ('cpu', 'gpu'),
+              "platform: 'unknown' validates and is distinguishable from cpu "
+              'and gpu (%r)' % unk['platform'])
+    except ValueError as e:
+        check(False, "platform: 'unknown' validates (%s)" % e)
+    n_after_7 = sum(1 for _ in open(led))
+    check(n_after_7 == n_appends,
+          'platform: no refused row reached the ledger (still %d lines)'
+          % n_after_7)
+
+    # 8. evidence over label, on the REAL committed GPU snapshots. gpu1 is
+    # the incident itself: label cuda, 0 MiB delta everywhere, 812.78 ms/step.
+    snapdir = os.path.join(ROOT, 'docs', 'perf_snapshots')
+    gpu1_rel = 'docs/perf_snapshots/mpi_scaling_2026-09-21_tpv104_gpu1.json'
+    gpu1 = json.load(open(os.path.join(snapdir, os.path.basename(gpu1_rel))))
+    rows1 = ledger.rows_from_mpi_scaling_snapshot(gpu1, gpu1_rel, None,
+                                                  backfilled_from=gpu1_rel)
+    check(len(rows1) == 1 and rows1[0]['platform'] == 'unknown'
+          and abs(rows1[0]['ms_per_step'] - 812.784) < 0.01,
+          'evidence-over-label: gpu1 (the 812.78 incident, label=cuda, all '
+          'deltas 0) converts to platform=%r, NOT cpu and NOT gpu'
+          % rows1[0]['platform'])
+    final_rel = ('docs/perf_snapshots/'
+                 'mpi_scaling_2026-09-21_tpv104_gpu_final.json')
+    final = json.load(open(os.path.join(snapdir, os.path.basename(final_rel))))
+    rowsf = ledger.rows_from_mpi_scaling_snapshot(final, final_rel, None,
+                                                  backfilled_from=final_rel)
+    devs = [r['devices'] for r in rowsf]
+    check(len(rowsf) == 3 and all(r['platform'] == 'gpu' for r in rowsf)
+          and devs == [1, 2, 4]
+          and all(any(v > 0 for v in r['gpu_delta_mib'].values())
+                  for r in rowsf)
+          and all(r['device_peak_gb'] for r in rowsf),
+          'evidence-over-label: gpu_final converts to 3 platform=gpu rows, '
+          'devices=%s counted from the nvidia-smi deltas, allocator '
+          'device_peak_gb carried' % devs)
+    check(all(r['ranks'] == r_meta['ranks'] for r, r_meta
+              in zip(rowsf, final['rows'])),
+          'evidence-over-label: ranks still counts MPI processes (%s); '
+          'devices is the separate GPU count'
+          % [r['ranks'] for r in rowsf])
+    # the NEGATIVE: strip/zero the device evidence of a genuine GPU snapshot;
+    # the converter must NOT record the label.
+    stripped = copy.deepcopy(final)
+    for r in stripped['rows']:
+        for k in list(r):
+            if k.startswith('jax'):
+                r[k]['gpu_mem']['delta'] = {d: 0 for d in r[k]['gpu_mem']['delta']}
+                r[k].pop('device_peak_gb', None)
+    rows_s = ledger.rows_from_mpi_scaling_snapshot(stripped, final_rel, None,
+                                                   backfilled_from=final_rel)
+    check(all(r['platform'] == 'unknown' for r in rows_s)
+          and all(r['platform'] != 'cpu' for r in rows_s)
+          and all(r['platform'] != 'gpu' for r in rows_s),
+          'evidence-over-label (NEGATIVE): gpu_final with its device evidence '
+          'zeroed converts to platforms %s -- the cuda label alone is not '
+          'recorded as a measurement' % sorted({r['platform'] for r in rows_s}))
+    # and a label claiming cpu over live GPU evidence is equally distrusted.
+    lied = copy.deepcopy(final)
+    for r in lied['rows']:
+        for k in list(r):
+            if k.startswith('jax'):
+                r[k]['platform'] = 'cpu'
+    rows_l = ledger.rows_from_mpi_scaling_snapshot(lied, final_rel, None,
+                                                   backfilled_from=final_rel)
+    check(all(r['platform'] == 'unknown' for r in rows_l),
+          'evidence-over-label (NEGATIVE): a "cpu" label over positive GPU '
+          'deltas converts to %s, not cpu'
+          % sorted({r['platform'] for r in rows_l}))
+
+    # 9. cell-wall-clock is a DIFFERENT metric and cannot be read as per-step.
+    def cell_row(**kw):
+        r = good_row()
+        r.update(metric='cell-wall-clock', ms_per_step=None, n_lo=None,
+                 n_hi=None, wall_s=123.4, tool='run_e2e',
+                 rank_ms_min=None, rank_ms_max=None, rank_ms_mean=None,
+                 effective_cores=None, threads_per_rank=None)
+        r.update(kw)
+        return r
+    try:
+        ledger.validate(cell_row(), appending=True)
+        check(True, 'cell-wall-clock: a well-formed cell row validates '
+                    '(wall_s=123.4, ms_per_step null)')
+    except ValueError as e:
+        check(False, 'cell-wall-clock: a well-formed cell row validates (%s)'
+                     % e)
+    for what, r in [
+            ('cell row carrying a numeric ms_per_step (the averaging trap)',
+             cell_row(ms_per_step=123.4)),
+            ('cell row without wall_s', cell_row(wall_s=None)),
+            ('cell row with a fake n_lo/n_hi pair',
+             cell_row(n_lo=20, n_hi=60))]:
+        try:
+            ledger.validate(r, appending=True)
+            check(False, 'cell-wall-clock: %s raises ValueError' % what)
+        except ValueError:
+            check(True, 'cell-wall-clock: %s raises ValueError' % what)
+    e2e_meta = dict(tool='run_e2e', sha='abc1234', host='cotopaxi',
+                    date='2026-09-22 07:00', label='default', device='cpu',
+                    jobs_budget=8, tenancy_ceiling=0.5,
+                    cells=[dict(case='test.tpv8', backend='fortran', ok=True,
+                                seconds=41.2, ranks=4, platform='cpu',
+                                platform_evidence='fortran: no GPU path'),
+                           dict(case='test.tpv8', backend='python-jax',
+                                ok=False, seconds=3.1, ranks=1,
+                                platform='cpu',
+                                platform_evidence='JAX_PLATFORMS=cpu pinned'),
+                           dict(case='test.tpv8', backend='python-numpy',
+                                ok=True, seconds=97.6, ranks=1,
+                                platform='cpu',
+                                platform_evidence='numpy: no GPU path')])
+    erows = ledger.rows_from_e2e_results(
+        e2e_meta, 'docs/perf_snapshots/e2e_cells_x.json',
+        dict(busy=12, total=64))
+    check(len(erows) == 2
+          and sorted(r['backend'] for r in erows) == ['fortran',
+                                                      'python-numpy']
+          and all(r['metric'] == 'cell-wall-clock' for r in erows)
+          and all(r['ms_per_step'] is None for r in erows)
+          and {r['backend']: r['wall_s'] for r in erows}
+              == {'fortran': 41.2, 'python-numpy': 97.6},
+          'e2e converter: 2 PASSING cells -> 2 rows (wall_s 41.2/97.6, '
+          'ms_per_step null); the FAILED python-jax cell produced no row')
+
+    # 10. sweep capture: real write path, then the degrade-to-warning path.
+    import contextlib
+    import io
+    root2 = os.path.join(tmp, 'e2e_root')
+    real_tenancy = ledger.box_tenancy
+    try:
+        ledger.box_tenancy = lambda ceiling: dict(busy=9, total=64)
+        n = ledger.capture_e2e_cells_or_warn(e2e_meta, root=root2)
+        led3 = os.path.join(root2, 'docs', 'perf_ledger.jsonl')
+        got = [json.loads(ln) for ln in open(led3)]
+        snaps = os.listdir(os.path.join(root2, 'docs', 'perf_snapshots'))
+        check(n == 2 and len(got) == 2
+              and all(g['tenancy_busy'] == 9 for g in got)
+              and len(snaps) == 1
+              and all(g['snapshot'] == 'docs/perf_snapshots/' + snaps[0]
+                      for g in got),
+              'capture: clean path appended %r row(s), wrote 1 snapshot (%s) '
+              'that every row points at' % (n, snaps))
+
+        def _no_tenancy(ceiling):
+            raise SystemExit('FAIL: numactl --hardware gave no topology')
+        ledger.box_tenancy = _no_tenancy
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            n2 = ledger.capture_e2e_cells_or_warn(e2e_meta, root=root2)
+        still = sum(1 for _ in open(led3))
+        check(n2 is None and still == 2 and 'WARNING' in buf.getvalue()
+              and 'verdict' in buf.getvalue(),
+              'capture: with tenancy unreadable the wrapper returned %r, '
+              'appended nothing (still %d rows), raised nothing, and '
+              'PRINTED a warning' % (n2, still))
+    finally:
+        ledger.box_tenancy = real_tenancy
 
     # 5. the COMMITTED ledger validates row by row.
     real = os.path.join(ROOT, 'docs', 'perf_ledger.jsonl')
