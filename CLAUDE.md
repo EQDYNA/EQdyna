@@ -171,6 +171,27 @@ reason each step exists:
   not reproduce this; 4 could (item 43) -- a bug shape that exists only above
   the rank count you happened to smoke-test at.
 
+## Papercuts
+
+`~/code/papercuts.md` is a global log, shared across all of this user's Claude
+sessions, of anything that cost development time. **Check it first when tooling
+fails mysteriously** — the answer is often already there — and append when you
+lose time to something new:
+
+```
+date · symptom · fix · project
+```
+
+Entries this project put there, as a sense of what belongs: the shell here is
+zsh, so an unquoted `$CASES` never word-splits and a byte-identity gate compared
+two empty directories and reported ZERO DIFFERENCES; `set -e` does not fire
+inside a pipeline, so a failed `git clone` fell through and a destructive test
+ran against the real repo; a comparison of `run.sh` proved nothing about a change
+that only touches `batch.hpc`. That is the recurring shape — **a green result
+that tested nothing** — so print a property of the compared content (file count,
+line count, a `grep -c`) beside every verdict. "Nonzero files compared" is
+necessary, not sufficient.
+
 ## Measure, do not infer
 
 Four claims in this repo turned out not to hold when finally measured: the
