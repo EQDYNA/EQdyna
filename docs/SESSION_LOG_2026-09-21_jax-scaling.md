@@ -815,3 +815,59 @@ sweep on the code actually being tagged.
 
 The guard agrees, and this is its first use in anger rather than in a test:
 `check_pretag_ci.py --pre-tag ad8c95e` → **PENDING, exit 2**, CI still running.
+
+## 22:00–23:00 — two process failures with one root cause, and a real finding
+
+### Both heavy runs died because they were attached to an agent's turn
+
+Two independent missions lost ~40-60 minutes each to the same mechanism:
+
+- **Item 32's dx=250 serial run** was killed at ~40 min — "external stop, not a
+  solver error", killed together with the harness background task when its
+  agent's turn ended. Relaunched detached at 22:48 (`setsid nohup`, pid
+  1162639) and running.
+- **The 32-rank scaling point** ran for an hour with `mpirun`'s stdout on
+  `pipe:[80141375]` — a pipe nobody was left reading, because its agent had
+  parked. It produced **no file, no NOTES checkpoint, and no ledger row.** The
+  agent later relaunched it of its own accord (22:55).
+
+The rule that follows: **a heavy run must be launched detached, writing to
+FILES, and then polled for its ARTIFACT — never for its process.** The tell is
+visible in one command: `ls -l /proc/<mpirun-pid>/fd/1` showing `pipe:[...]`
+instead of a path. Dunyu found this the hard way and adapted; the scaling
+mission did not, and lost an hour of a 32-way run.
+
+This also means the perf ledger's first live exercise wrote nothing — not
+because the ledger is wrong, but because the process that would have called it
+never reached its end. That is worth stating precisely so nobody "fixes" a
+ledger that did not fail.
+
+### The 32-rank jax point spends ~50 minutes in XLA COMPILE
+
+While deciding whether to kill the apparently-stuck run, I diagnosed it rather
+than guessing, and the diagnosis is a finding in its own right:
+
+```
+rank 1013566: 8 threads, exactly ONE in state R, the other 7 in
+              futex_wait / do_poll / ep_poll
+              utime advancing 2505 ticks per 25 s wall (a full 100%)
+              stime FLAT  -> zero MPI syscalls, so NOT halo-exchanging
+              _jax.so, libjax_common.so, register_jax_dialects.so mapped
+ranks 1013569/70: wchan=hrtimer_nanosleep, voluntary_ctxt_switches 19.9 MILLION
+```
+
+Single-threaded, 100% userspace, no syscalls, jax loaded = LLVM codegen. Not a
+deadlock, and not a solve. So at 32-way sharding the jax-MPI path pays roughly
+an hour of compile before it computes anything, while other ranks sit in a
+nanosleep poll waiting for it.
+
+Two consequences, and they point opposite ways:
+- The per-step metric differences out fixed cost over two step counts, so the
+  ms/step number this produces remains **valid**.
+- But each point costs an hour of wall clock, and `lo` and `hi` are separate
+  `mpirun` invocations, so each recompiles. This is the concrete reason the
+  8/16/32 points have been so hard to land, and it belongs in item 48.
+
+I let it run rather than killing it, because "advancing utime with flat stime"
+is compute, not a hang — the same distinction my own rules draw between low
+CPU and no progress, in the opposite direction.
