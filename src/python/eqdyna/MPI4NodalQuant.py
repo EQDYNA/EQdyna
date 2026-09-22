@@ -488,15 +488,37 @@ def exchange(comm, neighbours, halo_vals):
     through a second conversion.
 
     Neighbours are walked in ASCENDING RANK ORDER and summed in that order,
-    so the result is reproducible run to run for a given rank count. Sendrecv
-    (not Isend/Irecv) because it cannot deadlock and, at the two neighbours a
-    slab decomposition produces, has nothing to gain from overlap: measured
-    0.116 ms for a 160 kB ring exchange at 16 ranks, 0.18% of a 64.74 ms
-    step."""
+    so the result is reproducible run to run for a given rank count. The
+    ACCUMULATION order below is still exactly that -- the transfers are what
+    became concurrent, not the additions -- so this is bit-identical to the
+    Sendrecv version it replaces, at every rank count.
+
+    WHY NOT Sendrecv, WHICH THIS USED TO BE. A blocking Sendrecv walked in
+    ascending rank order SERIALISES a chain decomposition. Rank r's first
+    exchange is with r-1, but r-1's first is with r-2, so r cannot start until
+    r-1 has finished with r-2, and the chain completes as a wave of nranks-1
+    sequential pair transfers instead of two concurrent ones. That is not a
+    mechanism argued from the code: t_mpi at 32 ranks on test.tpv104 rose
+    MONOTONICALLY with rank index -- rank 0 1.11 ms, rank 1 1.74, rank 15
+    4.50, rank 16 4.51, rank 31 8.38, mean 4.66 of a 43.39 ms differenced
+    step -- which is the wave, measured. The old docstring's 0.116 ms for a
+    160 kB ring at 16 ranks was a per-PAIR cost and did not survive to 32.
+
+    Irecvs are posted BEFORE any Isend, so no transfer can block on an
+    unposted receive and the pattern cannot deadlock for any neighbour graph,
+    not merely for the two-neighbour slab case."""
     delta = np.zeros_like(halo_vals)
-    for s, pos in neighbours:
-        send = np.ascontiguousarray(halo_vals[pos])
-        recv = np.empty_like(send)
-        comm.Sendrecv(send, dest=s, recvbuf=recv, source=s)
+    if not neighbours:
+        return delta
+    recvs = [np.empty(pos.shape[0], dtype=halo_vals.dtype)
+             for _, pos in neighbours]
+    reqs = [comm.Irecv(r, source=s) for r, (s, _) in zip(recvs, neighbours)]
+    sends = [np.ascontiguousarray(halo_vals[pos]) for _, pos in neighbours]
+    reqs += [comm.Isend(b, dest=s) for b, (s, _) in zip(sends, neighbours)]
+    from mpi4py import MPI
+    MPI.Request.Waitall(reqs)
+    # ASCENDING RANK ORDER, as before: `neighbours` is built ascending by
+    # decompose and this loop does not reorder it.
+    for (s, pos), recv in zip(neighbours, recvs):
         delta[pos] += recv
     return delta
