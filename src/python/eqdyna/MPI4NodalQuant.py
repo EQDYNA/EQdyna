@@ -77,12 +77,61 @@ from . import backend as B
 
 # Relative cost of a PML element against an interior one, used ONLY to choose
 # the cut points so the ranks get equal WORK rather than equal element counts.
-# calcPMLElemKU computes 15 split stress components and 12 force blocks
-# against calcElemKU's 6 and 3, so a PML element is several times an interior
-# one; the exact figure is a load-balance heuristic, not physics, which is why
-# decompose() REPORTS each rank's (Ei, Ep) so an imbalance is visible in the
-# measurement instead of hiding inside it.
-PML_WEIGHT = 3.0
+#
+# THIS WAS 3.0 AND 3.0 WAS WRONG BY A FACTOR OF ~5. The reasoning behind it --
+# calcPMLElemKU computes 15 split stress components and 12 force blocks against
+# calcElemKU's 6 and 3, so a PML element must be several times an interior one
+# -- counts arithmetic and ignores that on the cases this path is measured on
+# the INTERIOR kernel additionally runs plasticity (test.tpv104 is viscoplastic;
+# calcElemKU's plastic branch touches interior elements only). decompose() did
+# report (Ei, Ep) exactly so this could be checked, and when it was checked it
+# did not hold:
+#
+#   MEASURED, test.tpv104, 32 ranks, halo sync, per-rank by difference over
+#   40/160 steps with the barrier wait and the exchange subtracted
+#   (docs/perf_snapshots/mpi_scaling_2026-09-22_012512_tpv104_1to32_cacheoff.json):
+#     the 4 all-PML ranks (Ei=0, Ep=12217)  did  36.5 ms/step of own work
+#     the 26 mixed ranks (Ei~19227, Ep~5808) did 114.8 ms/step
+#   -> b = 2.99e-3 ms/PML element, a = 5.07e-3 ms/interior element, b/a = 0.59.
+#   A no-intercept least squares over all 32 (Ei, Ep, own) triples of the same
+#   run gives 0.563. The same fit at 16 ranks gives 1.07-1.16 and at 8 ranks
+#   1.08 -- the spread is real and is why this is stated as a RANGE (0.56-1.16,
+#   i.e. "about one", never three) rather than as a 3-digit constant: a
+#   no-intercept element model absorbs each rank's nodal work into the element
+#   coefficients, and the nodal share per element grows with the rank count.
+#
+# The value below was then chosen by DIRECT MEASUREMENT of the candidates at
+# 16 and 32 ranks, not by taking the fit at its word -- see NOTES_mpi_balance.md
+# M3 for the table. It is still a load-balance heuristic and not physics, which
+# is why decompose() reports it (report['pml_weight']) beside the (Ei, Ep) it
+# produced, and why EQDYNA_PML_WEIGHT can override it for a recalibration on a
+# case whose interior kernel is cheaper (a non-plastic case: friclaw 1 without
+# viscoplasticity does less interior work, so its true ratio is higher).
+PML_WEIGHT = 0.6
+PML_WEIGHT_ENV = 'EQDYNA_PML_WEIGHT'
+
+
+def pml_weight():
+    """PML_WEIGHT, or EQDYNA_PML_WEIGHT when set. Strictly positive and
+    finite. NO FALLBACK on an unparseable value: a silently ignored weight
+    would produce a partition nobody asked for, and the only symptom would be
+    a speedup number that does not reproduce."""
+    import os
+    raw = os.environ.get(PML_WEIGHT_ENV)
+    if raw is None:
+        return PML_WEIGHT
+    try:
+        w = float(raw)
+    except ValueError:
+        raise ValueError('%s=%r is not a number. It is the relative cost of a '
+                         'PML element against an interior one and it chooses '
+                         'the element cut points.' % (PML_WEIGHT_ENV, raw))
+    if not (w > 0.0) or w == float('inf'):
+        raise ValueError('%s=%r must be > 0 and finite; a non-positive or '
+                         'infinite weight makes the cumulative weight '
+                         'non-increasing and the cuts meaningless.'
+                         % (PML_WEIGHT_ENV, raw))
+    return w
 
 
 def _cuts(weights, nranks):
@@ -107,6 +156,55 @@ def _cuts(weights, nranks):
                 'nranks=%d. Use fewer ranks than elements.'
                 % (r, len(weights), nranks))
     return edges
+
+
+def _require_interior_on_every_rank(elemType, edges, nranks, pw):
+    """Refuse a partition in which some rank owns 0 INTERIOR elements.
+
+    This is a different condition from `_cuts`'s "0 elements", and it was the
+    whole defect. The mesh generator's nested loop emits the two x-face PML
+    slabs as contiguous blocks at the ENDS of the element array (test.tpv104:
+    elements 0..31955 and 703494..734999 are all PML, 63462 of 735000), so an
+    over-weighted PML makes the first and last cuts land inside those blocks
+    and hands those ranks a slab that is pure PML. At PML_WEIGHT=3.0 that was
+    4 of 32 ranks (and 2 of 16), and those 4 ranks did 36.5 ms/step of own
+    work against the other 26 ranks' 114.8 -- so they sat at the barrier for
+    95-105 ms of a 172.6 ms step and set the whole run's speedup to 5.28x.
+
+    WHY THIS IS AN INVARIANT AND NOT A WARNING. A zero-interior rank is not
+    wrong, it is UNDER-LOADED, and under-loading is invisible in every output
+    the run produces -- the physics is identical and only the wall clock moves.
+    A warning in a 32-rank log is a warning nobody reads. The arithmetic is
+    also exact and worth stating in the message, because it says which way to
+    turn the knob: with a contiguous partition, rank 0 holds interior elements
+    only if its weight share exceeds the leading all-PML block's weight, i.e.
+    only if  n_lead * pw < (Ei + Ep*pw) / nranks.
+
+    NOT SILENTLY REPAIRED. Nudging the cut to swallow one interior element
+    would satisfy the letter of this check and leave the rank under-loaded by
+    the same 3x, which is exactly the "green result that tested nothing" shape
+    this repo keeps writing down. The weight is the thing that is wrong, so
+    the weight is what the message points at."""
+    is_int = (elemType == 1) | (elemType > 10)
+    ci = np.concatenate(([0], np.cumsum(is_int)))
+    empty = [r for r in range(nranks)
+             if ci[edges[r + 1]] - ci[edges[r]] == 0]
+    if not empty:
+        return
+    ei = int(is_int.sum())
+    ep = int(elemType.shape[0]) - ei
+    lead = int(np.argmax(is_int)) if is_int.any() else 0
+    raise ValueError(
+        'MPI4NodalQuant: rank(s) %s of %d own 0 INTERIOR elements at '
+        'PML_WEIGHT=%g (Ei=%d, Ep=%d, %d leading all-PML elements). Such a '
+        'rank still runs and still produces correct physics -- it is simply '
+        'under-loaded, and every other rank waits for it at the barrier, '
+        'which is invisible in the output. Rank 0 gets interior elements only '
+        'while %d*%g = %g < (%d + %d*%g)/%d = %g, so lower %s (measured '
+        '0.56-1.16 on test.tpv104, NOT 3) or use fewer ranks.'
+        % (empty, nranks, pw, ei, ep, lead,
+           lead, pw, lead * pw, ei, ep, pw, nranks, (ei + ep * pw) / nranks,
+           PML_WEIGHT_ENV))
 
 
 def _take(a, sel):
@@ -143,9 +241,11 @@ def decompose(S, inv, finv, rank, nranks):
     E = conn.shape[0]
 
     # --- element partition: contiguous, work-weighted -----------------------
-    w = np.where(elemType == 2, PML_WEIGHT, 1.0)
+    pw = pml_weight()
+    w = np.where(elemType == 2, pw, 1.0)
     edges = _cuts(w, nranks)
     lo, hi = edges[rank], edges[rank + 1]
+    _require_interior_on_every_rank(elemType, edges, nranks, pw)
     mine = np.zeros(E, dtype=bool)
     mine[lo:hi] = True
 
@@ -233,6 +333,7 @@ def decompose(S, inv, finv, rank, nranks):
 
     report = dict(rank=rank, nranks=nranks, elem_lo=lo, elem_hi=hi,
                   Ei=inv_l['Ei'], Ep=inv_l['Ep'], E=inv_l['E'],
+                  pml_weight=pw,
                   work=float(w[lo:hi].sum()), work_total=float(w.sum()),
                   nodes=int(touched.sum()), eqs=int(my_eq.size),
                   halo_eqs=int(halo_idx.size),

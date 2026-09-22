@@ -430,11 +430,13 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
 
     rep = loc['report']
     if verbose:
-        print('driver.run_mpi rank %d/%d: %d steps, friclaw=%d, elements '
+        print('driver.run_mpi rank %d/%d: %d steps, friclaw=%d, '
+              'pml_weight=%g, elements '
               'Ei=%d Ep=%d E=%d (work %.1f%% of total), nodes=%d eqs=%d '
               'halo=%d (%.2f%% of eqs), neighbours=%s, fault computed=%d '
               'owned=%d'
-              % (rank, nranks, nsteps, S['friclaw'], rep['Ei'], rep['Ep'],
+              % (rank, nranks, nsteps, S['friclaw'], rep['pml_weight'],
+                 rep['Ei'], rep['Ep'],
                  rep['E'], 100.0 * rep['work'] / rep['work_total'],
                  rep['nodes'], rep['eqs'], rep['halo_eqs'],
                  100.0 * rep['halo_frac'], rep['neighbours'],

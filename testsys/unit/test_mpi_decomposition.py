@@ -180,6 +180,78 @@ def test_one_rank_is_the_identity_restriction():
     assert d['finv']['nftnd'] == finv['nftnd']
 
 
+def test_no_rank_owns_zero_interior_elements_at_the_default_weight():
+    """THE DEFECT. At PML_WEIGHT=3.0, test.tpv104 gave 4 of 32 ranks a slab
+    that was pure PML: they did 36.5 ms/step of own work against the other
+    26 ranks' 114.8 and then waited 95-105 ms of a 172.6 ms step. Ei > 0 on
+    every rank is the invariant that says the weight is not over-weighting
+    the contiguous all-PML end blocks."""
+    S, inv, finv = synthetic()
+    for nranks in (2, 3, 4):
+        ei = [MQ.decompose(S, inv, finv, r, nranks)['inv']['Ei']
+              for r in range(nranks)]
+        assert min(ei) > 0, (nranks, ei)
+        assert sum(ei) == inv['Ei']
+
+
+def test_invariant_is_infeasible_above_the_interior_block_count():
+    """HONEST LIMIT, recorded rather than worked around. synthetic()'s 12
+    interior elements sit in 4 contiguous runs of 3 (one per i-slab that is
+    not a PML face), so a CONTIGUOUS partition into 6 parts cannot give all 6
+    an interior element at any weight -- there are only 4 runs to go round.
+    The invariant therefore raises, and that is right: the alternative is a
+    silently under-loaded rank. It is also why the invariant cannot be
+    described as "always satisfiable" -- on test.tpv104 it is satisfiable to
+    at least 32 ranks (measured), and that is a property of that mesh."""
+    S, inv, finv = synthetic()
+    with pytest.raises(ValueError, match='0 INTERIOR elements'):
+        MQ.decompose(S, inv, finv, 0, 6)
+
+
+def test_zero_interior_rank_raises_and_names_the_weight(monkeypatch):
+    """The over-weighted case must fail LOUDLY, naming the knob. A
+    zero-interior rank produces correct physics and a wrong wall clock, so
+    nothing else in the run would ever report it."""
+    monkeypatch.setenv(MQ.PML_WEIGHT_ENV, '3.0')
+    S, inv, finv = synthetic()
+    with pytest.raises(ValueError, match='0 INTERIOR elements'):
+        MQ.decompose(S, inv, finv, 0, 8)
+    with pytest.raises(ValueError, match=MQ.PML_WEIGHT_ENV):
+        MQ.decompose(S, inv, finv, 0, 8)
+
+
+def test_report_states_the_weight_it_used():
+    """A partition number that does not say which weight produced it cannot
+    be reproduced, and this weight is overridable by environment."""
+    S, inv, finv = synthetic()
+    assert MQ.decompose(S, inv, finv, 0, 2)['report']['pml_weight'] == \
+        MQ.PML_WEIGHT
+
+
+@pytest.mark.parametrize('bad', ['', 'three', '0', '-1', 'inf', 'nan'])
+def test_bad_pml_weight_raises(bad, monkeypatch):
+    """NO FALLBACK. A silently ignored weight gives a partition nobody asked
+    for, and the only symptom is a speedup that does not reproduce."""
+    monkeypatch.setenv(MQ.PML_WEIGHT_ENV, bad)
+    with pytest.raises(ValueError):
+        MQ.pml_weight()
+
+
+def test_pml_weight_override_is_honoured_and_changes_the_cuts():
+    """The override must actually reach the cut points -- a knob that parses
+    and then does nothing is worse than no knob."""
+    S, inv, finv = synthetic()
+    import os
+    base = MQ.decompose(S, inv, finv, 0, 2)['report']
+    os.environ[MQ.PML_WEIGHT_ENV] = '2.0'
+    try:
+        got = MQ.decompose(S, inv, finv, 0, 2)['report']
+    finally:
+        del os.environ[MQ.PML_WEIGHT_ENV]
+    assert got['pml_weight'] == 2.0
+    assert got['elem_hi'] != base['elem_hi']
+
+
 def test_more_ranks_than_elements_raises():
     """Loudly, rather than handing some rank an empty subdomain that
     contributes nothing while still counting in the speedup."""
