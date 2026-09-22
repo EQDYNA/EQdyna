@@ -557,3 +557,98 @@ and not mine to kill. I checked them specifically because orphaned jax
 processes holding the shared XLA cache would have been a candidate mechanism
 for the intermittent MPI hang; none of them is jax, so that hypothesis is dead
 and was not pursued further.
+
+## v5.15.0 is gated and CI-green at `54e0697`, and still untagged
+
+```
+check_pretag_ci.py --pre-tag 54e0697  ->  PASS, exit 0
+run 35707907191  ->  completed success, 7/7 jobs
+  build, unit-regression, e2e-ci-fortran-a, e2e-ci-fortran-b,
+  e2e-ci-python-cheap, e2e-ci-python-meng, e2e-ci-python-tpv29
+```
+
+The ordering worked: the release commit touches `VERSION`, `README.md`,
+`pastReleaseNotes.md` and the banner, so it triggered its own run and rule 15a
+is satisfied on the exact SHA with no `--ack-paths-ignored-parent` anywhere.
+CI on this repo takes ~54 min (three prior runs: 52, 54, 55), which is worth
+knowing before anyone concludes a run has hung.
+
+## Element balance: fixed, measured, and NOT the cause. The fifth collapsed claim.
+
+Two independent measurements pointed at decomposition imbalance, and both were
+right about the imbalance and wrong about its consequence.
+
+`mira-volkov` measured the true PML/interior cost ratio instead of trusting
+`PML_WEIGHT = 3.0`, which the source itself documents as a guess. It is **~0.6
+— five times too high.** Recutting at 0.56 gives, on the real `test.tpv104`
+mesh: zero-`Ei` ranks **4 -> 0**, predicted work spread **3.350x -> 1.004x**,
+and `straggler` **1.00 at every rank count**. The balance defect is real and it
+is gone.
+
+The curve did not care.
+
+| ranks | BEFORE w=3.0 | AFTER w=0.6 |
+|---|---|---|
+| 8 | 172.63 ms, 4.35x | 202.90 ms, 3.73x |
+| 16 | 171.64 ms, 4.37x | 180.80 ms, 4.18x |
+| **32** | **134.12 ms, 5.59x** | **132.20 ms, 5.72x** |
+
+**1.4% at 32 ranks, against Fortran 37.33x.** Inside this box run-to-run
+variation. The 8-rank point moved 17.5% the WRONG way and the 16-rank point
+5.3%, each a single measurement on a shared box, so neither supports a claim
+in either direction — stated as unresolved rather than as a regression.
+
+There is one real structural finding underneath, and it is arithmetic, not a
+guess. Elements 0..31955 of that mesh are ALL PML (the leading x-face slab), so
+a CONTIGUOUS rank 0 owns an interior element at 32 ranks only if
+`32*31956*w < Ei + Ep*w`, i.e. `w < 0.642`. I re-derived this independently of
+Mira: `803688*w < 516096`. So `Ei > 0` everywhere and a small element spread
+are not simultaneously reachable contiguously at 32 ranks for any weight above
+0.642 — and the measured weight, 0.6, happens to sit just below the threshold.
+"No rank owns zero interior elements" was reachable only by accident of the
+true ratio. **Ei>0 is a canary for "w exceeds the true ratio", not a goal.**
+
+The barrier wait was a symptom. Whatever bounds the jax-MPI path at 32 ranks is
+still unidentified, and the next mission should not start from imbalance.
+
+### Neither commit landed, and why
+
+Both are parity-clean — I re-ran the gate myself rather than accepting a
+report, and the report never contained it because the agent died first:
+
+```
+test.tpv8 x python-jax-mpi  SUCCESS  max|diff| 3.05e-11  bound 1.0e-08
+test.tpv8 x python-jax      SUCCESS  max|diff| 4.12e-10  bound 1.0e-08
+```
+
+- `14f0b7f` per-rank XLA cache dir — the owners open question 1. Compile
+  0.56-1.62 s at every rank count against 4.43-4.93 s cache-off, and the MPI
+  cell has now run twice without wedging. The brief asked for a proposal with
+  a measurement; this is it, and it is the owners call, not mine.
+- `b6106af` `PML_WEIGHT` 3.0 -> 0.6 — correct by measurement, no demonstrated
+  benefit. Landing a heuristic change that buys 1.4% and moves two mid-range
+  points unpredictably is not something a merge gate should pass.
+
+Preserved at `origin/mira/mpi-balance-and-cache-2026-09-22` (`2ce6c0d`) with
+its snapshots, ledger rows and notes committed, because an agent worktree is
+reapable and that agent is gone.
+
+### The agent died and the artifact survived, which is the whole point of rule 20/20a
+
+`mira-volkov` terminated on an API error mid-response. Her AFTER snapshot had
+already been written to a FILE at 04:32; her 36 MPI ranks had already exited on
+their own; nothing needed killing and nothing was lost. Compare last nights
+32-rank run, which held stdout on `pipe:[80141375]`, produced no file, and lost
+an hour. Same failure, opposite outcome, and the only difference is rule 20.
+
+## Worktree audit — no unlanded work at risk
+
+22 worktrees. 11 clean, 5 auto-branches whose commits `git cherry` reports as
+already on master by content, and 3 dirty with scratch only. The one that
+looked dangerous is not: `scaling32` carries `231454c` (rank cap 16 -> 32) which
+`git cherry` marks `+`, but master already has that cap at
+`run_mpi_scaling.py:375` via `7de3ccd` — and diffing `231454c` against master
+shows it would REMOVE the GPU polling code that landed later in `feda7c9`. It
+is a stale-base duplicate, not lost work, and it must never be landed. Same
+shape as `a7d281f`. Nothing reaped; the list is recorded so the next session
+does not have to re-derive it.
