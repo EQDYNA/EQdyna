@@ -4,6 +4,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 1. Minimal changes; no unnecessary new files.
 2. No silent fallbacks, swallowed errors, or placeholder data.
+2a. A scripted edit to a tracked document asserts on its shape, not a substring of it.
 3. Gate every stage; pass before moving on.
 4. Only fresh runs are evidence.
 5. One calibrated definition of "pass" — never invent a metric.
@@ -17,6 +18,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 13. File permission changes are reviewed individually, never bulk-applied.
 14. A living status board, re-checked on a schedule.
 15. Releases follow the documented workflow, notes lead the README.
+15a. A pre-tag CI check on the exact SHA is required before `git tag`, and it must be mechanical, not remembered.
 16. Test what you commit, not what is in your working tree.
 17. Reviving or adding a TPV benchmark.
 18. A refactor that couples two previously-independent artifacts must say so.
@@ -79,6 +81,37 @@ appends a problem, never a warning. Reserve warnings for input that is legal
 but unusual (a rough surface, a steep dip) — never for a check that did not
 run. When you remove a fallback, re-run the tests that covered it: if any now
 fail, they were testing the fallback.
+
+---
+
+## 2a. A scripted edit to a tracked document asserts on its shape, not a substring of it
+
+When a script (a regex, a `sed`, an automated move-this-block edit) rewrites a
+tracked document, the check that confirms the edit worked must assert on the
+document's SHAPE afterward — line count, required sections present, nothing
+missing — not on whether some expected substring still appears somewhere in
+it. A substring check passes even when the edit deleted everything else.
+
+**Rationale**: 2026-09-21, a scripted regex meant to move a `README.md`
+release-notes block into `pastReleaseNotes.md` had a tail pattern that matched
+to end-of-file. `README.md` went from 317 lines to 8, with its entire
+remaining body appended into `pastReleaseNotes.md`. The editor's own
+post-edit assertion passed anyway, because it tested for a substring (the
+moved block's own text landing in the right file) rather than the shape of
+what was left behind — a check that would have failed instantly on a line-count
+or required-section assertion. `test_readme_commands.py` and
+`test_stop_exit_status.py` caught it on the next gate run; that is the test
+suite working as intended, not this rule's substitute.
+
+**How to apply**: after a scripted edit to any tracked document, check the
+result's shape before trusting it — line count against a sane bound, and
+presence of every section the document is required to carry — in addition to,
+never instead of, confirming the intended content landed. This is a norm for
+how an agent verifies its own edits, not a repo-wide mechanical gate (no
+generic script-edit checker exists); the tier-1 backstop for this class of
+mistake is each document's own drift tests (`test_readme_commands.py`,
+`test_stop_exit_status.py`, `check_pathway_tasks_done_row` and similar),
+which this rule does not replace.
 
 ---
 
@@ -407,6 +440,56 @@ the annotated tag message, and `pathway_forward.md`.
 **How to apply**: at release time, `head README.md` must show the version
 being released; `pastReleaseNotes.md` must contain every prior version and
 not the current one.
+
+---
+
+## 15a. A pre-tag CI check on the exact SHA is required before `git tag`, and it must be mechanical, not remembered
+
+Before running `git tag`, a COMPLETED, successful CI run must already exist
+for the exact commit SHA about to be tagged — not the branch tip in general,
+not "the parent commit was green", not an inherited belief that CI is green.
+This tightens rule 15 step 7 (tag only after CI is green on the commit); it
+does not weaken or replace it. `iris-vermeulen`'s `--pre-tag <sha>` guard is
+this rule's enforcement: a release is not gated until that guard reports a
+completed, successful run for the SHA being tagged, run before `git tag`, not
+inferred from a run that happens to complete afterward.
+
+**A commit that touches ONLY files in `.github/workflows/test.yml`'s
+`paths-ignore` list cannot trigger its own CI run, by construction, and must
+be recognized as such rather than tagged anyway.** Such a commit has to be
+tagged either by pointing at an earlier, already-green commit (fine only if
+that earlier commit is what actually gets tagged) or by accepting that the
+only CI evidence for it will be the tag-push run itself, which happens after
+the tag already exists — never by asserting, from memory or by pattern-match
+to the normal case, that "a release commit always also touches a non-ignored
+file so it still triggers CI regardless."
+
+**Rationale**: 2026-09-21, tag `v5.13.1` was pushed at `dfee14d` when the
+ONLY CI run that had ever executed against that exact SHA was the run the tag
+push itself triggered — there was no completed, successful pre-tag run for
+`dfee14d` at the time `git tag` ran. This is a violation of rule 15 step 7 as
+written, not a near-miss softened by its mitigating facts, which are real but
+do not make it compliant: the parent commit `e9c3fa2` was green 7/7
+(`35658746273`), `git diff e9c3fa2 dfee14d` is a single line in
+`pathway_forward.md`, and the tag-push run `35667535066` did conclude 7/7
+success — so the breach closed without ever producing a red tag, but it was
+still a tag pushed ahead of its own evidence. The structural cause outlives
+this one mistake: `pathway_forward.md` and `PROJECT_RULES.md` are in
+`test.yml`'s `paths-ignore`, so a Tasks-done-row-only commit — exactly the
+shape rule 15 step 4 asks for — can never have its own pre-tag CI run by
+push alone. `test.yml`'s own comment claiming "a release commit always also
+touches non-ignored files (e.g. VERSION), so it still triggers CI regardless"
+is true for a normal release commit and false for a follow-up row commit, and
+nothing before this rule mechanically noticed the difference.
+
+**How to apply**: run the pre-tag guard against the exact SHA before every
+`git tag`. If it reports no completed run for that SHA, stop — do not tag on
+the strength of a parent commit's green run, and do not manufacture a trigger
+by touching an unrelated non-ignored file just to get CI to run. If the SHA's
+own diff is paths-ignore-only, either retarget the tag at the last commit that
+did get a real pre-tag run, or accept and record — as this rule requires,
+not as an afterthought — that the tag's only CI evidence is the tag-push run
+itself.
 
 ---
 
