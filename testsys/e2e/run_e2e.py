@@ -333,6 +333,71 @@ def memory_note(runnable):
     return lines
 
 
+def _perf_meta(results, label, device, budget):
+    """The snapshot dict for this sweep's per-cell wall clocks (owner policy
+    2026-09-22: every gate run is a free perf data point). Platform per cell
+    is what the launch PINS, never what was merely requested:
+      - fortran: CPU-only solver, no GPU path exists.
+      - python-numpy: host arrays only.
+      - python-jax with --device cpu (the default): run_standalone exports
+        JAX_PLATFORMS=cpu, which jax cannot override onto a GPU.
+      - python-jax with --device cuda: the sweep records NO device evidence,
+        so the honest platform is 'unknown' -- requested is not measured
+        (the 812.78 ms/step incident is exactly a requested label recorded
+        as a measurement).
+      - python-jax-mpi: eqdyna3d's MPI branch forces the cpu platform when
+        --device is left at 'auto' (run_e2e passes no --device) -- the very
+        override that produced that incident is, here, the pin."""
+    import ledger  # resolved via the sys.path insert at the call site
+    sha = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', '--short',
+                          'HEAD'], capture_output=True, text=True).stdout.strip()
+    cells = []
+    for case, backend, ok, dt, _lines in results:
+        if backend == 'fortran':
+            ranks = matrix.FORTRAN_RANKS[case]
+            plat, ev = 'cpu', 'fortran solver: CPU-only, src/fortran has no GPU path'
+        elif backend == 'python-jax-mpi':
+            ranks = matrix.PY_MPI_RANKS[case]
+            plat, ev = 'cpu', ('eqdyna3d --mpi with --device left at "auto" '
+                               'forces JAX_PLATFORMS=cpu (run_e2e passes no '
+                               '--device)')
+        elif backend == 'python-numpy':
+            ranks = 1
+            plat, ev = 'cpu', 'numpy backend: host arrays only, no GPU path'
+        elif device == 'cpu':
+            ranks = 1
+            plat, ev = 'cpu', ('run_standalone pins JAX_PLATFORMS=cpu; jax '
+                               'cannot land on a GPU under that pin')
+        else:
+            ranks = 1
+            plat, ev = 'unknown', ('JAX_PLATFORMS=%s was requested but the '
+                                   'sweep records no device evidence; '
+                                   'requested is not measured' % device)
+        cells.append(dict(case=case, backend=backend, ok=bool(ok),
+                          seconds=dt, ranks=ranks, platform=plat,
+                          platform_evidence=ev))
+    return dict(tool='run_e2e', sha=sha, host=os.uname().nodename,
+                date=time.strftime('%Y-%m-%d %H:%M'), label=label,
+                device=device, jobs_budget=budget,
+                tenancy_ceiling=ledger.TENANCY_REFERENCE_CEILING, cells=cells)
+
+
+def _capture_perf(results, label, device, budget):
+    """Append this sweep's per-cell wall clocks to the perf ledger. NEVER part
+    of the verdict: any error, including import failure, degrades to a loud
+    WARNING (ledger.capture_e2e_cells_or_warn does the same for errors past
+    the import), and only cells that already PASSED produce rows -- a red
+    cell can neither look green nor leave a timing behind."""
+    try:
+        sys.path.insert(0, os.path.join(TESTSYS, 'perf'))
+        import ledger
+        ledger.capture_e2e_cells_or_warn(
+            _perf_meta(results, label, device, budget))
+    except (Exception, SystemExit) as exc:          # noqa: BLE001
+        print('WARNING: perf-ledger capture failed (%s: %s) -- the sweep '
+              'verdict is unaffected.' % (type(exc).__name__, exc))
+
+
 # --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
@@ -553,6 +618,10 @@ def main(argv=None):
           % (len(unsupported),
              ', '.join('%s x %s' % (c, b) for c, b, _ in unsupported) or 'none'))
     print('wall clock: %.1fs' % elapsed)
+    # Every sweep is a free timing data point (owner policy 2026-09-22).
+    # Placed BEFORE the verdict returns below but able to affect none of them:
+    # _capture_perf swallows everything into a WARNING.
+    _capture_perf(results, label, args.device, budget)
     if len(results) != len(runnable):
         print('e2e: FAIL - %d cell(s) were selected but %d produced a verdict; '
               'a cell that produced no verdict is a failure'
