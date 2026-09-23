@@ -34,6 +34,7 @@ from . import assembleGlobalKU as KU
 from . import backend as B
 from . import faulting as FLT
 from . import globalvar as gv
+from . import profile_emit as _profile_emit
 from . import updateThermalPressurization as TP
 
 
@@ -310,12 +311,18 @@ def run(S, nsteps=None, verbose=True, xp=np):
                  B.shard_mode(), B.shard_sync()))
     t0 = time.perf_counter()
     scratch = KU.alloc_scratch(xp, inv)
-    # `fault_timer` lives HERE, outside `mk`, so it survives regardless of
-    # how many times `mk` is invoked underneath `run_time_loop`/
-    # `run_time_loop_sharded` -- every `make_step` call closes over this
-    # SAME dict. None on jax: see make_step_parts's docstring for why a
-    # timer must not exist on that path, not just go unread.
-    fault_timer = {'s': 0.0} if not B.is_jax(xp) else None
+    # EQDYNA_PROFILE read ONCE here, before the loop is built -- never per
+    # step, never via getenv inside a traced function. `fault_timer` lives
+    # HERE, outside `mk`, so it survives regardless of how many times `mk`
+    # is invoked underneath `run_time_loop`/`run_time_loop_sharded` -- every
+    # `make_step` call closes over this SAME dict. None on jax (unaffected
+    # by the flag: see make_step_parts's docstring for why a timer must not
+    # exist on that path, not just go unread) AND None when
+    # EQDYNA_PROFILE=0 -- the per-step perf_counter() pair inside
+    # make_step_parts's part_b is a profiler addition and must not run when
+    # the switch is off.
+    profile_on = _profile_emit.enabled()
+    fault_timer = {'s': 0.0} if (profile_on and not B.is_jax(xp)) else None
     mk = lambda i: make_step(xp, i, finv, tp, mass, scratch,   # noqa: E731
                              fault_timer=fault_timer)
     if ndev > 1:
@@ -387,7 +394,14 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     # decompose/to_device/jax.jit(...) construction are synchronous host-side
     # calls already executing on this path; this only wraps them with two
     # perf_counter() calls.
-    t_setup0 = time.perf_counter()
+    #
+    # EQDYNA_PROFILE read ONCE here, before setup or the loop -- never per
+    # step, never via getenv again below. When off, t_setup0 stays 0.0 and
+    # every timer this landing added downstream (t_setup, the per-step
+    # compute-dispatch timing, the tail-drain timer) is skipped so OFF is
+    # exactly the pre-profile-emitter per-step code path.
+    profile_on = _profile_emit.enabled()
+    t_setup0 = time.perf_counter() if profile_on else 0.0
 
     rank = comm.Get_rank(); nranks = comm.Get_size()
     if not B.is_jax(xp):
@@ -560,24 +574,32 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     # `wait_ms_per_step`/t_wait -- that field's existing, documented meaning
     # ("0.0 BY CONSTRUCTION on the production path", the comment below) is
     # about the PER-STEP barrier and stays exactly as it was.
-    t_setup = time.perf_counter() - t_setup0
+    #
+    # Skipped (stays 0.0) when EQDYNA_PROFILE=0 -- `profile_on` was read
+    # once, before this loop, at the top of this function.
+    t_setup = (time.perf_counter() - t_setup0) if profile_on else 0.0
     c0 = os.times()
     t0 = time.perf_counter()
     t_mpi = t_wait = t_compute = t_d2h = 0.0
     for nt in range(1, nsteps + 1):
-        # t_compute is accumulated UNCONDITIONALLY (not just under `prof`)
-        # since the profile-emitter landing (2026-09-23): the block below
-        # (jax.block_until_ready(hv)) already runs on every step of the
-        # PRODUCTION path -- it always did, for the reason in the comment
-        # just below -- so timing around an already-mandatory sync adds no
-        # new synchronisation point and costs two perf_counter() calls, not
-        # a barrier. See profile_emit.py's module docstring for what this
-        # number means (part_a AND the previous step's part_b, i.e. element
-        # kernels + faulting fused, per driver.run_mpi's own async-pipeline
-        # comment below) and why `wait`/barrier timing is NOT extended the
-        # same way (it requires comm.Barrier(), a real new collective the
-        # default path must not pay).
-        ta0 = time.perf_counter()
+        # t_compute is accumulated whenever EITHER the pre-existing
+        # EQDYNA_MPI_STEP_PROFILE knob (`prof`) OR the profile-emitter's
+        # EQDYNA_PROFILE switch (`profile_on`, default ON) is set. The
+        # block below (jax.block_until_ready(hv)) already runs on every
+        # step of the PRODUCTION path regardless -- it always did, for the
+        # reason in the comment just below -- so timing around an
+        # already-mandatory sync adds no new synchronisation point. But the
+        # two perf_counter() calls themselves are new profiler-added cost,
+        # and EQDYNA_PROFILE=0 (with `prof` also unset) must skip them, not
+        # just skip the eventual file write. See profile_emit.py's module
+        # docstring for what this number means (part_a AND the previous
+        # step's part_b, i.e. element kernels + faulting fused, per
+        # driver.run_mpi's own async-pipeline comment below) and why
+        # `wait`/barrier timing is NOT extended the same way (it requires
+        # comm.Barrier(), a real new collective the default path must not
+        # pay).
+        _time_compute = prof or profile_on
+        ta0 = time.perf_counter() if _time_compute else 0.0
         carry, hv = a_jit(dyn, carry, nt, halo)
         # BLOCK BEFORE STARTING THE MPI CLOCK. jax dispatch is asynchronous,
         # so a_jit returns before part_a has run and the first thing that
@@ -586,7 +608,8 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         # ONE-rank run with zero neighbours -- i.e. it was measuring the
         # solver, not the exchange.
         jax.block_until_ready(hv)
-        t_compute += time.perf_counter() - ta0
+        if _time_compute:
+            t_compute += time.perf_counter() - ta0
         # THE BARRIER IS A MEASUREMENT DEVICE AND RUNS ONLY UNDER THE PROFILE.
         #
         # What it is for, unchanged: without it the fastest rank's "exchange"
@@ -637,18 +660,30 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         # landing so the always-on `element` bucket also counts the host
         # dispatch/H2D-queue cost of part_b's input prep, which previously
         # sat entirely in unaccounted_s. No new sync: neither call here
-        # blocks; this only wraps calls that were already being made.
-        tb0 = time.perf_counter()
-        carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
-        t_compute += time.perf_counter() - tb0
+        # blocks; this only wraps calls that were already being made. But
+        # the perf_counter() pair is profiler-added cost in its own right,
+        # so it is skipped -- not just left unwritten -- when `profile_on`
+        # is False (EQDYNA_PROFILE=0).
+        if profile_on:
+            tb0 = time.perf_counter()
+            carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
+            t_compute += time.perf_counter() - tb0
+        else:
+            carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
     # Drains the LAST step's part_b (every earlier step's part_b was already
     # drained, one step later, by the loop's own block_until_ready(hv)).
     # This block is pre-existing and unconditional; only the timing around
     # it is new, so folding its cost into `element` (element+fault fused,
     # see profile_emit.py) adds no sync, just attributes an already-paid one.
-    tf0 = time.perf_counter()
-    jax.block_until_ready(carry)
-    t_compute += time.perf_counter() - tf0
+    # Skipped the same way when EQDYNA_PROFILE=0: block_until_ready(carry)
+    # still runs (it always did, unconditionally), only its two
+    # perf_counter() calls are profiler-added and go away.
+    if profile_on:
+        tf0 = time.perf_counter()
+        jax.block_until_ready(carry)
+        t_compute += time.perf_counter() - tf0
+    else:
+        jax.block_until_ready(carry)
     elapsed = time.perf_counter() - t0
     c1 = os.times()
     # EFFECTIVE_CORES: cpu seconds this process consumed per wall second. A
