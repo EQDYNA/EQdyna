@@ -946,3 +946,60 @@ None did; only the intended files were taken, every time.
 **Three merged-branch CI runs cancelled** (`2b4d2d0`, `9229821`, `b5da34a`) with
 seven `test.yml` runs in flight at once. Third session running to pay item 87's
 cost by hand.
+
+## CC. Landings 4-6, and a brief of mine that conflicted with an agent's own rules
+
+| commit | what | my own gate |
+|---|---|---|
+| `7484b48` | board pass — items 33, 88, 89 CLOSED; rows 90-95 opened; rules 3c, 4d, 10a | tier green at the merged tree; her branch was stale-based and would have deleted 43 lines of this log, so only the two board files were taken |
+| `928c4d4` | item 90 — `test_perf_tool_locks.py` now asserts BEHAVIOUR, not source text | MY OWN mutation: an `rmtree` inserted before the acquire in `run_scaling.build_py_case` takes the guard RED on three checks and prints the sequence `[('rmtree', False), ('rmtree', True), ...]` — destroyed unlocked, then locked. Restored byte-identically (`5a7591fd…9c15`), guard back to 18 checks |
+| `11bde96` (branch only) | refactor round 2 — `src/python/eqdyna` clarity, +86/-86 | NOT LANDED YET: held for my own bit-identity re-run behind the measurement window |
+
+**Rule 22 fired for the second time in two sessions, and again the defect was
+in my brief.** Round 2 came back with the work complete and UNCOMMITTED: my
+brief said "commit and push to `refs/heads/<your-branch>`", and that agent's own
+operating instructions forbid it from committing at all. It halted and named
+both sides instead of picking one, which is exactly the behaviour I ask for. I
+committed it myself from its worktree (`11bde96`, pushed to
+`kai/port-clarity-2026-09-23`) and the cost was zero. Worth recording because
+the fix is not "tell agents to commit" — it is that a conductor's brief cannot
+assume an agent's own constitution permits what the brief asks, and the cheap
+form is to say "commit if your own rules allow it; otherwise leave it
+uncommitted in the worktree and tell me, and I will".
+
+## DD. The owner re-ordered the queue mid-session, five times, and the table I produced this morning got a correction I did not catch
+
+**The correction, and it is real:** item 33's table compares Fortran's genuine
+3D MPI decomposition (`run_scaling.py:169` `DECOMP` — 8:(2,2,2), 16:(4,2,2))
+against jax running as ONE PROCESS under `numactl` on N cpus, with XLA and
+OpenBLAS auto-sizing their pools from the affinity mask (`run_scaling.py:481`,
+`PY_THREADS` against `FORTRAN_RANKS` — the module's own constant names say it).
+So "Fortran 16.24x, jax 2.59x" is substantially MPI-vs-threads, not a property
+of the port. The ms/step numbers stand; the label was wrong. I verified the
+asymmetry in the source myself rather than taking it: `time_one_py` launches a
+single `sys.executable -c` under `numactl`, `run_fortran` launches `mpirun -np n`.
+The ledger's `ranks` field on a `python-jax` row means CPUS IN ONE PROCESS'S
+MASK, which reads as MPI ranks and is actively misleading; the fix is a
+`parallelism: threads|mpi` discriminator, not a rename (the ledger is
+append-only and a rename breaks every historical row's comparability).
+
+**Queue as of 14:05, owner's order:**
+1. 1D jax-MPI table — same shape, jax column from real ranks via
+   `testsys/perf/run_mpi_scaling.py` (which already differences each RANK'S OWN
+   solve time and REFUSES a non-positive result, `:309-315`). Outside the gated
+   matrix; `test.tpv104` is not opted into `matrix.PY_MPI_RANKS` and will not be.
+2. Correspondence audit (sophia) + the Fortran-is-gold rule (zofia) — read-only
+   and doc-only, dispatched in parallel, explicitly forbidden from running
+   anything heavy.
+3. Rank-local 3D decomposition (items 43 + 64 Stages 1-3 together), design
+   reported BEFORE it is built.
+4. Port optimization, starting with the unconfirmed 24.42-vs-11.83 ms/step
+   compute inflation.
+5. The two remaining refactor rounds, re-scoped from `src/` to `testsys/`.
+
+**The measurement window is a scheduling constraint, not a preference.** The
+morning's three sweeps were clean because 53 of 64 cpus were under 10% busy and
+NO agent of mine was running. The TPV30 hunt is on the box now (one process at
+99.9%, 200 s in), so the 1D table waits for it rather than being measured
+through it — the alternative is the 19% spread that already cost sweep 1 its
+8-core point.
