@@ -27,7 +27,17 @@ jobs:
     # 894cdc1 (v5.16.0), so that tag's image was never pushed -- the gate runs
     # before the push step. Fixed here rather than by teaching the guards to
     # skip: a guard that skips when its evidence is missing is not a gate.
-    - uses: actions/checkout@v2
+    # v4, matching every job in test.yml (pathway item 82d). v2 runs on
+    # node12: GitHub deprecated node12 for Actions in 2022 (out of support
+    # since April 2022; runners have not executed it as declared since --
+    # they force a newer runtime underneath), so v2 is unsupported for new
+    # work even though the runner still tolerates it today. fetch-depth
+    # stays explicit at 0 even though it also happens to be v4's default --
+    # rule 15b's guard (test_publish_image_fetch_depth.py) pins the
+    # explicit value, not the action's default, so a future major bump that
+    # changes the default can't silently shrink this job's history back to
+    # depth 1 without the guard catching it.
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
