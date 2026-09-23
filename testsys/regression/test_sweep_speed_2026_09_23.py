@@ -7,9 +7,11 @@ one regressing does not hide behind the other going green:
 
   1. RELEASE_ONLY (matrix.py). test.tpv36 x python-numpy and test.tpv37 x
      python-numpy are SUPPORTED and PASSING, held out of the EVERYDAY sweep
-     (run.py e2e / run_e2e.py's default selection at --term gate) for
-     wall-clock cost only, and restored at --term full (run.py release,
-     rule 24). The defect shape this guards against: a third cell added to
+     (run.py e2e / run_e2e.py's default selection) for wall-clock cost only,
+     and restored by run_e2e.py --release (run.py release, rule 24) -- both
+     at the SAME matrix.GATE_TERM_S (2026-09-23: one term everywhere; this
+     split is about which cells run, never about which term). The defect
+     shape this guards against: a third cell added to
      RELEASE_ONLY with no matching update here goes RED (a silent widening
      of what "everyday" no longer covers must not pass quietly), and a
      RELEASE_ONLY cell that is also declared UNSUPPORTED goes RED (release-
@@ -73,9 +75,11 @@ def check_release_only_cells_are_never_declared_unsupported():
 
 def check_release_selection_equals_everyday_selection_plus_release_only():
     """The two selections run_e2e.py's default (non-explicit) path chooses
-    between: --term gate (everyday) must be exactly --term full (release)
-    minus RELEASE_ONLY, and vice versa. This is the mutation-tested
-    boundary: move a cell across it by hand (below) and confirm it flips."""
+    between: the everyday selection (matrix.everyday_cells()) must be
+    exactly the release selection (matrix.cells(), --release) minus
+    RELEASE_ONLY, and vice versa -- both at the same GATE_TERM_S. This is
+    the mutation-tested boundary: move a cell across it by hand (below) and
+    confirm it flips."""
     release_runnable, release_unsupported = matrix.cells()
     everyday_runnable, everyday_unsupported, everyday_release_only = \
         matrix.everyday_cells()

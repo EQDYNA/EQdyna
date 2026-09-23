@@ -4,22 +4,24 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
 
     python3 testsys/run.py unit          # fast pure-python unit tests (pytest, no MPI/Fortran)
     python3 testsys/run.py regression    # one guard per past incident (rule 10)
-    python3 testsys/run.py e2e           # THE test, at the GATE term: the case x backend sweep vs test.reference.results/ (rule 7)
+    python3 testsys/run.py e2e           # THE test: the everyday case x backend sweep vs test.reference.results/, at matrix.GATE_TERM_S (rule 7)
     python3 testsys/run.py e2e-ci        # the same sweep, restricted to matrix.CI_CELLS (2026-09-23: one case x 3 backends, portability smoke)
-    python3 testsys/run.py release       # THE test, at the FULL term (each case's own committed par.term): the release gate, writes docs/evidence/sweep-<sha>/summary.json
+    python3 testsys/run.py release       # THE test, over every supported cell (everyday cells + matrix.RELEASE_ONLY): the release gate, writes docs/evidence/sweep-<sha>/summary.json
     python3 testsys/run.py e2e-full      # SCEC cases at spec dx/term, 16 ranks, report-only (opt-in; hours)
     python3 testsys/run.py gpu           # the sweep's python-jax column on CUDA (one cell; needs a GPU)
     python3 testsys/run.py perf          # pinned single-core Fortran/NumPy/JAX timing, ratio-guarded
     python3 testsys/run.py all           # unit + regression + e2e, in that order (default; perf is opt-in, not in "all" -- it needs a Fortran build a fresh checkout does not have yet)
 
-There is ONE test here -- e2e -- and backend is an axis of it, not a tier. So
-is TERM (2026-09-23, owner-approved test-methodology change): `e2e`/`e2e-ci`
-run every selected case at matrix.GATE_TERM_S (5 s), regardless of that case's
-own committed par.term; `release` runs the same sweep at each case's own FULL
-term (par.term in case_input/<case>/user_defined_params.py) and is the tier
-that gates a release (PROJECT_RULES rule 15/16). CI runs e2e-ci ONLY -- it no
-longer runs any part of the full-term sweep; `release` is a human- or
-conductor-scheduled tier, the same as the old `run.py all`'s e2e slice was.
+There is ONE test here -- e2e -- and backend is an axis of it, not a tier.
+There is also ONE term (2026-09-23 owner decision, superseding a same-day
+earlier two-term design): every cell of every selection -- `e2e`, `e2e-ci`,
+`release` alike -- runs at matrix.GATE_TERM_S (5 s), applied through the ONE
+existing override path regardless of a case's own committed par.term.
+`release` differs from `e2e` only in which CELLS run: every supported cell
+(everyday cells + matrix.RELEASE_ONLY, run_e2e.py's `--release` selector), not
+a different term -- and it is the tier that gates a release (PROJECT_RULES
+rule 15/16). CI runs e2e-ci ONLY; `release` is a human- or conductor-scheduled
+tier, the same as the old `run.py all`'s e2e slice was.
 
 Two tiers that used to sit beside it are gone, for the same reason each time:
 they were a SECOND way of asking a question e2e already answers, and a second
@@ -89,8 +91,9 @@ def _e2e(*args):
 
 
 def run_e2e():
-    """THE sweep at the GATE term (run_e2e.py's --term default): every case
-    at matrix.GATE_TERM_S regardless of its own committed par.term."""
+    """THE sweep, EVERYDAY selection (run_e2e.py's default, no flags): every
+    case minus matrix.RELEASE_ONLY, at matrix.GATE_TERM_S regardless of its
+    own committed par.term."""
     print('\n==== testsys: e2e ====')
     return _e2e()
 
@@ -108,14 +111,16 @@ def run_e2e_ci():
 
 
 def run_release():
-    """THE sweep at the FULL term: every case at its own committed par.term
-    (case_input/<case>/user_defined_params.py). This is the release gate
-    (PROJECT_RULES rule 15/16) -- the tier `run.py all`'s e2e slice used to
-    be before CI stopped running the full-term sweep. Run over the full
-    default selection (no --cases/--backends), it also writes
-    docs/evidence/sweep-<shortsha>/summary.json (run_e2e.write_release_evidence)."""
+    """THE sweep, RELEASE selection (run_e2e.py --release): every supported
+    cell (everyday cells + matrix.RELEASE_ONLY), at the SAME matrix.GATE_TERM_S
+    as every other selection -- this tier widens which CELLS run, not the
+    term. This is the release gate (PROJECT_RULES rule 15/16) -- the tier
+    `run.py all`'s e2e slice used to be before CI stopped running the wider
+    sweep. Run over the full default selection (no --cases/--backends), it
+    also writes docs/evidence/sweep-<shortsha>/summary.json
+    (run_e2e.write_release_evidence)."""
     print('\n==== testsys: release ====')
-    return _e2e('--term', 'full')
+    return _e2e('--release')
 
 
 def run_gpu():
@@ -162,15 +167,16 @@ def run_perf():
 RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
            'e2e-ci': run_e2e_ci, 'release': run_release, 'perf': run_perf,
            'gpu': run_gpu, 'scaling': run_scaling, 'e2e-full': run_e2e_full}
-# 'all' stays unit+regression+e2e only (TIERS below, `e2e` at the GATE term)
-# -- perf requires a Fortran build and a generated baseline that a fresh
-# checkout does not have; it is opt-in, invoked by name, not swept into 'all'.
-# e2e-ci and gpu are SELECTIONS of e2e, not tiers of their own; `release` is
-# the full-term selection of the same one sweep, likewise not a second
-# implementation. 'all' runs the gate-term sweep; CI runs e2e-ci (2026-09-23:
-# a one-case portability smoke, not physics coverage); `release` is the
-# human-/conductor-scheduled full-term gate, whose narrower or wider coverage
-# the sweep itself prints either way.
+# 'all' stays unit+regression+e2e only (TIERS below, `e2e` the everyday
+# selection) -- perf requires a Fortran build and a generated baseline that a
+# fresh checkout does not have; it is opt-in, invoked by name, not swept into
+# 'all'. e2e-ci and gpu are SELECTIONS of e2e, not tiers of their own;
+# `release` is the wider (everyday + RELEASE_ONLY) selection of the same one
+# sweep, at the SAME GATE_TERM_S, likewise not a second implementation. 'all'
+# runs the everyday sweep; CI runs e2e-ci (2026-09-23: a one-case portability
+# smoke, not physics coverage); `release` is the human-/conductor-scheduled
+# release gate, whose narrower or wider coverage the sweep itself prints
+# either way.
 # e2e-full additionally needs EQDYNA_FULL_LAUNCH=yes-hours (see
 # testsys/e2e/run_e2e_full.py) -- spec-resolution SCEC runs are hours long
 # and user-scheduled, never automatic.

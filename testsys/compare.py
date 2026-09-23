@@ -49,39 +49,6 @@ REFERENCE_ROOT = os.path.join(REPO_ROOT, 'test.reference.results')
 CANONICAL_NAME = 'frt.canonical.txt'
 NC_NAME = 'fault.dyna.r.nc'
 
-# The gate-term reference, for a case whose own full par.term is not already
-# matrix.GATE_TERM_S (see canonical_reference_name below). Chosen name, not
-# generated here (rule 7: each reference is its own reviewed commit) -- the
-# owner generates it; until then, the cases that need it fail closed.
-GATE_TERM_NAME = 'frt.canonical.term5.txt'
-
-
-def canonical_reference_name(case, term='full'):
-    """Which frt reference file name a cell's TERM axis selects.
-
-    term='full' (the default -- unchanged behaviour from before this axis
-    existed) always names the one full-length reference, CANONICAL_NAME.
-
-    term='gate' names CANONICAL_NAME too, IF this case's own committed
-    par.term (matrix.CASE_FULL_TERM_S[case]) already equals matrix.GATE_TERM_S
-    -- nothing is lost by reusing the same file. Otherwise it names
-    GATE_TERM_NAME, a second reference this function does NOT create.
-
-    Fail-closed lives downstream, in reference_path(): a case that needs
-    GATE_TERM_NAME and does not have it yet raises FileNotFoundError naming
-    the missing file. This function never falls back to CANONICAL_NAME for a
-    case whose gate term differs from its full term -- that silent
-    mismatch (comparing a 5 s run against a 20 s reference) is exactly what
-    the owner-approved design forbids.
-    """
-    if term not in ('gate', 'full'):
-        raise ValueError('unknown term %r (expected "gate" or "full")' % term)
-    if term == 'full':
-        return CANONICAL_NAME
-    if matrix.CASE_FULL_TERM_S[case] == matrix.GATE_TERM_S:
-        return CANONICAL_NAME
-    return GATE_TERM_NAME
-
 
 # --------------------------------------------------------------------------
 # loading
@@ -97,22 +64,23 @@ def reference_path(case, name=CANONICAL_NAME):
     return p
 
 
-def load_reference(case, term='full'):
-    """The case's canonical reference array, (nftnd, 22), at the requested
-    TERM axis (default 'full' -- unchanged from before the axis existed).
+def load_reference(case):
+    """The case's canonical reference array, (nftnd, 22) -- the ONE
+    committed frt.canonical.txt, at matrix.GATE_TERM_S (there is no second
+    term and no second reference file for any case, 2026-09-23).
 
-    ONE file per (case, term), with no rank count in its name. That is the
+    ONE file per case, with no rank count in its name. That is the
     point: the gate never globs frt.txt*, so it never encodes how many ranks
     produced the reference. Regenerate with
     `python3 -m testsys.frt_canonical <case_dir>` and commit it deliberately
     (rule 7)."""
-    arr = np.loadtxt(reference_path(case, canonical_reference_name(case, term)))
+    arr = np.loadtxt(reference_path(case))
     if arr.ndim == 1:
         arr = arr.reshape(1, -1)
     if arr.shape[1] != frt_canonical.FRT_COLUMNS:
         raise ValueError('reference %s has %d columns, expected %d'
-                         % (reference_path(case, canonical_reference_name(case, term)),
-                            arr.shape[1], frt_canonical.FRT_COLUMNS))
+                         % (reference_path(case), arr.shape[1],
+                            frt_canonical.FRT_COLUMNS))
     return arr
 
 
@@ -122,9 +90,8 @@ def load_run(run_dir):
     return frt_canonical.canonical_from_case(run_dir)
 
 
-def load_coordinate_aligned(case, run, term='full'):
-    """(reference, run) as row-aligned canonical arrays in the same node order,
-    at the requested TERM axis (default 'full').
+def load_coordinate_aligned(case, run):
+    """(reference, run) as row-aligned canonical arrays in the same node order.
 
     `run` is a run directory or a single frt-format file. Raises if the two do
     not describe the same fault node set -- that is a different discretisation,
@@ -132,7 +99,7 @@ def load_coordinate_aligned(case, run, term='full'):
     run_arr = (np.loadtxt(run) if os.path.isfile(run) else load_run(run))
     if run_arr.ndim == 1:
         run_arr = run_arr.reshape(1, -1)
-    return frt_canonical.align(load_reference(case, term), run_arr)
+    return frt_canonical.align(load_reference(case), run_arr)
 
 
 def align_two_frt_files(path_a, path_b):
@@ -253,13 +220,11 @@ def flip_budget_gate(case, ref_a, run_a):
     return ok, lines
 
 
-def drv_a6_gate(run, term='full'):
+def drv_a6_gate(run):
     """test.drv.a6's gate against the committed reference, for callers that
     have a run path rather than aligned arrays (evidence_drv_a6_chaos.py).
-    Returns (ok, diagnostics). test.drv.a6's own full term already equals
-    matrix.GATE_TERM_S, so term='gate' and term='full' select the same file
-    here -- the parameter exists for callers that pass it through generically."""
-    ref_a, run_a = load_coordinate_aligned('test.drv.a6', run, term)
+    Returns (ok, diagnostics)."""
+    ref_a, run_a = load_coordinate_aligned('test.drv.a6', run)
     d = flip_decomposition(ref_a, run_a)
     return bool(d['ok_flips'] and d['ok_median'] and d['ok_phys']), d
 
@@ -267,13 +232,12 @@ def drv_a6_gate(run, term='full'):
 # --------------------------------------------------------------------------
 # the per-cell entry point
 # --------------------------------------------------------------------------
-def compare_frt(case, run, term='full'):
+def compare_frt(case, run):
     """(ok, lines) for one cell's canonical frt output, at the CASE's gate --
     the same gate for every backend, which is what makes the sweep's columns
-    comparable to each other. `term` selects which committed reference this
-    compares against (compare.canonical_reference_name); it never changes the
-    bound (matrix.CASE_BOUND is one number per case, not per term)."""
-    ref_a, run_a = load_coordinate_aligned(case, run, term)
+    comparable to each other, against the ONE committed reference (there is
+    no term axis to select between)."""
+    ref_a, run_a = load_coordinate_aligned(case, run)
     if matrix.GATE[case] == 'abs-max':
         return abs_max_gate(case, ref_a, run_a)
     return flip_budget_gate(case, ref_a, run_a)
@@ -339,37 +303,20 @@ def compare_nc(case, run_dir):
                                            % (verdict, matrix.THRESHOLD)]
 
 
-def compare_cell(case, backend, run_dir, term='full'):
+def compare_cell(case, backend, run_dir):
     """(ok, lines) for one (case, backend) cell: every artifact that backend
-    produces, compared against the committed reference, at the requested
-    TERM axis (default 'full', unchanged from before the axis existed).
+    produces, compared against the ONE committed reference (there is no term
+    axis and no second reference file, 2026-09-23).
 
     Which artifacts is DATA (matrix.ARTIFACTS), so the cell's report states
     what it covered -- 'frt' alone for the python backends, 'frt+nc' for
-    fortran -- with ONE term-specific exception, stated rather than silent:
-    the 'nc' artifact's own committed reference (fault.dyna.r.nc) is a
-    FULL-TERM-ONLY artifact -- there is no gate-term counterpart planned (the
-    owner-approved design adds a second reference only for 'frt'). For a case
-    whose gate term differs from its full term, comparing nc at term='gate'
-    would be a guaranteed, physics-free mismatch (a truncated run against a
-    full-length reference) -- so for THOSE cases only, nc is not compared at
-    term='gate', and the omission is printed, never swallowed. A case whose
-    full term ALREADY equals matrix.GATE_TERM_S (e.g. test.tpv8, the one case
-    CI's smoke job runs) is unaffected: its one committed nc reference IS a
-    gate-term reference, so nc stays compared there. This is a term-scoping
-    DECISION, not a fallback -- it never substitutes the full-term reference
-    for a missing gate-term one."""
-    if term not in ('gate', 'full'):
-        raise ValueError('unknown term %r (expected "gate" or "full")' % term)
+    fortran. Every declared artifact is compared, unconditionally; nothing
+    here is ever skipped."""
     artifacts = matrix.ARTIFACTS[backend]
-    skipped_nc = (term == 'gate' and 'nc' in artifacts
-                 and matrix.CASE_FULL_TERM_S[case] != matrix.GATE_TERM_S)
-    if skipped_nc:
-        artifacts = tuple(a for a in artifacts if a != 'nc')
     ok, lines = True, []
     for artifact in artifacts:
         if artifact == 'frt':
-            a_ok, a_lines = compare_frt(case, run_dir, term)
+            a_ok, a_lines = compare_frt(case, run_dir)
         elif artifact == 'nc':
             a_ok, a_lines = compare_nc(case, run_dir)
         else:
@@ -378,8 +325,4 @@ def compare_cell(case, backend, run_dir, term='full'):
                              % (artifact, backend))
         ok = ok and a_ok
         lines.extend(a_lines)
-    if skipped_nc:
-        lines.append('nc: not compared at term=gate -- fault.dyna.r.nc has '
-                     'no gate-term reference by design (see compare_cell '
-                     'docstring), not a coverage gap')
     return ok, lines

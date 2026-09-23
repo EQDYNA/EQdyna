@@ -107,29 +107,21 @@ PY_MPI_EXPECTED_FRT_FILES = {
 
 THRESHOLD = 1e-3  # PROJECT_RULES rule 5's one outer sanity bound.
 
-# --- the TERM axis (2026-09-23 owner-approved test-methodology change) -------
-# `term` is an axis of a cell, like `backend`, not a second harness: the same
-# case, run for less wall-clock. GATE_TERM_S is the term every case runs at in
-# the everyday gate (local `run.py unit regression`/`run.py e2e`, and CI's one
-# smoke job); CASE_FULL_TERM_S is each case's own committed par.term, read out
-# of case_input/<case>/user_defined_params.py (or, for tpv36/tpv37, the
-# tpv36_37_common.buildParams() both compsets call) -- copied here as DATA so
-# run_e2e.py's term override and compare.py's reference-file selection agree
-# with each other and with the compset without either one importing the
-# other's case-building code (rule 1).
+# --- the ONE term (2026-09-23 owner decision, superseding the two-term design
+# a same-day earlier change had landed) -------------------------------------
+# Every gated case in this sweep runs at GATE_TERM_S, period: there is no
+# second term, no `--term` flag, and no per-case "full" term to fall back to.
+# run_e2e.py applies it through the ONE existing override path
+# (apply_term_override), unconditionally, for every cell it runs -- the
+# everyday sweep, the release sweep (everyday cells + RELEASE_ONLY, below) and
+# CI's smoke selection all run the same 5 s.
+#
+# case_input/<case>/user_defined_params.py's own committed `par.term` (what
+# `create.newcase` hands a user who builds the case by hand, outside the
+# gate) is DELIBERATELY left alone by this change and by run_e2e.py -- it is
+# the compset's own default for standalone use, not a second source of truth
+# the gate reads or reconciles against. The gate always overrides it.
 GATE_TERM_S = 5.0
-CASE_FULL_TERM_S = {
-    'test.tpv8': 5.0,
-    'test.tpv10': 5.0,
-    'test.tpv104': 5.0,
-    'test.tpv1053d': 5.0,
-    'test.meng2023a': 5.0,
-    'test.meng2023cb': 5.0,
-    'test.drv.a6': 5.0,
-    'test.tpv29': 20.0,       # case_input/test.tpv29/user_defined_params.py:73
-    'test.tpv36': 6.0,        # case_input/test.tpv36/tpv36_37_common.py:49
-    'test.tpv37': 6.0,        # case_input/test.tpv37/tpv36_37_common.py:49
-}
 
 # One bound per case. None means "this case is not gated on a scalar" -- see
 # GATE/DRV_A6 below. Every case in CASES must appear here.
@@ -277,9 +269,10 @@ UNSUPPORTED = {
 # PASS: this is a suite-COST flag, never a correctness one, and it must never
 # be confused with UNSUPPORTED (see the consistency check at the bottom of
 # this module, which refuses a cell that is both). They leave the EVERYDAY
-# sweep (`run.py e2e`, run_e2e.py's default selection at --term gate) and stay
-# in the RELEASE sweep (`run.py release`, --term full, rule 24's committed
-# pre-tag sweep).
+# sweep (`run.py e2e`, run_e2e.py's default selection) and stay in the RELEASE
+# sweep (`run.py release`, run_e2e.py --release, rule 24's committed pre-tag
+# sweep) -- both at the SAME GATE_TERM_S; RELEASE_ONLY is a cell-selection
+# split, never a term split.
 #
 # Measured cost, cited: docs/perf_snapshots/e2e_cells_2026-09-23_132003_1651408.json
 # (sha ef7196c) and its matching docs/perf_ledger.jsonl rows (same sha,
@@ -398,20 +391,20 @@ JAX_MEASURED_CORES = 2.52
 # CI_CELLS -- REDEFINED 2026-09-23 (owner-approved test-methodology change).
 #
 # CI no longer runs the e2e sweep for physics coverage; that job is the local/
-# release tiers' now (`run.py e2e`, `run.py release` at --term full). CI's
-# remaining e2e job is a SMOKE TEST: one case, all three backend
-# IMPLEMENTATIONS, at the GATE_TERM_S (5 s) term, whose purpose is
+# release tiers' now (`run.py e2e`, `run.py release`, both at GATE_TERM_S --
+# there is only one term). CI's remaining e2e job is a SMOKE TEST: one case,
+# all three backend IMPLEMENTATIONS, at GATE_TERM_S (5 s), whose purpose is
 # portability -- a clean checkout, fresh-installed dependencies, and (for the
 # fortran cell) the RUNNER's own mpich rather than this box's Open MPI 4.1.1
-# -- not physics regression. test.tpv8 is the smallest gated case (4 ranks,
-# CASE_FULL_TERM_S['test.tpv8'] == GATE_TERM_S, so its one committed
-# frt.canonical.txt already IS the gate-term reference -- no second file is
-# needed for this cell specifically).
+# -- not physics regression. test.tpv8 is the smallest gated case, and its one
+# committed frt.canonical.txt is simply THE reference -- there is no second
+# file for any cell, gate or release.
 #
 # Physics coverage across the full case x backend table is now the job of the
-# WIDER tiers: `run.py e2e` (gate term, every case, run locally/on demand) and
-# `run.py release` (full term, the release gate, PROJECT_RULES rule 15/16).
-# Neither of those is CI; CI's old 25-of-30-cell memory-driven selection over
+# WIDER tiers: `run.py e2e` (every case, run locally/on demand) and
+# `run.py release` (every case, RELEASE_ONLY included, the release gate,
+# PROJECT_RULES rule 15/16) -- both at the same GATE_TERM_S. Neither of those
+# is CI; CI's old 25-of-30-cell memory-driven selection over
 # MEASURED_PEAK_RSS_GB is retired along with the jobs that ran it.
 CI_CELLS = (
     ('test.tpv8', 'fortran'),
@@ -521,12 +514,13 @@ def coverage_report(runnable, declared_unsupported, selection_label,
 
 def everyday_cells(cases=None, backends=None):
     """(runnable, declared_unsupported, release_only) for the EVERYDAY sweep
-    (run.py e2e / run_e2e.py's default selection, --term gate): matrix.cells()
-    minus RELEASE_ONLY, with the held-back cells returned separately so a
-    caller can print them rather than let them go silently absent (see
-    coverage_report above). matrix.cells() itself is UNCHANGED and remains
-    the release-term selection (every supported cell, RELEASE_ONLY included)
-    -- this function is strictly additive."""
+    (run.py e2e / run_e2e.py's default selection): matrix.cells() minus
+    RELEASE_ONLY, with the held-back cells returned separately so a caller can
+    print them rather than let them go silently absent (see coverage_report
+    above). matrix.cells() itself is UNCHANGED and remains the RELEASE
+    selection (every supported cell, RELEASE_ONLY included) -- this function
+    is strictly additive. Both selections run at the same GATE_TERM_S; this
+    split is about which CELLS run, never about which term."""
     runnable, unsupported = cells(cases, backends)
     release_only = [(c, b, RELEASE_ONLY[(c, b)]) for (c, b) in runnable
                     if (c, b) in RELEASE_ONLY]
@@ -547,14 +541,6 @@ for _c in CASES:
             '%s is gated but %s is missing -- restore it from git. A gated case '
             'with no reference cannot be compared, and "could not compare" must '
             'never read as "passed" (rule 2).' % (_c, _ref))
-
-_missing_full_term = [c for c in CASES if c not in CASE_FULL_TERM_S]
-if _missing_full_term:
-    raise RuntimeError(
-        'testsys/matrix.py CASE_FULL_TERM_S is missing case(s) %r -- every '
-        'case needs its own committed par.term recorded here so the gate '
-        'term axis (run_e2e.py --term) and the reference-file selection '
-        '(compare.py) agree with the compset.' % _missing_full_term)
 
 _missing_bound = [c for c in CASES if c not in CASE_BOUND]
 _missing_gate = [c for c in CASES if c not in GATE]
