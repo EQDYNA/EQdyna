@@ -228,6 +228,18 @@ MODULE globalvar
         ! the exchange bucket so exchange and wait are disjoint.
     real (kind = dp) :: totmemcost, memcost = 0.0d0  ! memory-cost bookkeeping
     real (kind = dp) :: pi = 4*atan(1.0_dp)
+    logical :: profileEnabled = .true.   ! EQDYNA_PROFILE off switch, read ONCE
+        ! at startup (eqdyna3d.f90, right after MPI_Init) into this module
+        ! logical -- never re-read via get_environment_variable per step.
+        ! Default .true. (profile default ON, matching output_profile's own
+        ! default). Guards every PER-STEP timer/checkpoint the profile-emitter
+        ! landing added (currently: the MPIWaitTimeInSeconds sub-timer inside
+        ! MPI4NodalQuant, assembleGlobalMass.f90) so EQDYNA_PROFILE=0 is a REAL
+        ! off switch, not just a gate on output_profile's own file write.
+        ! output_profile's own EQDYNA_PROFILE check (library_output.f90) stays
+        ! independent -- it is the end-of-run file-write gate and is correct
+        ! as-is; this flag is for the per-step cost, which that check cannot
+        ! see or skip.
 
     !=====================================================================
     ! Allocatable arrays
