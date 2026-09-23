@@ -139,13 +139,10 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
             xp, inv, velArr, force, stress_i, s_p, dt, rdampk, scratch)
         force = KU.calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk)
 
-        # driver.f90:27 -- MPI4NodalQuant(nodalForceArr, 3). Identity when the
-        # run is serial (one device, one subdomain, nothing to exchange); an
-        # all-reduce over the device mesh when backend.run_time_loop_sharded
-        # has cut the element arrays across devices. Its POSITION is the
-        # Fortran's: after both element kernels, before faulting, which is
-        # what lets faulting and the mass divide be plain replicated nodal
-        # work on a force array that is already complete.
+        # part_a ENDS HERE, at driver.f90:27 -- the seam each caller closes
+        # with its own MPI4NodalQuant (make_step's backend.nodal_sync,
+        # run_mpi's real MPI exchange). Nothing is exchanged inside part_a;
+        # see make_step for what happens at the seam and why it sits here.
         return (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft,
                 timeElapsed, sliprate_hist, shear_hist)
 
@@ -183,6 +180,28 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
     return part_a, part_b
 
 
+def build_invariants(S, nsteps):
+    """The loop-invariant state both entry points build, identically.
+
+    Returns (inv, finv, tp, hist_w). ONE copy, because this is where a fix
+    like forced_rupture_time's would otherwise have to be made twice -- the
+    exact shape of the port.py/port_jax.py divergence faulting.py's docstring
+    records. `tp` is None and the history width 0 unless friclaw==5, so the
+    carry has one shape for every friction law (see run's carry0).
+    """
+    inv = KU.build(S)
+    finv = FLT.build(S)
+    tp = TP.build(S, nsteps) if S['friclaw'] == 5 else None
+    hist_w = nsteps if S['friclaw'] == 5 else 0
+    # Forced-rupture time is pure geometry -- computed once, not per step.
+    # None means "swtwNucleation does nothing for this case", which is a
+    # different statement from "tr is 1e9 everywhere" and is kept distinct so
+    # a case that should nucleate and does not cannot look like a no-op.
+    finv['tr'] = (FLT.forced_rupture_time(np, finv)
+                  if FLT.nucleation_enabled(finv) else None)
+    return inv, finv, tp, hist_w
+
+
 def make_step(xp, inv, finv, tp, mass, scratch):
     """Build the per-step closure. Called by backend.run_time_loop INSIDE
     the jit on the jax path, so that `inv`'s arrays resolve to jit arguments
@@ -213,21 +232,10 @@ def run(S, nsteps=None, verbose=True, xp=np):
     """
     nsteps = nsteps or S['nstep']
 
-    inv = KU.build(S)
-    finv = FLT.build(S)
-    # Thermal-pressurization constants and history. The history is allocated at
-    # the FULL step count for friclaw 5 (the Fortran allocates onFaultTPHist
-    # the same way) and at width ZERO otherwise, so the carry has ONE shape for
-    # every friction law and the jax loop does not need a second signature.
-    tp = TP.build(S, nsteps) if S['friclaw'] == 5 else None
-    hist_w = nsteps if S['friclaw'] == 5 else 0
-
-    # Forced-rupture time is pure geometry -- computed once, not per step.
-    # None means "swtwNucleation does nothing for this case", which is a
-    # different statement from "tr is 1e9 everywhere" and is kept distinct so
-    # a case that should nucleate and does not cannot look like a no-op.
-    finv['tr'] = (FLT.forced_rupture_time(np, finv)
-                  if FLT.nucleation_enabled(finv) else None)
+    # Thermal-pressurization history is allocated at the FULL step count for
+    # friclaw 5 (the Fortran allocates onFaultTPHist the same way) and at
+    # width ZERO otherwise -- see build_invariants.
+    inv, finv, tp, hist_w = build_invariants(S, nsteps)
 
     mass = np.concatenate(([1.0], S['nodalMassArr']))   # index 0 = unused sink
     # driver.f90:30 divides unconditionally. A zero lumped mass would give
@@ -378,12 +386,7 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
             '%s=halo.' % (MQ.SYNC_ENV, MQ.SYNC_ENV))
 
 
-    inv = KU.build(S)
-    finv = FLT.build(S)
-    tp = TP.build(S, nsteps) if S['friclaw'] == 5 else None
-    hist_w = nsteps if S['friclaw'] == 5 else 0
-    finv['tr'] = (FLT.forced_rupture_time(np, finv)
-                  if FLT.nucleation_enabled(finv) else None)
+    inv, finv, tp, hist_w = build_invariants(S, nsteps)
 
     loc = MQ.decompose(S, inv, finv, rank, nranks)
     inv_l, finv_l = loc['inv'], loc['finv']
