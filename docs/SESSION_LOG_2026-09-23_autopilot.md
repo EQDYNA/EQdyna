@@ -818,3 +818,88 @@ The primary checkout was fast-forwarded from `5c91598` to current master.
 It had been 12 commits behind all session, and a stale local `master` already
 misled one agent tonight into diffing against the wrong base — leaving it
 behind would have handed that same trap to the next session.
+
+---
+
+# Continuation — 2026-09-23 06:25 onward (wei-lin, third conductor)
+
+Resumed at `origin/master` = `078bb4f`, clean tree, 0 unpushed, VERSION 5.16.2,
+tag `v5.16.2` at `2964325`, 4 worktrees, box at load 7.5.
+
+**Grant, stated back.** Minor and patch tags on `master` of THIS repo; merge and
+tag authority on `master` directly. No major bump. No force-update or rewrite of
+an existing tag. No publish to a package index. Nothing outward-facing beyond
+this repo. Item 86 (expired token in already-published images), the v5.16.0
+image backfill, item 64 Stages 1-3, and items 63, 56, 57, 17, 19(b), 32 and rule
+15b's staleness bound are OWNER-HELD and not decided here.
+
+## AA. Item 33 — the jax-vs-Fortran ms/step table, on the quietest box this item has ever had
+
+The precondition this row has carried since 2026-09-16 ("REQUIRES AN IDLE BOX")
+and that the 2026-09-21 pass declared UNSATISFIABLE (0 of 64 cpus under the
+strict 0.2 ceiling, twice) was **satisfiable this morning and I measured it
+before doing anything else**: at 06:28, **53 of 64 cpus were under 10% busy** and
+exactly 7 were pegged at 100% (seven foreign single-core jobs, which is the
+entire load average of 7.3). Nothing of mine was running: no agent was dispatched
+until all three sweeps were done, because the largest source of variance in the
+last two sessions was our own concurrent work.
+
+`testsys/perf/run_scaling.py`, `test.tpv104`, compact placement, per-step by
+difference (`n_lo=20`, `n_hi=60`), `--repeats 2` (min within a sweep),
+**strict `--busy-ceiling 0.2`, never overridden**, capped at 16 cores, jax only,
+no GPU. **Three full independent sweeps**, 06:29-07:07.
+
+| cores | Fortran ms/step (3 sweeps) | jax ms/step | jax / Fortran |
+|---|---|---|---|
+| 1 | 925.28, 909.05, 916.37 | 607.47, 607.11 | **0.67x** |
+| 2 | 464.36, 466.14, 463.58 | 405.47, 405.11, 407.95 | 0.87x |
+| 4 | 235.72, 236.52, 238.66 | 358.06, 337.08, 358.01 | 1.43x |
+| 8 | 122.94, 116.38, 117.35 | 268.78, 319.16 | 2.31x |
+| 16 | 55.97, 56.18, 60.14 | 234.44, 247.88 | **4.19x** |
+
+(ratio of the fastest point at each core count; each cell's own spread is printed
+beside it rather than averaged away.) Self-relative scaling from each engine's
+own 1-core point: **Fortran 1.00 / 1.96 / 3.86 / 7.81 / 16.24x**, **jax 1.00 /
+1.50 / 1.80 / 2.26 / 2.59x**.
+
+Three points are worth more than the table:
+
+1. **jax is FASTER than Fortran on one core — 607 vs 916 ms/step, and again at
+   2 cores.** The crossover is between 2 and 4 cores. Every "Fortran is faster"
+   statement about this code is a statement about PARALLEL SCALING, not about
+   per-core work.
+2. **The standing 2026-09-18 Fortran curve was contaminated and is superseded.**
+   It recorded 161.69 ms/step at 8 and 119.15 at 16 (speedup 7.95x); today the
+   same tool, same case, same method reads 117.35 and 56.2 (**16.24x**, near
+   linear). The old numbers were taken at loadavg 24-30. Fortran's scaling was
+   never the problem it looked like.
+3. **The "4.09x jax at 16 cores" figure does NOT reproduce.** Today jax reaches
+   2.59x at 16, which agrees with the OLDER 2.52x-at-16 figure that 4.09x was
+   thought to supersede. Both of the higher figures (4.09x, 3.38x) came from the
+   same contaminated night, and they were high because the Fortran denominator
+   was slow, not because jax was fast. jax's plateau past 8 cores stands exactly
+   where the HLO evidence put it (sub-linear `outer_dimension_partitions`,
+   1 -> none, 4 -> "2", 8 -> "3", 16 -> "4").
+
+Every point passed the strict per-cpu ceiling on the cpus it actually used; one
+configuration was SKIPPED as busy in each sweep (`jax th=1`, then `th=16`, then
+`th=8`) and recorded, not overridden — which is why there are three sweeps and
+not one: the union covers every cell twice or more. Reproducibility: Fortran
+within 3% at 1/2/4, 5.6% at 8, 7.4% at 16; jax within 1% at 1/2, 6% at 4 and 16,
+and **19% at 8 cores** (268.78 vs 319.16), which is the one cell I would not
+quote to three digits.
+
+Method note carried from the owner: `EFFECTIVE_CORES >= 0.99` is necessary and
+NOT sufficient (rule 6a, item 76) — the defence used here is not the rusage
+figure, it is three independent sweeps with the per-sweep spread printed and the
+box tenancy (7/64) recorded in every snapshot.
+
+GPU was not touched and 32 cores was not measured: both are off this queue by
+the owner's instruction.
+
+Evidence, all committed: snapshots
+`docs/perf_snapshots/scaling_2026-09-23_0{64050,65349,70641}_item33_jax_vs_fortran.json`,
+raw logs `docs/evidence/perf-2026-09-23/wei-s3_item33_rep{1,2,3}.log.gz`,
+27 rows appended to `docs/perf_ledger.jsonl` (append-only verified: 27
+insertions, 0 deletions against `origin/master`). Routed to `zofia-kaminska` for
+item 33's row.
