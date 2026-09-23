@@ -1,9 +1,8 @@
 """The ONLY backend-aware module in the port.
 
 Everything else -- driver.py, faulting.py, fric.py, assembleGlobalKU.py --
-is written once against an array module `xp` (numpy or jax.numpy) and the
-helpers below (scatter_add, setat, addat, iadd, mul_into, store_into, plus
-the loop drivers and nodal_sync). That is the whole point: Fortran has one driver.f90 and one
+is written once against an array module `xp` (numpy or jax.numpy) and these
+five helpers. That is the whole point: Fortran has one driver.f90 and one
 faulting.f90, and every place this port grew a second copy is a place a fix
 has to be made, and verified, twice. (It did: faulting.f90's swtwNucleation
 forced-rupture branch was fixed in port.py and not port_jax.py, so
