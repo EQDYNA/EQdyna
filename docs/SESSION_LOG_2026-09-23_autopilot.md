@@ -506,3 +506,75 @@ cannot distinguish done from not-done is worse than a blank one, because it
 reads as a board being maintained. Now rule **14a**, and pathway row **85**
 carries the `stLocStamp` dead variable — same shape as `writeCompTime`, which
 this project already knows hid a 511x error.
+
+## I. Nine landings, and the stale-base rate is the finding
+
+`32fba21` (83) · `07b0dca` (79, 82d) · `73ac3a5` (81) · `d9c9611` (67) ·
+`650bd1c` (**84**) · `20d8f23`, `ef7b444`, `7ea2f27` (board/rules) · `4c9cc26`
+(CLAUDE.md) · `bef0f05` (82abc). No reverts.
+
+**Every single returning branch — nine of nine — was based on a commit master
+had already moved past**, and every one would have reverted something had it
+been merged wholesale: Zofia's first pass would have dropped 111 lines of this
+log, Iris's item-79 branch would have undone two rules, the credential branch
+would have undone item 67's Fortran change and the `.dockerignore`, the item-82
+branch would have undone the CLAUDE.md fix. None did, because gate axis 4 runs
+before anything is copied: `git diff --name-only origin/master <branch>`, take
+only the intended files, then re-read the removed lines.
+
+On a tree moving at nine commits in four hours this is the NORMAL case. Stop
+treating a stale base as an agent error — it is a property of dispatching into
+worktrees at all, and the only defence is the diff, every time, with no
+exceptions for "it's just a test file".
+
+One agent caught its own version of this mid-mission: it diffed against the
+local `master` ref, which still pointed at `5c91598`, noticed the numbers were
+impossible, and re-ran everything against `origin/master`. **Local `master` in
+a worktree is not `origin/master`** and a `git fetch` does not move it.
+
+## J. Item 82 is closed on all four sub-items, and (a) is the transferable one
+
+`testsys/regression/test_publish_image_fetch_depth.py` went 5 → 13 printed
+checks. Two of them are worth naming because a reasonable guard would have
+missed both:
+
+- **The two in-image gate blocks are pinned as EQUIVALENT to each other**, not
+  merely each present. The risk was never a missing block; it was an edit to one
+  and not the other. Mutation: remove `pip3 install jax` from the
+  `verify-published-image` block only → the guard emits a line-by-line drift
+  diff. A per-block check passes that mutation.
+- **The `:latest` gate has no YAML `if:` at all.** It is a shell `if` inside the
+  `Build image` script, so it has to be parsed out of the script body. A guard
+  that walked step conditions would have silently skipped the one gate that
+  keeps `:latest` from moving backwards — which is the property I relied on
+  twice tonight when I fired dispatch runs that deliberately published nothing.
+
+And (a), `packages: write`: dropping it changes NO observable behaviour on any
+dispatch run. It only breaks a real release. Nothing inferential finds that; it
+needs a structural read of `job['permissions']`. That is item 78's shape for the
+fourth time tonight — **a premise that is only ever exercised by a release is
+invisible to every gate that is not one.**
+
+My own mutation, fresh: flipping `Push image`'s condition to
+`workflow_dispatch` →
+
+    FAIL: ... expected `if: github.event_name == 'push'`. Anything else and a
+    workflow_dispatch smoke run publishes to ghcr.io.
+
+restore byte-identical, sha256 `02189fb7...cddc5569b`, tier green.
+
+## K. A cost I caused, and the fix belongs on the board
+
+Nine commits in four hours queued nine full CI matrix runs, and **two of them
+were for agent BRANCHES whose content was already merged to master**
+(`0951165`, `1379647`). `test.yml` triggers on a push to ANY branch, so every
+mission that pushes its work — which they must, it is how I fetch it — burns a
+seven-job matrix on a commit nobody will ever tag. I cancelled both to free
+runner slots for the release gate, which was by then six deep and blocking the
+tag.
+
+The mitigation is a branch filter on `test.yml`'s push trigger (master plus
+`pull_request`), and it is NOT something to change during a release cut, so it
+is recorded rather than done. The general form is worth more than the fix: **a
+CI trigger that fires on work nobody will merge converts throughput into
+queue**, and it does it invisibly, because every individual run looks correct.
