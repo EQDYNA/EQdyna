@@ -172,6 +172,71 @@ def gpu_env(env, index):
     return env
 
 
+# --------------------------------------------------------------------------
+# longest-first scheduling (item 2, 2026-09-23)
+# --------------------------------------------------------------------------
+LEDGER_PATH = os.path.join(REPO_ROOT, 'docs', 'perf_ledger.jsonl')
+
+
+def load_ledger_wall_costs(ledger_path=LEDGER_PATH):
+    """Latest measured wall_s per (case, backend) cell, read from
+    docs/perf_ledger.jsonl's 'cell-wall-clock' rows (tool == 'run_e2e').
+
+    This is the MEASURED cost source for start-order scheduling below --
+    chosen over matrix.MEASURED_PEAK_RSS_GB's wall-time comments because the
+    ledger is machine-readable, append-only (testsys/perf/ledger.py), and
+    already the record of every past sweep's per-cell wall clock.
+
+    CAVEAT, stated rather than hidden: the ledger row schema carries no
+    `term` field (testsys/perf/ledger.py's own schema comment), so a row
+    produced by a --term full run and one from the default --term gate run
+    are indistinguishable here, and this function takes whichever is LATEST
+    for that (case, backend) regardless of which term produced it. That is
+    acceptable for THIS use only, because scheduling needs a relative
+    ORDER, not an exact duration -- it would not be an acceptable way to
+    report a timing.
+
+    Returns {} if the ledger does not exist yet (a fresh checkout has none);
+    callers must treat a missing entry as UNMEASURED, never as zero/cheap
+    (see schedule_order).
+    """
+    costs = {}
+    if not os.path.isfile(ledger_path):
+        return costs
+    with open(ledger_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            if row.get('tool') != 'run_e2e' or row.get('metric') != 'cell-wall-clock':
+                continue
+            wall = row.get('wall_s')
+            case, backend = row.get('case'), row.get('backend')
+            if wall is None or case is None or backend is None:
+                continue
+            costs[(case, backend)] = wall  # later lines overwrite earlier: latest wins
+    return costs
+
+
+def schedule_order(cells, cost_estimates):
+    """Longest-estimated-cost-first ordering of `cells`: a slow cell must
+    never be the one that starts last, because the concurrent sweep's wall
+    clock is bounded by whichever cell is STILL RUNNING, not by when it
+    started (see the module docstring's WHY THIS MATTERS on cell concurrency).
+
+    cost_estimates: {(case, backend): seconds}, e.g. load_ledger_wall_costs().
+    A cell with NO entry is UNMEASURED; the stated rule for that case is the
+    conservative one -- schedule it FIRST (float('inf')), never silently
+    treated as cheap and landed last.
+
+    Stable sort: cells with equal (or equally-unmeasured) cost keep their
+    relative order from the input list, so the schedule is deterministic for
+    an unchanged ledger and cell list.
+    """
+    return sorted(cells, key=lambda cb: -cost_estimates.get(cb, float('inf')))
+
+
 def base_env():
     env = dict(os.environ)
     env['EQDYNAROOT'] = REPO_ROOT
@@ -779,9 +844,25 @@ def main(argv=None):
             return max(1, matrix.PY_MPI_RANKS[case])
         return 1
 
-    cells = [(c, b) for c in matrix.CASES for b in matrix.BACKENDS
-             if (c, b) in runnable]
-    order = {cb: i for i, cb in enumerate(cells)}
+    table_cells = [(c, b) for c in matrix.CASES for b in matrix.BACKENDS
+                  if (c, b) in runnable]
+    order = {cb: i for i, cb in enumerate(table_cells)}
+
+    # Longest-first start order (item 2, 2026-09-23): reorders SUBMISSION
+    # only -- `order` above (used to re-sort the printed results table) is
+    # fixed to the table's own case x backend order regardless, so a
+    # scheduled run and a --jobs 1 serial run still PRINT identically.
+    ledger_costs = load_ledger_wall_costs()
+    cells = schedule_order(table_cells, ledger_costs)
+    print('e2e: start order (longest measured wall-clock first, '
+          'docs/perf_ledger.jsonl latest cell-wall-clock row per cell; '
+          'unmeasured cells scheduled first as the conservative choice):')
+    for cb in cells:
+        cost = ledger_costs.get(cb)
+        print('  %-16s %-13s %s'
+              % (cb[0], cb[1],
+                 ('%.1fs (measured)' % cost) if cost is not None
+                 else 'UNMEASURED -- scheduled first'))
 
     # One slot per visible card, created only when a GPU cell is actually
     # selected -- asking nvidia-smi on a CPU sweep would make a CPU-only box
