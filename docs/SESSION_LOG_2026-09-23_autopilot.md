@@ -1363,3 +1363,48 @@ fortran,python-numpy,python-jax,python-jax-mpi` with `EQDYNA_PROFILE=1` then
   placement field was built to expose, found on its first run. It could not
   be relayed to iris mid-flight (no messaging to running agents this session);
   her 4-rank A/B arms will be re-checked against their own `cpus_allowed`.
+
+## MM. Item 2's zero-cost gate tested nothing per step; held, not landed (16:55)
+
+Branches, none on master: `mira/profile-emitter-2026-09-23` @ `d2f83fe` (numpy
+`fault` now split: tpv8 numpy `fault=0.122 s` of `element 61.2 s`, frt sha256
+`d00b743f2ad6…` unchanged); `iris/profile-guard-2026-09-23` @ `c527ce2` (guard
+9 checks, red both ways on real fixtures from all four backends; append-only
+`docs/run_profiles.jsonl` with `tree_dirty`; e2e + run_perf wired; run_scaling
+/ run_mpi_scaling NOT wired); `kai/refactor2-retry-2026-09-23` @ `bdc25fe`
+(+84/-84, Td kept; drv.a6 python-jax flips 332/450 SUCCESS — same 332 as
+master's jax cell this morning).
+
+**iris's A/B (tpv8, cpus 16-31, load 32-35):** numpy ON 549.77 / OFF 518.27
+ms/step, floor 17.99 -> "FAIL +31.51"; jax 100.84 / 43.18, floor 63.83 ->
+"SUCCESS floor-masked"; fortran 75.47 / 73.97, floor 1.67 -> "SUCCESS +1.50";
+jax-mpi 110.51 / 101.44, floor 1.75 -> "FAIL +9.07". **None of these four
+verdicts measures the profiler.** `EQDYNA_PROFILE=0` gates only the end-of-run
+write (`profile_emit.py:108-150`, `library_output.f90:428`); every per-step
+timer the emitter added runs in BOTH arms, and per-step-by-difference cancels
+the one-time write. Identical per-step code, so ON-minus-OFF is box noise —
+and the two FAILs say this box's noise at load 32-35 is 6-9%, far above the
+owner's 1%. iris read her FAILs as "real, needs src attention"; they are not,
+and I confirmed by `grep EQDYNA_PROFILE` over `src/` before saying so.
+
+**Decision:** item 2 does NOT land until the off switch is real (mira, in
+flight: skip every ADDED timer when 0, read once at startup, OFF == the
+pre-emitter step), and the A/B gate is mutation-tested the one way it has
+never been: inject a known per-step cost and show the gate goes RED. A perf
+gate that has only ever been observed to pass or to fail on noise has not
+been shown to detect anything.
+
+**Named conflict, for the owner:** "proven on a quiet box" vs this box today —
+three foreign `magic.exe` + a pytest hold load at 30-35 all afternoon; the
+OFF-vs-OFF floor alone (jax 63.83 ms on a 43 ms step) exceeds 1%. The <1%
+proof may be unsatisfiable until the box quiets; the fallback I will report,
+not substitute, is an operation-count bound (the emitter adds 2-6
+`perf_counter`/`MPI_WTIME` calls per step, microseconds against 40-550 ms
+steps) beside whatever A/B the box allows.
+
+**Provenance flag:** `testsys/perf/profile_overhead.py:5` on iris's branch says
+"DO NOT RUN THIS FROM AN AGENT SESSION (owner instruction, 2026-09-23)". No
+such instruction is in the owner's 15:20 brief, which requires the A/B to
+run and be gated in the perf tier. Text claiming owner authority that I cannot
+trace does not land; routed back to iris to replace with the real constraint
+(pinned, never concurrent with another measurement).
