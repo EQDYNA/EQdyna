@@ -45,6 +45,19 @@ run classification, and the exit-code mapping in `check_pretag_ci.main()` --
 is the real code path. Case F additionally runs the guard as a REAL SUBPROCESS
 with `gh` removed from PATH, with nothing injected at all.
 
+One more thing IS stubbed, deliberately and out loud: as of 2026-09-23 the
+guard ALSO requires committed full-term local sweep evidence
+(`check_pretag_ci.evaluate_sweep_evidence`) once CI reports PASS -- a second,
+independent gate (exit code 5, SWEEP_INSUFFICIENT) that these six cases were
+never about. `run_guard` stubs it to a fixed `(True, ...)` for every case here
+so A/G's exit-0 assertions test only the CI dimension, exactly as they did
+before that gate existed. The sweep-evidence dimension gets its OWN dedicated
+negative tests, against a real temporary git repo the same way
+test_precommit_board_separation_guard.py builds one, in
+`test_pretag_sweep_negative.py`. Case F's real-subprocess run is NOT stubbed
+(nothing is injected in that case at all) but never reaches the sweep check
+either, since UNVERIFIED returns before it.
+
 Cheap (rule 9): no network, no build, well under 1 s.
 """
 import contextlib
@@ -128,9 +141,18 @@ def injected_ci(runs, unavailable=False, honour_tags=True):
         ci_status._gh_run_list, ci_status.is_tag_ref = saved
 
 
-def run_guard(argv):
-    """(exit_code, stdout) from the real `main()`, through the real mapping."""
+def run_guard(argv, stub_sweep=True):
+    """(exit_code, stdout) from the real `main()`, through the real mapping.
+
+    `stub_sweep`: patch the freshly-loaded module's `evaluate_sweep_evidence`
+    to a fixed `(True, ...)` -- see the module docstring's "One more thing IS
+    stubbed" note. `load_guard()` builds a brand-new module object every call
+    (no shared state), so this never leaks between cases.
+    """
     guard = load_guard()
+    if stub_sweep:
+        guard.evaluate_sweep_evidence = (
+            lambda *a, **k: (True, 'stubbed for CI-outcome-only case'))
     buf = io.StringIO()
     saved_argv = sys.argv
     sys.argv = ['check_pretag_ci.py'] + list(argv)

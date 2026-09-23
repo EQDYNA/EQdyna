@@ -19,7 +19,14 @@ WHAT THIS PINS, for the version currently in VERSION:
      the post-hoc half of the pre-tag gate in
      testsys/regression/check_pretag_ci.py; that one runs BEFORE `git tag`
      and blocks it, this one runs AFTER and catches a tag that landed on an
-     un-green or never-run SHA anyway).
+     un-green or never-run SHA anyway);
+  6. a committed full-term local sweep (docs/evidence/sweep-*/summary.json)
+     justifies the exact tagged SHA (added 2026-09-23, see
+     check_sweep_evidence_for_tagged_sha below -- the release-path guard:
+     CI stopped running the e2e sweep, so this is now the only mechanical
+     physics check at release time, required IN ADDITION to #5, not instead
+     of it; post-hoc half of check_pretag_ci.py's --pre-tag guard, exit code
+     5, SWEEP_INSUFFICIENT).
 
 Steps that need the network -- the tag being pushed, CI being green on it, and
 the GitHub Release existing -- are checked ONLY when `gh` is available and
@@ -56,6 +63,25 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 from testsys import ci_status  # noqa: E402
+
+import importlib.util as _importlib_util
+
+
+def _load_check_pretag_ci():
+    """The pre-tag guard module, imported from its path (it is not a
+    package) -- reused here so the post-hoc sweep-evidence check below and
+    the pre-hoc one in check_pretag_ci.py --pre-tag share ONE implementation
+    of `evaluate_sweep_evidence` rather than two that could drift apart."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'check_pretag_ci.py')
+    spec = _importlib_util.spec_from_file_location(
+        'check_pretag_ci_for_release_complete', path)
+    mod = _importlib_util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+check_pretag_ci = _load_check_pretag_ci()
 
 
 def version():
@@ -234,6 +260,37 @@ def check_tag_is_annotated(v):
         % (v, out))
 
 
+SWEEP_EVIDENCE_FIRST_VERSION = (5, 17, 0)
+
+
+def check_sweep_evidence_for_tagged_sha(v):
+    """The release-path guard's post-hoc half (2026-09-23, companion to
+    check_ci_green_for_tagged_sha immediately below): CI no longer runs the
+    e2e sweep, so a committed full-term LOCAL sweep is the only mechanical
+    check of the physics for a release, and the tagged sha must be backed by
+    one -- shares its logic with check_pretag_ci.py's --pre-tag guard
+    (exit code 5, SWEEP_INSUFFICIENT) via `_load_check_pretag_ci` above, so
+    the pre-hoc and post-hoc halves cannot silently drift apart."""
+    # PROSPECTIVE, by the owner's 2026-09-23 decision: the requirement was
+    # adopted after v5.16.2 was tagged and "v5.17.0 becomes the first release
+    # gated under the new rule". A tag older than that cannot have been cut
+    # against a rule that did not exist; every tag from 5.17.0 on is bound.
+    if tuple(int(x) for x in v.split('.')[:3]) < SWEEP_EVIDENCE_FIRST_VERSION:
+        print('  N/A   sweep evidence: v%s predates the requirement (binds '
+              'from v%s on)' % (v, '.'.join(map(str, SWEEP_EVIDENCE_FIRST_VERSION))))
+        return
+    try:
+        sha = ci_status.resolve_sha('v' + v)
+    except ValueError as exc:
+        raise AssertionError('cannot resolve tag v%s to a commit: %s' % (v, exc))
+    ok, msg = check_pretag_ci.evaluate_sweep_evidence(sha)
+    if not ok:
+        raise AssertionError(
+            'v%s is tagged at %s but no committed full-term local sweep '
+            'justifies it: %s' % (v, sha, msg))
+    print('  PASS  %s' % msg)
+
+
 def check_network_side(v):
     """Pushed tag, CI, and the GitHub Release. UNVERIFIED when gh is absent."""
     unverified = []
@@ -352,7 +409,8 @@ def main():
         for c in (check_banner_matches,
                   check_readme_news_leads_with_this_version,
                   check_pathway_tasks_done_row, check_tag_is_annotated,
-                  check_ci_green_for_tagged_sha, check_network_side):
+                  check_ci_green_for_tagged_sha,
+                  check_sweep_evidence_for_tagged_sha, check_network_side):
             try:
                 c(v)
             except AssertionError as e:
