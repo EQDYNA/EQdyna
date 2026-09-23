@@ -63,7 +63,6 @@ subroutine output_onfault_st
             write(51,*) '# element_size =',dx
             write(51,'( a14,f8.4,a3)') '# time_step =', dt, ' s'
             write(51,'( a19,i6)') '# num_time_steps =', nstep
-            write(51,*) '# Time series in 11 columns in format E15.7'
             write(51,*) '# Column #1 = Time (s)'
             write(51,*) '# Column #2 = horizontal slip (m)'
             write(51,*) '# Column #3 = horizontal slip rate (m/s)'
@@ -72,10 +71,17 @@ subroutine output_onfault_st
             write(51,*) '# Column #6 = down-dip slip rate (m/s)'
             write(51,*) '# Column #7 = down-dip shear stress (MPa)'
             write(51,*) '# Column #8 = normal stress (MPa)'
-            if (friclaw>=3) then 
+            if (friclaw>=3) then
                 write(51,*) '# Column #9 = state variable psi (dimensionless)'
                 write(51,*) '# Column #10 = Temperature (degrees Kelvin)'
-                write(51,*) '# Column #11 = Pore pressure (MPa)'        
+                write(51,*) '# Column #11 = Pore pressure (MPa)'
+                ! pathway item 67: this declaration used to be a single line,
+                ! ABOVE this if-branch, unconditionally claiming 11 columns
+                ! in "format E15.7" -- true for neither branch (this one
+                ! writes E21.13 for column 1 and E16.7 for the rest, never
+                ! E15.7). It now follows the branch and states this branch's
+                ! true column count and its true, non-uniform format.
+                write(51,*) '# Time series in 11 columns; column 1 in format E21.13, columns 2-11 in format E16.7'
                 write(51,*) '# The line below lists the names of the data fields:'
                 write(51,'(1X,103A)') 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress psi temperature pressure'
                 do j = 1, nstep
@@ -92,7 +98,13 @@ subroutine output_onfault_st
                         onFaultQuantHistSCECForm(12,j,i), &
                         onFaultQuantHistSCECForm(11,j,i)/1.0d6  
                 enddo
-            else 
+            else
+                ! pathway item 67: 8 columns on this branch (see the
+                ! friclaw>=3 branch above for why this line moved here and
+                ! why "E15.7" is gone -- the write below is E21.13 then
+                ! 7x E16.7, matched here rather than the old unconditional,
+                ! wrong-for-this-branch "11 columns in format E15.7").
+                write(51,*) '# Time series in 8 columns; column 1 in format E21.13, columns 2-8 in format E16.7'
                 write(51,*) '# The line below lists the names of the data fields:'
                 write(51,'(1X,103A)') 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress'
                 do j = 1, nstep
