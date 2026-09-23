@@ -1,0 +1,33 @@
+{
+ "backend": "fortran",
+ "box_load_average_during_run": 48,
+ "branch": "wei/rough-fault-normal-2026-09-22",
+ "case": "test.tpv30",
+ "cells_total": 27867712,
+ "decomposition": {
+  "npx": 8,
+  "npy": 1,
+  "npz": 4
+ },
+ "dt_s": 0.0083333333333333,
+ "dx_m": 100.0,
+ "effective_cores_per_rank": {
+  "max": 1.0,
+  "median": 1.0,
+  "method": "/proc/<pid>/stat utime+stime deltas over 120 s",
+  "min": 1.0,
+  "sum": 32.0
+ },
+ "host": "cotopaxi",
+ "mem_gb_total": 42.916,
+ "nsteps": 2400,
+ "ranks": 32,
+ "run_log": "runs/dx100.tpv30/run.out",
+ "sha": "1d11d89",
+ "steady_state_method": "step-count delta over a 240 s window, separate from wall_s",
+ "steady_state_s_per_step": 1.22,
+ "term_s": 20.0,
+ "tool": "mira_dx100_tpv2930",
+ "ts_utc": "2026-09-22T23:49:30Z",
+ "wall_s": 3633.0
+}
