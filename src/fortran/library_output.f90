@@ -164,7 +164,24 @@ subroutine output_offfault_st
             write(bodytmp,'(f5.1)') x4nds(2,OffFaultStNodeIdIndex(1,i))/1000. 
             write(sttmp,'(f5.1)') x4nds(1,OffFaultStNodeIdIndex(1,i))/1000. 
             write(dptmp,'(f5.1)') abs(x4nds(3,OffFaultStNodeIdIndex(1,i)))/1000. 
-            stLocStamp = '# location = '//trim(adjustl(bodytmp))//' km off fault, '//trim(adjustl(sttmp))//' km along strike'//trim(adjustl(dptmp))//' km depth'
+            ! Vertical depth, NOT a down-dip distance -- unlike the on-fault
+            ! stamp at :65, this one takes no /dsin(dip) correction. x4nds is
+            ! read as a plain (x,y,z) triple in km from bStations.txt
+            ! (readInputFiles.f90:218, scaled to m at :223) and its third
+            ! component is matched against the raw mesh node z-coordinate
+            ! nodeCoor(3) in setSurfaceStation (meshgen.f90:625). These are
+            ! body/surface receivers at arbitrary (x,y,z) in the volume, off
+            ! the fault plane by x4nds(2) -- a point that is not on the fault
+            ! has no down-dip coordinate to convert to, so |z| is the right
+            ! quantity and 'depth' is the right label.
+            ! Missing ', ' separator (pathway item 88): the stamp used to
+            ! render as '5.0 km along strike3.0 km depth'.
+            stLocStamp = '# location = '//trim(adjustl(bodytmp))//' km off fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km depth'
+            ! pathway item 88, same defect as item 85 one subroutine up:
+            ! stLocStamp was computed every call and never written, so its
+            ! value -- including the missing separator above -- was
+            ! unverified. Emit it as the header's first line.
+            write(51,*) trim(stLocStamp)
             write(51,*) '# Project=',projectname
             write(51,*) '# Author=',author
             call date_and_time(values=dateTimeStamp)
@@ -175,9 +192,25 @@ subroutine output_offfault_st
             write(51,*) '# element_size =',dx
             write(51,'( a14,f8.4,a3)') '# time_step=', dt, ' s'
             write(51,'( a19,i6)') '# num_time_steps=', nstep
+            ! pathway item 88 (item 67 class): this legend used to carry a
+            ! spurious second '# Column #3 = horizontal displacement (m)'
+            ! line, so it declared 8 entries for a 7-column write and every
+            ! name from #3 down sat against the wrong ordinal. The list below
+            ! is derived from the write(51,'( E21.13,6E16.7)') statement at
+            ! the bottom of this loop, via the idhist row order built in
+            ! eqdyna3d.f90:180-190 (per station: iDof=1..3 outer,
+            ! disp/vel inner), which fixes OffFaultStGramSCEC row
+            ! (i-1)*6+1+2*(iDof-1)+dispOrVel:
+            !   +2 = x disp, +3 = x vel, +4 = y disp,
+            !   +5 = y vel,  +6 = z disp, +7 = z vel.
+            ! Write order is therefore t, x-disp, x-vel, -z-disp, -z-vel,
+            ! y-disp, y-vel. x is along strike ('horizontal'), y is
+            ! fault-normal ('normal'), and z is negated because the model's
+            ! z axis points up while the SCEC 'vertical' component is
+            ! positive down -- the same negation the on-fault writer applies
+            ! to its down-dip components at :109-112.
             write(51,*) '# Column #1 = Time (s)'
             write(51,*) '# Column #2 = horizontal displacement (m)'
-            write(51,*) '# Column #3 = horizontal displacement (m)'
             write(51,*) '# Column #3 = horizontal velocity (m/s)'
             write(51,*) '# Column #4 = vertical displacement (m)'
             write(51,*) '# Column #5 = vertical velocity (m/s)'
