@@ -262,6 +262,42 @@ def test_bad_device_count_raises(bad, monkeypatch):
         B.jax_device_count()
 
 
+def test_per_rank_cache_dir_is_distinct_per_rank(tmp_path, monkeypatch):
+    """The wedge fix: each rank must resolve a DIFFERENT compilation-cache
+    directory. Sharing one is what let JAX's per-key lock hang the
+    test.tpv8 x python-jax-mpi cell (3 runs lost), and it buys no reuse
+    because every rank compiles its own element shapes."""
+    monkeypatch.setenv(B._CACHE_ENV, str(tmp_path))
+    paths = [B._resolved_cache_path('rank%d' % r) for r in range(4)]
+    assert len(set(paths)) == 4
+    assert all(p.startswith(str(tmp_path)) for p in paths)
+    # and the serial path is unchanged -- no subdir, same directory as before
+    assert B._resolved_cache_path() == str(tmp_path)
+    assert B._resolved_cache_path(None) == str(tmp_path)
+
+
+def test_cache_dir_off_is_honoured_for_both_forms(monkeypatch):
+    """`off` must stay off even with a subdir -- a per-rank subdirectory of
+    "off" would be a real directory named off/rank0 and would silently
+    re-enable the cache the user turned off."""
+    monkeypatch.setenv(B._CACHE_ENV, 'off')
+    assert B._resolved_cache_path() == 'off'
+    assert B._resolved_cache_path('rank3') == 'off'
+
+
+def test_second_different_cache_request_raises(tmp_path, monkeypatch):
+    """jax.config is process-global and the first compile wins, so a second
+    request for a different directory cannot be honoured. Raise instead of
+    returning silently, which would leave the MPI path sharing the directory
+    it asked not to share while looking fixed."""
+    monkeypatch.setenv(B._CACHE_ENV, str(tmp_path))
+    monkeypatch.setattr(B, '_cache_enabled', True)
+    monkeypatch.setattr(B, '_cache_path', str(tmp_path / 'rank0'))
+    B.enable_compilation_cache('rank0')          # same request: no-op
+    with pytest.raises(RuntimeError, match='already pointed at'):
+        B.enable_compilation_cache('rank1')
+
+
 def test_shard_padding_is_exact_multiple_and_pads_divisors_with_one():
     """Padded element rows must contribute EXACTLY 0.0, which needs every
     pad value to be 0 -- except the three PML divisors, where 0 would make

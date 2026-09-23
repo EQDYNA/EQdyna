@@ -1,0 +1,30 @@
+{
+ "tool": "run_e2e",
+ "sha": "d4f625e",
+ "host": "cotopaxi",
+ "date": "2026-09-22 17:23",
+ "label": "explicit: cases=test.tpv36,test.tpv8 backends=python-jax",
+ "device": "cuda",
+ "jobs_budget": 60,
+ "tenancy_ceiling": 0.5,
+ "cells": [
+  {
+   "case": "test.tpv8",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 11.283968210220337,
+   "ranks": 1,
+   "platform": "unknown",
+   "platform_evidence": "JAX_PLATFORMS=cuda was requested but the sweep records no device evidence; requested is not measured"
+  },
+  {
+   "case": "test.tpv36",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 62.644627809524536,
+   "ranks": 1,
+   "platform": "unknown",
+   "platform_evidence": "JAX_PLATFORMS=cuda was requested but the sweep records no device evidence; requested is not measured"
+  }
+ ]
+}
