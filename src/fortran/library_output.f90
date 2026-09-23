@@ -11,6 +11,8 @@
 ! 7. output_gm
 ! 8. output_finalSurfDisp
 ! 9. output_src_evol
+! 10. output_profile (+ readCpusAllowed, computeNumaNodes, parseRangeList,
+!     readHostname, readPid, jsonNum helpers) -- docs/run_profile.md
 
 !#1
 subroutine output_onfault_st
@@ -401,3 +403,233 @@ subroutine output_src_evol
         close(UNIT_SRC_EVOL_BASE+me)
     endif
 end subroutine output_src_evol
+
+!#10
+subroutine output_profile(setupBucket, elementBucket, faultBucket, exchangeBucket, &
+                           waitBucket, ioBucket, loopS, totalS, nstepsArg, samplingEvery)
+    ! ALWAYS-ON per-rank profile.rank<r>.json (docs/run_profile.md). Off
+    ! switch EQDYNA_PROFILE=0 exists only for the overhead A/B; default on.
+    ! Every value here is a directly-measured quantity or a difference of
+    ! two directly-measured monotonic counters at named checkpoints --
+    ! unaccounted_s is a REPORTED diagnostic, never fed back into a bucket.
+    use globalvar
+    implicit none
+    real (kind = dp), intent(in) :: setupBucket, elementBucket, faultBucket, exchangeBucket, &
+                                     waitBucket, ioBucket, loopS, totalS
+    integer (kind = 4), intent(in) :: nstepsArg, samplingEvery
+    integer (kind = 4), parameter :: UNIT_PROFILE_BASE = 40009
+    character(len=8) :: envval
+    integer (kind = 4), allocatable :: cpuList(:), numaList(:)
+    integer (kind = 4) :: nCpus, nNuma, i, pid
+    character(len=256) :: hostStr
+    real (kind = dp) :: unaccounted
+
+    envval = ' '
+    call get_environment_variable('EQDYNA_PROFILE', envval)
+    if (trim(envval) == '0') return
+
+    call readCpusAllowed(cpuList, nCpus)
+    call computeNumaNodes(cpuList, nCpus, numaList, nNuma)
+    call readHostname(hostStr)
+    call readPid(pid)
+    unaccounted = totalS - (setupBucket + elementBucket + faultBucket + exchangeBucket + waitBucket + ioBucket)
+
+    open(unit=UNIT_PROFILE_BASE+me, file='profile.rank'//trim(mm)//'.json', status='unknown')
+    write(UNIT_PROFILE_BASE+me,'(A)') '{'
+    write(UNIT_PROFILE_BASE+me,'(A)') '"schema": "eqdyna-profile/1",'
+    write(UNIT_PROFILE_BASE+me,'(A)') '"backend": "fortran",'
+    write(UNIT_PROFILE_BASE+me,'(A,I0,A)') '"rank": ', me, ','
+    write(UNIT_PROFILE_BASE+me,'(A,I0,A)') '"nranks": ', totalNumOfMPIProcs, ','
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"host": "', trim(hostStr), '",'
+    write(UNIT_PROFILE_BASE+me,'(A,I0,A)') '"pid": ', pid, ','
+    write(UNIT_PROFILE_BASE+me,'(A)',advance='no') '"cpus_allowed": ['
+    do i = 1, nCpus
+        if (i > 1) write(UNIT_PROFILE_BASE+me,'(A)',advance='no') ','
+        write(UNIT_PROFILE_BASE+me,'(I0)',advance='no') cpuList(i)
+    enddo
+    write(UNIT_PROFILE_BASE+me,'(A)') '],'
+    write(UNIT_PROFILE_BASE+me,'(A)',advance='no') '"numa_nodes": ['
+    do i = 1, nNuma
+        if (i > 1) write(UNIT_PROFILE_BASE+me,'(A)',advance='no') ','
+        write(UNIT_PROFILE_BASE+me,'(I0)',advance='no') numaList(i)
+    enddo
+    write(UNIT_PROFILE_BASE+me,'(A)') '],'
+    write(UNIT_PROFILE_BASE+me,'(A,I0,A)') '"nsteps": ', nstepsArg, ','
+    write(UNIT_PROFILE_BASE+me,'(A,I0,A)') '"sampling_every": ', samplingEvery, ','
+    write(UNIT_PROFILE_BASE+me,'(A)') '"buckets_s": {'
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"setup": ', trim(jsonNum(setupBucket)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"element": ', trim(jsonNum(elementBucket)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"fault": ', trim(jsonNum(faultBucket)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"exchange": ', trim(jsonNum(exchangeBucket)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"wait": ', trim(jsonNum(waitBucket)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A)') '"io": ', trim(jsonNum(ioBucket))
+    write(UNIT_PROFILE_BASE+me,'(A)') '},'
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"loop_s": ', trim(jsonNum(loopS)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"total_s": ', trim(jsonNum(totalS)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A)') '"unaccounted_s": ', trim(jsonNum(unaccounted))
+    write(UNIT_PROFILE_BASE+me,'(A)') '}'
+    close(UNIT_PROFILE_BASE+me)
+contains
+    function jsonNum(x) result(s)
+        real (kind = dp), intent(in) :: x
+        character(len=32) :: s
+        write(s,'(F24.9)') x
+        s = adjustl(s)
+    end function jsonNum
+
+    subroutine readCpusAllowed(cpuListOut, nCpusOut)
+        ! This process's CPU affinity, from /proc/self/status
+        ! "Cpus_allowed_list:" (constraint 3: read via Fortran, not faked,
+        ! not shelled out). Internal procedure: allocatable dummies need an
+        ! explicit interface, which an internal procedure gets for free.
+        integer, allocatable, intent(out) :: cpuListOut(:)
+        integer, intent(out) :: nCpusOut
+        integer :: u, ios, colonPos
+        character(len=512) :: line
+        logical :: found
+
+        found = .false.
+        open(newunit=u, file='/proc/self/status', status='old', action='read', iostat=ios)
+        if (ios /= 0) then
+            allocate(cpuListOut(0)); nCpusOut = 0; return
+        endif
+        do
+            read(u,'(A)',iostat=ios) line
+            if (ios /= 0) exit
+            if (index(line,'Cpus_allowed_list:') == 1) then
+                colonPos = index(line, ':')
+                call parseRangeList(line(colonPos+1:), cpuListOut, nCpusOut)
+                found = .true.
+                exit
+            endif
+        enddo
+        close(u)
+        if (.not. found) then
+            allocate(cpuListOut(0)); nCpusOut = 0
+        endif
+    end subroutine readCpusAllowed
+
+    subroutine computeNumaNodes(cpuListIn, nCpusIn, numaListOut, nNumaOut)
+        ! NUMA node(s) backing cpuListIn, from
+        ! /sys/devices/system/node/node<k>/cpulist (constraint 3). Probes
+        ! node indices 0..31 by open() success/failure -- there is no
+        ! portable Fortran directory listing.
+        integer, intent(in) :: cpuListIn(:), nCpusIn
+        integer, allocatable, intent(out) :: numaListOut(:)
+        integer, intent(out) :: nNumaOut
+        integer :: k, u, ios, i, j
+        character(len=256) :: fname
+        character(len=512) :: line
+        integer, allocatable :: nodeCpus(:), tmp(:)
+        integer :: nNodeCpus
+        logical :: overlap
+
+        allocate(tmp(64))
+        nNumaOut = 0
+        do k = 0, 31
+            write(fname,'(A,I0,A)') '/sys/devices/system/node/node', k, '/cpulist'
+            open(newunit=u, file=trim(fname), status='old', action='read', iostat=ios)
+            if (ios /= 0) cycle
+            read(u,'(A)',iostat=ios) line
+            close(u)
+            if (ios /= 0) cycle
+            call parseRangeList(line, nodeCpus, nNodeCpus)
+            overlap = .false.
+            do i = 1, nCpusIn
+                do j = 1, nNodeCpus
+                    if (cpuListIn(i) == nodeCpus(j)) then
+                        overlap = .true.
+                        exit
+                    endif
+                enddo
+                if (overlap) exit
+            enddo
+            if (overlap) then
+                nNumaOut = nNumaOut + 1
+                tmp(nNumaOut) = k
+            endif
+            if (allocated(nodeCpus)) deallocate(nodeCpus)
+        enddo
+        allocate(numaListOut(nNumaOut))
+        numaListOut(1:nNumaOut) = tmp(1:nNumaOut)
+        deallocate(tmp)
+    end subroutine computeNumaNodes
+
+    subroutine parseRangeList(line, arrOut, nOut)
+        ! Shared parser for kernel-style cpu range lists, e.g.
+        ! "48-51,60,62-63". Used for both /proc/self/status
+        ! Cpus_allowed_list and /sys/devices/system/node/node<k>/cpulist,
+        ! which share this format.
+        character(len=*), intent(in) :: line
+        integer, allocatable, intent(out) :: arrOut(:)
+        integer, intent(out) :: nOut
+        character(len=len(line)) :: buf
+        integer :: i, n, lo, hi, dashPos, pos, startTok
+        integer, allocatable :: tmp(:)
+
+        buf = trim(adjustl(line))
+        n = len_trim(buf)
+        allocate(tmp(4096))
+        nOut = 0
+        startTok = 1
+        i = 1
+        do while (i <= n+1)
+            if (i > n .or. buf(i:i) == ',') then
+                if (i > startTok) then
+                    dashPos = index(buf(startTok:i-1), '-')
+                    if (dashPos > 0) then
+                        read(buf(startTok:startTok+dashPos-2), *) lo
+                        read(buf(startTok+dashPos:i-1), *) hi
+                    else
+                        read(buf(startTok:i-1), *) lo
+                        hi = lo
+                    endif
+                    do pos = lo, hi
+                        nOut = nOut + 1
+                        tmp(nOut) = pos
+                    enddo
+                endif
+                startTok = i + 1
+            endif
+            i = i + 1
+        enddo
+        allocate(arrOut(nOut))
+        arrOut(1:nOut) = tmp(1:nOut)
+        deallocate(tmp)
+    end subroutine parseRangeList
+end subroutine output_profile
+
+subroutine readHostname(hostStr)
+    ! /proc/sys/kernel/hostname, read directly (no shell-out).
+    implicit none
+    character(len=256), intent(out) :: hostStr
+    integer :: u, ios
+    hostStr = 'unknown'
+    open(newunit=u, file='/proc/sys/kernel/hostname', status='old', action='read', iostat=ios)
+    if (ios == 0) then
+        read(u,'(A)',iostat=ios) hostStr
+        close(u)
+    endif
+end subroutine readHostname
+
+subroutine readPid(pid)
+    ! /proc/self/status "Pid:" line, same file and technique as
+    ! output_profile's internal readCpusAllowed, per constraint 3 (Fortran affinity via /proc).
+    implicit none
+    integer, intent(out) :: pid
+    integer :: u, ios, colonPos
+    character(len=256) :: line
+    pid = -1
+    open(newunit=u, file='/proc/self/status', status='old', action='read', iostat=ios)
+    if (ios /= 0) return
+    do
+        read(u,'(A)',iostat=ios) line
+        if (ios /= 0) exit
+        if (index(line,'Pid:') == 1) then
+            colonPos = index(line, ':')
+            read(line(colonPos+1:), *) pid
+            exit
+        endif
+    enddo
+    close(u)
+end subroutine readPid
