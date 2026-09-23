@@ -448,21 +448,46 @@ def _pml(xp, inv, velArr, force, s_p, rdampk, scratch):
 
     # f10..f12 multiply det_w_p into a SUM of three terms -- a different
     # association that wx_p/wy_p/wz_p cannot express, so they are rebuilt.
+    #
+    # calcElemMass's gravity body force is SEEDED INTO THE f12 BLOCK, exactly
+    # where assembleGlobalKU.f90:44 puts it (`efPML((i-1)*12+9+j) =
+    # elresf((i-1)*3+j)`, before calcPMLElemKU subtracts the s0 terms from the
+    # same slots). rdampm is 0.0d0 unconditionally (globalvar.f90:179), so
+    # elresf's x and y components are identically zero and only the z slot
+    # (jj == 2) carries anything.
+    #
+    # THIS SEEDING IS LOAD-BEARING AND WAS MISSING. The term used to be added
+    # to `groups[2]` alone, i.e. only to the 3-dof-node group sum scattered
+    # through idxP3[2]. assembleGlobalKU.f90:51-58 adds ALL TWELVE efPML slots
+    # to a 12-dof node, so a PML node was never receiving the gravity body
+    # force of its own PML elements. Measured on test.tpv30 (C_elastic==0,
+    # dx=500, serial): interior-element stress is bit-identical at step 1,
+    # 1.19e-07 Pa at step 2 and 9.86e+04 Pa at step 3 over the 35376 interior
+    # elements that touch the PML -- the first step at which a wrong PML-node
+    # velocity can reach an interior element -- growing to a 30% fault-traction
+    # divergence by t=20 s.
+    #
+    # Seeding here rather than folding into groups[2] afterwards also puts the
+    # group sum in the Fortran's own association: group3 == ((f7+f8)+f9) +
+    # (gravity + t), not (((f7+f8)+f9) + t) + gravity.
+    #
+    # EXACTLY 0.0 when C_elastic==1 (grav_const carries a (1-C_elastic)
+    # factor), and x + (-0.0) == x for every x, so every elastic case is
+    # bit-for-bit unchanged by this.
     blocks3 = ((dNx_p, 0, dNz_p, 4, dNy_p, 5, 0),
                (dNy_p, 1, dNz_p, 3, dNx_p, 5, 1),
                (dNz_p, 2, dNy_p, 3, dNx_p, 4, 2))
+    grav_p = -(inv['m_e_p'] * inv['grav_const'])[:, None]
     for jj, (dA, kA, dB2, kB, dC, kC, grp) in enumerate(blocks3):
         t = B.mul_into(xp, sp_[3], dA, s0[kA][:, None])
         t = B.iadd(xp, t, dB2 * s0[kB][:, None])
         t = B.iadd(xp, t, dC * s0[kC][:, None])
         t = B.mul_into(xp, sp_[3], t, ndw)
+        if grp == 2:
+            t = B.iadd(xp, t, grav_p)
         force = B.scatter_add(xp, force, ip12[9 + jj], t.ravel())
         groups[grp] = B.iadd(xp, groups[grp], t)
 
-    # calcElemMass's gravity lands in the z (vhg_z) slot before calcPMLElemKU
-    # subtracts from it; subtracted from the z group instead (addition is
-    # commutative). EXACTLY 0.0 when C_elastic==1.
-    groups[2] = B.iadd(xp, groups[2], -(inv['m_e_p'] * inv['grav_const'])[:, None])
     for g in range(3):
         force = B.scatter_add(xp, force, ip3[g], groups[g].ravel())
     return force, s_p
