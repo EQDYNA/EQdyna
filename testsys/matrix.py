@@ -273,6 +273,49 @@ UNSUPPORTED = {
     for c in _NAME_LIST if c not in PY_MPI_RANKS
 }
 
+# RELEASE_ONLY -- owner decision, 2026-09-23. These cells are SUPPORTED and
+# PASS: this is a suite-COST flag, never a correctness one, and it must never
+# be confused with UNSUPPORTED (see the consistency check at the bottom of
+# this module, which refuses a cell that is both). They leave the EVERYDAY
+# sweep (`run.py e2e`, run_e2e.py's default selection at --term gate) and stay
+# in the RELEASE sweep (`run.py release`, --term full, rule 24's committed
+# pre-tag sweep).
+#
+# Measured cost, cited: docs/perf_snapshots/e2e_cells_2026-09-23_132003_1651408.json
+# (sha ef7196c) and its matching docs/perf_ledger.jsonl rows (same sha,
+# ts_utc 2026-09-23T18:20:04Z, metric=cell-wall-clock) -- tpv36 x python-numpy
+# 1120.6555359363556 s wall, tpv37 x python-numpy 1109.9121885299683 s wall,
+# both at that run's term. Roughly 1110-1120 s is ~19 minutes per cell, twice
+# a day (unit+regression+e2e run constantly per the project README) -- the
+# cost this flag removes from the everyday loop.
+#
+# EVERYDAY COVERAGE IS NOT LOST for the python module these two cells
+# exercise: test.tpv36 x python-jax and test.tpv37 x python-jax stay in the
+# everyday sweep and run the SAME C_degen>3 wedge-degeneration path (same
+# meshgen.py/eqdyna python modules, same compset, only the backend differs)
+# -- so the wedge machinery itself is still exercised every day; only the
+# numpy BACKEND's own cell on these two specific cases moves to release-only.
+RELEASE_ONLY = {
+    ('test.tpv36', 'python-numpy'): (
+        'release-only for COST, not correctness (2026-09-23): SUPPORTED and '
+        'PASSING, observed 1120.6555359363556s wall at sha ef7196c '
+        '(docs/perf_snapshots/e2e_cells_2026-09-23_132003_1651408.json, '
+        'docs/perf_ledger.jsonl). Moved out of the everyday sweep '
+        '(run.py e2e); stays in the release sweep (run.py release, rule 24). '
+        'Everyday coverage of the C_degen>3 wedge path is preserved via '
+        'test.tpv36 x python-jax (same python modules).'
+    ),
+    ('test.tpv37', 'python-numpy'): (
+        'release-only for COST, not correctness (2026-09-23): SUPPORTED and '
+        'PASSING, observed 1109.9121885299683s wall at sha ef7196c '
+        '(docs/perf_snapshots/e2e_cells_2026-09-23_132003_1651408.json, '
+        'docs/perf_ledger.jsonl). Moved out of the everyday sweep '
+        '(run.py e2e); stays in the release sweep (run.py release, rule 24). '
+        'Everyday coverage of the C_degen>3 wedge path is preserved via '
+        'test.tpv37 x python-jax (same python modules).'
+    ),
+}
+
 # MEASURED_PEAK_RSS_GB stays as measured evidence -- it is what the RELEASE
 # tier's evidence artifact and the local `run.py all`/`run.py release` sweeps
 # use to reason about which cells fit which box. It is no longer what decides
@@ -409,10 +452,16 @@ def cells(cases=None, backends=None):
     return runnable, unsupported
 
 
-def coverage_report(runnable, declared_unsupported, selection_label):
+def coverage_report(runnable, declared_unsupported, selection_label,
+                    release_only=()):
     """The lines a run prints BEFORE it starts, so its own output states
     exactly what it is about to cover. Requirement zero of this sweep: a green
-    result must never be readable as broader than it is."""
+    result must never be readable as broader than it is.
+
+    release_only: (case, backend, reason) triples held back from THIS
+    selection by RELEASE_ONLY (the everyday/release cost split, 2026-09-23).
+    Printed on their own line -- never silently absent -- and excluded from
+    'NOT in this selection' (they were considered and named, not skipped)."""
     total = len(CASES) * len(BACKENDS)
     selected = len(runnable) + len(declared_unsupported)
     lines = [
@@ -430,13 +479,36 @@ def coverage_report(runnable, declared_unsupported, selection_label):
                  % len(declared_unsupported))
     for c, b, reason in declared_unsupported:
         lines.append('  %-16s %-13s %s' % (c, b, reason))
-    chosen = set(runnable) | set((c, b) for c, b, _ in declared_unsupported)
+    lines.append('release-only (not run in this everyday sweep): %d cell(s)%s'
+                 % (len(release_only),
+                    (': ' + ', '.join('%s x %s' % (c, b)
+                                      for c, b, _ in release_only))
+                    if release_only else ''))
+    for c, b, reason in release_only:
+        lines.append('  %-16s %-13s %s' % (c, b, reason))
+    chosen = (set(runnable) | set((c, b) for c, b, _ in declared_unsupported)
+              | set((c, b) for c, b, _ in release_only))
     not_selected = [(c, b) for c in CASES for b in BACKENDS if (c, b) not in chosen]
     lines.append('NOT in this selection, %d cell(s)%s'
                  % (len(not_selected),
                     (': ' + ', '.join('%s x %s' % cb for cb in not_selected))
                     if not_selected else ''))
     return lines
+
+
+def everyday_cells(cases=None, backends=None):
+    """(runnable, declared_unsupported, release_only) for the EVERYDAY sweep
+    (run.py e2e / run_e2e.py's default selection, --term gate): matrix.cells()
+    minus RELEASE_ONLY, with the held-back cells returned separately so a
+    caller can print them rather than let them go silently absent (see
+    coverage_report above). matrix.cells() itself is UNCHANGED and remains
+    the release-term selection (every supported cell, RELEASE_ONLY included)
+    -- this function is strictly additive."""
+    runnable, unsupported = cells(cases, backends)
+    release_only = [(c, b, RELEASE_ONLY[(c, b)]) for (c, b) in runnable
+                    if (c, b) in RELEASE_ONLY]
+    runnable = [(c, b) for (c, b) in runnable if (c, b) not in RELEASE_ONLY]
+    return runnable, unsupported, release_only
 
 
 # --- consistency, enforced at import time -------------------------------------
@@ -485,3 +557,12 @@ for (_c, _b) in list(UNSUPPORTED) + list(CI_CELLS):
 for (_c, _b) in list(MEASURED_PEAK_RSS_GB):
     if _c not in CASES or _b not in BACKENDS:
         raise RuntimeError('measurement for unknown cell %r x %r' % (_c, _b))
+for (_c, _b) in list(RELEASE_ONLY):
+    if _c not in CASES or _b not in BACKENDS:
+        raise RuntimeError('RELEASE_ONLY entry for unknown cell %r x %r'
+                           % (_c, _b))
+    if (_c, _b) in UNSUPPORTED:
+        raise RuntimeError(
+            '%s x %s is both RELEASE_ONLY and UNSUPPORTED -- release-only '
+            'means "supported, cost-deferred to the release tier", not '
+            '"does not work"; a cell cannot honestly claim both.' % (_c, _b))
