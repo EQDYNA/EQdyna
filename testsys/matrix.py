@@ -107,6 +107,30 @@ PY_MPI_EXPECTED_FRT_FILES = {
 
 THRESHOLD = 1e-3  # PROJECT_RULES rule 5's one outer sanity bound.
 
+# --- the TERM axis (2026-09-23 owner-approved test-methodology change) -------
+# `term` is an axis of a cell, like `backend`, not a second harness: the same
+# case, run for less wall-clock. GATE_TERM_S is the term every case runs at in
+# the everyday gate (local `run.py unit regression`/`run.py e2e`, and CI's one
+# smoke job); CASE_FULL_TERM_S is each case's own committed par.term, read out
+# of case_input/<case>/user_defined_params.py (or, for tpv36/tpv37, the
+# tpv36_37_common.buildParams() both compsets call) -- copied here as DATA so
+# run_e2e.py's term override and compare.py's reference-file selection agree
+# with each other and with the compset without either one importing the
+# other's case-building code (rule 1).
+GATE_TERM_S = 5.0
+CASE_FULL_TERM_S = {
+    'test.tpv8': 5.0,
+    'test.tpv10': 5.0,
+    'test.tpv104': 5.0,
+    'test.tpv1053d': 5.0,
+    'test.meng2023a': 5.0,
+    'test.meng2023cb': 5.0,
+    'test.drv.a6': 5.0,
+    'test.tpv29': 20.0,       # case_input/test.tpv29/user_defined_params.py:73
+    'test.tpv36': 6.0,        # case_input/test.tpv36/tpv36_37_common.py:49
+    'test.tpv37': 6.0,        # case_input/test.tpv37/tpv36_37_common.py:49
+}
+
 # One bound per case. None means "this case is not gated on a scalar" -- see
 # GATE/DRV_A6 below. Every case in CASES must appear here.
 CASE_BOUND = {
@@ -249,11 +273,15 @@ UNSUPPORTED = {
     for c in _NAME_LIST if c not in PY_MPI_RANKS
 }
 
-# Cells CI runs, and the measured reason the rest are left out. Exceeding a
+# MEASURED_PEAK_RSS_GB stays as measured evidence -- it is what the RELEASE
+# tier's evidence artifact and the local `run.py all`/`run.py release` sweeps
+# use to reason about which cells fit which box. It is no longer what decides
+# CI_CELLS (see the redefinition below, 2026-09-23): CI stopped covering
+# physics with this table on 2026-09-23 (owner-approved test-methodology
+# change) and now runs exactly one portability smoke cell set. The numbers
+# below remain the measured, provenanced record they always were; exceeding a
 # GitHub ubuntu-22.04 runner's 7 GB produces a SIGTERM with no output (exit
-# 143), a resource kill and not a test result -- so this is a declared,
-# measured decision with the numbers next to it, not an env var nobody can
-# audit.
+# 143), a resource kill and not a test result.
 MEASURED_PEAK_RSS_GB = {
     # Full-length runs, one case at a time on the 64-core development box,
     # measured with `/usr/bin/time -v` (exact peak) unless noted otherwise.
@@ -300,40 +328,30 @@ MEASURED_PEAK_RSS_GB = {
     ('test.tpv8', 'python-jax-mpi'): 5.34,
 }
 CI_RUNNER_RAM_GB = 7.0
-# run_e2e.py's core-budget allocator forces every cell in a job to run ONE AT
-# A TIME, so a job's peak memory is the single LARGEST cell it holds, not a
-# sum. On the measured numbers alone only test.drv.a6 x python-jax (9.57 GB)
-# exceeds a 7 GB runner.
+
+# CI_CELLS -- REDEFINED 2026-09-23 (owner-approved test-methodology change).
+#
+# CI no longer runs the e2e sweep for physics coverage; that job is the local/
+# release tiers' now (`run.py e2e`, `run.py release` at --term full). CI's
+# remaining e2e job is a SMOKE TEST: one case, all three backend
+# IMPLEMENTATIONS, at the GATE_TERM_S (5 s) term, whose purpose is
+# portability -- a clean checkout, fresh-installed dependencies, and (for the
+# fortran cell) the RUNNER's own mpich rather than this box's Open MPI 4.1.1
+# -- not physics regression. test.tpv8 is the smallest gated case (4 ranks,
+# CASE_FULL_TERM_S['test.tpv8'] == GATE_TERM_S, so its one committed
+# frt.canonical.txt already IS the gate-term reference -- no second file is
+# needed for this cell specifically).
+#
+# Physics coverage across the full case x backend table is now the job of the
+# WIDER tiers: `run.py e2e` (gate term, every case, run locally/on demand) and
+# `run.py release` (full term, the release gate, PROJECT_RULES rule 15/16).
+# Neither of those is CI; CI's old 25-of-30-cell memory-driven selection over
+# MEASURED_PEAK_RSS_GB is retired along with the jobs that ran it.
 CI_CELLS = (
-    tuple((c, 'fortran') for c in CASES)
-    + (('test.tpv8', 'python-numpy'), ('test.tpv8', 'python-jax'),
-       ('test.tpv10', 'python-jax'), ('test.tpv104', 'python-jax'),
-       ('test.tpv1053d', 'python-jax'),
-       ('test.meng2023a', 'python-numpy'), ('test.meng2023a', 'python-jax'),
-       ('test.meng2023cb', 'python-numpy'), ('test.meng2023cb', 'python-jax'),
-       ('test.tpv29', 'python-numpy'), ('test.tpv29', 'python-jax'),
-       ('test.tpv36', 'python-numpy'), ('test.tpv36', 'python-jax'),
-       ('test.tpv37', 'python-numpy'), ('test.tpv37', 'python-jax'))
+    ('test.tpv8', 'fortran'),
+    ('test.tpv8', 'python-numpy'),
+    ('test.tpv8', 'python-jax'),
 )
-# WHAT THIS LIST LEAVES OUT, AND WHY -- said here rather than implied. Every
-# exclusion below is a MEASURED-or-genuinely-unmeasured decision; none is a
-# case that fails.
-#   * test.drv.a6 x python-jax: 9.57 GB measured -- the one real exclusion.
-#   * test.drv.a6 x python-numpy: never measured; its jax column already
-#     leaves a 7 GB runner with zero margin, so a larger runner is a
-#     separate decision.
-#   * test.tpv10/tpv104/tpv1053d x python-NUMPY (their jax columns are IN
-#     CI_CELLS): never measured. The rule stays literal -- a cell without a
-#     measured RSS does not go into CI.
-#   * test.tpv8 x python-jax-mpi: 5.34 GB measured (sum of 4 ranks, see
-#     MEASURED_PEAK_RSS_GB above) -- does not fit a 7 GB runner with any
-#     margin, so it is excluded exactly like test.drv.a6 x python-jax, on the
-#     same "measured, not assumed" basis. The other 9 cases x python-jax-mpi
-#     are DECLARED UNSUPPORTED (not opted in), not CI exclusions.
-# A green CI run therefore means 25 of the 30-cell {fortran, python-numpy,
-# python-jax} sub-table -- unchanged by python-jax-mpi joining BACKENDS, since
-# the full table is now 40 cells (10 cases x 4 backends) and CI_CELLS names no
-# python-jax-mpi cell.
 
 
 def is_supported(case, backend):
@@ -434,6 +452,14 @@ for _c in CASES:
             '%s is gated but %s is missing -- restore it from git. A gated case '
             'with no reference cannot be compared, and "could not compare" must '
             'never read as "passed" (rule 2).' % (_c, _ref))
+
+_missing_full_term = [c for c in CASES if c not in CASE_FULL_TERM_S]
+if _missing_full_term:
+    raise RuntimeError(
+        'testsys/matrix.py CASE_FULL_TERM_S is missing case(s) %r -- every '
+        'case needs its own committed par.term recorded here so the gate '
+        'term axis (run_e2e.py --term) and the reference-file selection '
+        '(compare.py) agree with the compset.' % _missing_full_term)
 
 _missing_bound = [c for c in CASES if c not in CASE_BOUND]
 _missing_gate = [c for c in CASES if c not in GATE]

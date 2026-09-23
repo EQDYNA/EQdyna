@@ -62,35 +62,42 @@ multiple of it, is refused rather than interpolated (`scripts/lib.py`'s
 The fast tier is a single sweep over `case x backend`: each case below is run
 on the Fortran solver (MPI) and on the standalone Python solver (NumPy and
 JAX), and every cell is compared against the same committed reference for that
-case, at that case's one tolerance. The run prints which cells it covered and
-which it did not, so a green result states its own scope. CI runs the subset
-this table declares memory-safe (`testsys/matrix.py`'s `CI_CELLS` /
-`MEASURED_PEAK_RSS_GB`, 25 of 30 cells as of 2026-09-21 -- `len(matrix.CI_CELLS)`
-is the number, and `testsys/matrix.py`'s own closing comment states it), split
-across parallel jobs so each cell group gets its own 7 GB runner rather than
-sharing one, and so no case queues behind another that does not need to
-(`.github/workflows/test.yml`: `build`, then `unit-regression`
-[`testsys/run.py unit regression`]; `e2e-ci-fortran-a`
-[`--backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8,test.tpv37`]
-and `e2e-ci-fortran-b`
-[`--backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36`]
--- 5 of the 10 cases each;
-`e2e-ci-python-jax-tpv8` [tpv8 both backends + tpv10/tpv104/tpv1053d/tpv36/tpv37
-x jax]; `e2e-ci-python-tpv36-numpy` and `e2e-ci-python-tpv37-numpy` [one
-~21 min numpy cell each, split out 2026-09-23 because run serially they were
-42 of the old `e2e-ci-python-cheap` job's 59 min];
-`e2e-ci-python-meng` [meng2023a/meng2023cb both backends + tpv29 x jax]; and
-`e2e-ci-python-tpv29` [tpv29 x python-numpy alone -- 1711 s measured locally,
-an order of magnitude past every other python cell, isolated so its
-irreducible cost doesn't queue behind or ahead of anything else] -- all in
-parallel after `build`) -- the same total coverage as one local invocation of
-`python3 testsys/run.py unit regression e2e-ci`. `python3 testsys/run.py all`
-runs the whole sweep. Still excluded from CI: `test.drv.a6` on either python
-backend (9.57 GB measured on jax; numpy never measured) and
-`test.tpv10`/`test.tpv104`/`test.tpv1053d` on python-numpy (never measured --
-their jax columns are the ones now in CI).
+case, at that case's one tolerance. `term` is an axis of this sweep, exactly
+like `backend` (2026-09-23, owner-approved test-methodology change):
+`python3 testsys/run.py e2e` (and `run.py all`) run every case at the GATE
+term (`testsys/matrix.py`'s `GATE_TERM_S`, 5 s) regardless of that case's own
+committed `par.term`; `python3 testsys/run.py release` runs the same sweep at
+each case's own FULL term (`par.term` in
+`case_input/<case>/user_defined_params.py`) and is the tier that gates a
+release, writing `docs/evidence/sweep-<shortsha>/summary.json`. A case whose
+full term is not 5 s (`test.tpv29`, `test.tpv36`, `test.tpv37`) needs a second,
+gate-term reference (`test.reference.results/<case>/frt.canonical.term5.txt`)
+before its gate-term cells can pass; until one is committed (rule 7 -- each
+reference is its own reviewed change) those cells FAIL CLOSED rather than
+comparing against the full-term reference.
 
-| case | physics | SCEC benchmark | fast tier (dx / ranks / fortran s / numpy s / jax s) | full-tier spec (dx/term) |
+The run prints which cells it covered and which it did not, so a green result
+states its own scope. **CI no longer runs this sweep for physics coverage.**
+CI's one e2e job is a portability SMOKE test -- `testsys/matrix.py`'s
+`CI_CELLS` is exactly `test.tpv8` x `{fortran, python-numpy, python-jax}` at
+the gate term (`.github/workflows/test.yml`: `build`, `unit-regression`
+[`testsys/run.py unit regression`], then `e2e-ci-smoke`
+[`testsys/run.py e2e-ci`, i.e. `run_e2e.py --ci`] in parallel after `build`) --
+the same total coverage as one local invocation of
+`python3 testsys/run.py unit regression e2e-ci`. Its purpose is a clean
+checkout with freshly `pip install`ed dependencies and (for the fortran cell)
+the CI runner's own mpich, distinct from this dev box's Open MPI 4.1.1 -- not
+a claim about the other 9 cases or the other two backends' physics, which the
+non-CI `e2e` and `release` tiers cover instead.
+
+Wall-clock figures below predate the term axis (2026-09-23) and were measured
+running each case at its own committed `par.term` -- i.e. what `run.py
+release` costs today, not the newer, GATE-term `run.py e2e`/`run.py all`
+(5 s for every case). `test.tpv29`'s gate-term cells are therefore faster than
+the 148.3/1108.5/229.4 s shown below; that faster number has not been
+measured yet and is not estimated here (rule 6).
+
+| case | physics | SCEC benchmark | full-term wall clock, historical (dx / ranks / fortran s / numpy s / jax s) | full-tier spec (dx/term) |
 |---|---|---|---|---|
 | [test.tpv8](case_input/test.tpv8/README.md) | strike-slip, slip-weakening | [TPV8](https://strike.scec.org/cvws/tpv89docs.html) | 500m/4/13.3/74.3/20.4 | 100m/15s |
 | [test.tpv10](case_input/test.tpv10/README.md) | dipping normal fault | [TPV10](https://strike.scec.org/cvws/tpv10_11docs.html) | 500m/4/39.0/331.3/98.5 | 100m/15s |
