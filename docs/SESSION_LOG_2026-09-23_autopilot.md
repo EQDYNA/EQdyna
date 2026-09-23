@@ -1239,3 +1239,48 @@ was ranks waiting on a bandwidth-starved neighbour, not halo surface. EE's
 ms/step numbers stand; every 8/16-rank ratio in that table was taken under
 `least_loaded_cpus`'s packed default and is placement-biased. Board rows
 (33, 43 HELD with refuted premise, 92) dispatched to zofia-kaminska.
+
+## JJ. Resumed 15:20 after the 13:15 HTTP 429 that killed the conductor and its specialists
+
+Grant, stated back unchanged: merge and tag authority on `master` of THIS repo,
+minor and patch only; no major, no force-update of an existing tag, no publish,
+nothing outward-facing. v5.17.0 is inside it.
+
+Orient 15:20: origin/master `ef7196c`, primary clean (0 porcelain lines), CI
+green on `ef7196c` (run 35899557128: build, unit-regression, e2e-ci-smoke — 3
+jobs; 037170b's split jobs are GONE from `test.yml`, superseded, harmless). No
+eqdyna process of ours alive; one foreign pytest at ~600% CPU. My own
+`python3 testsys/run.py unit regression` at `ef7196c`: SUCCESS/SUCCESS, 3:09.
+
+**Recovered, not redone.**
+- Item 2 was split across TWO dead worktrees, not one: `agent-af3dad…`
+  (Fortran emitter, uncommitted, +280/-6 in 4 `.f90`) and `agent-ac0195…`
+  (schema/record/query/overhead, 848 lines, UNTRACKED — not in the brief I was
+  handed). Both committed as WIP to branches, pushed:
+  `origin/wip/profile-fortran-2026-09-23` (`2b78283`),
+  `origin/wip/profile-guard-2026-09-23` (`e7e572a`). **Not committed:**
+  af3dad's 1 ledger row + snapshot — an append (1+/0-), but stamped `6143beb`
+  while produced by a MODIFIED binary; landing it would misattribute a
+  profile-build timing to a SHA that never contained the code.
+- Item 1 (`1102be7`, rules 24/15b/16/7) is STALE against master in at least
+  three places: rule 16 lists 9 jobs / 25 of 30 cells (test.yml now has 3), and
+  two "NOT YET LANDED" markers name work that landed as `6143beb` and
+  `ef7196c`. Pushed as `origin/wip/rules24-2026-09-23`; back to zofia to
+  rewrite against master, plus item 69's close.
+- `wei-g5`'s 6 ledger rows + snapshot (tpv29/36/37 x numpy/jax at the 5 s gate
+  term on clean `ef7196c`, 6/6 ok) are genuine evidence: landed `95d4220`
+  (6+/0-, docs-only, rule 20b).
+
+**Dispatched (2 concurrent, down from 3 at the 429):** zofia (item 1 + item
+69), mira (item 2 emitter, all backends; pinned NUMA 2-3). The guard/A-B half
+of item 2 goes to iris AFTER mira returns — the guard must be tested against
+real emitter output, and a third agent in flight is what the 429 cost.
+Refactor round 2's retry touches `driver.py`/`eqdyna3d.py`, which mira's
+emitter will also touch: it waits for mira's landing (collision named, not
+guessed).
+
+**Mine, detached, NUMA 4-5:** TPV30 at 5 s (3 cells, 5 s reference generated
+from Fortran in a scratch worktree, NEVER committed), the 5 s mutation test
+(e1888e7 reverted, numpy + jax), and a pinned re-price at 20 s. The 11:37 20 s
+price (Fortran 143.8 s / numpy 1020.0 s / jax 221.1 s, jax UNPINNED at 553%
+CPU) is kept as the first datum.
