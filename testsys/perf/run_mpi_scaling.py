@@ -99,7 +99,7 @@ def least_loaded_cpus(nodes, k, exclude=()):
     if not busy:
         raise SystemExit('FAIL: could not read per-cpu utilisation from '
                          '/proc/stat -- cannot choose a placement blind.')
-    cpu2node = {c: n for n, cs in nodes.items() for c in cs}
+    cpu2node = rs.cpu_to_node(nodes)
     ranked = sorted((b, cpu2node[c], c) for c, b in busy.items() if b is not None)
     if len(ranked) < k:
         raise SystemExit('FAIL: read utilisation for %d cpus, need %d'

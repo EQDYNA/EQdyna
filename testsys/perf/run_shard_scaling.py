@@ -143,8 +143,8 @@ def per_step(case_dir, cpus, node_map, ndev, mode, n_lo, n_hi):
     hi = time_one(case_dir, n_hi, cpus, node_map, ndev, mode)
     if lo is None or hi is None:
         return None
-    ps = (hi[0] - lo[0]) / float(n_hi - n_lo)
-    return dict(ms_per_step=ps * 1e3, fixed_s=lo[0] - n_lo * ps,
+    ps, fixed = numa.per_step_and_fixed(lo[0], hi[0], n_lo, n_hi)
+    return dict(ms_per_step=ps * 1e3, fixed_s=fixed,
                 wall_lo_s=lo[0], wall_hi_s=hi[0], threads=hi[2])
 
 

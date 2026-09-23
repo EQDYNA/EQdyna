@@ -210,8 +210,20 @@ def spread_cpus(nodes, k):
     return cpus
 
 
+def cpu_to_node(node_map):
+    """{cpu: node}, inverted from `numa_topology()`'s {node: [cpu, ...]}.
+
+    ONE COPY of the inversion. `nodes_of` (below), `fortran_cmd`'s per-rank
+    `--membind` list and `run_mpi_scaling.least_loaded_cpus`'s NUMA-compact
+    tie-break each built this dict themselves; two of them disagreeing would
+    bind a rank's MEMORY to a node its CPU is not on, which is silent -- the
+    run still completes and reports seconds.
+    """
+    return {c: n for n, cs in node_map.items() for c in cs}
+
+
 def nodes_of(node_map, cpus):
-    cpu2node = {c: n for n, cs in node_map.items() for c in cs}
+    cpu2node = cpu_to_node(node_map)
     return sorted({cpu2node[c] for c in cpus})
 
 
@@ -347,7 +359,7 @@ def fortran_cmd(n, cpus, node_map, binary):
     non-default core), so `fortran np=1` cells passed silently while every
     n>1 fortran cell failed outright."""
     cpu_list = ' '.join(str(c) for c in cpus[:n])
-    cpu2node = {c: nd for nd, cs in node_map.items() for c in cs}
+    cpu2node = cpu_to_node(node_map)
     node_list = ' '.join(str(cpu2node[c]) for c in cpus[:n])
     inner = ('CPUS=(%s); NODES=(%s); exec numactl '
              '--physcpubind=${CPUS[$OMPI_COMM_WORLD_LOCAL_RANK]} '
@@ -409,8 +421,7 @@ def per_step_fortran(work, n, policy, cpus, node_map, dt, n_lo, n_hi):
     exactly the lack of them."""
     t_lo, out_lo = run_fortran(work, n, policy, cpus, node_map, dt * n_lo, n_lo)
     t_hi, out_hi = run_fortran(work, n, policy, cpus, node_map, dt * n_hi, n_hi)
-    ps = (t_hi - t_lo) / float(n_hi - n_lo)
-    fixed = t_lo - n_lo * ps
+    ps, fixed = numa.per_step_and_fixed(t_lo, t_hi, n_lo, n_hi)
     return ps, fixed, t_lo, t_hi, out_lo, out_hi
 
 
@@ -483,8 +494,7 @@ def per_step_py(case_dir, cpus, node_map, backend, n_lo, n_hi):
     t_hi = time_one_py(case_dir, n_hi, cpus, node_map, backend)
     if t_lo is None or t_hi is None:
         return None, None, None, None
-    ps = (t_hi - t_lo) / float(n_hi - n_lo)
-    fixed = t_lo - n_lo * ps
+    ps, fixed = numa.per_step_and_fixed(t_lo, t_hi, n_lo, n_hi)
     return ps, fixed, t_lo, t_hi
 
 
