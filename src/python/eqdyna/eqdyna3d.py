@@ -74,6 +74,7 @@ import numpy as np
 
 from . import assembleGlobalMass, driver, func_lib, library_output, meshgen, readInputFiles
 from . import backend as _backend
+from . import profile_emit as _profile_emit
 
 # friclaw -> the NumPy solver module whose run(S, nsteps, verbose) consumes
 # this module's S dict. All three modules were independently verified
@@ -448,12 +449,39 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
 
     Returns (path, report) -- the report carries this rank's element counts,
     halo size and ms/step, which every multi-rank measurement must print."""
+    # total_s is an INDEPENDENT timer, not a bucket sum (profile_schema.py's
+    # "the sum check, and why it is the one that matters" -- unaccounted_s
+    # must be a real remainder against a total measured by its OWN clock,
+    # exactly as compTimeInSeconds(9)/simuStartTime is in eqdyna3d.f90).
+    run_t0 = time.perf_counter()
     prof = profile if profile is not None else Profile('jax')
     with prof.phase('setup (mesh+input)'):
         S, mesh = build_solver_state(case_dir)
     with prof.phase('solve'):
         out = driver.run_mpi(S, comm, nsteps=nsteps, verbose=verbose,
                              xp=_backend.array_module('jax'))
+
+    rank, nranks = comm.Get_rank(), comm.Get_size()
+    rep = out['report']
+
+    def _emit(io_s):
+        # See profile_emit.py's module docstring for why `fault`=0.0 (folded
+        # into `element`, both Python backends) and why `wait`=0.0 here is a
+        # REAL measurement (no barrier on the default path), not a gap.
+        # setup = mesh+input build (Profile phase) PLUS driver.run_mpi's own
+        # pre-loop decompose/to_device/jit-construction span (rep['setup_s'],
+        # see driver.py's t_setup comment) -- both are real setup cost, and
+        # omitting the latter is what left ~30% of total_s in
+        # unaccounted_s on test.tpv8 x 4 ranks before this fix.
+        buckets = dict(setup=prof.get('setup (mesh+input)', 0.0)
+                            + rep.get('setup_s', 0.0),
+                       element=rep.get('compute_s', 0.0), fault=0.0,
+                       exchange=rep.get('mpi_s', 0.0),
+                       wait=rep.get('wait_s', 0.0), io=io_s)
+        total_s = time.perf_counter() - run_t0
+        _profile_emit.write_profile(case_dir, 'python-jax-mpi', rank, nranks,
+                                    rep['nsteps'], buckets,
+                                    loop_s=rep['solve_s'], total_s=total_s)
 
     rows = out['fault_rows']
     sel = out['own_in_computed']
@@ -468,8 +496,13 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         # "these nodes went missing". Found at 4 ranks on test.tpv104 (2
         # ranks is not enough to produce a fault-free slab) -- the shape of
         # bug that only exists above the rank count you smoke-tested at.
-        prof.nelem = out['report']['E']
-        return None, out['report']
+        # It still gets a profile.rank<r>.json -- the parity gate's byte-
+        # identity check is about frt output, not about profile coverage,
+        # and a rank that did real setup/compute/exchange work is not "no
+        # data" just because it wrote no fault row.
+        prof.nelem = rep['E']
+        _emit(io_s=0.0)
+        return None, rep
     fric_1idx = np.zeros((n_own + 1, 101))
     fric_1idx[1:, 1:101] = out['fric'][sel]
     fnft_1idx = np.zeros(n_own + 1)
@@ -478,8 +511,9 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     with prof.phase('write frt'):
         library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
                                  fnft_1idx, fric_1idx)
-    prof.nelem = out['report']['E']
-    return path, out['report']
+    prof.nelem = rep['E']
+    _emit(io_s=prof.get('write frt', 0.0))
+    return path, rep
 
 
 def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
@@ -494,6 +528,7 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     `profile` is an optional Profile; when given, each phase is timed
     separately so setup, solve and output cannot be confused for one another.
     """
+    run_t0 = time.perf_counter()   # independent total_s timer, see run_case_mpi
     if backend == 'numpy':
         _narrow_numpy_affinity()
     prof = profile if profile is not None else Profile(backend)
@@ -522,6 +557,21 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
         library_output.write_frt(frt_path, mesh['meshCoor'], mesh['nsmp'],
                              fnft_1idx, fric_1idx)
     prof.nelem = S.get('totalNumOfElements') or 0
+
+    # ALWAYS-ON profile.rank0.json (nranks=1: this path is serial by
+    # construction, checkInputConsistency/build_solver_state already refuse
+    # npx/npy/npz>1). `element` is 'solve' (element kernels + faulting,
+    # FUSED -- see profile_emit.py's docstring for why `fault` is 0.0, not
+    # omitted). `exchange`/`wait` are genuinely 0.0: there is no MPI on this
+    # path at all, not a folded or unmeasured cost.
+    total_s = time.perf_counter() - run_t0
+    _profile_emit.write_profile(
+        case_dir, 'python-%s' % backend, 0, 1, S['nstep'],
+        dict(setup=prof.get('setup (mesh+input)', 0.0)
+                  + prof.get('resolve solver', 0.0),
+             element=prof.get('solve', 0.0), fault=0.0,
+             exchange=0.0, wait=0.0, io=prof.get('write frt', 0.0)),
+        loop_s=prof.get('solve', 0.0), total_s=total_s)
     return frt_path
 
 
