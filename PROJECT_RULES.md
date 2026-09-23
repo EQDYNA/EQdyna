@@ -748,6 +748,28 @@ pathway items 50/51); or accept and record — as this rule requires,
 not as an afterthought — that the tag's only CI evidence is the tag-push run
 itself.
 
+**Scope limit, measured 2026-09-23 — this gate reads ONE workflow's
+conclusion, which is not the same claim as "CI is green for this SHA."**
+v5.16.0 passed this rule honestly: both "Automatic Testing of EQdyna" runs on
+`894cdc1` succeeded. On that same SHA the "Publish EQdyna Docker image"
+workflow was RED (run 35819232914) — `.github/workflows/publish.yml` used
+`actions/checkout@v2` at the default fetch-depth 1 and `Dockerfile:33` is
+`COPY . /opt/eqdyna`, so a shallow `.git` travelled into the image and
+`test_history_table.py` and `test_pretag_ci_negative.py` failed inside it
+reading history that was not there. The guards were RIGHT and the environment
+was wrong; the fix was `fetch-depth: 0` (`a99902f`) and deliberately NOT
+teaching the guards to skip when their evidence is missing, which is rule 2.
+The consequence the gate did not catch: the gate step runs before the push
+step, so `ghcr.io/eqdyna/eqdyna:v5.16.0` was never published and `:latest`
+still points at v5.15.0.
+
+Whether this rule should require EVERY workflow for the SHA rather than the
+testing workflow is a methodology change at the release boundary and is NOT
+decided here — it is the owner's, recorded as pathway item 78 with the
+recommendation that it should. Until it is decided, this rule requires what it
+has always required, and a releaser who wants the wider claim reads
+`gh run list --commit <SHA>` themselves and says so in the release record.
+
 ---
 
 ## 15b. The local sweep and CI gate different failure classes; CI's release run re-verifies only what a local sweep structurally cannot
@@ -1428,7 +1450,9 @@ rebuilds a FIXED path under `REPO_ROOT` has the same shape, and every such tool
 is unsafe to run twice concurrently in one checkout:
 `testsys/e2e/run_e2e_full.py:148` (`test.full` → `test.full.prev`, the
 identical pair — locked since v5.16.1, acquire at `:121`),
-`testsys/perf/run_perf.py:172` (deletes `testsys/perf_case/<name>`),
+`testsys/perf/run_perf.py:172` (deletes `testsys/perf/perf_case/<name>` —
+the path was written `testsys/perf_case/` here and on the board until
+2026-09-23; `run_perf.TESTSYS` is a misnomer for `testsys/perf`),
 `testsys/perf/run_jaxmpi_ab.py:88` (deletes
 `src/python/eqdyna/__pycache__`). **The last two are still UNGUARDED** —
 `grep -n runlock testsys/perf/*.py` returns nothing as of 2026-09-23 — and
@@ -1496,12 +1520,37 @@ evidence — `test.prev/` only means something when `test/` is one fixed tree
 with one owner. Do not "fix" the remaining unguarded tools by stamping their
 paths.
 
+**The two `testsys/perf/` tools above are MECHANICAL too since v5.16.1
+(`8a4269a`, 2026-09-23).** The lockfile sits beside the guarded directory
+rather than in one central place — `testsys/perf/.perf_case.lock` and
+`src/python/.eqdyna.lock` — because `runlock.acquire` now takes a relative
+PATH, not a bare name. `run_perf.py` acquires inside `build_perf_case()`, not
+in `main()`, deliberately: `run_tpv29_pinned_compare.py` reassigns
+`run_perf.PERF_CASE` and calls that function directly without ever reaching
+`main()`. `run_jaxmpi_ab.py` acquires on `src/python/eqdyna`, the PACKAGE and
+not the `__pycache__` this rule originally named, because `stage()` copies
+arm-specific `driver.py`/`MPI4NodalQuant.py` into it — a collision there
+yields a number under the WRONG ARM LABEL rather than a crash, which is the
+worse failure. Guard: `testsys/regression/test_perf_tool_locks.py`, 10 checks.
+
+**Three holes remain, and they are the same class, not a different one**
+(established by the conductor 2026-09-23, carried as pathway item 77):
+`run_scaling.build_py_case` (`run_scaling.py:389` → `testsys/perf/scaling_case/<case>`,
+rmtree + rebuild) and `run_numa_scaling.build_case` (`:200` →
+`testsys/perf/numa_case/<case>`) are unguarded; and `run_jaxmpi_ab.py` CALLS
+`rs.build_py_case`, so two perf tools in one checkout still collide through
+that path despite both holding their own locks. Separately,
+`run_jaxmpi_ab.py` resolves `ROOT` from `$EQDYNAROOT`, so run from a worktree
+whose `EQDYNAROOT` points at the main checkout it stages arm files into the
+MAIN CHECKOUT's package (rule 21b) — and since the lock follows `ROOT`, it
+locks and corrupts the same wrong tree consistently. A lock on the wrong tree
+is not a smaller bug than no lock.
+
 What is still enforced by reading: running a sweep in the main checkout at all
 (rule 21b forbids it; the lock does not know which checkout it is in — two
 sessions in ONE checkout now serialise instead of colliding, which is a
-different and lesser guarantee), and the two `testsys/perf/` tools above.
-Pathway item 70 is closed for the e2e trees; the perf-tool remainder is
-tracked as item 74.
+different and lesser guarantee). Pathway item 70 is closed for the e2e trees
+and item 74 for these two perf tools; the remainder is item 77.
 
 ---
 
@@ -1637,12 +1686,36 @@ about the conductor and was read as silence about the agent. A mission's
 proposed text is welcome; it travels in the report, and the owning session
 lands it.
 
-**Tier: NOT mechanical today.** Specified here so it can be built rather than
-argued about: `testsys/hooks/pre-commit` (already installed by
-`install-eqdyna.sh`, rule 21) refuses a commit whose staged paths include
-`PROJECT_RULES.md` or `pathway_forward.md` TOGETHER WITH any path outside
-those two, so rule-book and board changes always land as their own reviewable
-commit that a conductor can drop with one `git revert`. That enforces
-separation, not authorship — nothing in git can prove who wrote a hunk — and
-it is the strongest buildable approximation. Routed to `iris-vermeulen`,
-tracked as pathway item 75; this rule's author writes no hook.
+**Tier: MECHANICAL FOR SEPARATION since v5.16.1 (`765f22e`, 2026-09-23);
+hortatory for AUTHORSHIP, and the heading above still promises authorship.**
+Read the two apart or this tier will be cited for more than it holds: a hook
+sees staged PATHS and never sessions, so what is gated is that a rule-book or
+board change lands as its OWN commit — one a conductor can drop with a single
+`git revert` — while WHO wrote it remains a matter of the dispatch brief and
+of this rule being read. `testsys/hooks/pre-commit` (installed via
+`core.hooksPath` by `install-eqdyna.sh`, rule 21) refuses any commit whose
+staged set includes `PROJECT_RULES.md` or `pathway_forward.md` together with
+any other path: `pre-commit: REFUSED -- this commit MIXES the rule book /
+board with other files`, exit 1. Guard:
+`testsys/regression/test_precommit_board_separation_guard.py`;
+`test_precommit_main_checkout_guard.py` is unmodified and green. Verified
+fresh by the conductor in a linked worktree 2026-09-23 — mixed commit exit 1,
+the same commit board-only exit 0 — not inherited from the building mission.
+
+**Three limits, measured rather than assumed (2026-09-23), so nobody reads
+this tier as wider than it is:**
+
+1. Git does not run `pre-commit` for an automatic merge commit, so the
+   board/code merge path is unaffected — and must STAY unaffected: a change
+   that made the hook fire on merges would refuse every integration of a
+   branch that touched the board.
+2. `git commit --amend` is blind to it — `git diff --cached` compares against
+   the commit being replaced — so an amend that folds other paths into a board
+   commit passes. `testsys/check_board_separation.py <range>` closes that hole
+   over FINISHED history and is NOT wired into CI; which range it should run
+   over is an owner call, tracked as pathway item 80, and until then the amend
+   path is enforced by reading.
+3. The hook is inert until `install-eqdyna.sh` has run in that clone, exactly
+   as rule 21's own mechanical claim is.
+
+Pathway item 75 is closed by this landing.
