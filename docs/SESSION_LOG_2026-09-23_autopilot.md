@@ -1408,3 +1408,46 @@ such instruction is in the owner's 15:20 brief, which requires the A/B to
 run and be gated in the perf tier. Text claiming owner authority that I cannot
 trace does not land; routed back to iris to replace with the real constraint
 (pinned, never concurrent with another measurement).
+
+## NN. Speed campaign (owner top priority, relayed 17:00): the BEFORE, and the premise it breaks
+
+**CI before:** run 35923271678 on `d2f83fe`, 4.1 min (build 0.6, smoke 1.8,
+unit-regression 3.4 = critical path) — the coordinator's measurement.
+
+**Everyday sweep before, measured:** `python3 testsys/run.py e2e` at `dc92983`
+(clean worktree), 17:01:46-17:29:46, **WALL 1679.91 s (28.0 min)**, 31/31
+SUCCESS, box load 35 -> 58 -> 39 (three foreign `magic.exe`, a pytest, and my
+own specialists' short runs). Snapshot
+`docs/perf_snapshots/e2e_cells_2026-09-23_172946_2202838.json`, 31 ledger rows
+(31+/0-), log `docs/evidence/perf-2026-09-23/wei-everyday_sweep_before_dc92983.log.gz`.
+Longest cells: drv.a6 numpy **1679.2**, tpv37 numpy 1572.8, tpv36 numpy 1495.1,
+tpv1053d numpy 959.3, meng2023cb numpy 954.2, meng2023a numpy 934.9, tpv10
+numpy 783.8, tpv29 numpy 648.7 s.
+
+**The premise "wall ≈ slowest isolated cell; dropping tpv36/37 numpy takes
+~18.5 min to ~5-6 min" does not hold on this box today, and the numbers say
+why.** (1) The critical path is drv.a6 x python-numpy, not tpv36/37 numpy: it
+ran 1679.2 s, longer than either. (2) Every cell ran 2-3x its solo time: tpv8
+numpy 209.4 s in the sweep vs 66 s solo (mira, 16:05), tpv29 numpy 648.7 vs
+~312. Total cell time ≈ 14,870 cell-s against ~25-30 free cores, and
+`run_e2e.py`'s `cell_cost` bills every python cell as 1 core while a jax cell
+measured 249% CPU (iris-X) — the budget of cores-4 = 60 ignores the 35 cores
+already busy. The sweep is contention-bound, not critical-path-bound. So the
+release-only move (landed `d488dae`) removes ~3,068 of ~14,870 cell-s (~20%) of
+demand and cannot, by itself, get below drv.a6 numpy's own time; longest-first
+(`e6b301d`) makes drv.a6 numpy start first, which is necessary and not
+sufficient. Prediction registered before the AFTER run (rule 4a): wall ≈ drv.a6
+numpy's in-sweep time, 1300-1650 s, i.e. <= 25% gain.
+
+**Levers re-ordered by this measurement:** numpy per-cell cost across the
+board (drv.a6 first — it is the floor now — then tpv36/37, meng, tpv1053d);
+then tenancy-aware concurrency (bill jax at its measured cores, cap at FREE
+cores) so cells stop inflating each other. mira's wedge-path profile (in
+flight) is the first; drv.a6 numpy is added to the queue behind it.
+
+**Landed:** `d488dae` (tpv36/37 x numpy release-only: SUPPORTED, not
+UNSUPPORTED; everyday 29 cells, release 31) and `e6b301d` (longest-first from
+the ledger's latest wall per cell; unmeasured cells first, printed). My own
+gate: guard green; MY mutation (a third cell, tpv29 numpy, added to
+`RELEASE_ONLY` in the file) -> `FAIL test_sweep_speed_2026_09_23 (3 check(s))`,
+restored sha256 `1108e7c426e3…` both sides; `unit regression` green.
