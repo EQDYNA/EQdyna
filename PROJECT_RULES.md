@@ -8,10 +8,12 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 3. Gate every stage; pass before moving on.
 3a. A tier red on master is a stop-everything condition, regardless of cause.
 3b. A red is found by polling the run list, not by filtering to the SHA you already expect.
+3c. A change is gated on a case that EXECUTES the path it changed.
 4. Only fresh runs are evidence.
 4a. A proposed CAUSE is falsified by the outcome curve, not by the defect it predicts.
 4b. An exclusion names the metric that produced it; a metric blind to a mechanism cannot exclude it.
 4c. A gate downgrade names the geometry class its evidence came from, and clears no class that evidence cannot exercise.
+4d. A BLOCKING precondition decays; re-measure it before citing it.
 5. One calibrated definition of "pass" — never invent a metric.
 5a. A provably injective relabelling is gated at bit-identity, not at the case bound.
 6. Every performance number carries its provenance.
@@ -20,6 +22,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 8. Never delete evidence unless the result is a confirmed pass.
 9. Cheap targeted check before expensive run.
 10. Every bug gets a regression test before the fix ships.
+10a. A regression guard asserts on BEHAVIOUR, not on the source text of the fix.
 11. Docs move with the code, in the same change.
 12. Untracked build artifacts never accumulate in the working tree.
 13. File permission changes are reviewed individually, never bulk-applied.
@@ -48,9 +51,9 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 22 numbered rules
-(1-22) plus twenty-one lettered sub-rules (2a, 3a, 3b, 4a, 4b, 4c, 5a, 6a,
-14a, 15a, 15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 43 `## `
-headings total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 43;
+(1-22) plus twenty-four lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
+5a, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c, 21d)
+— 46 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 46;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 22.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -242,6 +245,46 @@ the list before filtering."
 
 ---
 
+## 3c. A change is gated on a case that EXECUTES the path it changed
+
+The run that clears a change must be one in which the changed code actually
+executes, and the report must name the OBSERVED artifact that moved — the line
+in the output file, the header text, the count that differs. A green run on a
+case where the edit is arithmetically or structurally a no-op measures the rest
+of the system and says nothing about the change. If no gated case triggers the
+path, say so in those words and gate on the smallest case that does, rather
+than quoting the green you have.
+
+**Rationale**: rule 3 requires a named command and a named pass criterion, and
+a no-op case satisfies both while proving nothing. This is the papercuts file's
+recurring shape — *a green result that tested nothing* — in the one place it is
+hardest to see, because the run is genuinely green, the parity bound genuinely
+holds, and the only thing missing is that the changed lines never ran.
+
+**Incident (2026-09-23)**: the item-85 mission proved a `dsin(dip)` down-dip
+correction in `output_onfault_st` on `test.tpv8` — a dip-90 case, where
+`dsin(dip)` is 1 and the correction is exactly a no-op. The gate was green and
+carried no information about the fix. The item-88 mission, the same defect one
+subroutine down in the same file, had to be told explicitly to prove itself on
+a case that triggers the path; it then gated on `test.tpv8`'s **11 off-fault
+body-station files, two of them at 12 km depth**, and quoted the header line
+the change produces (`# location = -3.0 km off fault, 12.0 km along strike,
+12.0 km depth`) plus a 7-field data line against a 7-name legend. That is the
+difference between a gate and a formality, and it cost a dispatch instruction
+to get.
+
+**How to apply**: in the same sentence as the gate result, name the case, the
+reason that case reaches the changed branch, and the artifact text or number
+that differs from before. "Parity unchanged" is necessary and never sufficient
+— a metadata-only change must show the metadata.
+
+**Tier**: not mechanical in general — no script knows which branch a change was
+meant to reach. It is checkable per change by a reviewer, and the nearest
+mechanical backstop is rule 10/10a: a guard that goes RED when the fix is
+reverted proves a triggering case exists, because the guard is running on one.
+
+---
+
 ## 4. Only fresh runs are evidence
 
 A number in `README.md` or `pastReleaseNotes.md` is a hypothesis until
@@ -392,6 +435,52 @@ this repo can classify a fixture's geometry by itself. The nearest mechanical
 backstop is that a downgrade must cite a test file by path, so a reviewer has
 something concrete to open; a downgrade citing no fixture at all is a finding
 on its own.
+
+---
+
+## 4d. A BLOCKING precondition decays; re-measure it before citing it
+
+A precondition that BLOCKS work — "this needs an idle box", "that API is
+unavailable", "the runner cannot hold this case" — is a measurement with a
+timestamp, not a property of the world. Before citing one to defer a task a
+second time, re-run the measurement that established it and write the new date
+beside the answer. A blocker inherited across sessions is a hypothesis under
+rule 4 like any other, and it is the most expensive kind, because it ends the
+investigation before it starts and leaves nothing to reproduce.
+
+**Rationale**: rule 4 already says an inherited conclusion is a hypothesis and
+warns hardest about "impossible / inherent / already fixed". This sub-rule
+names the case where that warning is systematically not applied: nobody
+re-checks a blocker, because a blocker is not a result — it reads as a fact
+about the environment, and the row that carries it stops looking like work.
+The asymmetry is what makes it worth a rule: re-measuring costs one command,
+and not re-measuring costs the whole waiting period.
+
+**Incident (2026-09-23)**: item 33 sat blocked for two days on "REQUIRES AN
+IDLE BOX", declared UNSATISFIABLE on 2026-09-21 when **0 of 64 cpus** were
+under the strict `--busy-ceiling 0.2`, measured twice, and re-scoped to an
+owner decision (raise the ceiling, or obtain a reserved allocation). The
+precondition was measured again at 06:28 on 2026-09-23 before anything else
+ran: **53 of 64 cpus under 10% busy**, exactly 7 pegged by foreign single-core
+jobs. Three full sweeps then completed at the strict ceiling, never overridden,
+and the measurement the row had waited for since 2026-09-16 landed at
+`b978637`. No owner decision was needed and none of the re-scoping options was
+taken. The cost of the check was one command; the cost of not making it was two
+days, and it also left three superseded numbers in circulation (see item 33).
+
+**How to apply**: a board row whose `blocked on` cell names an environmental
+condition carries the date that condition was last MEASURED and the command
+that measures it — same contract as rule 14a's evidence command, applied to
+the blocker rather than to the claim. When you pick up such a row, re-run that
+command first and record the result whichever way it comes out. If the probe
+has no committed entry point, say so in the row and treat exposing it as part
+of the work.
+
+**Tier**: partly mechanical. The DATE on a blocking precondition is checkable —
+a `blocked on` cell citing a measurement older than the row's re-check interval
+is a finding a script can raise. Whether the condition still holds is not
+checkable without running the probe, which is exactly why the probe must exist
+as a command rather than as a paragraph.
 
 ---
 
@@ -593,6 +682,51 @@ under `case_input/`, a matching entry in `test/`, and a golden result under
 adds one: new `case_input/<case>/`, a run captured in
 `test.reference.results/<case>/`, and an entry in `testNameList.py` — landed
 in the same change as the fix, not a follow-up.
+
+---
+
+## 10a. A regression guard asserts on BEHAVIOUR, not on the source text of the fix
+
+The guard rule 10 requires asserts what the code DOES — the refusal, the exit
+code, the written value, the second caller that must lose the race. It does not
+assert that a particular literal appears inside a particular function body. A
+guard written against source text pins one implementation of the fix, and the
+defect it protects against is then only reachable by the implementations that
+guard permits: any correct alternative — most often the DEDUPLICATION that
+would end the defect class — turns it RED and reads as a regression.
+
+**Rationale**: rule 10 asks for a test "asserted tightly enough to catch a
+return". Source-text matching is tight in the wrong dimension: it is
+simultaneously too strict (it forbids refactors that preserve every behaviour)
+and too weak (a file can contain the blessed substring and still take the lock
+after the delete, if the substring moved). Rule 2a already draws this line for
+scripted edits to tracked DOCUMENTS — assert on shape, not on a substring —
+and the same argument applies to a test reading a source file.
+
+**Incident (2026-09-23)**: `testsys/regression/test_perf_tool_locks.py:644-695`
+guards the four-times-patched "rmtree a fixed in-repo path without a lock"
+class (pathway items 70, 74, 77, 81) by reading four named function bodies and
+requiring the literal strings `shutil.rmtree(d)` and `run_e2e.make_serial_case(`
+inside them, plus the literal expression `os.path.relpath(os.path.dirname(d)`
+in two of them. The single change that would prevent a FIFTH occurrence —
+collapsing the four near-identical builders into one shared builder — turns the
+guard RED with `contains no 'shutil.rmtree(d)'`. Proved by mutation, not
+argued. The guard against the recurrence forbids the end of the recurrence.
+
+**How to apply**: express the guard as an invocation. For a lock: run the
+builder twice concurrently and assert the second REFUSES; for an ordering
+requirement: remove the lock and assert the guard goes red. Where reading
+source really is the only access — a Fortran branch that cannot be run from a
+unit tier, say — assert the PROPERTY (this branch declares a column count equal
+to the number of fields it writes, as
+`test_station_header_column_count.py` does) rather than the spelling, and say
+in the docstring which refactors the assertion deliberately forbids.
+
+**Tier**: not mechanically enforced — no check can tell a source-text
+assertion that pins an implementation from one that has no behavioural route.
+A cheap review signal exists: a guard that opens a source file and compares
+strings is the shape to look at, and each one should carry a docstring line
+saying why behaviour was not reachable.
 
 ---
 
