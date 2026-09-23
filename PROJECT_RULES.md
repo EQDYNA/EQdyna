@@ -7,6 +7,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 2a. A scripted edit to a tracked document asserts on its shape, not a substring of it.
 3. Gate every stage; pass before moving on.
 3a. A tier red on master is a stop-everything condition, regardless of cause.
+3b. A red is found by polling the run list, not by filtering to the SHA you already expect.
 4. Only fresh runs are evidence.
 4a. A proposed CAUSE is falsified by the outcome curve, not by the defect it predicts.
 4b. An exclusion names the metric that produced it; a metric blind to a mechanism cannot exclude it.
@@ -47,9 +48,9 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 22 numbered rules
-(1-22) plus twenty lettered sub-rules (2a, 3a, 4a, 4b, 4c, 5a, 6a, 14a, 15a,
-15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 42 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 42;
+(1-22) plus twenty-one lettered sub-rules (2a, 3a, 3b, 4a, 4b, 4c, 5a, 6a,
+14a, 15a, 15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 43 `## `
+headings total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 43;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 22.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -202,6 +203,42 @@ kept going anyway" — the guard only reports the red itself
 need a recorded acknowledgment step, e.g. a required `--ack-red <reason>`
 argument logged before any subsequent command that assumes green runs
 anyway; nothing like that exists today.
+
+---
+
+## 3b. A red is found by polling the run list, not by filtering to the SHA you already expect
+
+Rule 3a says a red tier at master HEAD stops everything, regardless of
+cause. This sub-rule states how that red gets SEEN in the first place: by
+reading `gh run list` for the branch as a whole and scanning every row back
+to the last known-green one, not by querying only the one SHA already being
+gated. A `--commit <SHA>` (or equivalent) query answers "is my commit green";
+it silently excludes every other red sitting on the same branch history,
+which is exactly what a stop-everything rule needs to see to fire at all.
+
+**Rationale**: a rule that says "stop on any red" is only as good as the
+habit of looking for one. Filtering a run list down to the commit you came to
+check is the natural thing to do when gating your own change, and it is
+precisely the query shape that cannot see a red anywhere else on the branch.
+
+**Incident (2026-09-23)**: CI run 35833383579 on `73ac3a5` (item 81's landing)
+FAILED on `unit-regression`, and it went unread for two hours because `gh run
+list` was being filtered down to the SHA being gated and a red on the same
+branch slid past outside that filter. Rule 3a says that stops everything; it
+stopped nothing, because nobody looked. The red itself turned out to be a
+flake in `test_stop_exit_status.py` — a two-rank MPI stdout-capture race, not
+a solver defect (see pathway item 89) — but that does not soften the finding:
+the rule is about a red being SEEN, not about what it turns out to mean once
+it is.
+
+**How to apply**: before relying on rule 3a's "nothing is red" precondition,
+run `gh run list` unfiltered or filtered only to the branch, and read every
+row back to the last known-green one, before separately checking the run you
+came to check. Do this every time, not only when something already feels
+wrong.
+
+**Tier: norm, not a gate**, same as 3a — nothing scripts "the operator polled
+the list before filtering."
 
 ---
 
