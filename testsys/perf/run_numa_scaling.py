@@ -76,6 +76,28 @@ REPO_ROOT = os.path.dirname(TESTSYS)
 PYTHON_PKG = os.path.join(REPO_ROOT, 'src', 'python')
 OUT = os.path.join(TESTSYS, 'perf', 'numa_scaling_last.json')
 
+sys.path.insert(0, REPO_ROOT)
+from testsys import runlock  # noqa: E402
+
+# What a second concurrent invocation costs, printed by the refusal (item 77).
+LOCK_CONSEQUENCE = [
+    'A second invocation in this checkout rmtrees and rebuilds that SAME case'
+    ' directory',
+    'while the first is TIMING jax out of it. The first does not crash: it'
+    ' reports',
+    'seconds, and the collision arrives as a NUMA locality effect that is'
+    ' really a',
+    'rebuilt case (rule 21a, pathway item 77).',
+    '',
+    'NOT waiting. NOT rebuilding anyway. NOT falling back to a second case'
+    ' directory --',
+    'each of those is the silent fallback rule 2 forbids. Run your perf tool in'
+    ' its own',
+    'git worktree (rule 21a), or wait for the holder above to finish.']
+
+# One lock per process; see run_scaling._case_lock for why the memo exists.
+_case_lock = None
+
 
 def numa_topology():
     """{node: [cpu, ...]} from numactl, or {} if unavailable."""
@@ -195,9 +217,30 @@ def require_idle(cpus, busy_ceiling, override):
 
 
 def build_case(case_name):
+    """create.newcase + forced serial + case.setup, under testsys/perf/.
+
+    GATE 0 (item 77): the exclusive lock on the directory holding the case,
+    taken before anything is imported, created or deleted. It lives here, in
+    the function that does the rmtree, rather than in main(), for the same
+    reason `run_scaling.build_py_case` does: this module is IMPORTED by
+    `run_scaling`, `run_mpi_scaling`, `run_shard_scaling`,
+    `probe_scatter_bandwidth` and `run_jaxmpi_ab`, so a future caller reaching
+    `numa.build_case` directly must be guarded by the same acquire and not by
+    whatever this file's main() happens to do.
+
+    The resource is derived from the directory actually about to be destroyed.
+    """
+    global _case_lock
+    d = os.path.join(TESTSYS, 'perf', 'numa_case', case_name)
+    if _case_lock is None:
+        try:
+            _case_lock = runlock.acquire(
+                REPO_ROOT, os.path.relpath(os.path.dirname(d), REPO_ROOT),
+                consequence=LOCK_CONSEQUENCE)
+        except runlock.RunTreeLocked as exc:
+            raise SystemExit('FAIL: %s' % exc)
     sys.path.insert(0, os.path.join(REPO_ROOT, 'testsys', 'e2e'))
     import run_e2e                                        # noqa: E402
-    d = os.path.join(TESTSYS, 'perf', 'numa_case', case_name)
     if os.path.isdir(d):
         shutil.rmtree(d)
     os.makedirs(os.path.dirname(d), exist_ok=True)
