@@ -6,6 +6,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 2. No silent fallbacks, swallowed errors, or placeholder data.
 2a. A scripted edit to a tracked document asserts on its shape, not a substring of it.
 3. Gate every stage; pass before moving on.
+3a. A tier red on master is a stop-everything condition, regardless of cause.
 4. Only fresh runs are evidence.
 4a. A proposed CAUSE is falsified by the outcome curve, not by the defect it predicts.
 4b. An exclusion names the metric that produced it; a metric blind to a mechanism cannot exclude it.
@@ -25,6 +26,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 15. Releases follow the documented workflow, notes lead the README.
 15a. A pre-tag CI check on the exact SHA is required before `git tag`, and it must be mechanical, not remembered.
 15b. The local sweep and CI gate different failure classes; CI's release run re-verifies only what a local sweep structurally cannot.
+15c. The tag push and `gh release create` are one action; the release-completeness guard is the check that a releaser split them.
 16. Test what you commit, not what is in your working tree.
 17. Reviving or adding a TPV benchmark.
 18. A refactor that couples two previously-independent artifacts must say so.
@@ -41,9 +43,9 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
-(1-21) plus fifteen lettered sub-rules (2a, 4a, 4b, 4c, 5a, 6a, 15a, 15b,
-20a, 20b, 20c, 21a, 21b, 21c, 21d) — 36 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 36;
+(1-21) plus seventeen lettered sub-rules (2a, 3a, 4a, 4b, 4c, 5a, 6a, 15a,
+15b, 15c, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 38 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 38;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 21.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -160,6 +162,42 @@ comparison failed short of reading every printed line.
 
 **How to apply**: treat "the script ran" and "the script passed" as two
 different questions until `check.test.py` itself distinguishes them.
+
+---
+
+## 3a. A tier red on master is a stop-everything condition, regardless of cause
+
+Rule 3 names the commands and the pass criterion. This sub-rule states what a
+FAILURE of that criterion means once it shows up at master HEAD: work stops
+until the red clears — whatever the cause. "It's just the known
+release-ordering thing, ignore it" is not a standing exemption; nothing in
+this project marks a class of red as pre-approved to skip past.
+
+**Rationale**: the difference between "red because of a code bug" and "red
+for some other, already-understood reason" exists only in the head of
+whoever is currently context-loaded on the incident. The next reader — a
+different agent, a different day, reading the tier's exit code and nothing
+else — sees one signal: red. Treating one class of red as safe to wait out
+is exactly how a real break later gets read as "the known one" and gets
+waved through.
+
+**Incident (2026-09-23)**: see rule 15c. `test_release_complete.py` went red
+at master HEAD for a benign, already-diagnosed reason for the second time in
+this project's history (v5.8.2, 2026-09-16, and v5.16.1). Both times the
+cause turned out to be nothing — a release action mid-split, not a defect —
+but the rule this incident argues for is for the time it will not be.
+
+**How to apply**: on any red tier at master HEAD, stop and diagnose before
+starting or continuing anything unrelated — do not let "I already know why
+that one's red" become a reason to proceed with other work while it stays
+red.
+
+**Tier: norm, not a gate.** Nothing scripts "an agent read a red tier and
+kept going anyway" — the guard only reports the red itself
+(`testsys/run.py unit regression`'s exit code). Making this mechanical would
+need a recorded acknowledgment step, e.g. a required `--ack-red <reason>`
+argument logged before any subsequent command that assumes green runs
+anyway; nothing like that exists today.
 
 ---
 
@@ -891,6 +929,48 @@ release SHA is eligible, and the one a reviewer runs against the claim:
 Expected output: empty. Non-empty means the full matrix, and the profile was
 never available. The workflow edit itself is routed to whoever conducts the
 release, the guards to `iris-vermeulen`; this rule's author writes neither.
+
+---
+
+## 15c. The tag push and `gh release create` are one action; the release-completeness guard is the check that a releaser split them
+
+Step 7 already runs the tag push and the GitHub Release creation as one
+uninterrupted command sequence with no pause in between. This sub-rule names
+the check that proves a releaser actually did that, and the reason a failure
+to is worse than "the page appeared a little late."
+
+After `git push origin vX.Y.Z`, the very next command is `gh release create
+... --verify-tag` — no status check, no editor, no wait for CI, nothing else
+runs in between. This is checkable with the guard already in tree, not
+aspirational: run `python3 testsys/run.py unit regression` (or
+`test_release_complete.py` on its own) right after the tag push. If its sole
+failure is `check_network_side`'s `no GitHub Release for v<X.Y.Z>`
+(`testsys/regression/test_release_complete.py:237-266`), that is not a new
+finding to route elsewhere — it IS the guard reporting, in real time, that
+step 7 has already been split. The fix is to finish `gh release create`
+immediately, not to open a pathway row and move on to something else.
+
+**Consequence, stated because it is what makes this worth obeying**: for
+however long that gap lasts, the regression tier — the gate rule 3 (and 3a)
+say is a stop-everything signal — is RED on master for a reason that has
+nothing to do with any code under test. A red that turns out to be "nothing,
+wait for the release script" trains whoever reads it to discount the NEXT
+red, which might not be nothing. That is the failure the tier exists to
+prevent, and it is a worse cost than the missing Release page itself.
+
+**Incident (2026-09-23)**: `v5.16.1` reproduced the exact pattern step 7 was
+merged 2026-09-16 (from v5.8.2) to prevent. Verified fresh, not relayed:
+`git for-each-ref refs/tags/v5.16.1 --format='%(taggerdate:iso-strict)'` reads
+`2026-09-23T01:54:22-05:00` (`2026-09-23T06:54:22Z`); `gh release view
+v5.16.1 --json publishedAt` reads `2026-09-23T07:16:39Z` — a 22-minute gap
+between the tag existing and the Release being published, during which
+`check_network_side` was red at master HEAD for this reason and no other.
+
+**How to apply**: never let anything — including watching CI, including
+writing the release notes body, including this very board — sit between the
+tag push and `gh release create` in step 7's sequence. If something must
+intervene, treat the resulting red exactly per rule 3a: stop, finish the
+Release immediately, then resume.
 
 ---
 
