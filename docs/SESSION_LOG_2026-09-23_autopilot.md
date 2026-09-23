@@ -1284,3 +1284,50 @@ from Fortran in a scratch worktree, NEVER committed), the 5 s mutation test
 (e1888e7 reverted, numpy + jax), and a pinned re-price at 20 s. The 11:37 20 s
 price (Fortran 143.8 s / numpy 1020.0 s / jax 221.1 s, jax UNPINNED at 553%
 CPU) is kept as the first datum.
+
+## KK. Landings 15:30-16:05, and TPV30 priced at both terms with the 5 s mutation answered
+
+| commit | what | my own gate |
+|---|---|---|
+| `d8fd06d`,`5f0131c` | rules 24/15b/16/7 (zofia): the stale 12:24 text reconciled with what `ef7196c`/`6143beb` actually landed | no `NOT YET LANDED` left for landed work; `unit regression` green on the merged tree (pinned NUMA 6-7) |
+| `c33e513` | item 69 CLOSED (zofia) | row's command `test_ci_workflow_coverage.py` can go both ways (rule 14a) |
+| `e93e8f7` | `test_rsfNucleation_tpv2802_td.py` (iris) — refactor round 2's retry precondition | green; aca6979's `faulting.py` -> RED `TypeError ... 9 positional arguments but 10 were given` on numpy+jax; MY OWN value mutation (drop `VINI_Z` from `backSliprate`, `faulting.py:362`) -> RED `got 0.10837790238705954, want 0.10806261170722385`; restored, sha256 `7329b52b…0f5eb1` both sides |
+
+**TPV30, three cells per term, run sequentially by me, pinned NUMA 4-5 (cpus
+32-47, verified in `/proc/<pid>/status`), box load 13-33 (foreign magic.exe x3 +
+a pytest): contended, not quiet.** Scaffold registration in a scratch worktree
+only (`testNameList.py`, `matrix.py`: tpv29's bound 1e-10, `abs-max`); NOTHING
+committed; `test.tpv30` stays unregistered.
+
+| term | fortran (4 ranks) | python-numpy | python-jax | 3-cell total |
+|---|---|---|---|---|
+| 5 s (gate) | 41.2 s, 0.39 GB, max\|diff\| 0 (self) | 266.2 s, 2.84 GB, 1.645566e-14 | 57.3 s, 4.36 GB, 1.909216e-14 | **364.7 s (6.1 min)** |
+| 20 s (full) | 143.6 s, 0.39 GB, 0 | 1034.8 s, 2.84 GB, 5.184742e-14 | 177.6 s, 4.51 GB, 6.300516e-14 | **1356.0 s (22.6 min)** |
+
+The 20 s row reproduces the 11:37 datum (143.8 / 1020.0 / 221.1 s; jax was
+unpinned at 553% then, 16 cpus now). The 5 s python cells compare against a
+5 s reference generated from THIS Fortran run (`frt_canonical`, 3321 rows,
+sha256 `7419602702cc…98175`), scratch only — per rule 7 a committed one is its
+own reviewed change, and only if the owner gates the case.
+
+**Mutation at 5 s, answered: the 5 s gate CATCHES the TPV30 bug.** With
+`e1888e7`'s `assembleGlobalKU.py` hunk reverted: python-numpy FAIL
+`max|diff|=1.202240e+08 bound=1.0e-10 at row 33 col 11 (ref -1.332131e+09 vs
+run -1.452355e+09)`, python-jax FAIL, identical figure. So at the everyday term
+this is NOT a later catch: the bug's onset is step 3 and by 5 s it is eight
+orders of magnitude past the bound on a fault-traction column. Restored,
+`git status -- src` 0 lines, then the 20 s cells ran on clean code.
+
+Gating remains the OWNER'S: this supplies price (6.1 min everyday, 22.6 min
+release, peak 4.5 GB) and sensitivity (catches the one known real defect at
+5 s), nothing else. Evidence:
+`docs/evidence/perf-2026-09-23/wei-tpv30_price_both_terms_and_5s_mutation.log.gz`.
+The scratch tree's 9 ledger rows are NOT landed: they are stamped `95d4220`
+while two came from mutated source and all from a scaffold-registered tree.
+That is the THIRD misattributed-SHA emission today (af3dad's, mira's 7 rows
+stamped `b75c69a` from an uncommitted emitter, and these) — the ledger has no
+tree-dirty field. Fix routed to iris inside item 2's record work.
+
+**Stale comment, noted for the owner-held TPV30 decision:** `testNameList.py:8-17`
+still says TPV30's divergence is "NOT yet root-caused"; `e1888e7` root-caused
+and fixed it.
