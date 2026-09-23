@@ -1003,3 +1003,64 @@ NO agent of mine was running. The TPV30 hunt is on the box now (one process at
 99.9%, 200 s in), so the 1D table waits for it rather than being measured
 through it — the alternative is the 19% spread that already cost sweep 1 its
 8-core point.
+
+## EE. Item 33, second table — Fortran 3D MPI vs jax-MPI 1D slab, 1-16 ranks
+
+`testsys/perf/run_mpi_scaling.py --case test.tpv104 --ranks 1,2,4,8,16
+--n-lo 20 --n-hi 60 --max-busy 0.2 --syncs halo --warmup --exclude-cpus 0,1`,
+two independent sweeps, 08:45-09:05. Per-step by difference over **each RANK'S
+OWN SOLVE TIME** (the tool refuses a non-positive result outright,
+`run_mpi_scaling.py:309-315`), strict ceiling 0.2 never overridden, cpus 0 and
+1 excluded by measurement (they read busy 0.00 and then deliver ~0.39
+effective cores). **Run OUTSIDE the gated matrix**: `test.tpv104` is not opted
+into `matrix.PY_MPI_RANKS` and this did not change that.
+
+| ranks | Fortran ms/step (2 sweeps) | jax-MPI ms/step | jax/Fortran (best pair) |
+|---|---|---|---|
+| 1 | 982.19, 924.29 | 763.81, 859.63 | **0.83x** |
+| 2 | 472.25, 468.54 | 517.21, 502.50 | 1.07x |
+| 4 | 232.81, 235.98 | 249.64, 299.68 | 1.07x |
+| 8 | 120.91, 120.06 | 191.23, 187.17 | 1.56x |
+| 16 | 59.20, 65.24 | 93.67, 116.69 | **1.58x** |
+
+Self-relative: **Fortran 1.00 / 1.97 / 3.97 / 7.70 / 15.61x**; **jax-MPI 1.00 /
+1.52 / 3.06 / 4.08 / 8.16x**.
+
+**Against the morning's threaded table, this is the headline.** At 16 the
+threaded jax path read 234-248 ms/step and 4.19x of Fortran; real ranks read
+**93.67 ms/step and 1.58x**. Most of what looked like a port deficit was the
+measurement comparing a 3D-decomposed MPI solver against threads in one
+process.
+
+**Where it turns over, which is what the owner asked for: between 4 and 8
+ranks.** The ratio is 1.07x at both 2 and 4 — the port tracks Fortran exactly
+— and then goes to 1.56x at 8 and stays there at 16.
+
+**The mechanism is visible in the run's own per-rank output, not inferred.**
+Exchange cost per step, 8 ranks: `[54.1, 85.4, 92.7, 51.5, 14.6, 3.5, 9.2,
+3.5]` ms against a 191 ms step. At 16 ranks: `[57.2, 57.0, 55.4, 50.9, 48.4,
+49.2, 54.5, 56.6, 29.6, 16.7, 50.0, 13.5, 3.0, 3.5, 2.7, 2.8]` against a 94 ms
+step. The halo cost per rank does NOT fall as ranks rise — it stays at roughly
+50 ms on the interior ranks while the compute half halves — which is exactly
+the 1D-slab prediction: the slab's halo SURFACE stops shrinking while its
+volume does. That is the case for 3D decomposition, stated in the port's own
+numbers rather than from theory.
+
+**Two caveats that travel with this table.**
+1. **Reproducibility is worse than the morning's.** Fortran repeats within 1%
+   at 2/4/8 and 10% at 16; jax-MPI spreads 12% at 1 rank, 20% at 4 and **25%
+   at 16** (93.67 vs 116.69). Both sweeps ran while my own TPV30 hunt held one
+   core at 100% — that is a mission of mine, not a foreign tenant, and the
+   morning's clean table had none. Every point passed the strict per-cpu
+   ceiling on the cpus it used and every rank reported EFFECTIVE_CORES 1.00,
+   which per rule 6a is necessary and NOT sufficient. Read the 8- and 16-rank
+   ratios as ~1.5-1.6x, not as three digits.
+2. **At 1 rank the MPI path is SLOWER than the threaded path on the same
+   case** — 763-860 ms/step against the morning's 607 ms/step on one core.
+   Same solver, same case; the difference is `driver.run_mpi` plus rank-local
+   setup versus `driver.run`. Flagged as an observation to confirm, not a
+   finding: the two came from different tools with different placement.
+
+Evidence: `docs/perf_snapshots/mpi_scaling_2026-09-23_08{4522,5541}_tpv104.json`,
+`docs/evidence/perf-2026-09-23/wei-s3_jaxmpi1d_rep{1,2}.log.gz`, 20 append-only
+ledger rows.
