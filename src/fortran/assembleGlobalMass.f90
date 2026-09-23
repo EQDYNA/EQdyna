@@ -213,9 +213,19 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                 endif 
             enddo 
         endif
-        tWaitStart = MPI_WTIME()
-        call mpi_barrier(MPI_COMM_WORLD, iMPIerr)
-        MPIWaitTimeInSeconds = MPIWaitTimeInSeconds + MPI_WTIME() - tWaitStart
+        ! EQDYNA_PROFILE=0 (profileEnabled, read once at startup into
+        ! globalvar -- eqdyna3d.f90) must skip this sub-timer's own two
+        ! MPI_WTIME() calls, not just the eventual profile.rank<r>.json
+        ! write: MPI4NodalQuant runs once per step (driver.f90:27), so this
+        ! wait-timer is PER-STEP profiler-added cost. The barrier itself is
+        ! pre-existing and unconditional and must run regardless.
+        if (profileEnabled) then
+            tWaitStart = MPI_WTIME()
+            call mpi_barrier(MPI_COMM_WORLD, iMPIerr)
+            MPIWaitTimeInSeconds = MPIWaitTimeInSeconds + MPI_WTIME() - tWaitStart
+        else
+            call mpi_barrier(MPI_COMM_WORLD, iMPIerr)
+        endif
     enddo
     
     MPICommTimeInSeconds = MPICommTimeInSeconds + MPI_WTIME() - tStageStart

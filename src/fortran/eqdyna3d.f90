@@ -13,10 +13,19 @@ program EQdyna
     ! always-on per-rank profile into "exchange" vs "wait" buckets without
     ! computing either as a total-minus-everything-else remainder.
     real (kind = dp) :: mpiCommSetup, mpiWaitSetup, mpiCommLoop, mpiWaitLoop, tLoopStart, loopS
+    character (len = 8) :: envval
 
     call MPI_Init(iMPIerr)
     call mpi_comm_rank(MPI_COMM_WORLD,me,iMPIerr)
     call mpi_comm_size(MPI_COMM_WORLD,totalNumOfMPIProcs,iMPIerr)
+
+    ! EQDYNA_PROFILE read ONCE here, right after MPI_Init, into the module
+    ! logical `profileEnabled` (globalvar.f90) -- never re-read per step.
+    ! Default ON (envval blank or anything but '0'), same contract as
+    ! output_profile's own switch (library_output.f90).
+    envval = ' '
+    call get_environment_variable('EQDYNA_PROFILE', envval)
+    profileEnabled = (trim(envval) /= '0')
 
     if (me == masterProcsId) then 
         write(*,*) '====================================================================='
@@ -81,19 +90,33 @@ program EQdyna
     ! counters only grow (mpi_wtime deltas accumulated in place), so this is
     ! a direct reading of a running clock at a named checkpoint, not a
     ! remainder computed from anything downstream.
-    mpiCommSetup = MPICommTimeInSeconds
-    mpiWaitSetup = MPIWaitTimeInSeconds
+    !
+    ! All of this is a ONE-TIME (not per-step) checkpoint pair, but it is
+    ! still profiler-ADDED code, so it is skipped -- not just left unread --
+    ! under EQDYNA_PROFILE=0. `call driver` (the full nstep loop) itself
+    ! always runs; only the MPI_WTIME() bracketing around it is conditioned.
+    if (profileEnabled) then
+        mpiCommSetup = MPICommTimeInSeconds
+        mpiWaitSetup = MPIWaitTimeInSeconds
+        tLoopStart = MPI_WTIME()
+    endif
 
-    tLoopStart = MPI_WTIME()
     call driver
-    loopS = MPI_WTIME() - tLoopStart
 
-    ! mpiCommLoop is the loop-phase MPI4NodalQuant span INCLUDING its nested
-    ! barrier (mirrors how MPICommTimeInSeconds is accumulated); mpiWaitLoop
-    ! is that same span's barrier-only portion. output_profile subtracts the
-    ! latter from the former to get a disjoint exchange/wait split.
-    mpiCommLoop = MPICommTimeInSeconds - mpiCommSetup
-    mpiWaitLoop = MPIWaitTimeInSeconds - mpiWaitSetup
+    if (profileEnabled) then
+        loopS = MPI_WTIME() - tLoopStart
+        ! mpiCommLoop is the loop-phase MPI4NodalQuant span INCLUDING its
+        ! nested barrier (mirrors how MPICommTimeInSeconds is accumulated);
+        ! mpiWaitLoop is that same span's barrier-only portion.
+        ! output_profile subtracts the latter from the former to get a
+        ! disjoint exchange/wait split.
+        mpiCommLoop = MPICommTimeInSeconds - mpiCommSetup
+        mpiWaitLoop = MPIWaitTimeInSeconds - mpiWaitSetup
+    else
+        loopS = 0.0d0
+        mpiCommLoop = 0.0d0
+        mpiWaitLoop = 0.0d0
+    endif
 
     startTimeStamp = MPI_WTIME()
     call output_onfault_st
