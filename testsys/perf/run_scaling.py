@@ -136,7 +136,7 @@ OUT = os.path.join(TESTSYS, 'scaling_last.json')
 sys.path.insert(0, TESTSYS)
 sys.path.insert(0, REPO_ROOT)
 import run_numa_scaling as numa  # noqa: E402  (numa_topology, cpu_busy_fractions, require_idle)
-from testsys import runlock      # noqa: E402
+import perflib                   # noqa: E402  (acquire_case_lock, rebuild_serial_case)
 
 # What a second concurrent invocation costs, printed by the refusal (item 77).
 LOCK_CONSEQUENCE = [
@@ -440,25 +440,21 @@ def build_py_case(case_name):
     never reach this module's main(). A lock in main() would guard one of five
     callers and look like it guarded all five.
 
-    The resource is derived from the directory actually about to be destroyed,
-    so it follows the path rather than restating it.
+    `perflib.acquire_case_lock` derives the resource from the directory
+    actually about to be destroyed, so it follows the path rather than
+    restating it -- and roots it in THIS checkout, never in $EQDYNAROOT.
+
+    The lock is KEPT after this returns, and memoised: the five callers above
+    time out of this directory afterwards, and flock is per open file
+    description, so a second acquire from this same process would refuse
+    against our own pid -- a false collision. The memo is not a fallback; the
+    lock is genuinely held.
     """
     global _case_lock
     d = os.path.join(TESTSYS, 'scaling_case', case_name)
     if _case_lock is None:
-        try:
-            _case_lock = runlock.acquire(
-                REPO_ROOT, os.path.relpath(os.path.dirname(d), REPO_ROOT),
-                consequence=LOCK_CONSEQUENCE)
-        except runlock.RunTreeLocked as exc:
-            raise SystemExit('FAIL: %s' % exc)
-    sys.path.insert(0, os.path.join(TESTSYS, os.pardir, 'e2e'))
-    import run_e2e  # noqa: E402
-    if os.path.isdir(d):
-        shutil.rmtree(d)
-    os.makedirs(os.path.dirname(d), exist_ok=True)
-    run_e2e.make_serial_case(case_name, d, run_e2e.base_env())
-    return d
+        _case_lock = perflib.acquire_case_lock(d, LOCK_CONSEQUENCE)
+    return perflib.rebuild_serial_case(case_name, d)
 
 
 def time_one_py(case_dir, nsteps, cpus, node_map, backend):
