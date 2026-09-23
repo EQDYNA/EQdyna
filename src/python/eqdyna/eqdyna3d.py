@@ -560,18 +560,29 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
 
     # ALWAYS-ON profile.rank0.json (nranks=1: this path is serial by
     # construction, checkInputConsistency/build_solver_state already refuse
-    # npx/npy/npz>1). `element` is 'solve' (element kernels + faulting,
-    # FUSED -- see profile_emit.py's docstring for why `fault` is 0.0, not
-    # omitted). `exchange`/`wait` are genuinely 0.0: there is no MPI on this
-    # path at all, not a folded or unmeasured cost.
+    # npx/npy/npz>1). `exchange`/`wait` are genuinely 0.0: there is no MPI on
+    # this path at all, not a folded or unmeasured cost.
+    #
+    # `fault`: split out of 'solve' along Fortran's own boundary (`fault` =
+    # compTimeInSeconds(6), faulting.f90:28 -- rule 23) for python-numpy
+    # ONLY. `driver.run` measures it with a plain perf_counter() pair around
+    # the eagerly-executed FLT.faulting call (see driver.make_step_parts's
+    # docstring) and returns it as `out['fault_s']`, always 0.0 on jax
+    # because make_step_parts refuses to create the timer at all when
+    # `B.is_jax(xp)` -- a timer inside a traced function would measure the
+    # ONE-TIME trace, not the per-step cost (wrong, not just imprecise), so
+    # python-jax and python-jax-mpi stay folded (`fault`=0.0, cost inside
+    # `element`) exactly as before. See profile_emit.py's docstring.
+    fault_s = out.get('fault_s', 0.0)
+    solve_s = prof.get('solve', 0.0)
     total_s = time.perf_counter() - run_t0
     _profile_emit.write_profile(
         case_dir, 'python-%s' % backend, 0, 1, S['nstep'],
         dict(setup=prof.get('setup (mesh+input)', 0.0)
                   + prof.get('resolve solver', 0.0),
-             element=prof.get('solve', 0.0), fault=0.0,
+             element=solve_s - fault_s, fault=fault_s,
              exchange=0.0, wait=0.0, io=prof.get('write frt', 0.0)),
-        loop_s=prof.get('solve', 0.0), total_s=total_s)
+        loop_s=solve_s, total_s=total_s)
     return frt_path
 
 
