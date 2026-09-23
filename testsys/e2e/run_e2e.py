@@ -76,9 +76,90 @@ MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 BIN_OVERRIDE = os.environ.get('EQDYNA_E2E_BIN')
 
 
+# GPU cells (--device cuda). XLA PREALLOCATES a fraction of the card at
+# process start -- 0.75 by default -- so two jax cells landing on the same
+# device cannot both have it and the second dies with RESOURCE_EXHAUSTED.
+# That is what `test.tpv36` x python-jax did in the 2026-09-22 GPU sweep
+# (pathway item 58); run ALONE the same cell passes at 7.06e-09, well inside
+# its 1e-6 bound, so it was a harness/allocator interaction and never a
+# parity failure. The sweep runs cells concurrently by design, so the fix is
+# here, not in the case: one concurrent jax cell per VISIBLE DEVICE, each
+# pinned to its own card, with the preallocation stated explicitly instead of
+# inherited from XLA's default.
+GPU_MEM_FRACTION = os.environ.get('EQDYNA_E2E_GPU_MEM_FRACTION', '0.75')
+
+
 def _run(cmd, cwd, env):
     print('+ (%s) %s' % (os.path.basename(cwd), ' '.join(cmd)))
     return subprocess.call(cmd, cwd=cwd, env=env)
+
+
+def visible_gpu_indices():
+    """The CUDA device indices this sweep may use, as a list of ints.
+
+    EQDYNA_E2E_GPUS='0,2' overrides; otherwise `nvidia-smi` is asked. Raises
+    if neither yields a device -- a --device cuda sweep that quietly fell back
+    to one slot, or to the CPU, would report a GPU measurement it never made
+    (rule 2: "could not check" must not read as "passed").
+    """
+    want = os.environ.get('EQDYNA_E2E_GPUS')
+    if want:
+        idx = [int(t) for t in want.replace(',', ' ').split()]
+        if not idx:
+            raise RuntimeError('EQDYNA_E2E_GPUS=%r names no device' % want)
+        return idx
+    r = subprocess.run(['nvidia-smi', '--query-gpu=index', '--format=csv,noheader'],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(
+            'nvidia-smi failed (rc=%d): %s -- a --device cuda sweep cannot be '
+            'scheduled without knowing how many cards exist. Set '
+            'EQDYNA_E2E_GPUS to name them explicitly.'
+            % (r.returncode, (r.stderr or '').strip()[:200]))
+    idx = [int(line) for line in r.stdout.split() if line.strip().isdigit()]
+    if not idx:
+        raise RuntimeError('nvidia-smi reported no CUDA devices; --device cuda '
+                           'has nothing to run on')
+    return idx
+
+
+class GpuSlots:
+    """One concurrent jax cell per CUDA device, each pinned to its own card.
+
+    Same all-or-nothing discipline as the core budget below, and for the same
+    reason: a cell must take a whole device or wait. Nothing here caps MEMORY
+    -- pinning is what makes the 0.75 preallocation safe, because the card is
+    then exclusive for the cell's lifetime.
+    """
+
+    def __init__(self, devices):
+        import threading
+        self._cond = threading.Condition()
+        self._free = list(devices)
+        self.devices = list(devices)
+
+    def acquire(self):
+        with self._cond:
+            while not self._free:
+                self._cond.wait()
+            return self._free.pop(0)
+
+    def release(self, index):
+        with self._cond:
+            self._free.append(index)
+            self._cond.notify_all()
+
+
+def gpu_env(env, index):
+    """The two variables a pinned GPU cell runs under. Separate from the
+    launch so a test can assert them without starting a solver."""
+    env = dict(env)
+    env['CUDA_VISIBLE_DEVICES'] = str(index)
+    # Explicit, not inherited: XLA's implicit 0.75 is exactly what made two
+    # concurrent cells on one card fail, and an implicit number cannot be
+    # read off a log when the next sweep misbehaves.
+    env['XLA_PYTHON_CLIENT_MEM_FRACTION'] = str(GPU_MEM_FRACTION)
+    return env
 
 
 def base_env():
@@ -129,7 +210,7 @@ def make_serial_case(case_name, case_dir, env):
         raise RuntimeError('case.setup for %s exited %d' % (case_name, rc))
 
 
-def run_standalone(case_dir, backend, device='cpu', env=None):
+def run_standalone(case_dir, backend, device='cpu', env=None, gpu_index=None):
     """`python3 -m eqdyna <case_dir> --backend <numpy|jax>` -- the
     exact command a user would type, with the backend ALWAYS named.
 
@@ -144,6 +225,22 @@ def run_standalone(case_dir, backend, device='cpu', env=None):
     # JAX_PLATFORMS pins the device: a run labelled jax-on-cpu that silently
     # landed on a contended GPU is a different measurement under the same name.
     env['JAX_PLATFORMS'] = device
+    if device != 'cpu' and backend == 'python-jax':
+        # REFUSES rather than defaults. A GPU cell launched without a slot is
+        # the item-58 failure: it shares a card with whatever else the sweep
+        # started and dies with RESOURCE_EXHAUSTED, which then reads as a
+        # parity or port regression in the results table.
+        if gpu_index is None:
+            raise RuntimeError(
+                'run_standalone: --device %s needs a GPU slot; none was '
+                'reserved for %s. Concurrent cells must each pin their own '
+                'card (see GpuSlots) -- launching without one is how item 58 '
+                'turned an allocator collision into a "failed cell".'
+                % (device, os.path.basename(case_dir)))
+        env = gpu_env(env, gpu_index)
+        print('+ (%s) pinned to CUDA device %d, '
+              'XLA_PYTHON_CLIENT_MEM_FRACTION=%s'
+              % (os.path.basename(case_dir), gpu_index, GPU_MEM_FRACTION))
     rc = subprocess.call([sys.executable, '-u', '-m', 'eqdyna',
                           case_dir, '--backend', solver],
                          cwd=REPO_ROOT, env=env)
@@ -255,7 +352,7 @@ def run_fortran(case_name, case_dir, eqdyna_cmd, env):
             raise RuntimeError('`%s` exited %d' % (' '.join(cmd), rc))
 
 
-def run_cell(case, backend, test_dir, eqdyna_cmd, env, device):
+def run_cell(case, backend, test_dir, eqdyna_cmd, env, device, gpu_slots=None):
     """Run one cell and return its run directory. Raises on any failure."""
     if backend == 'fortran':
         case_dir = os.path.join(test_dir, case)
@@ -271,6 +368,20 @@ def run_cell(case, backend, test_dir, eqdyna_cmd, env, device):
     make_serial_case(case, case_dir, env)
     if backend == 'python-jax-mpi':
         run_python_jax_mpi(case, case_dir, env)
+    elif device != 'cpu' and backend == 'python-jax':
+        # Hold a device for exactly this cell's run, then give it back. The
+        # cell blocks here rather than sharing a card -- item 58.
+        if gpu_slots is None:
+            raise RuntimeError(
+                'run_cell: --device %s selected but no GpuSlots pool was '
+                'passed; refusing to launch %s x %s onto an unreserved card'
+                % (device, case, backend))
+        index = gpu_slots.acquire()
+        try:
+            run_standalone(case_dir, backend, device=device, env=env,
+                           gpu_index=index)
+        finally:
+            gpu_slots.release(index)
     else:
         run_standalone(case_dir, backend, device=device, env=env)
     return case_dir
@@ -519,12 +630,24 @@ def main(argv=None):
              if (c, b) in runnable]
     order = {cb: i for i, cb in enumerate(cells)}
 
+    # One slot per visible card, created only when a GPU cell is actually
+    # selected -- asking nvidia-smi on a CPU sweep would make a CPU-only box
+    # fail for no reason.
+    gpu_slots = None
+    if args.device != 'cpu' and any(b == 'python-jax' for _, b in cells):
+        gpu_slots = GpuSlots(visible_gpu_indices())
+        print('e2e: %d CUDA device(s) %s -- at most %d concurrent python-jax '
+              'cell(s), each pinned to its own card at '
+              'XLA_PYTHON_CLIENT_MEM_FRACTION=%s (item 58)'
+              % (len(gpu_slots.devices), gpu_slots.devices,
+                 len(gpu_slots.devices), GPU_MEM_FRACTION))
+
     def run_one(cb):
         case, backend = cb
         t0 = time.time()
         try:
             case_dir = run_cell(case, backend, test_dir, eqdyna_cmd, env,
-                                args.device)
+                                args.device, gpu_slots=gpu_slots)
             ok, lines = compare.compare_cell(case, backend, case_dir)
         except Exception as exc:                # noqa: BLE001 - reported, not swallowed
             ok, lines = False, ['%s: %s' % (type(exc).__name__, exc)]
