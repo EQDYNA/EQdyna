@@ -278,14 +278,35 @@ def time_one(case_dir, nsteps, cpus):
     return None
 
 
+def per_step_and_fixed(t_lo, t_hi, n_lo, n_hi):
+    """(seconds per step, fixed seconds) from two wall times over two step
+    counts -- the family's per-step-by-difference arithmetic, in ONE place.
+
+    The two lines below were written out independently at four call sites
+    (`per_step` here, `run_scaling.per_step_py`, `run_scaling.per_step_fortran`
+    and `run_shard_scaling.per_step`), so a correction to either of them landed
+    in one tool and stayed missing in the other three. The semantics are
+    untouched: `ps` is the slope over the step-count difference and `fixed` the
+    intercept, i.e. everything that does NOT scale with the step count
+    (interpreter start, case load, XLA compile, MPI init, netCDF open) and that
+    the difference is taken in order to cancel.
+
+    It does NOT judge the result. `run_mpi_scaling.per_step_jax_mpi` raises on
+    a non-positive per-step figure and keeps its own copy of the arithmetic
+    because it differences the RANKS' OWN SOLVE TIME rather than two wall
+    clocks; that refusal is deliberately not moved here, where it would become
+    a new check on four call sites that never had one.
+    """
+    ps = (t_hi - t_lo) / float(n_hi - n_lo)
+    return ps, t_lo - n_lo * ps
+
+
 def per_step(case_dir, cpus, n_lo, n_hi):
     t_lo = time_one(case_dir, n_lo, cpus)
     t_hi = time_one(case_dir, n_hi, cpus)
     if t_lo is None or t_hi is None:
         return None, None
-    ps = (t_hi - t_lo) / float(n_hi - n_lo)
-    fixed = t_lo - n_lo * ps
-    return ps, fixed
+    return per_step_and_fixed(t_lo, t_hi, n_lo, n_hi)
 
 
 def main():
