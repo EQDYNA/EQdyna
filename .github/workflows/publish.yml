@@ -18,7 +18,18 @@ jobs:
       packages: write   # GITHUB_TOKEN needs this to push to ghcr.io
 
     steps:
+    # fetch-depth 0, NOT the default 1: `COPY . /opt/eqdyna` below puts THIS
+    # checkout's .git inside the image, and two regression guards read real
+    # history from it -- test_history_table.py (the 8 bulk-imported commits of
+    # 2018-11-26) and test_pretag_ci_negative.py (5 referenced SHAs). On a
+    # shallow clone both FAIL, which is the guards working: they refuse to
+    # pass on history they cannot see. That is what took this workflow red on
+    # 894cdc1 (v5.16.0), so that tag's image was never pushed -- the gate runs
+    # before the push step. Fixed here rather than by teaching the guards to
+    # skip: a guard that skips when its evidence is missing is not a gate.
     - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
 
     - name: Log in to ghcr.io
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
