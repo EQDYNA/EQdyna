@@ -48,14 +48,15 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 21c. `PROJECT_RULES.md` and `pathway_forward.md` have exactly one writer per session.
 21d. A dispatch carries its isolation and its scope in writing, or it is not issued.
 22. A scope restriction is itself a rule, and it can conflict with another rule.
+23. Fortran is the reference implementation; the port follows its NUMERICS, not its file layout.
 
 Count, stated so a heading-shape grep does not undercount it again (that
-undercount happened twice in one night, 2026-09-21/22): 22 numbered rules
-(1-22) plus twenty-four lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
+undercount happened twice in one night, 2026-09-21/22): 23 numbered rules
+(1-23) plus twenty-four lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
 5a, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c, 21d)
-— 46 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 46;
+— 47 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 47;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
-suffix) reads 22.
+suffix) reads 23.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
 the count from heading shape alone.
@@ -2219,3 +2220,132 @@ restriction and diff it against every rule in this book. The nearest
 backstop is rule 21d's existing requirement that a dispatch state its scope
 in writing, which at least gives a reviewer text to check by hand against the
 rule the scoped work also owes.
+
+---
+
+## 23. Fortran is the reference implementation; the port follows its NUMERICS, not its file layout
+
+Owner, 2026-09-23: *"Fortran is gold. Python and Jax follow faithfully."*
+Amended by the owner the same day, and the amendment is part of the rule:
+*"If there is perf gain to change structure for python and Jax, allowed."*
+
+**1. The numerics are authoritative, and the relationship is not symmetric.**
+Where `src/fortran/` and `src/python/eqdyna/` disagree on a NUMBER — a
+tolerance-exceeding parity failure, a different branch taken, a different
+value written — the port is presumed wrong and the burden is on whoever
+claims otherwise. That burden is discharged with evidence (a spec citation, an
+independent code, a measurement), never with a plausible argument about which
+form looks more correct. Until it is discharged, the change goes into the
+port.
+
+**2. This rule says who defers to whom, NOT who is right against the
+benchmark.** "Gold" is about authority between two implementations of the same
+solver; it is not a finding about physics. A Fortran line the port translated
+faithfully can still be the defect, and an open, unattributed divergence stays
+open: the TPV30 python-port divergence (rule 7's eleventh reference,
+`pathway_forward.md` item 19(b)) is live as this rule is written and is NOT
+decided by it. When Fortran is shown wrong against a spec or an independent
+code, Fortran is fixed and the port follows — the port is never quietly bent
+to reproduce a Fortran bug, and this rule is never cited to close a physics
+question by decree.
+
+**3. Structure is NOT bound one-to-one.** The port may fuse, split or reshape
+modules relative to Fortran where that buys MEASURED performance or is forced
+by a backend constraint (vectorisation shape, jax tracing, a fused loop).
+`assembleGlobalKU.py` is the standing precedent and a good one: it covers four
+Fortran files (`assembleGlobalKU`, `calcElemKU`, `calcHourglassResist`,
+`calcElemMass`) because they are one fused loop in the port, and that is
+recorded where a reader meets the correspondence. A departure is not a gap.
+
+**4. Three states per Fortran module, no fourth, and the forbidden thing is
+the SILENT gap.** Same contract `testsys/matrix.py` already uses for
+SUPPORTED / DECLARED UNSUPPORTED. Every `src/fortran/*.f90` is exactly one of:
+
+- **(a) Counterpart** — a same-named `.py` in `src/python/eqdyna/`, meant to be
+  read beside it.
+- **(b) Documented departure** — a `.py` of another name or shape covers it,
+  and the record names *which Fortran files it covers*, *what shape it takes
+  instead*, and *what motivated it* (the measurement, per 5, or the backend
+  constraint).
+- **(c) Declared absence** — not ported, with a recorded reason, exactly as an
+  UNSUPPORTED matrix cell records a reason.
+
+There is no fourth state and no skip. A Fortran file with neither a same-named
+`.py` nor an entry saying why is the violation this rule exists to name. The
+record lives in ONE place — the correspondence table commissioned 2026-09-23
+under `docs/`, and `CLAUDE.md`'s correspondence paragraph until that table
+lands; two places would drift, and a reader who finds the shorter one would
+read a departure as a gap.
+
+**5. "Measured" means measured.** A departure justified by performance cites
+the measurement: the artifact, the number, and the box state rules 6 and 6a
+require, paired inside its own repetition. A structural change made for
+EXPECTED performance that was never demonstrated is an undocumented departure
+wearing a justification — record it under its real reason (readability, a
+backend constraint, an inherited port shape) rather than as a perf win.
+
+**6. A new Fortran module obliges a port decision when it lands.** The commit
+that adds a `.f90` lands one of the three states for it in the same change,
+the way rule 11 makes docs move with the code. "Decide later" is state four.
+
+**Supersedes a reading of `CLAUDE.md`**: "When you change physics, change it in
+BOTH or say plainly which one you changed and why" reads as two PEER
+implementations. The obligation in that sentence stands — change both, or say
+which you changed and why — but the relationship does not: on a numeric
+disagreement the port is presumed wrong, per 1. The next reader should not have
+to adjudicate that.
+
+**Rationale**: the sweep's whole value is that the two implementations check
+each other (rule 17 step 7), and a check between two peers has no tiebreaker.
+Naming Fortran as the reference gives every parity failure a default direction
+and stops the recurring argument about which side to change. Binding LAYOUT as
+well would buy nothing and cost the port its only real freedom — the port runs
+on numpy, jax and jax-MPI, and a loop shape that is right in Fortran can be
+several times slower in any of them.
+
+**Incident (the divergence, 2026-09-20/21)**: `driver.f90:30` DIVIDES by the
+mass; the port used `force * inv_mass` for friclaw 4/5. A reciprocal-multiply
+is the obvious, arithmetically-equivalent-looking simplification, and it was a
+real divergence worth **38 rupture-arrival flips on `test.drv.a6`**. The port
+moved to match Fortran. Under a peer reading, that is a debate about which form
+is better; under this rule it is not a debate.
+
+**Incident (the silent gap, 2026-09-23)**: of the 26 files in `src/fortran/`,
+14 have no same-named `.py`. Three of them (`calcElemKU`, `calcElemMass`,
+`calcHourglassResist`) are state (b), recorded as the `assembleGlobalKU.py`
+fusion. The other **eleven** — `calcB`, `calcGlobalShapeFunc`,
+`calcLocalShapeFunc`, `calcQAttenuationCoeff`, `computePMLDampingVector`,
+`countMeshEntities`, `checkInputConsistency`, `errorCodes`, `library`,
+`library_degeneration`, `netcdf_io` — carry no entry of any kind, so nothing in
+the repo says whether each is a deliberate departure, an intentional
+non-port, or a port gap nobody has noticed. Verified fresh at `928c4d4` by
+listing both directories, not inherited from the audit that is classifying them.
+That is 11 of 26 Fortran modules in state four, which is the state this rule
+abolishes.
+
+**Incident (the unmeasured justification, 2026-09-22)**: `PML_WEIGHT = 3.0`
+(`src/python/eqdyna/MPI4NodalQuant.py:85`) was a documented GUESS carried as if
+it were a cost model; measured, the ratio is ~0.6, five times lower. Recutting
+the decomposition took predicted work spread 3.350x -> 1.004x and zero-`Ei`
+ranks 4 -> 0 — and per-step cost at 32 ranks moved 134.12 -> 132.20 ms, 1.4%,
+inside this box's run-to-run variation. A structural decision in the port,
+reasoned rather than measured, bought nothing. That is why clause 5 asks for
+the number and rule 4a asks for the outcome curve and not the defect.
+
+**How to apply**: on a parity failure, change the port unless you can show
+Fortran is wrong, and say in the report which of the two you changed. Before
+committing a structural departure in `src/python/eqdyna/`, write its state-(b)
+entry in the correspondence record in the SAME change, with the measurement or
+the constraint spelled out. Before adding a `.f90`, decide its state. When you
+find a Fortran module in no state at all, do not guess which it is — record it
+as unclassified and route it, the same as any other open item.
+
+**Tier: partly mechanical.** The existence half is scriptable today —
+enumerate `src/fortran/*.f90` basenames, subtract the same-named
+`src/python/eqdyna/*.py`, and every residual must appear in the correspondence
+record; a residual that does not is a hard FAIL, and the check must also fail
+when the record names a Fortran file that no longer exists. No such guard
+exists as this rule lands, so the eleven above are found by reading, not by
+the tier. The judgment half — whether a departure's cited measurement actually
+supports its claim, and whether a numeric disagreement was resolved in the
+right direction — is reviewable only.
