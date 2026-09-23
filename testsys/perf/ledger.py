@@ -132,6 +132,7 @@ import fcntl
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -216,6 +217,44 @@ def _check_platform(row):
         raise ValueError('devices %r must be null on a %r row -- it counts '
                          'GPUs proven by memory evidence, nothing else'
                          % (row['devices'], p))
+
+
+def tree_dirty(paths=('src', 'testsys'), root=ROOT):
+    """True iff `git status --porcelain -- <paths>` is non-empty RIGHT NOW --
+    i.e. the working tree under `paths` differs from HEAD at the moment of
+    capture, regardless of which `sha` the caller is about to stamp on the
+    row. Guarded incident (2026-09-23, this mission): two run_e2e ledger
+    emissions were stamped with a sha whose committed tree did not actually
+    produce them -- a modified, uncommitted working tree at capture time.
+
+    Raises if git itself cannot answer, rather than defaulting to False: a
+    tree_dirty field that silently reads as "clean" on a git failure is
+    worse than no field, because it looks exactly like real clean-tree
+    evidence instead of "could not check" (rule 2)."""
+    r = subprocess.run(['git', '-C', root, 'status', '--porcelain', '--']
+                       + list(paths), capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(
+            'tree_dirty: `git status --porcelain -- %s` (cwd %s) exited %d: '
+            '%s' % (' '.join(paths), root, r.returncode, r.stderr.strip()))
+    return bool(r.stdout.strip())
+
+
+def _check_tree_dirty(row):
+    """Same legacy contract as `placement` above: `tree_dirty` is scoped to
+    tool='run_e2e' (the tool the 2026-09-23 incident happened in), REQUIRED
+    on append for that tool only, tolerated as absent on read (every row
+    written before this field existed, and every row from a different
+    tool). No value is defaulted in -- an assumed False would silently
+    reproduce the exact incident this field exists to catch."""
+    if 'tree_dirty' not in row:
+        raise ValueError(
+            'row is missing required field %r -- every appended run_e2e row '
+            'must say whether src/testsys were locally modified relative to '
+            'HEAD at capture time (row: %s)' % ('tree_dirty', _row_identity(row)))
+    if not isinstance(row['tree_dirty'], bool):
+        raise ValueError('tree_dirty %r must be a bool on row from %s'
+                         % (row['tree_dirty'], _row_identity(row)))
 
 
 def _row_identity(row):
@@ -350,6 +389,12 @@ def validate(row, appending=False):
     if row.get('tool') == 'run_mpi_scaling' and (appending
                                                  or 'placement' in row):
         _check_placement(row)
+    # Scoped to run_e2e: 'tree_dirty' describes a working-tree state at
+    # CAPTURE time that only that emitter has been shown to mislabel (the
+    # 2026-09-23 incident). Required on append for that tool only, tolerated
+    # as absent on read (legacy rows, and rows from every other tool).
+    if row.get('tool') == 'run_e2e' and (appending or 'tree_dirty' in row):
+        _check_tree_dirty(row)
     if row['metric'] == 'per-step-by-difference':
         ms = row['ms_per_step']
         if not (isinstance(ms, (int, float)) and ms > 0):
@@ -696,6 +741,7 @@ def rows_from_e2e_results(meta, snapshot, tenancy):
                    tenancy_total=tenancy['total'],
                    ranks=c['ranks'], ms_per_step=None,
                    parallelism=_E2E_PARALLELISM(c['backend']),
+                   tree_dirty=meta['tree_dirty'],
                    wall_s=c['seconds'],
                    rank_ms_min=None, rank_ms_max=None, rank_ms_mean=None,
                    effective_cores=None, threads_per_rank=None,

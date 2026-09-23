@@ -70,7 +70,7 @@ REPO_ROOT = os.path.dirname(TESTSYS)
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from testsys import compare, frt_canonical, matrix, runlock  # noqa: E402
+from testsys import compare, frt_canonical, matrix, profile_record, runlock  # noqa: E402
 
 # Line-buffered stdout. Redirected to a file or through `tee`, Python block-
 # buffers its OWN prints while subprocess children write straight to the fd --
@@ -543,10 +543,15 @@ def _perf_meta(results, label, device, budget):
         cells.append(dict(case=case, backend=backend, ok=bool(ok),
                           seconds=dt, ranks=ranks, platform=plat,
                           platform_evidence=ev))
+    # tree_dirty: was src/testsys locally modified relative to HEAD at THIS
+    # capture, regardless of the `sha` above being HEAD's own. Guarded
+    # incident (2026-09-23): two run_e2e ledger emissions were stamped with a
+    # sha whose committed tree did not actually produce them.
     return dict(tool='run_e2e', sha=sha, host=os.uname().nodename,
                 date=time.strftime('%Y-%m-%d %H:%M'), label=label,
                 device=device, jobs_budget=budget,
-                tenancy_ceiling=ledger.TENANCY_REFERENCE_CEILING, cells=cells)
+                tenancy_ceiling=ledger.TENANCY_REFERENCE_CEILING, cells=cells,
+                tree_dirty=ledger.tree_dirty())
 
 
 def _capture_perf(results, label, device, budget):
@@ -778,6 +783,16 @@ def main(argv=None):
               % (len(gpu_slots.devices), gpu_slots.devices,
                  len(gpu_slots.devices), GPU_MEM_FRACTION))
 
+    # sha for the profile-guard/collection call below (rule 6: a captured
+    # measurement is evidence only when pinned to a commit). Computed once,
+    # not per cell: it does not change mid-sweep.
+    _sha_r = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', '--short',
+                             'HEAD'], capture_output=True, text=True)
+    if _sha_r.returncode != 0 or not _sha_r.stdout.strip():
+        raise RuntimeError('git rev-parse --short HEAD failed (rc=%d): %s'
+                           % (_sha_r.returncode, _sha_r.stderr.strip()))
+    sweep_sha = _sha_r.stdout.strip()
+
     def run_one(cb):
         case, backend = cb
         t0 = time.time()
@@ -785,6 +800,22 @@ def main(argv=None):
             case_dir = run_cell(case, backend, test_dir, eqdyna_cmd, env,
                                 args.device, args.term, gpu_slots=gpu_slots)
             ok, lines = compare.compare_cell(case, backend, case_dir, args.term)
+            if ok:
+                # Mechanical profile guard + collection (owner mission,
+                # 2026-09-23): every cell this sweep PASSES must also carry a
+                # present, schema-valid, sum-checked profile.rank<r>.json per
+                # rank (profile_schema.validate_run_dir, called inside
+                # capture_run) that gets appended to docs/run_profiles.jsonl.
+                # capture_run RAISES on any problem -- missing/invalid
+                # profile files included -- and there is deliberately no
+                # `_or_warn` variant here (unlike the perf-ledger capture
+                # below): this data is the deliverable of that mission, not
+                # a free side-measurement, so a profile defect must be able
+                # to turn a physics-passing cell into a failed one.
+                profile_record.capture_run(
+                    case_dir, case=case, backend=backend,
+                    ranks=cell_cost(case, backend), term=args.term,
+                    sha=sweep_sha)
         except Exception as exc:                # noqa: BLE001 - reported, not swallowed
             ok, lines = False, ['%s: %s' % (type(exc).__name__, exc)]
         return (case, backend, ok, time.time() - t0, lines)

@@ -80,11 +80,11 @@ RECORD_SCHEMA_ID = 'eqdyna-run-profile/1'
 RECORD_RELPATH = os.path.join('docs', 'run_profiles.jsonl')
 RECORD_PATH = os.path.join(ROOT, RECORD_RELPATH)
 
-REQUIRED = ('schema', 'ts_utc', 'sha', 'case', 'backend', 'term', 'ranks',
-            'rank', 'host', 'pid', 'cpus_allowed', 'numa_nodes',
-            'ranks_per_node', 'nsteps', 'sampling_every', 'buckets_s',
-            'loop_s', 'total_s', 'unaccounted_s', 'tenancy_busy',
-            'tenancy_total', 'busy_ceiling')
+REQUIRED = ('schema', 'ts_utc', 'sha', 'tree_dirty', 'case', 'backend',
+            'term', 'ranks', 'rank', 'host', 'pid', 'cpus_allowed',
+            'numa_nodes', 'ranks_per_node', 'nsteps', 'sampling_every',
+            'buckets_s', 'loop_s', 'total_s', 'unaccounted_s',
+            'tenancy_busy', 'tenancy_total', 'busy_ceiling')
 
 
 def _row_identity(row):
@@ -114,6 +114,13 @@ def validate_row(row):
     if not ledger._SHA_RE.match(str(row['sha'])):
         raise ValueError('sha %r is not a git sha -- a profile row is '
                          'evidence only when pinned to a commit' % row['sha'])
+    if not isinstance(row['tree_dirty'], bool):
+        raise ValueError(
+            'tree_dirty %r must be a bool on row from %s -- every row must '
+            'say whether src/testsys were locally modified relative to HEAD '
+            'at capture time (2026-09-23 incident: two ledger emissions were '
+            'stamped with a sha whose tree did not produce them)'
+            % (row['tree_dirty'], _row_identity(row)))
     if not (isinstance(row['case'], str) and row['case'].strip()):
         raise ValueError('case %r must be a non-empty string' % row['case'])
     if row['backend'] not in ledger.BACKENDS:
@@ -229,13 +236,15 @@ def capture_run(run_dir, *, case, backend, ranks, term, sha):
 
     tenancy = ledger.box_tenancy(ledger.TENANCY_REFERENCE_CEILING)  # raises if
                                                                      # unmeasurable
+    dirty = ledger.tree_dirty()   # raises if git itself cannot answer
     rpn = _ranks_per_node(per_rank)
     ts = ledger.utc_now()
 
     rows = []
     for p in per_rank:
         row = dict(
-            schema=RECORD_SCHEMA_ID, ts_utc=ts, sha=sha, case=case,
+            schema=RECORD_SCHEMA_ID, ts_utc=ts, sha=sha, tree_dirty=dirty,
+            case=case,
             backend=backend, term=term, ranks=nranks, rank=p['rank'],
             host=p['host'], pid=p['pid'],
             cpus_allowed=list(p['cpus_allowed']),

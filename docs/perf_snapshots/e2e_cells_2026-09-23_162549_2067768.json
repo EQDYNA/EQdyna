@@ -1,0 +1,22 @@
+{
+ "tool": "run_e2e",
+ "sha": "d063223",
+ "host": "cotopaxi",
+ "date": "2026-09-23 16:25",
+ "label": "explicit: cases=test.tpv8 backends=python-jax",
+ "device": "cpu",
+ "jobs_budget": 1,
+ "tenancy_ceiling": 0.5,
+ "cells": [
+  {
+   "case": "test.tpv8",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 17.592560291290283,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  }
+ ],
+ "tree_dirty": true
+}
