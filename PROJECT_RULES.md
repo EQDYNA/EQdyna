@@ -13,6 +13,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 5. One calibrated definition of "pass" — never invent a metric.
 5a. A provably injective relabelling is gated at bit-identity, not at the case bound.
 6. Every performance number carries its provenance.
+6a. `EFFECTIVE_CORES` admits a measurement; it does not make two measurements comparable.
 7. Reference data is read-only.
 8. Never delete evidence unless the result is a confirmed pass.
 9. Cheap targeted check before expensive run.
@@ -35,12 +36,13 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 21. An agent's write surface is its own worktree; the main checkout belongs to the conductor.
 21a. A gate sweep runs in its own worktree; the shared `test/` tree has no lock, and a collision reads as a solver failure.
 21b. No session writes the main checkout — conductors branch too, and its HEAD moves only by fast-forward sync.
+21c. `PROJECT_RULES.md` and `pathway_forward.md` have exactly one writer per session.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
-(1-21) plus twelve lettered sub-rules (2a, 4a, 4b, 4c, 5a, 15a, 15b, 20a, 20b,
-20c, 21a, 21b) — 33 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 33;
+(1-21) plus fourteen lettered sub-rules (2a, 4a, 4b, 4c, 5a, 6a, 15a, 15b,
+20a, 20b, 20c, 21a, 21b, 21c) — 35 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 35;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 21.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -376,6 +378,52 @@ unfalsifiable against the current `src/`.
 
 **How to apply**: `git rev-parse --short HEAD` and `module list`/compiler
 `--version` output go in the commit or release note next to the number.
+
+---
+
+## 6a. `EFFECTIVE_CORES` admits a measurement; it does not make two measurements comparable
+
+`EFFECTIVE_CORES >= 0.99`, computed from a process's own `getrusage`, is an
+ADMISSION filter: it says the process was handed the cpus it asked for. It is
+not a comparability proof, and a perf claim may not rest on it as one. On a
+shared box the only defensible claim is a PAIRED ratio — both arms in the same
+repetition, on the same cpu set, arm order shuffled between repetitions — and
+an ABSOLUTE ms/step or wall-clock number is quotable only with the box's state
+recorded beside it (what else was running, at what rank count, and the
+`--exclude-cpus` set in force).
+
+**Rationale**: rusage bills one cpu-second per wall second to a core spinning
+on cache misses exactly as it does to one making progress. It cannot see
+memory bandwidth, an SMT sibling, or a frequency drop. Rule 4b already names
+this instrument blind when it is used to EXCLUDE a mechanism; this sub-rule
+says the identical blindness applies when it is used to admit a number that is
+then quoted absolutely. Rule 6's provenance fields (machine, cores, compiler,
+SHA) do not capture contention either, which is why `pathway_forward.md`'s
+header carries a tenancy warning about its own ledger rows.
+
+**Incident (2026-09-23)**: the identical `eqdyna3d.build_solver_state` on
+`test.tpv104` measured **19.03 s at eff 1.00** pinned to cpu 0 while a 16-rank
+MPI job was measuring elsewhere on the box, and **4.42 s at eff 1.00** on a
+quiet box — 4.3x apart at the same "effective cores", both admitted by the
+filter. The same night, base-arm per-step in `testsys/perf/run_jaxmpi_ab.py`
+ranged **84.30-110.74 ms** at 16 ranks on ONE cpu set and **32.43-57.40 ms** at
+32 ranks, every point admitted; only the within-repetition paired ratios
+carried meaning (16 ranks: mean 1.034, sd 0.042 over 5 pairs; 32 ranks: mean
+1.011, sd 0.013 over 3 pairs). Most of the spread was this team's own
+concurrent sessions.
+
+**How to apply**: quote a ratio paired inside its own repetition and cpu set,
+never a ratio assembled from two repetitions. Keep the `>= 0.99` filter — it is
+doing real work; it correctly rejected two 32-rank base points at 0.83 and 0.86
+the same night — but report it as "the process got its cpus", never as "these
+two numbers are comparable". When an absolute number must be quoted, write the
+box state in the same sentence, and say plainly that absolute numbers from
+different repetitions on this box are not comparable.
+
+**Tier**: not mechanical. No script can know what else a shared box was doing
+at measurement time; the nearest backstop is the perf ledger's own provenance
+fields (rule 6, rule 19's pinning) plus this rule being cited by the row that
+quotes the number.
 
 ---
 
@@ -1304,19 +1352,38 @@ If they are EQUAL you are standing in the conductor's checkout: do not commit,
 say so, and ask for a worktree. The same check settles it after a `cd` you did
 not expect to change trees.
 
-**Tier today: NOT mechanical — this rule is hortatory until the hook below
-lands, and it is the weaker artifact for it.** The enforcement is a small one
-and is specified here so it can be built rather than argued about: a
+**Tier: MECHANICAL FOR COMMITS since v5.16.1 (`5b7a278`, 2026-09-22), and
+hortatory for everything else.** `testsys/hooks/pre-commit` refuses when
+`git rev-parse --git-dir` equals `--git-common-dir` (both resolved with
+`pwd -P` first), `install-eqdyna.sh:133` sets
+`git config core.hooksPath testsys/hooks`, and
+`testsys/regression/test_precommit_main_checkout_guard.py` guards both halves.
+Verified by the conductor 2026-09-23, not inherited: the hook REFUSED with cwd
+at `/home/utig5/dliu/EQdyna` ("They are EQUAL, which means this tree is the
+shared main checkout"), and `git -c core.hooksPath=testsys/hooks commit
+--allow-empty` inside a linked worktree succeeded, exit 0 — the load-bearing
+case, since a hook that blocks legitimate worktree commits is a hook that gets
+turned off.
+
+**Two limits, stated so nobody reads the hook as more than it is.** (i) It is
+INERT in any clone where `install-eqdyna.sh` has not been run, because git
+installs no hooks on clone and `core.hooksPath` is per-clone config, not
+tracked state. (ii) It gates COMMITS ONLY. Nothing stops a session from
+editing tracked files, running a sweep (rule 21a), or leaving the main
+checkout dirty — `pre-commit` never fires for any of those, and rules 21/21b
+remain enforced by being read for every write that is not a commit.
+
+Retained for the record, and superseded by what landed. The enforcement was
+specified here so it could be built rather than argued about: a
 `pre-commit` hook that refuses when `--git-dir` equals `--git-common-dir` and
 an agent-session env marker is set. Linked worktrees share
 `$GIT_COMMON_DIR/hooks`, so ONE installed hook covers every present and future
 worktree; it needs `git config core.hooksPath` pointed at a tracked directory
 (e.g. `testsys/hooks/`) by `install-eqdyna.sh`, because git does not install
 hooks on clone, plus a `testsys/regression/` guard asserting the hook is
-tracked, executable, and actually refuses on the equal-dir case. Until that
-exists, every clone is unguarded and this rule is enforced by reading it.
-Tracked as pathway item 68; the build is routed to `iris-vermeulen`, not done
-by this rule's author.
+tracked, executable, and actually refuses on the equal-dir case. That is what
+was built, minus the env marker, which 21b's closing note dropped before the
+build started. Tracked as pathway item 68, CLOSED 2026-09-23.
 
 ---
 
@@ -1335,7 +1402,9 @@ RUN a sweep: the conductor's own gate collides with another session's e2e run
 exactly as an agent's would. Ownership is not exclusivity.
 
 **The mechanism**, written out so the next reader does not re-derive it.
-`testsys/e2e/run_e2e.py:587-594` rotates the run tree at startup,
+`testsys/e2e/run_e2e.py:615` (`:587-594` before the lock landed; re-read the
+file rather than trusting either number) rotates the run tree at startup —
+since v5.16.1 behind the lock the tier note below describes, and before that
 unconditionally and with no lock of any kind:
 
     test_dir = os.path.join(REPO_ROOT, 'test')
@@ -1357,10 +1426,13 @@ a cell can burn its entire runtime and then die on its last write.
 **This generalises past `run_e2e.py`.** Any tool that rotates, deletes or
 rebuilds a FIXED path under `REPO_ROOT` has the same shape, and every such tool
 is unsafe to run twice concurrently in one checkout:
-`testsys/e2e/run_e2e_full.py:129-133` (`test.full` → `test.full.prev`, the
-identical pair), `testsys/perf/run_perf.py:172` (deletes
-`testsys/perf_case/<name>`), `testsys/perf/run_jaxmpi_ab.py:88` (deletes
-`src/python/eqdyna/__pycache__`). A tool that works inside
+`testsys/e2e/run_e2e_full.py:148` (`test.full` → `test.full.prev`, the
+identical pair — locked since v5.16.1, acquire at `:121`),
+`testsys/perf/run_perf.py:172` (deletes `testsys/perf_case/<name>`),
+`testsys/perf/run_jaxmpi_ab.py:88` (deletes
+`src/python/eqdyna/__pycache__`). **The last two are still UNGUARDED** —
+`grep -n runlock testsys/perf/*.py` returns nothing as of 2026-09-23 — and
+`testsys/runlock.acquire(REPO_ROOT, <name>)` is reusable for both. A tool that works inside
 `tempfile.mkdtemp()` — as every `testsys/regression/` test does — is not in
 this class and needs no worktree. This is the filesystem counterpart of rule
 19's fourth bullet, which says the same thing about a shared committed
@@ -1404,13 +1476,32 @@ be reverted, re-gated or held on it. If you must diagnose a collision after the
 fact, `test.prev/` holds the rotated tree and the other session's timestamped
 snapshot in `docs/perf_snapshots/` names who rotated it and when.
 
-**Tier: NOT mechanical, and this rule says so about itself.** A written rule
-that depends on every session remembering is strictly weaker than a lock, and
-both sessions in the incident above were able to read this book. The mechanical
-fix — a lockfile on `$REPO_ROOT/test`, or a PID/SHA-stamped run directory so
-two invocations cannot name the same tree — is NOT DONE; it is tracked as
-pathway item 70 and routed to `iris-vermeulen`. Until it lands, the collision
-is forbidden but not prevented, and this rule is enforced by being read.
+**Tier: MECHANICAL for `test/` and `test.full/` since v5.16.1 (`5b7a278`,
+2026-09-22); hortatory for every other fixed path named above.**
+`testsys/runlock.py` takes an exclusive `flock` on the run tree;
+`testsys/e2e/run_e2e.py:570` acquires it as Gate 0, BEFORE the build, and
+`testsys/e2e/run_e2e_full.py:121` does the same for `test.full`;
+`testsys/regression/test_e2e_run_tree_lock.py` guards it. Verified by the
+conductor 2026-09-23 against the real entry point, not inherited: with the
+lock held, the invocation returned **exit 1 in 0.2 s with no build attempted**,
+printing the holder's pid and "NOT waiting. NOT rotating anyway. NOT falling
+back to a different directory" — which is the rule-2 behaviour this needed
+(refuse loudly; do not degrade into a second tree).
+
+**The two alternatives this rule originally offered are NOT interchangeable,
+and the second one is now rejected.** A lockfile was the correct choice; a
+PID/SHA-stamped run directory would have let two invocations proceed under
+different names and thereby defeated rule 8's single preserved level of
+evidence — `test.prev/` only means something when `test/` is one fixed tree
+with one owner. Do not "fix" the remaining unguarded tools by stamping their
+paths.
+
+What is still enforced by reading: running a sweep in the main checkout at all
+(rule 21b forbids it; the lock does not know which checkout it is in — two
+sessions in ONE checkout now serialise instead of colliding, which is a
+different and lesser guarantee), and the two `testsys/perf/` tools above.
+Pathway item 70 is closed for the e2e trees; the perf-tool remainder is
+tracked as item 74.
 
 ---
 
@@ -1497,7 +1588,61 @@ unconditional refusal by construction: a true fast-forward creates no commit and
 so never invokes `pre-commit`. Build routed to `iris-vermeulen` under item 68;
 this rule's author writes no hook.
 
-**Tier: NOT mechanical until item 68's hook lands**, and, like 21 and 21a,
-weaker for it. The one command this rule needs already exists in every clone
-(`git rev-parse --git-dir --git-common-dir`); what is missing is anything that
-runs it without being asked.
+**Tier: MECHANICAL FOR COMMITS since v5.16.1 — item 68's hook landed
+(`5b7a278`) and refuses on equal dirs alone, exactly as this sub-rule
+specified.** See rule 21's tier note for the verification and for the two
+limits that survive: the hook is inert in a clone where `install-eqdyna.sh`
+has not been run, and it fires only on `commit`. A sweep launched in the main
+checkout (rule 21a), an edit left dirty there, or a file written there is
+still caught by nothing. For those, the one command this rule needs exists in
+every clone (`git rev-parse --git-dir --git-common-dir`) and still has to be
+run by someone who chooses to.
+
+---
+
+## 21c. `PROJECT_RULES.md` and `pathway_forward.md` have exactly one writer per session
+
+These two files are written by ONE session — the one that owns the rule book
+and the board — and by nobody else. A mission agent that finds a rule wrong, a
+tier stale, or a board row unrunnable REPORTS it, quoting the text it would
+change and naming the row it wants; it does not edit either file, however
+correct its proposed wording. This is the document-level counterpart of rule
+21: 21 says which TREE a session may write, this says which two FILES inside
+that tree are not a mission's to write even in its own worktree.
+
+**Rationale**: a rule book takes concurrent edits worse than code does. Two
+sessions adding "the same" rule produce two phrasings of one rule at two
+numbers, and a renumber breaks every commit message and board row that cites
+the old one — the duplication this book's own index exists to prevent. The
+board is worse still: both writers are right about different rows, and the
+conductor cannot tell a fresh row from a stale one by reading the file.
+
+**Incident (2026-09-23)**: both subagents dispatched in one night's autopilot
+edited both files unasked — item 70's mission rewrote rule 21a's tier
+paragraph and its own board row, item 68's mission edited the board. The
+conductor stripped both files back to `894cdc1` before landing (integration
+commit `02e620d`, "drop agent edits to PROJECT_RULES.md/pathway_forward.md"),
+so nothing reached master; the cost was paid in the integration pass and in
+two closures going unrecorded until the owning session ran. Both briefs said
+the rule book was the conductor's to flip; neither FORBADE the edit, and two
+independent agents did it anyway on the same night. That is the frequency that
+makes this a sub-rule rather than a note. The stripped proposals remain
+readable at `git diff 894cdc1 fix/item70-e2e-test-lock -- PROJECT_RULES.md
+pathway_forward.md` and the same against `iris/item68-precommit-hook`.
+
+**How to apply**: dispatch briefs say "do not edit `PROJECT_RULES.md` or
+`pathway_forward.md`; report the rule or row you want changed and quote the
+replacement text", not "these are mine to flip" — the second is a statement
+about the conductor and was read as silence about the agent. A mission's
+proposed text is welcome; it travels in the report, and the owning session
+lands it.
+
+**Tier: NOT mechanical today.** Specified here so it can be built rather than
+argued about: `testsys/hooks/pre-commit` (already installed by
+`install-eqdyna.sh`, rule 21) refuses a commit whose staged paths include
+`PROJECT_RULES.md` or `pathway_forward.md` TOGETHER WITH any path outside
+those two, so rule-book and board changes always land as their own reviewable
+commit that a conductor can drop with one `git revert`. That enforces
+separation, not authorship — nothing in git can prove who wrote a hunk — and
+it is the strongest buildable approximation. Routed to `iris-vermeulen`,
+tracked as pathway item 75; this rule's author writes no hook.
