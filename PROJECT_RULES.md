@@ -23,6 +23,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 14. A living status board, re-checked on a schedule.
 15. Releases follow the documented workflow, notes lead the README.
 15a. A pre-tag CI check on the exact SHA is required before `git tag`, and it must be mechanical, not remembered.
+15b. The local sweep and CI gate different failure classes; CI's release run re-verifies only what a local sweep structurally cannot.
 16. Test what you commit, not what is in your working tree.
 17. Reviving or adding a TPV benchmark.
 18. A refactor that couples two previously-independent artifacts must say so.
@@ -35,9 +36,9 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
-(1-21) plus nine lettered sub-rules (2a, 4a, 4b, 4c, 5a, 15a, 20a, 20b, 20c) —
-30 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 30;
+(1-21) plus ten lettered sub-rules (2a, 4a, 4b, 4c, 5a, 15a, 15b, 20a, 20b,
+20c) — 31 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 31;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 21.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -699,6 +700,127 @@ itself.
 
 ---
 
+## 15b. The local sweep and CI gate different failure classes; CI's release run re-verifies only what a local sweep structurally cannot
+
+Rule 15 step 1 and rule 15a together make every release pay for two nearly
+identical physics sweeps, run strictly in series. This sub-rule divides the
+two gates by the failure class each one can actually see. It does not touch
+15a's core: nothing red is ever pushed, the tag goes last, and it goes only on
+a COMPLETED, successful CI conclusion for the exact SHA being tagged.
+
+**The division.**
+
+- **CI is the MERGE gate.** It owns every failure class this development box
+  cannot represent: a clean checkout of the COMMIT (rule 16's v5.5.0 partial
+  `git add`), the real entry point `./install-eqdyna.sh -m ubuntu` on a bare
+  machine (v5.6.1), the declared apt/pip dependency set resolving from nothing
+  (v5.6.2, scipy), the 7 GB runner memory ceiling (v5.7.0), ubuntu-22.04's own
+  gfortran/mpich/libnetcdf/numpy/jax versions, and the network-side release
+  guards that need `GH_TOKEN`. It runs the full `matrix.CI_CELLS` — 25 of the
+  30 e2e cells, `testsys/regression/test_ci_workflow_coverage.py` authoritative
+  over that count — on every push that changes anything the solver or the
+  harness reads.
+- **The local sweep is the RELEASE gate for physics.** `python3 testsys/run.py
+  all` is a strict SUPERSET in cells (31 of the 40 declared, against CI's 25),
+  it runs on the tree being released, and it is the only gate that covers the
+  6 cells CI cannot fit on a 7 GB runner.
+
+**What CI's release run may take as established, and the two conditions that
+must BOTH hold before it may.** CI's run on a release commit may reduce to the
+release profile below only when:
+
+  (a) `git diff --name-only <ancestor>..<sha>` lands entirely inside the
+      release-metadata whitelist — `VERSION`, `README.md`,
+      `pastReleaseNotes.md`, `pathway_forward.md`, `PROJECT_RULES.md` — so no
+      file the build, the solver, the harness, a compset or a reference reads
+      has changed since `<ancestor>`; **and**
+  (b) `<ancestor>` has a COMPLETED, successful **full-matrix** CI run of its
+      own — not a release-profile run, not a parent-of-parent, not an
+      inherited belief.
+
+Both are machine-decidable and both are decided by the workflow, never by an
+operator at release time. If either fails — one line in `src/`, `testsys/`,
+`case_input/`, `test.reference.results/` or `.github/` — the full matrix runs.
+There is no third outcome and no judgment call: an operator-chosen reduced CI
+run is exactly the silently-skipped step rule 2 forbids.
+
+**The release profile** is `build` (clean checkout plus the real install
+entry point), `unit-regression` (`fetch-depth: 0` and `GH_TOKEN` — rule 15's
+and 15a's own guards live in that job, including `check_pretag_ci.py`'s
+negative test and `test_release_complete.py`'s network-side check), and ONE
+smoke cell per backend (`test.tpv8` x fortran, python-numpy, python-jax). Not
+zero e2e cells: the smoke cells are what proves the runner's toolchain still
+executes a case end to end from a clean checkout, which `build` alone does not
+show. A reduced run is still a run — 15a's pre-tag guard is still executed
+against the exact SHA and must still report completed and successful before
+`git tag`.
+
+**Rationale**: the two gates were built for different reasons and grew into
+each other. Measured 2026-09-22: `run.py all` is 2904.6 s on a quiet box
+(9413.8 s contended, per the board's tenancy note) and CI is ~54 min, of which
+25 cells are cells the local sweep has just run on a tree whose only difference
+from an already-merge-gated parent is release metadata. CI's own wall clock is
+floored by one cell that cannot be split — `test.tpv29` x `python-numpy`,
+~950 s of one sequential simulation — so parallelising further buys nothing.
+Roughly half of each ~2 h release is spent re-deciding a question already
+settled on the same bytes.
+
+**Residual risk — stated here rather than left implicit.** Under the release
+profile the other 24 CI cells' physics is NOT re-verified on the runner at the
+release SHA. It is verified at `<ancestor>`. The exposure is TIME, not tree:
+everything that can change between `<ancestor>`'s green run and the tag lives
+outside this repo and is unpinned — GitHub's `ubuntu-22.04` image (gfortran,
+mpich, libnetcdf, rolled on GitHub's own cadence) and whatever
+`pip install numpy scipy netCDF4 matplotlib xarray jax` resolves to that day.
+Three specific failure classes move from per-release coverage to per-merge
+coverage, and a release cut days after its last code commit no longer sees any
+of them at its own SHA:
+
+  (i) a cell's peak RSS crossing the 7 GB runner ceiling — the v5.7.0 failure
+      mode exactly. It is now caught at merge, monitored by
+      `matrix.MEASURED_PEAK_RSS_GB`, which is measured on THIS box and is an
+      ESTIMATE of the runner's footprint, not a measurement of it;
+  (ii) a toolchain-version change that moves a cell's `max|diff|` past its
+      `CASE_BOUND` without any commit in this repo;
+  (iii) a dependency declaration gap that only the full python jobs exercise.
+
+Bounding the time exposure needs a number this rule does not have. **PROPOSED,
+owner's call, not a measurement**: the release profile is unavailable when
+`<ancestor>`'s full-matrix green run is more than 7 days old, and the full
+matrix runs instead. Until the owner sets that number, treat it as 0 — full
+matrix — rather than as unbounded.
+
+Adopt this or do not, but do not adopt it and then describe a release as
+fully CI-verified: under the profile it is verified on the release SHA for
+build, checkout, unit, regression and three smoke cells, and on `<ancestor>`
+for everything else.
+
+**How to apply**: the releaser runs the local sweep as rule 15 step 1 already
+requires, commits, pushes, and READS which profile CI chose from the run's own
+job list rather than assuming. The Tasks-done row (rule 15 step 4) records
+three things: `<ancestor>`'s SHA, the date and run id of its full-matrix green
+run, and which profile the release SHA's own run used. If the full matrix ran,
+nothing was deferred and this rule did nothing that release.
+
+**Tier: NOT mechanical today, and the workflow change must NOT land before it
+is.** Condition (a) belongs in `.github/workflows/test.yml` as a job-selection
+step plus a `testsys/regression/` guard proving the profile's job set is
+exactly {build, unit-regression, three tpv8 smoke cells} and that any
+non-whitelist path in the diff forces the full matrix; condition (b) is an
+extension of `check_pretag_ci.py`, which already asks "is there a completed
+successful run for this SHA" and must additionally ask "was that ancestor's
+run the FULL matrix". The evidence command that settles whether a given
+release SHA is eligible, and the one a reviewer runs against the claim:
+
+    git diff --name-only <ancestor>..<sha> | \
+      grep -vE '^(VERSION|README\.md|pastReleaseNotes\.md|pathway_forward\.md|PROJECT_RULES\.md)$'
+
+Expected output: empty. Non-empty means the full matrix, and the profile was
+never available. The workflow edit itself is routed to whoever conducts the
+release, the guards to `iris-vermeulen`; this rule's author writes neither.
+
+---
+
 ## 16. Test what you commit, not what is in your working tree
 
 After committing, the working tree must contain nothing that the tests
@@ -745,18 +867,23 @@ line of `test.yml` each command sits on:
 
     ./install-eqdyna.sh -m ubuntu                                           # :65
     export EQDYNAROOT=$(pwd); export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-    python3 testsys/run.py unit regression                                  # :135
-    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8,test.tpv37        # :184
-    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36 # :228
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax                                        # :273
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax                          # :274
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36,test.tpv37 --backends python-numpy,python-jax                            # :275
-    python3 testsys/e2e/run_e2e.py --ci --cases test.meng2023a,test.meng2023cb --backends python-numpy,python-jax                   # :313
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-jax                                                    # :314
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-numpy                                                  # :354
+    python3 testsys/run.py unit regression                                  # :149
+    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8,test.tpv37        # :198
+    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36 # :242
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax                                        # :287
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax                          # :288
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36,test.tpv37 --backends python-numpy,python-jax                            # :289
+    python3 testsys/e2e/run_e2e.py --ci --cases test.meng2023a,test.meng2023cb --backends python-numpy,python-jax                   # :327
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-jax                                                    # :328
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-numpy                                                  # :368
 
 Those line numbers move; re-read the workflow rather than trusting them, and
 note the python jobs also export thread-pinning env vars in the same step.
+(Command list and line numbers re-verified against `.github/workflows/test.yml`
+2026-09-22 — every line number above had drifted by 14-20 lines since the
+2026-09-21 correction; the commands themselves were unchanged. Rule 15b, if
+adopted, changes WHICH of these run on a release commit — it does not change
+this list, which is what CI runs on any commit that touches code.)
 
 The union of the `--ci` invocations is `matrix.CI_CELLS`, **25 of the 30
 cells** as of 2026-09-21 — the remaining 5 do not fit a 7 GB runner. That
