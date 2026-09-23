@@ -1195,3 +1195,47 @@ intended files were taken, each checked untouched on master since its base.
 sat finished for four hours because the TPV30 hunt was live in the same
 directory. Landing a clarity refactor underneath an in-flight bug hunt is how
 a fix gets attributed to the wrong change.
+
+## II. Fresh 24h autopilot, resumed 2026-09-23 11:50 (predecessor stopped by user interrupt)
+
+Grant, stated back: minor and patch tags on `master` of THIS repo, merge and
+tag authority on `master` directly (the owner's 11:48 brief names v5.17.0 as
+inside it). No major, no force-update or rewrite of an existing tag, no
+publish, nothing outward-facing beyond this repo (item 86 and the v5.16.0
+image backfill stay owner-held).
+
+Orient, 11:49: origin/master `0077cfc`, primary clean, load 7.8/64.
+
+**Worktrees 19 -> 4.** Fifteen reaped after checking each: every committed
+branch was `git cherry` patch-equivalent to master (`-`), except
+`worktree-agent-adc2fa…` (`11bb0f0`), which differs from landed `195fbd9` only
+in the 7 lines of my own guard-message fix in
+`test_perf_parallelism_discriminator.py`; `agent-a093ba…`'s five dirty files
+were byte-identical to master (refactor round 3, landed as `090d2cf`).
+**Force-release, recorded:** `agent-a2f85fa81e252b6b3` was locked by "claude
+agent pid 2872539" -- that pid is dead; tree clean at `aca6979`, 0 unlanded
+commits; removed with `remove -f -f`. Kept: `item32-dx250-refinement` and
+`mira/jaxmpi-merged-2026-09-22` (owner-held, locked), `wei-price-tpv30` (live).
+
+**The TPV30 pricing orphan is usable, not restarted.** Pid 1349478 is not an
+orphan in the timing sense: its parent chain is intact --
+`price_tpv30.py` (pid 1345968) -> `/usr/bin/time -v` (1349277) -> `run_e2e.py`
+-> `python -m eqdyna` -- so the wall clock and peak RSS land in
+`price_tpv30_python-numpy.log` when it exits, and the driver then runs the jax
+cell sequentially. Pinned to cpu 38, box at 6-8/64 busy. Fortran cell already
+in: **143.8 s wall, 0.37 GB peak RSS, max|diff| 0, SUCCESS** (tenancy 6/64).
+The pricing worktree carries a scaffold registration of `test.tpv30` in
+`testNameList.py` and `matrix.py` marked "never committed"; it will be
+discarded, not landed -- TPV30 gating is the owner's.
+
+**Correction to section EE.** Its mechanism paragraph ("the halo cost per rank
+does NOT fall ... exactly the 1D-slab prediction ... the case for 3D
+decomposition") is SUPERSEDED. Ledger lines 361-364 (sha `50c1277`, 16 ranks,
+tpv104): spread placement, 2 ranks on each of the 8 NUMA nodes, jax-MPI
+52.49 vs Fortran 63.27 ms/step = 0.83x; packed placement (6/7/3 on nodes
+0/1/2), 96.02 vs 56.03 = 1.71x. Placement alone moves jax by -45% and Fortran
+by +13% in the other direction. The "exchange" time in EE's per-rank arrays
+was ranks waiting on a bandwidth-starved neighbour, not halo surface. EE's
+ms/step numbers stand; every 8/16-rank ratio in that table was taken under
+`least_loaded_cpus`'s packed default and is placement-biased. Board rows
+(33, 43 HELD with refuted premise, 92) dispatched to zofia-kaminska.
