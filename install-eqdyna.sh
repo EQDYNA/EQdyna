@@ -120,6 +120,24 @@ if [ -n "$MACH" ]; then
     export PATH=$(pwd)/bin:$PATH
     export PATH=$(pwd)/scripts:$PATH
     
+    # PROJECT_RULES.md rules 21/21b (pathway item 68): git installs NO hooks
+    # on clone, so the tracked pre-commit guard is inert until core.hooksPath
+    # points at it. It refuses a commit made from the MAIN CHECKOUT (where
+    # --git-dir equals --git-common-dir), which no session is permitted to do.
+    # The value is RELATIVE on purpose: git runs hooks from the top level of
+    # the working tree, so every linked worktree uses its OWN checked-out copy
+    # of testsys/hooks/, and this one config covers every worktree, present
+    # and future. Idempotent -- `git config` rewrites the same key with the
+    # same value, so re-running the installer changes nothing.
+    if git rev-parse --git-dir > /dev/null 2>&1; then
+        git config core.hooksPath testsys/hooks
+        echo "core.hooksPath = $(git config core.hooksPath) (rules 21/21b guard active)"
+    else
+        echo "NOTE: not a git checkout -- core.hooksPath NOT set, and the"
+        echo "      rules 21/21b pre-commit guard is therefore inactive here."
+        echo "      Nothing can be committed from a non-git tree anyway."
+    fi
+
     # PROJECT_RULES.md rule 13: chmod only the specific entry-point scripts
     # that are invoked directly (as `./name` or bare `name` on PATH), never
     # the whole directory -- `chmod -R 755 scripts` previously flipped the
