@@ -33,7 +33,6 @@ compare against) and says so loudly, so it is not mistaken for a silent pass.
 """
 import json
 import os
-import shutil
 import platform
 import socket
 import subprocess
@@ -43,7 +42,8 @@ import time
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
 sys.path.insert(0, REPO_ROOT)
-from testsys import runlock  # noqa: E402
+sys.path.insert(0, TESTSYS)
+import perflib  # noqa: E402  (acquire_case_lock, rebuild_serial_case)
 
 PYTHON_PKG = os.path.join(REPO_ROOT, 'src', 'python')
 PERF_CASE_NAME = 'test.tpv8'
@@ -192,25 +192,19 @@ def build_perf_case():
     a second caller -- run_tpv29_pinned_compare.py points PERF_CASE at
     perf_case_tpv29/ and calls it directly, never reaching main() -- and a lock
     placed in main() would guard one of the two callers and look like it
-    guarded both. The resource is derived from PERF_CASE for the same reason,
-    so the lock follows whichever directory is actually about to be destroyed.
+    guarded both. `perflib.acquire_case_lock` derives the resource from
+    PERF_CASE for the same reason, so the lock follows whichever directory is
+    actually about to be destroyed.
+
+    The lock is KEPT after this returns (the fd stays open and is released
+    atexit): main() then TIMES out of the directory it just built, and that is
+    the whole span the item-74 collision can land in.
     """
-    lock_resource = os.path.relpath(os.path.dirname(PERF_CASE), REPO_ROOT)
-    try:
-        runlock.acquire(REPO_ROOT, lock_resource,
-                        consequence=LOCK_CONSEQUENCE)
-    except runlock.RunTreeLocked as exc:
-        raise SystemExit('FAIL: %s' % exc)
+    perflib.acquire_case_lock(PERF_CASE, LOCK_CONSEQUENCE)
     # Announced only once the lock is held: "Building ..." printed ahead of a
     # refusal describes something that never happened.
     print(f'Building a fresh {PERF_CASE_NAME} case for perf at {PERF_CASE} ...')
-    sys.path.insert(0, os.path.join(REPO_ROOT, 'testsys', 'e2e'))
-    import run_e2e                                    # noqa: E402
-    if os.path.isdir(PERF_CASE):
-        shutil.rmtree(PERF_CASE)
-    os.makedirs(os.path.dirname(PERF_CASE), exist_ok=True)
-    run_e2e.make_serial_case(PERF_CASE_NAME, PERF_CASE, run_e2e.base_env())
-    return PERF_CASE
+    return perflib.rebuild_serial_case(PERF_CASE_NAME, PERF_CASE)
 
 
 def main():

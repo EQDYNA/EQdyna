@@ -65,7 +65,6 @@ import json
 import os
 import platform
 import re
-import shutil
 import socket
 import subprocess
 import sys
@@ -77,7 +76,8 @@ PYTHON_PKG = os.path.join(REPO_ROOT, 'src', 'python')
 OUT = os.path.join(TESTSYS, 'perf', 'numa_scaling_last.json')
 
 sys.path.insert(0, REPO_ROOT)
-from testsys import runlock  # noqa: E402
+sys.path.insert(0, os.path.join(TESTSYS, 'perf'))
+import perflib  # noqa: E402  (acquire_case_lock, rebuild_serial_case)
 
 # What a second concurrent invocation costs, printed by the refusal (item 77).
 LOCK_CONSEQUENCE = [
@@ -228,24 +228,17 @@ def build_case(case_name):
     `numa.build_case` directly must be guarded by the same acquire and not by
     whatever this file's main() happens to do.
 
-    The resource is derived from the directory actually about to be destroyed.
+    `perflib.acquire_case_lock` derives the resource from the directory
+    actually about to be destroyed. The lock is KEPT after this returns (the
+    sweep then times jax out of this directory) and memoised per process, for
+    the reason `run_scaling.build_py_case` records: flock is per open file
+    description, so a second acquire here would refuse against our own pid.
     """
     global _case_lock
     d = os.path.join(TESTSYS, 'perf', 'numa_case', case_name)
     if _case_lock is None:
-        try:
-            _case_lock = runlock.acquire(
-                REPO_ROOT, os.path.relpath(os.path.dirname(d), REPO_ROOT),
-                consequence=LOCK_CONSEQUENCE)
-        except runlock.RunTreeLocked as exc:
-            raise SystemExit('FAIL: %s' % exc)
-    sys.path.insert(0, os.path.join(REPO_ROOT, 'testsys', 'e2e'))
-    import run_e2e                                        # noqa: E402
-    if os.path.isdir(d):
-        shutil.rmtree(d)
-    os.makedirs(os.path.dirname(d), exist_ok=True)
-    run_e2e.make_serial_case(case_name, d, run_e2e.base_env())
-    return d
+        _case_lock = perflib.acquire_case_lock(d, LOCK_CONSEQUENCE)
+    return perflib.rebuild_serial_case(case_name, d)
 
 
 def time_one(case_dir, nsteps, cpus):

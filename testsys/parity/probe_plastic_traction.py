@@ -57,7 +57,6 @@ because the Python solver is serial-only and test/test.drv.a6 is the 4-rank
 Fortran cell.
 """
 import os
-import shutil
 import sys
 
 import numpy as np
@@ -67,7 +66,8 @@ REPO_ROOT = os.path.dirname(TESTSYS)
 sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
 sys.path.insert(0, os.path.join(TESTSYS, 'e2e'))
 sys.path.insert(0, REPO_ROOT)
-from testsys import runlock                                # noqa: E402
+sys.path.insert(0, os.path.join(TESTSYS, 'perf'))
+import perflib                                             # noqa: E402
 
 CASE_NAME = 'test.drv.a6'
 DEFAULT_CASE = os.path.join(TESTSYS, 'parity', 'probe_case', CASE_NAME)
@@ -105,25 +105,20 @@ def build_case(case_dir):
     this directory destructively, so there is nothing left to guard once the
     rebuild is done. Same non-blocking acquire()/refusal shape as
     run_perf.build_perf_case and run_jaxmpi_ab.main (rules 21a, 2).
+
+    The RELEASE in the `finally` below is this builder's one difference from
+    the three perf builders that share `perflib` with it: they keep the lock,
+    because their callers go on to TIME out of the directory. This one does
+    not, so it gives the lock back as soon as the write is finished.
     """
-    import run_e2e                                        # noqa: E402
-    lock_resource = os.path.relpath(os.path.dirname(case_dir), REPO_ROOT)
-    try:
-        lock = runlock.acquire(REPO_ROOT, lock_resource,
-                               consequence=LOCK_CONSEQUENCE)
-    except runlock.RunTreeLocked as exc:
-        raise SystemExit('FAIL: %s' % exc)
+    lock = perflib.acquire_case_lock(case_dir, LOCK_CONSEQUENCE)
     # Announced only once the lock is held: "Building ..." printed ahead of a
     # refusal describes something that never happened.
     print('Building a fresh serial %s at %s ...' % (CASE_NAME, case_dir))
     try:
-        if os.path.isdir(case_dir):
-            shutil.rmtree(case_dir)
-        os.makedirs(os.path.dirname(case_dir), exist_ok=True)
-        run_e2e.make_serial_case(CASE_NAME, case_dir, run_e2e.base_env())
+        return perflib.rebuild_serial_case(CASE_NAME, case_dir)
     finally:
         lock.release()
-    return case_dir
 
 
 def main():
