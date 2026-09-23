@@ -1,0 +1,39 @@
+{
+ "tool": "run_e2e",
+ "sha": "fb63f87",
+ "host": "cotopaxi",
+ "date": "2026-09-23 15:54",
+ "label": "explicit: cases=test.tpv8 backends=fortran,python-numpy,python-jax",
+ "device": "cpu",
+ "jobs_budget": 60,
+ "tenancy_ceiling": 0.5,
+ "cells": [
+  {
+   "case": "test.tpv8",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 13.580436944961548,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv8",
+   "backend": "python-numpy",
+   "ok": true,
+   "seconds": 74.78303122520447,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "numpy backend: host arrays only, no GPU path"
+  },
+  {
+   "case": "test.tpv8",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 19.33607006072998,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  }
+ ]
+}
