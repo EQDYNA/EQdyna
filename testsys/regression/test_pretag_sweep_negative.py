@@ -2,9 +2,10 @@
 """
 Negative test for the release-path guard's SWEEP-EVIDENCE half
 (`check_pretag_ci.evaluate_sweep_evidence`, added 2026-09-23 -- owner-approved
-design: CI stops running the e2e sweep, so a committed full-term LOCAL sweep
-becomes the only mechanical check of the physics for a release, required in
-addition to green CI).
+design: CI stops running the e2e sweep, so a committed local RELEASE sweep
+(every supported cell -- everyday cells + matrix.RELEASE_ONLY -- all at the
+ONE matrix.GATE_TERM_S) becomes the only mechanical check of the physics for
+a release, required in addition to green CI).
 
 WHY A SEPARATE FILE. `test_pretag_ci_negative.py` drives the guard's CI
 dimension across its six documented outcomes and, since this new gate
@@ -26,7 +27,7 @@ release order is what makes the sixth (docs/evidence/-only commit after the
 swept SHA) a real, expected shape rather than an edge case:
 
   1. no summary.json committed at all                    -> refuse
-  2. term == "gate", not "full"                           -> refuse
+  2. term != matrix.GATE_TERM_S (a stale/wrong value)     -> refuse
   3. one cell's verdict != SUCCESS                        -> refuse
   4. n_runnable short of the (injected) matrix count      -> refuse
   5. swept SHA is an ancestor; a LATER commit touches src/ -> refuse, names it
@@ -49,6 +50,11 @@ TESTSYS = os.path.dirname(HERE)
 ROOT = os.path.dirname(TESTSYS)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+# GATE_TERM_S only -- a scalar constant of THIS checkout, not a description of
+# the sandbox's (fake) cases, so importing it here does not repeat the
+# full_runnable_count injection rationale above (docstring, "WHY A SEPARATE
+# FILE" / `fixed_count`).
+from testsys import matrix  # noqa: E402
 
 SANDBOX_ENV = dict(
     os.environ,
@@ -110,8 +116,8 @@ FULL_CELLS = [
 
 
 def base_summary(sha, **overrides):
-    d = dict(sha=sha, tree_clean=True, term='full', n_runnable=2, n_success=2,
-             cells=[dict(c) for c in FULL_CELLS],
+    d = dict(sha=sha, tree_clean=True, term=matrix.GATE_TERM_S, n_runnable=2,
+             n_success=2, cells=[dict(c) for c in FULL_CELLS],
              started_utc='2026-09-23T00:00:00Z',
              finished_utc='2026-09-23T00:01:00Z')
     d.update(overrides)
@@ -140,16 +146,23 @@ def check_missing_summary(guard, tmp, fails, log):
 
 
 def check_wrong_term(guard, tmp, fails, log):
+    """A summary carrying a term other than matrix.GATE_TERM_S -- e.g. a
+    stale 20 s/6 s per-case value from the retired two-term design, or any
+    other drift -- must be refused: there is only ONE term now, and a sweep
+    that ran at a different one says nothing about the gate this repo
+    actually runs."""
     d = new_repo(tmp, 'case2')
     tag_sha = git(['rev-parse', 'HEAD'], cwd=d).stdout.strip()
-    write_summary(d, tag_sha, base_summary(tag_sha, term='gate'))
-    tag_sha = commit_all(d, 'evidence: gate-term sweep')
+    wrong_term = matrix.GATE_TERM_S + 15.0
+    write_summary(d, tag_sha, base_summary(tag_sha, term=wrong_term))
+    tag_sha = commit_all(d, 'evidence: wrong-term sweep')
     ok, msg = guard.evaluate_sweep_evidence(tag_sha, repo_root=d,
                                             full_runnable_count=fixed_count)
-    log.append(('2 term=gate', ok, msg))
+    log.append(('2 term!=GATE_TERM_S', ok, msg))
     if ok:
-        fails.append('2: term=="gate" (not "full") was ACCEPTED')
-    if 'term' not in msg or 'gate' not in msg:
+        fails.append('2: term=%r (!= matrix.GATE_TERM_S=%r) was ACCEPTED'
+                     % (wrong_term, matrix.GATE_TERM_S))
+    if 'term' not in msg or str(wrong_term) not in msg:
         fails.append('2: refusal does not name the bad term: %r' % msg)
 
 
