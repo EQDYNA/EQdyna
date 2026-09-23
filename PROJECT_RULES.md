@@ -50,14 +50,15 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 21d. A dispatch carries its isolation and its scope in writing, or it is not issued.
 22. A scope restriction is itself a rule, and it can conflict with another rule.
 23. Fortran is the reference implementation; the port follows its NUMERICS, not its file layout.
+24. A release tag requires a committed full-term local sweep at the exact SHA, not only green CI.
 
 Count, stated so a heading-shape grep does not undercount it again (that
-undercount happened twice in one night, 2026-09-21/22): 23 numbered rules
-(1-23) plus twenty-five lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
+undercount happened twice in one night, 2026-09-21/22): 24 numbered rules
+(1-24) plus twenty-five lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
 4e, 5a, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c,
-21d) — 48 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md`
-reads 48; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no
-letter suffix) reads 23.
+21d) — 49 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md`
+reads 49; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no
+letter suffix) reads 24.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
 the count from heading shape alone.
@@ -680,6 +681,20 @@ destroys the only baseline the suite has.
 **How to apply**: regenerating a reference result is a deliberate, reviewed
 commit to `test.reference.results/`, never a side effect of running tests.
 
+**Two references per case, when the case has two terms (added 2026-09-23,
+owner decision relayed by the conductor — codified here, not yet built: see
+rule 24).** A case whose full term differs from the 5 s everyday term (as of
+2026-09-23: `test.tpv29` 20 s, `test.tpv36`/`test.tpv37` 6 s; `test.tpv30` 20 s
+if it is ever gated) carries TWO committed references under
+`test.reference.results/<case>/`, not one — the existing full-term
+`frt.canonical.txt`, compared against by the release sweep (rule 24), and a
+second, 5 s reference, compared against by the everyday local gate (rule 9).
+Each is its own reviewed commit under this rule, generated from the SAME code
+at its own term, never to make a cell pass. The gate-term reference is a
+separate artifact with its own commit; it does not replace the full-term
+reference, and the full-term reference is never regenerated at the shorter
+term to save time.
+
 ---
 
 ## 8. Never delete evidence unless the result is a confirmed pass
@@ -1080,124 +1095,74 @@ has always required, and a releaser who wants the wider claim reads
 
 ---
 
-## 15b. The local sweep and CI gate different failure classes; CI's release run re-verifies only what a local sweep structurally cannot
+## 15b. The local sweep and CI gate different failure classes; CI never re-verifies physics, at release or otherwise
 
-Rule 15 step 1 and rule 15a together make every release pay for two nearly
-identical physics sweeps, run strictly in series. This sub-rule divides the
-two gates by the failure class each one can actually see. It does not touch
-15a's core: nothing red is ever pushed, the tag goes last, and it goes only on
-a COMPLETED, successful CI conclusion for the exact SHA being tagged.
+Rule 15 step 1 and rule 15a together used to make every release pay for two
+nearly identical physics sweeps, run strictly in series, and this sub-rule
+used to divide them by ancestor and by a staleness window. **Rewritten
+2026-09-23** (owner decision, relayed by the conductor): the division is no
+longer "when may CI's release run reduce to a smoke profile" — CI does not run
+a physics sweep on any commit, release or otherwise, so there is nothing left
+to reduce. It does not touch 15a's core: nothing red is ever pushed, the tag
+goes last, and it goes only on a COMPLETED, successful CI conclusion for the
+exact SHA being tagged.
 
-**The division.**
+**The division, as it now stands.**
 
-- **CI is the MERGE gate.** It owns every failure class this development box
-  cannot represent: a clean checkout of the COMMIT (rule 16's v5.5.0 partial
+- **CI is the MERGE gate, and its e2e coverage is a PORTABILITY check, not
+  physics coverage.** It owns every failure class this development box cannot
+  represent: a clean checkout of the COMMIT (rule 16's v5.5.0 partial
   `git add`), the real entry point `./install-eqdyna.sh -m ubuntu` on a bare
   machine (v5.6.1), the declared apt/pip dependency set resolving from nothing
   (v5.6.2, scipy), the 7 GB runner memory ceiling (v5.7.0), ubuntu-22.04's own
   gfortran/mpich/libnetcdf/numpy/jax versions, and the network-side release
-  guards that need `GH_TOKEN`. It runs the full `matrix.CI_CELLS` — 25 of the
-  30 e2e cells, `testsys/regression/test_ci_workflow_coverage.py` authoritative
-  over that count — on every push that changes anything the solver or the
-  harness reads.
-- **The local sweep is the RELEASE gate for physics.** `python3 testsys/run.py
-  all` is a strict SUPERSET in cells (31 of the 40 declared, against CI's 25),
-  it runs on the tree being released, and it is the only gate that covers the
-  6 cells CI cannot fit on a 7 GB runner.
+  guards that need `GH_TOKEN`. Its only e2e cells are `matrix.CI_CELLS`,
+  redefined to exactly one smoke set — `test.tpv8` x {fortran on the runner's
+  mpich, python-numpy, python-jax} at the 5 s everyday term — proving the
+  toolchain still builds and executes one case end to end from a clean
+  checkout on a different MPI. `testsys/regression/test_ci_workflow_coverage.py`
+  is retained and stays authoritative over what `CI_CELLS` actually is; this
+  rule does not restate its count.
+- **The local sweep is the ONLY physics gate this project has**, at either of
+  two terms: the 5 s everyday term for ordinary gating (rule 9), and the full
+  term at release, committed as evidence before the tag (rule 24). Nothing in
+  CI substitutes for either.
 
-**What CI's release run may take as established, and the two conditions that
-must BOTH hold before it may.** CI's run on a release commit may reduce to the
-release profile below only when:
+**What used to be an owner-set staleness bound is no longer a bound to set.**
+This rule previously proposed that a release commit could inherit an
+ancestor's full-matrix CI green so long as that ancestor's run was no more
+than some number of days old, "until the owner sets that number, treat it as
+0." The owner has not set a number, and under the division above there is no
+ancestor full-matrix CI run to go stale in the first place — CI does not run
+one, on any commit, release or merge. The bound stays owner-held and stays
+treated as 0: a release requires the full-term local sweep at the exact
+release SHA (rule 24), with no ancestor-based or time-based exemption. This
+rule does not choose a number in the owner's place.
 
-  (a) `git diff --name-only <ancestor>..<sha>` lands entirely inside the
-      release-metadata whitelist — `VERSION`, `README.md`,
-      `pastReleaseNotes.md`, `pathway_forward.md`, `PROJECT_RULES.md` — so no
-      file the build, the solver, the harness, a compset or a reference reads
-      has changed since `<ancestor>`; **and**
-  (b) `<ancestor>` has a COMPLETED, successful **full-matrix** CI run of its
-      own — not a release-profile run, not a parent-of-parent, not an
-      inherited belief.
+**Rationale**: measured 2026-09-23, CI's e2e sweep duplicated roughly 25 of
+the table's 30 cells on every push at a median 55.4 minutes (n=27) — cells the
+local sweep had already run, on the same tree, for the same change — and it
+was never a full-matrix run regardless of how fresh the ancestor was: the 7 GB
+runner ceiling has excluded 5-9 cells from it throughout (rule 16). The
+previous version of this rule managed that duplication with a staleness
+window; the redesign removes the duplication instead.
 
-Both are machine-decidable and both are decided by the workflow, never by an
-operator at release time. If either fails — one line in `src/`, `testsys/`,
-`case_input/`, `test.reference.results/` or `.github/` — the full matrix runs.
-There is no third outcome and no judgment call: an operator-chosen reduced CI
-run is exactly the silently-skipped step rule 2 forbids.
+**How to apply**: read CI's job list as portability evidence only — a green
+smoke run says the toolchain builds and runs `test.tpv8` end to end from a
+clean checkout on this runner's MPI; it says nothing about any other case,
+term, or backend combination. Physics evidence comes only from the local
+sweep, at whichever term rule 9 (everyday) or rule 24 (release) requires for
+the work at hand. Do not describe a release as "CI-verified" for physics —
+under this division it never is, by design.
 
-**The release profile** is `build` (clean checkout plus the real install
-entry point), `unit-regression` (`fetch-depth: 0` and `GH_TOKEN` — rule 15's
-and 15a's own guards live in that job, including `check_pretag_ci.py`'s
-negative test and `test_release_complete.py`'s network-side check), and ONE
-smoke cell per backend (`test.tpv8` x fortran, python-numpy, python-jax). Not
-zero e2e cells: the smoke cells are what proves the runner's toolchain still
-executes a case end to end from a clean checkout, which `build` alone does not
-show. A reduced run is still a run — 15a's pre-tag guard is still executed
-against the exact SHA and must still report completed and successful before
-`git tag`.
-
-**Rationale**: the two gates were built for different reasons and grew into
-each other. Measured 2026-09-22: `run.py all` is 2904.6 s on a quiet box
-(9413.8 s contended, per the board's tenancy note) and CI is ~54 min, of which
-25 cells are cells the local sweep has just run on a tree whose only difference
-from an already-merge-gated parent is release metadata. CI's own wall clock is
-floored by one cell that cannot be split — `test.tpv29` x `python-numpy`,
-~950 s of one sequential simulation — so parallelising further buys nothing.
-Roughly half of each ~2 h release is spent re-deciding a question already
-settled on the same bytes.
-
-**Residual risk — stated here rather than left implicit.** Under the release
-profile the other 24 CI cells' physics is NOT re-verified on the runner at the
-release SHA. It is verified at `<ancestor>`. The exposure is TIME, not tree:
-everything that can change between `<ancestor>`'s green run and the tag lives
-outside this repo and is unpinned — GitHub's `ubuntu-22.04` image (gfortran,
-mpich, libnetcdf, rolled on GitHub's own cadence) and whatever
-`pip install numpy scipy netCDF4 matplotlib xarray jax` resolves to that day.
-Three specific failure classes move from per-release coverage to per-merge
-coverage, and a release cut days after its last code commit no longer sees any
-of them at its own SHA:
-
-  (i) a cell's peak RSS crossing the 7 GB runner ceiling — the v5.7.0 failure
-      mode exactly. It is now caught at merge, monitored by
-      `matrix.MEASURED_PEAK_RSS_GB`, which is measured on THIS box and is an
-      ESTIMATE of the runner's footprint, not a measurement of it;
-  (ii) a toolchain-version change that moves a cell's `max|diff|` past its
-      `CASE_BOUND` without any commit in this repo;
-  (iii) a dependency declaration gap that only the full python jobs exercise.
-
-Bounding the time exposure needs a number this rule does not have. **PROPOSED,
-owner's call, not a measurement**: the release profile is unavailable when
-`<ancestor>`'s full-matrix green run is more than 7 days old, and the full
-matrix runs instead. Until the owner sets that number, treat it as 0 — full
-matrix — rather than as unbounded.
-
-Adopt this or do not, but do not adopt it and then describe a release as
-fully CI-verified: under the profile it is verified on the release SHA for
-build, checkout, unit, regression and three smoke cells, and on `<ancestor>`
-for everything else.
-
-**How to apply**: the releaser runs the local sweep as rule 15 step 1 already
-requires, commits, pushes, and READS which profile CI chose from the run's own
-job list rather than assuming. The Tasks-done row (rule 15 step 4) records
-three things: `<ancestor>`'s SHA, the date and run id of its full-matrix green
-run, and which profile the release SHA's own run used. If the full matrix ran,
-nothing was deferred and this rule did nothing that release.
-
-**Tier: NOT mechanical today, and the workflow change must NOT land before it
-is.** Condition (a) belongs in `.github/workflows/test.yml` as a job-selection
-step plus a `testsys/regression/` guard proving the profile's job set is
-exactly {build, unit-regression, three tpv8 smoke cells} and that any
-non-whitelist path in the diff forces the full matrix; condition (b) is an
-extension of `check_pretag_ci.py`, which already asks "is there a completed
-successful run for this SHA" and must additionally ask "was that ancestor's
-run the FULL matrix". The evidence command that settles whether a given
-release SHA is eligible, and the one a reviewer runs against the claim:
-
-    git diff --name-only <ancestor>..<sha> | \
-      grep -vE '^(VERSION|README\.md|pastReleaseNotes\.md|pathway_forward\.md|PROJECT_RULES\.md)$'
-
-Expected output: empty. Non-empty means the full matrix, and the profile was
-never available. The workflow edit itself is routed to whoever conducts the
-release, the guards to `iris-vermeulen`; this rule's author writes neither.
+**Tier: NOT mechanical today, and the workflow change must NOT be assumed
+landed before it is verified.** As this rule is written, the `.github/workflows/test.yml`
+edit removing the e2e sweep and redefining `matrix.CI_CELLS` to the tpv8 smoke
+set is described by the owner as being written, not confirmed built — do not
+cite this rule as evidence the edit exists; check `test.yml` and
+`testsys/matrix.py` directly. Once it lands, `test_ci_workflow_coverage.py`
+already proves CI runs exactly `CI_CELLS`, whatever it is redefined to; rule
+24's own guard is the mechanical backstop for the local side.
 
 ---
 
@@ -1360,37 +1325,44 @@ directories the change touched.
 Before pushing a release, run CI's own entry point, not a convenient subset of
 it — read `.github/workflows/test.yml` and reproduce the commands verbatim.
 
-**CI is not one invocation, and no single command reproduces it.** As of
-2026-09-21 it is SEVEN parallel jobs (`build`, `unit-regression`,
-`e2e-ci-fortran-a`, `e2e-ci-fortran-b`, `e2e-ci-python-cheap`,
-`e2e-ci-python-meng`, `e2e-ci-python-tpv29`), and the e2e jobs call
-`run_e2e.py --ci` directly — CI never runs `run.py e2e-ci`, and never runs
-`run.py unit regression e2e-ci` as one line. What it actually runs, with the
-line of `test.yml` each command sits on:
+**CI is not one invocation, and no single command reproduces it.** Corrected
+2026-09-23 against `.github/workflows/test.yml` itself (the prior text named
+`e2e-ci-python-cheap` and six jobs total; that job was renamed and split
+2026-09-23 once its tpv36/tpv37 numpy cells were found serialising to 42 of
+its 59 min — see `CLAUDE.md`). As verified fresh at this rewrite, CI is NINE
+parallel jobs (`build`, `unit-regression`, `e2e-ci-fortran-a`,
+`e2e-ci-fortran-b`, `e2e-ci-python-jax-tpv8`, `e2e-ci-python-tpv36-numpy`,
+`e2e-ci-python-tpv37-numpy`, `e2e-ci-python-meng`, `e2e-ci-python-tpv29`), and
+the e2e jobs call `run_e2e.py --ci` directly — CI never runs `run.py e2e-ci`,
+and never runs `run.py unit regression e2e-ci` as one line. What it actually
+runs, with the line of `test.yml` each command sits on:
 
-    ./install-eqdyna.sh -m ubuntu                                           # :65
-    export EQDYNAROOT=$(pwd); export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-    python3 testsys/run.py unit regression                                  # :149
-    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8,test.tpv37        # :198
-    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36 # :242
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax                                        # :287
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax                          # :288
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36,test.tpv37 --backends python-numpy,python-jax                            # :289
-    python3 testsys/e2e/run_e2e.py --ci --cases test.meng2023a,test.meng2023cb --backends python-numpy,python-jax                   # :327
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-jax                                                    # :328
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-numpy                                                  # :368
+    ./install-eqdyna.sh -m ubuntu                                           # :75
+    export EQDYNAROOT=$(pwd)                                                # :250
+    export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH                   # :251
+    python3 testsys/run.py unit regression                                  # :253
+    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8,test.tpv37        # :302
+    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36 # :346
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax                                        # :401
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax                          # :402
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36,test.tpv37 --backends python-jax                                         # :403
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36 --backends python-numpy                                                  # :443
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv37 --backends python-numpy                                                  # :479
+    python3 testsys/e2e/run_e2e.py --ci --cases test.meng2023a,test.meng2023cb --backends python-numpy,python-jax                   # :517
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-jax                                                    # :518
+    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-numpy                                                  # :558
 
 Those line numbers move; re-read the workflow rather than trusting them, and
 note the python jobs also export thread-pinning env vars in the same step.
-(Command list and line numbers re-verified against `.github/workflows/test.yml`
-2026-09-22 — every line number above had drifted by 14-20 lines since the
-2026-09-21 correction; the commands themselves were unchanged. Rule 15b, if
-adopted, changes WHICH of these run on a release commit — it does not change
-this list, which is what CI runs on any commit that touches code.)
+This is CI's job layout as it stands at this rewrite — the redesign rule 15b
+and rule 24 describe (CI stops running the e2e sweep entirely and shrinks to
+a `test.tpv8` smoke set) is an owner-approved decision **not yet built as this
+sentence is written**; when it lands, this whole job list and the count below
+change and this rule needs a matching rewrite, not a patch.
 
-The union of the `--ci` invocations is `matrix.CI_CELLS`, **25 of the 30
-cells** as of 2026-09-21 — the remaining 5 do not fit a 7 GB runner. That
-union is proved mechanically by
+The union of the `--ci` invocations above is `matrix.CI_CELLS`, **25 of the 30
+cells**, verified fresh at this rewrite — the remaining 5 do not fit a 7 GB
+runner. That union is proved mechanically by
 `testsys/regression/test_ci_workflow_coverage.py`, which is authoritative over
 any count written in prose, this rule's included. `run.py e2e-ci` is a local
 convenience that runs the same cell list; it is not what CI invokes, so a
@@ -2401,3 +2373,60 @@ exists as this rule lands, so the eleven above are found by reading, not by
 the tier. The judgment half — whether a departure's cited measurement actually
 supports its claim, and whether a numeric disagreement was resolved in the
 right direction — is reviewable only.
+
+---
+
+## 24. A release tag requires a committed full-term local sweep at the exact SHA, not only green CI
+
+Rule 15b now divides the gates so CI never runs a physics sweep, on any
+commit, release or merge — it is a portability check only. That leaves the
+local sweep as the only physics gate this project has, and this rule states
+what a release tag requires of it, on top of rule 15a's existing CI check
+(which stays, unchanged).
+
+- The EVERYDAY local gate uses the 5 s term for every case (rule 9, rule 3) —
+  this rule does not change ordinary, non-release gating.
+- At RELEASE time, the FULL committed term is required: every runnable cell of
+  `testsys/matrix.py`'s table, each at that case's own full term (`test.tpv29`
+  20 s; `test.tpv36`/`test.tpv37` 6 s; `test.tpv30` 20 s if it is ever gated;
+  5 s everywhere else — rule 7's two-references provision), run locally on the
+  exact release tree and committed as evidence, at
+  `docs/evidence/sweep-<shortsha>/summary.json`, before `git tag` runs.
+- A release tag requires BOTH of the following for the exact SHA being
+  tagged, or for an ancestor whose diff from that SHA lands entirely inside
+  `docs/evidence/`, the perf ledger, or `pathway_forward.md`: (i) a committed
+  full-term local sweep as above; and (ii) a completed, successful CI run per
+  rule 15a. Neither substitutes for the other, and CI's smoke cells (rule 15b)
+  are not physics evidence toward (i).
+
+**Rationale**: CI's e2e sweep duplicated roughly 25 of the table's cells on
+every release at a median 55.4 minutes per push (n=27), verifying nothing the
+local sweep had not already verified on the same tree — and it was never a
+full-matrix run in the first place, since the 7 GB runner ceiling has excluded
+5-9 cells from it throughout (rule 16). Removing that duplication (rule 15b)
+leaves a gap where CI's own sweep used to stand in as part of the release
+gate; this rule is what fills it, so that "the sweep ran somewhere" is never
+allowed to mean "CI ran a subset of it."
+
+**Incident (2026-09-23)**: owner decision, relayed by the conductor: CI is
+redefined to a `test.tpv8` portability smoke and the e2e sweep is removed from
+`test.yml`. Without a rule naming a replacement physics gate at release, the
+tag guard (rule 15a) would still pass on CI-green alone, and a release could
+ship having run full-term physics nowhere at all. This rule closes that gap by
+naming the local sweep, committed as evidence, as the non-optional replacement.
+
+**How to apply**: before `git tag`, run the full-term local sweep on the exact
+release SHA, write and commit `docs/evidence/sweep-<shortsha>/summary.json`,
+then run rule 15a's pre-tag guard. Record both the evidence commit's SHA and
+the CI run id in the Tasks-done row (rule 15 step 4). A tag with CI green and
+no committed full-term evidence is not a compliant release under this rule,
+and neither is full-term evidence committed on a SHA the tag does not point
+at (or an ancestor differing by more than the whitelisted paths above).
+
+**Tier: mechanical once `testsys/regression/check_pretag_ci.py` is extended to
+refuse a tag lacking this evidence — NOT YET LANDED as this rule is written.**
+The owner describes the guard as being written, not built; do not cite this
+rule as proof the refusal exists. Until it lands, this rule is enforced the
+way rule 15a's own guard was enforced before it existed: by whoever runs the
+release checklist by hand, checking `docs/evidence/sweep-<shortsha>/` exists
+and matches the SHA before typing `git tag`.
