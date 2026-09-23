@@ -1,6 +1,22 @@
 # Past release notes\
 
 # News in 2026
+* 20260922 v5.16.0 release notes
+  * Fix - **rough-fault normals are now recomputed at the mesh spacing, never subsampled from a finer source.** When a coarse mesh was produced from a finer geometry file the positions were decimated correctly but the derivative columns were carried over unchanged, so the fault normal described a spacing the solver was not using. At dx=100 both affected cases now reproduce the 2015 SCEC submissions: `test.tpv29` median |dt| 0.0073 s, `test.tpv30` 0.0107 s, both inside the archive's own 100 m-vs-50 m sensitivity of 0.0160 s, with spurious rupture-time seeds falling from 28 to 3.
+  * Change - **two references regenerated under rule 7**, `test.tpv29` and `test.tpv30`, each as its own separately reviewed commit. This is the only release in this pair that moves a reference; v5.15.0 was cut deliberately to contain none, so the answer to "when did tpv29's reference move and why" is one tag with one reason.
+  * New - **a regression guard for the property itself**, `testsys/regression/test_rough_fault_normal_consistency.py`: the stored derivative columns must match a recomputation at the case's own mesh spacing.
+  * New - **every jax-MPI rank now builds a real subdomain** (rank-local carry, bit-identical), and each rank gets its own XLA compilation-cache directory -- the `test.tpv8` x `python-jax-mpi` cell no longer needs the manual cache workaround that v5.15.0 shipped with.
+  * Fix - **the per-step global MPI barrier was running unconditionally in production** and is now enabled only under profiling, with a `barrier_in_step` field recorded so a profiled total can never again be quoted as a production cost.
+  * Correction - **two circulated jax-MPI performance claims do not reproduce and are withdrawn**: a "0.48x at 4 ranks" cliff (measured 1.011 / 0.974 / 1.165) and "~2.2x at 8 and 12". A non-blocking halo exchange buys nothing at 4, 8 or 12 ranks and was declined on that measurement. 16 and 32 ranks remain unmeasured.
+  * Correction - **`test.drv.a6`'s fractal roughness path does NOT share the defect fixed above**, audited for this release rather than assumed. Its surface is generated on the mesh's own fault grid and differentiated there, so the stored derivatives agree with a recomputation at the mesh spacing to 2e-16. Its flip budget of 450 and its reference were not touched.
+  * New - project rules 4c, 15b, 21 and 21a. 21a is the one that cost this release a gate: a sweep now runs in its own worktree.
+  * Known limitation - **the new consistency guard covers TPV29/TPV30 only.** The fractal path is checked at `case.setup` time, not inside `testsys/`; that coverage gap is pathway item 71.
+  * Known limitation - **the e2e harness rotates `$REPO_ROOT/test` with no lock**, so two sweeps in one checkout destroy each other and the survivor reports a cell FAIL indistinguishable from a real regression. Pathway item 70; rule 21a is the interim discipline and the evidence is kept under `docs/evidence/gate-v5.16.0/`.
+  * Note - **gated on a full 31-of-31-cell sweep** (unit, regression and e2e all SUCCESS, exit 0, 1801 s) run in an isolated worktree; no solver source, reference or `testsys/` file changed after it.
+  * Note - **the dx=100 SCEC numbers above are cited, not re-derived.** They come from the runs of 2026-09-22 that produced them; those raw outputs were not preserved and the SCEC baseline is gitignored, so reproducing them today needs two fresh 32-rank dx=100 runs plus regeneration of the baseline. Preserving them is the gap, and it is the same defect pathway item 28 already fixed once for TPV29.
+  * Note - v5.13.0's missing GitHub Release object was backfilled from its retroactive notes; the tag itself was not re-pointed.
+  * For past release notes, please refer to pastReleaseNotes.md.
+
 * 20260922 v5.15.0 release notes
   * New - **the jax backend runs on GPU**: a measurement path for the jax-MPI solver on NVIDIA A100s, plus a fix for results that could be labelled GPU while actually running on the host.
   * New - **every performance run is now recorded by tooling, not transcription**: an append-only ledger at `docs/perf_ledger.jsonl`, one row per run, each pinned to the commit that produced it, with the platform (cpu/gpu) derived from device evidence rather than from the label the run was given. The e2e sweep appends a wall-clock row per cell on its own.
