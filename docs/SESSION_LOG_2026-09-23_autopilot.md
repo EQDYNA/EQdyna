@@ -748,3 +748,73 @@ cleanup** — after every main step. That is item 84's whole mechanism, observed
 in this repository's own run rather than inferred from `action.yml`. Worth
 having: the fix shipped on a chain of documentation reads, and this closes it
 with direct evidence.
+
+## S. Item 85 — the discarded value was also WRONG, which is the point
+
+Landed `db0b006`. `stLocStamp` was not merely computed and dropped; the value it
+computed was incorrect. The header built its down-dip field from
+`abs(xonfs(2,...)/1000.d0)` — raw VERTICAL depth — and labelled it
+`km down-dip`. **Six lines above, `library_output.f90:48`, the FILENAME field
+already divided by `dsin(fltxyz(2,4,1))`.** So on any dipping fault the filename
+and the header of the same file disagreed about the same station.
+
+Verified myself from three independent points rather than from the report:
+`meshgen.f90:905` matches `xonfs(2,...)` against `nodeCoor(3)` (vertical z);
+`meshgen.f90:917` is `un(3,...) = dcos(fltxyz(2,4,*))`, so that slot is the dip;
+and `:48` already encodes depth/sin(dip).
+
+**The mission's own e2e evidence proved nothing about its own change, and this
+is the merge-gate axis that catches it.** It ran `test.tpv8`, which is dip 90,
+where `sin = 1` and the fix is arithmetically a no-op — a case that falls
+through the new path rather than triggering it. I ran `test.tpv36` instead
+(`tpv36_37_common.py:16`, `par.dip = 15`):
+
+    test.tpv36  fortran  SUCCESS  174.9s  max|diff|=0.000000e+00 bound=1.0e-06, 3477 nodes
+    test/test.tpv36/faultst000dp010.txt:  # location = on fault, 0.0 km along strike, 1.0 km down-dip
+    test/test.tpv36/faultst000dp030.txt:  # location = on fault, 0.0 km along strike, 3.0 km down-dip
+
+`bStations.txt` gives that first station a depth of `-0.25881904510252074` km,
+which is exactly `1.0 x sin(15 deg)`. So the header used to read **0.3 km** in a
+file named `dp010` and now reads **1.0 km**, agreeing with its own filename for
+the first time.
+
+**The lesson is sharper than the row was:** a value that is computed and
+discarded is not dormant, it is UNVERIFIED. This one had been wrong for as long
+as it had been unread, and the discard is precisely what hid it — the same
+shape as `writeCompTime`, which this project already records as having hidden a
+511x error. Treat every write-only variable as a defect that has not been
+looked at yet.
+
+## T. A third process failure, and it is mine again
+
+The final board pass was pushed **straight to master without passing through my
+gate**. It was fine — two board files, tier green at `7587244`, verified
+retroactively — but it landed unreviewed.
+
+The cause is my wording. Earlier briefs ended "commit to your branch and push
+it; do not merge." The last one ended "Push; do not merge, do not tag", and
+"push" with no object reasonably reads as push to master, with "do not merge"
+covering only branch merges. **Same defect class as the `src/` restriction that
+halted the release engineer** (section M): I wrote the constraint, the agent
+read it correctly, and the constraint was wrong. Three of tonight's four
+process failures originate in brief wording, not in agent behaviour.
+
+The fix is mechanical and belongs in the brief template rather than in anyone's
+memory: state the ref explicitly — "push to `refs/heads/<your-branch>`; do NOT
+push to master" — every time.
+
+## U. Close-out
+
+| | |
+|---|---|
+| tag | `v5.16.2` at `2964325`; Release Latest; tag-triggered CI run **35845693484 success**; publish run 35845693679 success incl. the fresh-pull re-gate |
+| master | `7587244` at close, clean, level with origin |
+| landings | 13 commits, **0 reverts** |
+| sweep | 31/31 cells, all three tiers, on the released tree |
+| worktrees | 4 → primary, `wei-s2` (mine), and 2 owner-held LOCKED (`item32-dx250-refinement`, `mira/jaxmpi-merged-2026-09-22`, the latter pushed to origin at `99a3f18`) |
+| CI at close | `db0b006` 6/7 green (`unit-regression` and both fortran e2e jobs included); only `e2e-ci-python-cheap` outstanding, and this landing touches no Python |
+
+The primary checkout was fast-forwarded from `5c91598` to current master.
+It had been 12 commits behind all session, and a stale local `master` already
+misled one agent tonight into diffing against the wrong base — leaving it
+behind would have handed that same trap to the next session.
