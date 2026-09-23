@@ -37,9 +37,23 @@ jobs:
     # explicit value, not the action's default, so a future major bump that
     # changes the default can't silently shrink this job's history back to
     # depth 1 without the guard catching it.
+    # persist-credentials: false, NOT the action's default (true): with the
+    # default, checkout writes the live GITHUB_TOKEN into this workspace's
+    # .git/config as an http.<origin>/.extraheader entry, and the cleanup for
+    # that is a POST step (action.yml: `post: dist/index.js`) that runs AFTER
+    # every main step in this job -- including `docker build` below. Dockerfile
+    # does `COPY . /opt/eqdyna` and this job's .dockerignore deliberately keeps
+    # `.git` (see the fetch-depth comment above), so with the default the token
+    # would be baked into a layer of every image this workflow publishes. The
+    # token is short-lived -- it expires when the job ends -- but a published
+    # image outlives the job, so this is a credential-in-artifact leak, not a
+    # live-token leak. Set explicitly, same reasoning as fetch-depth 0 above:
+    # testsys/regression/test_publish_image_fetch_depth.py pins the explicit
+    # value so a future default change can't silently reintroduce this.
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Log in to ghcr.io
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -72,13 +86,20 @@ jobs:
     # 2 -- test_stop_exit_status.py already burned this project once on a
     # guard that skipped instead of failing). A failing gate stops the job;
     # push never runs.
+    # check_git_config_no_credential.py runs FIRST, stdlib-only, no pip
+    # install needed: it scans /opt/eqdyna/.git/config (the file `COPY .
+    # /opt/eqdyna` shipped) for a persisted credential -- the artifact-level
+    # half of the persist-credentials fix above, so a future regression on
+    # that setting (or a different mechanism, e.g. an `ssh-key` checkout
+    # input) fails the gate loudly instead of silently publishing a token.
     - name: Gate the image on the repo's own test tiers (not a --version smoke test)
       run: |
         docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
           set -e
+          cd /opt/eqdyna
+          python3 testsys/check_git_config_no_credential.py
           pip3 install pytest scipy
           pip3 install jax
-          cd /opt/eqdyna
           python3 testsys/run.py unit regression
           python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran
         '
@@ -109,9 +130,10 @@ jobs:
         TAG="${GITHUB_REF_NAME}"
         docker run --rm ghcr.io/eqdyna/eqdyna:"${TAG}" bash -lc '
           set -e
+          cd /opt/eqdyna
+          python3 testsys/check_git_config_no_credential.py
           pip3 install pytest scipy
           pip3 install jax
-          cd /opt/eqdyna
           python3 testsys/run.py unit regression
           python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran
         '
