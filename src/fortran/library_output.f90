@@ -51,8 +51,24 @@ subroutine output_onfault_st
             sttmp = '      '
             dptmp = '      '
             write(sttmp,'(f5.1)') xonfs(1,anonfs(2,i),j)/1000.d0
-            write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j)/1000.d0)
+            ! Down-dip distance, not vertical depth: xonfs(2,...) is vertical
+            ! depth (m, matched against nodeCoor(3) in meshgen.f90), so this
+            ! must divide by sin(dip) to become a down-dip distance, exactly
+            ! as the filename's own dp field does a few lines above (:48).
+            ! Before this fix the stamp's value was unvalidated (never
+            ! written) and equalled the filename's only because every
+            ! currently-tested case with on-fault stations happens to have
+            ! either dip=90 (sin=1) or C_degen==0 (fltxyz(2,4,*) forced to
+            ! 90 regardless of the true mesh dip) -- test.tpv36/test.tpv37
+            ! (C_degen=15) do have on-fault stations and would have printed
+            ! vertical depth mislabeled "down-dip" had this shipped unfixed.
+            write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,1))/1000.d0
             stLocStamp = '# location = on fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km down-dip'
+            ! pathway item 85: stLocStamp was computed every call and never
+            ! written -- pathway item 67's own evidence command looked for
+            ! this exact line and found no file. Emit it as the header's
+            ! first line.
+            write(51,*) trim(stLocStamp)
             write(51,*) '# Project=',projectname
             write(51,*) '# Author=',author
             call date_and_time(values=dateTimeStamp)
