@@ -1490,3 +1490,43 @@ Master `5df58a3` triggered no CI because it touched `docs/**` only
 of fixture rows that predate it); it will not merge until its own CI is green —
 fix is the parallelism-discriminator pattern (required on new rows only), when
 that branch's queue slot (item 3) comes up.
+
+## PP. STATUS: everyday sweep 1679.9 s -> 1142.0 s measured (-32%), 29/29
+
+`python3 testsys/run.py e2e` at `b979de9` (clean worktree), 18:23:31-18:42:33,
+**WALL 1142.01 s (19.0 min)**, 29/29 SUCCESS, release-only line printed
+(tpv36/37 x numpy), box load 22 -> 43 -> 34; budget printed `core budget 31 =
+max(largest selected cell cost 4, measured-free 35 - margin 4) -- 29 of 64 cpus
+measured busy`. Before: 1679.91 s at `dc92983` (section NN), load 35-58.
+Snapshot `docs/perf_snapshots/e2e_cells_2026-09-23_184233_2589777.json`,
+log `docs/evidence/perf-2026-09-23/wei-everyday_sweep_after_b979de9.log.gz`.
+
+What bought it, three landings: `d488dae` release-only (29 cells, -3,068
+cell-s of demand), `e6b301d` longest-first (drv.a6 numpy started first and IS
+the wall: 1139.0 s of 1142.0), `ef9656b` honest cost (jax billed 3 cores from a
+measured 252%) + tenancy-aware budget (31, not 60). **My registered prediction
+(1300-1650 s) MISSED low**: contention relief was worth more than I credited —
+drv.a6 numpy itself fell 1679.2 -> 1139.0 s with no code change, tpv8 numpy
+209.4 -> 269.5 s went the other way (it now waits in the queue behind
+budget, which is the trade). Box tenancy differed between the runs (35-58 vs
+22-43), so the -32% carries that caveat: same box, same day, not the same load.
+
+Critical path now: drv.a6 x python-numpy (1139 s), then tpv1053d numpy 822,
+meng2023cb numpy 715, tpv29 numpy 706. Every remaining long cell is numpy.
+**Release sweep before/after:** before = the pre-simplification full-term
+release, last measured 1801 s (v5.16.0 gate, 2026-09-22 22:25, 31 cells, a
+quieter box); after = this sweep + the two release-only cells at 5 s, to be
+measured at the v5.17.0 cut (the simplification lands first).
+
+**Numpy, mira's wedge profile (38af040, branch only, NOT landed):** the wedge
+branch is NOT the sink (6,720 of 947,820 elements, folded into the interior
+mask at build). numpy's step is ~20 unfused array passes over E=947,820:
+`calcHourglassResist` 57.6 s self of a 149 s cProfiled 19-step run, `_c`
+21.0 s, `assembleGlobalKU` 20.9 s, einsum 11.7 s, `np.add.at` 5.8 s. jax's whole
+step is one XLA executable (and ~2.5 cores). A buffer-reuse change is
+bit-identical but its gain is UNMEASURED on this box (2-3x run-to-run swings),
+so it does not land (rule 23: departure only for a measured gain). Closing the
+4.3x gap bit-identically needs a fusion layer (numba/Cython: a new dependency)
+or a summation reorder (`add.at` -> bincount breaks bit-identity): both
+OWNER decisions, not mine. Also: cProfile changed numpy's frt bytes — a
+profiled run is never a parity oracle.
