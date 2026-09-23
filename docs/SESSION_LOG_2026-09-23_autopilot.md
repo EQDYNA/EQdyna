@@ -1143,3 +1143,55 @@ while KEEPING global numbering. Prediction registered before any build
 **landing near 1.4x is a negative result to be reported as one** — this is the
 fourth candidate explanation for the same residual after transport, placement
 and element balance each measured and failed.
+
+## HH. Landings 11-14, and the biggest one is TPV30
+
+| commit | what | my own gate |
+|---|---|---|
+| `f274127`+`d5c85ef` | board refactor — `pathway_forward.md` 440,433 -> 208,343 bytes, narrative to `docs/BOARD_HISTORY.md`, items 38+89 merged, four sections | mechanical, not a read-through: 24/24 dates, 167/167 commit SHAs, 161/161 cells over 600 chars present VERBATIM in the archive, every row key still present |
+| `e1888e7` | **TPV30: the port never gave a PML node its own elements' gravity** — 4.035089e+08 Pa -> 5.18e-14 | four cells run fresh by me; the Fortran side read line by line |
+| `195fbd9` | perf ledger: a required `parallelism` discriminator, fail-closed | my own mutation; and I fixed the guard's own failure message, see below |
+| `aca6979` | refactor round 2 — six port modules, +86/-86 | my own with/without run: frt BYTE-IDENTICAL on both backends, 752618 bytes / 1891 lines each |
+
+**TPV30 is the session's real result.** `assembleGlobalKU.f90:44` seeds the
+gravity body force into slots 10-12 of each node's TWELVE-slot PML block and
+`:51-58` adds all twelve to a 12-dof node; the port added that term to
+`groups[2]` alone, the 3-dof-node group sum, so **a PML node never received
+the gravity of its own PML elements**. I read both sides myself before
+accepting it. The onset is step 3 (t=0.125 s) — relative sigma-squared
+1.08e-12, 8.18e-13, then 1.03e-05, an onset rather than growth — and the
+excess is `dszz = 3*dsxx` with `dsxx = dsyy`, exactly `(lam+2mu)/lam` for
+this material: a spurious VERTICAL strain rate, and gravity acts in z. Fault
+tractions stayed at roundoff for 41 more steps, which is why the previous
+hunt's t=1s/t=6s bracket never saw it. `test.tpv30` stays UNREGISTERED and
+no reference was regenerated.
+
+**A number I could not reproduce, and it turned out to be a label swap.** The
+mission reported drv.a6 flips numpy 415 -> 332 and jax 423 -> 377. My own
+re-derivation of the numpy cell read **377**, and my own jax cell read
+**332** — the pair is correct, the labels were exchanged. Both inside the
+unchanged 450 budget, so the gate was never in question, but I landed the fix
+with the discrepancy recorded as unresolved rather than smoothed, and only
+the second run settled it. Two independent cells, ten minutes, and the
+alternative was a board row asserting a per-backend improvement in the wrong
+column.
+
+**I also fixed a guard I was gating.** My mutation of the ledger's e2e
+emitter made `test_perf_parallelism_discriminator.py` exit 1 with a bare
+`KeyError` traceback — fails closed, which is correct, but names nothing. One
+line (`r.get('parallelism', '<MISSING>')`) and the same mutation now prints
+`FAIL -- emitter run_e2e: {'fortran': ('<MISSING>', 4), ...}`. A guard that
+cannot say what it found teaches the reader to re-run instead of read, which
+is the same disease as the intermittent gate item 89 closed this morning.
+
+**The stale-base rate is now 8 of 8, and the eighth would have been the worst
+one.** Round 2's branch had gone eleven landings stale; its
+`src/python/eqdyna/assembleGlobalKU.py` predates the TPV30 fix, so taking the
+branch wholesale — or even taking "all the python files it touched" — would
+have silently REVERTED the session's most important landing. Only its six
+intended files were taken, each checked untouched on master since its base.
+
+**Held work is not free, but landing it early would have cost more.** Round 2
+sat finished for four hours because the TPV30 hunt was live in the same
+directory. Landing a clarity refactor underneath an in-flight bug hunt is how
+a fix gets attributed to the wrong change.
