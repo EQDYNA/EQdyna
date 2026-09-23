@@ -23,6 +23,11 @@ test.prev/
 testsys/perf/.perf_case.lock
 testsys/perf/.perf_case_tpv29.lock
 src/python/.eqdyna.lock
+# Item 77: the shared case builders -- run_scaling.build_py_case (called by
+# run_scaling, run_mpi_scaling, run_jaxmpi_ab, run_setup_probe and
+# run_shard_scaling) and run_numa_scaling.build_case.
+testsys/perf/.scaling_case.lock
+testsys/perf/.numa_case.lock
 resume_claude.sh
 .claude/
 testsys/parity/evidence_output/
