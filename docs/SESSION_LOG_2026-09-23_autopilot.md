@@ -201,4 +201,115 @@ of running code missions beside a measurement, and the filter caught both.
 - `testsys/perf/run_perf.py:172` and `testsys/perf/run_jaxmpi_ab.py:88` rebuild
   fixed in-repo paths and are the same defect class item 70 just fixed;
   `runlock.acquire` is reusable for both. Not queued.
-- Tag `v5.16.1` is gated on CI being green for `5b7a278` (rule 15a).
+- Tag `v5.16.1` is gated on CI being green (rule 15a) — placed later in the
+  session, see section 8.
+
+## 6. Second landing wave — items 74, 75, 77, 80 and two CI guards
+
+All in `v5.16.1` (the tag was held until the whole wave was in), each gated by me
+with `python3 testsys/run.py unit regression` exit 0 in an integration worktree,
+each branch cut from the then-current master.
+
+| item | what landed | guard |
+|---|---|---|
+| 74 | `runlock` takes a relative PATH; `run_perf.py` locks `testsys/perf/perf_case` inside `build_perf_case()`, `run_jaxmpi_ab.py` locks `src/python/eqdyna` | `test_perf_tool_locks.py`, 10 checks |
+| 75 | `pre-commit` also refuses a commit staging `PROJECT_RULES.md`/`pathway_forward.md` together with any other file | `test_precommit_board_separation_guard.py` |
+| 77 | locks for `run_scaling.build_py_case` and `run_numa_scaling.build_case`; `run_jaxmpi_ab` REFUSES when `$EQDYNAROOT` names another checkout | same guard, 10 → 17 checks |
+| 80 | `check_board_separation.py` wired as the first step of `test.yml`'s `unit-regression` job | `test_ci_board_separation_step.py` |
+| — | `publish.yml`'s `fetch-depth: 0` (see section 7) | `test_publish_image_fetch_depth.py` |
+
+Two things worth keeping out of the table:
+
+**`run_jaxmpi_ab.py` locks the PACKAGE, not the `__pycache__` the board row named.**
+Its `stage()` copies arm-specific `driver.py` and `MPI4NodalQuant.py` into
+`src/python/eqdyna` and every timing is taken against whatever those files then
+hold. Two concurrent invocations in one checkout do not crash — they produce **a
+number recorded under the wrong arm label**, which the tool's own docstring calls
+worse than no number. I ran five repetitions of that tool tonight; this is the
+collision that would have quietly corrupted section 2.
+
+**My own verification of the board-separation hook, run fresh:** staging
+`pathway_forward.md` together with `README.md` → `pre-commit: REFUSED -- this
+commit MIXES the rule book / board with other files`, exit 1; the same commit
+board-only → exit 0. And the measured limits, which matter more than the feature:
+git does NOT run `pre-commit` for an automatic merge commit (so the merge path is
+unaffected and must stay so), and `git commit --amend` is blind to the check
+because `git diff --cached` compares against the commit being replaced.
+`check_board_separation.py` closes the amend hole over finished history, which is
+what item 80 wired into CI.
+
+## 7. The Docker publish workflow was red on the v5.16.0 tag, and nobody read it
+
+Raised by the coordinator, re-derived by me from the failing run rather than
+accepted: run 35819232914 on `894cdc1` — the exact SHA `v5.16.0` is tagged at —
+failed two regression guards INSIDE the built image, `test_history_table.py`
+("expected 8 bulk-imported commits stamped 2018-11-26, found 0") and
+`test_pretag_ci_negative.py`, whose own message named the fix: "shallow or
+incomplete checkout: 5 referenced commit(s) do not resolve ... set `fetch-depth:
+0`". Cause: `publish.yml` used `actions/checkout@v2` at the default depth 1 and
+`Dockerfile:33` is `COPY . /opt/eqdyna`, so the SHALLOW `.git` travels into the
+image and both guards read history that is not there.
+
+**The guards were right and the environment was wrong**, so the fix is
+`fetch-depth: 0` (`a99902f`) and NOT teaching the guards to skip — a guard that
+skips when its evidence is missing is not a gate.
+
+**Consequence, from the run's own step list: `Push image -> skipped`,
+`verify-published-image -> skipped`.** The gate runs before the push, so
+**`ghcr.io/eqdyna/eqdyna:v5.16.0` was never published and `:latest` was never
+moved to it.** Nothing in this project reads that workflow, so a release shipped
+without its image and every other gate stayed green. (Registry not queried
+directly: this token lacks `read:packages`. The evidence is the job, not the
+registry.)
+
+**Rule 15a's pre-tag gate reads ONE workflow's conclusion.** v5.16.0 passed it
+honestly — both "Automatic Testing of EQdyna" runs on `894cdc1` succeeded — while
+a second workflow on the same SHA was red. Whether 15a should require every
+workflow for the SHA is a methodology change at the release boundary; recorded
+for the owner, not decided.
+
+## 8. The tag, and proving the fix before the release rather than with it
+
+The coordinator's catch, and it was the right call: `publish.yml` fires only on a
+tag push or a dispatch, so tagging would have made the release the experiment.
+The workflow's own header says `workflow_dispatch` runs build+gate WITHOUT
+publishing. So, in order:
+
+1. `gh workflow run publish.yml --ref master` on `4ee171b` — run 35828671705,
+   **success**, nothing published. The shallow-clone fix is proven.
+2. `python3 testsys/regression/check_pretag_ci.py --pre-tag 4ee171b` — `PASS  a
+   completed, successful Automatic Testing of EQdyna run exists`, exit 0.
+3. `git tag -a v5.16.1 4ee171b` and push.
+4. The tag's publish run 35828977752: `Gate -> success`, **`Push image ->
+   success`**, and the separate `verify-published-image` job pulled the image
+   fresh on a clean runner and re-ran the whole gate against it — **success**.
+
+`:latest` now points at v5.16.1. **v5.16.0 still has no image**; backfilling it
+is the owner's call, not mine.
+
+## 9. One error of my own
+
+I dispatched a general-purpose agent with the literal prompt "placeholder",
+having reached for a continue-an-existing-agent facility this deployment does not
+give me. It did nothing (0 tool uses) and the main checkout was verified clean
+afterwards, but a full-tool agent with an ambiguous prompt and no worktree
+isolation is exactly the containment failure I am here to prevent. Cost: one
+wasted dispatch. The rule it implies is that a dispatch is made only with its
+isolation and its scope already written.
+
+## 10. Still open after this session
+
+- **Stages 1-3 of the setup rewrite (item 64)** — with the owner, on section 3's
+  numbers. Not started.
+- Item 64's residual question: nothing has ruled out process-launch/import
+  overhead as part of the 32-rank fixed term; the probe measures
+  `build_solver_state` only (import is 0.1 s of it).
+- `testsys/parity/probe_plastic_traction.py:80` rebuilds a fixed in-repo path and
+  is the last unlocked member of item 70's class.
+- Four unguarded settings in `.github/workflows/` (publish.yml's `packages:
+  write`, the in-image gate's contents, the two `if: github.event_name == 'push'`
+  conditions, and the `@v4`/`@v2` checkout divergence).
+- No `.dockerignore`: `COPY . /opt/eqdyna` copies whatever is in the build
+  context. **A naive fix that excludes `.git` would re-break the two in-image
+  history guards** — the trap is worth writing down before anyone takes that row.
+- Whether rule 15a should read every workflow for the SHA (section 7).
