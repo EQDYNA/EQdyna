@@ -1064,3 +1064,82 @@ numbers rather than from theory.
 Evidence: `docs/perf_snapshots/mpi_scaling_2026-09-23_08{4522,5541}_tpv104.json`,
 `docs/evidence/perf-2026-09-23/wei-s3_jaxmpi1d_rep{1,2}.log.gz`, 20 append-only
 ledger rows.
+
+## FF. Landings 7-10, and the brief defect that has now fired twice
+
+| commit | what | my own gate |
+|---|---|---|
+| `013f762` | rule 23 — Fortran is the reference implementation; the port follows its NUMERICS, not its file layout | counts verified at the merged tree (47 headings, 23 numbered rules); tier green |
+| `6c33840` | `docs/fortran_python_correspondence.md`, all 26 `.f90` classified counterpart / folded / absent (rule 23 clause 4) | TWO corrections of my own, below |
+| `56d2401` | item 43 + 64 design, DESIGN ONLY | four of its load-bearing claims re-read in the source by me |
+| `090d2cf` | refactor round 3 — one shared case-builder (`testsys/perf/perflib.py`) for four tools, net -22 lines | MY OWN mutation on a THIRD tool: delete the acquire in `run_scaling.build_py_case` -> 4 checks RED; restored byte-identically (`2080eeb6…497866`); 18 checks green; real invocation through the shared builder |
+
+**The audit's headline finding was wrong, and checking cost one grep.** It
+reported that an inverted element makes Fortran stop while Python produces a
+finite wrong answer. Both port determinant paths raise:
+`assembleGlobalMass.py:167` (`compute_element_det`) and `:461-464`
+(`compute_element_shape`, the path `eqdyna3d.py:301` actually uses). What
+survives is narrower and still true — the port has no NUMBERED exit-code
+contract. The second correction: `rdampm` appears exactly twice in
+`src/fortran` (declaration at `globalvar.f90:179`, use at
+`assembleGlobalKU.f90:19`) with no reader, so both sides are 0 for every
+runnable case and the "port hardcodes 0.0" gap is a doc fix. A subagent's
+report is a hypothesis even when the subagent is auditing someone else's work.
+
+**Round 3's dedup was unblocked by round 1's finding, in the right order.**
+Round 1 found that the guard forbade the fix; `iris-vermeulen` made the guard
+behavioural (`928c4d4`); round 3 then did the dedup under it. Three missions,
+one finding, no step skipped — and the proof that the order mattered is that
+the same dedup attempted before `928c4d4` turned the guard RED.
+
+**Rule 22 fired twice today and both times the defect was mine.** Rounds 2 and
+3 both came back complete and UNCOMMITTED because my brief said "commit and
+push" and that agent's own constitution forbids committing at all. Both halted
+and named the conflict instead of picking a side, which is the behaviour I ask
+for. The brief template fix: *"commit if your own rules allow it; otherwise
+leave the work clean and uncommitted in the worktree and tell me — I will
+commit it."* Cost so far: zero, because both said so plainly. It would have
+cost the whole mission if either had silently not-committed and reported
+success.
+
+## GG. The 3D design, and the question it was dispatched to answer
+
+`56d2401`, design only. **frt canonicalisation stays honest under rank-local
+numbering and neither `frt_canonical.py` nor `compare.py` changes** — I
+verified the chain myself rather than accepting it: `write_frt` builds rows
+through `build_frt_rows(meshCoor, nsmp, ...)` (`library_output.py:119`), so
+columns 0-2 are physical coordinates FETCHED BY a node number and no node
+number is ever written; `frt_canonical.py:131` dedupes on
+`np.round(arr[:,:3], 6)` and `:150` lexsorts on those coordinates;
+`compare.load_run`'s own docstring says "1 file (serial Python), 2 or 4 (MPI
+Fortran), all the same". Fortran has had rank-local numbering all along, so
+the committed references were produced under it.
+
+**What is lost is CONSTRUCTION, not comparison**, and that distinction is the
+whole value of the design pass. Today every index array is the gated serial
+array under an injective relabelling, so a partition bug cannot hide. Three
+failure classes replace that guarantee, and one — right coordinate, wrong
+physics AWAY from the fault — is not reliably caught by a short coarse frt
+gate. The answer is new direct-observation gates (partition arithmetic,
+bitwise line slices, rank-local mesh bitwise-equal to serial under the
+analytic map, per-run ownership allreduces), not a changed oracle. A design
+that had proposed relaxing the comparison instead would have been refused.
+
+I also checked the fourth claim the staging rests on, because it is the one
+that would waste days: `meshgen.f90:538-545` allocates `globalOneDimCoorArr`
+and `:586-596` SLICES `localOneDimCoorArr` out of it. The port must slice and
+never re-accumulate — restarting the geometric stretch from a rank-local
+origin perturbs coordinates by 1e-8..1e-7 m against `align`'s 1e-9 tolerance,
+and the e2e failure would name node alignment while saying nothing about the
+cause.
+
+**Held for the owner, not decided here:** the memory return is UNMEASURED and
+likely about half of the 1.65 GB/rank (Stage 3 is an explicit kill point), the
+time return is at most 7.92 s against hundreds of ~130 ms steps, and a cheaper
+alternative — 3D structured `(ix,iy,iz)` box selection on the current
+build-serial-then-restrict design — buys the entire halo-surface argument
+while KEEPING global numbering. Prediction registered before any build
+(rule 4a): 8/16-rank ratios should fall from 1.56x/1.58x toward ~1.07x, and
+**landing near 1.4x is a negative result to be reported as one** — this is the
+fourth candidate explanation for the same residual after transport, placement
+and element balance each measured and failed.
