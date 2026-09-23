@@ -35,9 +35,19 @@ concurrency:
 # this grows to.
 #
 # The fortran slice is split into two jobs (group A/B) and the python slice
-# into three (cheap/meng/tpv29), balanced by measured per-cell cost with
-# test.tpv29 x python-numpy isolated in its own job because it is an order
-# of magnitude more expensive than any other python cell.
+# into five, balanced by measured per-cell cost. test.tpv29 x python-numpy is
+# isolated in its own job because it is an order of magnitude more expensive
+# than any other python cell; test.tpv36 x python-numpy and test.tpv37 x
+# python-numpy are EACH isolated in their own job (2026-09-23) for the same
+# reason -- measured 1256.7 s and 1269.7 s respectively, together 42 of the
+# old combined job's 59 min because run_e2e.py's default core budget on a
+# standard GitHub runner (os.cpu_count()-4, floored at 1) is 1, i.e. cells in
+# one invocation run strictly SERIALLY, not concurrently -- so co-locating
+# two ~21-minute cells in one job serialises their cost instead of hiding it.
+# The remaining python-jax cells (plus test.tpv8 x python-numpy, cheap enough
+# to keep alongside its own jax column) stay together in one job since their
+# serial sum is ~16 min, comfortably under the ~21-22 min the two isolated
+# numpy jobs now cost on their own.
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -339,12 +349,22 @@ jobs:
       if: always()
       run: cat testRunLog.txt
 
-  # The python slice of matrix.CI_CELLS, split across three jobs by measured
+  # The python slice of matrix.CI_CELLS, split across five jobs by measured
   # cost (see matrix.MEASURED_PEAK_RSS_GB). No fortran cell is selected in
-  # any of the three, so none needs `needs: build`, mpich, or netCDF dev
+  # any of the five, so none needs `needs: build`, mpich, or netCDF dev
   # headers. test.tpv29 x python-numpy alone dwarfs every other python cell
-  # and is isolated in its own job (e2e-ci-python-tpv29) below.
-  e2e-ci-python-cheap:
+  # and is isolated in its own job (e2e-ci-python-tpv29) below; test.tpv36 x
+  # python-numpy and test.tpv37 x python-numpy are EACH isolated in their own
+  # job for the same reason (e2e-ci-python-tpv36-numpy /
+  # e2e-ci-python-tpv37-numpy, below) -- see the top-of-file comment.
+  #
+  # Renamed from e2e-ci-python-cheap (2026-09-23): with the two ~21-minute
+  # numpy cells moved out, this job now runs test.tpv8 on both backends plus
+  # every remaining python-jax-only cell (tpv10/tpv104/tpv1053d, and the
+  # jax columns of tpv36/tpv37) -- "cheap" no longer named a specific enough
+  # set once tpv36/tpv37 split. Grep the OLD name (e2e-ci-python-cheap)
+  # before assuming any doc or test still means this job.
+  e2e-ci-python-jax-tpv8:
     runs-on: ubuntu-22.04
 
     steps:
@@ -367,9 +387,9 @@ jobs:
 
     # tpv8 (both backends) + tpv10/tpv104/tpv1053d jax-only (numpy columns
     # never measured, so excluded per matrix.py's "no cell without a
-    # measured RSS" rule) + tpv36/tpv37 (both backends, measured at
-    # 2.91-4.34 GB, still under this job's 3.95 GB existing peak + margin).
-    - name: Run e2e-ci (python cells, cheap group)
+    # measured RSS" rule) + tpv36/tpv37 jax-only (their numpy columns now run
+    # in their own isolated jobs, below -- see the top-of-file comment).
+    - name: Run e2e-ci (python cells, jax + tpv8 group)
       run: |
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
@@ -380,7 +400,83 @@ jobs:
         set -o pipefail
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
         python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax 2>&1 | tee -a testRunLog.txt
-        python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36,test.tpv37 --backends python-numpy,python-jax 2>&1 | tee -a testRunLog.txt
+        python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36,test.tpv37 --backends python-jax 2>&1 | tee -a testRunLog.txt
+
+    - name: Print testRunLog.txt
+      if: always()
+      run: cat testRunLog.txt
+
+  # test.tpv36 x python-numpy ALONE: measured 1256.7 s (2026-09-23), the
+  # second most expensive python cell in the table after tpv29 x python-numpy
+  # and formerly co-located with tpv37's numpy cell in the same job, where
+  # run_e2e.py's default serial core budget summed the two to 42 of the old
+  # job's 59 minutes. This job's own wall clock is now its critical path --
+  # nothing left to parallelize inside one sequential simulation.
+  e2e-ci-python-tpv36-numpy:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Update package list
+      run: sudo apt-get update
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install python3 python3-pip
+        pip install numpy scipy netCDF4 matplotlib xarray
+        pip install --upgrade numpy
+        pip install jax
+
+    - name: Run e2e-ci (python cells, tpv36-numpy)
+      run: |
+        export EQDYNAROOT=$(pwd)
+        export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        # Pin numpy's own BLAS thread pools -- see the jax-tpv8 group job above.
+        export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+        set -o pipefail
+        python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36 --backends python-numpy 2>&1 | tee -a testRunLog.txt
+
+    - name: Print testRunLog.txt
+      if: always()
+      run: cat testRunLog.txt
+
+  # test.tpv37 x python-numpy ALONE: measured 1269.7 s (2026-09-23) -- see
+  # the tpv36-numpy job's comment above for why this is isolated the same way.
+  e2e-ci-python-tpv37-numpy:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Update package list
+      run: sudo apt-get update
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install python3 python3-pip
+        pip install numpy scipy netCDF4 matplotlib xarray
+        pip install --upgrade numpy
+        pip install jax
+
+    - name: Run e2e-ci (python cells, tpv37-numpy)
+      run: |
+        export EQDYNAROOT=$(pwd)
+        export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+        # Pin numpy's own BLAS thread pools -- see the jax-tpv8 group job above.
+        export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+        set -o pipefail
+        python3 testsys/e2e/run_e2e.py --ci --cases test.tpv37 --backends python-numpy 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt
       if: always()
