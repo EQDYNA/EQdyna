@@ -23,6 +23,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 12. Untracked build artifacts never accumulate in the working tree.
 13. File permission changes are reviewed individually, never bulk-applied.
 14. A living status board, re-checked on a schedule.
+14a. A board row's evidence command must be capable of both outcomes.
 15. Releases follow the documented workflow, notes lead the README.
 15a. A pre-tag CI check on the exact SHA is required before `git tag`, and it must be mechanical, not remembered.
 15b. The local sweep and CI gate different failure classes; CI's release run re-verifies only what a local sweep structurally cannot.
@@ -43,9 +44,9 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
-(1-21) plus seventeen lettered sub-rules (2a, 3a, 4a, 4b, 4c, 5a, 6a, 15a,
-15b, 15c, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 38 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 38;
+(1-21) plus eighteen lettered sub-rules (2a, 3a, 4a, 4b, 4c, 5a, 6a, 14a, 15a,
+15b, 15c, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 39 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 39;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 21.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -622,6 +623,47 @@ still holds today.
 **How to apply**: before citing a "this already works" or "already fixed"
 claim from `README.md` or `pastReleaseNotes.md`, check `pathway_forward.md`
 first, and re-run the cited command rather than trusting the recorded line.
+
+---
+
+## 14a. A board row's evidence command must be capable of both outcomes
+
+A row's `Command` column must be able to read as UNFIXED and, separately, as
+FIXED — the row states, or makes obvious, what each output looks like. A
+command that names a file, a header line, or a location the eventual fix will
+not touch reads the same before the fix and after it. A "Last checked" date
+next to such a command is worse than a blank one: a blank date says plainly
+that nobody has looked; a date beside a command that cannot move says the row
+is maintained when nothing was actually re-verified.
+
+**Rationale (2026-09-23)**: two rows in this file carried exactly that shape.
+Item 71's command, `grep -c insertFaultType
+testsys/regression/test_rough_fault_normal_consistency.py`, read "0 = still
+uncovered" — but the coverage landed correctly as a SIBLING file
+(`testsys/regression/test_fractal_fault_geometry_derivatives.py`, `2590c65`),
+deliberately, so a failure names which path broke. The named command reads 0
+forever, before the fix and after it, and it cost one full dispatch before
+anyone noticed the row had been closed by a file it never looked at. Item
+67's command told a reader to identify the station file "by its `# location
+= on fault` header line" — no such line is ever written: `stLocStamp` is
+computed at `src/fortran/library_output.f90:55` and never reaches a `write`
+statement (see item 85). The command could not have been run as written by
+anyone, ever, and yet the row carried a recent "Last checked" date.
+
+**How to apply**: when writing or updating a row's `Command` column, state or
+demonstrate both readings before trusting either — what it prints against the
+tree as it stands, and what it would print if the fix already existed
+somewhere in the tree. A command whose two runs would print the same thing is
+not evidence for that row; rewrite it against the artifact the fix will
+actually change. Do this at the moment the row is WRITTEN, not only when it
+is later re-checked — both incidents here were wrong from birth, not decayed
+into wrongness.
+
+**Tier**: not mechanical — no script can tell, from a command's text alone,
+whether it distinguishes the two states it is asked to distinguish. The
+nearest backstop is this rule itself, read by whoever next re-checks the row:
+a reviewer who runs the command and cannot say what a different outcome would
+have looked like has found a rule-14a violation, not a clean row.
 
 ---
 
