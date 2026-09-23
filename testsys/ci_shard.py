@@ -91,6 +91,7 @@ SHARDS = {
         "test_sweep_core_budget.py",
     ],
     "3": [
+        "test_sweep_speed_2026_09_23.py",  # added at merge (wei-lin): landed d488dae after this partition was timed; 0.2 s
         "test_ci_shard_coverage.py",
         "test_ci_workflow_coverage.py",
         "test_create_newcase.py",
