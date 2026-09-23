@@ -12,6 +12,11 @@ src/fortran/_probe_wedge_kernel
 
 test/
 test.prev/
+# testsys/runlock.py's flock files, one per rotated run tree (rule 21a, item
+# 70). Local, per-checkout, and meaningless in another tree: they carry the
+# holding pid of a run on THIS box.
+.test.lock
+.test.full.lock
 resume_claude.sh
 .claude/
 testsys/parity/evidence_output/

@@ -44,6 +44,13 @@ and every cell's output stays on disk under test/ -- including the python
 cells, which the old accept tier ran in a tempfile directory and deleted, so a
 failure destroyed its own evidence.
 
+Rule 21a: that rotation acts on a FIXED path, so exactly one invocation per
+checkout may hold it. testsys/runlock.py takes an exclusive flock on
+$REPO_ROOT/test before anything here builds or rotates; a second concurrent
+invocation REFUSES, names the holder's pid and start time, and exits non-zero
+rather than renaming the first one's live tree out from under it (pathway item
+70 -- the 2026-09-22 collision that killed a 1500.1 s cell and printed FAIL).
+
 No timeouts: this is a shared box and dynamic-rupture runs are slow when it is
 busy.
 """
@@ -60,7 +67,7 @@ REPO_ROOT = os.path.dirname(TESTSYS)
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from testsys import compare, frt_canonical, matrix  # noqa: E402
+from testsys import compare, frt_canonical, matrix, runlock  # noqa: E402
 
 # Line-buffered stdout. Redirected to a file or through `tee`, Python block-
 # buffers its OWN prints while subprocess children write straight to the fd --
@@ -550,6 +557,22 @@ def main(argv=None):
         print('\ne2e: FAIL - the selection runs zero cells; a sweep that '
               'compares nothing must never exit green')
         return 1
+
+    # Gate 0 - ONE live invocation per run tree (rule 21a, pathway item 70).
+    #
+    # Taken HERE, ahead of Gate 1 and ahead of the build, rather than
+    # immediately before the rotation further down: an invocation that is going
+    # to be refused should be refused before it spends a Fortran build, and the
+    # lock then covers bin/ for the same price. It is released by the kernel
+    # when this process exits, however it exits (testsys/runlock.py explains
+    # why that is flock and not an O_EXCL lockfile).
+    try:
+        lock = runlock.acquire(REPO_ROOT, 'test')
+    except runlock.RunTreeLocked as exc:
+        print('\ne2e: FAIL - %s' % exc)
+        return 1
+    print('e2e: holding %s (pid %d) - the test/ rotation below is serialised '
+          'against every other invocation in this checkout' % (lock.path, lock.pid))
 
     # Gate 1 - cheap check before the expensive runs (rule 9).
     guard = os.path.join(REPO_ROOT, 'testsys', 'regression', 'test_create_newcase.py')

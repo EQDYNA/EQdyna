@@ -1404,13 +1404,29 @@ be reverted, re-gated or held on it. If you must diagnose a collision after the
 fact, `test.prev/` holds the rotated tree and the other session's timestamped
 snapshot in `docs/perf_snapshots/` names who rotated it and when.
 
-**Tier: NOT mechanical, and this rule says so about itself.** A written rule
-that depends on every session remembering is strictly weaker than a lock, and
-both sessions in the incident above were able to read this book. The mechanical
-fix — a lockfile on `$REPO_ROOT/test`, or a PID/SHA-stamped run directory so
-two invocations cannot name the same tree — is NOT DONE; it is tracked as
-pathway item 70 and routed to `iris-vermeulen`. Until it lands, the collision
-is forbidden but not prevented, and this rule is enforced by being read.
+**Tier: MECHANICAL for `test/` and `test.full/` as of 2026-09-22 (item 70);
+still hortatory for everything else in the class.** A written rule that depends
+on every session remembering is strictly weaker than a lock, and both sessions
+in the incident above were able to read this book. `testsys/runlock.py` is the
+lock this rule asked for: `run_e2e.py` and `run_e2e_full.py` each take an
+exclusive non-blocking `flock` on `$REPO_ROOT/.test.lock` /
+`$REPO_ROOT/.test.full.lock` BEFORE any build and before the rotation, and a
+second concurrent invocation in the same checkout prints the holder's pid,
+start time, cwd and command line and exits 1 without rotating, waiting, or
+falling back to another directory. A holder that dies releases the lock by the
+kernel; the next invocation takes it over and says so. Guarded by
+`testsys/regression/test_e2e_run_tree_lock.py`, which holds the lock, invokes
+both entry points for real, and asserts non-zero exit, the refusal naming the
+holder, and that the live tree was NOT renamed.
+
+**What is still only written down.** The lock prevents the COLLISION; it does
+not make anyone use a worktree, and a sweep run in the main checkout still
+violates this rule and rule 21b while passing the lock cleanly. And the other
+two tools named above are unguarded: `testsys/perf/run_perf.py:172` and
+`testsys/perf/run_jaxmpi_ab.py:88` rebuild fixed in-repo paths with no lock of
+any kind. `testsys/runlock.py` is generic over the resource name and can be
+adopted by both unchanged — that adoption is not done and is not covered by
+item 70.
 
 ---
 
