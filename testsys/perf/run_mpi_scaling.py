@@ -370,6 +370,26 @@ def main():
                     help='discard one n_lo run first so BOTH timed runs hit a '
                          'warm XLA compilation cache. See per_step_jax_mpi.')
     ap.add_argument('--skip-fortran', action='store_true')
+    ap.add_argument('--cpus', default='',
+                    help='explicit cpu list, comma-separated, used INSTEAD of '
+                         'the least-loaded search. PLACEMENT IS A CONFOUND AND '
+                         'this flag is how it gets controlled: least_loaded_cpus '
+                         'sorts by (busy, node, cpu), so when most cpus read '
+                         'busy 0.00 the NODE tiebreak dominates and it PACKS '
+                         'ranks into as few NUMA nodes as the free set allows '
+                         '-- 16 ranks onto 2-3 of this box\'s 8 nodes, sharing '
+                         'those nodes\' memory controllers. OBSERVED, packed, '
+                         'test.tpv104 16 ranks, snapshot '
+                         'mpi_scaling_2026-09-23_110105_tpv104.json: per-rank '
+                         'exchange is bimodal and the split follows the NODE '
+                         'boundary, 47-51 ms on the five node-0 ranks against '
+                         '2.4-2.8 ms on the last node-2 ranks. That is a '
+                         'placement signature, not a halo-size one, and it is '
+                         'why any jax-vs-Fortran ratio must name its placement. '
+                         'Whether spreading removes it is a MEASUREMENT this '
+                         'flag exists to make -- no spread figure is quoted '
+                         'here until a committed snapshot carries it. '
+                         'The busy ceiling still applies to the cpus named here.')
     ap.add_argument('--exclude-cpus', default='',
                     help='comma-separated cpus never to place a rank on. See '
                          'least_loaded_cpus: cpu 0 and cpu 1 read busy 0.00 '
@@ -420,7 +440,18 @@ def main():
           flush=True)
     rows = []
     for n in ranks:
-        cpus, busy = least_loaded_cpus(nodes, n, exclude=excl)
+        if a.cpus:
+            want = [int(x) for x in a.cpus.split(',') if x.strip()]
+            if len(want) < n:
+                raise SystemExit('FAIL: --cpus names %d cpu(s), need %d for '
+                                 '%d ranks.' % (len(want), n, n))
+            cpus = want[:n]
+            busy = numa.cpu_busy_fractions(cpus)
+            if not busy:
+                raise SystemExit('FAIL: could not read per-cpu utilisation for '
+                                 '%s -- refusing to place ranks blind.' % cpus)
+        else:
+            cpus, busy = least_loaded_cpus(nodes, n, exclude=excl)
         worst = max(busy.values())
         print('\n-- %d rank(s) -- cpus %s  busy %s  worst %.2f (max-busy %.2f), '
               'whole-box load %.1f'
