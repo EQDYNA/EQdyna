@@ -45,6 +45,7 @@ RANKS = 16
 
 sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from testsys import runlock  # noqa: E402
 from full_specs import FULL_SPECS, EXCLUDED  # noqa: E402
 
 
@@ -109,6 +110,21 @@ def main():
               'multi-hour, 16-rank runs, user-scheduled, never automatic. '
               'Set EQDYNA_FULL_LAUNCH=yes-hours to actually launch them.')
         return 1
+
+    # ONE live invocation per run tree (rule 21a, pathway item 70). Same defect
+    # as run_e2e.py, different tree: the rotation below acts on the fixed path
+    # test.full/ -> test.full.prev/. Its OWN lock, not run_e2e.py's, because
+    # the two tools rotate two different trees and have no reason to block each
+    # other. Taken before the build check for the same reason run_e2e.py takes
+    # it before Gate 1: refuse before spending anything.
+    try:
+        lock = runlock.acquire(REPO_ROOT, 'test.full')
+    except runlock.RunTreeLocked as exc:
+        print('e2e-full: FAIL - %s' % exc)
+        return 1
+    print('e2e-full: holding %s (pid %d) - the test.full/ rotation below is '
+          'serialised against every other invocation in this checkout'
+          % (lock.path, lock.pid))
 
     for case, reason in EXCLUDED.items():
         print(f'e2e-full: EXCLUDED {case}: {reason}')
