@@ -34,12 +34,13 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 20c. A completed detached run is indistinguishable from one still in flight until something reads its artifact and updates the board — and until then its worktree is not reapable by default.
 21. An agent's write surface is its own worktree; the main checkout belongs to the conductor.
 21a. A gate sweep runs in its own worktree; the shared `test/` tree has no lock, and a collision reads as a solver failure.
+21b. No session writes the main checkout — conductors branch too, and its HEAD moves only by fast-forward sync.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
-(1-21) plus eleven lettered sub-rules (2a, 4a, 4b, 4c, 5a, 15a, 15b, 20a, 20b,
-20c, 21a) — 32 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 32;
+(1-21) plus twelve lettered sub-rules (2a, 4a, 4b, 4c, 5a, 15a, 15b, 20a, 20b,
+20c, 21a, 21b) — 33 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 33;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 21.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -1410,3 +1411,93 @@ fix — a lockfile on `$REPO_ROOT/test`, or a PID/SHA-stamped run directory so
 two invocations cannot name the same tree — is NOT DONE; it is tracked as
 pathway item 70 and routed to `iris-vermeulen`. Until it lands, the collision
 is forbidden but not prevented, and this rule is enforced by being read.
+
+---
+
+## 21b. No session writes the main checkout — conductors branch too, and its HEAD moves only by fast-forward sync
+
+The main checkout `/home/utig5/dliu/EQdyna` — the tree whose `--git-dir` equals
+`--git-common-dir` — is written by NOBODY. No session, agent or conductor,
+commits there, merges there, runs a gate there (rule 21a), or leaves modified
+tracked files there. Every session works in a linked worktree, and a conductor
+is not an exception: the conductor merges, but it merges on a branch in a
+worktree of its own and pushes, the same as everyone else.
+
+The main checkout's HEAD moves by exactly ONE mechanism, and that mechanism
+creates no commit:
+
+    git fetch origin && git merge --ff-only origin/master     # or: git pull --ff-only
+
+on a clean tree. If it refuses — because the tree is dirty, or because the
+history has diverged and a real merge would be needed — the work belongs on a
+branch in a worktree and gets pushed from there; it is never resolved in place.
+
+**This AMENDS rule 21, it does not replace it.** Rule 21's agent half stands
+verbatim. What 21b removes is the conductor's exemption, and the reason is
+scope, not blame: rule 21 assigns the checkout to "the conductor", singular,
+and says nothing about two. On 2026-09-22 two conductor sessions were live in
+this repository at once (the second stood down about 22:30) and, under 21 as
+written, both held an equally good claim on the same tree — the rule could not
+adjudicate, because it never contemplated the case. Read strictly, 21 also did
+NOT forbid a conductor's own commits in the conductor's own checkout: wei-lin's
+direct `commit:` entries `87af56e` and `bbf62c8` were compliant with the rule
+as it stood. They are reclassified by this sub-rule PROSPECTIVELY. A rule the
+repo cannot adjudicate does not get applied backwards to whoever is asked about
+it first.
+
+**Why "nobody writes it" and not "one named owner".** The test has to be
+decidable from the repository, not from seniority or from who asked first.
+`git rev-parse --git-dir --git-common-dir` answers "is this tree the main
+checkout" in every clone, today, with no state to maintain. NOTHING in a git
+repository answers "am I the conductor" — a named-owner rule needs a lease
+artifact (a claim file, a branch, a lockfile) that a crashed or rate-limited
+session leaves stale, that a second conductor starting in parallel has no
+reason to read, and that would itself want a root file rule 1 does not have a
+slot for. Between an ownership question that needs an oracle and a prohibition
+that needs one existing command, the prohibition is the enforceable one. The
+cost is one extra `git worktree add` per conductor session; the thing bought is
+that "may I write here" has the same answer for every session, always.
+
+**Incident (2026-09-22, the same night, demonstrated in BOTH halves)**: two
+conductor sessions shared `/home/utig5/dliu/EQdyna`.
+
+- **Commits.** `88a4012` is a direct `commit:` entry in master's reflog, made
+  by the second session in the main checkout — evidence of the commit half,
+  recorded here because rule 21's own incident was relayed without SHAs and is
+  not re-auditable (rule 4). This one is.
+- **Runs.** That same session's e2e run at 22:12:20 rotated the first session's
+  in-flight release gate `test/` to `test.prev/`
+  (`docs/perf_snapshots/e2e_cells_2026-09-22_221220_2462614.json`), killing a
+  1500.1 s cell with a `FileNotFoundError` and costing ~40 minutes plus a
+  restarted release gate. That is rule 21a's incident, and 21a closes only that
+  half: it forbids sweeping in a shared checkout, and says nothing about who may
+  commit there.
+
+Two sessions, one tree, two distinct loss modes in under an hour. That is the
+frequency that makes this a sub-rule rather than a note.
+
+**How to apply**: before your first write of ANY session — conductor sessions
+included — run `git rev-parse --git-dir --git-common-dir`. Equal means you are
+standing in the main checkout: do not commit, do not merge, do not launch a
+sweep (rule 21a), `git worktree add` and move. To bring the main checkout
+forward after a merge landed on origin, use the `--ff-only` form above and let
+it refuse rather than converting a refusal into a merge commit.
+
+**Note for rule 21's hook (pathway item 68) — this sub-rule settles what the
+hook keys on.** Rule 21 sketched a `pre-commit` hook that refuses when
+`--git-dir` equals `--git-common-dir` **and an agent-session env marker is
+set**. Drop the marker. Under 21b the hook refuses on EQUAL DIRS ALONE, with no
+role test at all, because no role is permitted to commit there — and that is
+the only version that can be built, since the equal-dirs check cannot
+distinguish a conductor from an agent and nothing in the repo sets a trustworthy
+role marker. A marker-keyed hook would have exempted precisely the writer this
+sub-rule forbids, and a hook that fires on the person it was meant to protect is
+a hook that gets disabled. The permitted HEAD move is safe under an
+unconditional refusal by construction: a true fast-forward creates no commit and
+so never invokes `pre-commit`. Build routed to `iris-vermeulen` under item 68;
+this rule's author writes no hook.
+
+**Tier: NOT mechanical until item 68's hook lands**, and, like 21 and 21a,
+weaker for it. The one command this rule needs already exists in every clone
+(`git rev-parse --git-dir --git-common-dir`); what is missing is anything that
+runs it without being asked.
