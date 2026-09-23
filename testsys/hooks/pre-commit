@@ -1,0 +1,98 @@
+#! /bin/sh
+#
+# EQdyna pre-commit hook -- PROJECT_RULES.md rules 21 and 21b, pathway item 68.
+#
+# REFUSES any commit made from the MAIN CHECKOUT. The key is one equality and
+# nothing else:
+#
+#     git rev-parse --git-dir   ==   git rev-parse --git-common-dir
+#
+# In a LINKED worktree those differ (.git/worktrees/<name> against .git); they
+# are EQUAL only when you are standing in the main checkout. Rule 21b forbids
+# every session -- conductor included -- from committing there, so there is no
+# role test, no session env marker, and no exemption. Rule 21's original sketch
+# keyed on an agent-session marker; rule 21b's amendment (2026-09-22) dropped
+# it, because a marker-keyed hook exempts precisely the writer 21b forbids and
+# fires on the one person able to disable it.
+#
+# Safe unconditionally: the one permitted HEAD move in the main checkout, a
+# true `git merge --ff-only`, creates NO commit and therefore never invokes
+# pre-commit. So this hook cannot block bringing the main checkout forward.
+#
+# Installed by `install-eqdyna.sh`, which points `core.hooksPath` at this
+# tracked directory (git installs no hooks on clone). The configured path is
+# RELATIVE, and git runs hooks from the top level of the working tree, so each
+# worktree uses its own checked-out copy of this file -- one install covers
+# every worktree, present and future.
+#
+# Failure mode this guards, restated because it is silent: a commit landed in
+# the main checkout moves HEAD under every other session sharing that tree.
+# The victim's next read of a source file returns different bytes, with no
+# error raised and nothing recording that the tree moved.
+
+set -u
+
+git_dir=$(git rev-parse --git-dir) || {
+    echo "pre-commit: REFUSED -- 'git rev-parse --git-dir' failed." >&2
+    echo "pre-commit: cannot tell which checkout this commit targets, so it" >&2
+    echo "pre-commit: is refused rather than guessed (PROJECT_RULES rule 2)." >&2
+    exit 1
+}
+common_dir=$(git rev-parse --git-common-dir) || {
+    echo "pre-commit: REFUSED -- 'git rev-parse --git-common-dir' failed." >&2
+    echo "pre-commit: cannot tell which checkout this commit targets, so it" >&2
+    echo "pre-commit: is refused rather than guessed (PROJECT_RULES rule 2)." >&2
+    exit 1
+}
+
+# Resolve both to physical absolute paths before comparing: git returns the
+# bare string ".git" for both in the main checkout's top level, but absolute
+# paths from a subdirectory or a linked worktree. Comparing the raw strings
+# would be right by accident in one case and wrong in the other.
+resolved_git_dir=$(cd "$git_dir" 2>/dev/null && pwd -P) || resolved_git_dir=""
+resolved_common_dir=$(cd "$common_dir" 2>/dev/null && pwd -P) || resolved_common_dir=""
+
+if [ -z "$resolved_git_dir" ] || [ -z "$resolved_common_dir" ]; then
+    echo "pre-commit: REFUSED -- could not resolve the git directories" >&2
+    echo "pre-commit:   --git-dir        = '$git_dir'" >&2
+    echo "pre-commit:   --git-common-dir = '$common_dir'" >&2
+    echo "pre-commit: refusing rather than assuming this is a worktree." >&2
+    exit 1
+fi
+
+if [ "$resolved_git_dir" != "$resolved_common_dir" ]; then
+    exit 0
+fi
+
+echo "" >&2
+echo "pre-commit: REFUSED -- this is the MAIN CHECKOUT, not a worktree." >&2
+echo "" >&2
+echo "  --git-dir        = $resolved_git_dir" >&2
+echo "  --git-common-dir = $resolved_common_dir" >&2
+echo "  They are EQUAL, which means this tree is the shared main checkout." >&2
+echo "  In a linked worktree they differ (.git/worktrees/<name> vs .git)." >&2
+echo "" >&2
+echo "PROJECT_RULES.md rules 21 and 21b: NO session commits here -- agents" >&2
+echo "and conductor alike. A commit in this tree moves HEAD underneath every" >&2
+echo "other session sharing it, silently: their next read of a source file" >&2
+echo "returns different bytes, with no error raised anywhere." >&2
+echo "" >&2
+echo "Do this instead:" >&2
+echo "" >&2
+echo "  1. Commit in a worktree of your own:" >&2
+echo "         git worktree add -b <branch> .claude/worktrees/<name> HEAD" >&2
+echo "         cd .claude/worktrees/<name>      # then re-run your commit" >&2
+echo "     An existing worktree already holding your work needs no new one --" >&2
+echo "     just run the commit from inside it." >&2
+echo "" >&2
+echo "  2. To bring this checkout forward after a merge landed upstream, use" >&2
+echo "     a TRUE fast-forward -- it creates no commit and never reaches this" >&2
+echo "     hook, so it is not blocked:" >&2
+echo "         git merge --ff-only <branch>" >&2
+echo "     If that refuses, do NOT convert it into a merge commit; the refusal" >&2
+echo "     is the information." >&2
+echo "" >&2
+echo "This hook has no bypass flag of its own. --no-verify skips it, and doing" >&2
+echo "so is the exact action rules 21/21b forbid." >&2
+echo "" >&2
+exit 1
