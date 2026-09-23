@@ -33,12 +33,13 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 20b. A heavy run's artifacts are not landed until they are committed, and a run finishing does not mean anyone is still there to commit them.
 20c. A completed detached run is indistinguishable from one still in flight until something reads its artifact and updates the board — and until then its worktree is not reapable by default.
 21. An agent's write surface is its own worktree; the main checkout belongs to the conductor.
+21a. A gate sweep runs in its own worktree; the shared `test/` tree has no lock, and a collision reads as a solver failure.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
-(1-21) plus ten lettered sub-rules (2a, 4a, 4b, 4c, 5a, 15a, 15b, 20a, 20b,
-20c) — 31 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 31;
+(1-21) plus eleven lettered sub-rules (2a, 4a, 4b, 4c, 5a, 15a, 15b, 20a, 20b,
+20c, 21a) — 32 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 32;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 21.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -1315,3 +1316,97 @@ tracked, executable, and actually refuses on the equal-dir case. Until that
 exists, every clone is unguarded and this rule is enforced by reading it.
 Tracked as pathway item 68; the build is routed to `iris-vermeulen`, not done
 by this rule's author.
+
+---
+
+## 21a. A gate sweep runs in its own worktree; the shared `test/` tree has no lock, and a collision reads as a solver failure
+
+Any run of the e2e sweep — `python3 testsys/run.py all`, or `run.py` with the
+`e2e`/`e2e-ci` tier, or `testsys/e2e/run_e2e.py` directly — runs in a linked
+worktree of its own, never in the main checkout, for as long as more than one
+session can touch this repository. A worktree has its own `REPO_ROOT`, and
+therefore its own `test/`; that separation is the only thing that makes the
+rotation below safe.
+
+Rule 21 assigns the main checkout to the conductor. That is an ownership
+statement about COMMITS, and it does not make the main checkout a safe place to
+RUN a sweep: the conductor's own gate collides with another session's e2e run
+exactly as an agent's would. Ownership is not exclusivity.
+
+**The mechanism**, written out so the next reader does not re-derive it.
+`testsys/e2e/run_e2e.py:587-594` rotates the run tree at startup,
+unconditionally and with no lock of any kind:
+
+    test_dir = os.path.join(REPO_ROOT, 'test')
+    prev_dir = os.path.join(REPO_ROOT, 'test.prev')
+    if os.path.isdir(test_dir):
+        if os.path.isdir(prev_dir):
+            shutil.rmtree(prev_dir)
+        shutil.move(test_dir, prev_dir)
+
+The rotation itself is correct — it is rule 8's one preserved level of
+evidence. The defect is that it acts on a FIXED path with no owner. A second
+invocation in the same checkout renames the FIRST invocation's live working
+tree out from under it, mid-run; the first invocation notices only when it next
+touches an absolute path it resolved earlier. The Python backend writes
+`frt.txt0` by absolute path at the very END of a cell
+(`src/python/eqdyna/library_output.py:120`, reached from `eqdyna3d.py:522`), so
+a cell can burn its entire runtime and then die on its last write.
+
+**This generalises past `run_e2e.py`.** Any tool that rotates, deletes or
+rebuilds a FIXED path under `REPO_ROOT` has the same shape, and every such tool
+is unsafe to run twice concurrently in one checkout:
+`testsys/e2e/run_e2e_full.py:129-133` (`test.full` → `test.full.prev`, the
+identical pair), `testsys/perf/run_perf.py:172` (deletes
+`testsys/perf_case/<name>`), `testsys/perf/run_jaxmpi_ab.py:88` (deletes
+`src/python/eqdyna/__pycache__`). A tool that works inside
+`tempfile.mkdtemp()` — as every `testsys/regression/` test does — is not in
+this class and needs no worktree. This is the filesystem counterpart of rule
+19's fourth bullet, which says the same thing about a shared committed
+`*_last.*` artifact.
+
+**The failure mode is a FALSE RED, and that is worse than it sounds.** Nothing
+is silently corrupted: a cell whose directory has vanished fails loudly and
+immediately. The damage is that the loud failure is INDISTINGUISHABLE AT A
+GLANCE from a real solver failure — it surfaces in the sweep summary as
+`FAIL <case> x <backend>`, the same string a genuine parity breach produces. A
+conductor who reads that line and reverts a good change, re-gates a landing
+that was fine, or holds a release has been misled by infrastructure. The
+evidence that tells the two apart — a `FileNotFoundError` on a path under
+`test/`, rather than a `max|diff|` over the case bound — is buried in the
+cell's own log, not in the summary anyone actually reads.
+
+**Incident (2026-09-22; the conductor who wrote this rule is its violator)**:
+wei-lin launched the v5.16.0 gate sweep (`python3 testsys/run.py all`) in the
+MAIN CHECKOUT at 21:48, knowing the isolation convention and not following it.
+At 22:12:20 a different Claude session started its own e2e in the same checkout
+and rotated the in-flight sweep's `test/` to `test.prev/` — that session's own
+artifact dates it exactly
+(`docs/perf_snapshots/e2e_cells_2026-09-22_221220_2462614.json`, landed on
+master in `88a4012`). `test.tpv1053d x python-numpy` then ran **1500.1 s** and
+died with `FileNotFoundError: [Errno 2] No such file or directory:
+'/home/utig5/dliu/EQdyna/test/test.tpv1053d.python-numpy/frt.txt0'`. Four
+further python-numpy cells (`test.tpv29`, `test.tpv36`, `test.tpv37`,
+`test.drv.a6`) were already running into paths that no longer resolved, doomed
+for the same reason, and were killed by PID. 25 cells had reported SUCCESS
+before the collision. Cost: roughly 40 minutes of a release session, plus a
+restarted release gate. The rule exists because it was done, not because it was
+foreseen.
+
+**How to apply**: `git worktree add` a tree for the sweep and launch it from
+there — `git rev-parse --git-dir --git-common-dir` must differ (rule 21's own
+check settles this too), and the sweep's own `REPO_ROOT` must be that worktree,
+not `/home/utig5/dliu/EQdyna`. Before acting on ANY `FAIL` line, open that
+cell's log and confirm the failure is numeric: a `FileNotFoundError`, or a
+missing directory under `test/`, is a collision and not a result — nothing may
+be reverted, re-gated or held on it. If you must diagnose a collision after the
+fact, `test.prev/` holds the rotated tree and the other session's timestamped
+snapshot in `docs/perf_snapshots/` names who rotated it and when.
+
+**Tier: NOT mechanical, and this rule says so about itself.** A written rule
+that depends on every session remembering is strictly weaker than a lock, and
+both sessions in the incident above were able to read this book. The mechanical
+fix — a lockfile on `$REPO_ROOT/test`, or a PID/SHA-stamped run directory so
+two invocations cannot name the same tree — is NOT DONE; it is tracked as
+pathway item 70 and routed to `iris-vermeulen`. Until it lands, the collision
+is forbidden but not prevented, and this rule is enforced by being read.
