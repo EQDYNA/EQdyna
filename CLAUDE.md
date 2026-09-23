@@ -5,11 +5,16 @@ Guidance for Claude Code working in this repository.
 NOTE: the `CLAUDE.md` one directory up (`/home/utig5/dliu/CLAUDE.md`) describes
 **EQdyna.2Dcycle**, a different project. This file is the one for EQdyna (3D).
 
-`PROJECT_RULES.md` is authoritative — 21 numbered rules plus 9 lettered
-sub-rules, and they are enforced by
+`PROJECT_RULES.md` is authoritative, and they are enforced by
 `testsys/regression/`, not just written down. Read it before changing a gate,
-a bound, or a reference. `pathway_forward.md` is the live status board: open
-items there have a `Command` column that must actually run today.
+a bound, or a reference. Do not trust a rule COUNT quoted here or anywhere
+else — this line used to say "21 numbered rules plus 9 lettered sub-rules" and
+was stale by ten sub-rules before anyone noticed (2026-09-23); the book's own
+index block carries the current count and the regression tier checks it.
+`pathway_forward.md` is the live status board: open items there have a
+`Command` column that must actually run today — and per rule 14a that command
+must be able to come out BOTH ways, because two rows were found carrying
+commands that could never go red.
 
 ## What this is
 
