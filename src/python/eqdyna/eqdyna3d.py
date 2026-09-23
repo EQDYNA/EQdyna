@@ -453,7 +453,12 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     # "the sum check, and why it is the one that matters" -- unaccounted_s
     # must be a real remainder against a total measured by its OWN clock,
     # exactly as compTimeInSeconds(9)/simuStartTime is in eqdyna3d.f90).
-    run_t0 = time.perf_counter()
+    #
+    # EQDYNA_PROFILE read ONCE here, before setup, before the loop. When
+    # off, run_t0 stays 0.0 and _emit() below is never called -- no
+    # perf_counter() call this landing added runs, not just no file write.
+    profile_on = _profile_emit.enabled()
+    run_t0 = time.perf_counter() if profile_on else 0.0
     prof = profile if profile is not None else Profile('jax')
     with prof.phase('setup (mesh+input)'):
         S, mesh = build_solver_state(case_dir)
@@ -501,7 +506,8 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         # and a rank that did real setup/compute/exchange work is not "no
         # data" just because it wrote no fault row.
         prof.nelem = rep['E']
-        _emit(io_s=0.0)
+        if profile_on:
+            _emit(io_s=0.0)
         return None, rep
     fric_1idx = np.zeros((n_own + 1, 101))
     fric_1idx[1:, 1:101] = out['fric'][sel]
@@ -512,7 +518,8 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
                                  fnft_1idx, fric_1idx)
     prof.nelem = rep['E']
-    _emit(io_s=prof.get('write frt', 0.0))
+    if profile_on:
+        _emit(io_s=prof.get('write frt', 0.0))
     return path, rep
 
 
@@ -528,7 +535,12 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     `profile` is an optional Profile; when given, each phase is timed
     separately so setup, solve and output cannot be confused for one another.
     """
-    run_t0 = time.perf_counter()   # independent total_s timer, see run_case_mpi
+    # EQDYNA_PROFILE read ONCE here, before setup, before the loop -- never
+    # per step. When off, run_t0 stays 0.0 and the write_profile call below
+    # is skipped entirely (no bucket dict built, no total_s taken) -- not
+    # just gated at the file-write step inside write_profile itself.
+    profile_on = _profile_emit.enabled()
+    run_t0 = time.perf_counter() if profile_on else 0.0   # independent total_s timer, see run_case_mpi
     if backend == 'numpy':
         _narrow_numpy_affinity()
     prof = profile if profile is not None else Profile(backend)
@@ -573,16 +585,17 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     # ONE-TIME trace, not the per-step cost (wrong, not just imprecise), so
     # python-jax and python-jax-mpi stay folded (`fault`=0.0, cost inside
     # `element`) exactly as before. See profile_emit.py's docstring.
-    fault_s = out.get('fault_s', 0.0)
-    solve_s = prof.get('solve', 0.0)
-    total_s = time.perf_counter() - run_t0
-    _profile_emit.write_profile(
-        case_dir, 'python-%s' % backend, 0, 1, S['nstep'],
-        dict(setup=prof.get('setup (mesh+input)', 0.0)
-                  + prof.get('resolve solver', 0.0),
-             element=solve_s - fault_s, fault=fault_s,
-             exchange=0.0, wait=0.0, io=prof.get('write frt', 0.0)),
-        loop_s=solve_s, total_s=total_s)
+    if profile_on:
+        fault_s = out.get('fault_s', 0.0)
+        solve_s = prof.get('solve', 0.0)
+        total_s = time.perf_counter() - run_t0
+        _profile_emit.write_profile(
+            case_dir, 'python-%s' % backend, 0, 1, S['nstep'],
+            dict(setup=prof.get('setup (mesh+input)', 0.0)
+                      + prof.get('resolve solver', 0.0),
+                 element=solve_s - fault_s, fault=fault_s,
+                 exchange=0.0, wait=0.0, io=prof.get('write frt', 0.0)),
+            loop_s=solve_s, total_s=total_s)
     return frt_path
 
 
