@@ -14,6 +14,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 4b. An exclusion names the metric that produced it; a metric blind to a mechanism cannot exclude it.
 4c. A gate downgrade names the geometry class its evidence came from, and clears no class that evidence cannot exercise.
 4d. A BLOCKING precondition decays; re-measure it before citing it.
+4e. A multi-rank performance ratio names its placement policy, and a mechanism claim needs a packed-vs-spread control before it is cited.
 5. One calibrated definition of "pass" — never invent a metric.
 5a. A provably injective relabelling is gated at bit-identity, not at the case bound.
 6. Every performance number carries its provenance.
@@ -52,11 +53,11 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 23 numbered rules
-(1-23) plus twenty-four lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
-5a, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c, 21d)
-— 47 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 47;
-`grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
-suffix) reads 23.
+(1-23) plus twenty-five lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
+4e, 5a, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c,
+21d) — 48 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md`
+reads 48; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no
+letter suffix) reads 23.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
 the count from heading shape alone.
@@ -482,6 +483,57 @@ a `blocked on` cell citing a measurement older than the row's re-check interval
 is a finding a script can raise. Whether the condition still holds is not
 checkable without running the probe, which is exactly why the probe must exist
 as a command rather than as a paragraph.
+
+---
+
+## 4e. A multi-rank performance ratio names its placement policy, and a mechanism claim needs a packed-vs-spread control before it is cited
+
+A jax-vs-Fortran (or any backend-vs-backend) ratio measured across multiple
+MPI ranks is confounded by WHERE those ranks land on the box's NUMA nodes,
+not only by rank count. A scaling table that reports ratios at increasing
+rank counts without saying which placement policy produced each row is
+silently reporting a placement artifact as a rank-count trend. Before citing
+a mechanism — "the port's halo cost dominates above N ranks", "decomposition
+imbalance explains the plateau" — for a ratio measured across ranks, run a
+packed and a spread placement at the SAME rank count and report both; a
+mechanism claim resting on one placement is a hypothesis under rule 4a, not a
+finding.
+
+**Rationale**: this is rule 4a's discipline (a proposed cause is falsified by
+the outcome curve, not by the defect it predicts) applied to a confound that
+is specific to this box and easy to miss, because it looks like an
+implementation detail of the measurement tool rather than a variable of the
+experiment.
+
+**Incident (2026-09-23)**: `docs/SESSION_LOG_2026-09-23_autopilot.md` section
+EE read a 1D-slab jax-MPI-vs-Fortran table (ranks 1/2/4/8/16, ratios
+0.83x/1.07x/1.07x/1.56x/1.58x) and attributed the turn at 8 ranks to the
+slab's halo surface no longer shrinking with rank count — a real per-rank
+number, visible in the run's own exchange-time breakdown. The table was taken
+entirely under `run_mpi_scaling.py`'s default `least_loaded_cpus`, which
+sorts candidates `(busy, node, cpu)` (`testsys/perf/run_mpi_scaling.py:103`)
+and therefore packs onto the lowest-numbered NUMA nodes on a quiet box. A
+same-SHA (`50c1277`) spread placement (2 ranks per node across all 8 nodes)
+at 16 ranks measured jax-MPI at **0.83x** of Fortran; two packed points at 16
+ranks (3 nodes) measured **1.68x** and **1.71x** — three runs, same code,
+minutes to hours apart. The halo-surface mechanism was cited, and a
+3D-decomposition design (`56d2401`) registered a prediction built on it,
+before the packed-vs-spread control existed.
+
+**How to apply**: when a scaling row or table crosses more than one rank
+count, state the placement policy (packed/spread, or the CPU list) each row
+was taken under. Before writing a mechanism sentence for a rank-count trend,
+run the same rank count under both a packed and a spread placement; if the
+ratio moves by more than the mechanism's predicted effect, the ratio is about
+placement, not the mechanism, and the row says so.
+
+**Tier**: not mechanical for the control itself — nothing can check that an
+agent actually ran the spread arm before writing a causal sentence. A
+retroactive backstop is checkable: `sorted(Counter(cpu // 8 for cpu in
+r['cpus']).values())` over a ledger row's `cpus` field names its placement
+after the fact, so a table whose every row groups the same way (never
+spread) is a script-detectable gap even though the missing control itself is
+not.
 
 ---
 
