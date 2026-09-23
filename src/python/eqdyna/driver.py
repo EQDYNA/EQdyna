@@ -519,17 +519,35 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         jax.block_until_ready(hv)
         if prof:
             t_compute += time.perf_counter() - ta0
-        # Barrier FIRST, timed separately. Without it the fastest rank's
-        # "exchange" time is mostly waiting for the slowest rank, and on this
-        # box the per-rank spread is real (cpu 61 measured EFFECTIVE_CORES
-        # 0.50 against cpu 60's 0.97 on identical work): rank 0 reported 296
-        # of 622 ms/step "in MPI4NodalQuant" while rank 1 reported 0.5 ms for
-        # the same exchange. Charging that to the collective would be a
-        # measurement error in the exact shape this campaign is trying to
-        # avoid, so load imbalance is t_wait and the exchange is t_mpi.
-        t_w = time.perf_counter()
-        comm.Barrier()
-        t_wait += time.perf_counter() - t_w
+        # THE BARRIER IS A MEASUREMENT DEVICE AND RUNS ONLY UNDER THE PROFILE.
+        #
+        # What it is for, unchanged: without it the fastest rank's "exchange"
+        # time is mostly waiting for the slowest rank, and on this box the
+        # per-rank spread is real (cpu 61 measured EFFECTIVE_CORES 0.50
+        # against cpu 60's 0.97 on identical work): rank 0 reported 296 of 622
+        # ms/step "in MPI4NodalQuant" while rank 1 reported 0.5 ms for the
+        # same exchange. Charging that to the collective would be a
+        # measurement error, so under the profile load imbalance is t_wait and
+        # the exchange is t_mpi.
+        #
+        # Why it must NOT run otherwise: it was unconditional, so every
+        # production step paid a 32-rank global rendezvous that the algorithm
+        # does not need. The exchange is nearest-neighbour (two neighbours in
+        # a slab decomposition) and deadlock-free on its own, so a rank that
+        # is momentarily slow should delay its two neighbours, not all 31
+        # others. A global barrier per step makes the run pay the MAXIMUM
+        # over 32 ranks of each step's jitter instead of letting jitter
+        # average out along the chain. Measured at 32 ranks on test.tpv104,
+        # differenced over 200 vs 40 steps: 13.15 ms/step mean in this
+        # barrier, 30% of a 43.39 ms step.
+        #
+        # THE PROFILED STEP IS THEREFORE NOT THE PRODUCTION STEP, and the
+        # report says so (`barrier_in_step`) so a profiled TOTAL cannot be
+        # quoted as a production per-step cost.
+        if prof:
+            t_w = time.perf_counter()
+            comm.Barrier()
+            t_wait += time.perf_counter() - t_w
         t1 = time.perf_counter()
         if prof:
             # Split the halo device-to-host copy out of the exchange, so
@@ -560,6 +578,12 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
                mpi_ms_per_step=t_mpi / nsteps * 1e3,
                wait_ms_per_step=t_wait / nsteps * 1e3,
                sync=sync, nsteps=nsteps, effective_cores=eff,
+               # False on the production path: the per-step global barrier is
+               # a profiling device now (see the loop). wait_ms_per_step is
+               # then 0.0 BY CONSTRUCTION -- there is nothing to wait at --
+               # and imbalance shows up inside mpi_ms_per_step instead. A
+               # 0.00 wait must not be read as "perfectly balanced".
+               barrier_in_step=bool(prof),
                carry_bytes=carry_bytes,
                carry_bytes_total=sum(carry_bytes.values()),
                device_peak_gb=_device_peak_gb(jax),
@@ -573,7 +597,7 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         # itself, pytree flatten/unflatten on both dispatches, and
         # xp.asarray(delta).
         acc = t_compute + t_wait + t_mpi + t_d2h
-        rep = dict(rep, step_profile=True,
+        rep = dict(rep, step_profile=True, barrier_in_step=True,
                    compute_ms_per_step=t_compute / nsteps * 1e3,
                    d2h_ms_per_step=t_d2h / nsteps * 1e3,
                    host_ms_per_step=(elapsed - acc) / nsteps * 1e3)
