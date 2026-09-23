@@ -211,6 +211,11 @@ MODULE globalvar
     real (kind = dp) :: startTimeStamp               ! MPI_WTIME() value at the start of the current stage
     real (kind = dp) :: simuStartTime                ! MPI_WTIME() value at simulation start
     real (kind = dp) :: MPICommTimeInSeconds = 0.0d0 ! cumulative MPI-communication wall-clock time, s
+    real (kind = dp) :: MPIWaitTimeInSeconds = 0.0d0 ! cumulative MPI-barrier (sync wait) wall-clock time, s;
+        ! a LOCAL sub-timer inside MPI4NodalQuant's mpi_barrier call, nested
+        ! inside the span MPICommTimeInSeconds already measures -- see
+        ! assembleGlobalMass.f90. profile output subtracts this back out of
+        ! the exchange bucket so exchange and wait are disjoint.
     real (kind = dp) :: totmemcost, memcost = 0.0d0  ! memory-cost bookkeeping
     real (kind = dp) :: pi = 4*atan(1.0_dp)
 
