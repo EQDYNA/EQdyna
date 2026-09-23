@@ -29,12 +29,37 @@ and halved every traction (a clean 0.5), and audited evidence (tpv36,
 over all 22 canonical columns 1.0e-08 = output precision) confirms the
 add-back is correct.
 
-arn is a MESH-TIME quantity, computed once before any time stepping, so a
-short run is a complete test of it: were arn doubled, the t=0 tractions would
-already be halved. term is kept small deliberately.
+arn LOOKS like a MESH-TIME-only quantity (computed once in meshgen, before
+any time stepping), and the "were arn doubled, the t=0 tractions would
+already be halved" claim above used to justify keeping term small. MEASURED,
+NOT INFERRED (this repo's own rule): that claim does not hold at t=0.
+nsdTractionVector (faulting.f90:114-124) is
+`dynamicCorrection/totalMass + nsdInitTractionVector*C_elastic`, and
+nsdInitTractionVector comes straight from on_fault_vars, independent of arn;
+totalMass = massSum*arn only scales the DYNAMIC correction term, which is
+exactly zero until velArr/dispArr at the y-boundary fault nodes have moved
+away from their initial state -- i.e. until the rupture (or the elastic wave
+ahead of it) physically reaches that boundary. A one-step run (par.term =
+par.dt) built and mpirun's the mutation below (arn doubled on exactly the
+y-direction sync, meshgen.f90's syncArnBoundary, dimId==2) and got EXACT
+byte-identical output (0.0 diff) -- the mutation is invisible until enough
+steps pass. Bisected on the wall clock (mutated binary, same fixture):
+0.1 s/0.2 s/0.35 s all 0.0 diff (invisible); 0.45 s diff 2.55e-01 (FAIL,
+right at the edge); 0.5 s diff 1.0e+01 (FAIL, comfortable margin); 1.0 s
+(the original TERM_S) diff 1.3e+04. term = 0.5 s (~46 steps of this case's
+dt) is the smallest value tried with real margin above ABS_TOL, kept as a
+LITERAL because it is a bisected wall-clock threshold, not a mesh-time
+constant like dt. Unmutated at 0.5 s: max diff 3.7e-15 (round-off), tnrm/tdip
+ratio 1.000000 over 3416 nodes, tstk ratio 1.000000 over 270 nodes (tstk
+starts at 0.0 everywhere per on_fault_vars[...,8] but has picked up enough
+slip-driven shear by 46 steps to clear the m.sum()>=50 floor -- it did not at
+1 step).
 
-Cheap-ish (rule 9): two 4-rank runs of a 1 s case. Minutes, not seconds --
-it needs a real mesh and a real MPI decomposition, which is the whole point.
+Cheap-ish (rule 9): two 4-rank runs of a 0.5 s case (~46 steps, was 1 s /
+~93 steps). Seconds, not minutes -- still a real mesh and a real MPI
+decomposition, which is the whole point; only the excess dynamic-rupture
+time stepping past the point the mutation below is actually detectable is
+cut.
 Skips with a LOUD notice, never a pass, if the binary is absent.
 """
 import os
@@ -47,7 +72,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 
 CASE = 'test.tpv36'
-TERM_S = 1.0
+# 0.5 s (~46 of this case's dt), bisected against a real mutation -- see the
+# module docstring. Not derivable from dt alone (the effect this guards
+# against is a rupture-propagation-time property, not a mesh-time one).
+TERM_S = 0.5
 # ratio tolerance: a duplicate/divide error is a factor of 2, so anything near
 # 1 settles it. This is deliberately loose on the RATIO and strict on the
 # absolute agreement below.
