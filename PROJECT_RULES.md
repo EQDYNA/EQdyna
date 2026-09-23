@@ -37,12 +37,13 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 21a. A gate sweep runs in its own worktree; the shared `test/` tree has no lock, and a collision reads as a solver failure.
 21b. No session writes the main checkout — conductors branch too, and its HEAD moves only by fast-forward sync.
 21c. `PROJECT_RULES.md` and `pathway_forward.md` have exactly one writer per session.
+21d. A dispatch carries its isolation and its scope in writing, or it is not issued.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
-(1-21) plus fourteen lettered sub-rules (2a, 4a, 4b, 4c, 5a, 6a, 15a, 15b,
-20a, 20b, 20c, 21a, 21b, 21c) — 35 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 35;
+(1-21) plus fifteen lettered sub-rules (2a, 4a, 4b, 4c, 5a, 6a, 15a, 15b,
+20a, 20b, 20c, 21a, 21b, 21c, 21d) — 36 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 36;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 21.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -1454,9 +1455,12 @@ identical pair — locked since v5.16.1, acquire at `:121`),
 the path was written `testsys/perf_case/` here and on the board until
 2026-09-23; `run_perf.TESTSYS` is a misnomer for `testsys/perf`),
 `testsys/perf/run_jaxmpi_ab.py:88` (deletes
-`src/python/eqdyna/__pycache__`). **The last two are still UNGUARDED** —
-`grep -n runlock testsys/perf/*.py` returns nothing as of 2026-09-23 — and
-`testsys/runlock.acquire(REPO_ROOT, <name>)` is reusable for both. A tool that works inside
+`src/python/eqdyna/__pycache__`). **The last two have been MECHANICAL since
+v5.16.1** — the paragraph below gives the detail; this sentence read "still
+UNGUARDED" for a day after that landing and contradicted its own rule, which is
+what a tier claim maintained in two places does.
+`testsys/runlock.acquire(REPO_ROOT, <relative path>)` is reusable for any tool
+still in this class. A tool that works inside
 `tempfile.mkdtemp()` — as every `testsys/regression/` test does — is not in
 this class and needs no worktree. This is the filesystem counterpart of rule
 19's fourth bullet, which says the same thing about a shared committed
@@ -1531,26 +1535,49 @@ in `main()`, deliberately: `run_tpv29_pinned_compare.py` reassigns
 not the `__pycache__` this rule originally named, because `stage()` copies
 arm-specific `driver.py`/`MPI4NodalQuant.py` into it — a collision there
 yields a number under the WRONG ARM LABEL rather than a crash, which is the
-worse failure. Guard: `testsys/regression/test_perf_tool_locks.py`, 10 checks.
+worse failure. Guard: `testsys/regression/test_perf_tool_locks.py` — 10 checks
+at that landing, 17 since `f4718e5` extended it over the two builders below.
 
-**Three holes remain, and they are the same class, not a different one**
-(established by the conductor 2026-09-23, carried as pathway item 77):
-`run_scaling.build_py_case` (`run_scaling.py:389` → `testsys/perf/scaling_case/<case>`,
-rmtree + rebuild) and `run_numa_scaling.build_case` (`:200` →
-`testsys/perf/numa_case/<case>`) are unguarded; and `run_jaxmpi_ab.py` CALLS
-`rs.build_py_case`, so two perf tools in one checkout still collide through
-that path despite both holding their own locks. Separately,
-`run_jaxmpi_ab.py` resolves `ROOT` from `$EQDYNAROOT`, so run from a worktree
-whose `EQDYNAROOT` points at the main checkout it stages arm files into the
-MAIN CHECKOUT's package (rule 21b) — and since the lock follows `ROOT`, it
-locks and corrupts the same wrong tree consistently. A lock on the wrong tree
-is not a smaller bug than no lock.
+**Those three holes are CLOSED too, at `f4718e5` (2026-09-23, pathway item 77)
+— after the v5.16.1 tag, so on master and unreleased.**
+`run_scaling.build_py_case` (`run_scaling.py:428-447` → `testsys/perf/scaling_case/<case>`)
+and `run_numa_scaling.build_case` (`:223-245` → `testsys/perf/numa_case/<case>`)
+acquire inside the BUILDER, not `main()`: `build_py_case` has five direct
+callers (`run_mpi_scaling.py:408`, `run_jaxmpi_ab.py:169`,
+`run_setup_probe.py:142`, `run_shard_scaling.py:195`), so a lock placed in any
+one `main()` leaves four entry points unguarded — and that also closes the
+third hole, since `run_jaxmpi_ab.py` reaches the case tree through that same
+builder. Two details worth carrying: `run_scaling.py` derives `REPO_ROOT` from
+its own file rather than from `ROOT`, because `ROOT` honours `$EQDYNAROOT`
+while the case dir is built from `TESTSYS` — a lock rooted at `ROOT` would lock
+one checkout while rebuilding another; and each tool memoises its lock, because
+`flock` is per open file description and a second call in one process would
+otherwise refuse against its own pid.
+
+**The `$EQDYNAROOT` hole is closed by REFUSAL, not by a warning.** Run from a
+worktree whose `EQDYNAROOT` still names the main checkout, `run_jaxmpi_ab.py`
+used to stage arm-specific files into THAT tree's package (rule 21b) and, since
+the lock followed `ROOT`, to lock and corrupt the same wrong tree consistently —
+a lock on the wrong tree is not a smaller bug than no lock. `main()` now refuses
+a mismatch as its FIRST statement, before argparse and before Gate 0, so no
+lockfile lands in the foreign tree ahead of the refusal. Refusing is right here
+rather than warning because every one of the 11 `EQDYNAROOT` setters in this
+repo points at its own tree and nothing under `testsys/perf/` sets it at all:
+no supported workflow produces a mismatch, so a mismatch is rule 2's
+"fail loudly", not a case to degrade through.
+
+**One hole in this class remains**, carried as pathway item 81:
+`testsys/parity/probe_plastic_traction.py:77-82` rmtrees and rebuilds
+`testsys/parity/probe_case/test.drv.a6` through the same
+`run_e2e.make_serial_case`, with no lock. One caller, and a collision costs a
+diagnostic probe rather than a reported measurement — smaller, not different.
 
 What is still enforced by reading: running a sweep in the main checkout at all
 (rule 21b forbids it; the lock does not know which checkout it is in — two
 sessions in ONE checkout now serialise instead of colliding, which is a
-different and lesser guarantee). Pathway item 70 is closed for the e2e trees
-and item 74 for these two perf tools; the remainder is item 77.
+different and lesser guarantee). Pathway item 70 is closed for the e2e trees,
+item 74 for the two perf tools above and item 77 for the two shared case
+builders; the remainder is item 81.
 
 ---
 
@@ -1711,11 +1738,57 @@ this tier as wider than it is:**
    branch that touched the board.
 2. `git commit --amend` is blind to it — `git diff --cached` compares against
    the commit being replaced — so an amend that folds other paths into a board
-   commit passes. `testsys/check_board_separation.py <range>` closes that hole
-   over FINISHED history and is NOT wired into CI; which range it should run
-   over is an owner call, tracked as pathway item 80, and until then the amend
-   path is enforced by reading.
+   commit passes the hook. That hole is MECHANICAL over PUSHED history since
+   `76c6bfb` (2026-09-23, pathway item 80, post-v5.16.1):
+   `testsys/check_board_separation.py <range>` is the first step of
+   `test.yml`'s `unit-regression` job, the only job already at
+   `fetch-depth: 0`. The range is `before..sha` on push and base..head on
+   pull_request, falling back to `origin/master..HEAD`, and NARROWING to
+   `HEAD^..HEAD` when that fallback is empty — the shape a force-push leaves,
+   where "0 commits, SUCCESS" is indistinguishable from a suppressed check. It
+   refuses, rather than passes, on an unhandled event, an absent
+   `origin/master`, or a root-commit HEAD. Guard:
+   `testsys/regression/test_ci_board_separation_step.py`. What is still
+   enforced by reading is only an amend nobody has pushed yet. **Do not widen
+   the range to this repository's own history without reading the number
+   first**: 54 of 738 non-merge commits mix the board with other paths
+   (measured 2026-09-23 at `d6d846f`), all of them from before the hook
+   existed.
 3. The hook is inert until `install-eqdyna.sh` has run in that clone, exactly
    as rule 21's own mechanical claim is.
 
 Pathway item 75 is closed by this landing.
+
+---
+
+## 21d. A dispatch carries its isolation and its scope in writing, or it is not issued
+
+A sub-agent is launched only from a brief that already states, in the prompt
+itself, the worktree it may write and the files it may touch there. A dispatch
+whose prompt is empty, a placeholder, or a bare "continue" is not
+underspecified — it is UNISSUED. Write the brief and dispatch again; never send
+it and steer afterwards.
+
+**Rationale**: rules 21, 21b and 21c decide what a session may write, and every
+one of them reaches an agent through its brief and through nothing else. An
+agent that receives no brief inherits no surface: it starts in whatever tree the
+launcher is standing in — under 21b, the tree nobody may write — with full
+tools. The window between "dispatched" and "first tool use" is the whole of the
+protection.
+
+**Incident (2026-09-23)**: a conductor dispatched a general-purpose agent with
+the literal prompt `placeholder`, having reached for a continue-an-agent
+facility that does not exist. The cost was ZERO — 0 tool uses, main checkout
+verified clean afterwards — and it is recorded BECAUSE it was free. An
+ambiguous prompt in place of an inert one puts a full-tool agent in the main
+checkout with no scope, and that is the same slip with a bill attached. Scoped
+deliberately to the act of dispatching: this rule claims nothing about what a
+briefed agent then does, which is 21, 21b and 21c's ground and is unchanged.
+
+**Tier: HORTATORY, and nothing in this repository can change that.** A dispatch
+leaves no artifact here — no commit, no file, no reflog entry — so no check in
+`testsys/` can see one, let alone refuse it. What WOULD make it mechanical is a
+dispatch wrapper that refuses a prompt naming no worktree, and that wrapper
+lives in the agent harness, not in this repo. Until one exists this is enforced
+by the person typing, and it is written down so the next occurrence is
+recognised as the second and not the first.
