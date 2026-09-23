@@ -150,6 +150,14 @@ PLATFORMS = ('cpu', 'gpu', 'unknown')
 # 2026-09-23) carry no key at all -- that absence, and only that absence, is
 # read as unknown.
 PARALLELISM = ('mpi', 'threads', 'serial')
+# What chose the cpus on a run_mpi_scaling row. 'packed' and 'spread' are
+# `run_mpi_scaling.py --placement`; 'explicit' is `--cpus` (the caller named
+# the cpus, so neither selection algorithm ran). Scoped to tool='run_mpi_scaling'
+# only -- run_scaling has its own, unrelated 'policy' field, and e2e cells
+# select no cpus at all. Required on every run_mpi_scaling row APPENDED from
+# 2026-09-23; absent on everything written before, and on every row from a
+# different tool. See `_check_placement`.
+PLACEMENT = ('packed', 'spread', 'explicit')
 # The ceiling the e2e cell capture measures whole-box tenancy against. e2e
 # selects no cpus, so unlike the scaling tools it has no selection ceiling;
 # this is a declared reference for the tenancy statistic only, recorded on
@@ -248,6 +256,39 @@ def _check_parallelism(row):
             'construction' % (row['ranks'], _row_identity(row)))
 
 
+def _check_placement(row):
+    """Fail closed on the `placement` discriminator for run_mpi_scaling rows
+    (2026-09-23). Guarded incident: least_loaded_cpus sorts by (busy, node,
+    cpu); on a quiet box the node tiebreak dominates and it PACKS ranks onto
+    the fewest NUMA nodes, and a whole day of 8/16-rank tables carried that
+    bias with nothing on the row saying so. test.tpv104 16 ranks, same
+    session: packed 96.0/56.0 ms/step = 1.71x jax/Fortran, spread 52.5/63.3 =
+    0.83x (docs/perf_ledger.jsonl lines 361-364) -- opposite verdicts, same
+    code, same rank count.
+
+    Scoped to tool='run_mpi_scaling': that is the only tool this field
+    describes (run_scaling has its own 'policy' field; e2e cells select no
+    cpus). No value is defaulted in -- an assumed 'packed' would reproduce
+    the exact defect this field exists to end."""
+    if 'placement' not in row:
+        raise ValueError(
+            'row is missing required field %r -- every run_mpi_scaling row '
+            'must say how its cpus were chosen, one of %s (row: %s). No '
+            'value is defaulted in.' % ('placement', PLACEMENT,
+                                        _row_identity(row)))
+    p = row['placement']
+    if p not in PLACEMENT:
+        raise ValueError('placement %r not in %s on row from %s'
+                         % (p, PLACEMENT, _row_identity(row)))
+    rpn = row.get('ranks_per_node')
+    if not (isinstance(rpn, list) and rpn
+            and all(isinstance(x, int) and x >= 0 for x in rpn)):
+        raise ValueError(
+            'ranks_per_node %r must be a non-empty list of ints on a row '
+            'carrying placement=%r (row: %s)'
+            % (rpn, p, _row_identity(row)))
+
+
 def validate(row, appending=False):
     """Raise ValueError on the first uninterpretable thing about `row`.
     A row that passes here is meant to be readable YEARS later with no access
@@ -302,6 +343,13 @@ def validate(row, appending=False):
     # predate the field, and fully checked on any row that does carry it.
     if appending or 'parallelism' in row:
         _check_parallelism(row)
+    # Scoped to run_mpi_scaling: 'placement' describes how ITS cpus were
+    # chosen and has no meaning for run_scaling (which has 'policy') or e2e
+    # (which pins none). Required on append for that tool only; tolerated as
+    # absent on read (legacy rows, and rows from every other tool).
+    if row.get('tool') == 'run_mpi_scaling' and (appending
+                                                 or 'placement' in row):
+        _check_placement(row)
     if row['metric'] == 'per-step-by-difference':
         ms = row['ms_per_step']
         if not (isinstance(ms, (int, float)) and ms > 0):
@@ -546,6 +594,13 @@ def rows_from_mpi_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None
     for r in meta['rows']:
         if r.get('skipped'):
             continue
+        # Propagated only if the producing row carries it: a snapshot from
+        # before 2026-09-23 has no 'placement' key at all, and that absence
+        # must reach the ledger row as absence (validate()'s `appending=True`
+        # then refuses it, same contract as platform/parallelism), never as
+        # a guessed 'packed'.
+        placement_fields = {k: r[k] for k in ('placement', 'ranks_per_node')
+                            if k in r}
         for k in sorted(r):
             if not k.startswith('jax_'):
                 continue
@@ -569,7 +624,8 @@ def rows_from_mpi_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None
                        threads_per_rank=max(b['threads']),
                        busy_ceiling=meta['max_busy'],
                        n_lo=r['n_lo'], n_hi=r['n_hi'],
-                       sync=k[len('jax_'):], cpus=r['cpus'])
+                       sync=k[len('jax_'):], cpus=r['cpus'],
+                       **placement_fields)
             validate(row)
             out.append(row)
         if 'fortran' in r:
@@ -584,7 +640,8 @@ def rows_from_mpi_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None
                        rank_ms_min=None, rank_ms_max=None, rank_ms_mean=None,
                        effective_cores=None, threads_per_rank=None,
                        busy_ceiling=meta['max_busy'],
-                       n_lo=r['n_lo'], n_hi=r['n_hi'], cpus=r['cpus'])
+                       n_lo=r['n_lo'], n_hi=r['n_hi'], cpus=r['cpus'],
+                       **placement_fields)
             validate(row)
             out.append(row)
     return out

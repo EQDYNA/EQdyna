@@ -78,12 +78,90 @@ import run_scaling as rs             # noqa: E402
 RANK_RE = re.compile(r'rank (\d+)/(\d+) wrote (\S+)\s+(.*)')
 
 
+def _pick_packed(nodes, k, busy):
+    """PURE selection (no /proc/stat read): the k least-busy cpus from an
+    already-measured {cpu: fraction}, ordered by (busy fraction, node, cpu)
+    so that among equally idle cpus the choice is still as NUMA-compact as the
+    free set allows -- byte-for-byte what `least_loaded_cpus` has always
+    chosen. Split out so a regression test can drive it with a synthetic busy
+    map instead of the live box (`testsys/regression/test_perf_mpi_placement.py`).
+    Raises SystemExit if fewer than k cpus have a reading."""
+    cpu2node = rs.cpu_to_node(nodes)
+    ranked = sorted((b, cpu2node[c], c) for c, b in busy.items() if b is not None)
+    if len(ranked) < k:
+        raise SystemExit('FAIL: read utilisation for %d cpus, need %d'
+                         % (len(ranked), k))
+    return sorted(c for _b, _n, c in ranked[:k])
+
+
+def _pick_spread(nodes, k, busy, max_busy):
+    """PURE selection: round-robin across NUMA nodes among cpus at or under
+    `max_busy`, least-busy cpu first within each node, so ranks-per-node
+    differ by at most 1. `busy` is an already-measured {cpu: fraction}.
+
+    Placement bias this exists to end (2026-09-23, measured):
+    least_loaded_cpus/`_pick_packed` sorts by (busy, node, cpu); on a quiet
+    box the node tiebreak dominates and PACKS ranks onto the fewest NUMA
+    nodes. test.tpv104 16 ranks, docs/perf_ledger.jsonl lines 361-364:
+    SPREAD (2 ranks/node) jax-MPI 52.5 vs Fortran 63.3 ms/step = 0.83x;
+    PACKED (6/7/3 on 3 nodes) 96.0 vs 56.0 = 1.71x -- the same code, the same
+    rank count, opposite verdicts, and the difference was never on the row.
+
+    Raises SystemExit if fewer than k cpus qualify, or if round-robin runs out
+    of qualifying nodes before reaching k (both are "cannot", not a silent
+    partial placement)."""
+    cpu2node = rs.cpu_to_node(nodes)
+    under = sorted((b, cpu2node[c], c) for c, b in busy.items()
+                   if b is not None and b <= max_busy)
+    if len(under) < k:
+        raise SystemExit(
+            'FAIL: only %d cpu(s) at or under busy ceiling %.2f, need %d for '
+            'spread placement -- refusing to place ranks on cpus this '
+            'tenancy has not cleared.' % (len(under), max_busy, k))
+    by_node = {}
+    for b, n, c in under:               # already globally sorted (busy, cpu)
+        by_node.setdefault(n, []).append(c)   # -> ascending busy within node
+    order = sorted(by_node)
+    chosen = []
+    idx = dict.fromkeys(order, 0)
+    while len(chosen) < k:
+        progressed = False
+        for n in order:
+            if idx[n] < len(by_node[n]):
+                chosen.append(by_node[n][idx[n]])
+                idx[n] += 1
+                progressed = True
+                if len(chosen) == k:
+                    break
+        if not progressed:
+            raise SystemExit(
+                'FAIL: round-robin exhausted every qualifying node with only '
+                '%d of %d cpu(s) chosen -- spread placement cannot satisfy '
+                '%d ranks under busy ceiling %.2f.'
+                % (len(chosen), k, k, max_busy))
+    return sorted(chosen)
+
+
+def _ranks_per_node(nodes, cpus):
+    """Sorted per-node rank counts for `cpus`, from the tool's OWN
+    cpu->node map (`rs.cpu_to_node`) -- never `cpu // 8`, which is only true
+    on this one box's topology and silently wrong on any other."""
+    cpu2node = rs.cpu_to_node(nodes)
+    counts = {}
+    for c in cpus:
+        n = cpu2node[c]
+        counts[n] = counts.get(n, 0) + 1
+    return sorted(counts.values())
+
+
 def least_loaded_cpus(nodes, k, exclude=()):
     """The k least-loaded cpus right now, with their busy fractions.
 
     Ordered by (busy fraction, node, cpu) so that among equally idle cpus the
     choice is still as NUMA-compact as the free set allows, and the tenant's
     hot cpus are avoided rather than taken because they sort first.
+    THIS IS THE `packed` PLACEMENT: it is the confound `--placement` exists
+    to name, not remove -- see `_pick_packed`.
 
     `exclude` drops named cpus from the candidate set. MEASURED REASON, not a
     preference: /proc/stat read cpu 0 and cpu 1 at busy 0.00, and a 2-rank
@@ -99,12 +177,22 @@ def least_loaded_cpus(nodes, k, exclude=()):
     if not busy:
         raise SystemExit('FAIL: could not read per-cpu utilisation from '
                          '/proc/stat -- cannot choose a placement blind.')
-    cpu2node = rs.cpu_to_node(nodes)
-    ranked = sorted((b, cpu2node[c], c) for c, b in busy.items() if b is not None)
-    if len(ranked) < k:
-        raise SystemExit('FAIL: read utilisation for %d cpus, need %d'
-                         % (len(ranked), k))
-    chosen = sorted(c for _b, _n, c in ranked[:k])
+    chosen = _pick_packed(nodes, k, busy)
+    return chosen, {c: busy[c] for c in chosen}
+
+
+def spread_cpus(nodes, k, exclude=(), max_busy=1.0):
+    """The `spread` placement, live: among cpus not in `exclude` and at or
+    under `max_busy`, round-robin across NUMA nodes so ranks-per-node differ
+    by at most 1. See `_pick_spread` for the pure selection (also exercised
+    directly, with a synthetic busy map, by the regression guard)."""
+    all_cpus = sorted(c for cs in nodes.values() for c in cs
+                      if c not in set(exclude))
+    busy = numa.cpu_busy_fractions(all_cpus)
+    if not busy:
+        raise SystemExit('FAIL: could not read per-cpu utilisation from '
+                         '/proc/stat -- cannot choose a placement blind.')
+    chosen = _pick_spread(nodes, k, busy, max_busy)
     return chosen, {c: busy[c] for c in chosen}
 
 
@@ -370,10 +458,23 @@ def main():
                     help='discard one n_lo run first so BOTH timed runs hit a '
                          'warm XLA compilation cache. See per_step_jax_mpi.')
     ap.add_argument('--skip-fortran', action='store_true')
+    ap.add_argument('--placement', choices=('packed', 'spread'), default=None,
+                    help='REQUIRED unless --cpus is given -- no default, so '
+                         'no future table is placement-biased silently and no '
+                         'historical row is reinterpreted. `packed` is '
+                         'exactly today\'s least_loaded_cpus selection (the '
+                         'confound below). `spread` picks round-robin across '
+                         'NUMA nodes among cpus under --max-busy so '
+                         'ranks-per-node differ by at most 1, refusing '
+                         '(SystemExit) if it cannot. Every row this tool '
+                         'writes records which one ran, plus the resulting '
+                         'ranks-per-node, alongside the number.')
     ap.add_argument('--cpus', default='',
                     help='explicit cpu list, comma-separated, used INSTEAD of '
-                         'the least-loaded search. PLACEMENT IS A CONFOUND AND '
-                         'this flag is how it gets controlled: least_loaded_cpus '
+                         'the least-loaded search (and instead of '
+                         '--placement; recorded as placement=explicit). '
+                         'PLACEMENT IS A CONFOUND AND this flag is how it '
+                         'gets controlled: least_loaded_cpus '
                          'sorts by (busy, node, cpu), so when most cpus read '
                          'busy 0.00 the NODE tiebreak dominates and it PACKS '
                          'ranks into as few NUMA nodes as the free set allows '
@@ -386,10 +487,13 @@ def main():
                          '2.4-2.8 ms on the last node-2 ranks. That is a '
                          'placement signature, not a halo-size one, and it is '
                          'why any jax-vs-Fortran ratio must name its placement. '
-                         'Whether spreading removes it is a MEASUREMENT this '
-                         'flag exists to make -- no spread figure is quoted '
-                         'here until a committed snapshot carries it. '
-                         'The busy ceiling still applies to the cpus named here.')
+                         'A spread figure is now quoted: snapshot '
+                         'mpi_scaling_2026-09-23_112435_tpv104.json (test.tpv104 '
+                         '16 ranks, 2 ranks/node) measured jax-MPI 52.5 vs '
+                         'Fortran 63.3 ms/step = 0.83x, against a packed '
+                         '96.0/56.0 = 1.71x in the very same session -- see '
+                         '--placement. The busy ceiling still applies to the '
+                         'cpus named here.')
     ap.add_argument('--exclude-cpus', default='',
                     help='comma-separated cpus never to place a rank on. See '
                          'least_loaded_cpus: cpu 0 and cpu 1 read busy 0.00 '
@@ -397,6 +501,19 @@ def main():
                          '605 ms/step on identical work), so excluding them '
                          'is a measurement, not a preference.')
     a = ap.parse_args()
+    if not a.cpus and not a.placement:
+        raise SystemExit(
+            'FAIL: --placement {packed,spread} is required unless --cpus is '
+            'given. least_loaded_cpus sorts by (busy, node, cpu); on a quiet '
+            'box the node tiebreak dominates and it PACKS ranks onto the '
+            'fewest NUMA nodes -- test.tpv104 16 ranks measured packed '
+            '96.0/56.0 = 1.71x jax/Fortran against spread\'s 52.5/63.3 = '
+            '0.83x in the same session (docs/perf_ledger.jsonl lines '
+            '361-364). No default is chosen for you: pick packed (today\'s '
+            'behaviour, named rather than implicit) or spread explicitly, '
+            'or pass --cpus for an explicit list (recorded as '
+            'placement=explicit).')
+    placement_label = 'explicit' if a.cpus else a.placement
     ranks = [int(x) for x in a.ranks.split(',') if x]
     syncs = [s for s in a.syncs.split(',') if s]
     for s in syncs:
@@ -450,22 +567,29 @@ def main():
             if not busy:
                 raise SystemExit('FAIL: could not read per-cpu utilisation for '
                                  '%s -- refusing to place ranks blind.' % cpus)
+        elif a.placement == 'spread':
+            cpus, busy = spread_cpus(nodes, n, exclude=excl,
+                                     max_busy=a.max_busy)
         else:
             cpus, busy = least_loaded_cpus(nodes, n, exclude=excl)
+        rpn = _ranks_per_node(nodes, cpus)
         worst = max(busy.values())
-        print('\n-- %d rank(s) -- cpus %s  busy %s  worst %.2f (max-busy %.2f), '
-              'whole-box load %.1f'
-              % (n, cpus, {c: round(b, 2) for c, b in busy.items()}, worst,
+        print('\n-- %d rank(s) -- placement %s  ranks/node %s -- cpus %s  '
+              'busy %s  worst %.2f (max-busy %.2f), whole-box load %.1f'
+              % (n, placement_label, rpn, cpus,
+                 {c: round(b, 2) for c, b in busy.items()}, worst,
                  a.max_busy, os.getloadavg()[0]), flush=True)
         if worst > a.max_busy:
             print('  SKIPPED: the %d least-loaded cpus include one at %.2f > '
                   '%.2f. Not measured, not silently included.'
                   % (n, worst, a.max_busy), flush=True)
             rows.append(dict(ranks=n, skipped=True, cpus=cpus,
-                             busy={str(c): b for c, b in busy.items()}))
+                             busy={str(c): b for c, b in busy.items()},
+                             placement=placement_label, ranks_per_node=rpn))
             continue
         row = dict(ranks=n, cpus=cpus, busy={str(c): b for c, b in busy.items()},
-                   loadavg=os.getloadavg(), n_lo=a.n_lo, n_hi=a.n_hi)
+                   loadavg=os.getloadavg(), n_lo=a.n_lo, n_hi=a.n_hi,
+                   placement=placement_label, ranks_per_node=rpn)
         for sync in syncs:
             best = None
             for _ in range(a.repeats):
@@ -538,7 +662,7 @@ def main():
     meta = dict(case=a.case, sha=sha, host=os.uname().nodename,
                 date=time.strftime('%Y-%m-%d %H:%M'), n_lo=a.n_lo,
                 n_hi=a.n_hi, max_busy=a.max_busy, excluded_cpus=excl,
-                rows=rows)
+                placement=placement_label, rows=rows)
     json.dump(meta, open(OUT, 'w'), indent=1)
     print('\nsaved %s' % OUT)
 
