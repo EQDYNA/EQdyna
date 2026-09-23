@@ -31,7 +31,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 14a. A board row's evidence command must be capable of both outcomes.
 15. Releases follow the documented workflow, notes lead the README.
 15a. A pre-tag CI check on the exact SHA is required before `git tag`, and it must be mechanical, not remembered.
-15b. The local sweep and CI gate different failure classes; CI's release run re-verifies only what a local sweep structurally cannot.
+15b. The local sweep and CI gate different failure classes; CI never re-verifies physics, at release or otherwise.
 15c. The tag push and `gh release create` are one action; the release-completeness guard is the check that a releaser split them.
 15d. Step 5's single release commit does not cover the two files 21c owns; those split out.
 15e. A release commit is gated on itself before it is pushed, not carried on step 1's earlier green.
@@ -682,10 +682,12 @@ destroys the only baseline the suite has.
 commit to `test.reference.results/`, never a side effect of running tests.
 
 **Two references per case, when the case has two terms (added 2026-09-23,
-owner decision relayed by the conductor — codified here, not yet built: see
-rule 24).** A case whose full term differs from the 5 s everyday term (as of
-2026-09-23: `test.tpv29` 20 s, `test.tpv36`/`test.tpv37` 6 s; `test.tpv30` 20 s
-if it is ever gated) carries TWO committed references under
+owner decision relayed by the conductor — landed the same day: `frt.canonical.term5.txt`
+committed for `test.tpv29`/`test.tpv36`/`test.tpv37` in `ef56615`/`6d50f0e`/
+`f369bf6`; see rule 24).** A case whose full term differs from the 5 s
+everyday term (as of 2026-09-23: `test.tpv29` 20 s, `test.tpv36`/`test.tpv37`
+6 s; `test.tpv30` 20 s if it is ever gated) carries TWO committed references
+under
 `test.reference.results/<case>/`, not one — the existing full-term
 `frt.canonical.txt`, compared against by the release sweep (rule 24), and a
 second, 5 s reference, compared against by the everyday local gate (rule 9).
@@ -1155,14 +1157,15 @@ sweep, at whichever term rule 9 (everyday) or rule 24 (release) requires for
 the work at hand. Do not describe a release as "CI-verified" for physics —
 under this division it never is, by design.
 
-**Tier: NOT mechanical today, and the workflow change must NOT be assumed
-landed before it is verified.** As this rule is written, the `.github/workflows/test.yml`
-edit removing the e2e sweep and redefining `matrix.CI_CELLS` to the tpv8 smoke
-set is described by the owner as being written, not confirmed built — do not
-cite this rule as evidence the edit exists; check `test.yml` and
-`testsys/matrix.py` directly. Once it lands, `test_ci_workflow_coverage.py`
-already proves CI runs exactly `CI_CELLS`, whatever it is redefined to; rule
-24's own guard is the mechanical backstop for the local side.
+**Tier: mechanical, and landed.** Verified fresh against `.github/workflows/test.yml`
+and `testsys/matrix.py` (2026-09-23, `ef7196c`): CI is `build` /
+`unit-regression` / `e2e-ci-smoke`, and `matrix.CI_CELLS` is the 3-cell
+`test.tpv8` smoke set (rule 16 quotes the job list). `test_ci_workflow_coverage.py`
+proves CI runs exactly `CI_CELLS`; rule 24's own `check_pretag_ci.py` guard
+(landed the same day, `6143beb`) is the mechanical backstop for the local
+side. Still check `test.yml` and `testsys/matrix.py` directly rather than
+trusting this rule's count if either file changes again — that is what
+undercounted this rule twice before (2026-09-16, 2026-09-21).
 
 ---
 
@@ -1310,7 +1313,7 @@ The gate had been run by invoking the tiers directly (`testsys/run.py e2e` with
 `EQDYNA_E2E_BIN=src/eqdyna`, and `make eqdyna` by name), while CI at the time
 ran `./install-eqdyna.sh -m ubuntu` and then
 `testsys/run.py unit regression e2e-ci` (CI's shape as of v5.6.0; today's
-seven-job layout is below).
+three-job layout is below).
 A change to
 `src/makefile` made a BARE `make` stop producing a binary, which only the
 install path exercises. Testing the right commit is not enough if you invoke it
@@ -1326,49 +1329,38 @@ Before pushing a release, run CI's own entry point, not a convenient subset of
 it — read `.github/workflows/test.yml` and reproduce the commands verbatim.
 
 **CI is not one invocation, and no single command reproduces it.** Corrected
-2026-09-23 against `.github/workflows/test.yml` itself (the prior text named
-`e2e-ci-python-cheap` and six jobs total; that job was renamed and split
-2026-09-23 once its tpv36/tpv37 numpy cells were found serialising to 42 of
-its 59 min — see `CLAUDE.md`). As verified fresh at this rewrite, CI is NINE
-parallel jobs (`build`, `unit-regression`, `e2e-ci-fortran-a`,
-`e2e-ci-fortran-b`, `e2e-ci-python-jax-tpv8`, `e2e-ci-python-tpv36-numpy`,
-`e2e-ci-python-tpv37-numpy`, `e2e-ci-python-meng`, `e2e-ci-python-tpv29`), and
-the e2e jobs call `run_e2e.py --ci` directly — CI never runs `run.py e2e-ci`,
-and never runs `run.py unit regression e2e-ci` as one line. What it actually
-runs, with the line of `test.yml` each command sits on:
+again 2026-09-23 (second correction this same day) against
+`.github/workflows/test.yml` itself once the redesign rule 15b and rule 24
+describe actually landed (`ef7196c`): the prior text in this rule listed NINE
+jobs (`e2e-ci-fortran-a`/`-b`, five `e2e-ci-python-*` jobs, etc.) — all of
+those are gone. CI is now exactly THREE parallel jobs: `build`,
+`unit-regression`, `e2e-ci-smoke`. What it actually runs, with the line of
+`test.yml` each command sits on:
 
     ./install-eqdyna.sh -m ubuntu                                           # :75
     export EQDYNAROOT=$(pwd)                                                # :250
     export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH                   # :251
-    python3 testsys/run.py unit regression                                  # :253
-    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.tpv29,test.tpv1053d,test.tpv104,test.tpv8,test.tpv37        # :302
-    python3 testsys/e2e/run_e2e.py --ci --backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36 # :346
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv8 --backends python-numpy,python-jax                                        # :401
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv10,test.tpv104,test.tpv1053d --backends python-jax                          # :402
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36,test.tpv37 --backends python-jax                                         # :403
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv36 --backends python-numpy                                                  # :443
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv37 --backends python-numpy                                                  # :479
-    python3 testsys/e2e/run_e2e.py --ci --cases test.meng2023a,test.meng2023cb --backends python-numpy,python-jax                   # :517
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-jax                                                    # :518
-    python3 testsys/e2e/run_e2e.py --ci --cases test.tpv29 --backends python-numpy                                                  # :558
+    python3 testsys/run.py unit regression                                  # :254 (unit-regression job)
+    python3 testsys/e2e/run_e2e.py --ci                                     # :312 (e2e-ci-smoke job, no --cases/--backends filter)
 
-Those line numbers move; re-read the workflow rather than trusting them, and
-note the python jobs also export thread-pinning env vars in the same step.
-This is CI's job layout as it stands at this rewrite — the redesign rule 15b
-and rule 24 describe (CI stops running the e2e sweep entirely and shrinks to
-a `test.tpv8` smoke set) is an owner-approved decision **not yet built as this
-sentence is written**; when it lands, this whole job list and the count below
-change and this rule needs a matching rewrite, not a patch.
+Those line numbers move; re-read the workflow rather than trusting them. CI
+never runs `run.py e2e-ci` or `run.py unit regression e2e-ci` as one line —
+the two jobs above are separate GitHub Actions jobs, each with its own clean
+checkout and dependency install.
 
-The union of the `--ci` invocations above is `matrix.CI_CELLS`, **25 of the 30
-cells**, verified fresh at this rewrite — the remaining 5 do not fit a 7 GB
-runner. That union is proved mechanically by
-`testsys/regression/test_ci_workflow_coverage.py`, which is authoritative over
-any count written in prose, this rule's included. `run.py e2e-ci` is a local
-convenience that runs the same cell list; it is not what CI invokes, so a
-green `run.py e2e-ci` is a close model of CI, not a reproduction of it. Run
-`run.py all` too — it is the wider local gate and the one that speaks for the
-whole table — but do not mistake it for CI either.
+`e2e-ci-smoke`'s unfiltered `run_e2e.py --ci` selects exactly
+`matrix.CI_CELLS`, redefined 2026-09-23 to **3 cells**: `test.tpv8` x
+{fortran (against the runner's own mpich), python-numpy, python-jax}, at the
+5 s gate term — a portability smoke, not physics coverage (rule 15b). This is
+proved mechanically by `testsys/regression/test_ci_workflow_coverage.py`,
+which is authoritative over any count written in prose, this rule's included.
+`run.py e2e-ci` is a local convenience that runs the same cell list; it is not
+what CI invokes, so a green `run.py e2e-ci` is a close model of CI, not a
+reproduction of it. Physics coverage across the full case x backend table now
+lives only in `run.py e2e` (gate term, on demand) and `run.py release` /
+rule 24's committed full-term sweep (release gate) — run those, not CI, for
+physics evidence. Run `run.py all` too — it is the wider local gate — but do
+not mistake it for CI either.
 
 This rule was wrong about its own subject twice. On 2026-09-16 it told the
 reader to reproduce CI with a command CI does not run — the exact substitution
@@ -2423,10 +2415,13 @@ no committed full-term evidence is not a compliant release under this rule,
 and neither is full-term evidence committed on a SHA the tag does not point
 at (or an ancestor differing by more than the whitelisted paths above).
 
-**Tier: mechanical once `testsys/regression/check_pretag_ci.py` is extended to
-refuse a tag lacking this evidence — NOT YET LANDED as this rule is written.**
-The owner describes the guard as being written, not built; do not cite this
-rule as proof the refusal exists. Until it lands, this rule is enforced the
-way rule 15a's own guard was enforced before it existed: by whoever runs the
-release checklist by hand, checking `docs/evidence/sweep-<shortsha>/` exists
-and matches the SHA before typing `git tag`.
+**Tier: mechanical, and landed** (`6143beb`, 2026-09-23).
+`testsys/regression/check_pretag_ci.py` now refuses a tag lacking this
+evidence: `evaluate_sweep_evidence` requires a committed
+`docs/evidence/sweep-<shortsha>/summary.json` with `term=="full"`,
+`tree_clean`, every declared cell `SUCCESS`, and `n_runnable`/`n_success`/
+`len(cells)` all equal to the current `testsys/matrix.py`'s runnable-cell
+count for the exact tag SHA (or a rule-15d-permitted ancestor); it exits 5
+(`SWEEP_INSUFFICIENT`) otherwise. Guarded itself by
+`testsys/regression/test_pretag_sweep_negative.py` and
+`test_release_complete.py`.
