@@ -66,6 +66,8 @@ TESTSYS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_ROOT = os.path.dirname(TESTSYS)
 sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
 sys.path.insert(0, os.path.join(TESTSYS, 'e2e'))
+sys.path.insert(0, REPO_ROOT)
+from testsys import runlock                                # noqa: E402
 
 CASE_NAME = 'test.drv.a6'
 DEFAULT_CASE = os.path.join(TESTSYS, 'parity', 'probe_case', CASE_NAME)
@@ -73,20 +75,60 @@ DEPTH_OFFSET_M = 7.3215          # meshgen.f90:104, undocumented -- item 24(d)
 MIN_DEPTH_M = 2000.0             # skip the free-surface nodes
 HALF_TOLERANCE = 0.05
 
+# What a second concurrent probe run costs, printed by the refusal
+# (pathway item 81 -- the same unlocked-rmtree class as item 74).
+LOCK_CONSEQUENCE = [
+    'A second invocation in this checkout rebuilds that SAME case directory'
+    ' -- rmtree',
+    'then create.newcase -- while the holder is mid-run against it. The'
+    ' holder does not',
+    'crash cleanly: it reads a half-written or missing case and the failure'
+    ' reads as a',
+    'plastic-traction mismatch (a probe failure) rather than as'
+    ' infrastructure',
+    '(rule 21a, item 81).',
+    '',
+    'NOT waiting. NOT rebuilding anyway. NOT falling back to a different'
+    ' case directory --',
+    'each of those is the silent fallback rule 2 forbids. Run your probe in'
+    ' its own',
+    'git worktree (rule 21a), or wait for the holder above to finish.']
+
 
 def build_case(case_dir):
+    """Rebuild the fixed probe case tree at case_dir from scratch.
+
+    GATE 0 (item 81): the exclusive lock on the directory holding case_dir,
+    taken before anything is deleted or created, held only across the WRITE
+    (rmtree + make_serial_case) and released immediately after -- the
+    probe's measurement phase (main(), after this returns) never touches
+    this directory destructively, so there is nothing left to guard once the
+    rebuild is done. Same non-blocking acquire()/refusal shape as
+    run_perf.build_perf_case and run_jaxmpi_ab.main (rules 21a, 2).
+    """
     import run_e2e                                        # noqa: E402
-    if os.path.isdir(case_dir):
-        shutil.rmtree(case_dir)
-    os.makedirs(os.path.dirname(case_dir), exist_ok=True)
-    run_e2e.make_serial_case(CASE_NAME, case_dir, run_e2e.base_env())
+    lock_resource = os.path.relpath(os.path.dirname(case_dir), REPO_ROOT)
+    try:
+        lock = runlock.acquire(REPO_ROOT, lock_resource,
+                               consequence=LOCK_CONSEQUENCE)
+    except runlock.RunTreeLocked as exc:
+        raise SystemExit('FAIL: %s' % exc)
+    # Announced only once the lock is held: "Building ..." printed ahead of a
+    # refusal describes something that never happened.
+    print('Building a fresh serial %s at %s ...' % (CASE_NAME, case_dir))
+    try:
+        if os.path.isdir(case_dir):
+            shutil.rmtree(case_dir)
+        os.makedirs(os.path.dirname(case_dir), exist_ok=True)
+        run_e2e.make_serial_case(CASE_NAME, case_dir, run_e2e.base_env())
+    finally:
+        lock.release()
     return case_dir
 
 
 def main():
     case = sys.argv[1] if len(sys.argv) > 1 else None
     if case is None:
-        print('Building a fresh serial %s at %s ...' % (CASE_NAME, DEFAULT_CASE))
         case = build_case(DEFAULT_CASE)
     if not os.path.isdir(case):
         raise SystemExit('FAIL: no case directory at %s' % case)
