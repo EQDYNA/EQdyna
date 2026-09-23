@@ -89,6 +89,7 @@ SHARDS = {
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
         "test_sweep_core_budget.py",
+        "test_sweep_tenancy_budget_2026_09_23.py",
     ],
     "3": [
         "test_sweep_speed_2026_09_23.py",  # added at merge (wei-lin): landed d488dae after this partition was timed; 0.2 s
