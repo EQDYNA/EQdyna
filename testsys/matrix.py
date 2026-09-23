@@ -372,6 +372,29 @@ MEASURED_PEAK_RSS_GB = {
 }
 CI_RUNNER_RAM_GB = 7.0
 
+# JAX_MEASURED_CORES -- billed CORE cost of a python-jax cell for
+# testsys/e2e/run_e2e.py's concurrency budgeting (cell_cost), not a physics
+# bound and not per-case: XLA's CPU backend threads its own ops even though
+# nothing in the launch path (run_standalone) requests any thread count, so a
+# single serial `python3 -m eqdyna ... --backend jax` process is NOT one
+# core's worth of load, and billing it as 1 (the sweep's behaviour before the
+# 2026-09-23 speed campaign) undercounts every concurrent jax cell by
+# ~2.5x -- exactly what let the BEFORE sweep run every cell at 2-3x its solo
+# time (docs/SESSION_LOG_2026-09-23_autopilot.md section NN: tpv8 numpy
+# 209.4s in-sweep vs 66s solo, tpv29 numpy 648.7 vs ~312, box load 35-58).
+#
+# MEASURED directly this session (not merely re-cited): `/usr/bin/time -v`
+# around `python3 -m eqdyna <serial test.tpv8 case> --backend jax`, gate term
+# (par.term=5.0), box at ~33/64 cpus busy (uptime load 36) --
+# "Percent of CPU this job got: 252%" over a 53.7s wall run. This
+# corroborates, rather than merely repeats, the 249% figure section NN
+# attributes to an earlier run ("iris-X") under similar tenancy.
+#
+# Rounded UP (ceil, applied where this is consumed) -- under-billing a real
+# cost is the defect this constant exists to close; a fractional core is
+# never truncated down to fewer cores than were actually observed busy.
+JAX_MEASURED_CORES = 2.52
+
 # CI_CELLS -- REDEFINED 2026-09-23 (owner-approved test-methodology change).
 #
 # CI no longer runs the e2e sweep for physics coverage; that job is the local/
