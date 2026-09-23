@@ -424,3 +424,85 @@ looks exactly like a missed trigger, and because it has a real consequence:
 **rule 15a's guard requires a successful run for the TAGGED sha, so a tag must
 never be cut on a docs-only HEAD.** Every mission in flight below touches
 non-ignored files, so this does not bind today.
+
+## F. Landings — six commits, no reverts
+
+| commit | item | what | my own gate |
+|---|---|---|---|
+| `32fba21` | 83 | Release object confirmed, tier green; rules 15c, 3a | `test_release_complete.py` 8/8 PASS |
+| `07b0dca` | 79, 82(d) | root `.dockerignore`; `checkout@v2` → `@v4` | mutation: `.git*` takes the guard RED naming every probe path |
+| `73ac3a5` | 81 | `runlock` on `probe_plastic_traction.build_case()` | `SUCCESS test_perf_tool_locks (18 checks)` |
+| `d9c9611` | 67 | station header states 8 or 11 per friclaw branch | my own e2e cell + `8 / 8 / 8` |
+| `650bd1c` | 84 | `persist-credentials: false` + in-image credential gate | my own mutation, exit 1 / exit 0 |
+| `20d8f23` | — | board closures, rule 14a | tier green |
+
+Every branch came back based on a commit master had already moved past, and every
+one of them would have REVERTED something if copied wholesale — Zofia's would
+have dropped 111 lines of this log, three others would have undone
+`.dockerignore` or item 67's Fortran change. None did, because the base diff is
+checked before anything is copied. Worth stating as a rate rather than an
+anecdote: **6 of 6 returning branches were stale.** On a tree moving this fast
+that is the normal case, not the exception.
+
+## G. Item 84 — a GITHUB_TOKEN was being baked into every published image
+
+Found by `haruto-nakamura` incidentally while bumping `checkout@v2` → `@v4`, and
+it is the most consequential thing this session produced. Every link verified by
+me before I acted on it, because a security claim from a subagent is still a
+hypothesis:
+
+1. `actions/checkout@v4`'s `action.yml` declares `persist-credentials: default:
+   true` — I fetched the file from `raw.githubusercontent.com` and read it.
+2. That default writes the live `GITHUB_TOKEN` into the workspace `.git/config`
+   as `http.<origin>/.extraheader`.
+3. The same `action.yml` declares `post: dist/index.js`. Cleanup is a POST step,
+   so it runs AFTER every main step — including `docker build`.
+4. `Dockerfile:33` is `COPY . /opt/eqdyna`, and `.dockerignore` deliberately
+   keeps `.git` so the two in-image history guards can read it.
+
+So the token was in `.git/config` at build time and is in a layer of every image
+this workflow has pushed, `v5.16.1` included. **Short-lived** — it expires when
+the job ends — so this is a credential-in-artifact leak, not a live-token leak,
+and the mechanism is unchanged since checkout v2.0.0, so the `@v4` bump did not
+introduce it.
+
+Fixed in two layers, because the setting alone is item 82's "green until a
+release" shape all over again: `persist-credentials: false` pinned structurally
+by `test_publish_image_fetch_depth.py`, and `testsys/check_git_config_no_credential.py`
+run as the FIRST line of both in-image gate blocks, before any pip install, so a
+regression fails the job instead of publishing quietly. My own mutation of it:
+
+    FAIL check_git_config_no_credential: 2 credential marker(s) found ... (43 line(s) scanned)
+      line 43: matched 'extraheader' -- extraheader = AUTHORIZATION: basic ...
+    PASS check_git_config_no_credential: ... scanned (42 line(s)), no credential marker among 10 checked
+
+Both verdicts print the line count they scanned. That is the papercuts rule — a
+green that never opened the file is this project's recurring failure — and it is
+why the refusal path exits 2 on a missing file rather than reporting clean.
+
+End-to-end proof, not just a static one: dispatch run **35834959371** on
+`650bd1c` built the image and ran the gate with that check first —
+`Gate the image ... -> success`, and `Push image -> skipped`.
+
+**OWNER'S, not mine:** whether the already-published images (v5.16.1 and
+earlier) should be deleted and re-pushed. That is outward-facing and outside the
+grant. Board row 84 carries it.
+
+## H. Two board rows had an evidence command that could never go green
+
+Item 71's command greps a file the fix was deliberately NOT going to touch — the
+coverage landed as a sibling guard (`test_fractal_fault_geometry_derivatives.py`,
+`2590c65`, 12 hits, 6 checks green, mutation proofs baked in), so the row's
+command reads 0 before the fix and 0 after. It cost a full dispatch, which the
+agent correctly spent refusing to duplicate work.
+
+Item 67's command says to find the station file by its `# location = on fault`
+header. No file has that line: `stLocStamp` is computed at
+`src/fortran/library_output.f90:55` and never written. The command was
+unrunnable from birth.
+
+Both rows carried a recent `last checked` date. A date beside a command that
+cannot distinguish done from not-done is worse than a blank one, because it
+reads as a board being maintained. Now rule **14a**, and pathway row **85**
+carries the `stLocStamp` dead variable — same shape as `writeCompTime`, which
+this project already knows hid a 511x error.
