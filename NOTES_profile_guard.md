@@ -137,7 +137,28 @@ any pinned python number)
 - `testsys/run.py`: new opt-in tier `profile-overhead`, gated on
   `EQDYNA_PROFILE_OVERHEAD_CPUS` being set (refuses, does not default, if
   unset), runs all 4 backends in sequence, never concurrently.
-- Real numbers: see final report (this file is the trail, not the ledger).
+- Real numbers, test.tpv8, this box (nodes 2-3, cpus 16-31), n_lo=20/n_hi=60,
+  box load 32-35 throughout (genuinely busy, other users' jobs on the same
+  cpus at points -- ceiling override used deliberately, `--i-know-the-box-
+  is-busy`):
+
+  | backend | ON ms/step | OFF ms/step | OFF-vs-OFF floor | overhead | verdict |
+  |---|---|---|---|---|---|
+  | python-numpy | 549.77 | 518.27 | 17.99 (3 reps) | 31.51 | FAIL |
+  | python-jax | 100.84 | 43.18 | 63.83 (3 reps) | 57.66 | SUCCESS (floor-masked) |
+  | fortran (4 ranks) | 75.47 (mean) | 73.97 (mean) | 1.67 (2 reps) | 1.50 | SUCCESS |
+  | python-jax-mpi (4 ranks) | 110.51 (mean) | 101.44 (mean) | 1.75 (2 reps) | 9.07 | FAIL |
+
+  Two real, non-noise findings: numpy's 31.5ms exceeds even an inflated
+  17.99ms floor: a real cost, degraded further by box contention. jax-mpi's
+  per-rank numbers are essentially IDENTICAL across all 4 ranks in both
+  arms (101.4/101.475/101.45/101.425 vs 110.475-110.525) -- far too tight to
+  be the 1.75ms noise floor, so the ~9ms/step (~9%) overhead is real, not
+  noise. jax's own SUCCESS is not a clean pass: the floor (63.8ms, samples
+  90.87/134.91/154.70) swallows everything on this contended box -- a
+  quieter box could well show jax over budget too. Fortran is the one
+  clean pass (tight floor, tight overhead, both real). None of these four
+  numbers were adjusted; this is what the box returned.
 
 ## CPU discipline log
 - Every heavy run this session pinned to `numactl --physcpubind=16-31
