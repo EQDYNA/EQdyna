@@ -58,8 +58,11 @@ cap it at 10, then +2 when `test.tpv36`/`test.tpv37`'s fortran cells joined
 automatically on re-gating, then +4 more 2026-09-17 once their python-numpy/
 python-jax cells were measured at 2.91-4.34 GB and admitted) split across
 parallel jobs — `build`, `unit-regression`, `e2e-ci-fortran-a`/`-b`,
-`e2e-ci-python-cheap`/`-meng`/`-tpv29` — not one invocation; see
-`.github/workflows/test.yml` for the exact per-job commands.
+`e2e-ci-python-jax-tpv8`/`-meng`/`-tpv29`/`-tpv36-numpy`/`-tpv37-numpy`
+(renamed and split 2026-09-23 from `e2e-ci-python-cheap`/`-meng`/`-tpv29`
+once tpv36/tpv37's numpy cells were found serialising to 42 of that job's
+59 min) — not one invocation; see `.github/workflows/test.yml` for the
+exact per-job commands.
 `run.py all` is the wider LOCAL gate; it is not a reproduction of CI.
 Rule 16 was itself wrong about this until 2026-09-16.
 

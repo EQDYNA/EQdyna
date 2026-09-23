@@ -75,8 +75,10 @@ sharing one, and so no case queues behind another that does not need to
 and `e2e-ci-fortran-b`
 [`--backends fortran --cases test.drv.a6,test.meng2023a,test.meng2023cb,test.tpv10,test.tpv36`]
 -- 5 of the 10 cases each;
-`e2e-ci-python-cheap` [tpv8 both backends + tpv10/tpv104/tpv1053d x jax +
-tpv36/tpv37 both backends];
+`e2e-ci-python-jax-tpv8` [tpv8 both backends + tpv10/tpv104/tpv1053d/tpv36/tpv37
+x jax]; `e2e-ci-python-tpv36-numpy` and `e2e-ci-python-tpv37-numpy` [one
+~21 min numpy cell each, split out 2026-09-23 because run serially they were
+42 of the old `e2e-ci-python-cheap` job's 59 min];
 `e2e-ci-python-meng` [meng2023a/meng2023cb both backends + tpv29 x jax]; and
 `e2e-ci-python-tpv29` [tpv29 x python-numpy alone -- 1711 s measured locally,
 an order of magnitude past every other python cell, isolated so its
