@@ -109,7 +109,7 @@ def _device_peak_gb(jax):
 FORCE = 3
 
 
-def make_step_parts(xp, inv, finv, tp, mass, scratch):
+def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
     """The step, split at driver.f90:27 -- MPI4NodalQuant's position.
 
     part_a: timeElapsed, velDispUpdate, zero the force, both element kernels.
@@ -121,7 +121,17 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
     collective under shard_map) and keeps ONE jitted time loop, while run_mpi
     must leave the jit at the seam to make an MPI call and therefore jits the
     two halves separately. Both perform the same operations, in the same
-    order, on the same operands."""
+    order, on the same operands.
+
+    `fault_timer`, if given, is a mutable `{'s': 0.0}` this accumulates
+    `FLT.faulting`'s wall time into, split out along Fortran's own boundary
+    (`fault` = compTimeInSeconds(6), faulting.f90:28 -- rule 23). Callers must
+    pass `None` (the default) unless `not B.is_jax(xp)`: numpy executes this
+    call eagerly and synchronously, so timing it costs no new sync and moves
+    no bit; under jax tracing a `perf_counter()` pair here would measure the
+    ONE-TIME trace, not the per-step cost, which is wrong, not just imprecise
+    -- see profile_emit.py's docstring for why `fault` stays folded into
+    `element` on that backend."""
     dt = inv['dt']; rdampk = inv['rdampk']
     tr = finv['tr']
     friclaw = finv['friclaw']
@@ -157,8 +167,16 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
             fric = TP.updateThermalPressurization(
                 xp, tp, fric, sliprate_hist, shear_hist, nt, dt)
 
-        fric, fnft, force = FLT.faulting(xp, finv, fric, fnft, velArr, dispArr,
-                                         force, dt, timeElapsed, tr, nt)
+        if fault_timer is not None:
+            _t0 = time.perf_counter()
+            fric, fnft, force = FLT.faulting(xp, finv, fric, fnft, velArr,
+                                             dispArr, force, dt, timeElapsed,
+                                             tr, nt)
+            fault_timer['s'] += time.perf_counter() - _t0
+        else:
+            fric, fnft, force = FLT.faulting(xp, finv, fric, fnft, velArr,
+                                             dispArr, force, dt, timeElapsed,
+                                             tr, nt)
 
         if friclaw == 5:
             # onFaultTPHist(1|2, i, nt, ift) -- written AFTER faulting, so the
@@ -183,11 +201,15 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
     return part_a, part_b
 
 
-def make_step(xp, inv, finv, tp, mass, scratch):
+def make_step(xp, inv, finv, tp, mass, scratch, fault_timer=None):
     """Build the per-step closure. Called by backend.run_time_loop INSIDE
     the jit on the jax path, so that `inv`'s arrays resolve to jit arguments
-    rather than closed-over HLO literals."""
-    part_a, part_b = make_step_parts(xp, inv, finv, tp, mass, scratch)
+    rather than closed-over HLO literals.
+
+    `fault_timer`: see make_step_parts. Threaded through unchanged; this
+    function adds no timing of its own."""
+    part_a, part_b = make_step_parts(xp, inv, finv, tp, mass, scratch,
+                                     fault_timer=fault_timer)
 
     def step(carry, nt):
         carry = part_a(carry, nt)
@@ -208,8 +230,11 @@ def make_step(xp, inv, finv, tp, mass, scratch):
 def run(S, nsteps=None, verbose=True, xp=np):
     """The whole solve. `xp` selects the backend: numpy or jax.numpy.
 
-    Returns the same dict the six modules this replaces returned, so
-    eqdyna3d.run_case and library_output's frt writer need no change.
+    Returns the same dict the six modules this replaces returned, plus one
+    new key, `fault_s` -- the wall time spent inside `FLT.faulting` across
+    all steps, measured only `not B.is_jax(xp)` (see make_step_parts) and
+    0.0 on jax. eqdyna3d.run_case reads it to split `fault` out of `element`
+    for python-numpy; library_output's frt writer needs no change.
     """
     nsteps = nsteps or S['nstep']
 
@@ -285,7 +310,14 @@ def run(S, nsteps=None, verbose=True, xp=np):
                  B.shard_mode(), B.shard_sync()))
     t0 = time.perf_counter()
     scratch = KU.alloc_scratch(xp, inv)
-    mk = lambda i: make_step(xp, i, finv, tp, mass, scratch)   # noqa: E731
+    # `fault_timer` lives HERE, outside `mk`, so it survives regardless of
+    # how many times `mk` is invoked underneath `run_time_loop`/
+    # `run_time_loop_sharded` -- every `make_step` call closes over this
+    # SAME dict. None on jax: see make_step_parts's docstring for why a
+    # timer must not exist on that path, not just go unread.
+    fault_timer = {'s': 0.0} if not B.is_jax(xp) else None
+    mk = lambda i: make_step(xp, i, finv, tp, mass, scratch,   # noqa: E731
+                             fault_timer=fault_timer)
     if ndev > 1:
         carry = B.run_time_loop_sharded(xp, mk, inv, carry0, nsteps, ndev,
                                         carry_shard)
@@ -294,12 +326,13 @@ def run(S, nsteps=None, verbose=True, xp=np):
     elapsed = time.perf_counter() - t0
     if verbose:
         print('driver.run: %.3f s, %.3f ms/step' % (elapsed, elapsed / nsteps * 1e3))
+    fault_s = fault_timer['s'] if fault_timer is not None else 0.0
 
     (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
      sliprate_hist, shear_hist) = carry
     return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr),
                 fnft=np.asarray(fnft), fric=np.asarray(fric),
-                force=np.asarray(force))
+                force=np.asarray(force), fault_s=fault_s)
 
 
 def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
