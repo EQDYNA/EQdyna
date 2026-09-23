@@ -88,13 +88,107 @@ jobs:
     # fetch-depth: 0 -- this job, alone among the seven, needs real git
     # HISTORY, not just the tree. test_pretag_ci_negative.py drives the
     # pre-tag guard against named past commits (their parents, their
-    # changed-path sets) and test_history_table.py re-parses the eight
-    # legacy commit messages; checkout@v4's default depth of 1 would leave
-    # those commits unreachable, turning both guards into vacuous passes.
+    # changed-path sets), test_history_table.py re-parses the eight legacy
+    # commit messages, and the board-separation step below resolves a COMMIT
+    # RANGE; checkout@v4's default depth of 1 would leave those commits
+    # unreachable, turning all three into vacuous passes -- that shallow-clone
+    # failure is not hypothetical, it took publish.yml red on 2026-09-23
+    # (fixed in a99902f). fetch-depth: 0 also fetches
+    # +refs/heads/*:refs/remotes/origin/*, which is what makes `origin/master`
+    # resolvable for that step's fallback range.
     # The repo is 723 commits; the full fetch costs seconds.
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
+
+    # Rule 21c / pathway item 80: the MERGE-BOUNDARY half of board/code
+    # separation. testsys/hooks/pre-commit refuses a commit whose STAGED set
+    # mixes PROJECT_RULES.md/pathway_forward.md with anything else, but it
+    # cannot see a `git commit --amend` -- `git diff --cached` compares the
+    # index against the commit being REPLACED, so amending code into an
+    # existing board-only commit shows the hook a clean set and lands mixed
+    # anyway. This step closes that over finished history, on the way in.
+    #
+    # It sits FIRST in this job, ahead of apt/pip, because it needs nothing
+    # but git and the runner's system python3 (the checker is stdlib-only)
+    # and a violation should cost seconds, not the whole install.
+    #
+    # LIMIT, stated so nobody reads this gate as total: the checker skips
+    # MERGE commits by design (an automatic merge adds no content of its own
+    # and its first-parent diff is the whole of the other branch, which would
+    # flag every merge of a board branch). An "evil merge" -- a merge commit
+    # hand-edited to carry board file + code -- is therefore NOT caught here.
+    #
+    # Nor does a board-ONLY push reach this step: the workflow's own
+    # paths-ignore (top of file) starts no run for one. That is correct and
+    # costs nothing -- a MIXED commit by definition also touches a non-board
+    # file, so it always triggers.
+    - name: Check board/code commit separation (rule 21c)
+      env:
+        # Interpolated into env, never into the shell body: expression
+        # substitution directly inside `run:` is a script-injection surface.
+        EVENT_NAME: ${{ github.event_name }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        PUSH_HEAD: ${{ github.sha }}
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -eu
+        ZERO=0000000000000000000000000000000000000000
+        have() { git cat-file -e "$1^{commit}" 2>/dev/null; }
+        FALLBACK=no
+        case "$EVENT_NAME" in
+          pull_request)
+            # The PR's own commits. Both endpoints are reachable because the
+            # depth-0 checkout of refs/pull/N/merge carries both parents.
+            if [ -z "$PR_BASE" ] || [ -z "$PR_HEAD" ]; then
+              echo "REFUSED: pull_request event carried an empty base/head sha"
+              exit 1
+            fi
+            LO=$PR_BASE; HI=$PR_HEAD ;;
+          push)
+            LO=$PUSH_BEFORE; HI=$PUSH_HEAD ;;
+          *)
+            echo "REFUSED: event '$EVENT_NAME' has no defined range for this check"
+            exit 1 ;;
+        esac
+        # Two push cases github.event.before cannot express. NEITHER may pass
+        # silently (rule 2) -- a check that passes when it cannot determine
+        # its range is not a check:
+        #   (a) FIRST push of a branch -- before is 40 zeros;
+        #   (b) FORCE-push -- before names a commit this clone no longer has.
+        # Both fall back to a STATED range, origin/master..HEAD, which for a
+        # feature branch is a SUPERSET of the push (every commit the branch
+        # introduces): wrong in the safe direction, never narrower.
+        if [ -z "$LO" ] || [ "$LO" = "$ZERO" ] || ! have "$LO"; then
+          FALLBACK=yes
+          if ! git rev-parse --verify origin/master >/dev/null 2>&1; then
+            echo "REFUSED: range start '$LO' is unusable AND origin/master is"
+            echo "  absent, so no range can be determined. Refusing rather"
+            echo "  than checking nothing."
+            exit 1
+          fi
+          LO=$(git rev-parse origin/master); HI=$(git rev-parse HEAD)
+          echo "NOTE: github.event.before ('$PUSH_BEFORE') is unusable (first"
+          echo "  push of this branch, or force-pushed away). Falling back to"
+          echo "  the stated range origin/master..HEAD."
+          if [ -z "$(git rev-list "$LO..$HI")" ]; then
+            # HEAD is already an ancestor of origin/master. A zero-commit
+            # report here would be indistinguishable from a suppressed one
+            # (this is also the shape a force-push to master leaves behind),
+            # so narrow to the head commit rather than report a vacuous zero.
+            if ! have "$HI^"; then
+              echo "REFUSED: fallback range is empty and HEAD has no parent."
+              exit 1
+            fi
+            LO=$(git rev-parse "$HI^")
+            echo "NOTE: origin/master..HEAD was EMPTY (HEAD already on"
+            echo "  master). Narrowing to the head commit alone so this step"
+            echo "  cannot report a vacuous zero."
+          fi
+        fi
+        echo "check_board_separation range: $LO..$HI (event=$EVENT_NAME, fallback=$FALLBACK)"
+        python3 testsys/check_board_separation.py "$LO..$HI"
 
     - name: Set up Python
       uses: actions/setup-python@v4
