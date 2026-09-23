@@ -47,24 +47,24 @@ changed and why. The port exists so a fix can be verified twice.
 ./install-eqdyna.sh -m ubuntu        # ubuntu/ls6/macos; builds src/fortran, installs bin/eqdyna
 export EQDYNAROOT=$(pwd); PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 
-python3 testsys/run.py all           # unit + regression + the sweep (30 cells, ~1440 s)
+python3 testsys/run.py all           # unit + regression + the sweep at the 5 s GATE term (everyday)
+python3 testsys/run.py release       # the sweep at each case's FULL term; writes docs/evidence/sweep-<sha>/summary.json (release gate)
 python3 testsys/run.py unit regression       # seconds — run this constantly
 python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran   # one cell
 ```
 
-CI covers 25 of 30 cells (`testsys/matrix.py`'s `CI_CELLS`, widened 2026-09-16
-once the matrix split removed the shared-runner memory ceiling that used to
-cap it at 10, then +2 when `test.tpv36`/`test.tpv37`'s fortran cells joined
-automatically on re-gating, then +4 more 2026-09-17 once their python-numpy/
-python-jax cells were measured at 2.91-4.34 GB and admitted) split across
-parallel jobs — `build`, `unit-regression`, `e2e-ci-fortran-a`/`-b`,
-`e2e-ci-python-jax-tpv8`/`-meng`/`-tpv29`/`-tpv36-numpy`/`-tpv37-numpy`
-(renamed and split 2026-09-23 from `e2e-ci-python-cheap`/`-meng`/`-tpv29`
-once tpv36/tpv37's numpy cells were found serialising to 42 of that job's
-59 min) — not one invocation; see `.github/workflows/test.yml` for the
-exact per-job commands.
-`run.py all` is the wider LOCAL gate; it is not a reproduction of CI.
-Rule 16 was itself wrong about this until 2026-09-16.
+CI (`.github/workflows/test.yml`, redesigned 2026-09-23) no longer runs the
+physics sweep: `build`, `unit-regression`, and one `e2e-ci-smoke` job --
+`test.tpv8` x {fortran at 4 ranks on the runner's mpich, python-numpy,
+python-jax} at the gate term (`matrix.CI_CELLS`). Its job is PORTABILITY
+(clean checkout, fresh deps, a different MPI from this box's Open MPI), not
+physics coverage. The LOCAL sweep is the science gate: `run.py all` at the
+5 s gate term every day, `run.py release` at the full committed term before
+every tag, committed as evidence and checked by
+`testsys/regression/check_pretag_ci.py` (a tag needs that sweep AND green CI
+for its exact SHA). The term is an axis of the cell: tpv29 (20 s) and
+tpv36/tpv37 (6 s) carry a second reference, `frt.canonical.term5.txt`, and a
+gate-term cell without one fails closed.
 
 ## There is ONE test
 

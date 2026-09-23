@@ -55,7 +55,10 @@ No timeouts: this is a shared box and dynamic-rupture runs are slow when it is
 busy.
 """
 import argparse
+import datetime
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -181,10 +184,45 @@ def base_env():
 
 
 # --------------------------------------------------------------------------
+# the TERM axis (2026-09-23 owner-approved test-methodology change)
+# --------------------------------------------------------------------------
+def apply_term_override(case_name, case_dir, term):
+    """Append (or not) a par.term override to the just-copied
+    user_defined_params.py. Called from EVERY backend's case-build path --
+    make_serial_case (python-numpy/jax/jax-mpi) and run_fortran -- right after
+    create.newcase and before case.setup runs, so the term axis goes through
+    the ONE case-build path rather than forking a second one.
+
+    term='full': no override. The compset's own committed par.term
+    (case_input/<case>/user_defined_params.py, or tpv36/37's
+    tpv36_37_common.buildParams()) IS the full term; matrix.CASE_FULL_TERM_S
+    is bookkeeping ABOUT that value, never a second source for it.
+
+    term='gate': appends `par.term = matrix.GATE_TERM_S`, unconditionally --
+    even for a case whose own full term already equals it -- so the file on
+    disk always states which term axis produced it.
+    """
+    if term not in ('gate', 'full'):
+        raise ValueError('unknown --term %r (expected "gate" or "full")' % term)
+    if term == 'full':
+        return
+    params = os.path.join(case_dir, 'user_defined_params.py')
+    with open(params) as f:
+        text = f.read().rstrip('\n')
+    with open(params, 'w') as f:
+        f.write(text + '\n\n# term axis override by testsys/e2e/run_e2e.py '
+                       '(--term gate, default): the everyday gate runs every '
+                       'case at matrix.GATE_TERM_S regardless of %r\'s own '
+                       'full-length par.term.\npar.term = %r\n'
+                       % (case_name, matrix.GATE_TERM_S))
+
+
+# --------------------------------------------------------------------------
 # cell runners
 # --------------------------------------------------------------------------
-def make_serial_case(case_name, case_dir, env):
-    """create.newcase + force a SERIAL decomposition + case.setup.
+def make_serial_case(case_name, case_dir, env, term='full'):
+    """create.newcase + the TERM override + force a SERIAL decomposition +
+    case.setup.
 
     The standalone solver refuses npx*npy*npz > 1, and the cases spell their
     decomposition three different ways: three separate `par.nx = 2` lines
@@ -205,6 +243,7 @@ def make_serial_case(case_name, case_dir, env):
                           case_dir, case_name], env=env)
     if rc != 0:
         raise RuntimeError('create.newcase %s exited %d' % (case_name, rc))
+    apply_term_override(case_name, case_dir, term)
     params = os.path.join(case_dir, 'user_defined_params.py')
     with open(params) as f:
         text = f.read().rstrip('\n')
@@ -339,16 +378,26 @@ def run_python_jax_mpi(case_name, case_dir, env):
     return case_dir
 
 
-def run_fortran(case_name, case_dir, eqdyna_cmd, env):
-    """create.newcase -> case.setup -> mpirun -> plotRuptureDynamics.
+def run_fortran(case_name, case_dir, eqdyna_cmd, env, term='full'):
+    """create.newcase -> the TERM override -> case.setup -> mpirun ->
+    plotRuptureDynamics.
+
+    The TERM override (apply_term_override) is a direct python call sitting
+    between the first and second subprocess steps below, not a third build
+    path: it edits the SAME user_defined_params.py create.newcase just copied
+    from case_input/<case_name>/, which case.setup then reads -- the identical
+    mechanism make_serial_case uses for the python backends' term override.
 
     plotRuptureDynamics is what writes fault.dyna.r.nc, the second artifact
     this backend is compared on (matrix.ARTIFACTS); dropping it once already
     turned that comparison into a comparison of a stale file.
     """
     test_dir = os.path.dirname(case_dir)
+    rc = _run(['create.newcase', os.path.basename(case_dir), case_name], test_dir, env)
+    if rc != 0:
+        raise RuntimeError('create.newcase %s exited %d' % (case_name, rc))
+    apply_term_override(case_name, case_dir, term)
     steps = [
-        (['create.newcase', os.path.basename(case_dir), case_name], test_dir),
         (['./case.setup'], case_dir),
         ([MPIRUN, '-np', str(matrix.FORTRAN_RANKS[case_name]), eqdyna_cmd], case_dir),
         ([sys.executable, 'plotRuptureDynamics'], case_dir),
@@ -359,11 +408,11 @@ def run_fortran(case_name, case_dir, eqdyna_cmd, env):
             raise RuntimeError('`%s` exited %d' % (' '.join(cmd), rc))
 
 
-def run_cell(case, backend, test_dir, eqdyna_cmd, env, device, gpu_slots=None):
+def run_cell(case, backend, test_dir, eqdyna_cmd, env, device, term='full', gpu_slots=None):
     """Run one cell and return its run directory. Raises on any failure."""
     if backend == 'fortran':
         case_dir = os.path.join(test_dir, case)
-        run_fortran(case, case_dir, eqdyna_cmd, env)
+        run_fortran(case, case_dir, eqdyna_cmd, env, term)
         return case_dir
     case_dir = os.path.join(test_dir, '%s.%s' % (case, backend))
     # make_serial_case is UNCHANGED for python-jax-mpi: the case setup (one
@@ -372,7 +421,7 @@ def run_cell(case, backend, test_dir, eqdyna_cmd, env, device, gpu_slots=None):
     # its OWN Fortran-style domain decomposition of that same serial case
     # across MPI ranks; par.nx/ny/nz above is a different, unrelated
     # decomposition (the Fortran binary's, which never runs here).
-    make_serial_case(case, case_dir, env)
+    make_serial_case(case, case_dir, env, term)
     if backend == 'python-jax-mpi':
         run_python_jax_mpi(case, case_dir, env)
     elif device != 'cpu' and backend == 'python-jax':
@@ -516,6 +565,54 @@ def _capture_perf(results, label, device, budget):
               'verdict is unaffected.' % (type(exc).__name__, exc))
 
 
+_MAX_DIFF_RE = re.compile(r'max\|diff\|=([0-9.eE+-]+)')
+
+
+def write_release_evidence(results, term, explicit, started_utc, finished_utc):
+    """docs/evidence/sweep-<shortsha>/summary.json -- written only for a
+    default selection (no --cases/--backends) run at --term full, i.e. the
+    release tier sweeping the full runnable matrix. A filtered selection is
+    not 'the full runnable matrix' and gets no evidence artifact under this
+    name.
+
+    A separate mission is writing the tag-time guard that READS this
+    schema -- the field NAMES below are a contract: extend, never rename or
+    remove (per the dispatch that added this function)."""
+    if term != 'full' or explicit:
+        return
+    sha_r = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', 'HEAD'],
+                           capture_output=True, text=True)
+    sha = sha_r.stdout.strip()
+    if sha_r.returncode != 0 or len(sha) != 40:
+        raise RuntimeError(
+            'write_release_evidence: `git rev-parse HEAD` did not return a '
+            'full 40-char sha (rc=%d, stdout=%r) -- refusing to write an '
+            'evidence artifact with no sha' % (sha_r.returncode, sha))
+    status_r = subprocess.run(['git', '-C', REPO_ROOT, 'status', '--porcelain'],
+                              capture_output=True, text=True)
+    tree_clean = status_r.stdout.strip() == ''
+    cells, n_success = [], 0
+    for case, backend, ok, dt, lines in results:
+        if ok:
+            n_success += 1
+        m = _MAX_DIFF_RE.search(lines[0]) if lines else None
+        cells.append(dict(case=case, backend=backend,
+                          verdict='SUCCESS' if ok else 'FAIL',
+                          max_diff=float(m.group(1)) if m else None,
+                          wall_s=dt))
+    payload = dict(sha=sha, tree_clean=tree_clean, term='full',
+                  n_runnable=len(results), n_success=n_success, cells=cells,
+                  started_utc=started_utc, finished_utc=finished_utc)
+    out_dir = os.path.join(REPO_ROOT, 'docs', 'evidence', 'sweep-%s' % sha[:7])
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, 'summary.json')
+    with open(path, 'w') as f:
+        json.dump(payload, f, indent=2)
+        f.write('\n')
+    print('e2e: wrote release evidence %s (%d cells, %d success, sha=%s, '
+          'tree_clean=%s)' % (path, len(cells), n_success, sha, tree_clean))
+
+
 # --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
@@ -524,8 +621,18 @@ def main(argv=None):
     ap.add_argument('--cases', help='comma-separated subset of the case axis')
     ap.add_argument('--backends', help='comma-separated subset of the backend axis')
     ap.add_argument('--ci', action='store_true',
-                    help='run matrix.CI_CELLS, the declared memory-measured '
-                         'cell list a 7 GB GitHub runner can hold')
+                    help='run matrix.CI_CELLS, the declared portability-smoke '
+                         'cell list (2026-09-23: one case, all three backend '
+                         'implementations, gate term)')
+    ap.add_argument('--term', default='gate', choices=('gate', 'full'),
+                    help='the TERM axis: "gate" (default) runs every '
+                         'selected case at matrix.GATE_TERM_S regardless of '
+                         'its own committed par.term, and compares against '
+                         'the gate-term reference (compare.canonical_reference_name); '
+                         '"full" runs each case at its own committed par.term '
+                         '(case_input/<case>/user_defined_params.py) and '
+                         'compares against the one full-length reference, '
+                         'test.reference.results/<case>/frt.canonical.txt')
     ap.add_argument('--jobs', type=int, default=None,
                     help='core budget for concurrent cells (default: cores-4). '
                          'A fortran cell costs its rank count, a python cell 1. '
@@ -539,6 +646,11 @@ def main(argv=None):
     runnable, unsupported, label, explicit = select(args)
 
     print('\n==== e2e sweep: coverage ====')
+    print('term     : %s%s' % (args.term,
+                               ' (matrix.GATE_TERM_S=%gs, overriding every '
+                               'selected case\'s own committed par.term)'
+                               % matrix.GATE_TERM_S if args.term == 'gate'
+                               else ' (each case\'s own committed par.term)'))
     for line in matrix.coverage_report(runnable, unsupported, label):
         print(line)
     for line in memory_note(runnable):
@@ -618,6 +730,7 @@ def main(argv=None):
 
     env = base_env()
     start = time.time()
+    started_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     # Cells are independent: each gets its own directory ('<case>.<backend>'),
     # reads the same read-only reference tree, and shares nothing else. So the
@@ -670,8 +783,8 @@ def main(argv=None):
         t0 = time.time()
         try:
             case_dir = run_cell(case, backend, test_dir, eqdyna_cmd, env,
-                                args.device, gpu_slots=gpu_slots)
-            ok, lines = compare.compare_cell(case, backend, case_dir)
+                                args.device, args.term, gpu_slots=gpu_slots)
+            ok, lines = compare.compare_cell(case, backend, case_dir, args.term)
         except Exception as exc:                # noqa: BLE001 - reported, not swallowed
             ok, lines = False, ['%s: %s' % (type(exc).__name__, exc)]
         return (case, backend, ok, time.time() - t0, lines)
@@ -743,6 +856,7 @@ def main(argv=None):
                     results.append(r)
         results.sort(key=lambda r: order[(r[0], r[1])])
     elapsed = time.time() - start
+    finished_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     print('\n==== e2e sweep: results ====')
     print('%-16s %-13s %-8s %8s  %s' % ('case', 'backend', 'verdict', 'seconds',
@@ -768,6 +882,11 @@ def main(argv=None):
     # Placed BEFORE the verdict returns below but able to affect none of them:
     # _capture_perf swallows everything into a WARNING.
     _capture_perf(results, label, args.device, budget)
+    # Release-sweep evidence: only for a default (--term full, no
+    # --cases/--backends) run over the full runnable matrix -- see the
+    # function's own docstring. Written before the pass/fail return below so
+    # a failed release sweep still leaves its evidence on disk.
+    write_release_evidence(results, args.term, explicit, started_utc, finished_utc)
     if len(results) != len(runnable):
         print('e2e: FAIL - %d cell(s) were selected but %d produced a verdict; '
               'a cell that produced no verdict is a failure'
