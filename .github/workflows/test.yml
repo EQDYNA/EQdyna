@@ -24,8 +24,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
-# Build runs once in its own job; unit/regression and the e2e-ci smoke job
-# run in parallel downstream.
+# Build runs once in its own job; unit/regression (sharded 3 ways, see the
+# unit-regression job below and testsys/ci_shard.py) and the e2e-ci smoke job
+# run in parallel downstream, 4 jobs total.
 #
 # 2026-09-23 (owner-approved test-methodology change): CI no longer runs the
 # e2e sweep for physics coverage. The 25-of-30-cell, memory-measured
@@ -85,29 +86,57 @@ jobs:
         if-no-files-found: error
         retention-days: 1
 
-  # unit + regression in one job, matching testsys/run.py's own
-  # 'unit regression' grouping. Needs the FULL build toolchain, not just the
-  # artifact: several regression guards do their OWN independent compiles
+  # unit + regression, SHARDED (2026-09-23, owner request: "make CI faster
+  # without weakening any guard" -- unit-regression was the 3.4-of-4.1-min
+  # critical path). testsys/ci_shard.py (owned by this workflow, not by
+  # testsys/run.py/matrix.py/run_e2e.py) statically partitions every
+  # testsys/regression/test_*.py into 3 groups, hand-balanced against a real
+  # timed run (~41.5 s each; see ci_shard.py's own module docstring for the
+  # numbers and provenance). Shard 3 also carries the full `pytest
+  # testsys/unit` tier. `python3 testsys/run.py unit regression` -- the
+  # LOCAL, unsharded command -- is unchanged; sharding is layered on top of
+  # it, not a replacement for it, so local dev and CI keep running the exact
+  # same set of checks, just split differently. testsys/regression's own
+  # test_ci_shard_coverage.py is the guard that a script cannot silently
+  # fall out of every shard: it runs INSIDE shard 3 (it is one of shard 3's
+  # own scripts) and fails loudly if the union of all 3 shards' assignments
+  # stops covering every test_*.py on disk, or a script is double-assigned.
+  #
+  # Needs the FULL build toolchain in every shard, not just the artifact:
+  # several regression guards do their OWN independent compiles
   # (test_make_default_goal.py, test_fault_geometry_guard.py,
-  # test_drucker_prager_kernel.py), and test_stop_exit_status.py's
-  # real-binary probe needs bin/eqdyna present or it SKIPS.
+  # test_drucker_prager_kernel.py, all in shard 2 or 3), and
+  # test_stop_exit_status.py's (shard 1) real-binary probe needs bin/eqdyna
+  # present or it SKIPS.
   unit-regression:
     needs: build
     runs-on: ubuntu-22.04
+    strategy:
+      # fail-fast: false -- one shard failing must not cancel the other two
+      # mid-run; each shard's own SUCCESS/FAIL banners are the useful signal
+      # and cancelling early would hide which OTHER scripts also would have
+      # failed, which is exactly the information a real regression costs
+      # the most to not have.
+      fail-fast: false
+      matrix:
+        shard: ['1', '2', '3']
 
     steps:
-    # fetch-depth: 0 -- this job, alone among the seven, needs real git
-    # HISTORY, not just the tree. test_pretag_ci_negative.py drives the
-    # pre-tag guard against named past commits (their parents, their
-    # changed-path sets), test_history_table.py re-parses the eight legacy
-    # commit messages, and the board-separation step below resolves a COMMIT
-    # RANGE; checkout@v4's default depth of 1 would leave those commits
-    # unreachable, turning all three into vacuous passes -- that shallow-clone
-    # failure is not hypothetical, it took publish.yml red on 2026-09-23
-    # (fixed in a99902f). fetch-depth: 0 also fetches
-    # +refs/heads/*:refs/remotes/origin/*, which is what makes `origin/master`
-    # resolvable for that step's fallback range.
-    # The repo is 723 commits; the full fetch costs seconds.
+    # fetch-depth: 0 -- this job (all 3 shards), alone among the workflow's
+    # jobs, needs real git HISTORY, not just the tree. test_pretag_ci_negative.py
+    # (shard 3) drives the pre-tag guard against named past commits (their
+    # parents, their changed-path sets), test_history_table.py (shard 2)
+    # re-parses the eight legacy commit messages, and the board-separation
+    # step below resolves a COMMIT RANGE; checkout@v4's default depth of 1
+    # would leave those commits unreachable, turning all three into vacuous
+    # passes -- that shallow-clone failure is not hypothetical, it took
+    # publish.yml red on 2026-09-23 (fixed in a99902f). fetch-depth: 0 also
+    # fetches +refs/heads/*:refs/remotes/origin/*, which is what makes
+    # `origin/master` resolvable for that step's fallback range. Repeated
+    # identically in all 3 shards (cheap -- the repo is 723 commits, the full
+    # fetch costs seconds) rather than centralised in one shard, because a
+    # guard that only ONE shard could run is a guard the other two ship
+    # without if that one shard is ever skipped or its matrix entry pruned.
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
@@ -206,6 +235,21 @@ jobs:
       with:
         python-version: '3.x'
 
+    # All 3 shards install the SAME package set (the shard split is by
+    # regression SCRIPT, not by dependency), so one cache key -- independent
+    # of matrix.shard -- serves all 3 and only needs populating once per
+    # workflow-file change. Keyed on this file's own hash rather than a
+    # requirements.txt (there isn't one): the `pip install` lines below are
+    # the only place these versions are pinned/unpinned, so a change to them
+    # is exactly a change to this file.
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('.github/workflows/test.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
     - name: Update package list
       run: sudo apt-get update
 
@@ -241,7 +285,7 @@ jobs:
     - name: Restore exec bit on eqdyna binary
       run: chmod +x bin/eqdyna
 
-    - name: Run unit + regression tests
+    - name: Run ci_shard ${{ matrix.shard }} (unit + regression, sharded)
       env:
         # test_release_complete.py's check_network_side calls `gh release
         # view` to confirm rule 15 step 9 (gh release create) actually ran.
@@ -251,7 +295,7 @@ jobs:
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
         set -o pipefail
-        python3 testsys/run.py unit regression 2>&1 | tee -a testRunLog.txt
+        python3 testsys/ci_shard.py run ${{ matrix.shard }} 2>&1 | tee -a testRunLog.txt
 
     - name: Print testRunLog.txt
       if: always()
