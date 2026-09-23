@@ -903,3 +903,46 @@ raw logs `docs/evidence/perf-2026-09-23/wei-s3_item33_rep{1,2,3}.log.gz`,
 27 rows appended to `docs/perf_ledger.jsonl` (append-only verified: 27
 insertions, 0 deletions against `origin/master`). Routed to `zofia-kaminska` for
 item 33's row.
+
+## BB. Three landings, each gated by my own run, 12:14-12:40
+
+| commit | item | what | my own gate, not the mission's |
+|---|---|---|---|
+| `c4666ae` | 88 | `output_offfault_st`: stamp emitted, `', '` separator added, duplicate legend line dropped | `test.tpv8` writes **11 body station files, two at 12 km depth** — a case that TRIGGERS the path; header now reads `# location = -3.0 km off fault, 12.0 km along strike, 12.0 km depth`, legend 7 lines against `awk NF` = 7; `test.tpv8 x fortran max\|diff\|=3.051760e-11` vs bound `1.0e-08` |
+| `32744b2` | 89 | `test_stop_exit_status.py` deflaked: FATAL text asserted where the launcher cannot drop it | 20/20 green; MY OWN mutations — delete the FATAL banner -> RED in probe B (`1342 byte(s), none containing it`), delete `flush(6)` -> RED (`164 byte(s)`); `errorCodes.f90` restored byte-identically, sha256 `f7773da6...b4d85d` both sides |
+| `8a3eba8` | refactor round 1 | one copy of the NUMA `{node:[cpu]}` inversion and of the per-step-by-difference arithmetic (4 files, +43/-12) | 22,000 random cases comparing each extracted function against the expression it replaced, repr-exact, 0 differ; a REAL `run_scaling` run exercising both engines, arithmetic re-derived by hand from the printed walls; `SUCCESS test_perf_tool_locks (18 checks)`; unit+regression |
+
+**Item 88's dip question, answered rather than assumed.** No `dsin(dip)`
+correction applies off the fault: `readInputFiles.f90:218` reads `x4nds` as a
+plain (x,y,z) triple and `meshgen.f90:625` matches its third component against
+the raw mesh node `nodeCoor(3)`. A body receiver off the fault plane has no
+down-dip coordinate to convert to. I re-derived the seven-column legend myself
+from `eqdyna3d.f90:180-190` (station outer, `iDof` 1..3, disp/vel inner) and
+`driver.f90:229-231` before accepting the mission's table.
+
+**Item 89's cause is the launcher, and that is worth more than the fix.** Open
+MPI discards already-written, already-FLUSHED bytes when `MPI_Abort` tears the
+job down: a rank writing 20000 lines returned 2,264,946 of 2,879,970 bytes with
+an immediate abort and 2,879,970 of 2,879,970 on all 20 runs with a 1 s sleep
+first. Same writer, same capture code, only the abort timing differs. So the
+guard now asserts the exit status where the user actually sees it (piped
+`mpirun`) and the FATAL text where bytes cannot be lost (each rank redirected to
+its own file), and neither claim is softened. Any OTHER guard in `testsys/` that
+asserts on text captured through `mpirun` past an `MPI_Abort` has the same
+exposure — not swept, recorded.
+
+**Round 1's finding is worth more than its diff.** The guard that protects the
+four-times-patched "rmtree without a lock" class (`test_perf_tool_locks.py:644-695`)
+asserts the SOURCE SHAPE of three function bodies, and therefore FORBIDS the
+deduplication that would prevent a fifth occurrence — proved by mutation, not
+argued. A guard written against source text can forbid the fix for the defect it
+guards. `iris-vermeulen` is in flight now converting those assertions to
+behavioural ones; round 3 does the dedup underneath it, in that order.
+
+**Stale-base rate this session: 3 of 3.** All three branches were cut from
+`078bb4f` and would have reverted `b978637` (the item-33 evidence) wholesale.
+None did; only the intended files were taken, every time.
+
+**Three merged-branch CI runs cancelled** (`2b4d2d0`, `9229821`, `b5da34a`) with
+seven `test.yml` runs in flight at once. Third session running to pay item 87's
+cost by hand.
