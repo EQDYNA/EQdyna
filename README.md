@@ -56,8 +56,11 @@ Without the variable it prints what it would run and exits non-zero, so the
 tier can never be triggered by accident (for example by `run.py all`).
 
 Each case reaches its spec resolution by DECIMATING a shipped fault surface --
-every value is an official one, no interpolation -- so a clean checkout needs
-no downloads. test.tpv29 ships its surface at 100 m (3.5 MB) and 50 m (14 MB);
+every surface value is an official one, no interpolation -- so a clean
+checkout needs no downloads. The fault-normal DERIVATIVE columns that travel
+with that surface are recomputed at the target spacing rather than
+decimated, because a finite difference belongs to a grid at a spacing and
+not to the surface (see `case_input/test.tpv29/README.md`). test.tpv29 ships its surface at 100 m (3.5 MB) and 50 m (14 MB);
 a request for a dx finer than the shipped source, or one that is not a
 multiple of it, is refused rather than interpolated (`scripts/lib.py`'s
 `requireFaultGeometryResolution`). 25 m needs the official SCEC file and
