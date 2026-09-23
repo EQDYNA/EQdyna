@@ -57,6 +57,7 @@ busy.
 import argparse
 import datetime
 import json
+import math
 import os
 import re
 import shutil
@@ -235,6 +236,138 @@ def schedule_order(cells, cost_estimates):
     an unchanged ledger and cell list.
     """
     return sorted(cells, key=lambda cb: -cost_estimates.get(cb, float('inf')))
+
+
+def cell_cost(case, backend):
+    """Core cost this cell BILLS against the concurrency budget below --
+    module-level (not a closure inside main()) so a regression guard can call
+    it directly and so mutating its inputs (matrix.JAX_MEASURED_CORES,
+    matrix.FORTRAN_RANKS, matrix.PY_MPI_RANKS) is observable without
+    re-running main().
+
+    Every branch cites where its number came from -- MEASURED, not a guess
+    (rule 2):
+      fortran         -- its real rank count, matrix.FORTRAN_RANKS
+                         (testNameList.coreNumList).
+      python-jax-mpi  -- its real rank count, matrix.PY_MPI_RANKS: genuinely
+                         N processes, not one.
+      python-jax      -- matrix.JAX_MEASURED_CORES, ceil'd. XLA's CPU
+                         backend threads its own ops even in a serial launch
+                         with no explicit thread pinning; billing it at 1 (as
+                         this function used to, unconditionally, before the
+                         2026-09-23 speed campaign) undercounts a MEASURED
+                         252% CPU cell by ~2.5x -- see matrix.py's own
+                         citation on that constant for the measurement.
+                         Rounded UP: under-billing a real cost is the defect
+                         this exists to close.
+      python-numpy    -- 1, and this is a MEASURED number too, not merely an
+                         assumption: eqdyna3d._narrow_numpy_affinity pins the
+                         standalone numpy backend to exactly one cpu
+                         (flat 1/2/4-cpu scaling measured there, and ~2x
+                         WORSE spanning NUMA nodes with a wider mask), and
+                         `/usr/bin/time -v` on test.tpv8 x python-numpy this
+                         session read "Percent of CPU this job got: 101%"
+                         over the full 197.5s run -- one core, not several.
+    """
+    if backend == 'fortran':
+        return max(1, matrix.FORTRAN_RANKS.get(case, 4))
+    if backend == 'python-jax-mpi':
+        return max(1, matrix.PY_MPI_RANKS[case])
+    if backend == 'python-jax':
+        return max(1, math.ceil(matrix.JAX_MEASURED_CORES))
+    return 1
+
+
+# Margin subtracted from measured-free cores before it becomes the default
+# --jobs budget (see measured_free_cores/default_jobs_budget below): headroom
+# for this process's own bookkeeping (the ThreadPoolExecutor, subprocess
+# launch/reap) and for a foreign job to grow slightly between the tenancy
+# sample and the first cell actually starting. Same value the sweep's OLD
+# fixed "cores-4" default already reserved -- re-purposed onto a MEASURED
+# free-core base instead of the machine's total core count, not re-derived.
+JOBS_MARGIN_CORES = 4
+
+
+def measured_free_cores(total_cores=None, busy_ceiling=None, sample_s=2.0,
+                        busy_fractions_fn=None):
+    """(free, busy, total): cores measured FREE at sweep start, by sampling
+    EVERY cpu's own /proc/stat busy fraction over >=2s and counting how many
+    read busier than `busy_ceiling`.
+
+    Reuses testsys/perf/run_numa_scaling.cpu_busy_fractions -- the SAME
+    instrument testsys/perf's own tools already use to pick idle cpus for a
+    measurement -- rather than a second /proc/stat reader; the default
+    `busy_ceiling` is testsys/perf/ledger.TENANCY_REFERENCE_CEILING (0.5),
+    the same ceiling every perf-ledger row already records tenancy against,
+    not a new number invented for this one caller.
+
+    `busy_fractions_fn` is an injection point ONLY: a caller (this module's
+    own default-budget wiring) leaves it None and gets the real /proc/stat
+    sampler; a regression guard passes a synthetic {cpu: fraction} producer
+    to prove the budget actually moves with what this function measures,
+    without waiting out a real sample or depending on this box's own load.
+
+    Raises if per-cpu stats could not be read for ANY requested cpu id
+    (cpu_busy_fractions returns {} in that case, e.g. no /proc/stat at all --
+    macOS) -- rule 2: "could not measure the tenancy" must not silently
+    become "assume the box is idle" or "assume it is full"; either guess
+    would put a wrong number in front of every cell this sweep launches. Pass
+    --jobs explicitly on a machine this cannot measure.
+
+    Returns (free, busy, total, busy_ceiling) -- the ceiling actually used
+    travels back with the numbers so a caller can print it, per this
+    project's own papercuts rule against a bare, unexplained verdict.
+    """
+    total = total_cores if total_cores is not None else (os.cpu_count() or 4)
+    if busy_ceiling is None:
+        sys.path.insert(0, os.path.join(TESTSYS, 'perf'))
+        import ledger
+        busy_ceiling = ledger.TENANCY_REFERENCE_CEILING
+    if busy_fractions_fn is None:
+        sys.path.insert(0, os.path.join(TESTSYS, 'perf'))
+        import run_numa_scaling as numa
+        busy_fractions_fn = numa.cpu_busy_fractions
+    fractions = busy_fractions_fn(list(range(total)), sample_s=sample_s)
+    if not fractions:
+        raise RuntimeError(
+            'measured_free_cores: no per-cpu /proc/stat reading for any of '
+            '%d cpu id(s) -- the tenancy-aware default --jobs budget has no '
+            'honest number to compute from on this machine. Pass --jobs '
+            'explicitly.' % total)
+    busy = sum(1 for f in fractions.values() if f > busy_ceiling)
+    free = total - busy
+    return free, busy, total, busy_ceiling
+
+
+def default_jobs_budget(cells, args):
+    """The core budget for this invocation: `--jobs` if given (wins outright,
+    no measurement taken -- a caller who names a number gets exactly it,
+    same discipline as an explicit --cases/--backends selection elsewhere in
+    this file), otherwise a TENANCY-AWARE default derived from cores measured
+    FREE right now, never below the single most expensive selected cell (a
+    computed budget that could not even fit its own largest cell would make
+    every run of this sweep hang or starve that cell, which is worse than
+    merely being a slow default).
+
+    Prints the line the budget was derived from before returning it --
+    papercuts.md's own rule: never a bare number with no measured quantity
+    beside it.
+    """
+    largest = max((cell_cost(*cb) for cb in cells), default=1)
+    if args.jobs:
+        print('e2e: core budget %d (explicit --jobs; no tenancy sample taken)'
+              % args.jobs)
+        return args.jobs
+    free, busy, total, busy_ceiling = measured_free_cores()
+    computed = free - JOBS_MARGIN_CORES
+    budget = max(largest, computed)
+    print('e2e: core budget %d = max(largest selected cell cost %d, '
+          'measured-free %d - margin %d) -- %d of %d cpus measured busy '
+          '(>%.0f%% utilised over a >=2.0s /proc/stat sample, '
+          'busy_ceiling=%.2f)'
+          % (budget, largest, free, JOBS_MARGIN_CORES, busy, total,
+             busy_ceiling * 100.0, busy_ceiling))
+    return budget
 
 
 def base_env():
@@ -716,11 +849,16 @@ def main(argv=None):
                          'compares against the one full-length reference, '
                          'test.reference.results/<case>/frt.canonical.txt')
     ap.add_argument('--jobs', type=int, default=None,
-                    help='core budget for concurrent cells (default: cores-4). '
-                         'A fortran cell costs its rank count, a python cell 1. '
-                         '--jobs 1 runs serially, which is what a 2-core CI '
-                         'runner should use; the printed output is identical '
-                         'either way.')
+                    help='core budget for concurrent cells (default: TENANCY-'
+                         'AWARE -- cores measured free right now, minus a '
+                         'margin, never below the largest selected cell\'s '
+                         'own cost; see default_jobs_budget). A fortran or '
+                         'python-jax-mpi cell costs its rank count, a '
+                         'python-jax cell its measured core count '
+                         '(matrix.JAX_MEASURED_CORES, ceil\'d), a '
+                         'python-numpy cell 1 (also measured). --jobs 1 runs '
+                         'serially, which is what a 2-core CI runner should '
+                         'use; the printed output is identical either way.')
     ap.add_argument('--device', default='cpu', choices=('cpu', 'cuda'),
                     help='JAX_PLATFORMS for the python-jax backend (default cpu)')
     args = ap.parse_args(argv)
@@ -825,25 +963,22 @@ def main(argv=None):
     # the sum.
     #
     # The budget is CORES, not memory: all 20 cells together peak at ~23.5 GB
-    # (matrix.MEASURED_PEAK_RSS_GB) against 1 TB here. A fortran cell costs its
-    # rank count (4); a python cell is one process. --jobs sets the budget and
-    # defaults to the machine's cores less a small reserve; --jobs 1 restores
-    # the serial order exactly, which is what CI uses when its runner has 2.
+    # (matrix.MEASURED_PEAK_RSS_GB) against 1 TB here. Per-cell cost is
+    # cell_cost() above (module-level, MEASURED per backend -- see its own
+    # docstring): a fortran or python-jax-mpi cell costs its real rank count,
+    # a python-jax cell costs matrix.JAX_MEASURED_CORES (ceil'd, not 1 -- see
+    # the 2026-09-23 speed-campaign citation there), a python-numpy cell costs
+    # 1 (also measured, not assumed -- eqdyna3d._narrow_numpy_affinity pins it
+    # to one cpu). --jobs sets the budget explicitly; left unset, the budget
+    # is TENANCY-AWARE (default_jobs_budget: cores measured free right now,
+    # minus a margin, never below the largest selected cell's own cost).
+    # --jobs 1 restores the serial order exactly, which is what CI uses when
+    # its runner has 2.
     #
     # Output is COLLECTED per cell and printed when that cell finishes, never
     # streamed, so concurrent cells cannot interleave their lines into an
     # unreadable log. The results table is re-sorted into table order
     # afterwards, so a parallel run and a serial run print identically.
-    def cell_cost(case, backend):
-        if backend == 'fortran':
-            # its real rank count from testNameList.coreNumList, not a guess
-            return max(1, matrix.FORTRAN_RANKS.get(case, 4))
-        if backend == 'python-jax-mpi':
-            # its real rank count from matrix.PY_MPI_RANKS, same reasoning as
-            # the fortran branch above: it is genuinely N processes, not one.
-            return max(1, matrix.PY_MPI_RANKS[case])
-        return 1
-
     table_cells = [(c, b) for c in matrix.CASES for b in matrix.BACKENDS
                   if (c, b) in runnable]
     order = {cb: i for i, cb in enumerate(table_cells)}
@@ -887,7 +1022,7 @@ def main(argv=None):
             ok, lines = False, ['%s: %s' % (type(exc).__name__, exc)]
         return (case, backend, ok, time.time() - t0, lines)
 
-    budget = args.jobs if args.jobs else max(1, (os.cpu_count() or 4) - 4)
+    budget = default_jobs_budget(cells, args)
     results = []
     if budget <= 1:
         for cb in cells:
