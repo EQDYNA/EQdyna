@@ -11,8 +11,10 @@ switch exists ONLY for the overhead A/B a later, quiet-box mission runs --
 it is not a normal operating mode.
 
 **Rule 23 (PROJECT_RULES.md): Fortran is the reference and DEFINES the
-buckets.** The port departs from it in exactly one place (`fault` folded into
-`element` on every Python backend), measured and documented below, not
+buckets.** The port departs from it in exactly one place, and (as of
+2026-09-23) only on the jax backends: `fault` folded into `element` on
+python-jax and python-jax-mpi. python-numpy splits `fault` out along
+Fortran's own boundary and matches it. Measured and documented below, not
 guessed at.
 
 ## Fortran -- `src/fortran/`
@@ -65,33 +67,51 @@ Builds and writes the row; `enabled()` is the `EQDYNA_PROFILE=0` off switch
 (same env var, same contract, both languages). Wired into `eqdyna3d.py`'s
 `run_case` (serial numpy/jax) and `run_case_mpi` (jax-mpi).
 
-### BUCKET DEPARTURE FROM FORTRAN (rule 23, documented)
+### BUCKET DEPARTURE FROM FORTRAN (rule 23, documented) -- jax only, since 2026-09-23
 Every Python backend fuses velDispUpdate + both element kernels + faulting
 into ONE step function (`driver.py`'s module docstring: `make_step` for the
 serial path, `a_body`/`b_body` for MPI). Splitting `element` from `fault`
-back apart the way Fortran does would need a NEW timer INSIDE that fused
-step -- for numpy a few more `perf_counter()` calls per step (not gated on
-anything this landing needs), for jax a NEW `block_until_ready` between the
-element kernels and faulting (forbidden by the "no new sync" rule on the
-default path). So **`fault` is always 0.0 and its cost is folded into
-`element`** on every Python backend. Read `element` as "element + fault,
-fused" for python-numpy/python-jax/python-jax-mpi, not as a like-for-like
-column against Fortran's `element`.
+back apart the way Fortran does needs a NEW timer INSIDE that fused step.
 
-### python-numpy / python-jax (serial, nranks=1)
-`eqdyna3d.py`'s `run_case`, `src/python/eqdyna/eqdyna3d.py:519-575` (line
-numbers approximate to this landing's edit; grep `_profile_emit.write_profile`
-in that function for the exact call site).
+For **jax** that timer would be a NEW `block_until_ready` between the
+element kernels and faulting -- forbidden by the "no new sync" rule on the
+default path, and a timer placed anyway would measure the ONE-TIME trace,
+not the per-step cost (wrong, not imprecise). So **`fault` stays 0.0,
+folded into `element`, on python-jax and python-jax-mpi**. Read `element` as
+"element + fault, fused" for those two backends only, not as a
+like-for-like column against Fortran's `element`.
+
+For **numpy** that reasoning does not hold: numpy executes the step body
+eagerly and synchronously (no queue, no device to drain), so a
+`time.perf_counter()` pair around the `FLT.faulting` call inside
+`driver.make_step_parts`'s `part_b` costs no new sync and changes no
+arithmetic -- landed 2026-09-23, guarded by `fault_timer is not None`
+(created only `if not B.is_jax(xp)`) so the jax path builds neither the
+timer nor the branch's timed variant of the call. **python-numpy now
+matches Fortran's bucket boundary exactly.**
+
+### python-numpy (serial, nranks=1) -- matches Fortran's `fault` boundary
+`eqdyna3d.py`'s `run_case`, `src/python/eqdyna/eqdyna3d.py:519-580` (grep
+`_profile_emit.write_profile` in that function for the exact call site).
+`driver.run` returns `fault_s` (the accumulated `FLT.faulting` time across
+all steps) alongside its usual dict; `run_case` splits it back out of
+`Profile['solve']`.
 
 | bucket | source |
 |---|---|
 | `setup` | `Profile['setup (mesh+input)'] + Profile['resolve solver']` |
-| `element` | `Profile['solve']` (element kernels + faulting, fused; see above) |
-| `fault` | `0.0` (folded into `element`) |
+| `element` | `Profile['solve'] - out['fault_s']` |
+| `fault` | `out['fault_s']` -- `driver.f90:28`'s boundary, measured via `perf_counter()` around `FLT.faulting` in `make_step_parts`'s `part_b` |
 | `exchange` | `0.0` -- genuinely zero: this path is serial by construction (`build_solver_state` refuses `npx/npy/npz>1`), not a folded/unmeasured cost |
 | `wait` | `0.0` -- same reason as `exchange` |
 | `io` | `Profile['write frt']` |
 | `total_s` | independent `time.perf_counter()` span wrapping the whole of `run_case`, NOT a sum of the `Profile` phases |
+
+### python-jax (serial, nranks=1) -- `fault` folded into `element`
+Same `run_case` call site as numpy above; same table except `element` is
+`Profile['solve']` unsplit and `fault` is `0.0`, for the jax reason given
+above (`driver.run`'s `fault_timer` is `None` on this backend, so
+`out['fault_s']` is always `0.0` and the subtraction is a no-op).
 
 `Profile` (the existing `--profile` wall-clock helper, `eqdyna3d.py`'s
 `Profile` class) is now read unconditionally, not only under `--profile`; it
