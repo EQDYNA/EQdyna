@@ -313,3 +313,114 @@ isolation and its scope already written.
   context. **A naive fix that excludes `.git` would re-break the two in-image
   history guards** — the trap is worth writing down before anyone takes that row.
 - Whether rule 15a should read every workflow for the SHA (section 7).
+
+---
+
+# Continuation — 2026-09-23 02:20 onward (wei-lin, second conductor)
+
+Resumed at `origin/master` = `5c91598`, clean tree, 0 unpushed, VERSION 5.16.1,
+box at 12/64. ~6 h remaining of a 12 h budget granted 20:08, under a standing
+ROLLING RENEWAL order: pace for continuity, not for a deadline.
+
+**Grant, stated back.** Minor and patch tags on `master` of THIS repo; merge and
+tag authority on `master` directly. No major bump. No force-update or rewrite of
+an existing tag. No publish to a package index. Nothing outward-facing beyond
+this repo. That last clause is the one that binds section C below.
+
+## A. Item 83 — CLOSED, on commands I ran myself
+
+The row said `v5.16.1` was tagged with no GitHub Release object and that the
+regression tier was RED at master HEAD because of it. Both halves are now false.
+
+    $ gh release list --limit 4
+    v5.16.1 -- concurrency enforcement   Latest   v5.16.1   2026-09-23T07:16:39Z
+    v5.16.0                                       v5.16.0   2026-09-23T04:39:46Z
+
+    $ python3 testsys/regression/test_release_complete.py      # at 5c91598
+      PASS  a completed, successful Automatic Testing of EQdyna run exists for
+            tagged sha 4ee171b4bc70abcf05f9d524af5fcfb903f167c2 (v5.16.1)
+      PASS  v5.16.1 is pushed to origin
+      PASS  GitHub Release exists for v5.16.1
+    SUCCESS test_release_complete
+
+    $ python3 testsys/run.py unit regression                   # at 5c91598
+    SUCCESS unit (exit 0)
+    SUCCESS regression (exit 0)                                # 79.8 s wall
+
+Routed to `zofia-kaminska` with that literal output for the row write, together
+with the rule the incident paid for: the Release object and the tag push are ONE
+action, because a regression guard reads the Release. The cost of separating
+them was ~20 minutes of a red tier at master HEAD for a reason unrelated to any
+code under test, which is how a real red later gets discounted.
+
+## B. One claim from the previous session, softened rather than repeated
+
+"Re-verified from the registry" is NOT reproducible here and does not stand. The
+package is private, anonymous manifest GETs on `v5.16.1`, `v5.16.0` and `latest`
+all return 403, and the available token lacks `read:packages`. What the evidence
+actually proves is a WORKFLOW conclusion: publish run 35828977752's `Push image`
+step succeeded, and the separate `verify-published-image` job pulled the image on
+a clean runner and re-ran the whole in-image gate against it — both green. That
+is strong, and it is not a registry query. To make the registry claim
+reproducible later, a token with `read:packages` is what it would take; recorded
+rather than asserted.
+
+## C. The v5.16.0 image backfill — STOPPED, and it is not a re-run
+
+Routed to me as ordinary work on the reasoning that it is a re-run of a
+now-fixed workflow. **The code says otherwise, unambiguously, and the
+instruction I was given names this exact stop condition.** Three independent
+blockers, each sufficient on its own:
+
+1. **A dispatch cannot publish anything.** `publish.yml:42-46` sets
+   `TAG=dispatch-${GITHUB_SHA::12}` on any non-`push` event, and `:77-81` gate
+   the `Push image` step on `github.event_name == 'push'`. A
+   `workflow_dispatch` on the `v5.16.0` ref builds and gates and pushes
+   nothing — by design, and I am relying on that same design to gate item 79.
+2. **A tag push cannot publish `v5.16.0` without moving `:latest` backwards.**
+   `:79-81` push `${TAG}` and `:latest` unconditionally in the same step, and
+   `:51-53` re-tag `:latest` on every push event. There is no code path that
+   publishes a version tag alone. The owner's instruction was explicit that
+   `:latest` belongs to v5.16.1 and must not move back.
+3. **Reaching the publish path at all would mean re-pushing an existing tag**,
+   which my grant excludes by name — and the workflow file *at that ref* is the
+   broken one anyway: `git show v5.16.0:.github/workflows/publish.yml` has
+   `actions/checkout@v2` with no `fetch-depth`, because the fix `a99902f` is
+   not an ancestor of `v5.16.0` (`git merge-base --is-ancestor` → NO). A
+   dispatch on that ref runs the RED workflow, not the fixed one.
+
+So backfilling `v5.16.0` requires a `publish.yml` change — a dispatch input that
+publishes a caller-named version and skips `:latest`. That change deliberately
+inverts the premise item 82(c) exists to guard ("invert either and a manual
+dispatch publishes"), so it is a release-boundary methodology decision, not
+ordinary work. **Not attempted. Owner's call.** The cheaper alternative worth
+putting beside it: leave `v5.16.0` imageless and record it, since the release
+itself shipped and every other gate was honest.
+
+## D. Worktrees reaped: 12 → 7, after checking each for unlanded work
+
+Nine were clean or held only duplicates of evidence already in `origin/master`,
+which I verified file by file rather than by eyeballing status — every artifact
+the previous session's sections 2 and 3 cite (`testsys/perf/run_setup_probe.py`,
+`docs/NOTES_jaxmpi_1632_2026-09-23.md`, the five `jaxmpi_ab_2026-09-2*.json`
+snapshots, the seven `docs/evidence/perf-2026-09-23/*.log.gz`, and the ledger at
+275 rows against the worktree's own 275) is PRESENT in master. The dirty content
+left in `wei-perf1632`/`wei-setup0` was raw `rep*.log` duplicated by the
+committed `.gz`, per-child probe JSON superseded by the committed aggregate, and
+`nohup`/launcher scratch. Called scratch deliberately (rule 8), not swept.
+
+**Two kept, both owner-held and both locked:** `item32-dx250-refinement`
+(`23971a8`, item 32) and `mira/jaxmpi-merged-2026-09-22` (`99a3f18`, ahead 3 of
+master — and pushed, `git ls-remote` confirms the ref at that exact SHA, so
+nothing there depends on the worktree surviving).
+
+## E. Master HEAD has no CI run, and that is CORRECT — do not chase it
+
+`5c91598` has no "Automatic Testing" run and one is not coming. The four commits
+since `d6d846f` touch only `PROJECT_RULES.md`, `pathway_forward.md`,
+`docs/NOTES_item70_lock_2026-09-23.md` and `docs/SESSION_LOG_...md` — every one
+of them inside `test.yml`'s `paths-ignore`. Writing it down because the absence
+looks exactly like a missed trigger, and because it has a real consequence:
+**rule 15a's guard requires a successful run for the TAGGED sha, so a tag must
+never be cut on a docs-only HEAD.** Every mission in flight below touches
+non-ignored files, so this does not bind today.
