@@ -49,6 +49,18 @@ before the vault is built, before the notes file is opened -- so the checks
 also assert the tool produced none of those, and returned in seconds. This
 guard NEVER runs a perf measurement and never launches mpirun.
 
+BEHAVIOUR, NOT SOURCE SHAPE (2026-09-23). Three checks here used to assert
+that `runlock.acquire(` appeared textually above `shutil.rmtree(d)` inside
+`def build_py_case(` and friends, and that the literal
+`os.path.relpath(os.path.dirname(d)` appeared there too. They caught real
+defects, but by shape -- and so they also forbade the one repair that would
+stop this defect class recurring a fifth time: the three near-identical
+lock+rmtree+make_serial_case bodies cannot be replaced by ONE shared builder
+while a guard demands `shutil.rmtree(d)` inside each tool's own function. They
+are now observed instead, by running each builder with its destroyers replaced
+by recorders that ask, at the instant of every write, whether the lock on the
+directory being written is already held. See the BUILDERS table below.
+
 THE HOLE A LOCK CANNOT CLOSE (item 77). `run_jaxmpi_ab.py` resolves its ROOT
 from `$EQDYNAROOT`, so a stale export -- the shape `install-eqdyna.sh` leaves,
 since it exports `$(pwd)` and the export survives a `cd` into a worktree --
@@ -69,6 +81,7 @@ Cheap (rule 9): flock in a tempdir, plus two entry-point invocations that
 refuse at their first gate. Seconds. Exits non-zero on any failure.
 """
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -317,6 +330,12 @@ def check_run_jaxmpi_ab_refuses_and_does_not_stage_into_the_package():
         # an unpinned EQDYNAROOT would have this guard lock here and the tool
         # stage somewhere else, which is a real hazard but not this check's.
         env['EQDYNAROOT'] = ROOT
+        # main() builds its arm VAULT under $TMPDIR before it stages anything.
+        # Point TMPDIR at an empty directory of our own: whether the vault was
+        # built before Gate 0 is then a fact on disk, not a reading of the
+        # order of two lines in main().
+        tmpdir = tempfile.mkdtemp(prefix='jaxmpiab_guard.')
+        env['TMPDIR'] = tmpdir
         t0 = time.time()
         proc = subprocess.run([sys.executable, RUN_JAXMPI_AB, '--ranks', '4'],
                               cwd=ROOT, env=env, capture_output=True,
@@ -324,6 +343,12 @@ def check_run_jaxmpi_ab_refuses_and_does_not_stage_into_the_package():
         elapsed = time.time() - t0
         out = proc.stdout + proc.stderr
         _refusal_asserts(RUN_JAXMPI_AB, proc, out, held, elapsed)
+        left = sorted(os.listdir(tmpdir))
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        assert not left, (
+            'run_jaxmpi_ab.py built its arm vault under $TMPDIR despite '
+            'refusing -- build_vault() ran before Gate 0, so a refused '
+            'invocation has already spent a git worktree checkout: %s' % left)
         for p in staged:
             assert _sha(p) == before[p], (
                 'THE DEFECT ITSELF: run_jaxmpi_ab.py rewrote %s despite '
@@ -337,8 +362,8 @@ def check_run_jaxmpi_ab_refuses_and_does_not_stage_into_the_package():
             'run_jaxmpi_ab.py created %s despite refusing -- it is opening '
             'its notes file before the lock' % notes)
         print('  PASS  run_jaxmpi_ab.py refused in %.2f s, exited %d, named '
-              'the holder, and left both staged files byte-identical'
-              % (elapsed, proc.returncode))
+              'the holder, left both staged files byte-identical, and built '
+              'no vault ($TMPDIR still empty)' % (elapsed, proc.returncode))
     finally:
         try:
             os.remove(sentinel)
@@ -529,13 +554,29 @@ def check_run_jaxmpi_ab_refuses_a_foreign_eqdynaroot():
     """The hole the LOCK cannot close (item 77). `stage()` writes into
     `$EQDYNAROOT/src/python/eqdyna`, and Gate 0 locks that same wrong tree --
     consistently, so the lock is no evidence of safety. The tool must refuse
-    on the mismatch BEFORE the lock, and must not write into either tree."""
+    on the mismatch BEFORE the lock, and must not write into either tree.
+
+    THE FOREIGN TREE IS A REAL SKELETON, not an empty directory (2026-09-23).
+    It carries `src/python/eqdyna/` with both staged files, so an acquire
+    reaching it WOULD succeed and WOULD leave `src/python/.eqdyna.lock`
+    behind. That is what makes `no lockfile in the foreign tree` a load-
+    bearing assertion and what replaces the retired source-order check that
+    `require_root_is_this_checkout()` is written above `runlock.acquire(` in
+    main(): against an empty directory the acquire would merely have crashed
+    on a missing parent, and the ordering would have gone unobserved."""
     sys.path.insert(0, PERF_DIR)
     pkg = os.path.join(ROOT, PKG_RESOURCE)
     staged = [os.path.join(pkg, n) for n in ('driver.py',
                                              'MPI4NodalQuant.py')]
     before = {p: _sha(p) for p in staged}
     with tempfile.TemporaryDirectory() as foreign:
+        foreign_pkg = os.path.join(foreign, PKG_RESOURCE)
+        os.makedirs(foreign_pkg)
+        for p in staged:
+            shutil.copyfile(p, os.path.join(foreign_pkg,
+                                            os.path.basename(p)))
+        foreign_before = _fingerprint(foreign)
+        foreign_lock = runlock.lock_path(foreign, PKG_RESOURCE)
         env = dict(os.environ)
         env['EQDYNAROOT'] = foreign
         t0 = time.time()
@@ -565,15 +606,25 @@ def check_run_jaxmpi_ab_refuses_a_foreign_eqdynaroot():
             assert _sha(p) == before[p], (
                 'run_jaxmpi_ab.py rewrote %s despite refusing on the '
                 '$EQDYNAROOT mismatch' % p)
-        assert not os.listdir(foreign), (
-            'run_jaxmpi_ab.py wrote into the foreign $EQDYNAROOT %s despite '
-            'refusing: %s' % (foreign, os.listdir(foreign)))
+        assert not os.path.exists(foreign_lock), (
+            'run_jaxmpi_ab.py CREATED %s -- it took Gate 0 in the foreign '
+            'checkout before checking $EQDYNAROOT, so a refused run has '
+            'already written to a tree this session does not own'
+            % foreign_lock)
+        foreign_after = _fingerprint(foreign)
+        assert foreign_after == foreign_before, (
+            'run_jaxmpi_ab.py wrote into the foreign $EQDYNAROOT despite '
+            'refusing:\n  before: %s\n  after : %s'
+            % (foreign_before, foreign_after))
         assert elapsed < 120.0, (
             'run_jaxmpi_ab.py took %.1f s to refuse the mismatch -- the check '
             'is not the first thing main() does' % elapsed)
+        nfiles = len(foreign_before['files'])
     print('  PASS  run_jaxmpi_ab.py refused a foreign $EQDYNAROOT in %.2f s, '
-          'exited %d, named both trees, and staged nothing'
-          % (elapsed, proc.returncode))
+          'exited %d, named both trees, staged nothing, and left no %s (%d '
+          'files compared, inode and mtime unchanged)'
+          % (elapsed, proc.returncode, os.path.basename(foreign_lock),
+             nfiles))
 
 
 def check_the_mismatch_refusal_does_not_fire_when_the_roots_agree():
@@ -608,112 +659,300 @@ def check_the_mismatch_refusal_does_not_fire_when_the_roots_agree():
 
 
 # --------------------------------------------------------------------------
-# shape of the sources (rule 2a: assert the shape, not a substring elsewhere)
+# WHAT THE BUILDERS DO, OBSERVED -- not what their source says (2026-09-23)
+#
+# Three checks here used to read the source: they required the literal
+# `shutil.rmtree(d)` / `run_e2e.make_serial_case(` to appear textually AFTER
+# `runlock.acquire(` inside `def build_py_case(` and friends, and the literal
+# `os.path.relpath(os.path.dirname(d)` to appear there too. They caught real
+# defects -- a missing acquire, an acquire placed after the rmtree, a lock
+# resource hard-coded away from the directory being destroyed -- but they
+# caught them by SHAPE, and so they also forbade the one fix that would stop
+# this defect class recurring: three tools carry near-identical
+# lock+rmtree+make_serial_case bodies, and a SHARED builder cannot make
+# `shutil.rmtree(d)` appear inside `def build_py_case(`. A guard that forbids
+# the repair is not a guard.
+#
+# The replacement observes the same three properties by RUNNING each builder
+# with its destroyers intercepted:
+#
+#   `_run_probe` launches the builder in a fresh interpreter with
+#   `shutil.rmtree`, `os.makedirs` and `run_e2e.make_serial_case` replaced by
+#   recorders that DESTROY NOTHING and, at the instant of each call, ask
+#   whether the lock on the directory about to be written is ALREADY HELD --
+#   by attempting a second acquire from a second open file description. flock
+#   treats descriptions independently even inside one process, so a refusal
+#   there means the builder itself holds it and a success means nobody does.
+#
+# That yields, per builder, the ordered list of destructive acts, the resource
+# guarding each one, and whether the lock was held at that moment -- and the
+# case directory is verified byte-for-byte unchanged afterwards, which is also
+# what proves the interception took. A shared builder satisfies all of it; a
+# tool that destroys before locking cannot.
 # --------------------------------------------------------------------------
-def _code_lines(path):
-    raw = open(path, errors='replace').read()
-    return [ln.split('#', 1)[0] for ln in raw.splitlines()]
+_PROBE_SRC = r'''
+import json
+import os
+import shutil
+import sys
+
+ROOT = %(root)r
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, 'testsys', 'e2e'))
+sys.path.insert(0, %(tooldir)r)
+from testsys import runlock
+import run_e2e          # pre-imported, so the tool's own `import run_e2e`
+                        # returns THIS module object -- the one patched below
+import %(module)s as tool
+%(setup)s
+
+EVENTS = []
 
 
-def _body_of(path, header):
-    """The lines of one function, by indentation. Ordering must be checked
-    INSIDE the function that does the damage: in run_perf.py `build_perf_case`
-    is defined ABOVE `main`, so a whole-file line comparison would call a
-    correct acquire late."""
-    lines = _code_lines(path)
-    for i, ln in enumerate(lines):
-        if ln.startswith(header):
-            break
-    else:
-        raise AssertionError('%s contains no %r' % (path, header))
-    body = []
-    for ln in lines[i + 1:]:
-        if ln.strip() and not ln[0].isspace():
-            break
-        body.append(ln)
-    return body
+def lock_state(guarded_dir):
+    """Is the lock on `guarded_dir` held RIGHT NOW, by anybody?"""
+    resource = os.path.relpath(os.path.abspath(guarded_dir), ROOT)
+    try:
+        lk = runlock.acquire(ROOT, resource, argv=['probe'], announce=False)
+    except runlock.RunTreeLocked:
+        return resource, True
+    lk.release()
+    return resource, False
 
 
-def _index(body, needle, path, header):
-    for i, ln in enumerate(body):
-        if needle in ln:
-            return i
-    raise AssertionError('%s: %s contains no %r' % (path, header, needle))
+def note(kind, target, guarded):
+    resource, held = lock_state(guarded)
+    EVENTS.append(dict(kind=kind, target=os.path.abspath(target),
+                       resource=resource, held=held))
 
 
-def check_each_tool_locks_before_it_destroys_anything():
-    """A lock taken AFTER the rmtree or the copyfile is not a lock -- the
-    damage is done by the time it is asked for."""
-    for path, header, destroyers in (
-            (RUN_PERF, 'def build_perf_case(',
-             ['shutil.rmtree(PERF_CASE)', 'run_e2e.make_serial_case(']),
-            (RUN_JAXMPI_AB, 'def main(',
-             ['build_vault(work', 'stage(vault, arm)']),
-            (RUN_SCALING, 'def build_py_case(',
-             ['shutil.rmtree(d)', 'run_e2e.make_serial_case(']),
-            (RUN_NUMA_SCALING, 'def build_case(',
-             ['shutil.rmtree(d)', 'run_e2e.make_serial_case('])):
-        body = _body_of(path, header)
-        acq = _index(body, 'runlock.acquire(', path, header)
-        for d in destroyers:
-            dest = _index(body, d, path, header)
-            assert acq < dest, (
-                '%s: %s acquires the lock after %r -- the lock guards nothing'
-                % (os.path.basename(path), header, d))
-    print('  PASS  all four tools acquire the lock before they delete, build '
-          'or stage')
+def parent(p):
+    return os.path.dirname(os.path.abspath(p))
 
 
-def check_the_root_check_precedes_the_lock():
-    """The mismatch check must come BEFORE Gate 0, not after: under a foreign
-    $EQDYNAROOT the acquire happens in the wrong tree, and a refusal issued
-    after it has already created a lockfile there has written to a checkout
-    this session does not own."""
-    body = _body_of(RUN_JAXMPI_AB, 'def main(')
-    chk = _index(body, 'require_root_is_this_checkout()', RUN_JAXMPI_AB,
-                 'def main(')
-    acq = _index(body, 'runlock.acquire(', RUN_JAXMPI_AB, 'def main(')
-    assert chk < acq, (
-        'run_jaxmpi_ab.main acquires the lock at line %d of its body before '
-        'checking $EQDYNAROOT at line %d -- the lock would be created in the '
-        'foreign checkout first' % (acq, chk))
-    print('  PASS  run_jaxmpi_ab checks $EQDYNAROOT before it takes any lock')
+# The destroyers, replaced by recorders. `os.makedirs` is called ON the
+# guarded directory; the other two are called on a case directory inside it.
+shutil.rmtree = lambda p, *a, **k: note('rmtree', p, parent(p))
+os.makedirs = lambda p, *a, **k: note('makedirs', p, p)
+run_e2e.make_serial_case = lambda n, d, *a, **k: (
+    note('make_serial_case', d, parent(d)), d)[1]
+
+returned = tool.%(call)s
+_, held_after = lock_state(parent(returned))
+print('PROBE ' + json.dumps(dict(events=EVENTS, held_after=held_after,
+                                 returned=os.path.abspath(returned))))
+'''
+
+# Every entry point that rebuilds a fixed in-repo case directory. The second
+# row is `run_tpv29_pinned_compare.py:55-56` exactly: it repoints run_perf's
+# module globals at perf_case_tpv29/ and calls build_perf_case() directly,
+# never reaching main(). A lock hard-coded to 'testsys/perf/perf_case' would
+# guard the wrong directory for that caller and look like it guarded both.
+BUILDERS = [
+    dict(label='run_perf.build_perf_case',
+         tooldir=PERF_DIR, module='run_perf', setup='',
+         call='build_perf_case()',
+         resource=PERF_CASE_RESOURCE, case='test.tpv8',
+         holds_after=True,
+         holds_why='run_perf then TIMES out of the directory it just built'),
+    dict(label='run_perf.build_perf_case [PERF_CASE repointed, as '
+               'run_tpv29_pinned_compare.py does]',
+         tooldir=PERF_DIR, module='run_perf',
+         setup=("tool.PERF_CASE_NAME = 'test.tpv29'\n"
+                "tool.PERF_CASE = os.path.join(tool.TESTSYS, "
+                "'perf_case_tpv29', 'test.tpv29')"),
+         call='build_perf_case()',
+         resource=os.path.join('testsys', 'perf', 'perf_case_tpv29'),
+         case='test.tpv29',
+         holds_after=True,
+         holds_why='the pinned compare then TIMES out of that directory'),
+    dict(label='run_scaling.build_py_case',
+         tooldir=PERF_DIR, module='run_scaling', setup='',
+         call="build_py_case('test.tpv8')",
+         resource=SCALING_CASE_RESOURCE, case='test.tpv8',
+         holds_after=True,
+         holds_why='five tools time out of this directory after building it'),
+    dict(label='run_numa_scaling.build_case',
+         tooldir=PERF_DIR, module='run_numa_scaling', setup='',
+         call="build_case('test.tpv8')",
+         resource=NUMA_CASE_RESOURCE, case='test.tpv8',
+         holds_after=True,
+         holds_why='the NUMA sweep then times out of this directory'),
+    dict(label='probe_plastic_traction.build_case',
+         tooldir=PARITY_DIR, module='probe_plastic_traction', setup='',
+         call='build_case(%r)' % os.path.join(ROOT, PROBE_CASE_RESOURCE,
+                                              'test.drv.a6'),
+         resource=PROBE_CASE_RESOURCE, case='test.drv.a6',
+         holds_after=False,
+         holds_why='its documented contract: held across the WRITE only, '
+                   'released before a measurement phase that never touches '
+                   'the tree destructively'),
+]
+
+_PROBED = {}
 
 
-def check_each_builder_derives_its_resource_from_the_directory_it_rebuilds():
-    """Five tools call `rs.build_py_case`; the lock must follow the directory
-    that is actually rmtree'd, not a second hard-coded copy of that path that
-    can drift away from it."""
-    for path, header in ((RUN_SCALING, 'def build_py_case('),
-                         (RUN_NUMA_SCALING, 'def build_case(')):
-        src = '\n'.join(_body_of(path, header))
-        assert 'os.path.relpath(os.path.dirname(d)' in src, (
-            '%s: %s does not derive its lock resource from the directory `d` '
-            'it is about to destroy:\n%s' % (os.path.basename(path), header,
-                                             src))
-    print('  PASS  both builders derive the lock resource from the directory '
-          'they rebuild')
+def _fingerprint(d):
+    """Inode, mtime and the full file listing with sizes and content hashes.
+    Printed, not just compared: a directory that was rebuilt identically and
+    a directory that was never touched differ here by inode and mtime."""
+    st = os.stat(d)
+    files = []
+    for dirpath, dirnames, filenames in os.walk(d):
+        dirnames.sort()
+        for fn in sorted(filenames):
+            p = os.path.join(dirpath, fn)
+            files.append([os.path.relpath(p, d), os.path.getsize(p), _sha(p)])
+    return dict(inode=st.st_ino, mtime=st.st_mtime, files=files)
 
 
-def check_the_perf_lock_follows_the_directory_actually_rebuilt():
-    """run_tpv29_pinned_compare.py reassigns run_perf.PERF_CASE to
-    perf_case_tpv29/ and calls build_perf_case() directly, never reaching
-    main(). A lock on a hard-coded 'testsys/perf/perf_case' would guard the
-    wrong directory for that caller and look like it guarded both."""
-    body = _body_of(RUN_PERF, 'def build_perf_case(')
-    src = '\n'.join(body)
-    assert 'os.path.dirname(PERF_CASE)' in src, (
-        'run_perf.build_perf_case does not derive its lock resource from '
-        'PERF_CASE, so run_tpv29_pinned_compare.py rebuilds an unguarded '
-        'directory:\n%s' % src)
+def _run_probe(entry):
+    """Run one builder with its destroyers intercepted; return what it did.
+
+    Memoised: three checks read this and the launch is the expensive part.
+    """
+    if entry['label'] in _PROBED:
+        return _PROBED[entry['label']]
+    case_dir = os.path.join(ROOT, entry['resource'], entry['case'])
+    sentinel = os.path.join(case_dir, 'lock_probe_%d.marker' % os.getpid())
+    created = not os.path.isdir(case_dir)
+    try:
+        os.makedirs(case_dir, exist_ok=True)
+        with open(sentinel, 'w') as fh:
+            fh.write('behavioural lock probe -- delete me if you find me\n')
+        before = _fingerprint(case_dir)
+        src = _PROBE_SRC % dict(root=ROOT, tooldir=entry['tooldir'],
+                                module=entry['module'], setup=entry['setup'],
+                                call=entry['call'])
+        t0 = time.time()
+        proc = subprocess.run([sys.executable, '-c', src], cwd=ROOT,
+                              capture_output=True, text=True, timeout=300)
+        elapsed = time.time() - t0
+        out = proc.stdout + proc.stderr
+        line = [ln for ln in out.splitlines() if ln.startswith('PROBE ')]
+        assert proc.returncode == 0 and line, (
+            '%s could not be observed: the probe exited %d and printed no '
+            'PROBE record. Its output was:\n%s'
+            % (entry['label'], proc.returncode, out[-3000:]))
+        data = json.loads(line[-1][len('PROBE '):])
+        after = _fingerprint(case_dir)
+        assert after == before, (
+            'THE PROBE ITSELF DESTROYED SOMETHING, or %s writes by a route '
+            'this probe does not intercept. %s changed:\n  before: %s\n  '
+            'after : %s' % (entry['label'], case_dir, before, after))
+        data['elapsed'] = elapsed
+        data['case_dir'] = case_dir
+        data['fingerprint'] = before
+        _PROBED[entry['label']] = data
+        return data
+    finally:
+        try:
+            os.remove(sentinel)
+        except OSError:
+            pass
+        if created and os.path.isdir(case_dir) and not os.listdir(case_dir):
+            os.rmdir(case_dir)
+            parent = os.path.dirname(case_dir)
+            if os.path.isdir(parent) and not os.listdir(parent):
+                shutil.rmtree(parent)
+
+
+def check_every_builder_holds_the_lock_at_its_first_destructive_act():
+    """Replaces the source-ordering check. A lock taken AFTER the rmtree is
+    not a lock -- the damage is done by the time it is asked for -- and a
+    builder with no acquire at all is the same defect with no line to point
+    at. Both show up here as `held: false` at a recorded destructive act."""
+    for entry in BUILDERS:
+        data = _run_probe(entry)
+        events = data['events']
+        kinds = [e['kind'] for e in events]
+        assert 'rmtree' in kinds, (
+            '%s never called shutil.rmtree even though %s existed with a '
+            'sentinel in it -- this probe observed nothing, so it proves '
+            'nothing. Recorded: %s'
+            % (entry['label'], data['case_dir'], kinds))
+        unheld = [e for e in events if not e['held']]
+        assert not unheld, (
+            'THE DEFECT ITSELF: %s performed %s on %s with the lock on %s NOT '
+            'held. Recorded sequence: %s'
+            % (entry['label'], unheld[0]['kind'], unheld[0]['target'],
+               unheld[0]['resource'],
+               [(e['kind'], e['held']) for e in events]))
+        print('  PASS  %s held %s at all %d destructive acts (%s), in %.2f s'
+              % (entry['label'], events[0]['resource'], len(events),
+                 ', '.join(kinds), data['elapsed']))
+
+
+def check_every_builder_locks_the_directory_it_actually_rebuilds():
+    """Replaces the `os.path.relpath(os.path.dirname(d)` literal. Five tools
+    call `rs.build_py_case`; the lock must follow the directory that is
+    actually destroyed, not a second copy of that path that can drift. Here
+    the resource is read back off the WRITE TARGET the builder passed to its
+    destroyers, and the held-ness of that exact resource is what the previous
+    check asserted."""
+    for entry in BUILDERS:
+        data = _run_probe(entry)
+        want = entry['resource']
+        for e in data['events']:
+            assert e['resource'] == want, (
+                '%s %s %s, which is guarded by %r -- not by %r, the resource '
+                'this guard and the tool\'s callers believe is locked. The '
+                'lock and the directory have drifted apart.'
+                % (entry['label'], e['kind'], e['target'], e['resource'],
+                   want))
+        assert os.path.dirname(data['returned']) == os.path.join(ROOT, want), (
+            '%s returned %s, outside the guarded %s'
+            % (entry['label'], data['returned'], want))
+        print('  PASS  %s wrote only inside %s -- %d writes (%s) -- and '
+              'returned %s'
+              % (entry['label'], want, len(data['events']),
+                 ', '.join('%s %s' % (e['kind'],
+                                      os.path.relpath(e['target'], ROOT))
+                           for e in data['events']),
+                 os.path.relpath(data['returned'], ROOT)))
+
+
+def check_each_builder_keeps_its_lock_until_its_write_is_finished():
+    """A lock released mid-build is a lock that lets a second invocation in
+    while the first is still writing; a lock released before the caller has
+    finished MEASURING out of the tree is the item-74 collision again. Each
+    builder declares which of the two it is, and the probe asks the lock."""
+    for entry in BUILDERS:
+        data = _run_probe(entry)
+        got = data['held_after']
+        assert got == entry['holds_after'], (
+            '%s left the lock on %s %s when it returned; expected %s -- %s'
+            % (entry['label'], entry['resource'],
+               'HELD' if got else 'RELEASED',
+               'HELD' if entry['holds_after'] else 'RELEASED',
+               entry['holds_why']))
+        print('  PASS  %s returned with the lock on %s %s -- %s'
+              % (entry['label'], entry['resource'],
+                 'still held' if got else 'released',
+                 entry['holds_why']))
+
+
+def check_the_tpv29_compare_tool_goes_through_the_guarded_builder():
+    """The one call-site fact the probe cannot observe without running a perf
+    measurement: that `run_tpv29_pinned_compare.py` reaches its rebuild
+    THROUGH `run_perf.build_perf_case` rather than rebuilding
+    perf_case_tpv29/ itself. The probe above proves that entry point is
+    guarded when PERF_CASE is repointed; this proves that is the entry point
+    the tool uses. If the tool ever grows its own rmtree, it needs its own
+    lock and its own row in BUILDERS."""
     other = os.path.join(ROOT, 'testsys', 'perf',
                          'run_tpv29_pinned_compare.py')
     txt = open(other, errors='replace').read()
     assert 'run_perf.build_perf_case()' in txt, (
         '%s no longer goes through run_perf.build_perf_case -- it now needs '
         'a lock of its own' % os.path.basename(other))
-    print('  PASS  the perf lock follows PERF_CASE, so '
-          'run_tpv29_pinned_compare.py is covered by the same acquire')
+    own = [n for n in ('shutil.rmtree', 'make_serial_case') if n in txt]
+    assert not own, (
+        '%s destroys or builds a case tree itself (%s) instead of delegating '
+        'to the guarded builder' % (os.path.basename(other), own))
+    print('  PASS  run_tpv29_pinned_compare.py (%d bytes) delegates to '
+          'run_perf.build_perf_case and carries no rmtree or make_serial_case '
+          'of its own' % len(txt))
 
 
 def main():
@@ -734,10 +973,10 @@ def main():
               check_the_builder_lock_ignores_a_foreign_eqdynaroot,
               check_run_jaxmpi_ab_refuses_a_foreign_eqdynaroot,
               check_the_mismatch_refusal_does_not_fire_when_the_roots_agree,
-              check_each_tool_locks_before_it_destroys_anything,
-              check_the_root_check_precedes_the_lock,
-              check_each_builder_derives_its_resource_from_the_directory_it_rebuilds,
-              check_the_perf_lock_follows_the_directory_actually_rebuilt]
+              check_every_builder_holds_the_lock_at_its_first_destructive_act,
+              check_every_builder_locks_the_directory_it_actually_rebuilds,
+              check_each_builder_keeps_its_lock_until_its_write_is_finished,
+              check_the_tpv29_compare_tool_goes_through_the_guarded_builder]
     failures = []
     for c in checks:
         try:
