@@ -86,11 +86,14 @@ RUN_JAXMPI_AB = os.path.join(ROOT, 'testsys', 'perf', 'run_jaxmpi_ab.py')
 RUN_SCALING = os.path.join(ROOT, 'testsys', 'perf', 'run_scaling.py')
 RUN_NUMA_SCALING = os.path.join(ROOT, 'testsys', 'perf', 'run_numa_scaling.py')
 PERF_DIR = os.path.join(ROOT, 'testsys', 'perf')
+PARITY_DIR = os.path.join(ROOT, 'testsys', 'parity')
+PROBE_PLASTIC_TRACTION = os.path.join(PARITY_DIR, 'probe_plastic_traction.py')
 
 PERF_CASE_RESOURCE = os.path.join('testsys', 'perf', 'perf_case')
 PKG_RESOURCE = os.path.join('src', 'python', 'eqdyna')
 SCALING_CASE_RESOURCE = os.path.join('testsys', 'perf', 'scaling_case')
 NUMA_CASE_RESOURCE = os.path.join('testsys', 'perf', 'numa_case')
+PROBE_CASE_RESOURCE = os.path.join('testsys', 'parity', 'probe_case')
 # The rule-2 shape every refusal must keep, whatever tool-specific consequence
 # it carries. Asserted against the REAL output of each entry point, not
 # against the constant the tool defines -- a constant checked against itself
@@ -418,6 +421,64 @@ def check_run_numa_scaling_builder_refuses_and_does_not_rebuild_the_case():
                      'test.tpv8')
 
 
+def check_probe_plastic_traction_build_case_refuses_and_does_not_rebuild():
+    """pathway item 81, the same class as items 74/77:
+    `probe_plastic_traction.build_case()` rmtrees and rebuilds
+    `testsys/parity/probe_case/test.drv.a6` through the e2e sweep's own
+    `make_serial_case`. A second invocation deletes the first's live case
+    tree mid-run, and the failure reads as a plastic-traction mismatch
+    rather than as infrastructure -- exactly the false-red rule 21a exists
+    to stop.
+
+    Calls `build_case()` directly (not `main()`, which also runs the
+    physics measurement) -- the same shape `_builder_refuses` uses for
+    `run_scaling.build_py_case` / `run_numa_scaling.build_case`, adapted
+    because this builder takes a full case_dir rather than a bare case
+    name."""
+    case_dir = os.path.join(ROOT, PROBE_CASE_RESOURCE, 'test.drv.a6')
+    sentinel = os.path.join(case_dir, 'item81_lock_guard_%d.marker'
+                            % os.getpid())
+    held = _hold(PROBE_CASE_RESOURCE)
+    created = not os.path.isdir(case_dir)
+    try:
+        os.makedirs(case_dir, exist_ok=True)
+        with open(sentinel, 'w') as fh:
+            fh.write('pathway item 81 guard -- delete me if you find me\n')
+        mtime_before = os.path.getmtime(case_dir)
+        snippet = ('import sys; sys.path.insert(0, %r)\n'
+                   'import probe_plastic_traction as p\n'
+                   'p.build_case(%r)\n' % (PARITY_DIR, case_dir))
+        t0 = time.time()
+        proc = subprocess.run([sys.executable, '-c', snippet], cwd=ROOT,
+                              capture_output=True, text=True, timeout=300)
+        elapsed = time.time() - t0
+        out = proc.stdout + proc.stderr
+        _refusal_asserts(PROBE_PLASTIC_TRACTION, proc, out, held, elapsed)
+        assert os.path.isfile(sentinel), (
+            'THE DEFECT ITSELF: probe_plastic_traction.build_case rmtree\'d '
+            '%s despite refusing -- the sentinel is gone. Refusing AFTER '
+            'deleting is the collision with an exit code attached.'
+            % case_dir)
+        assert os.path.getmtime(case_dir) == mtime_before, (
+            'probe_plastic_traction.build_case touched %s despite refusing '
+            '(mtime moved from %r)' % (case_dir, mtime_before))
+        print('  PASS  probe_plastic_traction.build_case refused in %.2f s, '
+              'exited %d, named the holder, and left %s untouched'
+              % (elapsed, proc.returncode,
+                 os.path.join(PROBE_CASE_RESOURCE, 'test.drv.a6')))
+    finally:
+        try:
+            os.remove(sentinel)
+        except OSError:
+            pass
+        if created and os.path.isdir(case_dir) and not os.listdir(case_dir):
+            os.rmdir(case_dir)
+            parent = os.path.dirname(case_dir)
+            if os.path.isdir(parent) and not os.listdir(parent):
+                shutil.rmtree(parent)
+        held.release()
+
+
 def check_the_builder_lock_ignores_a_foreign_eqdynaroot():
     """`run_scaling.ROOT` honours $EQDYNAROOT, but the case directory is built
     from __file__. If the lock followed ROOT it would be taken in the OTHER
@@ -658,7 +719,7 @@ def check_the_perf_lock_follows_the_directory_actually_rebuilt():
 def main():
     print('Regression guard: a second concurrent perf-tool invocation refuses '
           'instead of rebuilding, and no tool writes a checkout $EQDYNAROOT '
-          'points at (items 74, 77)')
+          'points at (items 74, 77, 81)')
     checks = [check_a_single_component_resource_is_unchanged,
               check_a_nested_resource_locks_beside_the_directory_it_guards,
               check_a_malformed_resource_is_refused_not_guessed,
@@ -669,6 +730,7 @@ def main():
               check_run_jaxmpi_ab_refuses_and_does_not_stage_into_the_package,
               check_run_scaling_builder_refuses_and_does_not_rebuild_the_case,
               check_run_numa_scaling_builder_refuses_and_does_not_rebuild_the_case,
+              check_probe_plastic_traction_build_case_refuses_and_does_not_rebuild,
               check_the_builder_lock_ignores_a_foreign_eqdynaroot,
               check_run_jaxmpi_ab_refuses_a_foreign_eqdynaroot,
               check_the_mismatch_refusal_does_not_fire_when_the_roots_agree,
