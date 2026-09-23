@@ -447,7 +447,13 @@ def run_cell(case, backend, test_dir, eqdyna_cmd, env, device, term='full', gpu_
 # selection
 # --------------------------------------------------------------------------
 def select(args):
-    """(runnable, declared_unsupported, label, explicit) for this invocation."""
+    """(runnable, declared_unsupported, label, explicit, release_only) for
+    this invocation. release_only is non-empty only for the DEFAULT
+    selection (no --cases/--backends, no --ci) at --term gate -- matrix.py's
+    RELEASE_ONLY cells (2026-09-23 owner decision): SUPPORTED cells held out
+    of the everyday sweep for wall-clock cost, restored at --term full (the
+    release tier) and by any EXPLICIT --cases/--backends ask, which names
+    exactly what it wants and is answered exactly, not cost-filtered."""
     if args.ci:
         # --backends/--cases, WHEN COMBINED WITH --ci, filter matrix.CI_CELLS
         # itself rather than switching to matrix.cells() -- this is what lets
@@ -477,15 +483,26 @@ def select(args):
         return (runnable, unsupported,
                 'CI (declared cell list, chosen against a measured %.0f GB '
                 'runner -- matrix.CI_CELLS%s)' % (matrix.CI_RUNNER_RAM_GB, filt),
-                True)
+                True, [])
     cases = args.cases.split(',') if args.cases else None
     backends = args.backends.split(',') if args.backends else None
-    runnable, unsupported = matrix.cells(cases, backends)
     explicit = bool(cases or backends)
-    label = ('explicit: cases=%s backends=%s'
-             % (args.cases or 'all', args.backends or 'all')) if explicit \
-        else 'default: every cell of the table'
-    return runnable, unsupported, label, explicit
+    if explicit:
+        # A named ask is answered exactly, not cost-filtered: RELEASE_ONLY is
+        # a default-selection policy, not a per-cell refusal (matrix.py's
+        # cells() already includes these cells; that is unchanged here).
+        runnable, unsupported = matrix.cells(cases, backends)
+        release_only = []
+        label = 'explicit: cases=%s backends=%s' % (args.cases or 'all',
+                                                      args.backends or 'all')
+    elif args.term == 'gate':
+        runnable, unsupported, release_only = matrix.everyday_cells(cases, backends)
+        label = 'default: every cell of the table minus matrix.RELEASE_ONLY (everyday, --term gate)'
+    else:
+        runnable, unsupported = matrix.cells(cases, backends)
+        release_only = []
+        label = 'default: every cell of the table (release, --term full)'
+    return runnable, unsupported, label, explicit, release_only
 
 
 def memory_note(runnable):
@@ -643,7 +660,7 @@ def main(argv=None):
                     help='JAX_PLATFORMS for the python-jax backend (default cpu)')
     args = ap.parse_args(argv)
 
-    runnable, unsupported, label, explicit = select(args)
+    runnable, unsupported, label, explicit, release_only = select(args)
 
     print('\n==== e2e sweep: coverage ====')
     print('term     : %s%s' % (args.term,
@@ -651,7 +668,7 @@ def main(argv=None):
                                'selected case\'s own committed par.term)'
                                % matrix.GATE_TERM_S if args.term == 'gate'
                                else ' (each case\'s own committed par.term)'))
-    for line in matrix.coverage_report(runnable, unsupported, label):
+    for line in matrix.coverage_report(runnable, unsupported, label, release_only):
         print(line)
     for line in memory_note(runnable):
         print(line)
@@ -877,6 +894,9 @@ def main(argv=None):
     print('not gated : %d declared-unsupported cell(s): %s'
           % (len(unsupported),
              ', '.join('%s x %s' % (c, b) for c, b, _ in unsupported) or 'none'))
+    print('release-only (not run in this everyday sweep): %d cell(s): %s'
+          % (len(release_only),
+             ', '.join('%s x %s' % (c, b) for c, b, _ in release_only) or 'none'))
     print('wall clock: %.1fs' % elapsed)
     # Every sweep is a free timing data point (owner policy 2026-09-22).
     # Placed BEFORE the verdict returns below but able to affect none of them:
