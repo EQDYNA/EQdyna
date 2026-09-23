@@ -30,10 +30,25 @@ WHAT THIS PINS, in order:
      state. So both mutations -- `fetch-depth: 1` and deleting the `with:`
      block -- fail here, and they fail with different values printed;
   3. the PREMISE still holds -- `Dockerfile` still copies the repo root
-     (`COPY . /opt/eqdyna`), no `.dockerignore` exists to strip `.git` from
-     that copy, and both history-reading guards still exist. If any of those
-     changes, the depth requirement may no longer be the right one, and this
-     guard says so instead of silently outliving its reason.
+     (`COPY . /opt/eqdyna`) and both history-reading guards still exist;
+  4. (pathway item 79) `.dockerignore` EXISTS -- a bare `COPY . /opt/eqdyna`
+     with no `.dockerignore` copies every session/build artifact on a
+     developer's box (`.claude/`, `test/`, `bin/`, ...) into the context --
+     AND no pattern in it excludes `.git`. This is the trap item 79 called
+     out explicitly: the obvious fix for the artifact problem is a
+     `.dockerignore` that excludes `.git` (it looks like just more session
+     cruft), which reproduces THIS SAME INCIDENT in a worse form -- no
+     history at any fetch-depth, not just a shallow one. Checked by replaying
+     the file's patterns, in order, against several representative paths
+     under `.git` (the directory itself, and a few paths inside it), with
+     dockerignore/.gitignore matching semantics: unanchored bare names and
+     globs (`.git`, `.git/`, `.git*`) match at any depth and exclude
+     everything below them, `**/.git` matches through any number of parent
+     directories, and a `!`-prefixed line un-excludes a path a PRIOR pattern
+     matched -- so a broad `*` with no matching `!.git` negation is caught
+     too, not just the literal string `.git`. If any of this changes, the
+     depth requirement may no longer be the right one, and this guard says so
+     instead of silently outliving its reason.
 
 Structural parsing, not grep: publish.yml's own comment block explains
 `fetch-depth 0` in prose, so a grep for `fetch-depth: 0` would still be
@@ -47,6 +62,7 @@ FAIL line below names `publish.yml` by path so nobody debugs test.yml.
 Cheap (rule 9): two file parses, no subprocess. Exits non-zero on any failure
 (rule 2).
 """
+import fnmatch
 import os
 import sys
 
@@ -90,6 +106,78 @@ def checkout_steps(job):
     return [s for s in job['steps']
             if isinstance(s, dict)
             and str(s.get('uses', '')).startswith('actions/checkout')]
+
+
+# ---------------------------------------------- .dockerignore vs `.git` ---
+# A future editor's obvious fix for build-context bloat is a .dockerignore
+# that excludes `.git` -- it looks like session cruft, not history. This
+# replays a .dockerignore's patterns, IN ORDER, against representative paths
+# under `.git`, using dockerignore/.gitignore matching rules: a bare name or
+# glob with no leading '/' matches at ANY depth (not just the root); a
+# pattern that matches a directory excludes everything below it too (an
+# ancestor match); '**' matches zero or more WHOLE path segments; and a
+# leading '!' un-excludes whatever a PRIOR pattern excluded. A naive
+# substring/equality test on the raw pattern text would miss `.git*` and a
+# broad `*` left un-negated for `.git` -- both real ways to exclude `.git`
+# without the literal string `.git` ever appearing on a line by itself.
+GIT_PROBE_PATHS = (
+    '.git',
+    '.git/HEAD',
+    '.git/refs/heads/master',
+    '.git/objects/pack/pack-0000000000000000000000000000000000000000.pack',
+)
+
+
+def _prefix_match(pat_segs, path_segs):
+    """True if `pat_segs` matches `path_segs` itself, or matches a PREFIX of
+    it (i.e. the pattern denotes an ancestor directory, which excludes
+    everything below it) -- `**` in `pat_segs` may consume zero or more
+    whole segments."""
+    if not pat_segs:
+        return True
+    head = pat_segs[0]
+    if head == '**':
+        return (_prefix_match(pat_segs[1:], path_segs)
+                or (bool(path_segs) and _prefix_match(pat_segs, path_segs[1:])))
+    if not path_segs:
+        return False
+    return (fnmatch.fnmatchcase(path_segs[0], head)
+            and _prefix_match(pat_segs[1:], path_segs[1:]))
+
+
+def _pattern_matches_path(pattern, path):
+    pattern = pattern.rstrip('/')
+    anchored = pattern.startswith('/')
+    pat_segs = pattern.lstrip('/').split('/') if pattern else []
+    path_segs = path.split('/')
+    if anchored:
+        return _prefix_match(pat_segs, path_segs)
+    # Unanchored: the pattern may start matching at ANY depth of the path
+    # (gitignore semantics for a bare name), so try every suffix.
+    return any(_prefix_match(pat_segs, path_segs[start:])
+               for start in range(len(path_segs)))
+
+
+def git_exclusion_hits(dockerignore_lines):
+    """Replay `dockerignore_lines` in order against GIT_PROBE_PATHS. Returns
+    a list of (pattern_line, probe_path) for every probe path still excluded
+    after ALL lines (including `!` negations) are applied -- empty if none
+    is."""
+    excluded = dict.fromkeys(GIT_PROBE_PATHS, False)
+    deciding_line = dict.fromkeys(GIT_PROBE_PATHS)
+    for raw in dockerignore_lines:
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        negated = line.startswith('!')
+        body = line[1:].strip() if negated else line
+        if not body:
+            continue
+        for probe in GIT_PROBE_PATHS:
+            if _pattern_matches_path(body, probe):
+                excluded[probe] = not negated
+                deciding_line[probe] = line
+    return [(deciding_line[p], p) for p in GIT_PROBE_PATHS if excluded[p]]
 
 
 def main():
@@ -157,14 +245,26 @@ def main():
                 'may not ship this checkout\'s .git at all. The fetch-depth 0 '
                 'requirement asserted above rests on that line -- re-derive '
                 'this guard in the same commit that changed it.' % COPY_LINE)
-    if os.path.isfile(DOCKERIGNORE):
-        ignored = [l.strip() for l in open(DOCKERIGNORE, errors='replace')
-                   if l.strip() and not l.strip().startswith('#')]
-        if any(p.rstrip('/') in ('.git', '**/.git') for p in ignored):
+    if not os.path.isfile(DOCKERIGNORE):
+        problems.append(
+            '.dockerignore does not exist (pathway item 79). `%s` with no '
+            '.dockerignore copies EVERY session/build artifact on a '
+            "developer's box (.claude/, test/, bin/, ...) into the image "
+            'build context.' % COPY_LINE)
+    else:
+        raw_lines = open(DOCKERIGNORE, errors='replace').read().splitlines()
+        hits = git_exclusion_hits(raw_lines)
+        if hits:
+            detail = '; '.join(
+                'pattern %r excludes probe path %r' % (ln, p) for ln, p in hits)
             problems.append(
-                '.dockerignore excludes .git, so `%s` ships no history and the '
-                'two in-image guards cannot pass at ANY fetch-depth. Depth 0 '
-                'is then not the fix -- re-derive this guard.' % COPY_LINE)
+                '.dockerignore excludes .git (%s), so `%s` ships no history and '
+                'the two in-image guards (%s) cannot pass at ANY fetch-depth. '
+                'Depth 0 is then not the fix -- re-derive this guard.'
+                % (detail, COPY_LINE, ' and '.join(HISTORY_GUARDS)))
+        else:
+            print('  .dockerignore: present, no pattern excludes .git '
+                  '(%d probe path(s) checked)' % len(GIT_PROBE_PATHS))
     for guard in HISTORY_GUARDS:
         if not os.path.isfile(os.path.join(HERE, guard)):
             problems.append(

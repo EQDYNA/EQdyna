@@ -1,0 +1,79 @@
+# .dockerignore for the EQdyna image build context (pathway item 79).
+#
+# `.git` IS DELIBERATELY NOT EXCLUDED HERE. `Dockerfile`'s `COPY . /opt/eqdyna`
+# ships this checkout's `.git` into the image, and `.github/workflows/
+# publish.yml`'s gate step (`python3 testsys/run.py unit regression`, run
+# INSIDE the built image) exercises two regression guards that read real
+# history from that `.git`:
+#   testsys/regression/test_history_table.py       (8 bulk-imported commits)
+#   testsys/regression/test_pretag_ci_negative.py  (5 referenced SHAs)
+# Excluding `.git` here -- via `.git`, `.git/`, a glob like `.git*`, `**/.git`,
+# or a broad wildcard (`*`) left un-negated for `.git` -- reproduces the
+# 894cdc1 / v5.16.0 outage in a WORSE form: that incident was a shallow clone
+# (fixable with `fetch-depth: 0`); this would be no history at any depth.
+# testsys/regression/test_publish_image_fetch_depth.py mechanically pins that
+# no pattern below does this -- it is not a comment anyone can quietly drift
+# away from.
+#
+# Everything below is a LOCAL, generated, or session artifact a developer's
+# box may carry that the image build does not need. Each entry is checked
+# against .gitignore and the live tree, and against what `Dockerfile` and the
+# in-image gate (`testsys/run.py unit regression`,
+# `testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran`) actually
+# touch after `COPY . /opt/eqdyna`.
+
+# Claude session state -- not part of the repository the image is built from.
+.claude/
+
+# Generated e2e run trees. testsys/runlock.py rotates a FIXED path per run:
+# `test/` -> `test.prev/`, `test.full/` -> `test.full.prev/`. The gate
+# regenerates these itself; a host copy would be a stale snapshot, and
+# `install-eqdyna.sh` / the gate never reads a pre-existing one.
+test/
+test.prev/
+test.full/
+test.full.prev/
+.test.lock
+.test.full.lock
+
+# Perf/parity tool-generated case dirs and their per-run locks. The perf tier
+# is not part of `run.py unit regression` (the tier the gate actually runs),
+# and each dir is rebuilt fresh from the tracked compset when the perf tier
+# IS run -- a host copy is exactly the "frozen snapshot that drifts" pattern
+# this repo's own papercuts log warns about.
+testsys/perf/.perf_case.lock
+testsys/perf/.perf_case_tpv29.lock
+testsys/perf/.scaling_case.lock
+testsys/perf/.numa_case.lock
+testsys/perf/perf_case/
+testsys/perf/numa_case/
+testsys/perf/scaling_case/
+testsys/perf/perf_case_tpv29/
+testsys/parity/evidence_output/
+testsys/parity/probe_case/
+src/python/.eqdyna.lock
+
+# Build outputs. `install-eqdyna.sh` (RUN inside the Dockerfile, after this
+# COPY) compiles src/fortran/ and creates bin/ fresh, targeting the
+# ubuntu:22.04 base image's own toolchain/libc -- a host-built bin/, *.o, or
+# *.mod would be for the WRONG environment if copied in instead of rebuilt.
+bin/
+__pycache__/
+*.pyc
+*.mod
+src/fortran/*.o
+src/fortran/eqdyna
+src/fortran/_probe_wedge_mesh
+src/fortran/_probe_wedge_kernel
+
+# Fetched SCEC benchmark archive (~1.16 GB of submissions; the tooling that
+# reads it lives in tracked scripts/scec/). Only testsys/parity/'s evidence
+# scripts and scripts/figures/ touch it -- neither runs in the in-image gate.
+scec_archive/
+
+# Misc host/session cruft.
+.DS_Store
+scratch/
+resume_claude.sh
+relnotes_v*.md
+*.provenance
