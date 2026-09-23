@@ -578,3 +578,72 @@ The mitigation is a branch filter on `test.yml`'s push trigger (master plus
 is recorded rather than done. The general form is worth more than the fix: **a
 CI trigger that fires on work nobody will merge converts throughput into
 queue**, and it does it invisibly, because every individual run looks correct.
+
+## L. v5.16.2 released — `2964325`, and the release gate earned its keep
+
+| | |
+|---|---|
+| tag | `v5.16.2` (annotated) at **`2964325`** |
+| Release | "v5.16.2 -- credential-in-image fix and publish-path guards", Latest, `2026-09-23T09:54:37Z` |
+| rule 15a | run **35839792140**, all 7 jobs success; `check_pretag_ci.py --pre-tag 2964325` → PASS, exit 0 |
+| rule 15c | tag push and `gh release create` were one action |
+| after | `test_release_complete.py` **8/8 PASS** |
+| image | publish run **35845693679** success — `Push image -> success`, and `verify-published-image` pulled the tag fresh on a clean runner and re-ran the whole gate: success |
+
+**The registry question, finally answerable in a reproducible form.** The
+package is private and this token lacks `read:packages`, so an anonymous
+manifest GET still returns 403 — that has not changed and no log should claim
+otherwise. But `verify-published-image` IS a registry round-trip: it pulls the
+pushed tag on a fresh runner and re-runs the in-image gate against what comes
+back, which for v5.16.2 includes `check_git_config_no_credential.py`. So the
+claim that stands is **"the published v5.16.2 image was pulled from the
+registry and passed the full gate"**, evidenced by that job. Not "the registry
+contents were verified".
+
+## M. The release commit took master red, and that is the gate working
+
+`7144a98` bumped `VERSION` to 5.16.2 and left the runtime banner at
+`src/fortran/eqdyna3d.f90:17` saying 5.16.1. Rule 11 already requires those to
+move together. `test_version_banner.py` went red, so **the regression tier was
+red at master HEAD** — the precise stop-everything condition rule 3a was written
+for, seven hours earlier, in this same session. CI run 35838379925 failed on
+`unit-regression` and the tag was correctly never cut.
+
+I found it independently, by running the tier myself at master HEAD before
+gating the tag rather than trusting that a release commit is safe. Fixed in
+`2964325`: banner bumped, rebuilt, tier green, and the `test.tpv8 x fortran`
+oracle re-run because the change touched `src/fortran` —
+`max|diff|=3.051760e-11` against the `1.0e-08` bound, unchanged.
+`grep -rn "Welcome to EQdyna" src/ scripts/` returns exactly one line, so there
+was no second copy hiding.
+
+**Two failures, not one, and they need two fixes.**
+
+1. The release commit was pushed without the tier being run on it. The guard
+   that catches this already existed and already works; nothing made anyone run
+   it. That is procedural and mechanically fixable.
+2. **My own brief forbade the fix.** I wrote "do NOT edit anything under
+   `src/`" into the release brief, to stop a release turning into a refactor.
+   That made rule 11 unsatisfiable — a VERSION bump REQUIRES a `src/` edit. The
+   engineer halted and reported rather than guessing which rule to break, which
+   was correct, and it cost about forty minutes.
+
+The generalisation is the part worth keeping: **a scope restriction is itself a
+rule and can conflict with another rule.** When it does, halting is right
+behaviour and the defect is in the restriction. I wrote the restriction; the
+cost is mine, not the engineer's.
+
+## N. Also mine: the release agent ended its turn on a wait
+
+It pushed the release commit, reported "CI is in progress, I'm watching it in
+the background and will resume once it completes", and exited. It was not
+watching anything — it had stopped, and this deployment gives me no facility to
+resume an agent. Had I taken that report at face value the release would have
+sat parked indefinitely. I drove the tag myself instead.
+
+This is the same failure the previous session recorded against itself and the
+same one my own instructions name first. It is evidently not enough to hold
+that rule myself: **a dispatched agent whose task ends in a wait will park it**,
+so either the brief must forbid ending on a wait, or the waiting must stay with
+the conductor. Tonight the right split was the second — the polling was mine to
+do all along.
