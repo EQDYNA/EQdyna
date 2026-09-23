@@ -124,11 +124,45 @@ import time
 
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get('EQDYNAROOT') or os.path.dirname(os.path.dirname(TESTSYS))
+# The checkout THIS FILE lives in, derived from __file__ and never from
+# $EQDYNAROOT (item 77). `ROOT` above may point at a different checkout
+# entirely; the case directory rebuilt below is built from TESTSYS, so the
+# lock that guards it must be rooted the same way or it would lock one tree
+# and destroy another.
+REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
 PYTHON_PKG = os.path.join(ROOT, 'src', 'python')
 OUT = os.path.join(TESTSYS, 'scaling_last.json')
 
 sys.path.insert(0, TESTSYS)
+sys.path.insert(0, REPO_ROOT)
 import run_numa_scaling as numa  # noqa: E402  (numa_topology, cpu_busy_fractions, require_idle)
+from testsys import runlock      # noqa: E402
+
+# What a second concurrent invocation costs, printed by the refusal (item 77).
+LOCK_CONSEQUENCE = [
+    'A second invocation in this checkout rmtrees and rebuilds that SAME case'
+    ' directory',
+    'while the first is TIMING out of it. The first does not crash: it reports'
+    ' seconds,',
+    'and the collision arrives as a scaling knee or a speedup. FIVE tools call'
+    ' this one',
+    'builder -- run_scaling.py, run_mpi_scaling.py, run_jaxmpi_ab.py,'
+    ' run_setup_probe.py',
+    'and run_shard_scaling.py -- so the two colliding runs need not even be the'
+    ' same tool',
+    '(rule 21a, pathway item 77).',
+    '',
+    'NOT waiting. NOT rebuilding anyway. NOT falling back to a second case'
+    ' directory --',
+    'each of those is the silent fallback rule 2 forbids. Run your perf tool in'
+    ' its own',
+    'git worktree (rule 21a), or wait for the holder above to finish.']
+
+# The lock, once per process. build_py_case has five callers and nothing stops
+# one process from calling it twice; flock is per open file description, so a
+# second acquire in THIS process would refuse against our own pid -- a false
+# collision. The memo is not a fallback: the lock is genuinely held.
+_case_lock = None
 
 CASE = 'test.tpv104'  # tpv8 runs out of parallel work early (prior session notes); use a
                        # case with real per-step work -- tpv104 (friclaw 4, ~970k elements).
@@ -384,9 +418,31 @@ def per_step_fortran(work, n, policy, cpus, node_map, dt, n_lo, n_hi):
 # python: per-step by difference, numactl-pinned, fresh process each call
 # --------------------------------------------------------------------------
 def build_py_case(case_name):
+    """create.newcase + forced serial + case.setup, under testsys/perf/.
+
+    GATE 0 (item 77): the exclusive lock on the directory holding the case,
+    taken before anything is imported, created or deleted. It lives HERE, in
+    the function that does the rmtree, and not in main(): main() is the path
+    this function is LEAST often reached by -- `run_mpi_scaling.py:408`,
+    `run_jaxmpi_ab.py:169`, `run_setup_probe.py:142` and
+    `run_shard_scaling.py:195` all call it directly as `rs.build_py_case` and
+    never reach this module's main(). A lock in main() would guard one of five
+    callers and look like it guarded all five.
+
+    The resource is derived from the directory actually about to be destroyed,
+    so it follows the path rather than restating it.
+    """
+    global _case_lock
+    d = os.path.join(TESTSYS, 'scaling_case', case_name)
+    if _case_lock is None:
+        try:
+            _case_lock = runlock.acquire(
+                REPO_ROOT, os.path.relpath(os.path.dirname(d), REPO_ROOT),
+                consequence=LOCK_CONSEQUENCE)
+        except runlock.RunTreeLocked as exc:
+            raise SystemExit('FAIL: %s' % exc)
     sys.path.insert(0, os.path.join(TESTSYS, os.pardir, 'e2e'))
     import run_e2e  # noqa: E402
-    d = os.path.join(TESTSYS, 'scaling_case', case_name)
     if os.path.isdir(d):
         shutil.rmtree(d)
     os.makedirs(os.path.dirname(d), exist_ok=True)

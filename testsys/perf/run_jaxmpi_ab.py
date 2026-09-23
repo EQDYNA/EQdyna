@@ -53,6 +53,11 @@ import run_scaling as rs           # noqa: E402
 import ledger                      # noqa: E402
 from testsys import runlock        # noqa: E402
 
+SELF_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
+# Asserted on by testsys/regression/test_perf_tool_locks.py, so the contract is
+# a named constant and not a wording buried in a format string.
+ROOT_MISMATCH_HEADER = (
+    'refusing to start: $EQDYNAROOT names a DIFFERENT checkout than this tool')
 PKG = os.path.join(ROOT, 'src', 'python', 'eqdyna')
 DRIVER = os.path.join(PKG, 'driver.py')
 MQ = os.path.join(PKG, 'MPI4NodalQuant.py')
@@ -130,7 +135,68 @@ def build_vault(work, merged_ref):
     return vault
 
 
+def require_root_is_this_checkout():
+    """REFUSE when $EQDYNAROOT points at a checkout other than this file's.
+
+    WHY REFUSE AND NOT WARN (item 77). This tool WRITES: `stage()` copies an
+    arm's `driver.py` and `MPI4NodalQuant.py` into `ROOT/src/python/eqdyna`,
+    and the `finally` clause rewrites them once more on the way out. Under a
+    stale `EQDYNAROOT` -- the shape `install-eqdyna.sh` leaves behind, since it
+    exports `$(pwd)` of whichever tree was installed and the export survives a
+    `cd` into a worktree -- those writes land in ANOTHER SESSION's package
+    while this session measures its own. That is precisely rules 21/21b's
+    damage class, and Gate 0 does not catch it: the lock follows the same wrong
+    ROOT, so it locks and corrupts one consistent wrong tree.
+
+    A warning would not do. The write is not a side effect the operator can
+    inspect afterwards and undo -- `stage()` overwrites two tracked files in a
+    tree this session does not own, and the operator is by construction not
+    watching that tree. A warning printed into a 4-arm measurement log is a
+    silent failure with extra text (rule 2).
+
+    NO LEGITIMATE MISMATCH EXISTS, checked rather than assumed. Every setter of
+    this variable in the repository sets it to its OWN tree:
+    `install-eqdyna.sh:119,152` and `.github/workflows/test.yml` (6 sites) use
+    `$(pwd)`; `testsys/e2e/run_e2e.py:174` and `run_e2e_full.py:153` set their
+    own file-derived `REPO_ROOT`; the four `testsys/regression/` tests that set
+    it set their own `ROOT`. No caller anywhere -- and no tool in
+    `testsys/perf/` -- sets it to a checkout other than its own, so refusing
+    costs no supported workflow.
+    """
+    if os.path.realpath(ROOT) == os.path.realpath(SELF_ROOT):
+        return
+    raise SystemExit('\n'.join([
+        'FAIL: %s' % ROOT_MISMATCH_HEADER,
+        '  $EQDYNAROOT   : %s' % os.environ.get('EQDYNAROOT'),
+        '  this tool is  : %s' % os.path.abspath(__file__),
+        '  its checkout  : %s' % SELF_ROOT,
+        '  would stage into: %s' % PKG,
+        '',
+        'stage() COPIES driver.py and MPI4NodalQuant.py into the package above,'
+        ' and the',
+        'finally clause rewrites them again on exit. With $EQDYNAROOT pointing'
+        ' elsewhere',
+        'those writes land in a checkout this session does not own -- the'
+        ' damage rules 21',
+        'and 21b exist for -- and Gate 0 below CANNOT catch it, because the'
+        ' lock follows',
+        'the same wrong root and so guards the same wrong tree (pathway item'
+        ' 77).',
+        '',
+        'NOT warning and continuing. NOT preferring this file\'s own checkout'
+        ' silently --',
+        'either would write somewhere the operator is not watching (rule 2).'
+        ' Re-export',
+        'EQDYNAROOT for the tree you are standing in, or unset it and let this'
+        ' tool',
+        'resolve its own location.']))
+
+
 def main():
+    # GATE -1 (item 77): before argparse, because --notes defaults to a path
+    # under ROOT and every write below -- the vault, the staged arm files, the
+    # snapshot, the notes -- is resolved from it.
+    require_root_is_this_checkout()
     ap = argparse.ArgumentParser()
     ap.add_argument('--case', default='test.tpv104')
     ap.add_argument('--ranks', default='4,8,12')

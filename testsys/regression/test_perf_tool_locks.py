@@ -2,7 +2,7 @@
 """
 Regression guard: a SECOND concurrent invocation of either `testsys/perf/`
 tool that rebuilds a FIXED in-repo path must REFUSE, before it spends anything
-(PROJECT_RULES.md rules 21a, 8, 2, 10; pathway item 74).
+(PROJECT_RULES.md rules 21a, 21b, 8, 2, 10; pathway items 74 and 77).
 
 SIBLING OF test_e2e_run_tree_lock.py, NOT A REPLACEMENT. That guard pins the
 lock mechanism and the two e2e entry points; item 70 left the same defect open
@@ -20,6 +20,13 @@ THE TWO COLLISIONS, and why neither shows up as an error:
   rebuilds that directory while the first is TIMING out of it. The first does
   not crash: it reports seconds, and the collision arrives as a perf
   regression or an improvement.
+
+  run_scaling.py / run_numa_scaling.py (item 77) -- `build_py_case()` and
+  `build_case()` rmtree and rebuild `testsys/perf/scaling_case/<case>` and
+  `testsys/perf/numa_case/<case>`. The first is called by FIVE tools
+  (`run_scaling`, `run_mpi_scaling`, `run_jaxmpi_ab`, `run_setup_probe`,
+  `run_shard_scaling`), so the two colliding runs need not be the same tool,
+  and the lock therefore lives in the builder and not in any main().
 
   run_jaxmpi_ab.py -- `stage()` COPIES an arm's `driver.py` and
   `MPI4NodalQuant.py` INTO `src/python/eqdyna/`, and every measurement is
@@ -41,6 +48,17 @@ AND THAT IT SPENT NOTHING. The refusal must land before the case is built,
 before the vault is built, before the notes file is opened -- so the checks
 also assert the tool produced none of those, and returned in seconds. This
 guard NEVER runs a perf measurement and never launches mpirun.
+
+THE HOLE A LOCK CANNOT CLOSE (item 77). `run_jaxmpi_ab.py` resolves its ROOT
+from `$EQDYNAROOT`, so a stale export -- the shape `install-eqdyna.sh` leaves,
+since it exports `$(pwd)` and the export survives a `cd` into a worktree --
+makes it stage arm files into ANOTHER checkout's package. Gate 0 does not catch
+that: the lock follows the same wrong ROOT and so locks and corrupts one
+consistent wrong tree. The tool therefore REFUSES on the mismatch before any
+lock, and this file pins both directions -- the refusal, and the negative
+control that it does NOT fire when the roots agree or when the variable is
+unset. Without that control, every other check on this tool would pass for the
+wrong reason.
 
 NOTE ON A TRUE POSITIVE THAT LOOKS LIKE FLAKE, inherited from item 70's guard:
 these checks take the real lock on THIS checkout's own paths. If a genuine
@@ -65,9 +83,14 @@ from testsys import runlock  # noqa: E402
 
 RUN_PERF = os.path.join(ROOT, 'testsys', 'perf', 'run_perf.py')
 RUN_JAXMPI_AB = os.path.join(ROOT, 'testsys', 'perf', 'run_jaxmpi_ab.py')
+RUN_SCALING = os.path.join(ROOT, 'testsys', 'perf', 'run_scaling.py')
+RUN_NUMA_SCALING = os.path.join(ROOT, 'testsys', 'perf', 'run_numa_scaling.py')
+PERF_DIR = os.path.join(ROOT, 'testsys', 'perf')
 
 PERF_CASE_RESOURCE = os.path.join('testsys', 'perf', 'perf_case')
 PKG_RESOURCE = os.path.join('src', 'python', 'eqdyna')
+SCALING_CASE_RESOURCE = os.path.join('testsys', 'perf', 'scaling_case')
+NUMA_CASE_RESOURCE = os.path.join('testsys', 'perf', 'numa_case')
 # The rule-2 shape every refusal must keep, whatever tool-specific consequence
 # it carries. Asserted against the REAL output of each entry point, not
 # against the constant the tool defines -- a constant checked against itself
@@ -185,7 +208,8 @@ def check_every_guarded_resource_has_its_own_lockfile():
     paths = {r: runlock.lock_path(ROOT, r)
              for r in ('test', 'test.full', PERF_CASE_RESOURCE,
                        os.path.join('testsys', 'perf', 'perf_case_tpv29'),
-                       PKG_RESOURCE)}
+                       PKG_RESOURCE, SCALING_CASE_RESOURCE,
+                       NUMA_CASE_RESOURCE)}
     assert len(set(paths.values())) == len(paths), (
         'two resources share one lockfile, so one tool would block an '
         'unrelated one: %s' % paths)
@@ -323,6 +347,206 @@ def check_run_jaxmpi_ab_refuses_and_does_not_stage_into_the_package():
 
 
 # --------------------------------------------------------------------------
+# the two shared case BUILDERS (item 77), for real, against this checkout
+#
+# Invoked as the four other perf tools invoke them -- `rs.build_py_case(case)`
+# and `numa.build_case(case)` in a fresh interpreter -- and NOT through either
+# module's main(). main() first probes NUMA topology and cpu busy-ness and
+# exits non-zero when the box is loaded, which would make this guard pass or
+# fail on this box's tenancy rather than on the lock. Calling the builder
+# directly IS the real code path for `run_mpi_scaling.py:408`,
+# `run_jaxmpi_ab.py:169`, `run_setup_probe.py:142` and
+# `run_shard_scaling.py:195`, which is the collision item 77 names.
+# --------------------------------------------------------------------------
+def _call_builder(module, func, case, env=None, cwd=ROOT):
+    snippet = ('import sys; sys.path.insert(0, %r)\n'
+               'import %s as m\n'
+               'm.%s(%r)\n' % (PERF_DIR, module, func, case))
+    t0 = time.time()
+    proc = subprocess.run([sys.executable, '-c', snippet], cwd=cwd,
+                          env=env or dict(os.environ), capture_output=True,
+                          text=True, timeout=300)
+    return proc, proc.stdout + proc.stderr, time.time() - t0
+
+
+def _builder_refuses(label, tool, module, func, resource, case):
+    """Hold the lock, run the builder for real, assert it refused and built
+    nothing. The sentinel is the whole point: an exit code alone would still
+    pass if the builder rmtree'd the case and THEN refused."""
+    case_dir = os.path.join(ROOT, resource, case)
+    sentinel = os.path.join(case_dir, 'item77_lock_guard_%d.marker'
+                            % os.getpid())
+    held = _hold(resource)
+    created = not os.path.isdir(case_dir)
+    try:
+        os.makedirs(case_dir, exist_ok=True)
+        with open(sentinel, 'w') as fh:
+            fh.write('pathway item 77 guard -- delete me if you find me\n')
+        proc, out, elapsed = _call_builder(module, func, case)
+        _refusal_asserts(tool, proc, out, held, elapsed)
+        assert os.path.isfile(sentinel), (
+            'THE DEFECT ITSELF: %s.%s rmtree\'d %s despite refusing -- the '
+            'sentinel is gone. Refusing AFTER deleting is the collision with '
+            'an exit code attached.' % (module, func, case_dir))
+        assert 'Creating case' not in out and 'case.setup' not in out, (
+            '%s.%s refused but had already started building the case; Gate 0 '
+            'is too late:\n%s' % (module, func, out[-2000:]))
+        print('  PASS  %s refused in %.2f s, exited %d, named the holder, and '
+              'left %s untouched' % (label, elapsed, proc.returncode,
+                                     os.path.join(resource, case)))
+    finally:
+        try:
+            os.remove(sentinel)
+        except OSError:
+            pass
+        if created and os.path.isdir(case_dir) and not os.listdir(case_dir):
+            os.rmdir(case_dir)
+            parent = os.path.dirname(case_dir)
+            if os.path.isdir(parent) and not os.listdir(parent):
+                shutil.rmtree(parent)
+        held.release()
+
+
+def check_run_scaling_builder_refuses_and_does_not_rebuild_the_case():
+    _builder_refuses('run_scaling.build_py_case', RUN_SCALING, 'run_scaling',
+                     'build_py_case', SCALING_CASE_RESOURCE, 'test.tpv8')
+
+
+def check_run_numa_scaling_builder_refuses_and_does_not_rebuild_the_case():
+    _builder_refuses('run_numa_scaling.build_case', RUN_NUMA_SCALING,
+                     'run_numa_scaling', 'build_case', NUMA_CASE_RESOURCE,
+                     'test.tpv8')
+
+
+def check_the_builder_lock_ignores_a_foreign_eqdynaroot():
+    """`run_scaling.ROOT` honours $EQDYNAROOT, but the case directory is built
+    from __file__. If the lock followed ROOT it would be taken in the OTHER
+    checkout -- guarding nothing here while this checkout's directory is
+    rebuilt. So: hold the lock HERE, point $EQDYNAROOT at an empty tree, and
+    the builder must still refuse."""
+    case = 'test.tpv8'
+    case_dir = os.path.join(ROOT, SCALING_CASE_RESOURCE, case)
+    sentinel = os.path.join(case_dir, 'item77_root_guard_%d.marker'
+                            % os.getpid())
+    held = _hold(SCALING_CASE_RESOURCE)
+    created = not os.path.isdir(case_dir)
+    with tempfile.TemporaryDirectory() as foreign:
+        try:
+            os.makedirs(case_dir, exist_ok=True)
+            with open(sentinel, 'w') as fh:
+                fh.write('pathway item 77 guard -- delete me if you find me\n')
+            env = dict(os.environ)
+            env['EQDYNAROOT'] = foreign
+            proc, out, elapsed = _call_builder('run_scaling', 'build_py_case',
+                                               case, env=env)
+            _refusal_asserts(RUN_SCALING, proc, out, held, elapsed)
+            assert runlock.lock_path(ROOT, SCALING_CASE_RESOURCE) in out, (
+                'run_scaling refused, but not on THIS checkout\'s lockfile -- '
+                'its lock followed $EQDYNAROOT=%s:\n%s' % (foreign, out[-2000:]))
+            assert os.path.isfile(sentinel), (
+                'run_scaling.build_py_case rebuilt %s under a foreign '
+                '$EQDYNAROOT' % case_dir)
+            assert not os.listdir(foreign), (
+                'run_scaling.build_py_case wrote into the foreign $EQDYNAROOT '
+                '%s: %s' % (foreign, os.listdir(foreign)))
+            print('  PASS  the builder lock is rooted in its own checkout, '
+                  'not in $EQDYNAROOT (refused in %.2f s)' % elapsed)
+        finally:
+            try:
+                os.remove(sentinel)
+            except OSError:
+                pass
+            if created and os.path.isdir(case_dir) and not os.listdir(case_dir):
+                os.rmdir(case_dir)
+                parent = os.path.dirname(case_dir)
+                if os.path.isdir(parent) and not os.listdir(parent):
+                    shutil.rmtree(parent)
+            held.release()
+
+
+def check_run_jaxmpi_ab_refuses_a_foreign_eqdynaroot():
+    """The hole the LOCK cannot close (item 77). `stage()` writes into
+    `$EQDYNAROOT/src/python/eqdyna`, and Gate 0 locks that same wrong tree --
+    consistently, so the lock is no evidence of safety. The tool must refuse
+    on the mismatch BEFORE the lock, and must not write into either tree."""
+    sys.path.insert(0, PERF_DIR)
+    pkg = os.path.join(ROOT, PKG_RESOURCE)
+    staged = [os.path.join(pkg, n) for n in ('driver.py',
+                                             'MPI4NodalQuant.py')]
+    before = {p: _sha(p) for p in staged}
+    with tempfile.TemporaryDirectory() as foreign:
+        env = dict(os.environ)
+        env['EQDYNAROOT'] = foreign
+        t0 = time.time()
+        proc = subprocess.run([sys.executable, RUN_JAXMPI_AB, '--ranks', '4'],
+                              cwd=ROOT, env=env, capture_output=True,
+                              text=True, timeout=300)
+        elapsed = time.time() - t0
+        out = proc.stdout + proc.stderr
+        assert proc.returncode != 0, (
+            'run_jaxmpi_ab.py exited 0 with $EQDYNAROOT pointing at another '
+            'tree -- it would stage arm files into a checkout it does not '
+            'own.\n%s' % out[-2000:])
+        header = 'refusing to start: $EQDYNAROOT names a DIFFERENT checkout'
+        assert header in out, (
+            'run_jaxmpi_ab.py exited %d under a foreign $EQDYNAROOT but not '
+            'on the mismatch -- some later accident stopped it, which is not '
+            'a guarantee. Its output was:\n%s' % (proc.returncode, out[-3000:]))
+        for want in (foreign, ROOT):
+            assert want in out, (
+                'the mismatch refusal does not name %r, so the reader cannot '
+                'see which two trees disagree:\n%s' % (want, out[-3000:]))
+        assert 'NOT warning and continuing' in out, (
+            'the mismatch refusal does not rule out warning-and-continuing, '
+            'which is the behaviour it was chosen over (rule 2):\n%s'
+            % out[-3000:])
+        for p in staged:
+            assert _sha(p) == before[p], (
+                'run_jaxmpi_ab.py rewrote %s despite refusing on the '
+                '$EQDYNAROOT mismatch' % p)
+        assert not os.listdir(foreign), (
+            'run_jaxmpi_ab.py wrote into the foreign $EQDYNAROOT %s despite '
+            'refusing: %s' % (foreign, os.listdir(foreign)))
+        assert elapsed < 120.0, (
+            'run_jaxmpi_ab.py took %.1f s to refuse the mismatch -- the check '
+            'is not the first thing main() does' % elapsed)
+    print('  PASS  run_jaxmpi_ab.py refused a foreign $EQDYNAROOT in %.2f s, '
+          'exited %d, named both trees, and staged nothing'
+          % (elapsed, proc.returncode))
+
+
+def check_the_mismatch_refusal_does_not_fire_when_the_roots_agree():
+    """The negative control. A check that refuses unconditionally would make
+    every check above pass for the wrong reason: the tool would never reach
+    Gate 0 at all, and `check_run_jaxmpi_ab_refuses_and_does_not_stage...`
+    would be asserting on the wrong refusal."""
+    sys.path.insert(0, PERF_DIR)
+    env = dict(os.environ)
+    env['EQDYNAROOT'] = ROOT
+    snippet = ('import sys; sys.path.insert(0, %r)\n'
+               'import run_jaxmpi_ab as ab\n'
+               'ab.require_root_is_this_checkout()\n'
+               'print("ROOTS AGREE")\n' % PERF_DIR)
+    proc = subprocess.run([sys.executable, '-c', snippet], cwd=ROOT, env=env,
+                          capture_output=True, text=True, timeout=300)
+    out = proc.stdout + proc.stderr
+    assert proc.returncode == 0 and 'ROOTS AGREE' in out, (
+        'require_root_is_this_checkout() refused with $EQDYNAROOT set to this '
+        'very checkout (%s) -- it refuses unconditionally, so every other '
+        'check on this tool proves nothing:\n%s' % (ROOT, out[-2000:]))
+    del env['EQDYNAROOT']
+    proc = subprocess.run([sys.executable, '-c', snippet], cwd=ROOT, env=env,
+                          capture_output=True, text=True, timeout=300)
+    out = proc.stdout + proc.stderr
+    assert proc.returncode == 0 and 'ROOTS AGREE' in out, (
+        'require_root_is_this_checkout() refused with $EQDYNAROOT UNSET, where '
+        'ROOT falls back to the tool\'s own location and no mismatch is '
+        'possible:\n%s' % out[-2000:])
+    print('  PASS  the $EQDYNAROOT check passes when the roots agree and when '
+          'the variable is unset')
+
+
+# --------------------------------------------------------------------------
 # shape of the sources (rule 2a: assert the shape, not a substring elsewhere)
 # --------------------------------------------------------------------------
 def _code_lines(path):
@@ -363,7 +587,11 @@ def check_each_tool_locks_before_it_destroys_anything():
             (RUN_PERF, 'def build_perf_case(',
              ['shutil.rmtree(PERF_CASE)', 'run_e2e.make_serial_case(']),
             (RUN_JAXMPI_AB, 'def main(',
-             ['build_vault(work', 'stage(vault, arm)'])):
+             ['build_vault(work', 'stage(vault, arm)']),
+            (RUN_SCALING, 'def build_py_case(',
+             ['shutil.rmtree(d)', 'run_e2e.make_serial_case(']),
+            (RUN_NUMA_SCALING, 'def build_case(',
+             ['shutil.rmtree(d)', 'run_e2e.make_serial_case('])):
         body = _body_of(path, header)
         acq = _index(body, 'runlock.acquire(', path, header)
         for d in destroyers:
@@ -371,8 +599,39 @@ def check_each_tool_locks_before_it_destroys_anything():
             assert acq < dest, (
                 '%s: %s acquires the lock after %r -- the lock guards nothing'
                 % (os.path.basename(path), header, d))
-    print('  PASS  both tools acquire the lock before they delete, build or '
-          'stage')
+    print('  PASS  all four tools acquire the lock before they delete, build '
+          'or stage')
+
+
+def check_the_root_check_precedes_the_lock():
+    """The mismatch check must come BEFORE Gate 0, not after: under a foreign
+    $EQDYNAROOT the acquire happens in the wrong tree, and a refusal issued
+    after it has already created a lockfile there has written to a checkout
+    this session does not own."""
+    body = _body_of(RUN_JAXMPI_AB, 'def main(')
+    chk = _index(body, 'require_root_is_this_checkout()', RUN_JAXMPI_AB,
+                 'def main(')
+    acq = _index(body, 'runlock.acquire(', RUN_JAXMPI_AB, 'def main(')
+    assert chk < acq, (
+        'run_jaxmpi_ab.main acquires the lock at line %d of its body before '
+        'checking $EQDYNAROOT at line %d -- the lock would be created in the '
+        'foreign checkout first' % (acq, chk))
+    print('  PASS  run_jaxmpi_ab checks $EQDYNAROOT before it takes any lock')
+
+
+def check_each_builder_derives_its_resource_from_the_directory_it_rebuilds():
+    """Five tools call `rs.build_py_case`; the lock must follow the directory
+    that is actually rmtree'd, not a second hard-coded copy of that path that
+    can drift away from it."""
+    for path, header in ((RUN_SCALING, 'def build_py_case('),
+                         (RUN_NUMA_SCALING, 'def build_case(')):
+        src = '\n'.join(_body_of(path, header))
+        assert 'os.path.relpath(os.path.dirname(d)' in src, (
+            '%s: %s does not derive its lock resource from the directory `d` '
+            'it is about to destroy:\n%s' % (os.path.basename(path), header,
+                                             src))
+    print('  PASS  both builders derive the lock resource from the directory '
+          'they rebuild')
 
 
 def check_the_perf_lock_follows_the_directory_actually_rebuilt():
@@ -398,7 +657,8 @@ def check_the_perf_lock_follows_the_directory_actually_rebuilt():
 
 def main():
     print('Regression guard: a second concurrent perf-tool invocation refuses '
-          'instead of rebuilding (item 74)')
+          'instead of rebuilding, and no tool writes a checkout $EQDYNAROOT '
+          'points at (items 74, 77)')
     checks = [check_a_single_component_resource_is_unchanged,
               check_a_nested_resource_locks_beside_the_directory_it_guards,
               check_a_malformed_resource_is_refused_not_guessed,
@@ -407,7 +667,14 @@ def main():
               check_every_guarded_resource_has_its_own_lockfile,
               check_run_perf_refuses_and_does_not_rebuild_the_case,
               check_run_jaxmpi_ab_refuses_and_does_not_stage_into_the_package,
+              check_run_scaling_builder_refuses_and_does_not_rebuild_the_case,
+              check_run_numa_scaling_builder_refuses_and_does_not_rebuild_the_case,
+              check_the_builder_lock_ignores_a_foreign_eqdynaroot,
+              check_run_jaxmpi_ab_refuses_a_foreign_eqdynaroot,
+              check_the_mismatch_refusal_does_not_fire_when_the_roots_agree,
               check_each_tool_locks_before_it_destroys_anything,
+              check_the_root_check_precedes_the_lock,
+              check_each_builder_derives_its_resource_from_the_directory_it_rebuilds,
               check_the_perf_lock_follows_the_directory_actually_rebuilt]
     failures = []
     for c in checks:
