@@ -24,12 +24,14 @@ ends a successful run is allowed, but must say so on the same line with the
 marker NORMAL-EXIT -- that keeps "this run succeeded" visibly distinct from
 "someone forgot the exit code", which is the confusion that caused the bug.
 
-Cheap (rule 9): one ~20-byte compile plus a source scan; well under 1 s.
+Cheap (rule 9): one ~20-byte compile, a source scan, and two `mpirun -np 2`
+refusals of an empty case (see probe_real_binary for why two); ~1 s measured.
 Exits non-zero on any failure (rule 2).
 """
 import glob
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -235,13 +237,47 @@ def check_registry():
 
 
 def probe_real_binary():
-    """Run the REAL MPI binary on a refusable input and check its exit status.
+    """Run the REAL MPI binary on a refusable input, in TWO invocations.
 
     The compiler probe above only proves what a serial `stop 'string'` does.
-    The claim this file is actually about -- that a refused EQdyna run exits
-    non-zero through mpirun rather than hanging -- needs the real binary. An
-    empty directory has no bGlobal.txt, so the run must refuse with
-    ERR_INPUT_FILE_MISSING.
+    The claims this file is actually about -- that a refused EQdyna run exits
+    non-zero through mpirun rather than hanging, AND that it says why -- need
+    the real binary. An empty directory has no bGlobal.txt, so the run must
+    refuse with ERR_INPUT_FILE_MISSING.
+
+    Why two invocations (pathway item 89). Both claims used to be asserted
+    against ONE `capture_output=True` run of `mpirun -np 2`, and that made the
+    FATAL-text half INTERMITTENT: CI run 35833383579 got exit 21 and no hang,
+    but an empty capture. The text is not lost in the Fortran -- abortRun
+    flushes unit 6 (src/fortran/errorCodes.f90:162) BEFORE MPI_Abort
+    (:165) -- and not in Python. It is lost in Open MPI's I/O forwarding,
+    which discards bytes a rank has already written and flushed when
+    MPI_Abort tears the job down. Measured here on Open MPI 4.1.1 with a
+    rank that writes 20000 lines and then aborts: piped capture returned
+    2264946 of 2879970 bytes when the abort was immediate, and 2879970 of
+    2879970 on every run when a 1 s sleep preceded the abort. Same writer,
+    same capture, different abort timing. How much survives is a scheduling
+    race, so on a loaded runner "all of it" is a possible outcome and so is
+    "none of it".
+
+    So the two claims are asserted where each is deterministic:
+
+      A. `mpirun -np 2 <binary>` with piped capture -- the real user path.
+         Asserts: the refusal exits NON-ZERO, and does not hang. Says
+         nothing about the forwarded text; a dropped forward is reported as
+         a note, not a failure.
+      B. the same refusal with each rank's stdout redirected to its OWN FILE
+         by the launched shell, so no forwarding is involved and the bytes
+         are in the filesystem the instant the rank's flush returns.
+         Asserts: some rank's file carries the FATAL block, and the refusal
+         exits NON-ZERO here too.
+
+    No claim is weakened: a build that printed no FATAL block, or that
+    forgot the flush (an unflushed buffer dies with the SIGKILLed rank and
+    leaves the file empty), or that exited 0, or that hung, still fails --
+    it just fails in B, or in both. The only thing no longer gated is
+    whether Open MPI's forwarder happens to drain in time, which is a
+    property of the launcher and not of EQdyna.
 
     Reported as SKIPPED, never as PASS, when the binary or mpirun is absent,
     so an unbuilt tree cannot look like a green check.
@@ -269,6 +305,9 @@ def probe_real_binary():
             want = int(m.group(2))
     if want is None:
         return ['ERR_INPUT_FILE_MISSING is not in the registry']
+    problems = []
+
+    # --- A: the real user path -- exit status and no-hang ---------------
     with tempfile.TemporaryDirectory() as d:
         try:
             p = subprocess.run([mpirun, '-np', '2', binary], cwd=d,
@@ -280,19 +319,52 @@ def probe_real_binary():
             return ['the refused run HUNG under %s instead of aborting -- this'
                     ' is the exact failure MPI_Abort exists to prevent' % mpirun]
     out = (p.stdout + p.stderr).decode(errors='replace')
-    problems = []
     if p.returncode == 0:
         problems.append('a refused run exited 0 under %s' % mpirun)
     elif p.returncode != want:
         # Non-zero but not the registry code: still a correct refusal, and
         # under srun/ibrun the number is expected to be unreliable.
-        print('  real-binary probe: exited %d (non-zero, but not %d -- '
+        print('  real-binary probe A: exited %d (non-zero, but not %d -- '
               'acceptable, launchers may remap)' % (p.returncode, want))
     else:
-        print('  real-binary probe: mpirun -np 2 on an empty case exits %d '
+        print('  real-binary probe A: mpirun -np 2 on an empty case exits %d '
               '(ERR_INPUT_FILE_MISSING), no hang' % p.returncode)
     if 'EQdyna: FATAL' not in out:
-        problems.append('the refused run printed no FATAL block')
+        # NOT a failure: see the docstring. Kept visible so the launcher's
+        # drop rate stays observable instead of being silently absorbed.
+        print('  note: %s forwarded %d byte(s) and no FATAL text on this run '
+              '(Open MPI drops un-drained output at MPI_Abort teardown); the '
+              'text is asserted in probe B' % (mpirun, len(out)))
+
+    # --- B: same refusal, capture that cannot lose bytes ----------------
+    # `exec` so the shell is replaced and mpirun still sees the binary's own
+    # exit status; `$$` so each rank names its own file under any launcher.
+    shell = 'exec %s > eqdyna-stdout.$$.txt 2>&1' % shlex.quote(binary)
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            q = subprocess.run([mpirun, '-np', '2', 'sh', '-c', shell], cwd=d,
+                               capture_output=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            problems.append('the refused run HUNG under %s with redirected'
+                            ' output instead of aborting' % mpirun)
+            return problems
+        files = sorted(glob.glob(os.path.join(d, 'eqdyna-stdout.*.txt')))
+        texts = [open(f, errors='replace').read() for f in files]
+    nbytes = sum(len(t) for t in texts)
+    if not files:
+        problems.append('no rank wrote a stdout file under %s -- the binary'
+                        ' never ran, so probe B proved nothing' % mpirun)
+    elif not [t for t in texts if 'EQdyna: FATAL' in t]:
+        problems.append('the refused run printed no FATAL block (%d rank'
+                        ' file(s), %d byte(s), none containing it)'
+                        % (len(files), nbytes))
+    else:
+        print('  real-binary probe B: FATAL block present in a rank-owned file'
+              ' (%d file(s), %d byte(s)), exit %d'
+              % (len(files), nbytes, q.returncode))
+    if q.returncode == 0:
+        problems.append('a refused run exited 0 under %s (redirected probe B)'
+                        % mpirun)
     return problems
 
 
