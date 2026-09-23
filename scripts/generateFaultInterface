@@ -94,9 +94,9 @@ def generateFaultInterface(nx, nz, dx, dz, isRoughFault, dipAngle, seedId=None):
     dSurface_dx = np.gradient(subSurface/dx, axis=1) 
     dSurface_dz = np.gradient(subSurface/dz, axis=0) 
     
-    if dSurface_dx.max()>0.2 or dSurface_dz.max()>0.2:
+    if np.abs(dSurface_dx).max()>0.2 or np.abs(dSurface_dz).max()>0.2:
         print('The fractal surface may be too rough that dy/dx or dy/dz is over 0.2')
-        print('Maximum dSurface_dx and dSurface_dz are ', dSurface_dx.max(), dSurface_dx.max())
+        print('Maximum dSurface_dx and dSurface_dz are ', dSurface_dx.max(), dSurface_dz.max())
         
     # convert format
     result = np.zeros((nx*nz+2,3))
