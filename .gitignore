@@ -17,6 +17,12 @@ test.prev/
 # holding pid of a run on THIS box.
 .test.lock
 .test.full.lock
+# Item 74: the same flock files for the two perf tools, beside the directory
+# each guards -- the perf case dirs (run_perf.py, run_tpv29_pinned_compare.py)
+# and the python package run_jaxmpi_ab.py stages arm files into.
+testsys/perf/.perf_case.lock
+testsys/perf/.perf_case_tpv29.lock
+src/python/.eqdyna.lock
 resume_claude.sh
 .claude/
 testsys/parity/evidence_output/

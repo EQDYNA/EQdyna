@@ -46,14 +46,37 @@ import time
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get('EQDYNAROOT') or os.path.dirname(os.path.dirname(TESTSYS))
 sys.path.insert(0, TESTSYS)
+sys.path.insert(0, ROOT)
 import run_mpi_scaling as ms       # noqa: E402
 import run_numa_scaling as numa    # noqa: E402
 import run_scaling as rs           # noqa: E402
 import ledger                      # noqa: E402
+from testsys import runlock        # noqa: E402
 
 PKG = os.path.join(ROOT, 'src', 'python', 'eqdyna')
 DRIVER = os.path.join(PKG, 'driver.py')
 MQ = os.path.join(PKG, 'MPI4NodalQuant.py')
+# The resource is the PACKAGE, not the __pycache__ under it: stage() rewrites
+# driver.py and MPI4NodalQuant.py in place, and every measurement below is
+# taken against whatever those two files currently hold (item 74).
+PKG_RESOURCE = os.path.relpath(PKG, ROOT)
+LOCK_CONSEQUENCE = [
+    'stage() COPIES this arm\'s driver.py and MPI4NodalQuant.py INTO that'
+    ' package, and',
+    'every timing below is taken against whatever those two files currently'
+    ' hold. Two',
+    'invocations in one checkout swap each other\'s arm files mid-measurement,'
+    ' and the',
+    'result is not a crash: it is a number recorded under the WRONG ARM LABEL'
+    ' -- which',
+    'this tool\'s own docstring calls worse than no number (rule 21a, item'
+    ' 74).',
+    '',
+    'NOT waiting. NOT staging anyway. NOT falling back to a second copy of the'
+    ' package',
+    '-- each of those is the silent fallback rule 2 forbids. Run your A/B in'
+    ' its own git',
+    'worktree (rule 21a), or wait for the holder above to finish.']
 # arm -> (driver version, MPI4NodalQuant version); 'm' = master, 'x' = branch.
 ARMS = {'base': ('m', 'm'), 'b': ('x', 'm'), 'a': ('m', 'x'), 'ab': ('x', 'x')}
 ARM_DESC = {'base': 'master: Sendrecv + unconditional per-step barrier',
@@ -121,6 +144,17 @@ def main():
     ap.add_argument('--notes', default=os.path.join(
         ROOT, 'NOTES_jaxmpi_ab_2026-09-22.md'))
     a = ap.parse_args()
+
+    # GATE 0 (item 74): the exclusive lock on the package this tool STAGES
+    # ARM FILES INTO, taken before the vault is built, before any arm is
+    # staged, and before the notes file is opened -- so a refused invocation
+    # costs nothing and leaves no trace. See LOCK_CONSEQUENCE for why a
+    # collision here is worse than a crash.
+    try:
+        runlock.acquire(ROOT, PKG_RESOURCE, consequence=LOCK_CONSEQUENCE)
+    except runlock.RunTreeLocked as exc:
+        raise SystemExit('FAIL: %s' % exc)
+
     ranks = [int(x) for x in a.ranks.split(',') if x]
     arms = [x for x in a.arms.split(',') if x]
     excl = [int(x) for x in a.exclude_cpus.split(',') if x.strip()]

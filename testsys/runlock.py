@@ -52,12 +52,38 @@ dropped the dead holder's lock. Taking over is therefore correct and automatic
 -- but never silent: acquire() PRINTS who died, when, and why the takeover is
 safe, before it returns.
 
-REUSE. Nothing here is e2e-specific: `resource` is any single directory name
-under REPO_ROOT. The other two tools in this defect class --
-`testsys/perf/run_perf.py:172` (rebuilds `testsys/perf_case/<name>`) and
-`testsys/perf/run_jaxmpi_ab.py:88` (deletes
-`src/python/eqdyna/__pycache__`) -- can adopt it unchanged once someone is
-free to gate them; they are out of scope for item 70 as briefed.
+REUSE. Nothing here is e2e-specific: `resource` is any directory path relative
+to REPO_ROOT. Item 74 adopted it for the two `testsys/perf/` tools of the same
+class -- `run_perf.build_perf_case` (rebuilds `testsys/perf/perf_case/<name>`,
+and `perf_case_tpv29/<name>` under `run_tpv29_pinned_compare.py`) and
+`run_jaxmpi_ab.stage` (rewrites `src/python/eqdyna/driver.py` and
+`MPI4NodalQuant.py` in place, per arm) -- and that adoption is what forced the
+two API changes below.
+
+NESTED RESOURCES (item 74). `resource` was a single directory NAME under
+REPO_ROOT, which the perf resources are not: `testsys/perf/perf_case` and
+`src/python/eqdyna` are both nested. It is now a relative PATH, and the
+lockfile still goes BESIDE the guarded directory -- in that directory's
+PARENT, named `.<basename>.lock`. For a single-component resource that is
+exactly what it was (`test` -> `REPO_ROOT/.test.lock`, unchanged byte for
+byte); for `src/python/eqdyna` it is `src/python/.eqdyna.lock`.
+
+  The alternative -- leave `resource` a bare name and let each caller pass a
+  deeper `repo_root` (`acquire(os.path.join(ROOT, 'src/python'), 'eqdyna')`)
+  -- was rejected: it needs no change here, but it moves the path arithmetic
+  into every caller under an argument named `repo_root` that is then not the
+  repo root, and a caller that joins wrong puts the lockfile somewhere
+  plausible and silently guards nothing. The path is validated in ONE place
+  instead.
+
+PER-TOOL CONSEQUENCE. What a collision COSTS differs by tool -- the e2e tools
+lose a 1500 s cell to a rotated-away tree, `run_jaxmpi_ab` records a number
+under the WRONG ARM LABEL (its own docstring: worse than no number) -- and a
+refusal that describes the wrong failure teaches the reader to ignore it. So
+the tail of the refusal is the caller's to supply, defaulting to the e2e text
+unchanged. Any tail must still refuse in the rule-2 shape (no waiting, no
+fallback); `testsys/regression/test_perf_tool_locks.py` asserts that on the
+real refusals rather than trusting each caller to remember.
 """
 import atexit
 import errno
@@ -67,7 +93,7 @@ import sys
 import time
 
 __all__ = ['RunTreeLocked', 'RunTreeLock', 'acquire', 'lock_path',
-           'REFUSAL_HEADER', 'TAKEOVER_HEADER']
+           'REFUSAL_HEADER', 'TAKEOVER_HEADER', 'E2E_CONSEQUENCE']
 
 # The two strings testsys/regression/test_e2e_run_tree_lock.py asserts on.
 # Named constants rather than prose buried in a format string, so the guard
@@ -81,15 +107,24 @@ class RunTreeLocked(RuntimeError):
 
 
 def lock_path(repo_root, resource):
-    """The lockfile for REPO_ROOT/<resource>.
+    """The lockfile for REPO_ROOT/<resource>, in that directory's PARENT.
 
-    BESIDE the tree, never inside it: a lockfile under `test/` would be
-    rotated away by the very rotation it exists to serialise.
+    BESIDE the guarded directory, never inside it: a lockfile under `test/`
+    would be rotated away by the very rotation it exists to serialise, and one
+    under `src/python/eqdyna/` would sit inside the package `run_jaxmpi_ab`
+    stages arm files into.
+
+    `resource` is a relative path with at least one component. A single
+    component reduces to the original form exactly:
+    `lock_path(root, 'test') == root + '/.test.lock'`.
     """
-    if not resource or os.sep in resource or resource in ('.', '..'):
-        raise ValueError('resource must be a single directory name under '
-                         'repo_root, got %r' % (resource,))
-    return os.path.join(repo_root, '.%s.lock' % resource)
+    parts = str(resource).split(os.sep) if resource else []
+    if (not parts or os.path.isabs(resource)
+            or any(p in ('', '.', '..') for p in parts)):
+        raise ValueError(
+            'resource must be a relative directory path under repo_root with '
+            "no empty, '.' or '..' component, got %r" % (resource,))
+    return os.path.join(repo_root, *(parts[:-1] + ['.%s.lock' % parts[-1]]))
 
 
 def _record_text(argv):
@@ -155,25 +190,32 @@ def _holder_lines(rec):
     ]
 
 
-def refusal_message(tree, path, rec):
+# The default tail: what a SECOND e2e invocation would have cost, and the
+# rule-2 shape of the refusal. A caller whose collision costs something else
+# passes its own tail to acquire(consequence=...); see the module docstring.
+E2E_CONSEQUENCE = [
+    'A second invocation in this checkout would rename that LIVE tree'
+    ' out from under',
+    'the holder mid-run (rule 21a, pathway item 70). On 2026-09-22 that'
+    ' killed a',
+    '1500.1 s cell with a FileNotFoundError, which then printed FAIL and'
+    ' read as a',
+    'solver regression in the sweep summary.',
+    '',
+    'NOT waiting. NOT rotating anyway. NOT falling back to a different'
+    ' directory --',
+    'each of those is the silent fallback rule 2 forbids. Run your sweep'
+    ' in its own',
+    'git worktree (rule 21a), or wait for the holder above to finish.']
+
+
+def refusal_message(tree, path, rec, consequence=None):
     return '\n'.join(
         ['%s %s' % (REFUSAL_HEADER, tree)]
         + _holder_lines(rec)
         + ['  lockfile     : %s' % path,
-           '',
-           'A second invocation in this checkout would rename that LIVE tree'
-           ' out from under',
-           'the holder mid-run (rule 21a, pathway item 70). On 2026-09-22 that'
-           ' killed a',
-           '1500.1 s cell with a FileNotFoundError, which then printed FAIL and'
-           ' read as a',
-           'solver regression in the sweep summary.',
-           '',
-           'NOT waiting. NOT rotating anyway. NOT falling back to a different'
-           ' directory --',
-           'each of those is the silent fallback rule 2 forbids. Run your sweep'
-           ' in its own',
-           'git worktree (rule 21a), or wait for the holder above to finish.'])
+           '']
+        + list(E2E_CONSEQUENCE if consequence is None else consequence))
 
 
 def takeover_message(tree, path, rec):
@@ -244,13 +286,17 @@ class RunTreeLock:
         return False
 
 
-def acquire(repo_root, resource, argv=None, announce=True):
+def acquire(repo_root, resource, argv=None, announce=True, consequence=None):
     """Take the exclusive lock on REPO_ROOT/<resource>, or raise RunTreeLocked.
 
     Non-blocking by design: a second invocation must REFUSE, loudly and
     immediately, naming the holder. Waiting would be the wrong answer twice
     over -- it hides the collision from whoever caused it, and it parks a
     multi-hour sweep behind another multi-hour sweep with no one watching.
+
+    `consequence` is the refusal's closing paragraph, as a list of lines:
+    what THIS tool's collision destroys, and why the refusal does not
+    degrade into waiting or into a second directory. Default: the e2e text.
     """
     path = lock_path(repo_root, resource)
     tree = os.path.join(repo_root, resource)
@@ -263,7 +309,7 @@ def acquire(repo_root, resource, argv=None, announce=True):
             raise
         rec = _read_record(path)
         os.close(fd)
-        raise RunTreeLocked(refusal_message(tree, path, rec))
+        raise RunTreeLocked(refusal_message(tree, path, rec, consequence))
     except BaseException:
         os.close(fd)
         raise

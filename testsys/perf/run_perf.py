@@ -42,6 +42,9 @@ import time
 
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
+sys.path.insert(0, REPO_ROOT)
+from testsys import runlock  # noqa: E402
+
 PYTHON_PKG = os.path.join(REPO_ROOT, 'src', 'python')
 PERF_CASE_NAME = 'test.tpv8'
 # Built fresh under testsys/perf/ rather than test/, so a perf run never
@@ -50,6 +53,23 @@ PERF_CASE = os.path.join(TESTSYS, 'perf_case', PERF_CASE_NAME)
 BASELINE_PATH = os.path.join(TESTSYS, 'baseline.json')
 CORE = os.environ.get('PERF_CORE', '0')
 DEGRADE_LIMIT = 1.5
+
+# What a second concurrent perf run costs, printed by the refusal (item 74).
+LOCK_CONSEQUENCE = [
+    'A second invocation in this checkout rebuilds that SAME case directory'
+    ' -- rmtree',
+    'then create.newcase -- while the holder is timing out of it. The holder'
+    ' does not',
+    'crash cleanly: it reads a half-written case and reports SECONDS, so the'
+    ' collision',
+    'arrives as a perf regression or an improvement, not as an error'
+    ' (rule 21a, item 74).',
+    '',
+    'NOT waiting. NOT rebuilding anyway. NOT falling back to a different case'
+    ' directory --',
+    'each of those is the silent fallback rule 2 forbids. Run your perf'
+    ' measurement in',
+    'its own git worktree (rule 21a), or wait for the holder above to finish.']
 
 
 def pinned_env():
@@ -165,7 +185,25 @@ def build_perf_case():
     Reuses the e2e sweep's builder so the case perf measures and the case the
     gate measures are constructed by ONE piece of code (rule 1). A drifting
     second copy of case setup is exactly what the deleted parity fixtures were.
+
+    GATE 0 (item 74): the exclusive lock on the directory holding PERF_CASE,
+    taken before ANYTHING is imported, created or deleted. It lives here, in
+    the function that does the rmtree, rather than in main(): this function has
+    a second caller -- run_tpv29_pinned_compare.py points PERF_CASE at
+    perf_case_tpv29/ and calls it directly, never reaching main() -- and a lock
+    placed in main() would guard one of the two callers and look like it
+    guarded both. The resource is derived from PERF_CASE for the same reason,
+    so the lock follows whichever directory is actually about to be destroyed.
     """
+    lock_resource = os.path.relpath(os.path.dirname(PERF_CASE), REPO_ROOT)
+    try:
+        runlock.acquire(REPO_ROOT, lock_resource,
+                        consequence=LOCK_CONSEQUENCE)
+    except runlock.RunTreeLocked as exc:
+        raise SystemExit('FAIL: %s' % exc)
+    # Announced only once the lock is held: "Building ..." printed ahead of a
+    # refusal describes something that never happened.
+    print(f'Building a fresh {PERF_CASE_NAME} case for perf at {PERF_CASE} ...')
     sys.path.insert(0, os.path.join(REPO_ROOT, 'testsys', 'e2e'))
     import run_e2e                                    # noqa: E402
     if os.path.isdir(PERF_CASE):
@@ -176,7 +214,6 @@ def build_perf_case():
 
 
 def main():
-    print(f'Building a fresh {PERF_CASE_NAME} case for perf at {PERF_CASE} ...')
     build_perf_case()
 
     affinity = verify_affinity()
