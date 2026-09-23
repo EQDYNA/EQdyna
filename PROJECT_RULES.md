@@ -9,6 +9,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 4. Only fresh runs are evidence.
 4a. A proposed CAUSE is falsified by the outcome curve, not by the defect it predicts.
 4b. An exclusion names the metric that produced it; a metric blind to a mechanism cannot exclude it.
+4c. A gate downgrade names the geometry class its evidence came from, and clears no class that evidence cannot exercise.
 5. One calibrated definition of "pass" — never invent a metric.
 5a. A provably injective relabelling is gated at bit-identity, not at the case bound.
 6. Every performance number carries its provenance.
@@ -30,14 +31,15 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 20a. A tool that writes its results file only at the end is a partial-loss hazard; prefer several smaller invocations that each land their own artifact.
 20b. A heavy run's artifacts are not landed until they are committed, and a run finishing does not mean anyone is still there to commit them.
 20c. A completed detached run is indistinguishable from one still in flight until something reads its artifact and updates the board — and until then its worktree is not reapable by default.
+21. An agent's write surface is its own worktree; the main checkout belongs to the conductor.
 
 Count, stated so a heading-shape grep does not undercount it again (that
-undercount happened twice in one night, 2026-09-21/22): 20 numbered rules
-(1-20) plus eight lettered sub-rules (2a, 4a, 4b, 5a, 15a, 20a, 20b, 20c) — 28
-`## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 28;
+undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
+(1-21) plus nine lettered sub-rules (2a, 4a, 4b, 4c, 5a, 15a, 20a, 20b, 20c) —
+30 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 30;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
-suffix) reads 20.
+suffix) reads 21.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
 the count from heading shape alone.
@@ -254,6 +256,57 @@ than the agreement. Tier: a norm for how claims are written, not mechanically
 gated — no script can tell a metric from the mechanism it is blind to. The
 nearest mechanical backstop is the board's own `Command` column (rule 14): an
 exclusion whose command still runs is at least re-checkable.
+
+---
+
+## 4c. A gate downgrade names the geometry class its evidence came from, and clears no class that evidence cannot exercise
+
+A decision to DOWNGRADE a gate — an abort turned into a warning or a NOTICE, a
+refusal turned into a pass, a bound loosened — states, in the same place the
+downgrade is recorded, the GEOMETRY CLASS of the evidence behind it (planar or
+rough; one decomposition; one dip; one fault count). A downgrade supported by
+one class covers that class only. It may not be read, later or by anyone else,
+as having cleared a class its evidence is structurally unable to exercise: if
+the fixture cannot produce the failure the check was guarding, its clean result
+is not evidence about that failure.
+
+This sharpens 4b for the specific case where the blind instrument is the
+FIXTURE rather than the metric. 4b asks which metric produced an exclusion;
+this asks which geometry the fixture had. Both fail identically — a number
+measured correctly, about the wrong thing — and a downgrade is the most
+expensive place for it, because the check that would have caught the uncovered
+class is the thing being removed.
+
+**Rationale**: a check's whole value is on the inputs that break it. A
+downgrade decided from an input that cannot break it converts "we never tested
+this class" into "this class is fine", permanently and silently, because the
+guard that would have said otherwise is now a NOTICE nobody reads.
+
+**Incident (v5.8.2, flagged retroactively 2026-09-22)**: `checkFaultMPIAlignment`
+was downgraded from abort to NOTICE (`src/fortran/errorCodes.f90:85`,
+`ERR_MPI_FAULT_ALIGNMENT = 51`) on the evidence of
+`testsys/regression/test_dipping_fault_y_split.py` — tpv36 at (2,2,1) vs
+(2,1,2), traction ratio 1.000000 at 3416 nodes. That fixture's fault is
+PLANAR in grid y: it does not wander across the y rank boundary, so it cannot
+exercise the mechanism the alignment check exists for on a ROUGH fault, where
+`fltxyz`'s y-extent reads (0,0) while the physical surface crosses y=0 (pathway
+item 66, `src/fortran/meshgen.f90:426`). The downgrade was recorded as if the
+check had been cleared; what it had actually been cleared for was one geometry
+class, and the class it was blind to is a wrong-answer path (a
+mis-classification doubles `arn` and halves every on-fault traction on those
+nodes) that still ships behind a NOTICE today.
+
+**How to apply**: write a downgrade as "downgraded on <fixture/run>, which
+exercised <geometry class>", and name in the same sentence the classes NOT
+exercised. If a named class is one the check was written for, the downgrade
+does not extend to it — keep the abort for that class, or open a board row
+(rule 14) saying it is unguarded and why. When you INHERIT a downgrade, read
+the cited fixture's geometry before relying on it, the same way 4b asks you to
+read the cited metric. Tier: reviewable, not mechanically gated — nothing in
+this repo can classify a fixture's geometry by itself. The nearest mechanical
+backstop is that a downgrade must cite a test file by path, so a reviewer has
+something concrete to open; a downgrade citing no fixture at all is a finding
+on its own.
 
 ---
 
@@ -1076,3 +1129,62 @@ copy" of something. The nearest mechanical backstop is the same one 20 and
 exit code — checked by whoever next touches that worktree; a board row that
 names its own evidence command (rule 14) is at least falsifiable by
 re-running it, which is what caught this incident.
+
+---
+
+## 21. An agent's write surface is its own worktree; the main checkout belongs to the conductor
+
+An agent session working in a linked worktree (`.claude/worktrees/<name>/`)
+commits THERE and nowhere else. The main checkout — `/home/utig5/dliu/EQdyna`,
+the tree whose `--git-dir` is the repository's own `.git` — is the conductor's:
+no agent commits in it, merges in it, moves its HEAD, or leaves modified
+tracked files in it. Wanting to "just land this one small thing" on master is
+exactly the case this refuses; the conductor merges, agents branch.
+
+Rules 20b and 20c govern a worktree's ARTIFACTS — getting them committed, and
+not reaping a tree whose result nobody has read. This rule governs the tree
+ITSELF: which checkout a session is allowed to write to at all. Rule 19's
+fourth bullet is the nearest existing statement (two sessions must not write
+one shared path concurrently) but it is scoped to a shared `*_last.*` artifact;
+the checkout is the shared object this rule is about.
+
+**Rationale**: worktrees exist so N sessions can hold N different HEADs over
+one object store. A commit landed in the main checkout breaks that for every
+session at once, and breaks it SILENTLY: another session's next read of a
+source file simply returns different bytes, mid-build or mid-run, with no
+error raised anywhere and nothing in the repo recording that it happened. The
+victim's symptom — a gate that fails against source it never saw, a diff it
+cannot explain — points at its own change, not at the tree moving underneath
+it, so the cost is paid in debugging the wrong thing.
+
+**Incident (2026-09-22, RELAYED by the conductor to this rule's author, not
+witnessed by the author and not independently re-derived)**: two agents
+committed directly into the main checkout `/home/utig5/dliu/EQdyna` instead of
+their own worktrees, and a third had HEAD move underneath it mid-run as a
+result. Twice in one day, same shape — which is the frequency that makes this a
+rule rather than a note. The relayed provenance is stated here deliberately:
+the mechanism is not in doubt, but no commit SHAs or session names were
+recorded with it, so the incident cannot be re-audited from the repo (rule 4).
+
+**How to apply**: before your first commit of a session, run
+
+    git rev-parse --git-dir --git-common-dir
+
+In a linked worktree the two differ — `.git/worktrees/<name>` against `.git`.
+If they are EQUAL you are standing in the conductor's checkout: do not commit,
+say so, and ask for a worktree. The same check settles it after a `cd` you did
+not expect to change trees.
+
+**Tier today: NOT mechanical — this rule is hortatory until the hook below
+lands, and it is the weaker artifact for it.** The enforcement is a small one
+and is specified here so it can be built rather than argued about: a
+`pre-commit` hook that refuses when `--git-dir` equals `--git-common-dir` and
+an agent-session env marker is set. Linked worktrees share
+`$GIT_COMMON_DIR/hooks`, so ONE installed hook covers every present and future
+worktree; it needs `git config core.hooksPath` pointed at a tracked directory
+(e.g. `testsys/hooks/`) by `install-eqdyna.sh`, because git does not install
+hooks on clone, plus a `testsys/regression/` guard asserting the hook is
+tracked, executable, and actually refuses on the equal-dir case. Until that
+exists, every clone is unguarded and this rule is enforced by reading it.
+Tracked as pathway item 68; the build is routed to `iris-vermeulen`, not done
+by this rule's author.
