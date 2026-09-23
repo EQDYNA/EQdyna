@@ -1,0 +1,21 @@
+{
+ "tool": "run_e2e",
+ "sha": "32fba21",
+ "host": "cotopaxi",
+ "date": "2026-09-23 02:41",
+ "label": "explicit: cases=test.tpv8 backends=fortran",
+ "device": "cpu",
+ "jobs_budget": 60,
+ "tenancy_ceiling": 0.5,
+ "cells": [
+  {
+   "case": "test.tpv8",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 12.749373197555542,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  }
+ ]
+}

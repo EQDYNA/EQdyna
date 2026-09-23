@@ -57,11 +57,17 @@ FORMAT HAZARDS THIS HANDLES EXPLICITLY (each one has cost time before)
   nearest-neighbour. Stations likewise: only stations whose coordinates land
   exactly on every model's node grid are plotted, and the excluded ones are
   counted and explained.
-* A STATION HEADER CAN LIE ABOUT ITS OWN COLUMN COUNT. Today's writer declares
-  "Time series in 11 columns" and writes 8 whenever friclaw < 3
-  (src/fortran/library_output.f90:66 vs :97); the 2015 archive declares 8 and
-  writes 8. The DATA is trusted, and the mismatch is reported rather than
-  silently coped with.
+* A STATION HEADER CAN LIE ABOUT ITS OWN COLUMN COUNT -- true of ARCHIVED
+  files, which this script still reads. Before pathway item 67 (fixed
+  2026-09-23), today's writer declared "Time series in 11 columns" and wrote
+  8 whenever friclaw < 3 (src/fortran/library_output.f90:66 vs :97); the
+  writer now declares the branch's true column count. The 2015 archive
+  predates that fix and still declares 8 while writing 8 (so it never lied),
+  but older EQdyna-written references on disk (e.g.
+  scripts/fractal_stress_diamond_square/tpv104.200m.asp.ref/fort.51, an
+  archived reference left as-is) still carry the old, wrong header. The DATA
+  is trusted, and any mismatch is reported rather than silently coped with --
+  that coping logic stays for exactly this reason.
 * AN ARCHIVE DIRECTORY CAN CARRY A STALE TEMPLATE HEADER. tpv30's 100 m cplot
   still says `problem = LVFZ, date = 6-2-2012` while its own faultst files
   correctly say TPV30 / Dunyu Liu / 2015. cplot headers are therefore NEVER
