@@ -14,20 +14,27 @@ because assembleGlobalKU/calcHourglassResist and faulting.f90 are separate
 subroutine calls with their own MPI_WTIME() brackets (driver.f90). Every
 Python backend (numpy AND jax) fuses velDispUpdate + both element kernels +
 faulting into ONE step function (driver.make_step / driver.run_mpi's
-a_body/b_body) -- see driver.py's module docstring. Splitting them back apart
-would mean a NEW timer INSIDE that fused step:
-  - numpy: technically cheap (a few more perf_counter() calls per step), but
-    still a change to the hot loop's instruction sequence on every step of
-    every run, for a number this landing does not need to gate anything --
-    not done.
-  - jax: impossible without a NEW block_until_ready between the element
-    kernels and faulting, which the mission's "no new sync" rule forbids on
-    the default path.
-So `fault_s` is folded into `element_s` on every Python backend, always
-reported as 0.0 in the `fault` bucket, and documented here rather than
-guessed at. `element` therefore means "element + fault, fused" for every
-Python backend -- read it that way, not as a like-for-like column against
-Fortran's `element`.
+a_body/b_body) -- see driver.py's module docstring. Splitting `element` from
+`fault` back apart needs a NEW timer INSIDE that fused step:
+  - numpy executes that step eagerly and synchronously (no queue, no device
+    to drain), so a `time.perf_counter()` pair around the `FLT.faulting`
+    call inside `driver.make_step_parts`'s `part_b` costs no new sync and
+    changes no arithmetic. Landed 2026-09-23: `driver.run` accumulates it
+    into a `fault_timer` dict, built only `if not B.is_jax(xp)`, and returns
+    it as `out['fault_s']`; `eqdyna3d.run_case` subtracts it back out of
+    `Profile['solve']` to get `element`. **python-numpy now matches
+    Fortran's `fault` boundary.**
+  - jax: still impossible without a NEW `block_until_ready` between the
+    element kernels and faulting, which the mission's "no new sync" rule
+    forbids on the default path -- and a timer placed anyway would measure
+    the ONE-TIME trace, not the per-step cost (wrong, not just imprecise).
+    `driver.make_step_parts` refuses to build the timer at all when
+    `B.is_jax(xp)`, so `fault_s` stays 0.0 there by construction.
+So `fault_s` is folded into `element_s` and always reported as 0.0 in the
+`fault` bucket on **python-jax and python-jax-mpi only**. `element` means
+"element + fault, fused" for those two backends -- read it that way, not as
+a like-for-like column against Fortran's `element`. On python-numpy,
+`element` and `fault` are disjoint and match Fortran's boundary.
 
 `exchange`/`wait` are genuinely 0.0 for the two serial backends (no MPI to
 speak of) and are REAL measurements (not folded, not skipped) for
