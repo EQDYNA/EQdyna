@@ -1,0 +1,8 @@
+E0922 17:26:20.810197  467934 pjrt_stream_executor_client.cc:2916] Execution of replica 0 failed: INTERNAL: Failed to allocate 11406984 bytes for new constant
+jaxlib._jax.XlaRuntimeError: INTERNAL: Failed to allocate 11406984 bytes for new constant
+EXIT0=1
+EXIT1=0
+EXIT3=0
+E0922 17:26:09.601191  467932 pjrt_stream_executor_client.cc:2916] Execution of replica 0 failed: RESOURCE_EXHAUSTED: Failed to load in-memory CUBIN (compiled for a different GPU?).: CUDA_ERROR_OUT_OF_MEMORY: out of memo
+jaxlib._jax.XlaRuntimeError: RESOURCE_EXHAUSTED: Failed to load in-memory CUBIN (compiled for a different GPU?).: CUDA_ERROR_OUT_OF_MEMORY: out of memory
+EXIT2=1
