@@ -60,9 +60,7 @@ if [ -z "$resolved_git_dir" ] || [ -z "$resolved_common_dir" ]; then
     exit 1
 fi
 
-if [ "$resolved_git_dir" != "$resolved_common_dir" ]; then
-    exit 0
-fi
+if [ "$resolved_git_dir" = "$resolved_common_dir" ]; then
 
 echo "" >&2
 echo "pre-commit: REFUSED -- this is the MAIN CHECKOUT, not a worktree." >&2
@@ -96,3 +94,98 @@ echo "This hook has no bypass flag of its own. --no-verify skips it, and doing" 
 echo "so is the exact action rules 21/21b forbid." >&2
 echo "" >&2
 exit 1
+
+fi   # end of the MAIN-CHECKOUT refusal (rules 21/21b, pathway item 68)
+
+# ---------------------------------------------------------------------------
+# SECOND refusal -- PROJECT_RULES.md rule 21c, pathway item 75.
+#
+# Rule 21c says PROJECT_RULES.md and pathway_forward.md have exactly ONE
+# writer. Git cannot prove authorship -- a hunk carries no session identity --
+# so this hook enforces the strongest thing git CAN see: SEPARATION. A commit
+# whose staged set contains either board file TOGETHER WITH any path outside
+# those two is refused. A board update then always lands as its own reviewable
+# commit that a conductor can drop with a single `git revert`, and a code
+# mission that quietly rewrites a rule alongside its code cannot hide the edit
+# inside a large diff.
+#
+# Incident (2026-09-23): two subagents dispatched the same night each edited
+# both files unasked, inside their own code missions. The conductor caught it
+# at the merge boundary only by reading the diff.
+#
+# What this does NOT do, stated so nobody reads it as more: it does not stop
+# the wrong session from committing a board-only change, and it does not fire
+# for a commit git makes without a working-tree commit step (see the guard's
+# measured merge cases). It buys reviewability, not authorship.
+# ---------------------------------------------------------------------------
+
+# `git diff --cached` needs a commit to diff against; on the very first commit
+# of a repository there is no HEAD, so diff against the empty tree instead of
+# letting the command fail and taking its empty output as "nothing staged".
+if git rev-parse --verify -q HEAD >/dev/null; then
+    staged=$(git diff --cached --name-only) || {
+        echo "pre-commit: REFUSED -- 'git diff --cached --name-only' failed." >&2
+        echo "pre-commit: cannot read the staged path set, so the rule-21c" >&2
+        echo "pre-commit: check is refused rather than skipped." >&2
+        exit 1
+    }
+else
+    empty_tree=$(git hash-object -t tree /dev/null) || {
+        echo "pre-commit: REFUSED -- could not compute the empty tree id." >&2
+        exit 1
+    }
+    staged=$(git diff --cached --name-only "$empty_tree") || {
+        echo "pre-commit: REFUSED -- 'git diff --cached --name-only' failed" >&2
+        echo "pre-commit: on the initial commit." >&2
+        exit 1
+    }
+fi
+
+board_files=""
+other_files=""
+saved_ifs=$IFS
+IFS='
+'
+for path in $staged; do
+    case "$path" in
+        PROJECT_RULES.md|pathway_forward.md)
+            board_files="$board_files  $path
+" ;;
+        *)
+            other_files="$other_files  $path
+" ;;
+    esac
+done
+IFS=$saved_ifs
+
+if [ -n "$board_files" ] && [ -n "$other_files" ]; then
+    echo "" >&2
+    echo "pre-commit: REFUSED -- this commit MIXES the rule book / board with" >&2
+    echo "pre-commit: other files. PROJECT_RULES.md rule 21c, pathway item 75." >&2
+    echo "" >&2
+    echo "  Board files staged:" >&2
+    printf '%s' "$board_files" >&2
+    echo "  Other files staged (these are why it is refused):" >&2
+    printf '%s' "$other_files" >&2
+    echo "" >&2
+    echo "Rule 21c: PROJECT_RULES.md and pathway_forward.md have exactly one" >&2
+    echo "writer. Git cannot check WHO wrote a hunk, so this hook checks that" >&2
+    echo "a board change arrives ALONE -- as its own reviewable commit that a" >&2
+    echo "conductor can drop with one \`git revert\`." >&2
+    echo "" >&2
+    echo "Split it into two commits:" >&2
+    echo "" >&2
+    echo "  git restore --staged PROJECT_RULES.md pathway_forward.md" >&2
+    echo "  git commit -m '<your code change>'        # the other files" >&2
+    echo "  git add PROJECT_RULES.md pathway_forward.md" >&2
+    echo "  git commit -m '<board/rule update>'       # board alone" >&2
+    echo "" >&2
+    echo "If you are a MISSION agent: rule 21c says the board edit is not" >&2
+    echo "yours to make at all. Drop it and report the row text you want:" >&2
+    echo "" >&2
+    echo "  git restore --staged --worktree PROJECT_RULES.md pathway_forward.md" >&2
+    echo "" >&2
+    exit 1
+fi
+
+exit 0
