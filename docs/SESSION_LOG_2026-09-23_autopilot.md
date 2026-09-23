@@ -1451,3 +1451,42 @@ the ledger's latest wall per cell; unmeasured cells first, printed). My own
 gate: guard green; MY mutation (a third cell, tpv29 numpy, added to
 `RELEASE_ONLY` in the file) -> `FAIL test_sweep_speed_2026_09_23 (3 check(s))`,
 restored sha256 `1108e7c426e3…` both sides; `unit regression` green.
+
+## OO. STATUS (first measured gain): CI 246 s -> 205 s on master; unit-regression 204 s -> max shard 128 s
+
+| run | sha | wall | build | unit-regression | e2e-ci-smoke (its test step) |
+|---|---|---|---|---|---|
+| 35923271678 (before) | `d2f83fe` | **246 s** | 36 s | 204 s | 108 s (51 s) |
+| 35930563597 (after, master) | `4b2806d` | **205 s** | 35 s | shards 122 / 128 / 109 s | 162 s (90 s) |
+
+Landed: `33efa2d` (test_dipping_fault_y_split 1.0 s -> 0.5 s term; the
+docstring's "one step is a complete test" was FALSE — iris measured the arn
+mutation invisible at every term <= 0.35 s, 2.55e-01 at 0.45 s, 1.0e+01 at
+0.5 s — so 0.5 s, not one step), `315c2cb` (3 shards + pip cache + a coverage
+guard), `4b2806d` (my merge fix: `test_sweep_speed_2026_09_23.py`, landed
+between the shard partition and its merge, was in NO shard;
+`test_ci_shard_coverage` went RED on the rebase exactly as designed).
+
+My own mutation on the dipping guard, not iris's: DIVIDE forced to DUPLICATE
+for y-splits (`meshgen.f90`, `syncArnBoundary`'s `if` -> `if (dimId /= 2 .and.
+...)`), REBUILT -> `FAIL max |diff| over all 22 columns is 3.000e+01`;
+restored sha256 `134181c11f1d…` both sides. **Worth knowing: my first attempt
+stayed GREEN because the guard runs the prebuilt `bin/eqdyna` and I had not
+rebuilt** — a src mutation proves nothing until it is compiled. And the guard
+prints SKIPPED and exits 0 when no binary exists (`test_dipping_fault_y_split.py:129-133`)
+— pre-existing, and a hard-failure violation (a tier that exits 0 with the
+binary missing is not a gate); in CI it ran (verified in the shard 1 log), so
+not live today, but recorded for the board.
+
+**The smoke is the CI critical path now, and its 51 -> 90 s is runner variance,
+not us:** identical cells, serial both times, every cell 1.6-1.8x slower on the
+second runner (fortran 7.6 -> 13.4, numpy 30.4 -> 56.2, jax 12.8 -> 20.3 s).
+Next CI lever: smoke setup (install 40-53 s) via the same pip cache, and the
+smoke cells themselves.
+
+Master `5df58a3` triggered no CI because it touched `docs/**` only
+(`test.yml` paths-ignore); last code SHA before it, `e6b301d`, green.
+`iris/profile-guard-2026-09-23` is red on its own branch (`tree_dirty` required
+of fixture rows that predate it); it will not merge until its own CI is green —
+fix is the parallelism-discriminator pattern (required on new rows only), when
+that branch's queue slot (item 3) comes up.
