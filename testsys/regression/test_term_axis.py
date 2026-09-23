@@ -1,159 +1,240 @@
 #! /usr/bin/env python3
 """
-Regression guard: the TERM axis (2026-09-23 owner-approved test-methodology
-change) fails closed, never silently substitutes, and CI/release stay on
-their own sides of it (rules 2, 6).
+Regression guard: ONE term, everywhere (2026-09-23 owner decision,
+superseding a same-day earlier two-term design) (rules 2, 6).
 
-THE DEFECT SHAPE THIS GUARDS AGAINST. `term` is an axis of a cell exactly
-like `backend`: 'gate' runs every case at matrix.GATE_TERM_S regardless of
-its own committed par.term; 'full' runs each case at its own par.term. A
-case whose full term is not matrix.GATE_TERM_S (test.tpv29, test.tpv36,
-test.tpv37) needs a SECOND reference file for the gate term
-(compare.GATE_TERM_NAME). Three ways that could silently go wrong, each
-pinned below:
+THE DEFECT SHAPE THIS GUARDS AGAINST, each pinned below:
 
-  1. a gate-term cell for one of those three cases compares against the
-     FULL-term reference instead of failing -- a 5 s run would look "wrong"
-     against a 20 s/6 s reference for reasons that have nothing to do with a
-     real regression, or worse, could be made to look right by chance.
-  2. --term full stops selecting the one full-length reference every other
-     guard and every committed frt.canonical.txt assumes.
-  3. CI's smoke job (test.tpv8 only) drifts to running the full-term sweep,
-     or the release tier drifts to running the cheap gate-term one -- either
-     direction defeats the point of splitting them (portability smoke vs.
-     physics-coverage release).
+  1. a `--term`-shaped flag reappearing on run_e2e.py's argparse, or
+     `--release` disappearing from it -- reopening the fork this change
+     closed.
+  2. matrix.py regaining CASE_FULL_TERM_S, or compare.py regaining
+     GATE_TERM_NAME / canonical_reference_name's two-way choice, or any
+     public comparison entry point regaining a `term` parameter.
+  3. a case ending up with two committed reference files on disk
+     (frt.canonical.txt plus a retired frt.canonical.term5.txt) -- exactly
+     what item 4 of the 2026-09-23 landing retired for
+     test.tpv29/test.tpv36/test.tpv37.
+  4. run.py's `release` tier drifting off `--release` (back onto a `--term`
+     flag that no longer exists, or silently back to running nothing wider
+     than the everyday sweep), or CI's smoke invocation drifting onto either
+     flag.
 
-Cheap (rule 9): imports + one workflow text parse + one monkeypatched
-subprocess call, well under 1 s. Exits non-zero on any failure.
+Cheap (rule 9): imports, one workflow text parse, a handful of introspection/
+signature checks, one throwaway-tempdir behavioural check, one monkeypatched
+subprocess call. No solver, no MPI, no I/O beyond a few bytes in tempdirs.
+Well under 1 s. Exits non-zero on any failure.
 """
+import contextlib
+import glob
 import importlib.util
+import inspect
+import io
 import os
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WORKFLOW = os.path.join(ROOT, '.github', 'workflows', 'test.yml')
 RUN_PY = os.path.join(ROOT, 'testsys', 'run.py')
+E2E_PY = os.path.join(ROOT, 'testsys', 'e2e', 'run_e2e.py')
 
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 from testsys import compare, matrix  # noqa: E402
 
 
-def _cases_needing_a_second_reference():
-    """Cases whose full term != matrix.GATE_TERM_S -- the ones that MUST
-    fail closed at term='gate' until compare.GATE_TERM_NAME is committed for
-    them (rule 7: the owner generates it, this guard never does)."""
-    return [c for c in matrix.CASES
-            if matrix.CASE_FULL_TERM_S[c] != matrix.GATE_TERM_S]
-
-
-def check_gate_term_fails_closed_without_a_term5_reference():
-    needing = _cases_needing_a_second_reference()
-    if not needing:
-        raise AssertionError(
-            'no case in matrix.CASES has a full term != matrix.GATE_TERM_S -- '
-            'this guard has nothing to exercise, which means either the term '
-            'axis or matrix.CASE_FULL_TERM_S regressed silently')
-    checked = 0
-    for case in needing:
-        name = compare.canonical_reference_name(case, 'gate')
-        if name != compare.GATE_TERM_NAME:
-            raise AssertionError(
-                '%s (full term %.1fs != gate term %.1fs) should select the '
-                'gate-term reference name %r at term=gate, selected %r '
-                'instead' % (case, matrix.CASE_FULL_TERM_S[case],
-                            matrix.GATE_TERM_S, compare.GATE_TERM_NAME, name))
-        ref_dir = os.path.join(compare.REFERENCE_ROOT, case)
-        term5_path = os.path.join(ref_dir, compare.GATE_TERM_NAME)
-        if os.path.isfile(term5_path):
-            # The owner has generated this one already (rule 7) -- nothing to
-            # prove FAILS CLOSED here anymore; skip rather than assert a
-            # FileNotFoundError that would no longer be true.
-            continue
-        try:
-            compare.reference_path(case, name)
-        except FileNotFoundError as exc:
-            if compare.GATE_TERM_NAME not in str(exc) or case not in str(exc):
-                raise AssertionError(
-                    '%s: FileNotFoundError did not name the missing file/case '
-                    '(rule 2 -- a failure must say what it could not check): '
-                    '%s' % (case, exc))
-            checked += 1
-        else:
-            raise AssertionError(
-                '%s: reference_path(%r) did not raise even though %s does '
-                'not exist -- a gate-term cell for this case would silently '
-                'compare against something other than a missing-file error '
-                '(possibly the full-term reference), which is exactly the '
-                'silent fallback rule 2 forbids' % (case, name, term5_path))
-    print('  PASS  %d/%d case(s) needing a second reference fail closed '
-          '(no silent fallback to the full-term reference): %s'
-          % (checked, len(needing), ', '.join(needing)))
-
-
-def check_full_term_selects_the_full_reference():
-    for case in matrix.CASES:
-        name = compare.canonical_reference_name(case, 'full')
-        if name != compare.CANONICAL_NAME:
-            raise AssertionError(
-                '%s at term=full selected %r, expected the one full-length '
-                'reference %r' % (case, name, compare.CANONICAL_NAME))
-        # And that file must actually exist -- matrix.py's own import-time
-        # consistency block already enforces this for every case, so this
-        # is restating the guarantee at the call site this guard cares
-        # about, not inventing a new one.
-        compare.reference_path(case, name)
-    print('  PASS  term=full selects %r for all %d case(s), and it exists'
-          % (compare.CANONICAL_NAME, len(matrix.CASES)))
-
-
-def check_gate_term_matches_full_term_reference_when_terms_are_equal():
-    """A case whose own full term already equals matrix.GATE_TERM_S (e.g.
-    test.tpv8) must reuse CANONICAL_NAME at term=gate -- no second file is
-    needed or expected for it."""
-    equal_cases = [c for c in matrix.CASES
-                  if matrix.CASE_FULL_TERM_S[c] == matrix.GATE_TERM_S]
-    if not equal_cases:
-        raise AssertionError(
-            'no case has full term == matrix.GATE_TERM_S -- test.tpv8 (CI\'s '
-            'smoke cell) is expected to be one of these')
-    for case in equal_cases:
-        name = compare.canonical_reference_name(case, 'gate')
-        if name != compare.CANONICAL_NAME:
-            raise AssertionError(
-                '%s: full term already equals GATE_TERM_S, so term=gate '
-                'should reuse %r, selected %r instead'
-                % (case, compare.CANONICAL_NAME, name))
-    print('  PASS  %d case(s) with full term == GATE_TERM_S reuse %r at '
-          'term=gate (no second reference needed): %s'
-          % (len(equal_cases), compare.CANONICAL_NAME, ', '.join(equal_cases)))
-
-
-def check_ci_smoke_invocations_never_request_full_term():
-    text = open(WORKFLOW, errors='replace').read()
-    lines = [raw.split('#', 1)[0] for raw in text.splitlines()]
-    ci_lines = [l for l in lines if 'run_e2e.py' in l and '--ci' in l]
-    if not ci_lines:
-        raise AssertionError('no `run_e2e.py --ci` invocation found in %s' % WORKFLOW)
-    bad = [l.strip() for l in ci_lines if '--term' in l]
-    if bad:
-        raise AssertionError(
-            'CI smoke invocation(s) pass --term explicitly, which risks '
-            'drifting to full: %r (they should rely on the gate default)'
-            % bad)
-    print('  PASS  %d CI smoke invocation(s) pass no --term (default gate)'
-          % len(ci_lines))
-
-
-def _load_run_module():
-    spec = importlib.util.spec_from_file_location('run_mod_for_term_axis', RUN_PY)
+def _load_module(name, path):
+    """A fresh module object from `path` (it is not a package) -- never the
+    cached sys.modules entry, so each check gets an independent instance."""
+    spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-def check_release_tier_requests_full_term():
-    """run.py's `release` tier must construct a `run_e2e.py --term full`
+def check_matrix_has_no_second_term_table():
+    if hasattr(matrix, 'CASE_FULL_TERM_S'):
+        raise AssertionError(
+            'matrix.CASE_FULL_TERM_S still exists -- the per-case "full" '
+            'term table was supposed to be retired along with the --term '
+            'flag (2026-09-23 one-term decision)')
+    if not hasattr(matrix, 'GATE_TERM_S'):
+        raise AssertionError(
+            'matrix.GATE_TERM_S is gone -- this is the ONE term every cell '
+            'runs at; it must still exist')
+    print('  PASS  matrix.py carries GATE_TERM_S (%.1fs) and no '
+          'CASE_FULL_TERM_S' % matrix.GATE_TERM_S)
+
+
+def check_compare_has_no_second_reference_name():
+    if hasattr(compare, 'GATE_TERM_NAME'):
+        raise AssertionError(
+            'compare.GATE_TERM_NAME still exists -- the gate-term reference '
+            'name was supposed to be retired: there is only ONE reference '
+            'file per case now (compare.CANONICAL_NAME)')
+    if hasattr(compare, 'canonical_reference_name'):
+        raise AssertionError(
+            'compare.canonical_reference_name still exists -- its two-way '
+            '"gate" vs "full" choice was supposed to be removed along with '
+            'the term axis')
+    checked = []
+    for fn in (compare.load_reference, compare.load_coordinate_aligned,
+              compare.compare_frt, compare.compare_cell, compare.drv_a6_gate):
+        params = inspect.signature(fn).parameters
+        if 'term' in params:
+            raise AssertionError(
+                'compare.%s still accepts a `term` parameter -- there is no '
+                'term axis left to select' % fn.__name__)
+        checked.append(fn.__name__)
+    print('  PASS  compare.py carries no GATE_TERM_NAME, no '
+          'canonical_reference_name, and no `term` parameter on %s'
+          % ', '.join(checked))
+
+
+def _canonical_variants(ref_root, case):
+    """Every frt.canonical*.txt basename under ref_root/case, sorted -- the
+    same glob the real check below walks against the committed reference
+    tree; factored out so it can also be driven against a synthetic tmp tree
+    (see the mutation check)."""
+    ref_dir = os.path.join(ref_root, case)
+    return sorted(os.path.basename(p)
+                 for p in glob.glob(os.path.join(ref_dir, 'frt.canonical*.txt')))
+
+
+def check_no_case_has_two_reference_files():
+    bad = []
+    for case in matrix.CASES:
+        variants = _canonical_variants(compare.REFERENCE_ROOT, case)
+        if variants != [compare.CANONICAL_NAME]:
+            bad.append('%s: %r (want exactly [%r])'
+                      % (case, variants, compare.CANONICAL_NAME))
+    if bad:
+        raise AssertionError(
+            'case(s) with other than exactly one frt.canonical*.txt '
+            'reference: %s' % '; '.join(bad))
+    print('  PASS  every one of %d case(s) has exactly one reference file '
+          '(%r) -- no second frt.canonical.term5.txt anywhere'
+          % (len(matrix.CASES), compare.CANONICAL_NAME))
+
+
+def check_mutation_a_planted_second_reference_file_is_caught():
+    """_canonical_variants is what the real check above walks; prove it on a
+    SYNTHETIC tmp reference tree with (a) exactly one canonical file --
+    passes -- and (b) a planted second one, the retired term5 shape --
+    fails -- without ever touching the real committed reference tree."""
+    with tempfile.TemporaryDirectory() as tmp:
+        case_dir = os.path.join(tmp, 'test.probe')
+        os.makedirs(case_dir)
+        open(os.path.join(case_dir, compare.CANONICAL_NAME), 'w').close()
+        variants_one = _canonical_variants(tmp, 'test.probe')
+        if variants_one != [compare.CANONICAL_NAME]:
+            raise AssertionError(
+                'one committed-shaped reference file was not recognised as '
+                'exactly one: %r' % variants_one)
+        open(os.path.join(case_dir, 'frt.canonical.term5.txt'), 'w').close()
+        variants_two = _canonical_variants(tmp, 'test.probe')
+        if variants_two == [compare.CANONICAL_NAME]:
+            raise AssertionError(
+                'planting a second reference file (frt.canonical.term5.txt) '
+                'was NOT detected -- the real check would not catch a case '
+                'with two reference files')
+    print('  PASS  a planted second reference file is detected (mutation-'
+          'tested both ways: one file passes, a planted second one fails)')
+
+
+def check_apply_term_override_takes_no_term_argument_and_is_unconditional():
+    """run_e2e.apply_term_override(case_name, case_dir) -- no `term`
+    parameter (signature check) -- and always appends GATE_TERM_S as the
+    LAST par.term assignment, even over a pre-existing one (behavioural
+    check against a throwaway tempdir; mutated in-line below)."""
+    e2e = _load_module('run_e2e_for_term_axis_override', E2E_PY)
+    params = list(inspect.signature(e2e.apply_term_override).parameters)
+    if params != ['case_name', 'case_dir']:
+        raise AssertionError(
+            'apply_term_override signature is %r, want exactly '
+            '(case_name, case_dir) -- no `term` parameter should exist' % params)
+    with tempfile.TemporaryDirectory() as d:
+        params_py = os.path.join(d, 'user_defined_params.py')
+        with open(params_py, 'w') as f:
+            f.write('par = object()\npar.term = 999.0  # simulated stale value\n')
+        e2e.apply_term_override('test.probe', d)
+        text = open(params_py).read()
+    term_lines = [l for l in text.splitlines() if l.startswith('par.term')]
+    if term_lines[-1] != ('par.term = %r' % matrix.GATE_TERM_S):
+        raise AssertionError(
+            'apply_term_override did not leave par.term = %r as the LAST '
+            'assignment (case.setup reads the last one) -- got %r'
+            % (matrix.GATE_TERM_S, term_lines))
+    print('  PASS  apply_term_override(case_name, case_dir) takes no `term` '
+          'argument and unconditionally appends par.term = %r as the LAST '
+          'assignment, even over a pre-existing stale one'
+          % matrix.GATE_TERM_S)
+
+
+def check_run_e2e_help_lists_release_and_not_term():
+    e2e = _load_module('run_e2e_for_term_axis_help', E2E_PY)
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            e2e.main(['--help'])
+    except SystemExit as exc:
+        if exc.code != 0:
+            raise AssertionError('run_e2e.py --help exited %r, want 0' % exc.code)
+    else:
+        raise AssertionError('run_e2e.py --help did not raise SystemExit')
+    help_text = buf.getvalue()
+    if '--release' not in help_text:
+        raise AssertionError(
+            'run_e2e.py --help does not mention --release -- the release '
+            'selector this change added')
+    if '--term' in help_text:
+        raise AssertionError(
+            'run_e2e.py --help still mentions --term -- the flag this '
+            'change removed reappeared: %r' % help_text)
+    print('  PASS  run_e2e.py --help lists --release and no --term')
+
+
+def check_run_e2e_refuses_a_term_flag():
+    e2e = _load_module('run_e2e_for_term_axis_refuse', E2E_PY)
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(buf):
+            e2e.main(['--term', 'full'])
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise AssertionError(
+                '`run_e2e.py --term full` was ACCEPTED (exit 0) -- the '
+                '--term flag should not exist at all')
+    else:
+        raise AssertionError(
+            '`run_e2e.py --term full` did not raise SystemExit -- argparse '
+            'should refuse an unrecognised argument')
+    print('  PASS  run_e2e.py refuses --term as an unrecognised argument '
+          '(argparse exit-status message: %r)' % (buf.getvalue().strip()[-80:]))
+
+
+def check_ci_smoke_invocation_passes_neither_term_nor_release():
+    text = open(WORKFLOW, errors='replace').read()
+    lines = [raw.split('#', 1)[0] for raw in text.splitlines()]
+    ci_lines = [l for l in lines if 'run_e2e.py' in l and '--ci' in l]
+    if not ci_lines:
+        raise AssertionError('no `run_e2e.py --ci` invocation found in %s' % WORKFLOW)
+    bad = [l.strip() for l in ci_lines if '--term' in l or '--release' in l]
+    if bad:
+        raise AssertionError(
+            'CI smoke invocation(s) pass --term or --release, which would '
+            'drift it off the portability-smoke selection: %r' % bad)
+    print('  PASS  %d CI smoke invocation(s) pass neither --term nor --release'
+          % len(ci_lines))
+
+
+def _load_run_module():
+    return _load_module('run_mod_for_term_axis', RUN_PY)
+
+
+def check_release_tier_requests_the_release_selection():
+    """run.py's `release` tier must construct a `run_e2e.py --release`
     command -- checked BEHAVIOURALLY (rule 10a): subprocess.call is
     monkeypatched to capture the argv this tier builds, and the real
     run_e2e.py is never invoked."""
@@ -182,10 +263,12 @@ def check_release_tier_requests_full_term():
     cmd = captured[0]
     if 'run_e2e.py' not in ' '.join(cmd):
         raise AssertionError('release tier did not invoke run_e2e.py: %r' % cmd)
-    if '--term' not in cmd or 'full' not in cmd:
+    if '--release' not in cmd:
         raise AssertionError(
-            'release tier must pass --term full to run_e2e.py, got argv %r'
-            % cmd)
+            'release tier must pass --release to run_e2e.py, got argv %r' % cmd)
+    if '--term' in cmd:
+        raise AssertionError(
+            'release tier passed a --term flag, which no longer exists: %r' % cmd)
     if '--ci' in cmd:
         raise AssertionError(
             'release tier passed --ci, which would restrict it to the CI '
@@ -193,42 +276,18 @@ def check_release_tier_requests_full_term():
     print('  PASS  release tier invokes %r' % cmd)
 
 
-def check_full_term_table_matches_the_compsets():
-    """matrix.CASE_FULL_TERM_S is bookkeeping ABOUT each compset's own
-    par.term, which is what `--term full` actually runs -- so a compset whose
-    par.term moves without the table moving would make `--term gate` pick
-    the wrong reference file. Read the LAST `par.term =` assignment in
-    case_input/<case>/user_defined_params.py, or, for a case that builds par
-    elsewhere (tpv36/37: tpv36_37_common.buildParams), in the one other .py
-    of that compset that assigns it. (wei-lin, 2026-09-23.)"""
-    import glob, re
-    pat = re.compile(r'^\s*par\.term\s*=\s*([0-9.eE+-]+)', re.M)
-    bad = []
-    for case, want in sorted(matrix.CASE_FULL_TERM_S.items()):
-        d = os.path.join(ROOT, 'case_input', case)
-        hits = pat.findall(open(os.path.join(d, 'user_defined_params.py')).read())
-        if not hits:
-            for f in sorted(glob.glob(os.path.join(d, '*.py'))):
-                hits = hits or pat.findall(open(f).read())
-        if not hits:
-            bad.append('%s: no par.term assignment found under %s' % (case, d))
-        elif float(hits[-1]) != want:
-            bad.append('%s: compset par.term %s != matrix.CASE_FULL_TERM_S %s'
-                       % (case, hits[-1], want))
-    if bad:
-        raise AssertionError('; '.join(bad))
-    print('  PASS  CASE_FULL_TERM_S matches the compsets\' own par.term for '
-          '%d case(s)' % len(matrix.CASE_FULL_TERM_S))
-
-
 def main():
-    print('Regression guard: the TERM axis fails closed and CI/release stay separated')
-    checks = [check_full_term_table_matches_the_compsets,
-              check_gate_term_fails_closed_without_a_term5_reference,
-              check_full_term_selects_the_full_reference,
-              check_gate_term_matches_full_term_reference_when_terms_are_equal,
-              check_ci_smoke_invocations_never_request_full_term,
-              check_release_tier_requests_full_term]
+    print('Regression guard: ONE term everywhere (no --term flag, no second '
+          'reference file, no per-case full-term table)')
+    checks = [check_matrix_has_no_second_term_table,
+              check_compare_has_no_second_reference_name,
+              check_no_case_has_two_reference_files,
+              check_mutation_a_planted_second_reference_file_is_caught,
+              check_apply_term_override_takes_no_term_argument_and_is_unconditional,
+              check_run_e2e_help_lists_release_and_not_term,
+              check_run_e2e_refuses_a_term_flag,
+              check_ci_smoke_invocation_passes_neither_term_nor_release,
+              check_release_tier_requests_the_release_selection]
     failures = []
     for c in checks:
         try:
