@@ -354,6 +354,9 @@ def main():
             lr.update(
                 backend='python-jax-mpi', ranks=row['ranks'],
                 metric='per-step-by-difference',
+                # every arm is `mpirun -np ranks`: separate processes, not
+                # threads in one (ledger.PARALLELISM).
+                parallelism='mpi',
                 ms_per_step=r['ms_per_step'], n_lo=a.n_lo, n_hi=a.n_hi,
                 platform='cpu', devices=None,
                 platform_evidence='every rank printed device=cpu; '

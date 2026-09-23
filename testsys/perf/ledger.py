@@ -74,6 +74,34 @@ Row schema (one measurement = one line):
                     is append-only and is never rewritten); a row WITHOUT the
                     key is a legacy row and must be read as platform UNKNOWN,
                     never as cpu.
+  parallelism       'mpi' | 'threads' | 'serial' -- WHAT THE `ranks` NUMBER
+                    ON THIS ROW COUNTS. Without it one column carried two
+                    incommensurable quantities: on a run_scaling python row
+                    `ranks` is the cpus in ONE process's affinity mask (XLA and
+                    OpenBLAS auto-size their pools from the numactl pin;
+                    run_scaling.time_one_py launches a single process), while
+                    on a run_scaling fortran row or any run_mpi_scaling row it
+                    is `mpirun -np n` SEPARATE PROCESSES. Reading the two as
+                    one column published "Fortran 16.24x vs jax 2.59x at 16"
+                    on 2026-09-23 -- largely 16 MPI ranks against 16 threads in
+                    one process; the real-ranks measurement put jax at 1.58x of
+                    Fortran, not 4.19x.
+                      'mpi'     ranks = MPI processes, separate address spaces.
+                      'threads' ranks = cpus made available to ONE process
+                                (its affinity mask); library thread pools
+                                auto-size from it. No MPI.
+                      'serial'  one process, no parallel axis selected or
+                                measured; ranks is 1 by construction and says
+                                NOTHING about how many cores the run used.
+                    REQUIRED on every row this module APPENDS from now on, on
+                    the same terms as `platform`: rows appended before
+                    2026-09-23 lack the key (the ledger is append-only and is
+                    never rewritten), and a row WITHOUT the key is a legacy row
+                    whose parallelism is UNKNOWN -- never read as 'mpi', which
+                    is exactly the defect. So a consumer tests
+                    `'parallelism' in row`, not `row.get('parallelism', ...)`:
+                    presence of the key is the old/new discriminator, and the
+                    two populations must not be plotted on one axis.
   platform_evidence what proved `platform` (a sentence naming the measurement).
   devices           int count of GPUs shown busy by the memory evidence, on
                     'gpu' rows; explicit null otherwise. This is the companion
@@ -116,6 +144,12 @@ SNAPSHOT_DIR_RELPATH = os.path.join('docs', 'perf_snapshots')
 BACKENDS = ('fortran', 'python-numpy', 'python-jax', 'python-jax-mpi')
 METRICS = ('per-step-by-difference', 'cell-wall-clock')
 PLATFORMS = ('cpu', 'gpu', 'unknown')
+# What the `ranks` field of a row COUNTS. There is no 'unknown' member on
+# purpose: a tool always knows how it launched its own run, so a row it cannot
+# classify is a bug in the tool, not a third state. Legacy rows (before
+# 2026-09-23) carry no key at all -- that absence, and only that absence, is
+# read as unknown.
+PARALLELISM = ('mpi', 'threads', 'serial')
 # The ceiling the e2e cell capture measures whole-box tenancy against. e2e
 # selects no cpus, so unlike the scaling tools it has no selection ceiling;
 # this is a declared reference for the tenancy statistic only, recorded on
@@ -176,6 +210,44 @@ def _check_platform(row):
                          % (row['devices'], p))
 
 
+def _row_identity(row):
+    """A short 'who wrote this' string for a refusal message, built only from
+    fields already required, so it is safe to call on a row that failed."""
+    return ('tool=%r case=%r backend=%r ranks=%r snapshot=%r'
+            % (row.get('tool'), row.get('case'), row.get('backend'),
+               row.get('ranks'), row.get('snapshot')))
+
+
+def _check_parallelism(row):
+    """Fail closed on the `ranks` discriminator. Guarded incident
+    (2026-09-23): `ranks` meant MPI processes on fortran/run_mpi_scaling rows
+    and cpus-in-one-affinity-mask on run_scaling python rows, with nothing on
+    the row saying which, and the two were divided against each other into a
+    published 4.19x port deficit that was really 1.58x.
+
+    There is no default. A defaulted 'mpi' would reproduce the defect exactly:
+    the threaded rows are the ones that would inherit it."""
+    if 'parallelism' not in row:
+        raise ValueError(
+            'row is missing required field %r -- every appended row must say '
+            'what its `ranks` number counts, one of %s; the emitter that '
+            'built this row (%s) has not been wired. No value is defaulted '
+            'in: an assumed "mpi" on a threaded row is the 2026-09-23 defect '
+            'this field exists to end.'
+            % ('parallelism', PARALLELISM, _row_identity(row)))
+    p = row['parallelism']
+    if p not in PARALLELISM:
+        raise ValueError(
+            'parallelism %r not in %s on row from %s -- widen PARALLELISM '
+            'deliberately, with the reader contract updated, or fix the '
+            'emitter' % (p, PARALLELISM, _row_identity(row)))
+    if p == 'serial' and row['ranks'] != 1:
+        raise ValueError(
+            "parallelism 'serial' with ranks=%r on row from %s -- serial "
+            'means one process and no parallel axis, so ranks is 1 by '
+            'construction' % (row['ranks'], _row_identity(row)))
+
+
 def validate(row, appending=False):
     """Raise ValueError on the first uninterpretable thing about `row`.
     A row that passes here is meant to be readable YEARS later with no access
@@ -183,8 +255,9 @@ def validate(row, appending=False):
     number).
 
     `appending=True` (what `append` uses) additionally REQUIRES the platform
-    identity fields: every row written from 2026-09-22 on says what actually
-    ran. With the default (reading history), a row without a `platform` key is
+    identity fields (from 2026-09-22) and `parallelism` (from 2026-09-23):
+    every row written from then on says what actually ran and what its `ranks`
+    number counts. With the default (reading history), a row without a `platform` key is
     accepted as a legacy row -- the 11 pre-2026-09-22 lines are append-only
     and will never be rewritten to gain the key -- and must be read as
     platform UNKNOWN, never as cpu. A legacy row that DOES carry the key is
@@ -224,6 +297,11 @@ def validate(row, appending=False):
         raise ValueError('ranks %r must be an int >= 1' % row['ranks'])
     if appending or 'platform' in row:
         _check_platform(row)
+    # Same legacy contract as platform: REQUIRED when appending, tolerated as
+    # absent (= UNKNOWN, never a default) when reading the 11+ rows that
+    # predate the field, and fully checked on any row that does carry it.
+    if appending or 'parallelism' in row:
+        _check_parallelism(row)
     if row['metric'] == 'per-step-by-difference':
         ms = row['ms_per_step']
         if not (isinstance(ms, (int, float)) and ms > 0):
@@ -400,6 +478,33 @@ def mpi_block_platform(block):
             None, peak, delta or None, dpg)
 
 
+_SCALING_PARALLELISM_BY_ENGINE = {
+    # run_scaling.py:325-356 builds `mpirun -np n` for the fortran engine:
+    # n SEPARATE PROCESSES.
+    'fortran': 'mpi',
+    # run_scaling.py:453-478 (time_one_py) launches ONE `sys.executable -c`
+    # under numactl with n cpus in its affinity mask; OpenBLAS (numpy) and XLA
+    # (jax) auto-size their thread pools from that mask. The threaded mode is
+    # a real execution mode and stays measured -- only the label was missing.
+    'python-numpy': 'threads',
+    'python-jax': 'threads',
+}
+
+
+def _SCALING_PARALLELISM(engine):
+    """The discriminator for one run_scaling engine. Raises on an engine this
+    function has not been taught -- a new engine must declare what its `ranks`
+    counts before its first number is written down, not after someone divides
+    it by a Fortran row."""
+    try:
+        return _SCALING_PARALLELISM_BY_ENGINE[engine]
+    except KeyError:
+        raise ValueError(
+            'run_scaling engine %r has no declared parallelism (known: %s) '
+            '-- refusing to guess what its `ranks` counts'
+            % (engine, sorted(_SCALING_PARALLELISM_BY_ENGINE))) from None
+
+
 def rows_from_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None):
     """Ledger rows from a run_scaling.py snapshot dict (its `meta`).
     One row per measured (engine, n, policy) point; skipped configs produce
@@ -418,6 +523,7 @@ def rows_from_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None):
         row = _base(meta, 'run_scaling', snapshot, tenancy, backfilled_from)
         row.update(backend=r['engine'], ranks=r['n'],
                    ms_per_step=r['ms_per_step'],
+                   parallelism=_SCALING_PARALLELISM(r['engine']),
                    platform='cpu', devices=None,
                    platform_evidence=_CPU_EV.get(
                        r['engine'], 'run_scaling is a CPU-only tool'),
@@ -450,6 +556,9 @@ def rows_from_mpi_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None
                         backfilled_from)
             row.update(backend='python-jax-mpi', ranks=r['ranks'],
                        ms_per_step=b['ms_per_step'],
+                       # every run_mpi_scaling point is `mpirun -np ranks`,
+                       # one process per rank, on both backends.
+                       parallelism='mpi',
                        platform=plat, platform_evidence=ev, devices=ndev,
                        gpu_peak_mib=peak, gpu_delta_mib=delta,
                        device_peak_gb=dpg,
@@ -469,6 +578,7 @@ def rows_from_mpi_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None
                         backfilled_from)
             row.update(backend='fortran', ranks=r['ranks'],
                        ms_per_step=f['ms_per_step'],
+                       parallelism='mpi',
                        platform='cpu', devices=None,
                        platform_evidence=FORTRAN_CPU_EVIDENCE,
                        rank_ms_min=None, rank_ms_max=None, rank_ms_mean=None,
@@ -478,6 +588,32 @@ def rows_from_mpi_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None
             validate(row)
             out.append(row)
     return out
+
+
+_E2E_PARALLELISM_BY_BACKEND = {
+    # run_e2e.py:475-478 -- these two cells launch `mpirun -np ranks`
+    # (matrix.FORTRAN_RANKS / matrix.PY_MPI_RANKS), one process per rank.
+    'fortran': 'mpi',
+    'python-jax-mpi': 'mpi',
+    # run_e2e.py:483-490 -- one unpinned process, ranks fixed at 1. The cell
+    # selects no cpus and sets no thread-count env, so `ranks`=1 counts THE
+    # PROCESS and is not a statement about cores used; 'serial' records
+    # exactly that and must not be read as "one core".
+    'python-numpy': 'serial',
+    'python-jax': 'serial',
+}
+
+
+def _E2E_PARALLELISM(backend):
+    """The discriminator for one e2e cell. Raises on an unknown backend: a new
+    column must declare how it launches before its wall clock is recorded."""
+    try:
+        return _E2E_PARALLELISM_BY_BACKEND[backend]
+    except KeyError:
+        raise ValueError(
+            'e2e backend %r has no declared parallelism (known: %s) -- '
+            'refusing to guess what its `ranks` counts'
+            % (backend, sorted(_E2E_PARALLELISM_BY_BACKEND))) from None
 
 
 def rows_from_e2e_results(meta, snapshot, tenancy):
@@ -502,6 +638,7 @@ def rows_from_e2e_results(meta, snapshot, tenancy):
                    tenancy_busy=tenancy['busy'],
                    tenancy_total=tenancy['total'],
                    ranks=c['ranks'], ms_per_step=None,
+                   parallelism=_E2E_PARALLELISM(c['backend']),
                    wall_s=c['seconds'],
                    rank_ms_min=None, rank_ms_max=None, rank_ms_mean=None,
                    effective_cores=None, threads_per_rank=None,

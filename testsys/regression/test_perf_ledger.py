@@ -76,6 +76,10 @@ def good_row(i=0, proc=0):
                 snapshot='docs/perf_snapshots/scaling_2026-09-21_x.json',
                 platform='cpu', devices=None,
                 platform_evidence='synthetic test row: pinned to one cpu',
+                # required since 2026-09-23: what `ranks` counts. This fixture
+                # is a fortran row, i.e. mpirun -np 4. The field itself is
+                # guarded in test_perf_parallelism_discriminator.py.
+                parallelism='mpi',
                 proc=proc, i=i)
 
 
