@@ -1331,3 +1331,35 @@ tree-dirty field. Fix routed to iris inside item 2's record work.
 **Stale comment, noted for the owner-held TPV30 decision:** `testNameList.py:8-17`
 still says TPV30's divergence is "NOT yet root-caused"; `e1888e7` root-caused
 and fixed it.
+
+## LL. My own check of the profile emitter, and the first thing its placement field caught
+
+Branch `mira/profile-emitter-2026-09-23` rebased on master (`792d0a6` in my
+scratch tree), `run_e2e.py --cases test.tpv8 --backends
+fortran,python-numpy,python-jax,python-jax-mpi` with `EQDYNA_PROFILE=1` then
+`=0`, launched under `numactl --cpunodebind=4,5`, load ~31:
+- **frt byte-identical ON vs OFF on all four backends**, 8 files (fortran
+  961+961 lines; numpy 1891; jax 1891; jax-mpi 132+829+806+124), sha256 equal
+  pairwise. All 4 cells SUCCESS both ways, max|diff| unchanged
+  (3.051760e-11 / 3.861189e-10 / 1.983643e-10 / 1.220703e-10).
+- ON: 10 profile files (4+1+1+4), all `profile_schema.validate` VALID, worst
+  unaccounted/total 3.3% (python-jax serial). OFF: 0 files.
+- **Defect sent back: python `fault` is 0.0 on every python backend**, folded
+  into `element` (`docs/run_profile.md:69-78`). For JAX that is a real
+  conflict between three owner requirements — the same buckets per rank, no new
+  sync, parity absolute (a sampled un-fused step could round differently) —
+  and is held for the owner as that conflict, not decided here. For NUMPY there
+  is no conflict: numpy is synchronous, a `perf_counter` around the faulting
+  call costs no sync, so the fold is not justified there. Re-dispatch waits for
+  kai's refactor retry to leave `driver.py` (collision named).
+- **Placement: `numactl` on `run_e2e.py` does NOT pin its MPI cells.** Every
+  4-rank cell, Fortran AND jax-mpi, reported `cpus_allowed` rank0 [0-7], rank1
+  [8-15], rank2 [16-23], rank3 [24-31] — Open MPI mapped by NUMA node over the
+  parent's mask — while the serial python cells did land on 32-47. So every
+  "pinned to NUMA X" statement I or a specialist made today about a 4-rank
+  cell is false, including TPV30's Fortran cells in section KK (their
+  wall-clock stands, their placement was nodes 0-3 including the slow cpus
+  0-1) and mira's own "all pinned to 2-3". This is exactly the defect the
+  placement field was built to expose, found on its first run. It could not
+  be relayed to iris mid-flight (no messaging to running agents this session);
+  her 4-rank A/B arms will be re-checked against their own `cpus_allowed`.
