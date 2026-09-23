@@ -29,6 +29,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 15b. The local sweep and CI gate different failure classes; CI's release run re-verifies only what a local sweep structurally cannot.
 15c. The tag push and `gh release create` are one action; the release-completeness guard is the check that a releaser split them.
 15d. Step 5's single release commit does not cover the two files 21c owns; those split out.
+15e. A release commit is gated on itself before it is pushed, not carried on step 1's earlier green.
 16. Test what you commit, not what is in your working tree.
 17. Reviving or adding a TPV benchmark.
 18. A refactor that couples two previously-independent artifacts must say so.
@@ -42,14 +43,15 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 21b. No session writes the main checkout — conductors branch too, and its HEAD moves only by fast-forward sync.
 21c. `PROJECT_RULES.md` and `pathway_forward.md` have exactly one writer per session.
 21d. A dispatch carries its isolation and its scope in writing, or it is not issued.
+22. A scope restriction is itself a rule, and it can conflict with another rule.
 
 Count, stated so a heading-shape grep does not undercount it again (that
-undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
-(1-21) plus nineteen lettered sub-rules (2a, 3a, 4a, 4b, 4c, 5a, 6a, 14a, 15a,
-15b, 15c, 15d, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 40 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 40;
+undercount happened twice in one night, 2026-09-21/22): 22 numbered rules
+(1-22) plus twenty lettered sub-rules (2a, 3a, 4a, 4b, 4c, 5a, 6a, 14a, 15a,
+15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 42 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 42;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
-suffix) reads 21.
+suffix) reads 22.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
 the count from heading shape alone.
@@ -1056,6 +1058,48 @@ implies for the release sequence.
 
 ---
 
+## 15e. A release commit is gated on itself before it is pushed, not carried on step 1's earlier green
+
+Step 1 gates the tree BEFORE the `VERSION` bump (step 2). Steps 2-5 then edit
+`VERSION`, the runtime banner rule 11 requires move with it, the release
+notes and the board. Nothing between step 1 and step 6 (push) re-runs the
+tier on the tree those edits produced — so step 1's green is evidence about a
+tree that no longer exists by the time the release commit is pushed, and the
+first thing to actually gate the committed diff is CI, after the push.
+
+Before step 6, run `python3 testsys/run.py unit regression` again, fresh, on
+the exact release commit — a second run of the same tier rule 16 already
+requires be run on the committed tree, made a second run here because the
+tree changed under step 1's green after step 1 finished.
+
+**Rationale**: a gate that only ever runs on the pre-edit tree cannot see a
+defect step 2-4's own edits introduce, however cheap that defect would have
+been to catch locally.
+
+**Incident (2026-09-23)**: v5.16.2's release commit `7144a98` bumped
+`VERSION` 5.16.1 -> 5.16.2 without moving the runtime banner
+(`src/fortran/eqdyna3d.f90:17`) — a rule-11 violation step 1's earlier green
+could not have caught, because `VERSION` had not moved yet when step 1 ran.
+`test_version_banner.py`, already in the regression tier, went red at master
+HEAD — rule 3a's exact condition — and CI run `35838379925` on `7144a98`
+failed at `unit-regression`, correctly holding the tag. Caught independently,
+before gating the tag, by running the tier at master HEAD; fixed in `2964325`
+(banner -> 5.16.2, tier green, `test.tpv8 x fortran` oracle re-run since the
+fix touched `src/fortran`).
+
+**How to apply**: after steps 2-4 land and before step 5's commit is pushed,
+run the regression tier fresh on that exact tree and require it green, in
+addition to — not instead of — CI's own post-push check (rule 15a). A red
+result here is rule 3a's stop-everything condition, applied one step
+earlier than CI would have applied it.
+
+**Tier: mechanical.** The guard this incident needed already existed
+(`test_version_banner.py`); the gap was procedural — WHEN it ran, not
+whether it existed — so this rule adds no new check, only the step that
+calls the existing one at the right point in the sequence.
+
+---
+
 ## 16. Test what you commit, not what is in your working tree
 
 After committing, the working tree must contain nothing that the tests
@@ -1954,3 +1998,53 @@ dispatch wrapper that refuses a prompt naming no worktree, and that wrapper
 lives in the agent harness, not in this repo. Until one exists this is enforced
 by the person typing, and it is written down so the next occurrence is
 recognised as the second and not the first.
+
+---
+
+## 22. A scope restriction is itself a rule, and it can conflict with another rule
+
+A brief, dispatch, or session-level restriction — "do not edit anything under
+`src/`", "read-only in this tree" — carries the same force as any other rule
+in this book, and it can collide with one: a restriction written to keep a
+change small can make an ORTHOGONAL rule (most often rule 11, docs move with
+the code) impossible to satisfy without breaking the restriction. When that
+happens, halting and reporting the conflict is correct behaviour, not a
+failure to just pick a side — guessing which rule to break is worse than
+asking, because the guess is invisible to whoever wrote the restriction.
+
+**Rationale**: a scope restriction is drafted for the common case (keep a
+release from turning into a refactor) without checking it against every rule
+the scoped work might also owe. The conflict surfaces only when the two
+collide in a real change, and by then the agent standing inside the
+restriction has no way to know whether the restriction or the rule is the one
+that should bend — that is the restriction's AUTHOR's call, not the agent's,
+and it stays that way even when the fix is one line.
+
+**Incident (2026-09-23)**: the v5.16.2 release brief forbade any edit under
+`src/`, to keep the release from turning into a refactor. Fixing rule 15e's
+incident (rule 11: the runtime banner moves with `VERSION` in the same
+commit) REQUIRES an edit to `src/fortran/eqdyna3d.f90:17` — a one-line
+version-string change, not a refactor, but still inside the forbidden tree.
+The release engineer halted and reported rather than guessing which rule to
+break, costing about forty minutes; that was the correct call, and the
+defect was in the restriction — it excluded a whole tree wholesale where it
+meant to exclude a refactor — not in the halt.
+
+This generalises what rule 21d already asks for one half of: 21d requires a
+dispatch to state its scope in writing; this rule says the scope, once
+stated, is checked against the rest of the book rather than assumed
+compatible with it, and a collision is reported rather than silently
+resolved by whichever side the agent happens to guess.
+
+**How to apply**: when writing a scope restriction, name the carve-outs the
+rules already require — the version literals rule 11 names, the regression
+test rule 10 requires alongside a fix — rather than excluding a whole tree
+wholesale. When RECEIVING a restriction that conflicts with a rule you also
+owe, stop and report the conflict rather than resolving it by guessing; the
+fix belongs to whoever wrote the restriction.
+
+**Tier: norm, not mechanically gated.** No script can read a prose scope
+restriction and diff it against every rule in this book. The nearest
+backstop is rule 21d's existing requirement that a dispatch state its scope
+in writing, which at least gives a reviewer text to check by hand against the
+rule the scoped work also owes.
