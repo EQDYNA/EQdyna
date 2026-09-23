@@ -81,7 +81,13 @@ states its own scope. **CI no longer runs this sweep for physics coverage.**
 CI's one e2e job is a portability SMOKE test -- `testsys/matrix.py`'s
 `CI_CELLS` is exactly `test.tpv8` x `{fortran, python-numpy, python-jax}` at
 the gate term (`.github/workflows/test.yml`: `build`, `unit-regression`
-[`testsys/run.py unit regression`], then `e2e-ci-smoke`
+(2026-09-23: SHARDED 3 ways -- `testsys/ci_shard.py run 1`/`2`/`3` in
+parallel, statically partitioning every `testsys/regression/test_*.py` plus
+the `pytest testsys/unit` tier; `testsys/ci_shard.py verify` and
+`testsys/regression/test_ci_shard_coverage.py` guard that the 3 shards'
+union always covers every script and never double-runs one -- together the
+same coverage as one local `testsys/run.py unit regression`, which stays the
+unsharded local command), then `e2e-ci-smoke`
 [`testsys/run.py e2e-ci`, i.e. `run_e2e.py --ci`] in parallel after `build`) --
 the same total coverage as one local invocation of
 `python3 testsys/run.py unit regression e2e-ci`. Its purpose is a clean
