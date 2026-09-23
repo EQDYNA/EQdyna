@@ -1,0 +1,43 @@
+diff --git a/src/fortran/driver.f90 b/src/fortran/driver.f90
+index c70df88..4210b86 100644
+--- a/src/fortran/driver.f90
++++ b/src/fortran/driver.f90
+@@ -7,6 +7,13 @@ subroutine driver
+     implicit none
+     include 'mpif.h'
+ 
++    ! DEBUG DUMP (mira, 2026-09-22): see faulting.f90 getNsdSlipSliprateTraction
++    block
++        character(len=64) :: dbgfile
++        write(dbgfile,'(a,i0,a)') 'dbg_t0_traction.', me, '.txt'
++        open(7777, file=trim(dbgfile), status='replace')
++    end block
++
+     do nt = 1, nstep
+ 
+         timeElapsed = timeElapsed + dt
+diff --git a/src/fortran/faulting.f90 b/src/fortran/faulting.f90
+index c2e05af..e12e186 100644
+--- a/src/fortran/faulting.f90
++++ b/src/fortran/faulting.f90
+@@ -130,7 +130,19 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
+     
+     ! shear traction magnitude
+     nsdTractionVector(4) = sqrt(nsdTractionVector(2)**2+nsdTractionVector(3)**2)
+-    
++
++    ! DEBUG DUMP (mira, 2026-09-22): t=0 on-fault state, every node, every rank.
++    ! Writes actual traction the solver uses at step 1 alongside the analytic
++    ! fric()-slot initial condition, so the two can be differenced node by node.
++    if (nt == 1) then
++        write(7777,'(10e20.10)') meshCoor(1,nsmp(1,iFaultNodePair,iFault)), &
++            meshCoor(2,nsmp(1,iFaultNodePair,iFault)), &
++            meshCoor(3,nsmp(1,iFaultNodePair,iFault)), &
++            nsdTractionVector(1), nsdTractionVector(2), nsdTractionVector(3), &
++            nsdInitTractionVector(1), nsdInitTractionVector(2), nsdInitTractionVector(3), &
++            fric(FRIC_SLOT_SW_FS,iFaultNodePair,iFault)
++    endif
++
+ end subroutine getNsdSlipSliprateTraction
+ 
+ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, nsdInitTractionVector)
