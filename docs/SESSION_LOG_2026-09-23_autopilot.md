@@ -647,3 +647,104 @@ that rule myself: **a dispatched agent whose task ends in a wait will park it**,
 so either the brief must forbid ending on a wait, or the waiting must stay with
 the conductor. Tonight the right split was the second — the polling was mine to
 do all along.
+
+## O. Full local sweep on the released tree — 31/31
+
+`python3 testsys/run.py all` on `e5011fa` (the v5.16.2 tree plus docs-only
+commits), box quiet at load 7.7 rising to a peak of 68 during the python cells:
+
+    ran       : 31 of 40 cells (31 passed, 0 failed)
+    not gated : 9 declared-unsupported (every case x python-jax-mpi except test.tpv8)
+    wall clock: 1321.6s
+    SUCCESS unit / SUCCESS regression / SUCCESS e2e
+
+Evidence `docs/evidence/perf-2026-09-23/wei-s2_sweep_all_v5.16.2.log.gz`,
+snapshot `docs/perf_snapshots/e2e_cells_2026-09-23_052913_3839937.json`, 31
+ledger rows.
+
+**No minor bump cut, deliberately, against the letter of the version scheme.**
+The scheme says minor "after a clean fast/full sweep with accumulated patches".
+The patches are already in v5.16.2, tagged ninety minutes earlier; a v5.17.0
+whose diff is one evidence file would be a tag nobody can read. The sweep is
+VALIDATION of v5.16.2, recorded as such. Stating the deviation rather than
+quietly skipping it.
+
+## P. A red master CI run I walked past for two hours
+
+Run **35833383579 on `73ac3a5`** (item 81's landing) **FAILED** on
+`unit-regression`, and I did not look at it. I was polling for the runs I cared
+about — the tag's — and a red on master slid by underneath, which is exactly
+what rule 3a says must stop everything. It did not stop anything, because I
+never read it.
+
+**Diagnosis, from the run's own log:** `test_stop_exit_status.py`. The exit CODE
+was right — `mpirun -np 2` on an empty case exited 21
+(`ERR_INPUT_FILE_MISSING`), no hang — and the registry (22 codes, unique,
+1-125) and the README exit-code table both matched. What failed was
+`the refused run printed no FATAL block`: the FATAL text was not captured. A
+two-rank MPI stdout capture race on a shared runner, not a solver defect.
+
+**It did not recur:** `d9c9611`, `4c9cc26`, `bef0f05` and `2964325` all ran the
+same job green afterwards, and the tagged SHA's run is 7/7. So v5.16.2 is not
+in question. But **an intermittent gate is not a gate** — a guard that fails one
+run in five teaches readers to re-run instead of read, which is the same
+discount rule 3a exists to prevent. Routed as a board row.
+
+Two lessons, and the first is mine: **poll the run list, not the run you want.**
+Filtering `gh run list` down to the SHA I was gating hid a red on the same
+branch. And the reason it was survivable is worth naming — I ran
+`unit regression` locally at every single landing, so the local gate had already
+cleared 73ac3a5; the CI red was the flake, not the code.
+
+## Q. Item 87's premise, measured — and my own framing in section K was WRONG
+
+I wrote that CI firing on branch pushes is "invisible waste" and proposed a
+`branches: [master]` filter. Measured over the last 200 runs
+(`gh run list --workflow=test.yml`), push-triggered only:
+
+| | runs | success | failure | cancelled |
+|---|---|---|---|---|
+| master | 146 | 129 | 16 | 1 |
+| non-master | 46 | 35 | **7** | 3 |
+
+Seven non-master reds is not zero catch-rate. And the identity of those seven is
+decisive: **six of them are TAG pushes** — `v5.16.1`, `v5.8.2`, `v5.7.0`,
+`v5.6.1`, `v5.6.0`, `v5.3.6` (a tag push reports the tag as `headBranch`). Only
+ONE was a real feature branch (`iris/perf-ledger-platform-and-e2e-capture`).
+
+So `on: push: branches: [master]` would **stop testing tag pushes entirely**,
+because naming `branches:` without `tags:` drops tag events. That is a gate
+removal, not waste trimming, and it would remove the signal that caught six
+reds. My proposed fix was wrong; the row must carry the measurement and not the
+proposal.
+
+This is the house rule about unmeasured signal removal, applied to me: I wrote
+a removal proposal into a board row on a plausible mechanism and the count
+refuted it inside ten minutes. Falsify against the outcome, not against the
+defect you predicted.
+
+**And a second finding falls out of the same table:** `v5.16.1`'s tag-triggered
+run on `4ee171b` was RED, and nothing read it — `check_pretag_ci.py`'s
+`drop_tag_triggered_runs` excludes tag-triggered runs by design (that exclusion
+IS rule 15a's mechanism), so the pre-tag gate was honestly green while the
+tag's own run failed. Near-certainly the ordering incident of section M's
+ancestor: the run started before `gh release create`, so
+`test_release_complete` saw no Release. **v5.16.2 does not repeat it** — its tag
+run 35845693484 has `unit-regression: success`, so the Release existed by the
+time the guard ran. Rule 15c worked. But nobody was reading tag-run conclusions
+at all, and that is item 78's question ("should 15a read every workflow for the
+SHA") arriving from a third direction.
+
+## R. Item 84 confirmed from our OWN CI log, not just from the action's source
+
+The post-job cleanup of run 35833383579 prints it literally:
+
+    [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+    http.https://github.com/.extraheader
+    [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+
+The credential WAS in `.git/config`, and the unset happens in **Post job
+cleanup** — after every main step. That is item 84's whole mechanism, observed
+in this repository's own run rather than inferred from `action.yml`. Worth
+having: the fix shipped on a chain of documentation reads, and this closes it
+with direct evidence.
