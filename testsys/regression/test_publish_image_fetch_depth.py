@@ -2,7 +2,26 @@
 """
 Regression guard: `.github/workflows/publish.yml` must check out at
 `fetch-depth: 0`, because the image it builds ships this checkout's `.git`
-and two in-image guards read real history from it.
+and two in-image guards read real history from it. It must ALSO check out
+with `persist-credentials: false` (added for the same incident class, below).
+
+THE CREDENTIAL-IN-IMAGE INCIDENT (2026-09-23). `actions/checkout@v4`'s
+DEFAULT is `persist-credentials: true`: with that default, checkout writes
+the live `GITHUB_TOKEN` into the workspace's `.git/config` as an
+`http.<origin>/.extraheader` entry, and the cleanup for that is a POST step
+(`action.yml`: `post: dist/index.js`) that runs AFTER every main step in the
+job -- including `docker build`. Because `Dockerfile` does
+`COPY . /opt/eqdyna` and `.dockerignore` deliberately keeps `.git` (the exact
+premise `git_exclusion_hits` below already checks, for the OTHER incident),
+the default would bake that token into a layer of every image this workflow
+publishes. The token is short-lived -- it expires when the job ends -- so
+this is not a live-token leak, but the image outlives the job, so it is a
+credential-in-published-artifact leak. Fixed by adding
+`persist-credentials: false` to the checkout step; this guard pins that
+value the same way it already pins `fetch-depth: 0`, for the same reason:
+nothing under `testsys/` referenced this setting at all before this guard,
+so it could be reverted (or the whole `with:` block deleted) and every tier
+would still exit 0.
 
 THE INCIDENT. The root `Dockerfile` does `COPY . /opt/eqdyna`, so whatever
 `.git` the publish job checked out is what lands in the image. The publish
@@ -29,6 +48,11 @@ WHAT THIS PINS, in order:
      Absent is not neutral: the action's default is 1, which is the broken
      state. So both mutations -- `fetch-depth: 1` and deleting the `with:`
      block -- fail here, and they fail with different values printed;
+  2b. EVERY checkout step in that job carries an explicit
+     `persist-credentials: false`. Absent is not neutral here either: the
+     action's default is `true`, which is the broken state (see the
+     credential-in-image incident above) -- deleting the whole `with:` block
+     therefore fails BOTH 2 and 2b, not just one;
   3. the PREMISE still holds -- `Dockerfile` still copies the repo root
      (`COPY . /opt/eqdyna`) and both history-reading guards still exist;
   4. (pathway item 79) `.dockerignore` EXISTS -- a bare `COPY . /opt/eqdyna`
@@ -181,8 +205,10 @@ def git_exclusion_hits(dockerignore_lines):
 
 
 def main():
-    print('Regression guard: %s must check out at fetch-depth 0 (the image '
-          'ships this .git; two in-image guards read it)' % WORKFLOW_REL)
+    print('Regression guard: %s must check out at fetch-depth 0 with '
+          'persist-credentials false (the image ships this .git; two '
+          'in-image guards read it, and the default credential persistence '
+          'would ship the GITHUB_TOKEN in it)' % WORKFLOW_REL)
     problems = []
 
     if not os.path.isfile(WORKFLOW):
@@ -233,6 +259,25 @@ def main():
         else:
             print('  %r: fetch-depth 0 (explicit)' % co.get('uses'))
 
+        persist = (with_block or {}).get('persist-credentials')
+        if str(persist).lower() != 'false':
+            problems.append(
+                "%s: job %r checks out `%s` with persist-credentials=%s%s. "
+                "The action's default (true) writes the live GITHUB_TOKEN "
+                "into .git/config as an http.<origin>/.extraheader entry, "
+                "the cleanup for which is a POST step that runs AFTER "
+                "`docker build`; Dockerfile ships this .git into the image "
+                "(`%s`, and `.dockerignore` deliberately keeps `.git`), so "
+                "the default bakes the token into every published image "
+                "layer. Set `with: persist-credentials: false`."
+                % (WORKFLOW_REL, job_name, co.get('uses'),
+                   persist if persist is not None else 'absent',
+                   '' if with_block else " (no `with:` block at all; "
+                                         "actions/checkout's default is true)",
+                   COPY_LINE))
+        else:
+            print('  %r: persist-credentials false (explicit)' % co.get('uses'))
+
     # --- the premise: does the depth still matter for the reason claimed? ---
     if not os.path.isfile(DOCKERFILE):
         problems.append('Dockerfile is gone; %s cannot ship a .git and this '
@@ -278,9 +323,10 @@ def main():
         for p in problems:
             print('  - %s' % p)
         return 1
-    print('\nPASS: %s job %r checks out at fetch-depth 0, and the premise '
-          'holds (Dockerfile `%s`, no .dockerignore strip of .git, both '
-          'history-reading guards present)' % (WORKFLOW_REL, job_name, COPY_LINE))
+    print('\nPASS: %s job %r checks out at fetch-depth 0 with '
+          'persist-credentials false, and the premise holds (Dockerfile '
+          '`%s`, no .dockerignore strip of .git, both history-reading '
+          'guards present)' % (WORKFLOW_REL, job_name, COPY_LINE))
     return 0
 
 
