@@ -28,6 +28,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 15a. A pre-tag CI check on the exact SHA is required before `git tag`, and it must be mechanical, not remembered.
 15b. The local sweep and CI gate different failure classes; CI's release run re-verifies only what a local sweep structurally cannot.
 15c. The tag push and `gh release create` are one action; the release-completeness guard is the check that a releaser split them.
+15d. Step 5's single release commit does not cover the two files 21c owns; those split out.
 16. Test what you commit, not what is in your working tree.
 17. Reviving or adding a TPV benchmark.
 18. A refactor that couples two previously-independent artifacts must say so.
@@ -44,9 +45,9 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 21 numbered rules
-(1-21) plus eighteen lettered sub-rules (2a, 3a, 4a, 4b, 4c, 5a, 6a, 14a, 15a,
-15b, 15c, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 39 `## ` headings
-total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 39;
+(1-21) plus nineteen lettered sub-rules (2a, 3a, 4a, 4b, 4c, 5a, 6a, 14a, 15a,
+15b, 15c, 15d, 20a, 20b, 20c, 21a, 21b, 21c, 21d) — 40 `## ` headings
+total. Verify: `grep -c '^## ' PROJECT_RULES.md` reads 40;
 `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no letter
 suffix) reads 21.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -1013,6 +1014,45 @@ writing the release notes body, including this very board — sit between the
 tag push and `gh release create` in step 7's sequence. If something must
 intervene, treat the resulting red exactly per rule 3a: stop, finish the
 Release immediately, then resume.
+
+---
+
+## 15d. Step 5's single release commit does not cover the two files 21c owns; those split out
+
+Step 5 says "commit everything above together" — `VERSION`, the README notes,
+and (step 4) the `pathway_forward.md` Tasks-done row, as one commit. That is
+no longer obeyable as written: `pathway_forward.md` is one of the two files
+21c's `pre-commit` hook refuses to see staged alongside anything else. A
+release therefore lands in at least two commits, not one: the Tasks-done row
+by itself, landed first; then `VERSION` + the README notes + release notes,
+together, on top of it. The release commit's own message can cite the board
+commit's SHA rather than asserting a row that, at the moment step 5 runs,
+does not yet exist on the branch.
+
+**Rationale**: rule 15 predates 21c's mechanical separation. Followed
+literally today, step 5 is refused by a check this same book made mechanical
+(item 80/21c, 2026-09-23) — a release rule a releaser cannot obey without
+tripping a different mechanical rule gets "fixed" by disabling the hook
+instead of splitting the commit, which is exactly what 21c exists to prevent.
+
+**Incident (2026-09-23)**: v5.16.2's Tasks-done row was written by a separate
+dispatch for this reason alone — the releaser named the extra dispatch and
+the resulting two-commit release as a cost paid deliberately rather than
+routed around the hook, and asked this book to say so rather than leave it to
+be rediscovered at the next release.
+
+**How to apply**: at release time, expect two commits: (1) the board-only
+commit adding the Tasks-done row (rule 14/21c), pushed first; (2) `VERSION` +
+README + release notes, committed and pushed together on top of it, only
+after (1) is on the branch. `check_pathway_tasks_done_row`
+(`testsys/regression/test_release_complete.py:164-177`) only greps the
+working-tree text for a dated row naming the version — it needs the row
+reachable from the tag's history, not in the same commit as `VERSION`.
+
+**Tier**: mechanical as a consequence of 21c's own hook
+(`testsys/hooks/pre-commit`, `test_precommit_board_separation_guard.py`); this
+sub-rule adds no new check of its own, it names what the existing one already
+implies for the release sequence.
 
 ---
 
