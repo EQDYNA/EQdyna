@@ -7,6 +7,12 @@ program EQdyna
     include 'mpif.h'
         
     integer (kind = 4) :: i, iMPIerr
+    ! Profiling checkpoints (docs/run_profile.md). mpiCommSetup/mpiWaitSetup
+    ! snapshot the cumulative MPI counters right before the time loop starts;
+    ! mpiCommLoop/mpiWaitLoop are the LOOP-PHASE deltas, used to split the
+    ! always-on per-rank profile into "exchange" vs "wait" buckets without
+    ! computing either as a total-minus-everything-else remainder.
+    real (kind = dp) :: mpiCommSetup, mpiWaitSetup, mpiCommLoop, mpiWaitLoop, tLoopStart, loopS
 
     call MPI_Init(iMPIerr)
     call mpi_comm_rank(MPI_COMM_WORLD,me,iMPIerr)
@@ -71,18 +77,43 @@ program EQdyna
 
     call init_vel ! Initiate on-fault node velocities
 
+    ! Snapshot the cumulative MPI counters at the setup/loop boundary. Both
+    ! counters only grow (mpi_wtime deltas accumulated in place), so this is
+    ! a direct reading of a running clock at a named checkpoint, not a
+    ! remainder computed from anything downstream.
+    mpiCommSetup = MPICommTimeInSeconds
+    mpiWaitSetup = MPIWaitTimeInSeconds
+
+    tLoopStart = MPI_WTIME()
     call driver
-    
+    loopS = MPI_WTIME() - tLoopStart
+
+    ! mpiCommLoop is the loop-phase MPI4NodalQuant span INCLUDING its nested
+    ! barrier (mirrors how MPICommTimeInSeconds is accumulated); mpiWaitLoop
+    ! is that same span's barrier-only portion. output_profile subtracts the
+    ! latter from the former to get a disjoint exchange/wait split.
+    mpiCommLoop = MPICommTimeInSeconds - mpiCommSetup
+    mpiWaitLoop = MPIWaitTimeInSeconds - mpiWaitSetup
+
     startTimeStamp = MPI_WTIME()
     call output_onfault_st
     call output_offfault_st
     call output_frt
-    if (output_plastic == 1) call output_plastic_strain  
+    if (output_plastic == 1) call output_plastic_strain
     if (outputFinalSurfDisp == 1) call output_finalSurfDisp
 
-    compTimeInSeconds(8) = MPI_WTIME() - startTimeStamp 
-    compTimeInSeconds(9) = MPI_WTIME() - simuStartTime 
-   
+    compTimeInSeconds(8) = MPI_WTIME() - startTimeStamp
+    compTimeInSeconds(9) = MPI_WTIME() - simuStartTime
+
+    ! ALWAYS-ON per-rank profile (docs/run_profile.md). Off switch
+    ! EQDYNA_PROFILE=0 exists only for the overhead A/B; default is on and
+    ! independent of writeCompTime, which stays gated on the legacy
+    ! compTime<rank> text dump below.
+    call output_profile(compTimeInSeconds(1) + compTimeInSeconds(2), &
+                         compTimeInSeconds(3) + compTimeInSeconds(4) + compTimeInSeconds(5), &
+                         compTimeInSeconds(6), mpiCommLoop - mpiWaitLoop, mpiWaitLoop, &
+                         compTimeInSeconds(8), loopS, compTimeInSeconds(9), nstep, 1)
+
     if (writeCompTime == 1) call output_timeanalysis
     
     call MPI_Finalize(iMPIerr)

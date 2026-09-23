@@ -70,6 +70,10 @@ subroutine MPI4NodalQuant(quantArray, numDof)
     ! Writing the global here reset that outer start, so
     ! compTimeInSeconds(2) measured only the tail of the call.
     real (kind = dp) :: tStageStart
+    ! Sub-timer for the mpi_barrier below only (profile "wait" bucket). Nested
+    ! inside the tStageStart..MPI_WTIME() span above, i.e. double-counted into
+    ! MPICommTimeInSeconds by design -- output_profile subtracts it back out.
+    real (kind = dp) :: tWaitStart
     real (kind = dp), allocatable, dimension(:) :: btmp, btmp1
     
     tStageStart = MPI_WTIME()
@@ -209,8 +213,10 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                 endif 
             enddo 
         endif
+        tWaitStart = MPI_WTIME()
         call mpi_barrier(MPI_COMM_WORLD, iMPIerr)
-    enddo 
+        MPIWaitTimeInSeconds = MPIWaitTimeInSeconds + MPI_WTIME() - tWaitStart
+    enddo
     
     MPICommTimeInSeconds = MPICommTimeInSeconds + MPI_WTIME() - tStageStart
 contains
