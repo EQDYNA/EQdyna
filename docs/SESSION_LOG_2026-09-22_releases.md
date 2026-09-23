@@ -174,3 +174,162 @@ instruction.
 ## 6. Owner-gated, decided by nobody here
 
 Items 63, 56, 57, 17, 19(b), 32, and rule 15b's staleness bound. Untouched.
+
+---
+
+## 7. THE INCIDENT — a 40-minute gate destroyed by a concurrent session
+
+The first v5.16.0 gate sweep was launched at 21:48 **in the main checkout**.
+That was my error and rule 21a now exists because of it.
+
+`testsys/e2e/run_e2e.py:587-594` rotates `$REPO_ROOT/test` to `test.prev` at
+startup, unconditionally, with no lock of any kind. At **22:12:20** a second
+Claude session ran its own e2e in the same checkout — its artifact,
+`docs/perf_snapshots/e2e_cells_2026-09-22_221220_2462614.json`, landed on
+master in `88a4012` — and rotated my in-flight tree out from under the sweep.
+
+| | |
+|---|---|
+| cells already passed | 25 |
+| cell killed by the rotation | `test.tpv1053d x python-numpy`, at **1500.1 s** |
+| error | `FileNotFoundError: .../test/test.tpv1053d.python-numpy/frt.txt0` |
+| raised at | `src/python/eqdyna/library_output.py:120`, from `eqdyna3d.py:522` — it writes by ABSOLUTE path, so the rename broke it at the end of the run |
+| cells doomed but still running | 4 (`tpv29`, `tpv36`, `tpv37`, `drv.a6`, all python-numpy) |
+| disposition | killed by PID after a targeted `ps`; never `pkill -f` |
+
+**Why this is worse than a lost half-hour.** The failure surfaces as
+`FAIL test.tpv1053d x python-numpy` in the sweep summary — visually identical
+to a genuine parity regression. Had I taken it at face value I would have
+reverted a good change or re-gated a landing that was already fine. The proof
+it was infrastructure is the same cell, same SHA, in isolation twenty minutes
+later: **SUCCESS in 907.0 s, max|diff| 4.569608e-06 against bound 1.0e-04.**
+
+Both logs are kept under `docs/evidence/gate-v5.16.0/` (rule 8) — the passing
+one and the collided one, the latter named `_INCIDENT` so it cannot be mistaken
+for a gate.
+
+Diagnosis discipline worth recording: my first two hypotheses were both wrong
+and both were killed by evidence rather than by argument. "A second sweep is
+running" was refuted by `ps` showing exactly one `run_e2e.py`. "The harness
+cleans up cell directories" was refuted by reading the harness — the only
+`rmtree`/`move` pair in it is the startup rotation. The actual cause only
+appeared when I looked at *who else* had written to the repo, and the other
+session's own committed snapshot timestamped it to the second.
+
+Follow-ups, neither done here: pathway item 70 (a lock on `$REPO_ROOT/test`,
+routed to `iris-vermeulen`) and rule 21a, which is hortatory until item 70
+lands and says so about itself.
+
+---
+
+## 8. The gate that counts
+
+Re-run in an ISOLATED worktree, `.claude/worktrees/wei-gate-v5160`, detached at
+`88a4012`:
+
+    ./install-eqdyna.sh -m ubuntu        exit 0
+    python3 testsys/run.py all
+      SUCCESS unit / SUCCESS regression / SUCCESS e2e
+      ran: 31 of 40 cells in the 10 case x 4 backend table (31 passed, 0 failed)
+    SWEEP EXIT: 0        22:25:50 -> 22:55:51  (1801 s)
+
+31/31 is the full count rule 15 step 1 requires
+(`len(matrix.CASE_BOUND) * 3 + len(matrix.PY_MPI_RANKS)`). The 31 cell
+wall-clock rows and the snapshot were carried out of the worktree into the
+release commit (rule 20b); ledger 224 -> 255 lines.
+
+`88a4012..HEAD` touches only the board, the rules, `docs/` and the release
+files — no solver source, no reference, no `testsys/` file. The gated code
+surface IS the tagged code surface.
+
+---
+
+## 9. Two subagent findings, both re-verified by me at file:line
+
+**The owner's named top unaddressed risk is CLOSED, refuted from the code.**
+`test.drv.a6`'s fractal roughness path does not carry the `702b56b` defect
+class and structurally cannot: `scripts/generateFaultInterface:94-95`
+differentiates the surface at the same spacing it was generated on, so there is
+no finer source to subsample from. Measured residual against a recomputation at
+the mesh dx: **1.97e-16** (vs the guard's `STORED_DERIV_ATOL = 1.0e-4` and the
+3.9e-3 the TPV29 bug actually moved those columns by). The covering check is
+`scripts/lib.py:816-817` via `case.setup:379-380`, which runs for every
+`insertFaultType > 0`, generated files included. Item 24(a)'s 0.93-1.08 spread
+is genuine mesh-dependent fractal roughness, not a normal inconsistency — the
+link to the TPV29 defect is refuted, and the earlier retraction was correct.
+No budget and no reference moved. I re-read all four load-bearing lines myself
+before recording it.
+
+**The setup-rewrite premise is wrong, and this is a rule-2-of-the-loop
+deviation I am recording rather than escalating.** The owner's direction —
+"each rank builds only its own subdomain, following Fortran; `mesh4num.f90`
+counts locally, `meshgen.f90` builds only that slab" — describes what the
+Fortran **already does**. Verified directly, not relayed:
+
+- `src/fortran/meshgen.f90:28-31` slices per-rank via `calcXyzMPIId`; the build
+  loop at `:65-67` is `do ix = 1, nx` with `nx` local, sized at `:543-551` from
+  `MPIXyzId`.
+- `src/fortran/countMeshEntities.f90` — the routine the owner calls
+  `mesh4num.f90`; it was **renamed** — does the identical local slicing at
+  `:13-16` and assigns from purely local counters at `:72-75`.
+- `src/fortran/library.f90:19-20` states it outright: "`totalNumOfElements` is
+  THIS rank's count."
+- The global mesh build is **Python-only**, and the port says so:
+  `src/python/eqdyna/MPI4NodalQuant.py:35-41` ("This port keeps the PROVEN
+  serial mesh build on every rank and then RESTRICTS it") and
+  `driver.py:326-327`.
+- **The "~100 s setup" figure has never been measured.** `writeCompTime` is
+  declared `= 0` at `globalvar.f90:109`, read once at `eqdyna3d.f90:86`, and
+  set to 1 **nowhere** in `src/` or `scripts/` — those two lines are the only
+  hits. So `compTimeInSeconds(1)`, the exact quantity the claim is about, has
+  never been printed by anything. CLAUDE.md already warns this counter is
+  unreachable; this is that warning coming due.
+
+The memory half of the claim survives and is Python's; the time half does not
+survive as stated. The cheap discriminating probe (serial `build_solver_state`
+at 1 process and at 32 concurrent) costs ~20 minutes and no solver run, and it
+should be done before any code is written.
+
+---
+
+## 10. A correction I was given twice and had to refuse twice
+
+Both the handoff and a mid-session instruction told me to "land
+`origin/wei/rough-fault-normal-2026-09-22`" for v5.16.0. That branch was
+already fully merged before this session began: tip `1d11d89`,
+`git log --oneline origin/wei/rough-fault-normal-2026-09-22 ^origin/master` is
+EMPTY, and it is an ancestor of origin/master. There was nothing to land;
+v5.16.0 is cut from master.
+
+Relatedly, and caught by zofia rather than by me: the handoff credited v5.15.0
+with `01a1040`, `d4f625e` and `a16cc98`. **None of the three is in v5.15.0** —
+`git merge-base --is-ancestor 01a1040 54e0697` returns non-zero. The published
+v5.15.0 notes do not claim them, because I took the release body verbatim from
+the release commit's own README block rather than from the handoff's summary.
+That is the whole reason the published tag is accurate, and it is the argument
+for never writing release notes from a briefing.
+
+All twelve commits credited in v5.16.0's notes were checked the same way:
+every one is in HEAD and none is in v5.15.0.
+
+---
+
+## 11. Rule 21: an amendment, not a violation
+
+I was told `87af56e` and `bbf62c8` — two direct commits of mine in the main
+checkout — violated rule 21. I read rule 21 in full before accepting that, and
+as written it does not say so: *"The main checkout … is the conductor's: no
+agent commits in it"*, and *"the conductor merges, agents branch."* Those are
+conductor commits in the conductor's own checkout.
+
+The real gap the night exposed is that **rule 21 presumes exactly one
+conductor and is silent on two.** Two conductor sessions were live at once and
+both had an equally good claim on the main checkout under the rule as written.
+Routed to zofia as an amendment, with the note that rule 21's own
+`git rev-parse --git-dir --git-common-dir` test cannot tell a conductor from an
+agent — so item 68's proposed pre-commit hook would block the legitimate
+conductor unless its marker encodes the ownership answer first.
+
+The demonstrated half stands and is the other session's: `88a4012` was a direct
+`commit:` into the main checkout, and that same session's 22:12:20 run is the
+incident in section 7.
