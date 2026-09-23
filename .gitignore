@@ -28,6 +28,8 @@ src/python/.eqdyna.lock
 # run_shard_scaling) and run_numa_scaling.build_case.
 testsys/perf/.scaling_case.lock
 testsys/perf/.numa_case.lock
+# Item 81: same class, probe_plastic_traction.build_case's probe_case dir.
+testsys/parity/.probe_case.lock
 resume_claude.sh
 .claude/
 testsys/parity/evidence_output/
