@@ -75,13 +75,23 @@ import numpy as np
 from . import assembleGlobalMass, driver, func_lib, library_output, meshgen, readInputFiles
 from . import backend as _backend
 
+# friclaw -> the NumPy solver module whose run(S, nsteps, verbose) consumes
+# this module's S dict. All three modules were independently verified
+# (by the removed parity tier) to need the EXACT SAME S-dict keys (the
+# per-friclaw modules
+# port_tp.py only add nucleation-parameter reads and, for TP, an internally
+# -owned onFaultTPHist scan-carry -- neither needs a NEW key from S beyond
+# what build_solver_state already provides for tpv8, confirmed by grepping
+# each module's `S[...]` accesses before wiring this dispatch) -- so
+# build_solver_state below is friclaw-agnostic; only the solver CALLED
+# differs.
 # The friction laws this port implements. EVERY one of them is served by the
 # SAME code -- eqdyna/{driver,faulting,fric,assembleGlobalKU,backend}.py --
 # with the friclaw dispatch inside faulting.py exactly where faulting.f90:21-22
 # puts it, and with the backend as an argument rather than a second module.
-# build_solver_state is therefore friclaw-agnostic: there is no per-friclaw
-# and no per-backend solver module left to dispatch between (the two tables
-# of three port*.py modules that used to stand here are deleted).
+#
+# This used to be two tables of three modules each: driver.py
+# time loop. They are deleted.
 SUPPORTED_FRICLAW = (1, 2, 3, 4, 5)
 
 DEFAULT_BACKEND = 'jax'
@@ -154,9 +164,7 @@ def _narrow_numpy_affinity():
 
 
 def _resolve_solver(friclaw, backend):
-    """Returns a run(S, nsteps, verbose) callable for `friclaw` under
-    `backend` -- one solver for every friclaw, so this only VALIDATES the
-    pair and binds the backend; there is no module to pick between.
+    """Returns the run()-providing module for `friclaw` under `backend`.
 
     NO FALLBACK (PROJECT_RULES rule 2). backend='jax' with jaxlib missing is a
     hard failure, not a quiet demotion to NumPy.
@@ -476,9 +484,10 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
 
 def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
              profile=None):
-    """Builds S (zero pydump reads), runs driver.py's one time loop under the
-    requested `backend` ('jax', the default, or 'numpy') with the friclaw
-    dispatch inside faulting.py, and writes frt.txt0 via
+    """Builds S (zero pydump reads), dispatches to the friclaw-appropriate
+    solver's run() under the requested `backend` ('jax', the default, or
+    'numpy') -- port.py/port_jax.py friclaw==1, port_rsf.py/port_rsf_jax.py
+    friclaw==4, port_tp.py/port_tp_jax.py friclaw==5 -- writes frt.txt0 via
     library_output.write_frt (byte-exact Fortran E18.7E4 format). Returns the
     path written.
 
@@ -521,7 +530,7 @@ def _select_device(device):
 
     JAX_PLATFORMS is read by jax at import time, so this must run before the
     first `import jax` -- which is why this module never imports jax at module
-    level and `active_device`/`Profile._sync` import it inside the function.
+    level (see the note above _JAX_MODULE_BY_FRICLAW).
 
     `--device gpu` with no GPU is a hard failure: silently running on CPU would
     put a row labelled gpu into a backend comparison whose whole purpose is to
