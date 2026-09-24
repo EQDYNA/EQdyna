@@ -1,0 +1,81 @@
+#! /bin/sh
+#
+# EQdyna pre-push hook -- owner-approved hybrid PR workflow (2026-09-23).
+#
+# Changes under src/ or testsys/ reach master ONLY through a merged pull
+# request (squash-merge on GitHub). This hook is the LOCAL half of that:
+# it refuses a push to refs/heads/master carrying a NEW commit (one the
+# remote does not already have) that touches src/ or testsys/.
+#
+# WHY NO API CALL, UNLIKE THE CI JOB. A squash/rebase/merge-commit PR lands
+# on GitHub, and a developer's local clone only ever learns about it via
+# `git fetch` (or a fast-forward `git merge --ff-only` of that fetch) -- never
+# via a local `git push`. So a LOCAL push that introduces new src/ or
+# testsys/ content to master is, by construction, a direct push: there is no
+# evidence to weigh, and refusing is unconditional. The CI job
+# (pr-policy-gate in .github/workflows/test.yml) is the one that can call
+# GitHub's commits-pulls API, because by the time it runs the push already
+# happened on GitHub's side and a squash-merge commit really can be present.
+#
+# Decision logic lives in ONE place -- testsys/pr_policy.py's `push-guard`
+# mode -- called from here exactly the same way the CI job calls `ci-check`
+# mode, so there is one copy of "which paths are gated" and "how a push
+# range is resolved", not two.
+#
+# No bypass flag of its own, matching testsys/hooks/pre-commit's own
+# refusal message form: --no-verify skips it, and doing so is the exact
+# action the owner-approved workflow forbids.
+#
+# Protocol (git pre-push, see githooks(5)): one line per ref on stdin,
+#     <local ref> <local sha1> <remote ref> <remote sha1>
+# Args $1/$2 (remote name/url) are not needed here.
+
+set -u
+
+ZERO=0000000000000000000000000000000000000000
+
+toplevel=$(git rev-parse --show-toplevel) || {
+    echo "pre-push: REFUSED -- 'git rev-parse --show-toplevel' failed." >&2
+    echo "pre-push: cannot locate the repository root, so the src/ or" >&2
+    echo "pre-push: testsys/ guard is refused rather than skipped." >&2
+    exit 1
+}
+policy="$toplevel/testsys/pr_policy.py"
+if [ ! -f "$policy" ]; then
+    echo "pre-push: REFUSED -- $policy does not exist." >&2
+    echo "pre-push: the owner-approved hybrid PR workflow's decision logic" >&2
+    echo "pre-push: is missing, so this push is refused rather than let" >&2
+    echo "pre-push: through unchecked." >&2
+    exit 1
+fi
+
+overall=0
+saw_master=no
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -z "$remote_ref" ] && continue
+    [ "$remote_ref" = "refs/heads/master" ] || continue
+    saw_master=yes
+
+    if [ "$local_sha" = "$ZERO" ]; then
+        # Deleting the ref: no new content is introduced.
+        continue
+    fi
+
+    echo "pre-push: checking $remote_ref ($remote_sha -> $local_sha) against" >&2
+    echo "pre-push:   the owner-approved hybrid PR workflow (src/, testsys/)" >&2
+    if ! python3 "$policy" push-guard "$remote_sha" "$local_sha"; then
+        overall=1
+    fi
+done
+
+if [ "$overall" != 0 ]; then
+    echo "" >&2
+    echo "pre-push: REFUSED -- see testsys/pr_policy.py's report above." >&2
+    echo "pre-push: this hook has no bypass flag of its own; --no-verify" >&2
+    echo "pre-push: skips it, and doing so is the exact action the" >&2
+    echo "pre-push: owner-approved hybrid PR workflow forbids." >&2
+    exit 1
+fi
+
+exit 0
