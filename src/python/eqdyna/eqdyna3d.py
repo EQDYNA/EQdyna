@@ -681,7 +681,9 @@ def _abort(exc, rank=0):
     SystemExit(exc.code) so a Python run and a Fortran run of the same bad
     config exit with the SAME number (rule 23). Every rank raises the same
     refusal before any collective (build_solver_state runs first on all
-    ranks), so there is no MPI_Abort equivalent to need today."""
+    ranks), so THIS path needs no MPI_Abort. Any OTHER exception raised on
+    one rank goes through the MPI entry point's traceback + comm.Abort
+    handler instead, so its partners cannot hang."""
     print(flush=True)
     print(' ==================== EQdyna: FATAL ====================')
     print('  rank      : ', rank)
