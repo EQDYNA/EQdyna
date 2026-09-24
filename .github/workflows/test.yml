@@ -358,3 +358,62 @@ jobs:
     - name: Print testRunLog.txt
       if: always()
       run: cat testRunLog.txt
+
+  # Owner-approved hybrid PR workflow (2026-09-23): changes under src/ or
+  # testsys/ reach master ONLY through a merged pull request (squash-merge
+  # on GitHub). This job is the AUTHORITATIVE half of the enforcement --
+  # testsys/hooks/pre-push is the LOCAL half, installed the same way as
+  # testsys/hooks/pre-commit (core.hooksPath). Both call
+  # testsys/pr_policy.py, so there is ONE copy of the decision logic; this
+  # job runs it in `ci-check` mode, which can call GitHub's commits-pulls
+  # API (the local hook cannot, and does not need to -- see that module's
+  # own docstring for why).
+  #
+  # RUNS ONLY on a push that lands directly on refs/heads/master -- not on
+  # pull_request (a PR's own commits are reviewed and gated when the MERGE
+  # itself lands as a push to master, not before that), and not on a push to
+  # any other branch. `needs: []` (no dependency on the build job): this
+  # check reads only git history plus the commits-pulls API and must be able
+  # to fail fast without waiting on a full compile.
+  #
+  # test_ci_pr_policy_step.py (testsys/regression/) is the guard that this
+  # job cannot be silently deleted, disarmed with an `if:`, or downgraded to
+  # a shallow checkout without a regression tier failure.
+  pr-policy-gate:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-22.04
+    # Explicit, so the commits-pulls API call never depends on the repo's
+    # default token setting (audit H3, 2026-09-23).
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+    # fetch-depth: 0 -- testsys/pr_policy.py resolves a COMMIT RANGE
+    # (github.event.before..github.sha) and inspects each commit's changed
+    # paths; the action's default depth of 1 would leave github.event.before
+    # unreachable, which the module treats as a HARD failure (there is no
+    # safe superset fallback for a push-to-master range -- see
+    # resolve_push_range's own docstring), never a silent pass.
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Enforce src/ and testsys/ reach master only via a merged PR
+      env:
+        # GITHUB_REPOSITORY is one of Actions' default env vars (always
+        # set); GITHUB_TOKEN is NOT auto-exported to steps and must be
+        # passed explicitly. Interpolated into env, never into the shell
+        # body, matching the board-separation step's own rationale
+        # (expression substitution directly inside `run:` is a
+        # script-injection surface).
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        PUSH_HEAD: ${{ github.sha }}
+      run: |
+        python3 testsys/pr_policy.py ci-check "$PUSH_BEFORE" "$PUSH_HEAD"
