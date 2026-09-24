@@ -77,6 +77,12 @@ def raises(fn, exc_types, what, must_contain=()):
 # ---------------------------------------------------------------- (a) ----
 
 def check_91a_snapshot_naming_and_ledger():
+    """Reloads the REAL run_shard_scaling module twice, under two faked wall
+    times 5 minutes apart on the same calendar day, and compares its own
+    module-level OUT global -- not a re-implementation of the naming
+    expression. This is what actually catches the pre-fix `%Y-%m-%d`-only
+    defect: with only the date, out1 == out2 here."""
+    import importlib
     real_strftime = time.strftime
 
     def fake(t):
@@ -84,23 +90,22 @@ def check_91a_snapshot_naming_and_ledger():
             return real_strftime(fmt, *a) if a else real_strftime(fmt, t)
         return f
 
-    def name_at(t):
-        time.strftime = fake(t)
-        try:
-            return os.path.join(
-                rss.ROOT, 'docs', 'perf_snapshots',
-                'shard_scaling_%s_%s.json' % (time.strftime('%Y-%m-%d_%H%M%S'),
-                                              'tag'))
-        finally:
-            time.strftime = real_strftime
-
     t1 = time.localtime(1_800_000_000)          # some day, some HH:MM:SS
     t2 = time.localtime(1_800_000_000 + 300)     # same day, 5 min later
-    out1, out2 = name_at(t1), name_at(t2)
+    try:
+        time.strftime = fake(t1)
+        importlib.reload(rss)
+        out1 = rss.OUT
+        time.strftime = fake(t2)
+        importlib.reload(rss)
+        out2 = rss.OUT
+    finally:
+        time.strftime = real_strftime
+        importlib.reload(rss)   # leave the module in its normal state
     check(out1 != out2,
-          '91a: two snapshot names 5 min apart on the same day differ '
-          '(%r vs %r) -- the exact naming EXPRESSION run_shard_scaling.py '
-          'uses for OUT, driven with two wall times' % (out1, out2))
+          '91a: run_shard_scaling.OUT, reloaded at two wall times 5 min '
+          'apart on the SAME calendar day, differ (%r vs %r)'
+          % (out1, out2))
 
     base, base_n = {}, {}
     speedup, bn, note = rss.record_point(base, base_n, 'element', 1, 500.0, 1)
@@ -264,7 +269,7 @@ def check_91g_baseline_labelling():
           and 'within-node-8' in note and 'spread-8' in note,
           '91g run_numa_scaling.record_baseline: first config skipped, '
           'second config (%r) becomes baseline with a non-None NOTE (%r)'
-          % (blabel, note[:80]))
+          % (blabel, (note or '')[:80]))
 
 
 CHECKS = [
