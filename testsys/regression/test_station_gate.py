@@ -51,12 +51,12 @@ def header_of(path):
     return [l for l in open(path) if l.split() and l.split()[0].startswith('#')]
 
 
-def build_run(tmp):
+def build_run(tmp, case=CASE):
     run = os.path.join(tmp, 'run')
     os.makedirs(run)
     for kind in ('on', 'off'):
-        for fn in matrix.GATE_STATIONS[CASE][kind]:
-            shutil.copy(compare.station_reference_path(CASE, fn), os.path.join(run, fn))
+        for fn in matrix.GATE_STATIONS[case][kind]:
+            shutil.copy(compare.station_reference_path(case, fn), os.path.join(run, fn))
     return run
 
 
@@ -114,12 +114,17 @@ def main():
         d[:, 0] += 1e-3
         return d
 
-    def zero_col_noise(names, d):
-        # the identically-zero column: v-slip on this vertical strike-slip
-        # fault is zero at every selected station in the reference
-        c = names.index('v-slip')
-        d[:, c] = 1e-3
-        return d
+    # The identically-zero column: test.tpv104's on-fault 'temperature' is 0.0
+    # at every selected station in the reference (no gated tpv8 column is), so
+    # S_q = 0 and the scale is STATION_ZERO_FLOOR: noise of 1e-3 must fail
+    # and 1e-12 (e = 1e-6, under tpv104's 1e-5) must pass.
+    ZCASE, ZCOL = 'test.tpv104', 'temperature'
+
+    def zero_col(level):
+        def f(names, d):
+            d[:, names.index(ZCOL)] = level
+            return d
+        return f
 
     scenarios = [
         ('unmutated', None, True),
@@ -128,23 +133,27 @@ def main():
         ('below bound: one sample +0.5x bound', bump(0.5), True),
         ('MUTATION time axis shifted 1 ms', tshift, False),
         ('MUTATION one row dropped', lambda n, d: d[:-1], False),
-        ('MUTATION nonzero in an identically-zero column', zero_col_noise, False),
         ('MUTATION selected file missing', 'delete', False),
+        ('MUTATION 1e-3 in an identically-zero column', zero_col(1e-3), False, ZCASE),
+        ('below floor: 1e-12 in an identically-zero column', zero_col(1e-12), True, ZCASE),
     ]
     # the zero-column scenario must really target a zero column
-    vs = [compare.read_station_file(compare.station_reference_path(CASE, fn))
-          for fn in matrix.GATE_STATIONS[CASE]['on']]
-    if any(np.any(d[:, n.index('v-slip')]) for n, d in vs):
-        fails.append('v-slip is not identically zero in the %s references; the '
-                     'zero-column scenario would test nothing' % CASE)
-    for label, fun, want in scenarios:
+    vs = [compare.read_station_file(compare.station_reference_path(ZCASE, fn))
+          for fn in matrix.GATE_STATIONS[ZCASE]['on']]
+    if any(np.any(d[:, n.index(ZCOL)]) for n, d in vs):
+        fails.append('%s is not identically zero in the %s references; the '
+                     'zero-column scenarios would test nothing' % (ZCOL, ZCASE))
+    for sc in scenarios:
+        label, fun, want = sc[:3]
+        case = sc[3] if len(sc) > 3 else CASE
         with tempfile.TemporaryDirectory() as tmp:
-            run = build_run(tmp)
+            run = build_run(tmp, case)
+            target = matrix.GATE_STATIONS[case]['on'][0]
             if fun == 'delete':
-                os.remove(os.path.join(run, on0))
+                os.remove(os.path.join(run, target))
             elif fun is not None:
-                mutate(run, on0, fun)
-            got, lines = compare.station_gate(CASE, run)
+                mutate(run, target, fun)
+            got, lines = compare.station_gate(case, run)
         checks.append(label)
         if got != want:
             fails.append('%s: gate returned %s, wanted %s:\n    %s'
@@ -160,12 +169,12 @@ def main():
         if not compare.compare_nc_files(ref, cp).startswith('SUCCESS'):
             fails.append('nc: an unmutated copy of the reference did not pass')
         with Dataset(cp, 'a') as ds:
-            v = next(iter(ds.variables))
+            v = 'shear_strike'  # a physics variable, not a coordinate
             a = np.asarray(ds.variables[v][:], dtype=float)
-            a.flat[a.size // 2] += 1.0
+            a.flat[a.size // 2] += 0.01 * float(np.max(np.abs(a))) + 1.0
             ds.variables[v][:] = a
         if compare.compare_nc_files(ref, cp).startswith('SUCCESS'):
-            fails.append('nc: MUTATION variable %r perturbed by 1.0 still passed' % v)
+            fails.append('nc: MUTATION variable %r perturbed by 1% of its max still passed' % v)
         checks += ['nc unmutated', 'MUTATION nc variable perturbed']
 
     for f in fails:
