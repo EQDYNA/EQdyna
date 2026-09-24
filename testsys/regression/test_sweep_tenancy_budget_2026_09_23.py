@@ -14,11 +14,14 @@ Two independent things land together and each gets its own check here so one
 regressing does not hide behind the other going green:
 
   1. cell_cost bills python-jax at its MEASURED core count
-     (matrix.JAX_MEASURED_CORES, ceil'd -- currently 3), fortran/python-jax-mpi
-     at their real rank counts, and python-numpy at 1 -- also a MEASURED
-     number (eqdyna3d._narrow_numpy_affinity pins it to one cpu; corroborated
-     here by cell_cost's own docstring citation of a 101% /usr/bin/time -v
-     reading), never a guess.
+     (matrix.JAX_MEASURED_CORES, ceil'd -- currently 3) and fortran/
+     python-jax-mpi at their real rank counts, never a guess. python-numpy
+     LEFT the backend axis entirely 2026-09-23 (owner decision, same day):
+     its old cost-1 branch (also a measured number -- eqdyna3d.
+     _narrow_numpy_affinity pins it to one cpu) is gone with it, and
+     cell_cost now RAISES for that backend name rather than silently
+     costing it 1 -- see check_python_numpy_backend_is_rejected below, the
+     mutation-tested guard against the axis widening back to include it.
 
   2. default_jobs_budget derives the default --jobs from cores measured FREE
      right now (testsys/perf/run_numa_scaling.cpu_busy_fractions, reused, not
@@ -61,10 +64,21 @@ def check_jax_mpi_cost_is_its_rank_count():
           % (case, matrix.PY_MPI_RANKS[case]))
 
 
-def check_python_numpy_cost_is_one():
-    assert run_e2e.cell_cost('test.tpv8', 'python-numpy') == 1
-    print('  PASS  python-numpy cost == 1 (measured: eqdyna3d.'
-          '_narrow_numpy_affinity pins it to one cpu)')
+def check_python_numpy_backend_is_rejected():
+    """GUARD against the backend axis widening back to include python-numpy
+    (2026-09-23 owner decision: 'I actually don't care numpy'). cell_cost
+    must RAISE for it, not silently cost it 1 the way it did before the
+    axis removed it -- a re-added numpy cell that still ran (billed for
+    free) would be a worse regression than one that failed loudly."""
+    try:
+        run_e2e.cell_cost('test.tpv8', 'python-numpy')
+    except ValueError as exc:
+        print('  PASS  cell_cost raises ValueError for the retired '
+              'python-numpy backend: %s' % exc)
+        return
+    raise AssertionError('cell_cost accepted "python-numpy" and returned a '
+                         'cost -- the backend axis has silently widened back '
+                         'to include it')
 
 
 def check_python_jax_cost_is_measured_and_greater_than_one():
@@ -202,7 +216,7 @@ def check_default_budget_uses_measured_free_cores_minus_margin():
     try:
         run_e2e.measured_free_cores = lambda: (40, 24, 64, 0.5)
         args = types.SimpleNamespace(jobs=None)
-        cells = [('test.tpv8', 'python-numpy')]  # cost 1, well under the budget
+        cells = [('test.tpv8', 'python-jax')]  # cost 3, well under the budget
         budget = run_e2e.default_jobs_budget(cells, args)
         expected = 40 - run_e2e.JOBS_MARGIN_CORES
         assert budget == expected, (
@@ -248,7 +262,7 @@ def check_explicit_jobs_wins_with_no_measurement_taken():
     try:
         run_e2e.measured_free_cores = _must_not_be_called
         args = types.SimpleNamespace(jobs=7)
-        cells = [('test.tpv8', 'python-numpy')]
+        cells = [('test.tpv8', 'python-jax')]
         budget = run_e2e.default_jobs_budget(cells, args)
         assert budget == 7, 'explicit --jobs 7 was not honoured: got %r' % budget
     finally:
@@ -283,7 +297,7 @@ def main():
     checks = [
         check_fortran_cost_is_its_rank_count,
         check_jax_mpi_cost_is_its_rank_count,
-        check_python_numpy_cost_is_one,
+        check_python_numpy_backend_is_rejected,
         check_python_jax_cost_is_measured_and_greater_than_one,
         check_mutating_jax_measured_cores_changes_the_billed_cost,
         check_cell_cost_source_does_not_hardcode_python_jax_to_one,

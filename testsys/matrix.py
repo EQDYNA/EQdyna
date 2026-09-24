@@ -49,7 +49,15 @@ from testNameList import nameList as _NAME_LIST, coreNumList as _CORE_NUM_LIST
 CASES = tuple(_NAME_LIST)
 FORTRAN_RANKS = dict(zip(_NAME_LIST, _CORE_NUM_LIST))
 
-BACKENDS = ('fortran', 'python-numpy', 'python-jax', 'python-jax-mpi')
+BACKENDS = ('fortran', 'python-jax', 'python-jax-mpi')
+# python-numpy LEFT the backend axis entirely (2026-09-23 owner decision:
+# "I actually don't care numpy... I will use Jax anyway"). It is not a
+# UNSUPPORTED cell and not a third cell state -- it is not a column of this
+# table at all, the same way there is no 'python-torch' column. The numpy
+# CODE (src/python/eqdyna, `--backend numpy`) is untouched and still runnable
+# by hand; only the gate stopped exercising it. See git history for the
+# retired numpy cells (bounds, RSS measurements, RELEASE_ONLY entries) --
+# they are evidence of what the axis USED to cover, not of what it covers now.
 
 # Which artifacts each backend produces, and therefore what gets compared.
 #   frt -- the canonical fault-node table (testsys/frt_canonical.py). Every
@@ -64,7 +72,6 @@ BACKENDS = ('fortran', 'python-numpy', 'python-jax', 'python-jax-mpi')
 #          python columns did not cover it.
 ARTIFACTS = {
     'fortran': ('frt', 'nc'),
-    'python-numpy': ('frt',),
     'python-jax': ('frt',),
     'python-jax-mpi': ('frt',),
 }
@@ -113,7 +120,7 @@ THRESHOLD = 1e-3  # PROJECT_RULES rule 5's one outer sanity bound.
 # second term, no `--term` flag, and no per-case "full" term to fall back to.
 # run_e2e.py applies it through the ONE existing override path
 # (apply_term_override), unconditionally, for every cell it runs -- the
-# everyday sweep, the release sweep (everyday cells + RELEASE_ONLY, below) and
+# everyday sweep, the release sweep (the same cells, plus evidence) and
 # CI's smoke selection all run the same 5 s.
 #
 # case_input/<case>/user_defined_params.py's own committed `par.term` (what
@@ -265,49 +272,19 @@ UNSUPPORTED = {
     for c in _NAME_LIST if c not in PY_MPI_RANKS
 }
 
-# RELEASE_ONLY -- owner decision, 2026-09-23. These cells are SUPPORTED and
-# PASS: this is a suite-COST flag, never a correctness one, and it must never
-# be confused with UNSUPPORTED (see the consistency check at the bottom of
-# this module, which refuses a cell that is both). They leave the EVERYDAY
-# sweep (`run.py e2e`, run_e2e.py's default selection) and stay in the RELEASE
-# sweep (`run.py release`, run_e2e.py --release, rule 24's committed pre-tag
-# sweep) -- both at the SAME GATE_TERM_S; RELEASE_ONLY is a cell-selection
-# split, never a term split.
-#
-# Measured cost, cited: docs/perf_snapshots/e2e_cells_2026-09-23_132003_1651408.json
-# (sha ef7196c) and its matching docs/perf_ledger.jsonl rows (same sha,
-# ts_utc 2026-09-23T18:20:04Z, metric=cell-wall-clock) -- tpv36 x python-numpy
-# 1120.6555359363556 s wall, tpv37 x python-numpy 1109.9121885299683 s wall,
-# both at that run's term. Roughly 1110-1120 s is ~19 minutes per cell, twice
-# a day (unit+regression+e2e run constantly per the project README) -- the
-# cost this flag removes from the everyday loop.
-#
-# EVERYDAY COVERAGE IS NOT LOST for the python module these two cells
-# exercise: test.tpv36 x python-jax and test.tpv37 x python-jax stay in the
-# everyday sweep and run the SAME C_degen>3 wedge-degeneration path (same
-# meshgen.py/eqdyna python modules, same compset, only the backend differs)
-# -- so the wedge machinery itself is still exercised every day; only the
-# numpy BACKEND's own cell on these two specific cases moves to release-only.
-RELEASE_ONLY = {
-    ('test.tpv36', 'python-numpy'): (
-        'release-only for COST, not correctness (2026-09-23): SUPPORTED and '
-        'PASSING, observed 1120.6555359363556s wall at sha ef7196c '
-        '(docs/perf_snapshots/e2e_cells_2026-09-23_132003_1651408.json, '
-        'docs/perf_ledger.jsonl). Moved out of the everyday sweep '
-        '(run.py e2e); stays in the release sweep (run.py release, rule 24). '
-        'Everyday coverage of the C_degen>3 wedge path is preserved via '
-        'test.tpv36 x python-jax (same python modules).'
-    ),
-    ('test.tpv37', 'python-numpy'): (
-        'release-only for COST, not correctness (2026-09-23): SUPPORTED and '
-        'PASSING, observed 1109.9121885299683s wall at sha ef7196c '
-        '(docs/perf_snapshots/e2e_cells_2026-09-23_132003_1651408.json, '
-        'docs/perf_ledger.jsonl). Moved out of the everyday sweep '
-        '(run.py e2e); stays in the release sweep (run.py release, rule 24). '
-        'Everyday coverage of the C_degen>3 wedge path is preserved via '
-        'test.tpv37 x python-jax (same python modules).'
-    ),
-}
+# RELEASE_ONLY -- RETIRED 2026-09-23 (owner decision, same session as the
+# numpy-axis removal above). Its only two occupants ever were
+# ('test.tpv36', 'python-numpy') and ('test.tpv37', 'python-numpy') -- a
+# suite-COST flag that existed solely to move an expensive numpy cell out of
+# the everyday sweep. With python-numpy gone from BACKENDS entirely, both
+# occupants are gone with it (a stale entry here would fail the import-time
+# consistency check the same way a stale MEASURED_PEAK_RSS_GB key would), so
+# the flag itself is deleted rather than kept empty as dead state. There is
+# now no cell held out of the everyday sweep for cost: `run.py e2e` and
+# `run.py release` select the identical cell set (see
+# run_e2e.py's `select()`, which keeps --release as the rule-24
+# evidence-writing mode -- docs/evidence/sweep-<sha>/summary.json -- not as a
+# wider cell selection anymore).
 
 # MEASURED_PEAK_RSS_GB stays as measured evidence -- it is what the RELEASE
 # tier's evidence artifact and the local `run.py all`/`run.py release` sweeps
@@ -321,7 +298,12 @@ RELEASE_ONLY = {
 MEASURED_PEAK_RSS_GB = {
     # Full-length runs, one case at a time on the 64-core development box,
     # measured with `/usr/bin/time -v` (exact peak) unless noted otherwise.
-    ('test.tpv8', 'python-numpy'): 1.45,   # 62.5 s wall
+    # python-numpy rows retired 2026-09-23 with the backend axis itself
+    # (owner decision) -- a stale key here would fail this module's own
+    # import-time consistency check (every key must be in CASES x BACKENDS).
+    # The historical numbers (tpv8 1.45 GB/62.5s, meng2023a 2.545 GB/313.4s,
+    # meng2023cb 2.543 GB/419.7s, tpv29 2.705 GB/1711.0s, tpv36 2.91 GB/
+    # 1415.9s, tpv37 2.91 GB/95.4s) are in git history, not reproduced here.
     ('test.tpv8', 'python-jax'): 1.91,     # 30.7 s wall
     ('test.tpv104', 'python-jax'): 3.42,
     ('test.tpv10', 'python-jax'): 3.23,
@@ -331,25 +313,18 @@ MEASURED_PEAK_RSS_GB = {
     ('test.drv.a6', 'python-jax'): 9.57,
     # Each of these also PASSED its bound on this same run
     # (testsys.compare.compare_cell), not just produced a number:
-    # meng2023a numpy/jax 4.628301e-09/3.229082e-09, meng2023cb numpy/jax
-    # 5.054473e-09/4.395842e-09, tpv29 numpy/jax 9.876230e-15/1.276548e-13,
-    # all against THRESHOLD=1e-3.
-    ('test.meng2023a', 'python-numpy'): 2.545,    # 313.4 s wall
+    # meng2023a jax 3.229082e-09, meng2023cb jax 4.395842e-09, tpv29 jax
+    # 1.276548e-13, all against THRESHOLD=1e-3.
     ('test.meng2023a', 'python-jax'): 4.025,      # 70.7 s wall
-    ('test.meng2023cb', 'python-numpy'): 2.543,   # 419.7 s wall
     ('test.meng2023cb', 'python-jax'): 4.020,     # 65.1 s wall
-    ('test.tpv29', 'python-numpy'): 2.705,   # 1711.0 s wall -- by far the
+    ('test.tpv29', 'python-jax'): 4.052,     # 198.0 s wall -- by far the
                                               # most expensive cell in the
-                                              # table; isolated in its own CI
-                                              # job (e2e-ci-python-tpv29).
-    ('test.tpv29', 'python-jax'): 4.052,     # 198.0 s wall
+                                              # table.
     # Peak RSS is a SETUP-time property here, not a full-run one: a
     # truncated par.term=0.3 (28 steps) run peaked within 0.09% of the
     # full-length (par.term=6, 556 steps) run it stands in for -- jax needs
     # at least one full post-compile step; 28 is comfortably enough.
-    ('test.tpv36', 'python-numpy'): 2.91,   # 1415.9 s wall (full run, ground truth)
     ('test.tpv36', 'python-jax'): 4.34,     # 38.6 s wall (truncated, validated method)
-    ('test.tpv37', 'python-numpy'): 2.91,   # 95.4 s wall (truncated, validated method)
     ('test.tpv37', 'python-jax'): 4.20,     # 30.1 s wall (truncated, validated method)
     # python-jax-mpi, test.tpv8, 4 ranks: SUM of per-rank RSS, sampled every
     # 5 s (not /usr/bin/time -v -- that tool's getrusage(RUSAGE_CHILDREN)
@@ -393,8 +368,9 @@ JAX_MEASURED_CORES = 2.52
 # CI no longer runs the e2e sweep for physics coverage; that job is the local/
 # release tiers' now (`run.py e2e`, `run.py release`, both at GATE_TERM_S --
 # there is only one term). CI's remaining e2e job is a SMOKE TEST: one case,
-# all three backend IMPLEMENTATIONS, at GATE_TERM_S (5 s), whose purpose is
-# portability -- a clean checkout, fresh-installed dependencies, and (for the
+# both remaining backend IMPLEMENTATIONS (fortran, python-jax), at
+# GATE_TERM_S (5 s), whose purpose is portability -- a clean checkout,
+# fresh-installed dependencies, and (for the
 # fortran cell) the RUNNER's own mpich rather than this box's Open MPI 4.1.1
 # -- not physics regression. test.tpv8 is the smallest gated case, and its one
 # committed frt.canonical.txt is simply THE reference -- there is no second
@@ -402,13 +378,19 @@ JAX_MEASURED_CORES = 2.52
 #
 # Physics coverage across the full case x backend table is now the job of the
 # WIDER tiers: `run.py e2e` (every case, run locally/on demand) and
-# `run.py release` (every case, RELEASE_ONLY included, the release gate,
-# PROJECT_RULES rule 15/16) -- both at the same GATE_TERM_S. Neither of those
-# is CI; CI's old 25-of-30-cell memory-driven selection over
-# MEASURED_PEAK_RSS_GB is retired along with the jobs that ran it.
+# `run.py release` (every case, the release gate, PROJECT_RULES rule 15/16)
+# -- both at the same GATE_TERM_S and, since RELEASE_ONLY's retirement
+# (2026-09-23), the same cell SET. Neither of those is CI; CI's old
+# 25-of-30-cell memory-driven selection over MEASURED_PEAK_RSS_GB is retired
+# along with the jobs that ran it.
+#
+# BACKEND AXIS (2026-09-23, same owner decision that removed python-numpy
+# from BACKENDS): the smoke set is test.tpv8 x every remaining backend
+# IMPLEMENTATION -- fortran, python-jax. python-jax-mpi stays the per-case
+# opt-in execution MODE it always was (see PY_MPI_RANKS above) and is not a
+# third CI_CELLS row.
 CI_CELLS = (
     ('test.tpv8', 'fortran'),
-    ('test.tpv8', 'python-numpy'),
     ('test.tpv8', 'python-jax'),
 )
 
@@ -468,16 +450,10 @@ def cells(cases=None, backends=None):
     return runnable, unsupported
 
 
-def coverage_report(runnable, declared_unsupported, selection_label,
-                    release_only=()):
+def coverage_report(runnable, declared_unsupported, selection_label):
     """The lines a run prints BEFORE it starts, so its own output states
     exactly what it is about to cover. Requirement zero of this sweep: a green
-    result must never be readable as broader than it is.
-
-    release_only: (case, backend, reason) triples held back from THIS
-    selection by RELEASE_ONLY (the everyday/release cost split, 2026-09-23).
-    Printed on their own line -- never silently absent -- and excluded from
-    'NOT in this selection' (they were considered and named, not skipped)."""
+    result must never be readable as broader than it is."""
     total = len(CASES) * len(BACKENDS)
     selected = len(runnable) + len(declared_unsupported)
     lines = [
@@ -495,37 +471,13 @@ def coverage_report(runnable, declared_unsupported, selection_label,
                  % len(declared_unsupported))
     for c, b, reason in declared_unsupported:
         lines.append('  %-16s %-13s %s' % (c, b, reason))
-    lines.append('release-only (not run in this everyday sweep): %d cell(s)%s'
-                 % (len(release_only),
-                    (': ' + ', '.join('%s x %s' % (c, b)
-                                      for c, b, _ in release_only))
-                    if release_only else ''))
-    for c, b, reason in release_only:
-        lines.append('  %-16s %-13s %s' % (c, b, reason))
-    chosen = (set(runnable) | set((c, b) for c, b, _ in declared_unsupported)
-              | set((c, b) for c, b, _ in release_only))
+    chosen = set(runnable) | set((c, b) for c, b, _ in declared_unsupported)
     not_selected = [(c, b) for c in CASES for b in BACKENDS if (c, b) not in chosen]
     lines.append('NOT in this selection, %d cell(s)%s'
                  % (len(not_selected),
                     (': ' + ', '.join('%s x %s' % cb for cb in not_selected))
                     if not_selected else ''))
     return lines
-
-
-def everyday_cells(cases=None, backends=None):
-    """(runnable, declared_unsupported, release_only) for the EVERYDAY sweep
-    (run.py e2e / run_e2e.py's default selection): matrix.cells() minus
-    RELEASE_ONLY, with the held-back cells returned separately so a caller can
-    print them rather than let them go silently absent (see coverage_report
-    above). matrix.cells() itself is UNCHANGED and remains the RELEASE
-    selection (every supported cell, RELEASE_ONLY included) -- this function
-    is strictly additive. Both selections run at the same GATE_TERM_S; this
-    split is about which CELLS run, never about which term."""
-    runnable, unsupported = cells(cases, backends)
-    release_only = [(c, b, RELEASE_ONLY[(c, b)]) for (c, b) in runnable
-                    if (c, b) in RELEASE_ONLY]
-    runnable = [(c, b) for (c, b) in runnable if (c, b) not in RELEASE_ONLY]
-    return runnable, unsupported, release_only
 
 
 # --- consistency, enforced at import time -------------------------------------
@@ -566,12 +518,5 @@ for (_c, _b) in list(UNSUPPORTED) + list(CI_CELLS):
 for (_c, _b) in list(MEASURED_PEAK_RSS_GB):
     if _c not in CASES or _b not in BACKENDS:
         raise RuntimeError('measurement for unknown cell %r x %r' % (_c, _b))
-for (_c, _b) in list(RELEASE_ONLY):
-    if _c not in CASES or _b not in BACKENDS:
-        raise RuntimeError('RELEASE_ONLY entry for unknown cell %r x %r'
-                           % (_c, _b))
-    if (_c, _b) in UNSUPPORTED:
-        raise RuntimeError(
-            '%s x %s is both RELEASE_ONLY and UNSUPPORTED -- release-only '
-            'means "supported, cost-deferred to the release tier", not '
-            '"does not work"; a cell cannot honestly claim both.' % (_c, _b))
+# RELEASE_ONLY's own consistency check retired with the flag itself
+# (2026-09-23) -- there is nothing left to validate.

@@ -210,7 +210,7 @@ def test_fortran_cell_fails_when_plotruptureDynamics_output_is_missing(tmp_path)
 
 def test_python_cell_compares_frt_only(tmp_path):
     shutil.copy(compare.reference_path('test.tpv8'), str(tmp_path / 'frt.txt0'))
-    ok, lines = compare.compare_cell('test.tpv8', 'python-numpy', str(tmp_path))
+    ok, lines = compare.compare_cell('test.tpv8', 'python-jax', str(tmp_path))
     assert ok, lines
     assert not any('fault.dyna.r.nc' in line for line in lines)
 

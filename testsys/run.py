@@ -5,8 +5,8 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
     python3 testsys/run.py unit          # fast pure-python unit tests (pytest, no MPI/Fortran)
     python3 testsys/run.py regression    # one guard per past incident (rule 10)
     python3 testsys/run.py e2e           # THE test: the everyday case x backend sweep vs test.reference.results/, at matrix.GATE_TERM_S (rule 7)
-    python3 testsys/run.py e2e-ci        # the same sweep, restricted to matrix.CI_CELLS (2026-09-23: one case x 3 backends, portability smoke)
-    python3 testsys/run.py release       # THE test, over every supported cell (everyday cells + matrix.RELEASE_ONLY): the release gate, writes docs/evidence/sweep-<sha>/summary.json
+    python3 testsys/run.py e2e-ci        # the same sweep, restricted to matrix.CI_CELLS (2026-09-23: one case x 2 backends -- fortran, python-jax -- portability smoke)
+    python3 testsys/run.py release       # THE test, over every supported cell (currently the same cells as `e2e` -- matrix.RELEASE_ONLY was retired 2026-09-23): the release gate, writes docs/evidence/sweep-<sha>/summary.json
     python3 testsys/run.py e2e-full      # SCEC cases at spec dx/term, 16 ranks, report-only (opt-in; hours)
     python3 testsys/run.py gpu           # the sweep's python-jax column on CUDA (one cell; needs a GPU)
     python3 testsys/run.py perf          # pinned single-core Fortran/NumPy/JAX timing, ratio-guarded
@@ -17,11 +17,14 @@ There is also ONE term (2026-09-23 owner decision, superseding a same-day
 earlier two-term design): every cell of every selection -- `e2e`, `e2e-ci`,
 `release` alike -- runs at matrix.GATE_TERM_S (5 s), applied through the ONE
 existing override path regardless of a case's own committed par.term.
-`release` differs from `e2e` only in which CELLS run: every supported cell
-(everyday cells + matrix.RELEASE_ONLY, run_e2e.py's `--release` selector), not
-a different term -- and it is the tier that gates a release (PROJECT_RULES
-rule 15/16). CI runs e2e-ci ONLY; `release` is a human- or conductor-scheduled
-tier, the same as the old `run.py all`'s e2e slice was.
+`release` is run_e2e.py's `--release` selector: it is the tier that gates a
+release (PROJECT_RULES rule 15/16) and writes docs/evidence/sweep-<sha>/
+summary.json (rule 24), currently over the SAME cell set as `e2e` --
+matrix.RELEASE_ONLY, the mechanism that used to widen it, was retired
+2026-09-23 (its only two occupants were both python-numpy cells, removed
+along with the backend axis itself). CI runs e2e-ci ONLY; `release` is a
+human- or conductor-scheduled tier, the same as the old `run.py all`'s e2e
+slice was.
 
 Two tiers that used to sit beside it are gone, for the same reason each time:
 they were a SECOND way of asking a question e2e already answers, and a second
@@ -92,31 +95,36 @@ def _e2e(*args):
 
 def run_e2e():
     """THE sweep, EVERYDAY selection (run_e2e.py's default, no flags): every
-    case minus matrix.RELEASE_ONLY, at matrix.GATE_TERM_S regardless of its
-    own committed par.term."""
+    supported case x backend cell, at matrix.GATE_TERM_S regardless of its
+    own committed par.term. (matrix.RELEASE_ONLY, which used to hold cells
+    back from this selection for cost, was retired 2026-09-23.)"""
     print('\n==== testsys: e2e ====')
     return _e2e()
 
 
 def run_e2e_ci():
     """The sweep restricted to matrix.CI_CELLS -- 2026-09-23 (owner-approved
-    test-methodology change): one case (test.tpv8), all three backend
-    implementations, at the gate term. Its job is portability (clean
-    checkout, fresh deps, a different MPI from this box's), not physics
-    coverage -- that job belongs to `e2e` and `release` now. This is a
-    declared selection, not a magic env var: the run prints which cells it
-    covered and which it did not."""
+    test-methodology change): one case (test.tpv8), both remaining backend
+    implementations (fortran, python-jax), at the gate term. Its job is
+    portability (clean checkout, fresh deps, a different MPI from this box's),
+    not physics coverage -- that job belongs to `e2e` and `release` now. This
+    is a declared selection, not a magic env var: the run prints which cells
+    it covered and which it did not."""
     print('\n==== testsys: e2e-ci ====')
     return _e2e('--ci')
 
 
 def run_release():
     """THE sweep, RELEASE selection (run_e2e.py --release): every supported
-    cell (everyday cells + matrix.RELEASE_ONLY), at the SAME matrix.GATE_TERM_S
-    as every other selection -- this tier widens which CELLS run, not the
-    term. This is the release gate (PROJECT_RULES rule 15/16) -- the tier
-    `run.py all`'s e2e slice used to be before CI stopped running the wider
-    sweep. Run over the full default selection (no --cases/--backends), it
+    cell, at the SAME matrix.GATE_TERM_S as every other selection. This is the
+    release gate (PROJECT_RULES rule 15/16) -- the tier `run.py all`'s e2e
+    slice used to be before CI stopped running the wider sweep. Currently
+    selects the SAME cells as `e2e` (matrix.RELEASE_ONLY, the mechanism that
+    used to widen this selection beyond the everyday one, was retired
+    2026-09-23 along with the python-numpy backend axis -- its only two
+    occupants were both python-numpy cells); kept as its own flag because it
+    is also the deliberate pre-tag/evidence invocation, not merely a cell
+    filter. Run over the full default selection (no --cases/--backends), it
     also writes docs/evidence/sweep-<shortsha>/summary.json
     (run_e2e.write_release_evidence).
 
@@ -187,8 +195,9 @@ RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
 # selection) -- perf requires a Fortran build and a generated baseline that a
 # fresh checkout does not have; it is opt-in, invoked by name, not swept into
 # 'all'. e2e-ci and gpu are SELECTIONS of e2e, not tiers of their own;
-# `release` is the wider (everyday + RELEASE_ONLY) selection of the same one
-# sweep, at the SAME GATE_TERM_S, likewise not a second implementation. 'all'
+# `release` is the same-cells (2026-09-23: RELEASE_ONLY retired), same-term
+# selection of the same one sweep, kept as its own flag for the pre-tag
+# evidence artifact it writes, not for a second implementation. 'all'
 # runs the everyday sweep; CI runs e2e-ci (2026-09-23: a one-case portability
 # smoke, not physics coverage); `release` is the human-/conductor-scheduled
 # release gate, whose narrower or wider coverage the sweep itself prints
