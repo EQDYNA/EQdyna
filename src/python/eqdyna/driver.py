@@ -148,7 +148,8 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
         force = B.setat(xp, force, slice(None), 0.0)         # driver.f90:23
         force, stress_i, s_p = KU.assembleGlobalKU(
             xp, inv, velArr, force, stress_i, s_p, dt, rdampk, scratch)
-        force = KU.calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk)
+        force = KU.calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk,
+                                       scratch)
 
         # part_a ENDS HERE, at driver.f90:27 -- the seam each caller closes
         # with its own MPI4NodalQuant (make_step's backend.nodal_sync,

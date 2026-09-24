@@ -255,7 +255,8 @@ def alloc_scratch(xp, inv):
     if B.is_jax(xp):
         return None
     return dict(stage=np.empty((inv['E'], 8)),
-                stage_p=np.empty((4, inv['Ep'], 8)))
+                stage_p=np.empty((4, inv['Ep'], 8)),
+                stage_hg=np.empty((inv['E'], 8)))
 
 
 def assembleGlobalKU(xp, inv, velArr, force, stress_i, s_p, dt, rdampk, scratch):
@@ -493,7 +494,7 @@ def _pml(xp, inv, velArr, force, s_p, rdampk, scratch):
     return force, s_p
 
 
-def calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk):
+def calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk, scratch=None):
     """calcHourglassResist.f90 -- KF78 hourglass control, C_hg==1, all
     elements.
 
@@ -504,12 +505,24 @@ def calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk):
 
     The four modes' accumulation order is _fuse_modes's declared divergence
     and the contraction spelling is _contract_modes's -- see both.
-    """
+
+    `scratch` (numpy only; None on jax, and None is also a fully valid
+    numpy call -- old callers that predate this parameter still get the
+    functional path below) reuses ONE (E,8) buffer, `scratch['stage_hg']`,
+    across all 12 (4 modes x 3 dims) blocks per step instead of allocating
+    a fresh one each time -- the same technique assembleGlobalKU's `stage`/
+    `stage_p` buffers already use, on the same reasoning (mul_into's
+    docstring): `np.multiply(a, b, out=buf)` then `np.negative(buf,
+    out=buf)` is the SAME two roundings as `-(a * b)` (a plain multiply,
+    then a sign-bit flip), just not reallocated. See NOTES_numpy_drva6_perf.md
+    for the measured before/after ms/step and the sha256 parity check this
+    was gated on."""
     conn = inv['conn']; phi = inv['phi']; ss = inv['ss']
     idxH = (inv['idxH0'], inv['idxH1'], inv['idxH2'])
     dl_all = (dispArr + rdampk * velArr)[conn]
 
     fuse = _fuse_modes(xp)
+    buf_hg = None if scratch is None else scratch.get('stage_hg')
     acc = [None, None, None]
     for m in range(4):
         phid = _contract_modes(xp, phi[:, m, :], dl_all)
@@ -527,11 +540,16 @@ def calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk):
             # on numpy (verified, full-output digests at steps 1/5/114) and
             # restores the form the jax column was originally written with;
             # under XLA the hoisted form was measurably NOT equivalent.
-            blk = -(phi[:, m, :] * r[d][:, None])
             if fuse:
+                blk = -(phi[:, m, :] * r[d][:, None])
                 acc[d] = blk if acc[d] is None else acc[d] + blk
-            else:
+            elif buf_hg is None:
+                blk = -(phi[:, m, :] * r[d][:, None])
                 force = B.scatter_add(xp, force, idxH[d], blk.ravel())
+            else:
+                np.multiply(phi[:, m, :], r[d][:, None], out=buf_hg)
+                np.negative(buf_hg, out=buf_hg)
+                force = B.scatter_add(xp, force, idxH[d], buf_hg.ravel())
     if fuse:
         for d in range(3):
             force = B.scatter_add(xp, force, idxH[d], acc[d].ravel())
