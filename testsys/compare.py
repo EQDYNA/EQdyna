@@ -367,6 +367,19 @@ def nstress_sign_gate(case, run_dir):
         return False, ['nsign: FAIL no buried on-fault station file '
                        '(faultst*dp<ddd>.txt, ddd > 0) in %s -- nothing to '
                        'check' % run_dir]
+    # Every on-fault station file, surface ones included, must carry data: a
+    # real station always has nonzero stress. An all-zero file is the phantom
+    # station eqdyna3d.f90's allocInitAfterMeshGen used to make a rank with no
+    # matched station write (faultst000dp000.txt, requested by nobody).
+    empty = []
+    for p in sorted(glob.glob(os.path.join(run_dir, 'faultst*.txt'))):
+        names, data = read_station_file(p)
+        if not np.any(data[:, 1:]):
+            empty.append(os.path.basename(p))
+    if empty:
+        return False, ['nsign: FAIL on-fault station file(s) with no nonzero '
+                       'value in any column: %s -- a phantom station, not a '
+                       'real one' % ', '.join(empty)]
     values, bad = [], []
     for p in buried:
         names, data = read_station_file(p)
