@@ -332,17 +332,16 @@ MEASURED_PEAK_RSS_GB = {
     # at least one full post-compile step; 28 is comfortably enough.
     ('test.tpv36', 'python-jax'): 4.34,     # 38.6 s wall (truncated, validated method)
     ('test.tpv37', 'python-jax'): 4.20,     # 30.1 s wall (truncated, validated method)
-    # python-jax-mpi, test.tpv8, 4 ranks: SUM of per-rank RSS, sampled every
-    # 5 s (not /usr/bin/time -v -- that tool's getrusage(RUSAGE_CHILDREN)
-    # does not aggregate mpirun's grandchildren, so it read 1.4 GB total on
-    # this same run, the single-rank figure, not the sum), this session
-    # 2026-09-21: per-rank samples peaked at 1345896/1426012/1424436/1404488
-    # KiB = 5.34 GB summed. A 5 s sampling interval is a LOWER BOUND on true
-    # peak, same caveat as test.drv.a6's 20 s sampling above -- and it is
-    # already 76% of a 7 GB runner with zero margin for the runner's other
-    # overhead, consistent with the ~7.6 GB extrapolated from the
-    # single-rank 1.91 GB figure two rows up. NOT added to CI_CELLS.
-    ('test.tpv8', 'python-jax-mpi'): 5.34,
+    # python-jax-mpi, test.tpv8, 4 ranks: SUM of per-rank peak RSS.
+    # RE-MEASURED 2026-09-24 for item 64 (rank-local boxes, (2,2,1)): each
+    # rank wrapped in `/usr/bin/time -f %M` under mpirun (the process's own
+    # getrusage maxrss, not a sampled poll): 805 MB max rank, 3.10 GB summed,
+    # full 5 s gate term. The SAME method on the pre-item-64 1D
+    # build-then-restrict code, same session: 1193 MB max, 4.65 GB summed.
+    # (The 5.34 GB this row carried before was a 5 s-interval RSS poll of the
+    # older code on 2026-09-21 -- a different instrument, kept in git history.)
+    # NOT added to CI_CELLS.
+    ('test.tpv8', 'python-jax-mpi'): 3.10,
 }
 CI_RUNNER_RAM_GB = 7.0
 

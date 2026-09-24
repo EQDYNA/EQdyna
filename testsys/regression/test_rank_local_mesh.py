@@ -31,6 +31,8 @@ serial fault index for masters), and requires
      and equations in the same order (what MPI4NodalQuant.handshake checks at
      run time), and the owned fault rows partition the serial fault exactly
   7. meshgen's global fault/equation censuses equal the serial counts
+  8. the zero-fault-node contract: how many ranks write a frt file and how
+     many hold no fault node, per decomposition, equal FRT_SHAPE's data
 
 Cases: test.tpv8 at its gated dx (planar, the opted-in MPI case), test.tpv10
 on a shrunken, y-symmetric domain (insertFaultType>0: the rough y-blend must
@@ -67,6 +69,20 @@ CASES = (
                     'ymax': 15.0e3, 'zmin': -20.0e3}, (2, 4, 8), ('xsplit', 'ydup')),
     ('test.tpv36', {'dx': 1000.0}, (2, 4, 8), ('xsplit', 'ydiv')),
 )
+# THE ZERO-FAULT-NODE CONTRACT, per decomposition, as MEASURED DATA (first run
+# of this guard, 2026-09-24): (ranks that write a frt file, ranks whose box
+# holds no fault node at all). The 3D split moves both numbers with the rank
+# count -- tpv8 has fault-free boxes from 4 ranks up, tpv36 only at 8, and
+# tpv10's y-symmetric domain at 4 ranks is the other shape: all four boxes
+# COMPUTE the fault (it lies on their shared y plane) and only the two lower
+# ones write it. A change to either number is a change to what the e2e cell's
+# PY_MPI_EXPECTED_FRT_FILES counts, so it must be made here deliberately.
+FRT_SHAPE = {
+    ('test.tpv8', 2): (2, 0), ('test.tpv8', 4): (2, 2), ('test.tpv8', 8): (4, 4),
+    ('test.tpv8', 16): (8, 8), ('test.tpv8', 32): (8, 24),
+    ('test.tpv10', 2): (2, 0), ('test.tpv10', 4): (2, 0), ('test.tpv10', 8): (4, 0),
+    ('test.tpv36', 2): (2, 0), ('test.tpv36', 4): (4, 0), ('test.tpv36', 8): (6, 2),
+}
 ELEM_KEYS = ('elemType', 'mat', 'eledet', 'eleshp', 'ss', 'phi', 'init_stress')
 FAULT_KEYS = ('un', 'us', 'ud', 'fric_init')
 REL = 1e-14
@@ -290,6 +306,12 @@ def check_case(case, overrides, rank_counts, must_reach, tmp):
         allown = np.sort(np.concatenate(owned)) if owned else np.zeros(0)
         _eq('owned fault rows partition the serial fault', allown, np.arange(S_s['nftnd']))
         files = sum(1 for o in owned if o.size)
+        empty = sum(1 for S in Ss if int(S['nftnd']) == 0)
+        if (files, empty) != FRT_SHAPE[(case, nranks)]:
+            raise AssertionError(
+                '%s at %d ranks: %d rank(s) write frt and %d hold no fault node; '
+                'FRT_SHAPE records %r' % (case, nranks, files, empty,
+                                          FRT_SHAPE[(case, nranks)]))
         print('    %2d ranks %r: %d ranks write frt, fault computed per rank %s, '
               'shared-plane max rel diff %.2e, arn paths %s'
               % (nranks, parts[0].dims, files, [int(s['nftnd']) for s in Ss], worst,

@@ -483,11 +483,13 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     """run_case's one-process-per-rank twin: Fortran's decomposition, jax
     owning the local element kernel (driver.run_mpi, MPI4NodalQuant.py).
 
-    Each rank writes `frt.txt<rank>` holding exactly the fault nodes it OWNS,
-    which is the same output shape a 4-rank Fortran run produces and what
-    testsys/frt_canonical.py already globs for -- so an N-rank python run is
-    compared against the SAME committed reference, through the same
-    canonicalisation, with no new comparison path.
+    Each rank builds only its own box (MPI4NodalQuant.DECOMP, Fortran's
+    split) and writes `frt.txt<rank>` holding exactly the fault nodes it OWNS
+    (the lowest rank holding each), which testsys/frt_canonical.py already
+    globs for -- so an N-rank python run is compared against the SAME
+    committed reference, through the same canonicalisation, with no new
+    comparison path. (Fortran writes every fault node a rank holds, so its
+    shared-plane nodes appear twice; this port writes each once.)
 
     Returns (path, report) -- the report carries this rank's element counts,
     halo size and ms/step, which every multi-rank measurement must print."""

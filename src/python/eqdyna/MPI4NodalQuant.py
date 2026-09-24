@@ -205,14 +205,15 @@ def handshake(comm, part, faces, meshCoor):
     equality. This is the replacement for the global-id symmetry check the
     build-then-restrict design had: without it a transposed loop on one side
     would sum the wrong partials and nothing downstream could attribute it.
-    `meshCoor` is the 1-indexed (N+1, 3) builder array."""
+    `meshCoor` is the 1-indexed (N+1, 3) builder array. Tags 70000+ sit
+    above every MPI4NodalQuant tag (at most 20000*3 + rank)."""
     for f in faces:
         mine = np.concatenate((np.array([f['nodes'].size, f['eqs'].size], dtype=np.float64),
                                f['eqs_per_node'].astype(np.float64),
                                meshCoor[f['nodes']].ravel()))
         n_theirs = np.empty(1)
-        comm.Sendrecv(np.array([float(mine.size)]), dest=f['nb'], sendtag=30000 + part.rank,
-                      recvbuf=n_theirs, source=f['nb'], recvtag=30000 + f['nb'])
+        comm.Sendrecv(np.array([float(mine.size)]), dest=f['nb'], sendtag=70000 + part.rank,
+                      recvbuf=n_theirs, source=f['nb'], recvtag=70000 + f['nb'])
         if int(n_theirs[0]) != mine.size:
             raise RuntimeError(
                 'MPI4NodalQuant.handshake: rank %d face %d carries %d values, '
@@ -220,8 +221,8 @@ def handshake(comm, part, faces, meshCoor):
                 'same shared plane.' % (part.rank, f['k'] + 1, mine.size, f['nb'],
                                         int(n_theirs[0])))
         theirs = np.empty_like(mine)
-        comm.Sendrecv(mine, dest=f['nb'], sendtag=31000 + part.rank, recvbuf=theirs,
-                      source=f['nb'], recvtag=31000 + f['nb'])
+        comm.Sendrecv(mine, dest=f['nb'], sendtag=71000 + part.rank, recvbuf=theirs,
+                      source=f['nb'], recvtag=71000 + f['nb'])
         if not np.array_equal(mine, theirs):
             nbad = int(np.count_nonzero(mine != theirs))
             raise RuntimeError(
@@ -274,8 +275,8 @@ def setup_exchange(comm, part, S, mesh):
     """Everything the Fortran exchanges at SETUP, in its order, then the
     per-step plan:
 
-      MPI4arn (meshgen.f90:156)        -- arn, with the DIVIDE/DUPLICATE rule
       handshake                        -- the shared planes really are shared
+      MPI4arn (meshgen.f90:156)        -- arn, with the DIVIDE/DUPLICATE rule
       MPI4NodalQuant(nodalMassArr, 3)  -- assembleGlobalMass.f90:41
       MPI4NodalQuant(fnms, 1)          -- assembleGlobalMass.f90:42
 
@@ -284,9 +285,12 @@ def setup_exchange(comm, part, S, mesh):
     n_local = mesh['n_local']
     arn1 = mesh['arn1']
     flt_lists = mesh['flt_lists']
-    flt_mpi = meshgen.mpi4arn(comm, part, arn1, flt_lists, mesh['fault_box'])
+    flt_mpi = meshgen.flt_mpi_flags(part, flt_lists)
     faces = build_faces(part, n_local, S['ndof'], S['eq_ids'], flt_lists, flt_mpi)
     handshake(comm, part, faces, mesh['meshCoor'])
+    if meshgen.mpi4arn(comm, part, arn1, flt_lists, mesh['fault_box']) != flt_mpi:
+        raise RuntimeError('MPI4NodalQuant.setup_exchange: MPI4arn set fltMPI '
+                           'differently from the plan it was built against')
     mass1, fnms1 = mesh['mass1'], mesh['fnms1']
     relay(comm, part, faces, 'eqs', mass1, 3)
     relay(comm, part, faces, 'nodes', fnms1, 1)
