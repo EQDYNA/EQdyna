@@ -80,9 +80,8 @@ def main():
 
     # table completeness: every case one way, every selected file committed
     for c in matrix.CASES:
-        if (c in matrix.STATION_BOUND) == (c in matrix.STATION_UNSUPPORTED_CASES):
-            fails.append('%s resolves the station gate %s ways' % (
-                c, 'two' if c in matrix.STATION_BOUND else 'zero'))
+        if c not in matrix.STATION_BOUND:
+            fails.append('%s has no STATION_BOUND' % c)
         for kind in ('on', 'off'):
             for fn in matrix.GATE_STATIONS[c][kind]:
                 try:
@@ -110,6 +109,10 @@ def main():
         d[:, c] = -d[:, c]
         return d
 
+    def nan_sample(names, d):
+        d[len(d) // 2, names.index('h-slip-rate')] = float('nan')
+        return d
+
     def tshift(names, d):
         d[:, 0] += 1e-3
         return d
@@ -134,6 +137,8 @@ def main():
         ('MUTATION time axis shifted 1 ms', tshift, False),
         ('MUTATION one row dropped', lambda n, d: d[:-1], False),
         ('MUTATION selected file missing', 'delete', False),
+        ('MUTATION one NaN sample', nan_sample, False),
+        ('MUTATION field-name line changed', 'rename', False),
         ('MUTATION 1e-3 in an identically-zero column', zero_col(1e-3), False, ZCASE),
         ('below floor: 1e-12 in an identically-zero column', zero_col(1e-12), True, ZCASE),
     ]
@@ -151,6 +156,10 @@ def main():
             target = matrix.GATE_STATIONS[case]['on'][0]
             if fun == 'delete':
                 os.remove(os.path.join(run, target))
+            elif fun == 'rename':
+                p = os.path.join(run, target)
+                names, d = compare.read_station_file(p)
+                write_station(p, header_of(p), names[:-1] + ['n-stress-renamed'], d)
             elif fun is not None:
                 mutate(run, target, fun)
             got, lines = compare.station_gate(case, run)

@@ -262,22 +262,26 @@ STATION_BOUND = {
     'test.tpv30': 1e-10,     # 2.44e-13 (on v-slip-rate, 170dp045) -> 3.0e-11
     'test.tpv36': 1e-6,      # 1.16e-10 (off h-vel, body010st000dp000) -> 1.4e-8
     'test.tpv37': 1e-6,      # 1.16e-10 (off h-vel, body010st000dp000) -> 1.4e-8
+    # drv.a6: the FORTRAN cell only (python-jax is STATION_UNSUPPORTED,
+    # chaotic). Observed 0.0 -- 4-rank Fortran is deterministic against its
+    # own reference -- so the smallest bound in use, 1e-10.
+    'test.drv.a6': 1e-10,
 }
 
-# STATION_UNSUPPORTED_CASES -- cases whose station comparison is refused
+# STATION_UNSUPPORTED -- (case, backend) cells whose station comparison is refused
 # outright, with the MEASURED reason (never "not yet looked at"). Checked by
 # compare.station_gate, which raises rather than silently skip if asked to
 # gate one of these.
-STATION_UNSUPPORTED_CASES = {
-    'test.drv.a6': (
+STATION_UNSUPPORTED = {
+    ('test.drv.a6', 'python-jax'): (
         'measured chaotic (2026-09-24, wei/row114-station-output at master '
         '9444d9a): python-jax scores e=36.5 against the fortran reference, '
         "on faultst000dp075's h-slip-rate -- one backend has ruptured the "
         'station inside the 5 s window and the other has not, the same '
         'arrival bistability DRV_A6/flip-budget exists for at the frt level. '
         'Whole-file worst e=0.78 (v-shear-stress). No scalar bound is '
-        'meaningful here, so none is set. Its Fortran station files are '
-        'still written and sign-checked (nsign).'
+        'meaningful across backends. The fortran cell IS gated (deterministic, '
+        'e=0.0 against its own reference) and both cells are sign-checked.'
     ),
 }
 
@@ -753,8 +757,8 @@ def coverage_report(runnable, declared_unsupported, selection_label):
                          % (c, b, STATION_ARTIFACT_UNSUPPORTED_REASON[(c, b)]))
     art_gaps = [('nc', c, b, NC_UNSUPPORTED[(c, b)]) for c, b in runnable
                 if (c, b) in NC_UNSUPPORTED]
-    art_gaps += [('station', c, b, STATION_UNSUPPORTED_CASES[c]) for c, b in runnable
-                 if 'station' in ARTIFACTS[b] and c in STATION_UNSUPPORTED_CASES]
+    art_gaps += [('station', c, b, STATION_UNSUPPORTED[(c, b)]) for c, b in runnable
+                 if (c, b) in STATION_UNSUPPORTED]
     if art_gaps:
         lines.append('artifact comparison declared UNSUPPORTED on %d runnable '
                      'cell(s) -- the cell runs, this artifact is not gated:'
@@ -822,9 +826,9 @@ for (_c, _b) in list(MEASURED_PEAK_RSS_GB):
 # RELEASE_ONLY's own consistency check retired with the flag itself
 # (2026-09-23) -- there is nothing left to validate.
 
-# Every case must resolve the station gate exactly one way: a GATE_STATIONS
-# entry (with a real STATION_BOUND) XOR a STATION_UNSUPPORTED_CASES entry.
-# Neither, or both, is a case this table lost track of.
+# Every case has a GATE_STATIONS entry and ONE finite STATION_BOUND; a cell
+# that cannot be compared is declared per (case, backend) in
+# STATION_UNSUPPORTED, never per case.
 if set(GATE_STATIONS) != set(CASES):
     raise RuntimeError(
         'testsys/matrix.py GATE_STATIONS must name every case: missing %r, '
@@ -835,18 +839,18 @@ for _c, _kinds in GATE_STATIONS.items():
         raise RuntimeError(
             "%s's GATE_STATIONS entry must carry a non-empty 'on' and a "
             "non-empty 'off' tuple, got %r" % (_c, sorted(_kinds)))
-_bounded = set(STATION_BOUND)
-_chaotic = set(STATION_UNSUPPORTED_CASES)
-if _bounded & _chaotic:
-    raise RuntimeError('%r carry BOTH a STATION_BOUND and a '
-                       'STATION_UNSUPPORTED_CASES entry -- one gate per case'
-                       % sorted(_bounded & _chaotic))
-_unresolved = set(CASES) - _bounded - _chaotic
-if _unresolved:
+if set(STATION_BOUND) != set(CASES) or not all(
+        isinstance(v, float) and 0.0 < v < float('inf') for v in STATION_BOUND.values()):
     raise RuntimeError(
-        'testsys/matrix.py: %r have a GATE_STATIONS entry but neither a '
-        'STATION_BOUND nor a STATION_UNSUPPORTED_CASES entry -- every case '
-        'must resolve the station gate one way or the other' % sorted(_unresolved))
+        'testsys/matrix.py STATION_BOUND must give every case one finite, '
+        'positive bound: missing %r, unknown %r, bad %r'
+        % (sorted(set(CASES) - set(STATION_BOUND)), sorted(set(STATION_BOUND) - set(CASES)),
+           sorted(c for c, v in STATION_BOUND.items()
+                  if not (isinstance(v, float) and 0.0 < v < float('inf')))))
+for (_c, _b) in STATION_UNSUPPORTED:
+    if _c not in CASES or 'station' not in ARTIFACTS.get(_b, ()):
+        raise RuntimeError('STATION_UNSUPPORTED entry for %r x %r names no '
+                           'station cell' % (_c, _b))
 if {c for c, b in STATION_ARTIFACT_UNSUPPORTED_REASON if b == 'python-jax-mpi'} != set(PY_MPI_RANKS):
     raise RuntimeError('STATION_ARTIFACT_UNSUPPORTED_REASON must declare the '
                        'station gap for exactly the PY_MPI_RANKS cases')

@@ -505,19 +505,13 @@ def station_gate(case, run_dir):
     'off'), checks field names/column count/time axis (rule 2: never an
     interpolation), computes the case-level scale S_q per (kind, column) and
     the normalized error e_q = diff/max(S_q, FLOOR), and gates every e_q
-    against the ONE matrix.STATION_BOUND[case] (rule 5). Raises for a case in
-    matrix.STATION_UNSUPPORTED_CASES -- asking this gate to run on a case
-    declared unsupported is a caller bug (matrix.compare_cell must not do
-    it), not a check that quietly returns True."""
-    if case in matrix.STATION_UNSUPPORTED_CASES:
-        raise ValueError(
-            'station_gate: %s is in matrix.STATION_UNSUPPORTED_CASES (%s) -- '
-            'the caller must not gate it, not call this and hope for a pass'
-            % (case, matrix.STATION_UNSUPPORTED_CASES[case]))
+    against the ONE matrix.STATION_BOUND[case] (rule 5). A cell declared in
+    matrix.STATION_UNSUPPORTED is handled by compare_cell, which never calls
+    this for it."""
     bound = matrix.STATION_BOUND[case]
     kinds = matrix.GATE_STATIONS[case]
     worst = (0.0, None)
-    lines = []
+    lines, bad_cols = [], []
     for kind, files in kinds.items():
         names = None
         ref_datas, run_datas = [], []
@@ -543,9 +537,14 @@ def station_gate(case, run_dir):
                 % (kind, names[col], S_q,
                    ' (FLOOR-clamped)' if floor_used else '', worst_diff, e,
                    bound, 'ok' if e <= bound else 'FAIL'))
-            if e > worst[0]:
+            if not e <= bound:
+                # `not e <= bound`, never `e > bound`: a NaN anywhere in a
+                # run's column makes e NaN, and NaN > bound is False -- the
+                # form that read a NaN station as green.
+                bad_cols.append('%s %s at %s' % (kind, names[col], files[worst_i]))
+            if e > worst[0] or np.isnan(e):
                 worst = (e, '%s %s at %s' % (kind, names[col], files[worst_i]))
-    ok = bool(worst[0] <= bound)
+    ok = not bad_cols
     header = ('station: %d on-fault + %d off-fault file(s), worst e=%.4e '
               'bound=%.1e (%s)%s'
              % (len(kinds['on']), len(kinds['off']), worst[0], bound,
@@ -585,10 +584,10 @@ def compare_cell(case, backend, run_dir):
             # unsupported): here the CELL runs and is gated on everything
             # else it carries; only this one artifact, for this one case, is
             # declared uncheckable, with the measured reason printed.
-            if case in matrix.STATION_UNSUPPORTED_CASES:
+            if (case, backend) in matrix.STATION_UNSUPPORTED:
                 a_ok, a_lines = True, [
-                    'station: DECLARED UNSUPPORTED for %s -- %s'
-                    % (case, matrix.STATION_UNSUPPORTED_CASES[case])]
+                    'station: DECLARED UNSUPPORTED for %s x %s -- %s'
+                    % (case, backend, matrix.STATION_UNSUPPORTED[(case, backend)])]
             else:
                 a_ok, a_lines = station_gate(case, run_dir)
         else:
