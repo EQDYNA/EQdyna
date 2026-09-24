@@ -777,19 +777,57 @@ def _capture_perf(results, label, device, budget):
 _MAX_DIFF_RE = re.compile(r'max\|diff\|=([0-9.eE+-]+)')
 
 
-def write_release_evidence(results, is_release, explicit, started_utc, finished_utc):
+def capture_start_tree_state():
+    """git status --porcelain captured at the very start of the sweep (main(),
+    before Gate 0, before the build, before the test/ rotation) -- i.e. before
+    this process writes anything at all.
+
+    This is the ONLY correct place to answer "was the tree already dirty
+    coming into this run". Captured at the END instead (the prior bug), the
+    reading is contaminated by the sweep's OWN writes: docs/perf_ledger.jsonl
+    (appended to every run), docs/perf_snapshots/e2e_cells_*.json (a new file
+    every run) and docs/evidence/sweep-<sha>/ (a new directory every release
+    run) are all tracked paths -- none is in .gitignore -- so `git status
+    --porcelain` at the end of any real sweep is never empty. Proof:
+    docs/evidence/sweep-679d8ad/summary.json, committed in f9c055e, reads
+    tree_clean: False from a run whose `git status --porcelain` was 0 lines
+    when it STARTED.
+
+    Capturing here also makes moot any question of EXCLUDING the sweep's own
+    output paths from the porcelain diff: snapshotted before those paths are
+    touched, they cannot appear in this snapshot regardless of whether they
+    are later written, so there is nothing to exclude.
+
+    Returns (tree_clean, dirty_lines): dirty_lines is the raw porcelain
+    output, one entry per path, empty if clean -- so a dirty-at-start run
+    names its files instead of just reporting False."""
+    status_r = subprocess.run(['git', '-C', REPO_ROOT, 'status', '--porcelain'],
+                              capture_output=True, text=True)
+    dirty_lines = [ln for ln in status_r.stdout.splitlines() if ln.strip()]
+    return (len(dirty_lines) == 0), dirty_lines
+
+
+def write_release_evidence(results, is_release, explicit, started_utc,
+                           finished_utc, tree_clean, dirty_at_start):
     """docs/evidence/sweep-<shortsha>/summary.json -- written only for a
     default `--release` selection (no --cases/--backends), i.e. the release
     tier sweeping the full runnable matrix (everyday cells + RELEASE_ONLY).
     A filtered selection is not 'the full runnable matrix' and gets no
     evidence artifact under this name.
 
+    `tree_clean`/`dirty_at_start` come from capture_start_tree_state(),
+    called at the top of main() -- BEFORE this sweep wrote anything -- not
+    recomputed here at the end (see that function's docstring for why the
+    end-of-run reading was always False for a real sweep).
+
     A separate mission is writing the tag-time guard that READS this
     schema -- the field NAMES below are a contract: extend, never rename or
     remove (per the dispatch that added this function). `term` is one such
     field: as of the 2026-09-23 one-term change its value is the numeric
     GATE_TERM_S every cell in this sweep actually ran at, not a 'full'/'gate'
-    mode string -- there is no second mode left to name."""
+    mode string -- there is no second mode left to name. `dirty_at_start` is
+    a new field (this fix): extending, not renaming, per that same contract.
+    """
     if not is_release or explicit:
         return
     sha_r = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', 'HEAD'],
@@ -800,9 +838,6 @@ def write_release_evidence(results, is_release, explicit, started_utc, finished_
             'write_release_evidence: `git rev-parse HEAD` did not return a '
             'full 40-char sha (rc=%d, stdout=%r) -- refusing to write an '
             'evidence artifact with no sha' % (sha_r.returncode, sha))
-    status_r = subprocess.run(['git', '-C', REPO_ROOT, 'status', '--porcelain'],
-                              capture_output=True, text=True)
-    tree_clean = status_r.stdout.strip() == ''
     cells, n_success = [], 0
     for case, backend, ok, dt, lines in results:
         if ok:
@@ -812,7 +847,8 @@ def write_release_evidence(results, is_release, explicit, started_utc, finished_
                           verdict='SUCCESS' if ok else 'FAIL',
                           max_diff=float(m.group(1)) if m else None,
                           wall_s=dt))
-    payload = dict(sha=sha, tree_clean=tree_clean, term=matrix.GATE_TERM_S,
+    payload = dict(sha=sha, tree_clean=tree_clean, dirty_at_start=dirty_at_start,
+                  term=matrix.GATE_TERM_S,
                   n_runnable=len(results), n_success=n_success, cells=cells,
                   started_utc=started_utc, finished_utc=finished_utc)
     out_dir = os.path.join(REPO_ROOT, 'docs', 'evidence', 'sweep-%s' % sha[:7])
@@ -857,6 +893,18 @@ def main(argv=None):
     ap.add_argument('--device', default='cpu', choices=('cpu', 'cuda'),
                     help='JAX_PLATFORMS for the python-jax backend (default cpu)')
     args = ap.parse_args(argv)
+
+    # Captured HERE -- first thing in main(), ahead of Gate 0, the build and
+    # the test/ rotation -- so the reading is of the tree as the CALLER left
+    # it, not as this sweep leaves it. See capture_start_tree_state()'s
+    # docstring for why end-of-run capture (the prior bug) always read dirty.
+    tree_clean_at_start, dirty_at_start = capture_start_tree_state()
+    if not tree_clean_at_start:
+        print('e2e: tree was NOT clean at sweep start (%d path(s)) -- a '
+              '--release run from here will record tree_clean=False:'
+              % len(dirty_at_start))
+        for ln in dirty_at_start:
+            print('  %s' % ln)
 
     runnable, unsupported, label, explicit, release_only = select(args)
 
@@ -1115,7 +1163,8 @@ def main(argv=None):
     # --cases/--backends) run over the full runnable matrix -- see the
     # function's own docstring. Written before the pass/fail return below so
     # a failed release sweep still leaves its evidence on disk.
-    write_release_evidence(results, args.release, explicit, started_utc, finished_utc)
+    write_release_evidence(results, args.release, explicit, started_utc,
+                           finished_utc, tree_clean_at_start, dirty_at_start)
     if len(results) != len(runnable):
         print('e2e: FAIL - %d cell(s) were selected but %d produced a verdict; '
               'a cell that produced no verdict is a failure'

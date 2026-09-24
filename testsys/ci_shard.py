@@ -69,6 +69,7 @@ SHARDS = {
         "test_multifault_item9_fix.py",
         "test_multifault_refused.py",
         "test_perf_parallelism_discriminator.py",
+        "test_release_evidence_tree_clean.py",  # added 2026-09-23 (Iris, rule-24 tree_clean fix): 2 sandbox git-init scenarios, well under 1 s
         "test_rough_fault_normal_consistency.py",
         "test_rsfNucleation_tpv2802_td.py",
         "test_station_header_column_count.py",

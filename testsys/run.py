@@ -118,7 +118,23 @@ def run_release():
     `run.py all`'s e2e slice used to be before CI stopped running the wider
     sweep. Run over the full default selection (no --cases/--backends), it
     also writes docs/evidence/sweep-<shortsha>/summary.json
-    (run_e2e.write_release_evidence)."""
+    (run_e2e.write_release_evidence).
+
+    `run.py unit regression release` in ONE invocation is SAFE: checked
+    2026-09-23 (rule-24 tree_clean fix) that no regression script under
+    testsys/regression/ writes to a real tracked repo path -- every script
+    that touches docs/perf_ledger.jsonl-shaped data does so inside its own
+    tempfile.mkdtemp() sandbox or reads the committed ledger read-only
+    (test_perf_ledger.py); test_sweep_speed_2026_09_23.py imports run_e2e
+    but calls schedule_order() directly, never main(), so it runs no sweep.
+    run_e2e.py's tree_clean is captured at the very start of ITS OWN
+    process (run_e2e.capture_start_tree_state, called first thing in
+    main()), so even if a future regression script broke this invariant by
+    writing to a real tracked path, `release`'s reading would still be
+    correct -- it would just, correctly, read as dirty. This tier is not
+    required to run standalone; nothing before it in the same invocation
+    is known to dirty the tree, and if that ever changes the release
+    evidence will say so rather than silently passing."""
     print('\n==== testsys: release ====')
     return _e2e('--release')
 
