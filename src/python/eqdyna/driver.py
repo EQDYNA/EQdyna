@@ -137,7 +137,8 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
         force = B.setat(xp, force, slice(None), 0.0)         # driver.f90:23
         force, stress_i, s_p = KU.assembleGlobalKU(
             xp, inv, velArr, force, stress_i, s_p, dt, rdampk, scratch)
-        force = KU.calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk)
+        force = KU.calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk,
+                                       scratch)
 
         # driver.f90:27 -- MPI4NodalQuant(nodalForceArr, 3). Identity when the
         # run is serial (one device, one subdomain, nothing to exchange); an
