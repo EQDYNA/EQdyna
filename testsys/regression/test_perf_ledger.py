@@ -349,7 +349,7 @@ def main():
     def cell_row(**kw):
         r = good_row()
         r.update(metric='cell-wall-clock', ms_per_step=None, n_lo=None,
-                 n_hi=None, wall_s=123.4, tool='run_e2e',
+                 n_hi=None, wall_s=123.4, tool='run_e2e', tree_dirty=False,
                  rank_ms_min=None, rank_ms_max=None, rank_ms_mean=None,
                  effective_cores=None, threads_per_rank=None)
         r.update(kw)
@@ -374,7 +374,7 @@ def main():
             check(True, 'cell-wall-clock: %s raises ValueError' % what)
     e2e_meta = dict(tool='run_e2e', sha='abc1234', host='cotopaxi',
                     date='2026-09-22 07:00', label='default', device='cpu',
-                    jobs_budget=8, tenancy_ceiling=0.5,
+                    jobs_budget=8, tenancy_ceiling=0.5, tree_dirty=False,
                     cells=[dict(case='test.tpv8', backend='fortran', ok=True,
                                 seconds=41.2, ranks=4, platform='cpu',
                                 platform_evidence='fortran: no GPU path'),
