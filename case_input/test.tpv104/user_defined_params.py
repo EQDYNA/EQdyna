@@ -7,6 +7,12 @@ import numpy as np
 
 par = parameters()
 
+# Station n-stress sign (board row 22a): the TPV103/104 upload spec
+# (scratch/specs/uploadTPV103, "Uploading Data for TPV103 and TPV104",
+# 2008-10-18, n-stress field) says "Sign convention: Positive means
+# compression." -- the opposite of the SCEC default in defaultParameters.py.
+par.faultStNormalStressSign = 'compression'
+
 par.xmin, par.xmax = -38.0e3, 38.0e3
 par.ymin, par.ymax = -20.0e3, 22.0e3
 par.zmin, par.zmax = -38.0e3, 0.0e3

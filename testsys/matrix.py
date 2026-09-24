@@ -70,10 +70,50 @@ BACKENDS = ('fortran', 'python-jax', 'python-jax-mpi')
 #          plotRuptureDynamics, post-processing that would otherwise be gated
 #          by nothing. It is backend DATA here, so a green run states that the
 #          python columns did not cover it.
+#   nsign -- the SIGN of on-fault station column 8 (n-stress) at the first
+#          recorded step, at every buried on-fault station, against the case's
+#          SCEC spec convention (NSTRESS_CONVENTION below; board row 22a).
+#          Fortran only until the port writes station files (board row 114).
 ARTIFACTS = {
-    'fortran': ('frt', 'nc'),
+    'fortran': ('frt', 'nc', 'nsign'),
     'python-jax': ('frt',),
     'python-jax-mpi': ('frt',),
+}
+
+# NSTRESS_CONVENTION -- per case, the sign convention its SCEC spec states for
+# the on-fault station n-stress column, and where it says so (board row 22a;
+# spec texts fetched into scratch/specs/, 2026-09-24). The specs DISAGREE, so
+# this is per case, never a constant: until row 22a library_output.f90 negated
+# column 8 for every case (compression-positive everywhere), which was right
+# only for TPV104 and TPV105-3D.
+#
+# This table is INDEPENDENT of each case's own par.faultStNormalStressSign
+# (case_input/<case>/, default in scripts/defaultParameters.py):
+# testsys/regression/test_nstress_sign_convention.py checks the declaration
+# against this table, and compare.nstress_sign_gate checks the written files
+# against it. A case with no SCEC spec (or a spec that asks for no n-stress
+# field) takes the SCEC default, 'extension', and says so.
+NSTRESS_CONVENTION = {
+    'test.tpv8': ('extension', 'uploadTPV89 requests no n-stress field; SCEC '
+                  'default (Signconvention3d: normal slip > 0 for extension)'),
+    'test.tpv10': ('extension', 'uploadTPV10_11_v3, n-stress: "Positive means '
+                   'extension."'),
+    'test.tpv104': ('compression', 'uploadTPV103 ("Uploading Data for TPV103 '
+                    'and TPV104", 2008-10-18), n-stress: "Positive means '
+                    'compression."'),
+    'test.tpv1053d': ('compression', 'TPV105_3D_formats:114-115, n-stress: '
+                      '"Positive means compression."'),
+    'test.tpv29': ('extension', 'TPV29_30_Description_v06:1174-1177, n-stress: '
+                   '"Positive means extension."'),
+    'test.tpv30': ('extension', 'TPV29_30_Description_v06:1174-1177 (TPV29 and '
+                   'TPV30 share the format), "Positive means extension."'),
+    'test.tpv36': ('extension', 'TPV36_37_Description_v12 (2024-07-15), '
+                   'n-stress: "Positive means extension."'),
+    'test.tpv37': ('extension', 'TPV36_37_Description_v12 (2024-07-15), '
+                   'n-stress: "Positive means extension."'),
+    'test.meng2023a': ('extension', 'not a SCEC benchmark; SCEC default'),
+    'test.meng2023cb': ('extension', 'not a SCEC benchmark; SCEC default'),
+    'test.drv.a6': ('extension', 'not a SCEC benchmark; SCEC default'),
 }
 
 # python-jax-mpi is a FOURTH value on the `backend` axis: real MPI (one
@@ -516,6 +556,13 @@ for _c, _g in GATE.items():
     if _g == 'flip-budget' and CASE_BOUND[_c] is not None:
         raise RuntimeError('%s is gated flip-budget but also carries a scalar '
                            'bound -- one gate per case' % _c)
+if set(NSTRESS_CONVENTION) != set(CASES) or any(
+        v[0] not in ('extension', 'compression') for v in NSTRESS_CONVENTION.values()):
+    raise RuntimeError(
+        'testsys/matrix.py NSTRESS_CONVENTION must name every gated case, each '
+        "'extension' or 'compression' with its spec citation: missing %r, "
+        'unknown %r' % (sorted(set(CASES) - set(NSTRESS_CONVENTION)),
+                        sorted(set(NSTRESS_CONVENTION) - set(CASES))))
 for (_c, _b) in list(UNSUPPORTED) + list(CI_CELLS):
     if _c not in CASES or _b not in BACKENDS:
         raise RuntimeError('table entry for unknown or ungated cell %r x %r'

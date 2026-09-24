@@ -109,6 +109,24 @@ class parameters:
     # them (TPV30's fault alone is 40 km x 20 km).
     plasticOutputHalfWidth = (5.0e3, 2.0e3, 8.0e3)
 
+    # Sign convention of column 8 (n-stress) in the on-fault station files
+    # faultst*.txt (library_output.f90 output_onfault_st). It is the CASE's
+    # SCEC spec convention, not a solver property, and the specs disagree
+    # (board row 22a; spec texts fetched into scratch/specs/):
+    #   'extension'   -- "Positive means extension": TPV29/30
+    #                    (TPV29_30_Description_v06, n-stress field), TPV10/11
+    #                    (uploadTPV10_11_v3), TPV36/37
+    #                    (TPV36_37_Description_v12). The SCEC default, and the
+    #                    convention of scratch/specs/Signconvention3d ("normal
+    #                    slip > 0 for extension").
+    #   'compression' -- "Positive means compression": TPV103/104
+    #                    (uploadTPV103, 2008) and TPV105-3D (TPV105_3D_formats).
+    # A case whose spec says compression sets it (test.tpv104, test.tpv1053d).
+    # testsys/matrix.py NSTRESS_CONVENTION is the independent per-case spec
+    # table; the regression tier checks every gated case's declaration against
+    # it and the e2e gate checks the written files against it.
+    faultStNormalStressSign = 'extension'
+
 
     C_nuclea    = 1 # artificial nucleation (1), no (0). 
     C_degen     = 0 # degenerate hexahedrals (1), no (0).

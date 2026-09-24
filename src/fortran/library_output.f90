@@ -90,6 +90,11 @@ subroutine output_onfault_st
             write(51,*) '# Column #6 = down-dip slip rate (m/s)'
             write(51,*) '# Column #7 = down-dip shear stress (MPa)'
             write(51,*) '# Column #8 = normal stress (MPa)'
+            ! Column 8's sign is the CASE's spec convention (nStressOutSign,
+            ! readInputFiles.f90), not a constant: onFaultQuantHistSCECForm(10)
+            ! is extension-positive, so +1 writes it as is and -1 negates it.
+            ! This used to be an unconditional minus -- compression-positive for
+            ! every case, right only for TPV104/TPV105-3D (board row 22a).
             if (friclaw>=3) then
                 write(51,*) '# Column #9 = state variable psi (dimensionless)'
                 write(51,*) '# Column #10 = Temperature (degrees Kelvin)'
@@ -112,7 +117,7 @@ subroutine output_onfault_st
                         -onFaultQuantHistSCECForm(6,j,i), &
                         -onFaultQuantHistSCECForm(3,j,i), &
                         -onFaultQuantHistSCECForm(9,j,i)/1.0d6, &
-                        -onFaultQuantHistSCECForm(10,j,i)/1.0d6, &
+                        nStressOutSign*onFaultQuantHistSCECForm(10,j,i)/1.0d6, &
                         onFaultQuantHistSCECForm(4,j,i), &
                         onFaultQuantHistSCECForm(12,j,i), &
                         onFaultQuantHistSCECForm(11,j,i)/1.0d6  
@@ -135,7 +140,7 @@ subroutine output_onfault_st
                         -onFaultQuantHistSCECForm(6,j,i), &
                         -onFaultQuantHistSCECForm(3,j,i), &
                         -onFaultQuantHistSCECForm(9,j,i)/1.0d6, &
-                        -onFaultQuantHistSCECForm(10,j,i)/1.0d6
+                        nStressOutSign*onFaultQuantHistSCECForm(10,j,i)/1.0d6
                 enddo
             endif 
             close(51)
