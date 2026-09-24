@@ -154,6 +154,13 @@ CASE_BOUND = {
     'test.meng2023a': 1e-6,    # worst 4.63e-09 * ~121.5 = 5.6e-7; rounds to
                                # the same 1e-6 already used for tpv10/tpv36.
     'test.meng2023cb': 1e-6,   # worst 5.05e-09 * ~121.5 = 6.1e-7; same bound.
+    'test.tpv30': 1e-10,       # registered 2026-09-23 (owner gating decision), 5 s / 500 m:
+                               # observed python-jax 1.909216e-14 vs the 5 s Fortran
+                               # reference (51b7649), twice (15:34 at 95d4220, 22:27 at
+                               # 51b7649); * ~121.5 = 2.3e-12, rounded UP to tpv29's
+                               # 1e-10 (same near-epsilon order). Sensitivity: with
+                               # e1888e7 (PML-node gravity) reverted the 5 s cell reads
+                               # 1.202240e+08 -- caught by 18 orders of magnitude.
     'test.tpv29': 1e-10,       # worst 1.28e-13 * ~121.5 = 1.6e-11; rounded UP
                                # to 1e-10 (headroom ~780x, not the smaller
                                # ~121x -- these are near-machine-epsilon
@@ -206,6 +213,7 @@ GATE = {
     'test.tpv10': 'abs-max',
     'test.meng2023a': 'abs-max',
     'test.meng2023cb': 'abs-max',
+    'test.tpv30': 'abs-max',
     'test.tpv29': 'abs-max',
     'test.tpv36': 'abs-max',
     'test.tpv37': 'abs-max',
