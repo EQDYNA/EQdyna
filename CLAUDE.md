@@ -16,6 +16,12 @@ index block carries the current count and the regression tier checks it.
 must be able to come out BOTH ways, because two rows were found carrying
 commands that could never go red.
 
+**Rule 25**: a change under `src/` or `testsys/` reaches master only through
+a merged pull request (branch, CI + `victor-reyes` audit in parallel,
+squash-merge, serial). Everything else — docs, board, evidence, session
+logs, rule text, reference artifacts — pushes directly to master after the
+local fast suite.
+
 ## What this is
 
 A 3D finite-element dynamic-rupture code, in **two implementations of the same
