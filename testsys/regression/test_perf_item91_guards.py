@@ -30,7 +30,6 @@ and machine-independent.
 Anti-vacuous-green discipline (papercuts): every verdict prints the content
 property it asserted on.
 """
-import copy
 import os
 import sys
 import time
@@ -107,34 +106,8 @@ def check_91a_snapshot_naming_and_ledger():
           'apart on the SAME calendar day, differ (%r vs %r)'
           % (out1, out2))
 
-    base, base_n = {}, {}
-    speedup, bn, note = rss.record_point(base, base_n, 'element', 1, 500.0, 1)
-    row = dict(mode='element', n=1, cpus=[0], nodes=[0], speedup=speedup,
-               baseline_n=bn, busy={}, loadavg=(0.0, 0.0, 0.0), n_lo=20,
-               n_hi=60, engine='python-jax', policy='element',
-               ms_per_step=500.0, fixed_s=0.1, wall_lo_s=1.0, wall_hi_s=2.0,
-               threads=1)
-    meta = dict(case='test.tpv104', sha='abc1234', host='cotopaxi',
-               date='2026-09-24 12:00', busy_ceiling=0.2, rows=[row])
-    out = ledger.rows_from_scaling_snapshot(
-        meta, 'docs/perf_snapshots/shard_scaling_x.json', dict(busy=1, total=64))
-    check(len(out) == 1 and out[0]['backend'] == 'python-jax'
-          and out[0]['parallelism'] == 'threads' and out[0]['ranks'] == 1,
-          '91a: a shard-scaling row (engine=python-jax, policy=element) '
-          'survives the shared ledger reader unmodified: backend=%r '
-          'parallelism=%r ranks=%r' % (out[0]['backend'],
-                                       out[0]['parallelism'], out[0]['ranks']))
-
-    stripped = copy.deepcopy(row)
-    del stripped['engine']
-    del stripped['policy']
-    raises(lambda: ledger.rows_from_scaling_snapshot(
-               dict(meta, rows=[stripped]),
-               'docs/perf_snapshots/shard_scaling_x.json',
-               dict(busy=1, total=64)),
-           (KeyError,),
-           '91a mutation proof: a shard-scaling row WITHOUT engine/policy '
-           '(the pre-fix shape) is rejected by the ledger reader')
+    # 91a's ledger half is deliberately NOT wired (PR #15 audit: the shared
+    # reader would file shard points as run_scaling rows); nothing to guard.
 
 
 # ---------------------------------------------------------------- (b) ----

@@ -256,15 +256,9 @@ def main():
                                              best['ms_per_step'], devices[0])
             if note:
                 print('  NOTE: ' + note, flush=True)
-            # engine/policy: how this row is read by the shared ledger writer
-            # (ledger.rows_from_scaling_snapshot expects exactly these two
-            # keys). Every shard-scaling point is one process with
-            # EQDYNA_JAX_DEVICES host devices, the same 'threads' parallelism
-            # run_scaling.py already declares for its own python-jax rows.
             best.update(mode=mode, n=n, cpus=cpus, nodes=rs.nodes_of(nodes, cpus),
                         speedup=speedup, baseline_n=bn, busy=busy,
-                        loadavg=os.getloadavg(), n_lo=a.n_lo, n_hi=a.n_hi,
-                        engine='python-jax', policy=mode)
+                        loadavg=os.getloadavg(), n_lo=a.n_lo, n_hi=a.n_hi)
             rows.append(best)
             print('  %-26s %9.2f ms/step  speedup %5.2fx (vs n=%d)  fixed %6.2fs  '
                   'threads %3d  wall %.1f/%.1fs  cpus=%s nodes=%s'
@@ -301,21 +295,11 @@ def main():
         print('%d point(s) SKIPPED as busy (not measured, not silently dropped): %s'
               % (len(skipped), [s['label'] for s in skipped]))
 
-    # Item 91a: every measured point also becomes one appended line in the
-    # append-only perf ledger (docs/perf_snapshots/../perf_ledger.jsonl),
-    # pointing back at this dated snapshot -- the same wiring run_scaling.py
-    # and run_mpi_scaling.py use, via the existing generic
-    # rows_from_scaling_snapshot reader (each row here carries the 'engine'/
-    # 'policy' keys that reader expects, alongside this tool's own 'mode').
-    # This tool never appended before; that silent gap is the second half of
-    # item 91a.
-    import ledger
-    tenancy = ledger.box_tenancy(a.busy_ceiling)
-    nledger = ledger.append_rows(ledger.rows_from_scaling_snapshot(
-        meta, os.path.relpath(OUT, ROOT), tenancy))
-    print('%d ledger row(s) appended to %s (box tenancy %d/%d cpus over %.2f)'
-          % (nledger, ledger.LEDGER_RELPATH, tenancy['busy'],
-             tenancy['total'], a.busy_ceiling))
+    # Item 91a's ledger half is NOT wired (PR #15 audit): the shared
+    # ledger.rows_from_scaling_snapshot stamps tool='run_scaling' and
+    # parallelism='threads', so shard points would be appended -- append-only
+    # -- as run_scaling rows. What a shard point's `ranks` counts must be
+    # declared in ledger.py first; open board residual, not done here.
 
 
 if __name__ == '__main__':
