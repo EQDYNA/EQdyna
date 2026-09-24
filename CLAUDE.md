@@ -100,9 +100,20 @@ The e2e sweep, and backend is an AXIS of it, not a tier:
 ```
 for case in testNameList.nameList:
     for backend in (fortran, python-jax):
-        run → canonical frt → compare against ONE committed reference
-              at THAT CASE's bound
+        run → compare against ONE committed reference set for the case:
+              frt (canonical rupture-time field)  at CASE_BOUND
+              fault.dyna.r.nc                     at THRESHOLD
+              n-stress sign at buried stations    vs NSTRESS_CONVENTION (spec)
+              selected on/off-fault station series, normalized, at STATION_BOUND
 ```
+
+The station series (owner gate design, 2026-09-24) exist because frt alone
+passed a wrong-sign stress column for years (board row 22a): stations are what
+a SCEC submission actually reads. `e_q = max_t|run-ref| / max(S_q, 1e-6)`,
+S_q the case's max |ref| of that quantity over its selected stations of the
+same kind; `matrix.GATE_STATIONS` picks 3 on-fault + 2 off-fault per case.
+A comparison a case cannot meaningfully make (drv.a6 stations, drv.a6 x jax
+nc: chaotic) is DECLARED with its measured reason in matrix.py, never skipped.
 
 `python-numpy` is PARKED (owner, 2026-09-23): outside every gate and CI, the
 code kept and runnable by hand (`--backend numpy`) as the no-jit debugging
@@ -120,7 +131,8 @@ quote them here, they drift.
 `testsys/compare.py` is the only comparison. A cell is SUPPORTED or DECLARED
 UNSUPPORTED with a recorded reason — there is no third state and no skip.
 
-References are one `frt.canonical.txt` per case: deduped on rounded (x,y,z)
+References per case: `frt.canonical.txt`, `fault.dyna.r.nc`, and the selected
+station files under `stations/`. frt is deduped on rounded (x,y,z)
 then lexsorted, so a result is a statement about the PHYSICS and not about the
 decomposition. That is what lets a 4-rank Fortran run, a serial Fortran run and
 a serial Python run all compare to the same artifact.
