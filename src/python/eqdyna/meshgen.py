@@ -1632,8 +1632,23 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
                             off_fault_matches.append((i, node_count))
                             break
 
+                # row 114 fix: this call used to omit c_degen/dx entirely,
+                # silently defaulting is_on_fault's c_degen=0.0 -- for
+                # C_degen>3 (tpv36/tpv37's wedge-degenerate mesh) that takes
+                # the WRONG branch (`y == 0.0`, never true off a dipping
+                # plane) instead of the dipping-plane distance test, so
+                # fault_seq never advanced and NO on-fault station ever
+                # matched (numOfOnFaultStCount==0, zero faultst*.txt files,
+                # against Fortran's 19). build_node_coordinates's OWN
+                # C_degen>3 path (on_fault_grid_mask, used whenever
+                # insertFaultType==0, true for every currently-supported
+                # C_degen>3 case) already threads C_degen/dx correctly --
+                # this call site is the one this milestone's own station
+                # wiring newly exercises end to end, and it had not been.
+                dx_for_fault = p['dx'] if p['C_degen'] > 3.0 else None
                 if is_on_fault(xcoor, ycoor, zcoor, p['fxmin'], p['fxmax'],
-                                p['fymin'], p['fymax'], p['fzmin'], p['fzmax'], tol):
+                                p['fymin'], p['fymax'], p['fzmin'], p['fzmax'],
+                                tol, p['C_degen'], dx_for_fault):
                     fault_seq += 1
                     for i in range(1, n_onf + 1):
                         if (abs(xcoor - xonfs[0, i - 1]) < tol and

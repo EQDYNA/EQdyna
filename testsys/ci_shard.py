@@ -122,6 +122,11 @@ SHARDS = {
                                  # 3 serial case builds + 6 decompositions'
                                  # rank-local builds in one process, no MPI;
                                  # the heaviest script in this shard.
+        "test_row114_station_output.py",  # added 2026-09-24 (mira-volkov,
+                                 # row 114 station output): one serial case
+                                 # build + a 3-step run on numpy AND jax,
+                                 # well under this shard's other
+                                 # subprocess-heavy scripts.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
         "test_sweep_core_budget.py",
