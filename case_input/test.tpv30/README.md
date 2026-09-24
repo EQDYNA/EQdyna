@@ -63,15 +63,16 @@ around commit `fa180b4` for the change that closed them.
 
 ![reference result at the gate resolution](cRuptureDynamics.png)
 
-## Gate status: NOT YET REGISTERED (rule 17 step 7 unmet)
+## Gate status: REGISTERED 2026-09-23 (PR #5, `567e723`), 5 s / dx=500 m, fortran + python-jax
 
-This compset is real and runs correctly on Fortran (see below), but
-**test.tpv30 is deliberately NOT added to `testNameList.py` / `testsys/matrix.py`
-yet** -- adding it there would claim a passing 3-backend gate that does not
-exist. `test.reference.results/test.tpv30/` holds a fresh, verified Fortran
-run (frt.canonical.txt + fault.dyna.r.nc + cRuptureDynamics.png, all from the
-same dx=500/term=20/4-rank (2,1,2) run) kept as a candidate reference for
-whoever closes the finding below, not as a committed gate.
+The owner decided to gate this case at the one 5 s gate term. The reference
+`test.reference.results/test.tpv30/` (frt.canonical.txt + fault.dyna.r.nc)
+is the 5 s Fortran run committed as `51b7649`, which retired the 20 s scoping
+reference `642f119`. The bound is 1e-10 (abs-max); python-jax was observed at
+1.909216e-14. With the fix `e1888e7` reverted, the 5 s cell reads
+1.202240e+08, so the gate catches the defect described below.
+`cRuptureDynamics.png` beside the reference is still the 20 s image (it is not
+compared). The account below is kept as the history of the finding.
 
 **Finding (2026-09-17, first real 3-backend sweep of this case):**
 python-numpy and python-jax agree with EACH OTHER to ~1e-3 over the full
