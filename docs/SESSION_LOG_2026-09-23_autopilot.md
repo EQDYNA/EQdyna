@@ -1729,3 +1729,46 @@ on physics that was byte-identical (50/50 frt). The fix is one helper,
 lost ALL perf-ledger rows through a dropped `import ledger`, because the capture
 degrades every error to a WARNING. That fix plus a guard is `71b22da`. Both
 wait on `wei/combo-2026-09-23` for the profile PR (queue item 4).
+
+## UU. MILESTONES: TPV30 gated; always-on profile landed (2026-09-24 00:05)
+
+Resumed 23:54 after the second HTTP 429 of the day. The tree was checked against
+HEAD before anything else: exactly my pre-interruption edits and nothing
+more. I checkpointed them to the branch at once.
+
+**TPV30 gated (PR #5 → `567e723`, 03:28:29Z→03:36:06Z, 7.6 min).** The 5 s
+reference is `51b7649` (rule 7, pushed direct). It is byte-identical to the
+independent 15:28 Fortran run, sha256 `74196027…`, and retires `642f119`.
+Bound 1e-10 against an observed jax 1.909216e-14; the headroom is stated
+honestly as ~5200x. With e1888e7 reverted the cell reads 1.202240e+08.
+Everyday sweep: 23 cells.
+
+**Always-on profile (PR #6 → `b348134`, 03:45:16Z→05:03:30Z, 78 min).** This
+bundles the profile emitter with its real off switch and a strict
+`EQDYNA_PROFILE` parse (exit code 14), the refactor round 2 retry (Td kept),
+the numpy hourglass buffer reuse, and the guard, collection and A/B tier.
+Timeline: the first CI run died in the smoke. `ledger.box_tenancy` raised
+SystemExit on a runner that has no `numactl` topology, and run_e2e's
+`except Exception` did not catch it. That is the first time the new
+every-cell profile record ran on a host other than this box. victor's audit
+found four blockers: Fortran accepted `"0 "` where Python raised (rule 23);
+the Fortran test fed only `bogus`; `profile_ranks` had a `.get(case, 4)`
+default; and `capture_run` recomputed `tree_dirty` for each cell. I fixed all
+of them myself in `0047794` and mutation-tested each fix RED. The first
+tenancy mutation I tried was shaped wrong and stayed green, so I re-ran it as
+the real revert. After the fixes: 23/23 everyday sweep (315.1 s), CI green,
+re-audit not blocking, and master CI green on `b348134` including
+`pr-policy-gate`. Byte-identity: 40/40 frt versus master's sweep before the
+fix commit. That commit changes only input validation and testsys.
+
+**Recorded, not fixed (Low, for the board):** perf tools call `tree_dirty()` on
+each capture instead of once per run; no test pins that run_e2e forwards the
+sweep-start `tree_dirty`; the Fortran strict test lacks a blank-only value,
+a >32-character value and the accepted `"0"`; `max(1, ranks)` hides a rank count
+≤ 0; the tenancy row does not record which CPU source it read (numactl or
+/proc/stat); `compare_nc_files` passes on zero variables; `check_pretag_ci`
+counts cells without checking which ones.
+
+**Cycle times:** #3 47 min, #4 13.7, #5 7.6, #6 78 (one CI red plus an audit
+round). Queue next: jax speed levers, then v5.17.0, then the
+checkInputConsistency port.
