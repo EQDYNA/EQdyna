@@ -51,14 +51,15 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 22. A scope restriction is itself a rule, and it can conflict with another rule.
 23. Fortran is the reference implementation; the port follows its NUMERICS, not its file layout.
 24. A release tag requires a committed local sweep at the exact SHA, not only green CI.
+25. `src/` and `testsys/` reach master only through a merged pull request; everything else may still push direct.
 
 Count, stated so a heading-shape grep does not undercount it again (that
-undercount happened twice in one night, 2026-09-21/22): 24 numbered rules
-(1-24) plus twenty-five lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
+undercount happened twice in one night, 2026-09-21/22): 25 numbered rules
+(1-25) plus twenty-five lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
 4e, 5a, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c,
-21d) — 49 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md`
-reads 49; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no
-letter suffix) reads 24.
+21d) — 50 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md`
+reads 50; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no
+letter suffix) reads 25.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
 the count from heading shape alone.
@@ -2462,3 +2463,86 @@ exits 5 (`SWEEP_INSUFFICIENT`) otherwise. Guarded itself by
 `testsys/regression/test_pretag_sweep_negative.py`,
 `test_release_complete.py`, and `testsys/regression/test_term_axis.py` (the
 guard against the retired two-term design reappearing).
+
+---
+
+## 25. `src/` and `testsys/` reach master only through a merged pull request; everything else may still push direct
+
+Owner-approved hybrid PR workflow (relayed 2026-09-23). Two paths to master,
+by content, not by author:
+
+- **A change under `src/` or `testsys/` goes through a PR.** Branch off
+  master, or an isolated worktree for anything that builds (rule 21). Run
+  the local fast suite (`python3 testsys/run.py unit regression`); for a
+  `src/` change ALSO run the everyday e2e sweep covering every backend of
+  every case the change touches — not one case, not one backend. The PR body
+  states what changed and why, with evidence for each removal. Two gates run
+  in parallel: ALL CI checks green (`build`, `e2e-ci-smoke`, and the three
+  `unit-regression` shards — not `build` alone) AND a `victor-reyes` audit of
+  the final diff. Fix on the branch and re-audit only the new commit; loop
+  until both pass. Squash-merge and delete the branch. **Serial**: the next
+  PR opens only after this one merges.
+- **Everything else pushes directly to master**: docs, board, evidence,
+  session logs, rule text, and reference artifacts, after the local fast
+  suite. Rules 21c and 15d already separate these from code by commit; a
+  squash-merge would break that separation, so they never travel inside a
+  code PR. A reference regeneration (rule 7) is its own commit or PR, never
+  squashed together with code.
+- **`VERSION` moves at release time**, with the runtime banner alongside
+  (rule 11), not on every `src/` change. A release PR carries rule 24's
+  local-sweep evidence for its exact SHA. A tag names only a master commit
+  whose own CI passed (rule 15a).
+
+**Rationale**: `4465c17` reverted `aca6979` because the landing check that
+gated it ran one case with no RSF nucleation and missed a `NameError` on
+every `drv.a6` python cell — a narrower check than "every backend of every
+case the change touches" would have caught before it reached master. Naming
+a PR, a parallel CI-and-audit gate, and a serial merge order is how this
+project already recovers from that kind of miss without letting a second one
+land while the first is still being fixed.
+
+**How to apply**: before touching `src/` or `testsys/`, open (or confirm)
+a branch or worktree off master; do not commit such a change directly to
+master even with a passing local gate. Before touching only docs, board,
+evidence, session logs, rule text, or a reference artifact, push directly
+after the local fast suite — do not route it through a code PR only to keep
+one workflow. When both a code PR and a direct docs push are ready at once,
+land the direct push on its own; it does not wait for the PR's serial slot,
+because rule 21c/15d's separation means it never shared a commit with the
+code in the first place.
+
+**Enforcement (Tier: mechanical, once PR #3 merges —
+https://github.com/EQDYNA/EQdyna/pull/3, branch
+`iris/pr-enforce-2026-09-23`)**: `testsys/pr_policy.py` is the one copy of
+the decision logic (which paths are gated, how a push range resolves, how a
+commit's changed paths are read), called from two places. `test.yml`'s
+`pr-policy-gate` job runs it in `ci-check` mode on every push to master: for
+each commit in the push range that touches `src/` or `testsys/`, it calls
+`GET /repos/{owner}/{repo}/commits/{sha}/pulls` and requires a MERGED PR
+covering that commit; a squash-merge subject's trailing `(#NNN)` is used
+only as a fallback when the API call itself fails, never to override what
+the API said, and an unresolvable check raises rather than defaulting to a
+pass. `testsys/hooks/pre-push` (installed via the same `core.hooksPath` as
+`testsys/hooks/pre-commit`) is the local half: it refuses a push to
+`refs/heads/master` carrying any new commit that touches `src/` or
+`testsys/`, unconditionally and with no API call, because a merged PR can
+only ever reach a local clone via fetch, never via a local push — so a local
+push touching a gated path is by construction a direct push. No bypass flag.
+Guarded by `testsys/regression/test_pr_policy_guard.py`,
+`test_prepush_pr_policy_guard.py`, and `test_ci_pr_policy_step.py`.
+
+**GitHub branch protection is NOT enabled, and this is a scope decision, not
+an oversight.** The repository is public on the org's free plan; a branch
+protection ruleset requiring a pull request cannot be scoped to paths, so
+turning it on would also block the docs/board/evidence direct-push path this
+rule deliberately keeps open. Path-scoped push rulesets are documented by
+GitHub for private/internal repositories only. Left to the owner: whether
+`.github/`, `scripts/`, `install-eqdyna.sh`, and `case_input/` join the
+PR-required set — today they do not, and a direct push to any of those is
+not caught by either enforcement half above.
+
+**Tier**: mechanical for `src/`/`testsys/` once PR #3 merges, per the
+guards named above. The path list itself (today exactly `src/` and
+`testsys/`) is an owner decision, reviewable only — no guard can tell
+whether a future new top-level directory should have joined the gated set
+the day it was created.
