@@ -64,6 +64,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 E2E_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -485,6 +486,44 @@ def make_serial_case(case_name, case_dir, env):
         raise RuntimeError('case.setup for %s exited %d' % (case_name, rc))
 
 
+def _call_kept(cmd, cwd, env, log_prefix):
+    """subprocess.call, but the child's stdout and stderr are ALSO kept on disk
+    as `<log_prefix>.stdout` / `<log_prefix>.stderr` (pathway_forward.md item
+    109). The console still gets both streams live, byte for byte, so nothing
+    reading the sweep's own output changes. Before this, a python cell's
+    streams were inherited and nothing was written to disk: `test.tpv36 x
+    python-jax` exited 1 after all 464 steps, frt.txt0 and its profile were
+    written, and the traceback that would have explained it was gone.
+    Returns (rc, stdout_path, stderr_path)."""
+    out_path, err_path = log_prefix + '.stdout', log_prefix + '.stderr'
+    with open(out_path, 'wb') as fo, open(err_path, 'wb') as fe:
+        p = subprocess.Popen(cmd, cwd=cwd, env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        def pump(src, keep, console):
+            for chunk in iter(lambda: src.read1(65536), b''):
+                keep.write(chunk)
+                keep.flush()
+                console.flush()
+                console.buffer.write(chunk)
+                console.buffer.flush()
+
+        pumps = [threading.Thread(target=pump, args=(p.stdout, fo, sys.stdout)),
+                 threading.Thread(target=pump, args=(p.stderr, fe, sys.stderr))]
+        for t in pumps:
+            t.start()
+        rc = p.wait()
+        for t in pumps:
+            t.join()
+    return rc, out_path, err_path
+
+
+def _tail(path, n=20):
+    with open(path, 'rb') as fh:
+        lines = fh.read().decode('utf-8', 'replace').splitlines()
+    return '\n'.join(lines[-n:])
+
+
 def run_standalone(case_dir, backend, device='cpu', env=None, gpu_index=None):
     """`python3 -m eqdyna <case_dir> --backend jax` -- the exact command a
     user would type, with the backend ALWAYS named.
@@ -520,12 +559,14 @@ def run_standalone(case_dir, backend, device='cpu', env=None, gpu_index=None):
         print('+ (%s) pinned to CUDA device %d, '
               'XLA_PYTHON_CLIENT_MEM_FRACTION=%s'
               % (os.path.basename(case_dir), gpu_index, GPU_MEM_FRACTION))
-    rc = subprocess.call([sys.executable, '-u', '-m', 'eqdyna',
-                          case_dir, '--backend', solver],
-                         cwd=REPO_ROOT, env=env)
+    rc, out_path, err_path = _call_kept(
+        [sys.executable, '-u', '-m', 'eqdyna', case_dir, '--backend', solver],
+        REPO_ROOT, env, os.path.join(case_dir, 'eqdyna.%s' % backend))
     if rc != 0:
-        raise RuntimeError('eqdyna.eqdyna3d %s --backend %s exited %d'
-                           % (os.path.basename(case_dir), solver, rc))
+        raise RuntimeError('eqdyna.eqdyna3d %s --backend %s exited %d '
+                           '(stdout kept at %s, stderr at %s); last stderr lines:\n%s'
+                           % (os.path.basename(case_dir), solver, rc,
+                              out_path, err_path, _tail(err_path)))
     frt = os.path.join(case_dir, 'frt.txt0')
     if not os.path.isfile(frt):
         raise RuntimeError('%s was not written by eqdyna.eqdyna3d' % frt)
