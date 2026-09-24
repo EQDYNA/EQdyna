@@ -82,6 +82,11 @@ SHARDS = {
                                  # parse, both languages; ~1 s (one mpirun -np
                                  # 1 launch that aborts at env-parse, before
                                  # any input file) -- negligible to shard 1.
+        "test_profile_ranks_helper.py",  # added 2026-09-23 (Iris, combo-fix
+                                 # item 3 follow-up): profile_ranks() vs
+                                 # cell_cost() conflation guard; pure-Python
+                                 # monkeypatched calls, no subprocess,
+                                 # negligible to shard 1's timed 41.5 s total.
         "test_rough_fault_normal_consistency.py",
         "test_rsfNucleation_tpv2802_td.py",
         "test_station_header_column_count.py",

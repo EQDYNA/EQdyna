@@ -268,13 +268,48 @@ def cell_cost(case, backend):
     an unrecognized backend -- see the raise below.
     """
     if backend == 'fortran':
-        return max(1, matrix.FORTRAN_RANKS.get(case, 4))
+        return max(1, matrix.FORTRAN_RANKS[case])
     if backend == 'python-jax-mpi':
         return max(1, matrix.PY_MPI_RANKS[case])
     if backend == 'python-jax':
         return max(1, math.ceil(matrix.JAX_MEASURED_CORES))
     raise ValueError('cell_cost: unknown backend %r -- known: %s'
                      % (backend, ', '.join(matrix.BACKENDS)))
+
+
+def profile_ranks(case, backend):
+    """The REAL process/rank count this cell's launch used -- i.e. exactly
+    the number of profile.rank<r>.json files that backend's launch writes.
+    This is a DIFFERENT question from cell_cost() above (a scheduling-budget
+    CORE cost) and the two must never be conflated again: cell_cost('test.
+    tpv8', 'python-jax') bills 3 (ceil'd matrix.JAX_MEASURED_CORES, XLA's own
+    CPU-side threading cost) for a launch that is one serial process writing
+    ONE profile.rank0.json. Passing cell_cost's 3 to
+    profile_record.capture_run's `ranks=` (the 2026-09-23 integration defect:
+    profile_record.capture_run asserts its caller's `ranks` equals the
+    profile files' own reported nranks and RAISES on a mismatch) turned every
+    physics-passing python-jax cell into a reported FAIL. This function is
+    the ONE place both callers below (the profile-collection call in
+    `main`'s run_one, and `_perf_meta`'s per-cell ranks column) get a rank
+    count from -- never `cell_cost`, for either.
+
+      fortran         -- matrix.FORTRAN_RANKS[case]: the real MPI rank count
+                         (testNameList.coreNumList), same source cell_cost
+                         reads for this backend (the two happen to agree
+                         here -- a fortran cell's cost IS its rank count).
+      python-jax-mpi  -- matrix.PY_MPI_RANKS[case]: genuinely N processes,
+                         same source cell_cost reads (again the two agree).
+      python-jax      -- 1: a single serial process regardless of how many
+                         CPU threads XLA spins up internally --
+                         thread count is not process/rank count, and only
+                         the latter is what a profile.rank<r>.json exists
+                         per.
+    """
+    if backend == 'fortran':
+        return max(1, matrix.FORTRAN_RANKS.get(case, 4))
+    if backend == 'python-jax-mpi':
+        return max(1, matrix.PY_MPI_RANKS[case])
+    return 1
 
 
 # Margin subtracted from measured-free cores before it becomes the default
@@ -724,20 +759,17 @@ def _perf_meta(results, label, device, budget, sha, tree_dirty):
     rule-24 shape of bug this field exists to avoid on its own axis."""
     cells = []
     for case, backend, ok, dt, _lines in results:
+        ranks = profile_ranks(case, backend)
         if backend == 'fortran':
-            ranks = matrix.FORTRAN_RANKS[case]
             plat, ev = 'cpu', 'fortran solver: CPU-only, src/fortran has no GPU path'
         elif backend == 'python-jax-mpi':
-            ranks = matrix.PY_MPI_RANKS[case]
             plat, ev = 'cpu', ('eqdyna3d --mpi with --device left at "auto" '
                                'forces JAX_PLATFORMS=cpu (run_e2e passes no '
                                '--device)')
         elif device == 'cpu':
-            ranks = 1
             plat, ev = 'cpu', ('run_standalone pins JAX_PLATFORMS=cpu; jax '
                                'cannot land on a GPU under that pin')
         else:
-            ranks = 1
             plat, ev = 'unknown', ('JAX_PLATFORMS=%s was requested but the '
                                    'sweep records no device evidence; '
                                    'requested is not measured' % device)
@@ -749,6 +781,38 @@ def _perf_meta(results, label, device, budget, sha, tree_dirty):
                 device=device, jobs_budget=budget,
                 tenancy_ceiling=ledger.TENANCY_REFERENCE_CEILING, cells=cells,
                 tree_dirty=tree_dirty)
+
+
+def _run_profile_capture(case_dir, case, backend, term, sha):
+    """Capture this PASSED cell's per-rank profile into
+    docs/run_profiles.jsonl. Module-level (not inlined in run_one's closure)
+    so a regression guard can call it directly and observe exactly what
+    `ranks` value it hands to profile_record.capture_run, without spinning up
+    a whole sweep.
+
+    Returns (ok, extra_lines):
+      ok=True,  extra_lines=[]        -- profile captured, nothing to add.
+      ok=False, extra_lines=[one line describing the PROFILE failure]
+                                       -- capture_run raised (missing/invalid
+                                       profile files, a rank-count mismatch,
+                                       an unmeasurable tenancy read, ...).
+
+    A profile defect DOES fail the cell (owner's mechanical-guard mission,
+    2026-09-23: "every cell this sweep PASSES must also carry a present,
+    schema-valid, sum-checked profile") -- this is not an `_or_warn`. But the
+    returned line is prefixed 'PROFILE CAPTURE FAILED', deliberately
+    distinguishable from compare.compare_cell's own physics-verdict lines,
+    so a reader of the sweep's FAIL output can tell a profiling-harness
+    defect from a real divergence in the solver's output without opening the
+    traceback."""
+    try:
+        profile_record.capture_run(
+            case_dir, case=case, backend=backend,
+            ranks=profile_ranks(case, backend), term=term, sha=sha)
+        return True, []
+    except Exception as exc:                # noqa: BLE001 - reported, not swallowed
+        return False, ['PROFILE CAPTURE FAILED (not a physics result): %s: %s'
+                       % (type(exc).__name__, exc)]
 
 
 def _capture_perf(results, label, device, budget, sha, tree_dirty):
@@ -1085,10 +1149,19 @@ def main(argv=None):
                 # `_or_warn` variant here (unlike the perf-ledger capture
                 # below): a profile defect must be able to turn a physics-
                 # passing cell into a failed one, not vanish into a warning.
-                profile_record.capture_run(
-                    case_dir, case=case, backend=backend,
-                    ranks=cell_cost(case, backend),
-                    term=str(matrix.GATE_TERM_S), sha=sweep_sha)
+                # `ranks=` is profile_ranks(), NEVER cell_cost() -- see
+                # profile_ranks' own docstring for the 2026-09-23 incident
+                # this distinction fixes (every python-jax cell FAILED
+                # because cell_cost's scheduling-cost 3 disagreed with the
+                # profile files' real nranks=1). A profile failure appends
+                # its own distinctly-labelled line rather than masquerading
+                # as a physics divergence (_run_profile_capture's contract).
+                profile_ok, profile_lines = _run_profile_capture(
+                    case_dir, case, backend, str(matrix.GATE_TERM_S),
+                    sweep_sha)
+                if not profile_ok:
+                    ok = False
+                    lines = lines + profile_lines
         except Exception as exc:                # noqa: BLE001 - reported, not swallowed
             ok, lines = False, ['%s: %s' % (type(exc).__name__, exc)]
         return (case, backend, ok, time.time() - t0, lines)
