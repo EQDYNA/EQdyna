@@ -341,6 +341,21 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     import jax
     from . import MPI4NodalQuant as MQ
 
+    # PRE-LOOP setup timer (decompose, device transfer, jit function
+    # CONSTRUCTION -- not execution, so no sync). Added by the profile-emitter
+    # landing (2026-09-23): without it, eqdyna3d.run_case_mpi's outer
+    # 'solve' Profile phase (which wraps this ENTIRE call) attributed only
+    # the step-loop portion to any bucket, and this decompose/jit-build cost
+    # -- MEASURED on test.tpv8 x 4 ranks: 2.4-3.8 s of a 12.0 s total_s, i.e.
+    # roughly 30%, not a rounding error -- fell into unaccounted_s, which
+    # blew past profile_schema's 5% SUM_TOLERANCE. This is real pre-loop
+    # work (Fortran's analogue is meshgen+assembleGlobalMass, its own
+    # `setup` bucket), so it belongs in `setup`, not in a gap. No new sync:
+    # decompose/to_device/jax.jit(...) construction are synchronous host-side
+    # calls already executing on this path; this only wraps them with two
+    # perf_counter() calls.
+    t_setup0 = time.perf_counter()
+
     rank = comm.Get_rank(); nranks = comm.Get_size()
     if not B.is_jax(xp):
         raise RuntimeError('driver.run_mpi: the MPI path exists for the jax '
@@ -504,11 +519,32 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     # extra block per step and is what probe_mpi_step_split.py is for.
     prof = MQ.step_profile()
     comm.Barrier()
+    # t_setup stops HERE, right after this pre-existing barrier (present on
+    # the default path already, unconditional -- not added by this change):
+    # decompose/to_device/jit-construction plus the rendezvous that lines
+    # every rank up before the loop's own clock starts. Reported as `setup`
+    # (see the comment above this function's `t_setup0`), not folded into
+    # `wait_ms_per_step`/t_wait -- that field's existing, documented meaning
+    # ("0.0 BY CONSTRUCTION on the production path", the comment below) is
+    # about the PER-STEP barrier and stays exactly as it was.
+    t_setup = time.perf_counter() - t_setup0
     c0 = os.times()
     t0 = time.perf_counter()
     t_mpi = t_wait = t_compute = t_d2h = 0.0
     for nt in range(1, nsteps + 1):
-        ta0 = time.perf_counter() if prof else 0.0
+        # t_compute is accumulated UNCONDITIONALLY (not just under `prof`)
+        # since the profile-emitter landing (2026-09-23): the block below
+        # (jax.block_until_ready(hv)) already runs on every step of the
+        # PRODUCTION path -- it always did, for the reason in the comment
+        # just below -- so timing around an already-mandatory sync adds no
+        # new synchronisation point and costs two perf_counter() calls, not
+        # a barrier. See profile_emit.py's module docstring for what this
+        # number means (part_a AND the previous step's part_b, i.e. element
+        # kernels + faulting fused, per driver.run_mpi's own async-pipeline
+        # comment below) and why `wait`/barrier timing is NOT extended the
+        # same way (it requires comm.Barrier(), a real new collective the
+        # default path must not pay).
+        ta0 = time.perf_counter()
         carry, hv = a_jit(dyn, carry, nt, halo)
         # BLOCK BEFORE STARTING THE MPI CLOCK. jax dispatch is asynchronous,
         # so a_jit returns before part_a has run and the first thing that
@@ -517,8 +553,7 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         # ONE-rank run with zero neighbours -- i.e. it was measuring the
         # solver, not the exchange.
         jax.block_until_ready(hv)
-        if prof:
-            t_compute += time.perf_counter() - ta0
+        t_compute += time.perf_counter() - ta0
         # THE BARRIER IS A MEASUREMENT DEVICE AND RUNS ONLY UNDER THE PROFILE.
         #
         # What it is for, unchanged: without it the fastest rank's "exchange"
@@ -562,8 +597,25 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         else:
             delta = MQ.exchange(comm, nbrs, np.asarray(jax.device_get(hv)))
         t_mpi += time.perf_counter() - t1
+        # Dispatch-side timing only (b_jit/xp.asarray do not block; jax
+        # queues them and the actual device execution is drained by NEXT
+        # iteration's `jax.block_until_ready(hv)` above, or by the final
+        # block below on the last step) -- added by the profile-emitter
+        # landing so the always-on `element` bucket also counts the host
+        # dispatch/H2D-queue cost of part_b's input prep, which previously
+        # sat entirely in unaccounted_s. No new sync: neither call here
+        # blocks; this only wraps calls that were already being made.
+        tb0 = time.perf_counter()
         carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
+        t_compute += time.perf_counter() - tb0
+    # Drains the LAST step's part_b (every earlier step's part_b was already
+    # drained, one step later, by the loop's own block_until_ready(hv)).
+    # This block is pre-existing and unconditional; only the timing around
+    # it is new, so folding its cost into `element` (element+fault fused,
+    # see profile_emit.py) adds no sync, just attributes an already-paid one.
+    tf0 = time.perf_counter()
     jax.block_until_ready(carry)
+    t_compute += time.perf_counter() - tf0
     elapsed = time.perf_counter() - t0
     c1 = os.times()
     # EFFECTIVE_CORES: cpu seconds this process consumed per wall second. A
@@ -577,6 +629,13 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     rep = dict(rep, ms_per_step=elapsed / nsteps * 1e3, solve_s=elapsed,
                mpi_ms_per_step=t_mpi / nsteps * 1e3,
                wait_ms_per_step=t_wait / nsteps * 1e3,
+               # Whole-loop TOTALS (not ms/step), unconditional since this
+               # landing: docs/run_profile.md's always-on profile.rank<r>.json
+               # buckets (element=compute folded with fault, exchange=mpi,
+               # wait=wait -- see profile_emit.py) read these directly rather
+               # than re-deriving seconds from a ms/step average.
+               compute_s=t_compute, mpi_s=t_mpi, wait_s=t_wait,
+               setup_s=t_setup,
                sync=sync, nsteps=nsteps, effective_cores=eff,
                # False on the production path: the per-step global barrier is
                # a profiling device now (see the loop). wait_ms_per_step is
