@@ -19,6 +19,11 @@ par.fzmin, par.fzmax = -25.0e3, 0.0e3
 
 par.xsource, par.ysource, par.zsource = -12.0e3, 0.0, -12.0e3
 
+# Implicit dependency, stated so it is not lost (pathway item 97(3)): this
+# case sets neither par.gamar nor par.roumax, so the plastic stress
+# construction (meshgen.f90:setPlasticStress) uses the DEFAULTS in
+# scripts/defaultParameters.py -- gamar = 0.66 and roumax = rou. Changing
+# either default changes this case's initial stress.
 par.C_elastic = 0
 par.str1ToFaultAngle = 45.
 par.devStrToStrVertRatio = 0.33

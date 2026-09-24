@@ -72,6 +72,13 @@ par.vp, par.vs, par.rou = 6000., 3464., 2670.
 
 par.term = 20.
 
+# SCEC initial-condition method (spec TPV29_30_Description_v06, p.24; pathway
+# item 97): this case uses METHOD 1, "using stress change". C_elastic = 1
+# switches the gravity body force off ((1-C_elastic) factor, assembleGlobalKU),
+# the medium starts stress-free, and the initial shear / effective normal
+# tractions are specified "manually" on the fault below. test.tpv30 uses
+# METHOD 2 (explicit gravity + total stress tensor). The two are mutually
+# exclusive per the spec; do not mix their settings between the two cases.
 par.C_elastic = 1
 par.C_nuclea  = 1
 par.insertFaultType = 3   # >0: rough fault; 3 (not 1/2): keep official geometry
