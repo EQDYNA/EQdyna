@@ -155,9 +155,12 @@ subroutine output_offfault_st
             bodytmp = '      '
             sttmp = '      '
             dptmp = '      '
-            write(bodytmp,'(i4.3)') int(x4nds(2,OffFaultStNodeIdIndex(1,i))/100.d0) 
-            write(sttmp,'(i4.3)') int(x4nds(1,OffFaultStNodeIdIndex(1,i))/100.d0) 
-            write(dptmp,'(i4.3)') int(abs(x4nds(3,OffFaultStNodeIdIndex(1,i)))/100.d0) 
+            ! nint(), not int() (pathway item 93): the on-fault writer rounds
+            ! and this one truncated, so a station at y=1.99 km filed as
+            ! body019 instead of body020. The i4.3 edit carries the sign.
+            write(bodytmp,'(i4.3)') nint(x4nds(2,OffFaultStNodeIdIndex(1,i))/100.d0)
+            write(sttmp,'(i4.3)') nint(x4nds(1,OffFaultStNodeIdIndex(1,i))/100.d0)
+            write(dptmp,'(i4.3)') nint(abs(x4nds(3,OffFaultStNodeIdIndex(1,i)))/100.d0)
 
             open(51,file='body'//trim(adjustl(bodytmp))//'st'//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
 
@@ -212,6 +215,10 @@ subroutine output_offfault_st
             ! z axis points up while the SCEC 'vertical' component is
             ! positive down -- the same negation the on-fault writer applies
             ! to its down-dip components at :109-112.
+            ! Item 93: declare the column count and format like the on-fault
+            ! writer does, derived from the write(51,'( E21.13,6E16.7)')
+            ! below -- item 67's class in its absent form.
+            write(51,*) '# Time series in 7 columns; column 1 in format E21.13, columns 2-7 in format E16.7'
             write(51,*) '# Column #1 = Time (s)'
             write(51,*) '# Column #2 = horizontal displacement (m)'
             write(51,*) '# Column #3 = horizontal velocity (m/s)'
@@ -221,7 +228,9 @@ subroutine output_offfault_st
             write(51,*) '# Column #7 = normal velocity (m/s)'
             write(51,*) '#'
             write(51,*) '# The line below lists the names of the data fields:'
-            write(51,*) 't h-disp h-vel v-disp v-vel n-disp n-vel'
+            ! Item 93: the same '(1X,103A)' edit as output_onfault_st, not
+            ! list-directed, so both station writers emit one header shape.
+            write(51,'(1X,103A)') 't h-disp h-vel v-disp v-vel n-disp n-vel'
             do j=1, nstep 
                 write(51,'( E21.13,6E16.7)') &
                     OffFaultStGramSCEC(1,j), &
