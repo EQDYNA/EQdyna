@@ -93,7 +93,12 @@ EVIDENCE_GLOB = os.path.join('docs', 'evidence', 'sweep-*', 'summary.json')
 # paths. VERSION/README/pastReleaseNotes.md are deliberately NOT here -- if
 # those changed after the sweep, the sweep no longer describes the tagged
 # tree's physics-relevant content and must be re-run.
-SWEEP_ALLOWED_EXACT_PATHS = ('docs/perf_ledger.jsonl', 'pathway_forward.md')
+# docs/run_profiles.jsonl added 2026-09-24: the release sweep appends its own
+# per-rank profile rows there (profile_record.py, PR #6), exactly as it appends
+# docs/perf_ledger.jsonl; without it the v5.17.0 sweep's own rows could not
+# land before the tag. It is a run record, not physics input.
+SWEEP_ALLOWED_EXACT_PATHS = ('docs/perf_ledger.jsonl', 'docs/run_profiles.jsonl',
+                             'pathway_forward.md')
 SWEEP_ALLOWED_PATH_PREFIXES = ('docs/evidence/', 'docs/perf_snapshots/')
 SWEEP_REQUIRED_FIELDS = ('sha', 'tree_clean', 'term', 'n_runnable', 'n_success',
                          'cells', 'started_utc', 'finished_utc')
