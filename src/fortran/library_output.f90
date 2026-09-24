@@ -14,6 +14,7 @@
 ! 10. output_profile (+ readCpusAllowed, computeNumaNodes, parseRangeList,
 !     readHostname, readPid, jsonNum helpers) -- docs/run_profile.md
 ! 11. report_dropped_offfault_st
+! 12. report_dropped_onfault_st
 
 !#1
 subroutine output_onfault_st
@@ -686,3 +687,43 @@ subroutine report_dropped_offfault_st(matchedAnyRank)
         endif
     enddo
 end subroutine report_dropped_offfault_st
+
+!#12
+subroutine report_dropped_onfault_st(matchedAnyRank, nReq)
+    ! pathway_forward.md item 116, the on-fault half of item 94.
+    ! setOnFaultStation (meshgen.f90) matches a station's along-strike x AND
+    ! its depth z against a fault node within tol, so a station that is not on
+    ! the fault's node grid matches no node on any rank and output_onfault_st
+    ! writes no faultst* file for it. That happened with no message at all
+    ! (test.tpv29 at dx = 500 m: 11 of 24; test.meng2023a/cb at dx = 400 m:
+    ! 12 of 13 before their station list moved onto the grid). This names
+    ! every such station. It does NOT snap or refuse -- the same owner call as
+    ! item 94. matchedAnyRank(k) is OR-reduced over all ranks
+    ! (checkOnFaultStationCoverage, eqdyna3d.f90); k runs over fault 1's
+    ! stations, then fault 2's, in bStations.txt order.
+    use globalvar
+    implicit none
+
+    integer (kind = 4), intent(in) :: nReq
+    logical, intent(in) :: matchedAnyRank(nReq)
+    integer (kind = 4) :: i, k, iFault, nDropped
+
+    nDropped = count(.not. matchedAnyRank)
+    if (nDropped == 0) return
+
+    write(*,'(a,i0,a,i0,a)') ' WARNING: ', nDropped, ' of ', nReq, &
+        ' requested on-fault stations match no fault node and get NO faultst* file'
+    write(*,'(a)') '   (setOnFaultStation, meshgen.f90: along-strike x and depth z must' // &
+        ' both equal a fault node within tol)'
+    k = 0
+    do iFault = 1, ntotft
+        do i = 1, nonfs(iFault)
+            k = k + 1
+            if (.not. matchedAnyRank(k)) then
+                write(*,'(a,i0,a,i0,a,2f10.3,a)') '   dropped on-fault station ', i, &
+                    ' (fault ', iFault, ') at x,z =', xonfs(1,i,iFault)/1000.d0, &
+                    xonfs(2,i,iFault)/1000.d0, ' km'
+            endif
+        enddo
+    enddo
+end subroutine report_dropped_onfault_st
