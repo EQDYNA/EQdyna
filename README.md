@@ -62,19 +62,32 @@ multiple of it, is refused rather than interpolated (`scripts/lib.py`'s
 The fast tier is a single sweep over `case x backend`: each case below is run
 on the Fortran solver (MPI) and on the standalone Python solver (NumPy and
 JAX), and every cell is compared against the same committed reference for that
-case, at that case's one tolerance. `term` is an axis of this sweep, exactly
-like `backend` (2026-09-23, owner-approved test-methodology change):
-`python3 testsys/run.py e2e` (and `run.py all`) run every case at the GATE
-term (`testsys/matrix.py`'s `GATE_TERM_S`, 5 s) regardless of that case's own
-committed `par.term`; `python3 testsys/run.py release` runs the same sweep at
-each case's own FULL term (`par.term` in
-`case_input/<case>/user_defined_params.py`) and is the tier that gates a
-release, writing `docs/evidence/sweep-<shortsha>/summary.json`. A case whose
-full term is not 5 s (`test.tpv29`, `test.tpv36`, `test.tpv37`) needs a second,
-gate-term reference (`test.reference.results/<case>/frt.canonical.term5.txt`)
-before its gate-term cells can pass; until one is committed (rule 7 -- each
-reference is its own reviewed change) those cells FAIL CLOSED rather than
-comparing against the full-term reference.
+case, at that case's one tolerance, at the ONE gate term
+(`testsys/matrix.py`'s `GATE_TERM_S`, 5 s) -- there is no second term.
+`python3 testsys/run.py e2e` (and `run.py all`) run the everyday cell
+selection at that term; `python3 testsys/run.py release` runs the SAME term
+over a WIDER cell selection (everyday cells plus `matrix.RELEASE_ONLY`,
+currently `test.tpv36`/`test.tpv37` x python-numpy, held out of the everyday
+run for COST alone -- ~1110-1120 s each -- never because they fail) and is
+the tier that gates a release, writing
+`docs/evidence/sweep-<shortsha>/summary.json`. A `--term` flag and a per-case
+"full term" existed for less than a day (2026-09-23), each case whose full
+term differed from 5 s carrying a second reference file
+(`frt.canonical.term5.txt`); the owner retired both the same day (rule 7,
+rule 24; `pathway_forward.md` item 102), so every gated case now has exactly
+ONE committed reference (`frt.canonical.txt`, plus `fault.dyna.r.nc` for
+`test.tpv36`/`test.tpv37`), gated at 5 s regardless of that case's own
+`par.term`. **What this gives up**: `test.tpv29` (par.term 20 s),
+`test.tpv36`/`test.tpv37` (par.term 6 s) are not run to their full physical
+term by any gate -- the owner's own accounting puts 47-63% of the fault
+rupturing after the 5 s cutoff across those three cases, and none of that
+late-time rupture is gated anywhere. `testsys/e2e/full_specs.py` still
+records each case's official spec resolution and duration; those runs stay
+defined and unrun (the separate, opt-in, report-only `e2e-full` tier below,
+not a release gate). The TPV29/TPV30 cross-code overlay against the 2015 SCEC
+submissions (`case_input/test.tpv29/README.md`) remains the only check on
+physics past 5 s, and it is manual. The owner accepted this tradeoff
+explicitly on 2026-09-23.
 
 The run prints which cells it covered and which it did not, so a green result
 states its own scope. **CI no longer runs this sweep for physics coverage.**
@@ -96,12 +109,14 @@ the CI runner's own mpich, distinct from this dev box's Open MPI 4.1.1 -- not
 a claim about the other 9 cases or the other two backends' physics, which the
 non-CI `e2e` and `release` tiers cover instead.
 
-Wall-clock figures below predate the term axis (2026-09-23) and were measured
-running each case at its own committed `par.term` -- i.e. what `run.py
-release` costs today, not the newer, GATE-term `run.py e2e`/`run.py all`
-(5 s for every case). `test.tpv29`'s gate-term cells are therefore faster than
-the 148.3/1108.5/229.4 s shown below; that faster number has not been
-measured yet and is not estimated here (rule 6).
+Wall-clock figures below predate the ONE-term simplification (2026-09-23) and
+were measured running each case at its own committed `par.term` -- a wall
+clock `run.py release` no longer produces, since release now runs the SAME
+5 s `GATE_TERM_S` as `run.py e2e`/`run.py all` (release differs only in cell
+SELECTION, `matrix.RELEASE_ONLY`, not term; see above and
+`pathway_forward.md` item 102). `test.tpv29`'s gate-term cells are therefore
+faster than the 148.3/1108.5/229.4 s shown below; that faster number has not
+been measured yet and is not estimated here (rule 6).
 
 | case | physics | SCEC benchmark | full-term wall clock, historical (dx / ranks / fortran s / numpy s / jax s) | full-tier spec (dx/term) |
 |---|---|---|---|---|
@@ -184,8 +199,12 @@ compiler changes and the solver does not. A baseline recording a different
 metric is refused rather than compared against.
 
 **Peak RSS** (`/usr/bin/time -v`, one case at a time; `testsys/matrix.py`'s
-`MEASURED_PEAK_RSS_GB` is the authoritative record and the reason CI runs only
-the cells that fit a 7 GB runner):
+`MEASURED_PEAK_RSS_GB` is the authoritative measured record, kept for the
+local `run.py all`/`run.py release` sweeps to reason about which cells fit
+which box. It stopped being the reason CI's cell list is what it is on
+2026-09-23 (`ef7196c`): CI no longer covers physics at all, it runs one fixed
+portability smoke set, `matrix.CI_CELLS` -- `test.tpv8` x {fortran, python-numpy,
+python-jax} -- chosen for portability, not memory):
 
 | case | numpy | jax |
 |---|---|---|
