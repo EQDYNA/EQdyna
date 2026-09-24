@@ -15,7 +15,11 @@ Placement reuses testsys/perf/run_scaling.py's free_node_map / select_cpus /
 numactl_prefix verbatim (cpu AND memory bound). Each worker reports
 `ms_per_iter` from a timed loop AFTER a warm-up; a worker whose cpu time
 fell under --min-effective-cores of its wall time is REPORTED, not dropped
-(it is the straggler signal, rule 2). A non-positive timing raises.
+(it is the straggler signal, rule 2). A non-positive timing raises. All
+workers warm up, then wait at a stdin barrier so the timed loops start
+together; the run is refused unless the timed windows overlap
+--min-overlap of the longest one, and unless every worker saw exactly one
+allowed cpu.
 
     python3 testsys/perf/threadprobe.py --k 16 --iters 200
 Writes docs/perf_snapshots/threadprobe_<YYYY-mm-dd_HHMMSS>.json (rule 19).
@@ -38,12 +42,15 @@ n = int(sys.argv[1]); iters = int(sys.argv[2]); warm = int(sys.argv[3])
 a = np.ones(n); c = np.full(n, 1.0000001)
 for _ in range(warm):
     (a * c + 0.5).sum()
+print('READY', flush=True)
+sys.stdin.readline()          # barrier: every timed loop starts together
+t_start = time.time()
 w0 = time.perf_counter(); c0 = time.process_time()
 for _ in range(iters):
     (a * c + 0.5).sum()
 wall = time.perf_counter() - w0; cpu = time.process_time() - c0
-print(json.dumps(dict(wall_s=wall, cpu_s=cpu, iters=iters,
-                      cpus_allowed=len(os.sched_getaffinity(0)))))
+print(json.dumps(dict(wall_s=wall, cpu_s=cpu, iters=iters, t_start=t_start,
+                      t_end=time.time(), cpus_allowed=len(os.sched_getaffinity(0)))))
 '''
 
 
@@ -59,10 +66,19 @@ def summarize(results):
                              'measurement, not a fast one' % (r,))
         ms.append(1e3 * r['wall_s'] / r['iters'])
     mean = sum(ms) / len(ms)
+    # Concurrency of the timed windows: the spread is only meaningful if the
+    # workers contended for bandwidth AT THE SAME TIME (PR #18 audit).
+    if all('t_start' in r for r in results):
+        span = max(r['t_end'] - r['t_start'] for r in results)
+        common = min(r['t_end'] for r in results) - max(r['t_start'] for r in results)
+        overlap = max(common, 0.0) / span if span > 0 else 0.0
+    else:
+        overlap = None
     return dict(n=len(ms), ms_min=min(ms), ms_max=max(ms), ms_mean=mean,
                 spread_max_over_min=max(ms) / min(ms),
                 straggler_max_over_mean=max(ms) / mean,
-                effective_cores=[r['cpu_s'] / r['wall_s'] for r in results])
+                effective_cores=[r['cpu_s'] / r['wall_s'] for r in results],
+                overlap=overlap)
 
 
 def main():
@@ -76,6 +92,8 @@ def main():
     ap.add_argument('--busy-ceiling', type=float, default=0.2)
     ap.add_argument('--i-know-the-box-is-busy', action='store_true')
     ap.add_argument('--min-effective-cores', type=float, default=0.95)
+    ap.add_argument('--min-overlap', type=float, default=0.9,
+                    help='refuse unless the timed windows overlap this fraction')
     a = ap.parse_args()
     import run_scaling as rs
     import run_numa_scaling as numa
@@ -92,15 +110,39 @@ def main():
     env = dict(os.environ, OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', MKL_NUM_THREADS='1')
     procs = [subprocess.Popen(rs.numactl_prefix([c], nodes) +
                               [sys.executable, '-c', WORKER, str(n), str(a.iters), str(a.warm)],
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True, env=env)
              for c in cpus]
+
+    def fail(msg):
+        for q in procs:          # never leave pinned workers behind
+            if q.poll() is None:
+                q.kill()
+        raise SystemExit('FAIL: ' + msg)
+
+    for c, p in zip(cpus, procs):
+        line = p.stdout.readline()
+        if line.strip() != 'READY':
+            fail('worker on cpu %d did not reach the barrier (%r): %s'
+                 % (c, line, p.stderr.read()[-300:] if p.poll() is not None else ''))
+    for p in procs:
+        p.stdin.write('GO\n')
+        p.stdin.flush()
     results = []
     for c, p in zip(cpus, procs):
         out, err = p.communicate()
         if p.returncode != 0:
-            raise SystemExit('FAIL: worker on cpu %d exited %d: %s' % (c, p.returncode, err[-300:]))
-        results.append(dict(json.loads(out.strip().splitlines()[-1]), cpu=c))
+            fail('worker on cpu %d exited %d: %s' % (c, p.returncode, err[-300:]))
+        r = dict(json.loads(out.strip().splitlines()[-1]), cpu=c)
+        if r['cpus_allowed'] != 1:
+            fail('worker on cpu %d saw cpus_allowed=%d, not 1 -- the pin did not take'
+                 % (c, r['cpus_allowed']))
+        results.append(r)
     s = summarize(results)
+    if s['overlap'] < a.min_overlap:
+        fail('timed windows overlapped only %.2f of the longest (< %.2f) -- the '
+             'workers did not contend together, so the spread is not a measurement'
+             % (s['overlap'], a.min_overlap))
     sha_r = subprocess.run(['git', '-C', ROOT, 'rev-parse', '--short', 'HEAD'],
                            capture_output=True, text=True)
     if sha_r.returncode != 0 or not sha_r.stdout.strip():
@@ -110,11 +152,12 @@ def main():
         print('cpu %3d  %8.3f ms/iter  EFFECTIVE_CORES %.2f%s'
               % (r['cpu'], 1e3 * r['wall_s'] / r['iters'], e,
                  '  <-- below %.2f' % a.min_effective_cores if e < a.min_effective_cores else ''))
-    print('k=%d %s: spread max/min %.2fx, straggler max/mean %.2fx, loadavg %s'
+    print('k=%d %s: spread max/min %.2fx, straggler max/mean %.2fx, overlap %.2f, loadavg %s'
           % (s['n'], a.policy, s['spread_max_over_min'], s['straggler_max_over_mean'],
-             os.getloadavg()))
+             s['overlap'], os.getloadavg()))
     out = os.path.join(ROOT, 'docs', 'perf_snapshots',
-                       'threadprobe_%s.json' % time.strftime('%Y-%m-%d_%H%M%S'))
+                       'threadprobe_%s_k%d_%s.json'
+                       % (time.strftime('%Y-%m-%d_%H%M%S'), a.k, a.policy))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     json.dump(dict(sha=sha_r.stdout.strip(), host=os.uname().nodename,
                    date=time.strftime('%Y-%m-%d %H:%M'), loadavg=os.getloadavg(),

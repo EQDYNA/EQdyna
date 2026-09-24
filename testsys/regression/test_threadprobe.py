@@ -25,6 +25,10 @@ def main():
         fails.append('summarize ratios wrong: %r' % s)
     if [round(e, 2) for e in s['effective_cores']] != [1.0, 0.5, 0.99]:
         fails.append('EFFECTIVE_CORES wrong: %r' % s['effective_cores'])
+    ov = tp.summarize([dict(wall_s=1.0, cpu_s=1.0, iters=10, t_start=0.0, t_end=1.0),
+                       dict(wall_s=1.0, cpu_s=1.0, iters=10, t_start=0.5, t_end=1.5)])['overlap']
+    if round(ov, 6) != 0.5:
+        fails.append('overlap of two half-overlapping windows is %r, want 0.5' % ov)
     for bad, label in (([], 'empty'), ([dict(wall_s=0.0, cpu_s=0.0, iters=10)], 'zero wall'),
                        ([dict(wall_s=-1.0, cpu_s=0.0, iters=10)], 'negative wall')):
         try:
