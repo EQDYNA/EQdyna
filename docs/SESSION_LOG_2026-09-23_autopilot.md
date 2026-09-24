@@ -1772,3 +1772,48 @@ counts cells without checking which ones.
 **Cycle times:** #3 47 min, #4 13.7, #5 7.6, #6 78 (one CI red plus an audit
 round). Queue next: jax speed levers, then v5.17.0, then the
 checkInputConsistency port.
+
+## VV. MILESTONE: v5.17.0 released (2026-09-24 01:10 CDT)
+
+Tag `v5.17.0` (annotated, `6725f7c`) → `6dc6702`. Release:
+https://github.com/EQDYNA/EQdyna/releases/tag/v5.17.0
+
+Chain: pre-release audits at `0e68d86` (zofia Mode B, victor technical). Stranger
+dry run on `0e68d86` green. haruto prepared release PR #7. victor found it
+merge-blocking on the release NOTES: they said the numpy code was untouched
+(false) and that pr-policy-gate "refuses" pushes (false), plus overclaims in
+the speed series. I fixed the notes myself in `fc2814d`; the re-audit was clean.
+Everyday sweep on the PR head, required by rule 25 for the banner under
+`src/`: 23/23 in 331.1 s. Merged as M=`2c11fcd` (10.2 min). M's CI 35962062804
+green. `run.py release` on a clean checkout of M: 23/23, 301.18 s,
+tree_clean true. Evidence E1=`7db28d7`, Tasks-done row E2=`6dc6702`.
+`check_pretag_ci --pre-tag 6dc6702 --ack-paths-ignored-parent` PASS. Tag
+pushed, Release created at once, tag CI 35962577186 and Docker publish
+35962577144 both success. `test_release_complete` SUCCESS with every
+check PASS. Stranger gate on the pushed tag (fresh `clone --branch
+v5.17.0`, README verbatim, `env -i`): install, `run.py all` 23/23 and the
+Quick Start test.tpv8 all exited 0. `ubuntu.env.sh` needs sudo and was
+not re-run; the installed packages stood in.
+
+**Two defects the first real release under rules 24/25 found:**
+1. Rule 25's sentence "a release PR carries rule 24's local-sweep evidence
+   for its exact SHA" cannot be satisfied, because a squash creates a new
+   SHA. I paid the cost and followed the working order instead (M → sweep →
+   E → pre-tag → tag), without reasoning around the rule. Routed to zofia to
+   amend.
+2. `check_pretag_ci`'s permitted-ancestor allow-list (`:96-97`) lacks
+   `docs/run_profiles.jsonl`. The release sweep's own 23 profile rows could
+   therefore not land before the tag, and they are committed after it, here.
+   This is a testsys fix and goes through a PR.
+
+**CLAUDE.md drift held for the owner** (zofia at `0e68d86`): `:39` (15 .py →
+16), `:47` (profile_emit.py missing from the no-counterpart list), `:71-72`
+(smoke lists python-numpy), `:97-98`, `:108` (10 cases, 3 backends). No agent
+edits it without the owner.
+
+jax speed levers (mira, `origin/mira/jax-speed-2026-09-24`, NOTES only): no
+lever landed. The compile cache is already on and warm. Thread pinning under
+contention was falsified by an A/B (30.63 s shared against 29.63 s pinned).
+Index dtype, scatter lowering and transfers are already optimal. Clean
+per-cell estimates are tpv36 149 s, tpv37 ~139 s and drv.a6 ~94 s, against
+286/277/218 s measured in-sweep. The gap is box tenancy, not code.
