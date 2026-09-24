@@ -72,6 +72,10 @@ SHARDS = {
         "test_multifault_item9_fix.py",
         "test_multifault_refused.py",
         "test_perf_parallelism_discriminator.py",
+        "test_perf_item91_guards.py",  # added 2026-09-24 (Iris, item 91 perf-
+                                 # tool defects): pure monkeypatched
+                                 # behavioural checks, no MPI/subprocess/box
+                                 # dependence, well under 1 s.
         "test_release_evidence_tree_clean.py",  # added 2026-09-23 (Iris, rule-24 tree_clean fix): 2 sandbox git-init scenarios, well under 1 s
         "test_profile_guard.py",  # added 2026-09-23 (item 3, profile-guard
                                  # testsys half); ~0.03 s, pure fixture/schema
