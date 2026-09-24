@@ -757,6 +757,7 @@ def _perf_meta(results, label, device, budget, sha, tree_dirty):
     `sha`/`tree_dirty` are the caller's values, captured once at sweep START
     (see `main`) -- never recomputed here at sweep END, which is the exact
     rule-24 shape of bug this field exists to avoid on its own axis."""
+    import ledger  # resolved via the sys.path insert at the call site (_capture_perf)
     cells = []
     for case, backend, ok, dt, _lines in results:
         ranks = profile_ranks(case, backend)
