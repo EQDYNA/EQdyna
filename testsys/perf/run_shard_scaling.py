@@ -140,26 +140,9 @@ def time_one(case_dir, nsteps, cpus, node_map, ndev, mode):
     return got['WALL'], int(got['DEVICES']), int(got['THREADS'])
 
 
-def record_point(base, base_n, mode, n, ms_per_step, first_n):
-    """Pure bookkeeping for the speedup baseline (item 91g), factored out of
-    main()'s loop so it is directly unit-testable with no jax/subprocess.
-
-    Mutates `base`/`base_n` (dicts keyed by mode) in place the first time
-    `mode` is seen, and returns (speedup, baseline_n, note). `note` is a
-    non-None warning string exactly when the baseline point being set is NOT
-    `first_n` -- i.e. the intended n=1 (or whatever devices[0] is) baseline
-    was skipped or failed and this mode's speedup column is grounded on a
-    later point instead. The caller must not silently drop `note`."""
-    note = None
-    if mode not in base:
-        base[mode] = ms_per_step
-        base_n[mode] = n
-        if n != first_n:
-            note = ('baseline for mode %r is n=%d (n=%d, the requested '
-                    'first point, was SKIPPED or FAILED) -- speedup values '
-                    'for this mode are relative to n=%d, not n=%d'
-                    % (mode, n, first_n, n, first_n))
-    return base[mode] / ms_per_step, base_n[mode], note
+# Item 91g's baseline bookkeeping lives in run_scaling.py (one copy, shared
+# with that tool's two loops); this name is kept for callers and the guard.
+record_point = rs.record_point
 
 
 def per_step(case_dir, cpus, node_map, ndev, mode, n_lo, n_hi):
