@@ -106,7 +106,17 @@ MODULE globalvar
     integer (kind = 4) :: C_dc = 0                ! double-couple source: 1 = yes, 0 = no
     integer (kind = 4) :: C_degen                  ! degenerate-element flag: 0 = brick, 1 = wedge, 2 = tetra
     integer (kind = 4) :: output_plastic          ! 1 = write plastic-strain output
-    integer (kind = 4) :: writeCompTime = 0       ! 1 = write per-stage wall-clock timing
+    integer (kind = 4) :: writeCompTime = 1       ! 1 = write per-stage wall-clock timing.
+        ! Was 0 and read from NOWHERE (no bGlobal.txt slot, no env, no CLI) --
+        ! item 30 (commit 8839638) found and fixed the 511x compTimeInSeconds(2)
+        ! bug this legacy dump exists to report, but the dump itself stayed
+        ! unreachable without editing source and rebuilding. Flipped to 1 here
+        ! (2026-09-23, profile-emitter mission) so compTime<rank> is written by
+        ! default. This is independent of and additional to the new always-on
+        ! profile.rank<r>.json (output_profile, library_output.f90): it writes
+        ! its OWN file (compTime<rank>) and touches no frt output, so it carries
+        ! zero parity risk -- verified by the profile on/off byte-identity gate,
+        ! which this flip does not participate in either.
     integer (kind = 4) :: outputGroundMotion       ! 1 = write ground-motion output
     integer (kind = 4) :: outputFinalSurfDisp = 0 ! 1 = write final surface displacement
 
@@ -211,8 +221,25 @@ MODULE globalvar
     real (kind = dp) :: startTimeStamp               ! MPI_WTIME() value at the start of the current stage
     real (kind = dp) :: simuStartTime                ! MPI_WTIME() value at simulation start
     real (kind = dp) :: MPICommTimeInSeconds = 0.0d0 ! cumulative MPI-communication wall-clock time, s
+    real (kind = dp) :: MPIWaitTimeInSeconds = 0.0d0 ! cumulative MPI-barrier (sync wait) wall-clock time, s;
+        ! a LOCAL sub-timer inside MPI4NodalQuant's mpi_barrier call, nested
+        ! inside the span MPICommTimeInSeconds already measures -- see
+        ! assembleGlobalMass.f90. profile output subtracts this back out of
+        ! the exchange bucket so exchange and wait are disjoint.
     real (kind = dp) :: totmemcost, memcost = 0.0d0  ! memory-cost bookkeeping
     real (kind = dp) :: pi = 4*atan(1.0_dp)
+    logical :: profileEnabled = .true.   ! EQDYNA_PROFILE off switch, read ONCE
+        ! at startup (eqdyna3d.f90, right after MPI_Init) into this module
+        ! logical -- never re-read via get_environment_variable per step.
+        ! Default .true. (profile default ON, matching output_profile's own
+        ! default). Guards every PER-STEP timer/checkpoint the profile-emitter
+        ! landing added (currently: the MPIWaitTimeInSeconds sub-timer inside
+        ! MPI4NodalQuant, assembleGlobalMass.f90) so EQDYNA_PROFILE=0 is a REAL
+        ! off switch, not just a gate on output_profile's own file write.
+        ! output_profile's own EQDYNA_PROFILE check (library_output.f90) stays
+        ! independent -- it is the end-of-run file-write gate and is correct
+        ! as-is; this flag is for the per-step cost, which that check cannot
+        ! see or skip.
 
     !=====================================================================
     ! Allocatable arrays

@@ -72,8 +72,10 @@ OUT = os.path.join(ROOT, 'docs', 'perf_snapshots',
 # silently discard each other.
 
 sys.path.insert(0, TESTSYS)
+sys.path.insert(0, os.path.dirname(TESTSYS))  # testsys/ itself, for profile_record
 import run_numa_scaling as numa      # noqa: E402
 import run_scaling as rs             # noqa: E402
+import profile_record                # noqa: E402  (append-only per-rank profile totals)
 
 RANK_RE = re.compile(r'rank (\d+)/(\d+) wrote (\S+)\s+(.*)')
 
@@ -388,6 +390,22 @@ def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync,
     hi = jax_mpi_once(case_dir, n_hi, cpus, ranks, sync, platform)
     if lo[0] is None or hi[0] is None:
         return None
+    # Profile-guard/collection wiring (item 3, testsys half, 2026-09-23):
+    # `case_dir` is reused for lo/hi (nsteps is a CLI arg, no rebuild), so the
+    # profile.rank<r>.json files resident right after the LARGER (n_hi) call
+    # above are that run's own -- same convention as run_scaling.per_step_py.
+    # Warn-only: this tool's verdict is the ms/step figure, not profile
+    # coverage.
+    try:
+        _sha = rs.sh(f'git -C {rs.ROOT} rev-parse --short HEAD').stdout.strip()
+        profile_record.capture_run(case_dir, case=rs.CASE,
+                                   backend='python-jax-mpi', ranks=ranks,
+                                   term='perf-scaling-probe', sha=_sha,
+            tree_dirty=profile_record.ledger.tree_dirty())
+    except Exception as exc:                        # noqa: BLE001
+        print('WARNING: profile-record capture failed for python-jax-mpi '
+             '(%s: %s) -- the scaling measurement above is unaffected.'
+             % (type(exc).__name__, exc))
     ps = (hi[0] - lo[0]) / float(n_hi - n_lo)
     ms = [d['ms_per_step'] for d in hi[1]]
     ms_lo = [d['ms_per_step'] for d in lo[1]]

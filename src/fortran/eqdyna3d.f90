@@ -7,10 +7,65 @@ program EQdyna
     include 'mpif.h'
         
     integer (kind = 4) :: i, iMPIerr
+    ! Profiling checkpoints (docs/run_profile.md). mpiCommSetup/mpiWaitSetup
+    ! snapshot the cumulative MPI counters right before the time loop starts;
+    ! mpiCommLoop/mpiWaitLoop are the LOOP-PHASE deltas, used to split the
+    ! always-on per-rank profile into "exchange" vs "wait" buckets without
+    ! computing either as a total-minus-everything-else remainder.
+    real (kind = dp) :: mpiCommSetup, mpiWaitSetup, mpiCommLoop, mpiWaitLoop, tLoopStart, loopS
+    character (len = 32) :: envval
+    character (len = 16) :: envStatusStr, envLengthStr
+    integer (kind = 4) :: envStatus, envLength
 
     call MPI_Init(iMPIerr)
     call mpi_comm_rank(MPI_COMM_WORLD,me,iMPIerr)
     call mpi_comm_size(MPI_COMM_WORLD,totalNumOfMPIProcs,iMPIerr)
+
+    ! EQDYNA_PROFILE read ONCE here, right after MPI_Init, into the module
+    ! logical `profileEnabled` (globalvar.f90) -- never re-read per step
+    ! (library_output.f90's output_profile now tests this flag instead of
+    ! reading the variable a second time). Accepted values, identical on
+    ! the Python side (profile_emit.enabled()): unset or "" -> ON (the
+    ! documented default), "1" -> ON, "0" -> OFF. Anything else is a
+    ! misconfiguration (e.g. EQDYNA_PROFILE=off/false/a typo) that used to
+    ! be silently treated as ON -- refused loudly instead, naming the
+    ! variable, the bad value and the accepted values.
+    envval = ' '
+    call get_environment_variable('EQDYNA_PROFILE', envval, length=envLength, status=envStatus)
+    if (envStatus == 1) then
+        profileEnabled = .true.   ! not set: documented default
+    else if (envStatus /= 0) then
+        ! status -1: value did not fit in the 32-char buffer (truncated);
+        ! status 2 (or other nonzero): environment variables unsupported
+        ! on this platform. Either way the value could not be read
+        ! reliably, so refuse rather than silently guessing "on".
+        write(envStatusStr,'(I0)') envStatus
+        write(envLengthStr,'(I0)') envLength
+        call abortRun(ERR_CFG_PROFILE_ENV_INVALID, &
+            'EQDYNA_PROFILE could not be read (get_environment_variable status=' &
+            //trim(envStatusStr)//', length='//trim(envLengthStr)// &
+            ').  Accepted values: unset, "", "1" (profiling on) or "0" (profiling off).')
+    else if (envLength /= len_trim(envval)) then
+        ! A value with trailing blanks ("0 ", "1 ") must be refused exactly as
+        ! the Python side refuses it (rule 23): trim() would otherwise make it
+        ! look valid here while profile_emit.enabled() raises.
+        write(envLengthStr,'(I0)') envLength
+        call abortRun(ERR_CFG_PROFILE_ENV_INVALID, &
+            'EQDYNA_PROFILE="'//envval(1:envLength)//'" (length '//trim(envLengthStr)// &
+            ') is not a recognised value -- it carries blanks.' &
+            //'  Accepted values: unset, "", "1" (profiling on) or "0" (profiling off).')
+    else
+        select case (trim(envval))
+        case ('', '1')
+            profileEnabled = .true.
+        case ('0')
+            profileEnabled = .false.
+        case default
+            call abortRun(ERR_CFG_PROFILE_ENV_INVALID, &
+                'EQDYNA_PROFILE="'//trim(envval)//'" is not a recognised value.' &
+                //'  Accepted values: unset, "", "1" (profiling on) or "0" (profiling off).')
+        end select
+    endif
 
     if (me == masterProcsId) then 
         write(*,*) '====================================================================='
@@ -71,18 +126,57 @@ program EQdyna
 
     call init_vel ! Initiate on-fault node velocities
 
+    ! Snapshot the cumulative MPI counters at the setup/loop boundary. Both
+    ! counters only grow (mpi_wtime deltas accumulated in place), so this is
+    ! a direct reading of a running clock at a named checkpoint, not a
+    ! remainder computed from anything downstream.
+    !
+    ! All of this is a ONE-TIME (not per-step) checkpoint pair, but it is
+    ! still profiler-ADDED code, so it is skipped -- not just left unread --
+    ! under EQDYNA_PROFILE=0. `call driver` (the full nstep loop) itself
+    ! always runs; only the MPI_WTIME() bracketing around it is conditioned.
+    if (profileEnabled) then
+        mpiCommSetup = MPICommTimeInSeconds
+        mpiWaitSetup = MPIWaitTimeInSeconds
+        tLoopStart = MPI_WTIME()
+    endif
+
     call driver
-    
+
+    if (profileEnabled) then
+        loopS = MPI_WTIME() - tLoopStart
+        ! mpiCommLoop is the loop-phase MPI4NodalQuant span INCLUDING its
+        ! nested barrier (mirrors how MPICommTimeInSeconds is accumulated);
+        ! mpiWaitLoop is that same span's barrier-only portion.
+        ! output_profile subtracts the latter from the former to get a
+        ! disjoint exchange/wait split.
+        mpiCommLoop = MPICommTimeInSeconds - mpiCommSetup
+        mpiWaitLoop = MPIWaitTimeInSeconds - mpiWaitSetup
+    else
+        loopS = 0.0d0
+        mpiCommLoop = 0.0d0
+        mpiWaitLoop = 0.0d0
+    endif
+
     startTimeStamp = MPI_WTIME()
     call output_onfault_st
     call output_offfault_st
     call output_frt
-    if (output_plastic == 1) call output_plastic_strain  
+    if (output_plastic == 1) call output_plastic_strain
     if (outputFinalSurfDisp == 1) call output_finalSurfDisp
 
-    compTimeInSeconds(8) = MPI_WTIME() - startTimeStamp 
-    compTimeInSeconds(9) = MPI_WTIME() - simuStartTime 
-   
+    compTimeInSeconds(8) = MPI_WTIME() - startTimeStamp
+    compTimeInSeconds(9) = MPI_WTIME() - simuStartTime
+
+    ! ALWAYS-ON per-rank profile (docs/run_profile.md). Off switch
+    ! EQDYNA_PROFILE=0 exists only for the overhead A/B; default is on and
+    ! independent of writeCompTime, which stays gated on the legacy
+    ! compTime<rank> text dump below.
+    call output_profile(compTimeInSeconds(1) + compTimeInSeconds(2), &
+                         compTimeInSeconds(3) + compTimeInSeconds(4) + compTimeInSeconds(5), &
+                         compTimeInSeconds(6), mpiCommLoop - mpiWaitLoop, mpiWaitLoop, &
+                         compTimeInSeconds(8), loopS, compTimeInSeconds(9), nstep, 1)
+
     if (writeCompTime == 1) call output_timeanalysis
     
     call MPI_Finalize(iMPIerr)

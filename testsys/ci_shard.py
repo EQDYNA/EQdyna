@@ -73,6 +73,20 @@ SHARDS = {
         "test_multifault_refused.py",
         "test_perf_parallelism_discriminator.py",
         "test_release_evidence_tree_clean.py",  # added 2026-09-23 (Iris, rule-24 tree_clean fix): 2 sandbox git-init scenarios, well under 1 s
+        "test_profile_guard.py",  # added 2026-09-23 (item 3, profile-guard
+                                 # testsys half); ~0.03 s, pure fixture/schema
+                                 # checks, no subprocess -- negligible to
+                                 # shard 1's timed 41.5 s total.
+        "test_profile_env_strict.py",  # added 2026-09-23 (profile-fix audit,
+                                 # item 3 follow-up): EQDYNA_PROFILE strict
+                                 # parse, both languages; ~1 s (one mpirun -np
+                                 # 1 launch that aborts at env-parse, before
+                                 # any input file) -- negligible to shard 1.
+        "test_profile_ranks_helper.py",  # added 2026-09-23 (Iris, combo-fix
+                                 # item 3 follow-up): profile_ranks() vs
+                                 # cell_cost() conflation guard; pure-Python
+                                 # monkeypatched calls, no subprocess,
+                                 # negligible to shard 1's timed 41.5 s total.
         "test_rough_fault_normal_consistency.py",
         "test_rsfNucleation_tpv2802_td.py",
         "test_station_header_column_count.py",
@@ -96,7 +110,9 @@ SHARDS = {
         "test_sweep_tenancy_budget_2026_09_23.py",
     ],
     "3": [
+        "test_tenancy_without_numa.py",  # added 2026-09-23 (wei-lin, PR #6 CI smoke fix): <2 s
         "test_backend_axis.py",  # added 2026-09-23 (wei-lin, numpy out of the gates): <1 s
+        "test_perf_meta_imports.py",  # added 2026-09-23 (wei-lin): <1 s
         "test_sweep_speed_2026_09_23.py",  # added at merge (wei-lin): landed d488dae after this partition was timed; 0.2 s
         "test_ci_shard_coverage.py",
         "test_ci_workflow_coverage.py",

@@ -74,24 +74,15 @@ import numpy as np
 
 from . import assembleGlobalMass, driver, func_lib, library_output, meshgen, readInputFiles
 from . import backend as _backend
+from . import profile_emit as _profile_emit
 
-# friclaw -> the NumPy solver module whose run(S, nsteps, verbose) consumes
-# this module's S dict. All three modules were independently verified
-# (by the removed parity tier) to need the EXACT SAME S-dict keys (the
-# per-friclaw modules
-# port_tp.py only add nucleation-parameter reads and, for TP, an internally
-# -owned onFaultTPHist scan-carry -- neither needs a NEW key from S beyond
-# what build_solver_state already provides for tpv8, confirmed by grepping
-# each module's `S[...]` accesses before wiring this dispatch) -- so
-# build_solver_state below is friclaw-agnostic; only the solver CALLED
-# differs.
 # The friction laws this port implements. EVERY one of them is served by the
 # SAME code -- eqdyna/{driver,faulting,fric,assembleGlobalKU,backend}.py --
 # with the friclaw dispatch inside faulting.py exactly where faulting.f90:21-22
 # puts it, and with the backend as an argument rather than a second module.
-#
-# This used to be two tables of three modules each: driver.py
-# time loop. They are deleted.
+# build_solver_state is therefore friclaw-agnostic: there is no per-friclaw
+# and no per-backend solver module left to dispatch between (the two tables
+# of three port*.py modules that used to stand here are deleted).
 SUPPORTED_FRICLAW = (1, 2, 3, 4, 5)
 
 DEFAULT_BACKEND = 'jax'
@@ -164,7 +155,9 @@ def _narrow_numpy_affinity():
 
 
 def _resolve_solver(friclaw, backend):
-    """Returns the run()-providing module for `friclaw` under `backend`.
+    """Returns a run(S, nsteps, verbose) callable for `friclaw` under
+    `backend` -- one solver for every friclaw, so this only VALIDATES the
+    pair and binds the backend; there is no module to pick between.
 
     NO FALLBACK (PROJECT_RULES rule 2). backend='jax' with jaxlib missing is a
     hard failure, not a quiet demotion to NumPy.
@@ -448,12 +441,44 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
 
     Returns (path, report) -- the report carries this rank's element counts,
     halo size and ms/step, which every multi-rank measurement must print."""
+    # total_s is an INDEPENDENT timer, not a bucket sum (profile_schema.py's
+    # "the sum check, and why it is the one that matters" -- unaccounted_s
+    # must be a real remainder against a total measured by its OWN clock,
+    # exactly as compTimeInSeconds(9)/simuStartTime is in eqdyna3d.f90).
+    #
+    # EQDYNA_PROFILE read ONCE here, before setup, before the loop. When
+    # off, run_t0 stays 0.0 and _emit() below is never called -- no
+    # perf_counter() call this landing added runs, not just no file write.
+    profile_on = _profile_emit.enabled()
+    run_t0 = time.perf_counter() if profile_on else 0.0
     prof = profile if profile is not None else Profile('jax')
     with prof.phase('setup (mesh+input)'):
         S, mesh = build_solver_state(case_dir)
     with prof.phase('solve'):
         out = driver.run_mpi(S, comm, nsteps=nsteps, verbose=verbose,
                              xp=_backend.array_module('jax'))
+
+    rank, nranks = comm.Get_rank(), comm.Get_size()
+    rep = out['report']
+
+    def _emit(io_s):
+        # See profile_emit.py's module docstring for why `fault`=0.0 (folded
+        # into `element`, both Python backends) and why `wait`=0.0 here is a
+        # REAL measurement (no barrier on the default path), not a gap.
+        # setup = mesh+input build (Profile phase) PLUS driver.run_mpi's own
+        # pre-loop decompose/to_device/jit-construction span (rep['setup_s'],
+        # see driver.py's t_setup comment) -- both are real setup cost, and
+        # omitting the latter is what left ~30% of total_s in
+        # unaccounted_s on test.tpv8 x 4 ranks before this fix.
+        buckets = dict(setup=prof.get('setup (mesh+input)', 0.0)
+                            + rep.get('setup_s', 0.0),
+                       element=rep.get('compute_s', 0.0), fault=0.0,
+                       exchange=rep.get('mpi_s', 0.0),
+                       wait=rep.get('wait_s', 0.0), io=io_s)
+        total_s = time.perf_counter() - run_t0
+        _profile_emit.write_profile(case_dir, 'python-jax-mpi', rank, nranks,
+                                    rep['nsteps'], buckets,
+                                    loop_s=rep['solve_s'], total_s=total_s)
 
     rows = out['fault_rows']
     sel = out['own_in_computed']
@@ -468,8 +493,14 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         # "these nodes went missing". Found at 4 ranks on test.tpv104 (2
         # ranks is not enough to produce a fault-free slab) -- the shape of
         # bug that only exists above the rank count you smoke-tested at.
-        prof.nelem = out['report']['E']
-        return None, out['report']
+        # It still gets a profile.rank<r>.json -- the parity gate's byte-
+        # identity check is about frt output, not about profile coverage,
+        # and a rank that did real setup/compute/exchange work is not "no
+        # data" just because it wrote no fault row.
+        prof.nelem = rep['E']
+        if profile_on:
+            _emit(io_s=0.0)
+        return None, rep
     fric_1idx = np.zeros((n_own + 1, 101))
     fric_1idx[1:, 1:101] = out['fric'][sel]
     fnft_1idx = np.zeros(n_own + 1)
@@ -478,22 +509,29 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     with prof.phase('write frt'):
         library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
                                  fnft_1idx, fric_1idx)
-    prof.nelem = out['report']['E']
-    return path, out['report']
+    prof.nelem = rep['E']
+    if profile_on:
+        _emit(io_s=prof.get('write frt', 0.0))
+    return path, rep
 
 
 def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
              profile=None):
-    """Builds S (zero pydump reads), dispatches to the friclaw-appropriate
-    solver's run() under the requested `backend` ('jax', the default, or
-    'numpy') -- port.py/port_jax.py friclaw==1, port_rsf.py/port_rsf_jax.py
-    friclaw==4, port_tp.py/port_tp_jax.py friclaw==5 -- writes frt.txt0 via
+    """Builds S (zero pydump reads), runs driver.py's one time loop under the
+    requested `backend` ('jax', the default, or 'numpy') with the friclaw
+    dispatch inside faulting.py, and writes frt.txt0 via
     library_output.write_frt (byte-exact Fortran E18.7E4 format). Returns the
     path written.
 
     `profile` is an optional Profile; when given, each phase is timed
     separately so setup, solve and output cannot be confused for one another.
     """
+    # EQDYNA_PROFILE read ONCE here, before setup, before the loop -- never
+    # per step. When off, run_t0 stays 0.0 and the write_profile call below
+    # is skipped entirely (no bucket dict built, no total_s taken) -- not
+    # just gated at the file-write step inside write_profile itself.
+    profile_on = _profile_emit.enabled()
+    run_t0 = time.perf_counter() if profile_on else 0.0   # independent total_s timer, see run_case_mpi
     if backend == 'numpy':
         _narrow_numpy_affinity()
     prof = profile if profile is not None else Profile(backend)
@@ -522,6 +560,33 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
         library_output.write_frt(frt_path, mesh['meshCoor'], mesh['nsmp'],
                              fnft_1idx, fric_1idx)
     prof.nelem = S.get('totalNumOfElements') or 0
+
+    # ALWAYS-ON profile.rank0.json (nranks=1: this path is serial by
+    # construction, checkInputConsistency/build_solver_state already refuse
+    # npx/npy/npz>1). `exchange`/`wait` are genuinely 0.0: there is no MPI on
+    # this path at all, not a folded or unmeasured cost.
+    #
+    # `fault`: split out of 'solve' along Fortran's own boundary (`fault` =
+    # compTimeInSeconds(6), faulting.f90:28 -- rule 23) for python-numpy
+    # ONLY. `driver.run` measures it with a plain perf_counter() pair around
+    # the eagerly-executed FLT.faulting call (see driver.make_step_parts's
+    # docstring) and returns it as `out['fault_s']`, always 0.0 on jax
+    # because make_step_parts refuses to create the timer at all when
+    # `B.is_jax(xp)` -- a timer inside a traced function would measure the
+    # ONE-TIME trace, not the per-step cost (wrong, not just imprecise), so
+    # python-jax and python-jax-mpi stay folded (`fault`=0.0, cost inside
+    # `element`) exactly as before. See profile_emit.py's docstring.
+    if profile_on:
+        fault_s = out.get('fault_s', 0.0)
+        solve_s = prof.get('solve', 0.0)
+        total_s = time.perf_counter() - run_t0
+        _profile_emit.write_profile(
+            case_dir, 'python-%s' % backend, 0, 1, S['nstep'],
+            dict(setup=prof.get('setup (mesh+input)', 0.0)
+                      + prof.get('resolve solver', 0.0),
+                 element=solve_s - fault_s, fault=fault_s,
+                 exchange=0.0, wait=0.0, io=prof.get('write frt', 0.0)),
+            loop_s=solve_s, total_s=total_s)
     return frt_path
 
 
@@ -530,7 +595,7 @@ def _select_device(device):
 
     JAX_PLATFORMS is read by jax at import time, so this must run before the
     first `import jax` -- which is why this module never imports jax at module
-    level (see the note above _JAX_MODULE_BY_FRICLAW).
+    level and `active_device`/`Profile._sync` import it inside the function.
 
     `--device gpu` with no GPU is a hard failure: silently running on CPU would
     put a row labelled gpu into a backend comparison whose whole purpose is to

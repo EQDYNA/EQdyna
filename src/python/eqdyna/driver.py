@@ -34,6 +34,7 @@ from . import assembleGlobalKU as KU
 from . import backend as B
 from . import faulting as FLT
 from . import globalvar as gv
+from . import profile_emit as _profile_emit
 from . import updateThermalPressurization as TP
 
 
@@ -109,7 +110,7 @@ def _device_peak_gb(jax):
 FORCE = 3
 
 
-def make_step_parts(xp, inv, finv, tp, mass, scratch):
+def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
     """The step, split at driver.f90:27 -- MPI4NodalQuant's position.
 
     part_a: timeElapsed, velDispUpdate, zero the force, both element kernels.
@@ -121,7 +122,17 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
     collective under shard_map) and keeps ONE jitted time loop, while run_mpi
     must leave the jit at the seam to make an MPI call and therefore jits the
     two halves separately. Both perform the same operations, in the same
-    order, on the same operands."""
+    order, on the same operands.
+
+    `fault_timer`, if given, is a mutable `{'s': 0.0}` this accumulates
+    `FLT.faulting`'s wall time into, split out along Fortran's own boundary
+    (`fault` = compTimeInSeconds(6), faulting.f90:28 -- rule 23). Callers must
+    pass `None` (the default) unless `not B.is_jax(xp)`: numpy executes this
+    call eagerly and synchronously, so timing it costs no new sync and moves
+    no bit; under jax tracing a `perf_counter()` pair here would measure the
+    ONE-TIME trace, not the per-step cost, which is wrong, not just imprecise
+    -- see profile_emit.py's docstring for why `fault` stays folded into
+    `element` on that backend."""
     dt = inv['dt']; rdampk = inv['rdampk']
     tr = finv['tr']
     friclaw = finv['friclaw']
@@ -137,15 +148,13 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
         force = B.setat(xp, force, slice(None), 0.0)         # driver.f90:23
         force, stress_i, s_p = KU.assembleGlobalKU(
             xp, inv, velArr, force, stress_i, s_p, dt, rdampk, scratch)
-        force = KU.calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk)
+        force = KU.calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk,
+                                       scratch)
 
-        # driver.f90:27 -- MPI4NodalQuant(nodalForceArr, 3). Identity when the
-        # run is serial (one device, one subdomain, nothing to exchange); an
-        # all-reduce over the device mesh when backend.run_time_loop_sharded
-        # has cut the element arrays across devices. Its POSITION is the
-        # Fortran's: after both element kernels, before faulting, which is
-        # what lets faulting and the mass divide be plain replicated nodal
-        # work on a force array that is already complete.
+        # part_a ENDS HERE, at driver.f90:27 -- the seam each caller closes
+        # with its own MPI4NodalQuant (make_step's backend.nodal_sync,
+        # run_mpi's real MPI exchange). Nothing is exchanged inside part_a;
+        # see make_step for what happens at the seam and why it sits here.
         return (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft,
                 timeElapsed, sliprate_hist, shear_hist)
 
@@ -157,8 +166,16 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
             fric = TP.updateThermalPressurization(
                 xp, tp, fric, sliprate_hist, shear_hist, nt, dt)
 
-        fric, fnft, force = FLT.faulting(xp, finv, fric, fnft, velArr, dispArr,
-                                         force, dt, timeElapsed, tr, nt)
+        if fault_timer is not None:
+            _t0 = time.perf_counter()
+            fric, fnft, force = FLT.faulting(xp, finv, fric, fnft, velArr,
+                                             dispArr, force, dt, timeElapsed,
+                                             tr, nt)
+            fault_timer['s'] += time.perf_counter() - _t0
+        else:
+            fric, fnft, force = FLT.faulting(xp, finv, fric, fnft, velArr,
+                                             dispArr, force, dt, timeElapsed,
+                                             tr, nt)
 
         if friclaw == 5:
             # onFaultTPHist(1|2, i, nt, ift) -- written AFTER faulting, so the
@@ -183,11 +200,37 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch):
     return part_a, part_b
 
 
-def make_step(xp, inv, finv, tp, mass, scratch):
+def build_invariants(S, nsteps):
+    """The loop-invariant state both entry points build, identically.
+
+    Returns (inv, finv, tp, hist_w). ONE copy, because this is where a fix
+    like forced_rupture_time's would otherwise have to be made twice -- the
+    exact shape of the port.py/port_jax.py divergence faulting.py's docstring
+    records. `tp` is None and the history width 0 unless friclaw==5, so the
+    carry has one shape for every friction law (see run's carry0).
+    """
+    inv = KU.build(S)
+    finv = FLT.build(S)
+    tp = TP.build(S, nsteps) if S['friclaw'] == 5 else None
+    hist_w = nsteps if S['friclaw'] == 5 else 0
+    # Forced-rupture time is pure geometry -- computed once, not per step.
+    # None means "swtwNucleation does nothing for this case", which is a
+    # different statement from "tr is 1e9 everywhere" and is kept distinct so
+    # a case that should nucleate and does not cannot look like a no-op.
+    finv['tr'] = (FLT.forced_rupture_time(np, finv)
+                  if FLT.nucleation_enabled(finv) else None)
+    return inv, finv, tp, hist_w
+
+
+def make_step(xp, inv, finv, tp, mass, scratch, fault_timer=None):
     """Build the per-step closure. Called by backend.run_time_loop INSIDE
     the jit on the jax path, so that `inv`'s arrays resolve to jit arguments
-    rather than closed-over HLO literals."""
-    part_a, part_b = make_step_parts(xp, inv, finv, tp, mass, scratch)
+    rather than closed-over HLO literals.
+
+    `fault_timer`: see make_step_parts. Threaded through unchanged; this
+    function adds no timing of its own."""
+    part_a, part_b = make_step_parts(xp, inv, finv, tp, mass, scratch,
+                                     fault_timer=fault_timer)
 
     def step(carry, nt):
         carry = part_a(carry, nt)
@@ -208,26 +251,18 @@ def make_step(xp, inv, finv, tp, mass, scratch):
 def run(S, nsteps=None, verbose=True, xp=np):
     """The whole solve. `xp` selects the backend: numpy or jax.numpy.
 
-    Returns the same dict the six modules this replaces returned, so
-    eqdyna3d.run_case and library_output's frt writer need no change.
+    Returns the same dict the six modules this replaces returned, plus one
+    new key, `fault_s` -- the wall time spent inside `FLT.faulting` across
+    all steps, measured only `not B.is_jax(xp)` (see make_step_parts) and
+    0.0 on jax. eqdyna3d.run_case reads it to split `fault` out of `element`
+    for python-numpy; library_output's frt writer needs no change.
     """
     nsteps = nsteps or S['nstep']
 
-    inv = KU.build(S)
-    finv = FLT.build(S)
-    # Thermal-pressurization constants and history. The history is allocated at
-    # the FULL step count for friclaw 5 (the Fortran allocates onFaultTPHist
-    # the same way) and at width ZERO otherwise, so the carry has ONE shape for
-    # every friction law and the jax loop does not need a second signature.
-    tp = TP.build(S, nsteps) if S['friclaw'] == 5 else None
-    hist_w = nsteps if S['friclaw'] == 5 else 0
-
-    # Forced-rupture time is pure geometry -- computed once, not per step.
-    # None means "swtwNucleation does nothing for this case", which is a
-    # different statement from "tr is 1e9 everywhere" and is kept distinct so
-    # a case that should nucleate and does not cannot look like a no-op.
-    finv['tr'] = (FLT.forced_rupture_time(np, finv)
-                  if FLT.nucleation_enabled(finv) else None)
+    # Thermal-pressurization history is allocated at the FULL step count for
+    # friclaw 5 (the Fortran allocates onFaultTPHist the same way) and at
+    # width ZERO otherwise -- see build_invariants.
+    inv, finv, tp, hist_w = build_invariants(S, nsteps)
 
     mass = np.concatenate(([1.0], S['nodalMassArr']))   # index 0 = unused sink
     # driver.f90:30 divides unconditionally. A zero lumped mass would give
@@ -285,7 +320,20 @@ def run(S, nsteps=None, verbose=True, xp=np):
                  B.shard_mode(), B.shard_sync()))
     t0 = time.perf_counter()
     scratch = KU.alloc_scratch(xp, inv)
-    mk = lambda i: make_step(xp, i, finv, tp, mass, scratch)   # noqa: E731
+    # EQDYNA_PROFILE read ONCE here, before the loop is built -- never per
+    # step, never via getenv inside a traced function. `fault_timer` lives
+    # HERE, outside `mk`, so it survives regardless of how many times `mk`
+    # is invoked underneath `run_time_loop`/`run_time_loop_sharded` -- every
+    # `make_step` call closes over this SAME dict. None on jax (unaffected
+    # by the flag: see make_step_parts's docstring for why a timer must not
+    # exist on that path, not just go unread) AND None when
+    # EQDYNA_PROFILE=0 -- the per-step perf_counter() pair inside
+    # make_step_parts's part_b is a profiler addition and must not run when
+    # the switch is off.
+    profile_on = _profile_emit.enabled()
+    fault_timer = {'s': 0.0} if (profile_on and not B.is_jax(xp)) else None
+    mk = lambda i: make_step(xp, i, finv, tp, mass, scratch,   # noqa: E731
+                             fault_timer=fault_timer)
     if ndev > 1:
         carry = B.run_time_loop_sharded(xp, mk, inv, carry0, nsteps, ndev,
                                         carry_shard)
@@ -294,12 +342,13 @@ def run(S, nsteps=None, verbose=True, xp=np):
     elapsed = time.perf_counter() - t0
     if verbose:
         print('driver.run: %.3f s, %.3f ms/step' % (elapsed, elapsed / nsteps * 1e3))
+    fault_s = fault_timer['s'] if fault_timer is not None else 0.0
 
     (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
      sliprate_hist, shear_hist) = carry
     return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr),
                 fnft=np.asarray(fnft), fric=np.asarray(fric),
-                force=np.asarray(force))
+                force=np.asarray(force), fault_s=fault_s)
 
 
 def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
@@ -341,6 +390,28 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     import jax
     from . import MPI4NodalQuant as MQ
 
+    # PRE-LOOP setup timer (decompose, device transfer, jit function
+    # CONSTRUCTION -- not execution, so no sync). Added by the profile-emitter
+    # landing (2026-09-23): without it, eqdyna3d.run_case_mpi's outer
+    # 'solve' Profile phase (which wraps this ENTIRE call) attributed only
+    # the step-loop portion to any bucket, and this decompose/jit-build cost
+    # -- MEASURED on test.tpv8 x 4 ranks: 2.4-3.8 s of a 12.0 s total_s, i.e.
+    # roughly 30%, not a rounding error -- fell into unaccounted_s, which
+    # blew past profile_schema's 5% SUM_TOLERANCE. This is real pre-loop
+    # work (Fortran's analogue is meshgen+assembleGlobalMass, its own
+    # `setup` bucket), so it belongs in `setup`, not in a gap. No new sync:
+    # decompose/to_device/jax.jit(...) construction are synchronous host-side
+    # calls already executing on this path; this only wraps them with two
+    # perf_counter() calls.
+    #
+    # EQDYNA_PROFILE read ONCE here, before setup or the loop -- never per
+    # step, never via getenv again below. When off, t_setup0 stays 0.0 and
+    # every timer this landing added downstream (t_setup, the per-step
+    # compute-dispatch timing, the tail-drain timer) is skipped so OFF is
+    # exactly the pre-profile-emitter per-step code path.
+    profile_on = _profile_emit.enabled()
+    t_setup0 = time.perf_counter() if profile_on else 0.0
+
     rank = comm.Get_rank(); nranks = comm.Get_size()
     if not B.is_jax(xp):
         raise RuntimeError('driver.run_mpi: the MPI path exists for the jax '
@@ -363,12 +434,7 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
             '%s=halo.' % (MQ.SYNC_ENV, MQ.SYNC_ENV))
 
 
-    inv = KU.build(S)
-    finv = FLT.build(S)
-    tp = TP.build(S, nsteps) if S['friclaw'] == 5 else None
-    hist_w = nsteps if S['friclaw'] == 5 else 0
-    finv['tr'] = (FLT.forced_rupture_time(np, finv)
-                  if FLT.nucleation_enabled(finv) else None)
+    inv, finv, tp, hist_w = build_invariants(S, nsteps)
 
     loc = MQ.decompose(S, inv, finv, rank, nranks)
     inv_l, finv_l = loc['inv'], loc['finv']
@@ -504,11 +570,40 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     # extra block per step and is what probe_mpi_step_split.py is for.
     prof = MQ.step_profile()
     comm.Barrier()
+    # t_setup stops HERE, right after this pre-existing barrier (present on
+    # the default path already, unconditional -- not added by this change):
+    # decompose/to_device/jit-construction plus the rendezvous that lines
+    # every rank up before the loop's own clock starts. Reported as `setup`
+    # (see the comment above this function's `t_setup0`), not folded into
+    # `wait_ms_per_step`/t_wait -- that field's existing, documented meaning
+    # ("0.0 BY CONSTRUCTION on the production path", the comment below) is
+    # about the PER-STEP barrier and stays exactly as it was.
+    #
+    # Skipped (stays 0.0) when EQDYNA_PROFILE=0 -- `profile_on` was read
+    # once, before this loop, at the top of this function.
+    t_setup = (time.perf_counter() - t_setup0) if profile_on else 0.0
     c0 = os.times()
     t0 = time.perf_counter()
     t_mpi = t_wait = t_compute = t_d2h = 0.0
     for nt in range(1, nsteps + 1):
-        ta0 = time.perf_counter() if prof else 0.0
+        # t_compute is accumulated whenever EITHER the pre-existing
+        # EQDYNA_MPI_STEP_PROFILE knob (`prof`) OR the profile-emitter's
+        # EQDYNA_PROFILE switch (`profile_on`, default ON) is set. The
+        # block below (jax.block_until_ready(hv)) already runs on every
+        # step of the PRODUCTION path regardless -- it always did, for the
+        # reason in the comment just below -- so timing around an
+        # already-mandatory sync adds no new synchronisation point. But the
+        # two perf_counter() calls themselves are new profiler-added cost,
+        # and EQDYNA_PROFILE=0 (with `prof` also unset) must skip them, not
+        # just skip the eventual file write. See profile_emit.py's module
+        # docstring for what this number means (part_a AND the previous
+        # step's part_b, i.e. element kernels + faulting fused, per
+        # driver.run_mpi's own async-pipeline comment below) and why
+        # `wait`/barrier timing is NOT extended the same way (it requires
+        # comm.Barrier(), a real new collective the default path must not
+        # pay).
+        _time_compute = prof or profile_on
+        ta0 = time.perf_counter() if _time_compute else 0.0
         carry, hv = a_jit(dyn, carry, nt, halo)
         # BLOCK BEFORE STARTING THE MPI CLOCK. jax dispatch is asynchronous,
         # so a_jit returns before part_a has run and the first thing that
@@ -517,7 +612,7 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         # ONE-rank run with zero neighbours -- i.e. it was measuring the
         # solver, not the exchange.
         jax.block_until_ready(hv)
-        if prof:
+        if _time_compute:
             t_compute += time.perf_counter() - ta0
         # THE BARRIER IS A MEASUREMENT DEVICE AND RUNS ONLY UNDER THE PROFILE.
         #
@@ -562,8 +657,37 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         else:
             delta = MQ.exchange(comm, nbrs, np.asarray(jax.device_get(hv)))
         t_mpi += time.perf_counter() - t1
-        carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
-    jax.block_until_ready(carry)
+        # Dispatch-side timing only (b_jit/xp.asarray do not block; jax
+        # queues them and the actual device execution is drained by NEXT
+        # iteration's `jax.block_until_ready(hv)` above, or by the final
+        # block below on the last step) -- added by the profile-emitter
+        # landing so the always-on `element` bucket also counts the host
+        # dispatch/H2D-queue cost of part_b's input prep, which previously
+        # sat entirely in unaccounted_s. No new sync: neither call here
+        # blocks; this only wraps calls that were already being made. But
+        # the perf_counter() pair is profiler-added cost in its own right,
+        # so it is skipped -- not just left unwritten -- when `profile_on`
+        # is False (EQDYNA_PROFILE=0).
+        if profile_on:
+            tb0 = time.perf_counter()
+            carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
+            t_compute += time.perf_counter() - tb0
+        else:
+            carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
+    # Drains the LAST step's part_b (every earlier step's part_b was already
+    # drained, one step later, by the loop's own block_until_ready(hv)).
+    # This block is pre-existing and unconditional; only the timing around
+    # it is new, so folding its cost into `element` (element+fault fused,
+    # see profile_emit.py) adds no sync, just attributes an already-paid one.
+    # Skipped the same way when EQDYNA_PROFILE=0: block_until_ready(carry)
+    # still runs (it always did, unconditionally), only its two
+    # perf_counter() calls are profiler-added and go away.
+    if profile_on:
+        tf0 = time.perf_counter()
+        jax.block_until_ready(carry)
+        t_compute += time.perf_counter() - tf0
+    else:
+        jax.block_until_ready(carry)
     elapsed = time.perf_counter() - t0
     c1 = os.times()
     # EFFECTIVE_CORES: cpu seconds this process consumed per wall second. A
@@ -577,6 +701,13 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     rep = dict(rep, ms_per_step=elapsed / nsteps * 1e3, solve_s=elapsed,
                mpi_ms_per_step=t_mpi / nsteps * 1e3,
                wait_ms_per_step=t_wait / nsteps * 1e3,
+               # Whole-loop TOTALS (not ms/step), unconditional since this
+               # landing: docs/run_profile.md's always-on profile.rank<r>.json
+               # buckets (element=compute folded with fault, exchange=mpi,
+               # wait=wait -- see profile_emit.py) read these directly rather
+               # than re-deriving seconds from a ms/step average.
+               compute_s=t_compute, mpi_s=t_mpi, wait_s=t_wait,
+               setup_s=t_setup,
                sync=sync, nsteps=nsteps, effective_cores=eff,
                # False on the production path: the per-step global barrier is
                # a profiling device now (see the loop). wait_ms_per_step is
