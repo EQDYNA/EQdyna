@@ -241,12 +241,29 @@ def build_case(case_name):
     return perflib.rebuild_serial_case(case_name, d)
 
 
-def time_one(case_dir, nsteps, cpus):
+def _nodes_of(node_map, cpus):
+    """Sorted NUMA node ids that any of `cpus` belongs to. Small local copy
+    of `run_scaling.nodes_of` -- not imported from there because
+    run_scaling.py itself imports THIS module (`import run_numa_scaling as
+    numa`), so the reverse import would be circular."""
+    want = set(cpus)
+    return sorted(n for n, cs in node_map.items() if want & set(cs))
+
+
+def time_one(case_dir, nsteps, cpus, node_map):
     """Wall seconds for `nsteps` on exactly `cpus`, in a fresh process.
 
     Fresh process on purpose: jax caches compiled functions in-process, so a
     second call in the same interpreter pays no compile and the difference
     below would cancel the wrong term.
+
+    Item 91c: pinned with `numactl --physcpubind=... --membind=...`, not bare
+    `taskset -c`. Measured by `run_scaling.py` (module docstring there,
+    :18-26): taskset binds the cpu mask only, not memory -- first-touch
+    allocation can still land on a remote node, which defeats the entire
+    point of a tool whose job is separating core count from NUMA locality.
+    `node_map` is this process's own `numa_topology()` result; the nodes
+    bound are exactly the ones `cpus` belongs to, never guessed.
     """
     script = (
         "import sys; sys.path.insert(0, %r)\n"
@@ -256,12 +273,14 @@ def time_one(case_dir, nsteps, cpus):
         "print('WALL', time.time() - t0)\n" % (PYTHON_PKG, case_dir, nsteps))
     env = dict(os.environ)
     env['JAX_PLATFORMS'] = 'cpu'
-    # Let XLA use the cores taskset gives it; do NOT force single-threaded.
+    # Let XLA use the cores numactl gives it; do NOT force single-threaded.
     env.pop('XLA_FLAGS', None)
     env.pop('OMP_NUM_THREADS', None)
-    cpulist = ','.join(str(c) for c in cpus)
-    r = subprocess.run(['taskset', '-c', cpulist, sys.executable, '-c', script],
-                       env=env, capture_output=True, text=True)
+    nodes = _nodes_of(node_map, cpus)
+    cmd = ['numactl', '--physcpubind=%s' % ','.join(str(c) for c in cpus),
+           '--membind=%s' % ','.join(str(n) for n in nodes),
+           sys.executable, '-c', script]
+    r = subprocess.run(cmd, env=env, capture_output=True, text=True)
     if r.returncode != 0:
         print(r.stdout[-1500:]); print(r.stderr[-1500:])
         return None
@@ -284,19 +303,53 @@ def per_step_and_fixed(t_lo, t_hi, n_lo, n_hi):
     (interpreter start, case load, XLA compile, MPI init, netCDF open) and that
     the difference is taken in order to cancel.
 
-    It does NOT judge the result. `run_mpi_scaling.per_step_jax_mpi` raises on
-    a non-positive per-step figure and keeps its own copy of the arithmetic
-    because it differences the RANKS' OWN SOLVE TIME rather than two wall
-    clocks; that refusal is deliberately not moved here, where it would become
-    a new check on four call sites that never had one.
+    ITEM 91b (2026-09-24): this function USED to not judge the result at all,
+    on the theory that only `run_mpi_scaling.per_step_jax_mpi`'s per-rank
+    solve-time differencing needed the check. That theory did not survive
+    contact with the two-wall-clock case: a wall-clock difference can go
+    non-positive for exactly the same reason (fixed cost dominating, box
+    noise) and it is measured here too, by `run_shard_scaling.per_step` and
+    this module's own `per_step`, above. `run_mpi_scaling.per_step_jax_mpi`
+    keeps its own copy of the check because it differences the RANKS' OWN
+    SOLVE TIME rather than two wall clocks -- a different quantity, so a
+    second raise here is not a duplicate of that one.
     """
     ps = (t_hi - t_lo) / float(n_hi - n_lo)
+    if ps <= 0:
+        raise RuntimeError(
+            'per-step by difference came out %.6f s/step (t_lo=%.3fs at '
+            'n_lo=%d, t_hi=%.3fs at n_hi=%d). That is not a slow '
+            'measurement, it is an invalid one -- treat a non-positive '
+            'result as a bug to raise on, not a number to report.'
+            % (ps, t_lo, n_lo, t_hi, n_hi))
     return ps, t_lo - n_lo * ps
 
 
-def per_step(case_dir, cpus, n_lo, n_hi):
-    t_lo = time_one(case_dir, n_lo, cpus)
-    t_hi = time_one(case_dir, n_hi, cpus)
+def record_baseline(state, label, ps, first_label):
+    """Pure bookkeeping for the single speedup baseline across all
+    configurations (item 91g), factored out of main()'s loop so it is
+    directly unit-testable with no jax/numactl involved.
+
+    `state` is a dict this function fills in place the first time it is
+    called (keys 'value', 'label'). Returns (speedup, baseline_label,
+    note); `note` is a non-None warning string exactly when the baseline
+    being set is NOT `first_label` -- i.e. the intended first configuration
+    was skipped or failed and every speedup on this run is grounded on a
+    later configuration instead. The caller must not silently drop `note`."""
+    note = None
+    if 'value' not in state:
+        state['value'] = ps
+        state['label'] = label
+        if label != first_label:
+            note = ('baseline is %r (the first configuration, %r, was '
+                    'skipped or failed) -- speedup values are relative to '
+                    '%r, not %r' % (label, first_label, label, first_label))
+    return state['value'] / ps, state['label'], note
+
+
+def per_step(case_dir, cpus, node_map, n_lo, n_hi):
+    t_lo = time_one(case_dir, n_lo, cpus, node_map)
+    t_hi = time_one(case_dir, n_hi, cpus, node_map)
     if t_lo is None or t_hi is None:
         return None, None
     return per_step_and_fixed(t_lo, t_hi, n_lo, n_hi)
@@ -355,7 +408,12 @@ def main():
 
     results = {}
     skipped = {}
-    base = None
+    base_state = {}
+    # Item 91g: the baseline used to become whichever configuration
+    # measured first, silently, if `configs[0]` (the intended baseline) was
+    # skipped or failed. `record_baseline` (above) makes that explicit:
+    # baseline_label on every result and in the payload, plus a loud NOTE if
+    # it is not configs[0] -- never a silent baseline swap.
     print('  %-26s %6s  %12s  %10s  %s'
           % ('configuration', 'cpus', 'ms/step', 'speedup', 'fixed cost'))
     for label, cpus in configs:
@@ -367,18 +425,21 @@ def main():
             skipped[label] = dict(cpus=cpus)
             continue
         load1, load5, load15, others, busy = chk
-        ps, fixed = per_step(case_dir, cpus, n_lo, n_hi)
+        ps, fixed = per_step(case_dir, cpus, nodes, n_lo, n_hi)
         if ps is None:
             print('  %-26s %6d  FAILED' % (label, len(cpus)))
             continue
-        if base is None:
-            base = ps
+        speedup, base_label, note = record_baseline(base_state, label, ps,
+                                                     configs[0][0])
+        if note:
+            print('  NOTE: ' + note)
         results[label] = dict(cpus=cpus, ms_per_step=ps * 1e3,
-                              speedup=base / ps, fixed_s=fixed,
+                              speedup=speedup, baseline_label=base_label,
+                              fixed_s=fixed,
                               load_avg='%.2f %.2f %.2f' % (load1, load5, load15),
                               other_users=others, cpu_busy=busy)
-        print('  %-26s %6d  %12.2f  %9.2fx  %8.2f s'
-              % (label, len(cpus), ps * 1e3, base / ps, fixed))
+        print('  %-26s %6d  %12.2f  %9.2fx (vs %s)  %8.2f s'
+              % (label, len(cpus), ps * 1e3, speedup, base_label, fixed))
 
     if not results:
         raise SystemExit(
