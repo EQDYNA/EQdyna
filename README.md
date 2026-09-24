@@ -66,10 +66,11 @@ case, at that case's one tolerance, at the ONE gate term
 (`testsys/matrix.py`'s `GATE_TERM_S`, 5 s) -- there is no second term.
 `python3 testsys/run.py e2e` (and `run.py all`) run the everyday cell
 selection at that term; `python3 testsys/run.py release` runs the SAME term
-over a WIDER cell selection (everyday cells plus `matrix.RELEASE_ONLY`,
-currently `test.tpv36`/`test.tpv37` x python-numpy, held out of the everyday
-run for COST alone -- ~1110-1120 s each -- never because they fail) and is
-the tier that gates a release, writing
+over the SAME cell selection -- as of 2026-09-23 `matrix.RELEASE_ONLY` is
+DELETED, not empty: numpy dropped from every gate that day (owner decision,
+"I actually don't care numpy... I will use Jax anyway"; PR #4, `91afba4`),
+taking its only member (`test.tpv36`/`test.tpv37` x python-numpy) with it --
+and is the tier that gates a release, writing
 `docs/evidence/sweep-<shortsha>/summary.json`. A `--term` flag and a per-case
 "full term" existed for less than a day (2026-09-23), each case whose full
 term differed from 5 s carrying a second reference file
@@ -92,8 +93,9 @@ explicitly on 2026-09-23.
 The run prints which cells it covered and which it did not, so a green result
 states its own scope. **CI no longer runs this sweep for physics coverage.**
 CI's one e2e job is a portability SMOKE test -- `testsys/matrix.py`'s
-`CI_CELLS` is exactly `test.tpv8` x `{fortran, python-numpy, python-jax}` at
-the gate term (`.github/workflows/test.yml`: `build`, `unit-regression`
+`CI_CELLS` is exactly `test.tpv8` x `{fortran, python-jax}` at
+the gate term (numpy dropped the same day it dropped from every other gate,
+2026-09-23) (`.github/workflows/test.yml`: `build`, `unit-regression`
 (2026-09-23: SHARDED 3 ways -- `testsys/ci_shard.py run 1`/`2`/`3` in
 parallel, statically partitioning every `testsys/regression/test_*.py` plus
 the `pytest testsys/unit` tier; `testsys/ci_shard.py verify` and
@@ -112,9 +114,9 @@ non-CI `e2e` and `release` tiers cover instead.
 Wall-clock figures below predate the ONE-term simplification (2026-09-23) and
 were measured running each case at its own committed `par.term` -- a wall
 clock `run.py release` no longer produces, since release now runs the SAME
-5 s `GATE_TERM_S` as `run.py e2e`/`run.py all` (release differs only in cell
-SELECTION, `matrix.RELEASE_ONLY`, not term; see above and
-`pathway_forward.md` item 102). `test.tpv29`'s gate-term cells are therefore
+5 s `GATE_TERM_S` as `run.py e2e`/`run.py all` over the SAME cells (`matrix.RELEASE_ONLY`
+is deleted, not term-differentiated; see above and
+`pathway_forward.md` items 102 and 104). `test.tpv29`'s gate-term cells are therefore
 faster than the 148.3/1108.5/229.4 s shown below; that faster number has not
 been measured yet and is not estimated here (rule 6).
 
@@ -164,12 +166,14 @@ chmod 755 install-eqdyna.sh
 ./install-eqdyna.sh -m ubuntu # ubuntu/ls6/macos
 export EQDYNAROOT=$(pwd)
 PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-python3 testsys/run.py all # unit + regression + the sweep: 10 cases x 3 backends
-                           # (fortran, python-numpy, python-jax) against one
-                           # canonical reference each, 30 cells.
-                           # Cells run concurrently. The three most recent
-                           # recorded 30-cell sweeps on this 64-core box took
-                           # 2263.3 s, 2171.3 s and 2123.2 s wall clock.
+python3 testsys/run.py all # unit + regression + the sweep: 10 cases x
+                           # {fortran, python-jax} against one canonical
+                           # reference each, plus test.tpv8 x python-jax-mpi
+                           # = 21 cells (numpy dropped from every gate
+                           # 2026-09-23; `--backend numpy` still runs by
+                           # hand, ungated). Cells run concurrently; the
+                           # 30-cell/2263.3-2123.2s figures below predate
+                           # that change and are historical.
                            # It prints which cells it ran, so a pass states its scope.
 ```
 For bash, please insert the following lines in .bashrc
@@ -203,8 +207,9 @@ metric is refused rather than compared against.
 local `run.py all`/`run.py release` sweeps to reason about which cells fit
 which box. It stopped being the reason CI's cell list is what it is on
 2026-09-23 (`ef7196c`): CI no longer covers physics at all, it runs one fixed
-portability smoke set, `matrix.CI_CELLS` -- `test.tpv8` x {fortran, python-numpy,
-python-jax} -- chosen for portability, not memory):
+portability smoke set, `matrix.CI_CELLS` -- `test.tpv8` x {fortran, python-jax}
+(numpy dropped from this set 2026-09-23 along with every other gate) --
+chosen for portability, not memory):
 
 | case | numpy | jax |
 |---|---|---|
