@@ -1682,3 +1682,50 @@ the owner's "mechanical" enforcement is deletable by one direct push. The owner
 can reverse it at the one constant. Rule 25 text (zofia, `b40c590`/`33bd22a`)
 is written and waits for PR #3's merge, so the rule never claims enforcement
 that is not live.
+
+## TT. MILESTONES: PR enforcement live; numpy out of the gates, measured (22:22)
+
+Budget, as I read it: a fresh 24 h from ~21:45 2026-09-23 to ~21:45 2026-09-24,
+rolling renewal standing; merge and tag authority on `master` of this repo,
+patch and minor tags only; no major, no force-update of a tag, no publish
+beyond what `publish.yml` does on a tag.
+
+**PR enforcement LIVE.** PR #3 squash-merged as `bf4d451` (opened 02:06:14Z,
+merged 02:53:35Z: **47 min**, one audit round and one re-audit). What changed
+from the first audit, which found it merge-blocking: a PR counts only if it
+was merged into master AS this commit and is not the PR head; merge commits
+are evaluated (`--first-parent`); renames report the old path; the job gets
+explicit permissions; `.github/` is gated, widened by me and reversible at one
+constant. The owner scoped out the deliberate-bypass limits, and rule 25 names
+them. Repo set to squash-only with delete-on-merge
+(`allow_merge_commit/rebase=false`); a multi-commit rebase-merge would
+otherwise have failed the gate falsely. `core.hooksPath` is absolute. On its
+first real run, `pr-policy-gate` passed on its own squash commit (run
+35949158106). Rule 25 and rule 21e ("only real workload goes to an agent")
+were pushed direct as `954434c`, and the pre-push hook allowed that docs push.
+
+**numpy out, PR #4 → `91afba4`** (opened 02:57:47Z, merged 03:11:26Z:
+**13.7 min**). Backend axis is (fortran, python-jax) + the tpv8 jax-mpi
+opt-in: 21 cells. `RELEASE_ONLY` and its plumbing are deleted. victor found
+nothing merge-blocking; docs drift is routed to zofia.
+
+| measured, same box | before (this session's first) | after numpy-out |
+|---|---|---|
+| everyday sweep `run.py e2e` | 1679.9 s (dc92983, 31 cells) -> 1142.0 s (b979de9, 29) | **289.4 s** (954434c, 21/21) |
+| release sweep `run.py release` | ~2100 s e2e part (679d8ad, 31) | **313.5 s** (954434c, 21/21) |
+| CI wall | 246 s (d2f83fe) -> 205 s (4b2806d) | **180 s** (91afba4, run 35950407713) |
+
+Box load was 30-57 during the sweeps. The critical path is now tpv36 jax at
+286.0 s, then tpv37 jax 276.7 s and drv.a6 jax 217.5 s, so the next speed lever
+is jax on the wedge path. The release run started with a dirty tree (2 files:
+the preceding e2e's own ledger and snapshot writes), so its
+`sweep-954434c/summary.json` is timing evidence only, not rule-24 evidence.
+
+**Ranks integration bug, status:** `run_e2e` handed `cell_cost()` (3 for a
+serial jax cell) to the profile capture as a rank count, and the capture
+asserted it equal to the profile's `nranks` (1). Result: every jax cell FAILed
+on physics that was byte-identical (50/50 frt). The fix is one helper,
+`profile_ranks()`, plus a guard (`a750698`). The same combo had also silently
+lost ALL perf-ledger rows through a dropped `import ledger`, because the capture
+degrades every error to a WARNING. That fix plus a guard is `71b22da`. Both
+wait on `wei/combo-2026-09-23` for the profile PR (queue item 4).
