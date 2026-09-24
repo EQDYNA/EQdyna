@@ -47,8 +47,8 @@ changed and why. The port exists so a fix can be verified twice.
 ./install-eqdyna.sh -m ubuntu        # ubuntu/ls6/macos; builds src/fortran, installs bin/eqdyna
 export EQDYNAROOT=$(pwd); PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 
-python3 testsys/run.py all           # unit + regression + the sweep at the 5 s GATE term (everyday)
-python3 testsys/run.py release       # the sweep at each case's FULL term; writes docs/evidence/sweep-<sha>/summary.json (release gate)
+python3 testsys/run.py all           # unit + regression + the everyday sweep, all at the ONE 5 s GATE_TERM_S
+python3 testsys/run.py release       # everyday cells + matrix.RELEASE_ONLY, same 5 s term; writes docs/evidence/sweep-<sha>/summary.json (release gate)
 python3 testsys/run.py unit regression       # seconds — run this constantly
 python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran   # one cell
 ```
@@ -59,12 +59,22 @@ physics sweep: `build`, `unit-regression`, and one `e2e-ci-smoke` job --
 python-jax} at the gate term (`matrix.CI_CELLS`). Its job is PORTABILITY
 (clean checkout, fresh deps, a different MPI from this box's Open MPI), not
 physics coverage. The LOCAL sweep is the science gate: `run.py all` at the
-5 s gate term every day, `run.py release` at the full committed term before
-every tag, committed as evidence and checked by
+5 s gate term every day, `run.py release` at that SAME 5 s term over a wider
+cell selection (everyday cells plus `matrix.RELEASE_ONLY`, held out of the
+everyday run for cost alone, never because they fail — rule 17 step 7 still
+applies) before every tag, committed as evidence and checked by
 `testsys/regression/check_pretag_ci.py` (a tag needs that sweep AND green CI
-for its exact SHA). The term is an axis of the cell: tpv29 (20 s) and
-tpv36/tpv37 (6 s) carry a second reference, `frt.canonical.term5.txt`, and a
-gate-term cell without one fails closed.
+for its exact SHA). **There is ONE term, everywhere** (owner decision,
+2026-09-23, superseding a same-day earlier two-term design that gave
+tpv29/tpv36/tpv37 a second "full term" reference,
+`frt.canonical.term5.txt`): every case, every tier, runs at `GATE_TERM_S`,
+and `testsys/regression/test_term_axis.py` is the mechanical guard against
+that second reference, a `--term` flag, or a per-case full-term table
+reappearing. What this gives up: `test.tpv29`/`test.tpv36`/`test.tpv37`'s
+late-time rupture (the owner's accounting: 47-63% of the fault ruptures after
+the 5 s cutoff across those three cases) is gated nowhere, everyday or
+release; see `pathway_forward.md` item 102 for the full account and the
+retired-reference SHAs.
 
 ## There is ONE test
 
