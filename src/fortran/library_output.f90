@@ -157,7 +157,7 @@ subroutine output_offfault_st
             dptmp = '      '
             ! nint(), not int() (pathway item 93): the on-fault writer rounds
             ! and this one truncated, so a station at y=1.99 km filed as
-            ! body010 instead of body020. The i4.3 edit carries the sign.
+            ! body019 instead of body020. The i4.3 edit carries the sign.
             write(bodytmp,'(i4.3)') nint(x4nds(2,OffFaultStNodeIdIndex(1,i))/100.d0)
             write(sttmp,'(i4.3)') nint(x4nds(1,OffFaultStNodeIdIndex(1,i))/100.d0)
             write(dptmp,'(i4.3)') nint(abs(x4nds(3,OffFaultStNodeIdIndex(1,i)))/100.d0)

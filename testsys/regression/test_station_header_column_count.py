@@ -141,7 +141,8 @@ def check_offfault(tmp):
     if files != ['body020st000dp000.txt']:
         fails.append(f'off-fault: wrote {files}, expected [\'body020st000dp000.txt\'] '
                      f'(y=1.99 km must ROUND to 020 like the on-fault writer, not truncate to 019)')
-        return fails
+    if len(files) != 1:
+        return fails + [f'off-fault: expected exactly one body file, got {files}']
     got = three_counts(os.path.join(rundir, files[0]))
     if got != (7, 7, 7):
         fails.append(f'off-fault: declared/names/data = {got}, expected (7, 7, 7)')
