@@ -37,7 +37,7 @@ one-to-one symmetry.
 | `globalvar.f90` | `globalvar.py` | — | — |
 | `library.f90` | **ABSENT** (`memory_estimate`) | the port prints no memory estimate | NOTHING GATED — stdout is not compared, the sweep compares `frt` only. Zero physics |
 | `library_degeneration.f90` | FOLDED — `meshgen.py:174-185`, `:186-206`, `:540-578`, `:648-664`, `:666-725`, `:831-870`. **`C_degen>3` IS ported**; `test.tpv36`/`test.tpv37`'s python-numpy and python-jax cells run the real wedge path, gated at 1e-6, and are in `CI_CELLS` | — | — |
-| `library_output.f90` | `library_output.py` | — | — |
+| `library_output.f90` | `library_output.py` | — | Counterparts: `output_frt`, and since row 114 `output_onfault_st` / `output_offfault_st` (`write_onfault_stations` / `write_offfault_stations`; histories recorded in `driver.py` `make_step_parts`). Serial python backends only: `python-jax-mpi` writes NO station files and says so on stderr (`eqdyna3d.run_case_mpi`). Not ported: `output_plastic_strain`, `output_gm`, `output_finalSurfDisp`, `output_src_evol`, `output_timeanalysis`. |
 | `meshgen.f90` | `meshgen.py`. Since PR #19 (`dea8df7`, item 64) it includes the rank-local box build: under jax-MPI each rank builds only its own subdomain, split as in Fortran's npx/npy/npz (`MPI4NodalQuant.DECOMP`), and no global mesh is built. | — | — |
 | `netcdf_io.f90` | **PARTIAL** — `netcdf_read_on_fault_eqdyna` FOLDED into `readInputFiles.py:300-347`; `netcdf_read_on_fault_eqdyna_restart` (`:114-185`) **ABSENT** | restart `*.r.nc` is never read; the port always initialises from `on_fault_vars_input.nc` | NOTHING GATED — no gated case restarts from a previous cycle |
 | `readInputFiles.f90` | `readInputFiles.py` | — | — |
