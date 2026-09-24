@@ -1,27 +1,24 @@
 #! /usr/bin/env python3
 """
-Regression guard: the 2026-09-23 sweep-speed changes (rules 2, 10).
+Regression guard: the 2026-09-23 longest-first scheduling change (rules 2, 10).
 
-Two independent things landed together and each gets its own check here so
-one regressing does not hide behind the other going green:
+This guard used to carry a SECOND item -- matrix.RELEASE_ONLY (test.tpv36 x
+python-numpy and test.tpv37 x python-numpy, held out of the everyday sweep for
+wall-clock cost) -- landed the same day as the scheduling change below. That
+flag was RETIRED 2026-09-23 in the same owner decision that removed
+python-numpy from the backend axis entirely (its only two occupants were both
+python-numpy cells; a stale entry would now fail matrix.py's own import-time
+consistency check). Its four checks are deleted with it, not left dead or
+converted to check "the flag stays empty" -- matrix.everyday_cells()'s own
+docstring already states that plainly, and a check whose only failure mode is
+"someone re-added dead state" is not worth carrying. This file's name is left
+as the 2026-09-23 changes it originally guarded; the surviving item is:
 
-  1. RELEASE_ONLY (matrix.py). test.tpv36 x python-numpy and test.tpv37 x
-     python-numpy are SUPPORTED and PASSING, held out of the EVERYDAY sweep
-     (run.py e2e / run_e2e.py's default selection) for wall-clock cost only,
-     and restored by run_e2e.py --release (run.py release, rule 24) -- both
-     at the SAME matrix.GATE_TERM_S (2026-09-23: one term everywhere; this
-     split is about which cells run, never about which term). The defect
-     shape this guards against: a third cell added to
-     RELEASE_ONLY with no matching update here goes RED (a silent widening
-     of what "everyday" no longer covers must not pass quietly), and a
-     RELEASE_ONLY cell that is also declared UNSUPPORTED goes RED (release-
-     only means "supported, cost-deferred", never "does not work").
-
-  2. Longest-first scheduling (run_e2e.py). The concurrent cell runner must
-     start its most expensive cells first, using docs/perf_ledger.jsonl as
-     the measured cost source, with unmeasured cells scheduled first (the
-     conservative choice, never silently defaulted to "cheap"). Pinned via
-     run_e2e.schedule_order directly -- no sweep is run.
+  Longest-first scheduling (run_e2e.py). The concurrent cell runner must
+  start its most expensive cells first, using docs/perf_ledger.jsonl as
+  the measured cost source, with unmeasured cells scheduled first (the
+  conservative choice, never silently defaulted to "cheap"). Pinned via
+  run_e2e.schedule_order directly -- no sweep is run.
 
 Cheap (rule 9): imports + plain-data assertions + one pure-function call
 against a synthetic cost dict. No solver, no MPI, no I/O beyond reading the
@@ -35,120 +32,23 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'testsys', 'e2e'))
 
-from testsys import matrix  # noqa: E402
 import run_e2e  # noqa: E402
 
 
 # --------------------------------------------------------------------------
-# item 1: RELEASE_ONLY
-# --------------------------------------------------------------------------
-EXPECTED_RELEASE_ONLY = {
-    ('test.tpv36', 'python-numpy'),
-    ('test.tpv37', 'python-numpy'),
-}
-
-
-def check_release_only_is_exactly_the_two_flagged_cells():
-    """Pins the CONTENT of the flag: a third cell added here with no update
-    to EXPECTED_RELEASE_ONLY above goes RED, and so does one of the two
-    being silently dropped."""
-    actual = set(matrix.RELEASE_ONLY)
-    assert actual == EXPECTED_RELEASE_ONLY, (
-        'matrix.RELEASE_ONLY is %r, expected exactly %r -- if a cell was '
-        'deliberately added or removed from the release-only flag, update '
-        'EXPECTED_RELEASE_ONLY in this guard as part of that same change'
-        % (actual, EXPECTED_RELEASE_ONLY))
-    print('  PASS  matrix.RELEASE_ONLY == %r' % sorted(EXPECTED_RELEASE_ONLY))
-
-
-def check_release_only_cells_are_never_declared_unsupported():
-    """release-only means "supported, cost-deferred to the release tier" --
-    never "does not work". matrix.py's own import-time consistency check
-    already refuses this combination; this restates the contract at the
-    level a reader of this guard will look for it."""
-    overlap = set(matrix.RELEASE_ONLY) & set(matrix.UNSUPPORTED)
-    assert overlap == set(), (
-        '%r is both RELEASE_ONLY and UNSUPPORTED -- a cell cannot honestly '
-        'claim both' % overlap)
-    print('  PASS  no RELEASE_ONLY cell is declared UNSUPPORTED')
-
-
-def check_release_selection_equals_everyday_selection_plus_release_only():
-    """The two selections run_e2e.py's default (non-explicit) path chooses
-    between: the everyday selection (matrix.everyday_cells()) must be
-    exactly the release selection (matrix.cells(), --release) minus
-    RELEASE_ONLY, and vice versa -- both at the same GATE_TERM_S. This is
-    the mutation-tested boundary: move a cell across it by hand (below) and
-    confirm it flips."""
-    release_runnable, release_unsupported = matrix.cells()
-    everyday_runnable, everyday_unsupported, everyday_release_only = \
-        matrix.everyday_cells()
-
-    assert set(release_runnable) - set(everyday_runnable) == EXPECTED_RELEASE_ONLY, (
-        'release selection minus everyday selection must be exactly the '
-        'flagged cells')
-    assert set(everyday_runnable) & EXPECTED_RELEASE_ONLY == set(), (
-        'everyday selection must exclude every RELEASE_ONLY cell')
-    assert set((c, b) for c, b, _ in everyday_release_only) == EXPECTED_RELEASE_ONLY
-    # unsupported cells are identical on both sides -- RELEASE_ONLY only
-    # ever moves a cell between "runnable" and "held back", never touches
-    # the unsupported set.
-    assert release_unsupported == everyday_unsupported
-    print('  PASS  release == everyday + %d release-only cell(s), '
-          'unsupported set unchanged' % len(EXPECTED_RELEASE_ONLY))
-
-
-def check_mutation_moving_a_cell_across_the_boundary_flips_the_guard():
-    """Take one real, currently-everyday cell, move it across the boundary
-    by hand (a synthetic RELEASE_ONLY dict, not matrix.py's real one), and
-    confirm the equality above flips red, then confirm the untouched real
-    table still reports the original (unflipped) relationship -- proving
-    this guard actually distinguishes the two states rather than being
-    trivially true either way."""
-    real_release_only = dict(matrix.RELEASE_ONLY)
-    probe_cell = ('test.tpv8', 'python-jax')  # a real, everyday, non-flagged cell
-    assert probe_cell not in real_release_only, (
-        '%r is already RELEASE_ONLY -- pick a different probe cell for this '
-        'mutation check' % (probe_cell,))
-
-    mutated = dict(real_release_only)
-    mutated[probe_cell] = 'synthetic, test-only'
-    try:
-        matrix.RELEASE_ONLY = mutated
-        _, _, release_only_after = matrix.everyday_cells()
-        moved = set((c, b) for c, b, _ in release_only_after)
-        assert probe_cell in moved, (
-            'moving %r into RELEASE_ONLY did not remove it from the '
-            'everyday selection -- the boundary check above would not '
-            'catch a real regression here' % (probe_cell,))
-        assert moved != EXPECTED_RELEASE_ONLY, (
-            'the mutated 3-cell release-only set was not distinguishable '
-            'from the real 2-cell one')
-    finally:
-        matrix.RELEASE_ONLY = real_release_only
-
-    # restored: the real table reports exactly the original relationship again
-    _, _, release_only_restored = matrix.everyday_cells()
-    assert set((c, b) for c, b, _ in release_only_restored) == EXPECTED_RELEASE_ONLY
-    print('  PASS  moving %r across the boundary flips the selection and '
-          'restoring the table restores it (mutation-tested both ways)'
-          % (probe_cell,))
-
-
-# --------------------------------------------------------------------------
-# item 2: longest-first scheduling
+# longest-first scheduling
 # --------------------------------------------------------------------------
 def check_schedule_order_is_longest_first():
     """Direct check of run_e2e.schedule_order: given measured costs, the
     returned order's cost sequence must be non-increasing."""
     costs = {
         ('a', 'fortran'): 10.0,
-        ('b', 'python-numpy'): 1000.0,
+        ('b', 'python-jax-mpi'): 1000.0,
         ('c', 'python-jax'): 100.0,
     }
-    cells = [('a', 'fortran'), ('b', 'python-numpy'), ('c', 'python-jax')]
+    cells = [('a', 'fortran'), ('b', 'python-jax-mpi'), ('c', 'python-jax')]
     ordered = run_e2e.schedule_order(cells, costs)
-    assert ordered == [('b', 'python-numpy'), ('c', 'python-jax'), ('a', 'fortran')]
+    assert ordered == [('b', 'python-jax-mpi'), ('c', 'python-jax'), ('a', 'fortran')]
     seq = [costs[cb] for cb in ordered]
     assert all(seq[i] >= seq[i + 1] for i in range(len(seq) - 1)), (
         'schedule_order returned a sequence that is not non-increasing '
@@ -173,10 +73,10 @@ def check_reversing_the_sort_direction_goes_red():
     what proves the check above is not vacuously true."""
     costs = {
         ('a', 'fortran'): 10.0,
-        ('b', 'python-numpy'): 1000.0,
+        ('b', 'python-jax-mpi'): 1000.0,
         ('c', 'python-jax'): 100.0,
     }
-    cells = [('a', 'fortran'), ('b', 'python-numpy'), ('c', 'python-jax')]
+    cells = [('a', 'fortran'), ('b', 'python-jax-mpi'), ('c', 'python-jax')]
 
     def mutated_schedule_order(cells, cost_estimates):
         # the exact bug this item exists to prevent: ascending, not
@@ -211,13 +111,9 @@ def check_run_e2e_actually_uses_schedule_order_for_submission():
 
 
 def main():
-    print('Regression guard: 2026-09-23 sweep-speed changes '
-          '(RELEASE_ONLY + longest-first scheduling)')
+    print('Regression guard: 2026-09-23 longest-first scheduling change '
+          '(RELEASE_ONLY checks retired with the flag itself, same date)')
     checks = [
-        check_release_only_is_exactly_the_two_flagged_cells,
-        check_release_only_cells_are_never_declared_unsupported,
-        check_release_selection_equals_everyday_selection_plus_release_only,
-        check_mutation_moving_a_cell_across_the_boundary_flips_the_guard,
         check_schedule_order_is_longest_first,
         check_unmeasured_cells_are_scheduled_first,
         check_reversing_the_sort_direction_goes_red,

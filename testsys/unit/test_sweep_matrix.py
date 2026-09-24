@@ -79,8 +79,9 @@ def test_unsupported_table_is_exactly_the_mpi_opt_outs(monkeypatch):
     reasons = set(matrix.UNSUPPORTED.values())
     assert len(reasons) == 1
     assert 'not opted into the optional MPI execution mode' in next(iter(reasons))
-    # no case outside python-jax-mpi is unsupported: the three original
-    # backends (fortran, python-numpy, python-jax) still cover every case.
+    # no case outside python-jax-mpi is unsupported: the two remaining
+    # backend implementations (fortran, python-jax) still cover every case
+    # (python-numpy left the axis entirely 2026-09-23, owner decision).
     assert all(b == 'python-jax-mpi' for _c, b in matrix.UNSUPPORTED)
 
     monkeypatch.setitem(matrix.UNSUPPORTED, ('test.tpv8', 'python-jax'),
@@ -97,9 +98,10 @@ def test_unsupported_table_is_exactly_the_mpi_opt_outs(monkeypatch):
 def test_every_cell_runs_except_the_declared_mpi_opt_outs():
     """The sweep covers every cell of the gated table except the python-jax-
     mpi cells that have not opted in. Recorded as an assertion so losing
-    coverage on the three original backends requires deleting a test, not
-    just quietly editing a table -- and so widening PY_MPI_RANKS is visible
-    here as a runnable-count change rather than silent.
+    coverage on the remaining backend implementations (fortran, python-jax)
+    requires deleting a test, not just quietly editing a table -- and so
+    widening PY_MPI_RANKS is visible here as a runnable-count change rather
+    than silent.
     """
     runnable, unsupported = matrix.cells()
     total = len(matrix.CASES) * len(matrix.BACKENDS)
