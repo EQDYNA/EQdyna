@@ -37,6 +37,8 @@ SRC_FORTRAN = os.path.join(REPO_ROOT, 'src', 'fortran')
 SRC_PYTHON = os.path.join(REPO_ROOT, 'src', 'python')
 sys.path.insert(0, SRC_PYTHON)
 from eqdyna import profile_emit  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mpirun_capture  # noqa: E402  (item 95: rank-owned output past MPI_Abort)
 
 OFF_ENV = profile_emit.OFF_ENV
 ACCEPTED_MARKERS = ('unset', '"1"', '"0"')
@@ -132,6 +134,7 @@ def _err_cfg_profile_env_invalid():
     return None
 
 
+
 def check_fortran_bogus_aborts_with_named_code():
     """Real bin/eqdyna, EQDYNA_PROFILE=bogus, an EMPTY tempdir -- legitimate
     because the parse runs right after MPI_Init, before readglobal opens any
@@ -155,16 +158,16 @@ def check_fortran_bogus_aborts_with_named_code():
         env['EQDYNA_PROFILE'] = bad
         with tempfile.TemporaryDirectory() as d:
             try:
-                p = subprocess.run([mpirun, '-np', '1', binary], cwd=d, env=env,
-                                   capture_output=True, timeout=60)
+                rc, out = mpirun_capture.run_rank_files(mpirun, binary, d, env=env, timeout=60)
             except subprocess.TimeoutExpired:
                 raise AssertionError(
                     'bin/eqdyna EQDYNA_PROFILE=%r HUNG instead of aborting' % bad)
-        out = (p.stdout + p.stderr).decode(errors='replace')
-        assert p.returncode == want, (
+            except RuntimeError as e:
+                raise AssertionError(str(e))
+        assert rc == want, (
             'bin/eqdyna EQDYNA_PROFILE=%r exited %d, expected %d '
             '(ERR_CFG_PROFILE_ENV_INVALID) -- output:\n%s'
-            % (bad, p.returncode, want, out))
+            % (bad, rc, want, out))
         assert 'EQDYNA_PROFILE' in out, (
             'FATAL block does not name the variable for %r: %s' % (bad, out))
     return None
