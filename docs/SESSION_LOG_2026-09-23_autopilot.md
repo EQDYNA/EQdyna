@@ -1592,3 +1592,47 @@ drv.a6 is slow, same as tpv36. Hourglass buffer reuse MEASURED in-process
 an 18% kernel, ~1% of a step. Real and small. It rides the next src/python
 bundle gate (profile emitter + refactor retry + this), which needs a paired
 byte-identity sweep, not a bound comparison.
+
+## RR. Item 3 (always-on profile) assembled and in its gate; hybrid PR workflow queued AHEAD of it (20:50)
+
+**Assembled** as branch `wei/combo-item3-2026-09-23` (`100a73b` = master
+`a32c566` + mira's src bundle: emitter with the REAL off switch `600b215`,
+refactor retry keeping `Td`, drv.a6 buffer reuse + iris's guard v2). The one
+conflict (`ci_shard.py`, two new guards on the same line) resolved by keeping
+both. `unit regression` green on a fresh build.
+
+**Zero-cost A/B with the real switch, all four backends, test.tpv8, per-step
+by difference (n 20/60), 3 reps, placement read back from `cpus_allowed`:**
+
+| backend | cpus | OFF ms/step | ON ms/step | ON-OFF | OFF-vs-OFF floor | load |
+|---|---|---|---|---|---|---|
+| fortran 4 ranks | 24-27 | 74.93 | 74.55 | -0.38 (-0.5%) | 1.33 (1.8%) | ~19 |
+| python-jax-mpi 4 ranks (mine) | 24,26,29,31 | 86.17 | 85.83 | -0.34 (-0.4%) | 1.69 (2.0%) | 31.8 |
+| python-numpy | 24-27 | 614.56 | 609.36 | -5.20 | 48.85 (7.9%) | ~18 |
+| python-jax | 25-28 | 93.65 | 113.58 | +19.92 | 34.79 (37%) | ~20 |
+
+Both MPI arms resolve to within ~2% and read NEGATIVE: the profiler costs
+nothing measurable there. The two serial arms pass only because the box's
+noise floor is 8% and 37% of the step — "SUCCESS (floor-masked)" is the honest
+label; what bounds them is the operation count (numpy: 2 `perf_counter` calls
+per step, measured by call-counting; serial jax: none per step). iris's
+injected-cost mutation (a 5 ms/step sleep under profiling only) read +19.1 ms
+and went RED, but its zero-injection control read -61.2 ms: on the serial
+arms the gate cannot resolve 5 ms on this box. The owner's bar was "<1% or the
+noise floor"; all four pass it as written, and I am not calling the serial
+arms a proof of <1%.
+
+**Paired gate running now:** `run.py release` on `100a73b` (31 cells),
+frt to be byte-compared against my 679d8ad release sweep (same src except the
+bundle). Pre-release audits dispatched on the same tree (zofia Mode B, victor).
+
+**Owner's hybrid PR workflow (relayed 20:45), to land NEXT:** src/ and testsys/
+reach master only by squash-merged PR (CI all-green + victor audit, serial);
+docs/board/evidence/logs/rules/references push direct. GitHub facts I checked
+(`gh api`): EQDYNA/EQdyna is PUBLIC, org plan FREE, master unprotected, zero
+rulesets. A branch ruleset "require PR" cannot be scoped to paths and would
+block the docs-direct path, so it will NOT be enabled; GitHub documents
+file-path push rulesets for private/internal repos only (documented, not
+tested here). Enforcement = a CI check on the pushed range + a pre-push hook
+(iris, in flight). Because that enforcement itself touches testsys/, it lands
+as the FIRST PR; item 3's combo becomes the second.
