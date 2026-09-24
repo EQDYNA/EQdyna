@@ -3,12 +3,18 @@
 NO MPI at all, at an arbitrary (rank, nranks) decomposition. Report-only.
 
 WHY THIS ISOLATES THE QUESTION. run_mpi's per-step cost splits into jitted
-compute and host/MPI orchestration. MPI4NodalQuant.decompose needs no
-communication to build a rank's local view (every rank holds the full mesh),
+compute and host/MPI orchestration. A rank's rank-local box
+(eqdyna3d.build_solver_state(case_dir, part=...)) needs no communication to
+BUILD -- only its mass/fnms/arn need MPI4NodalQuant/MPI4arn to be completed --
 so a SINGLE process can build rank r of N's exact local inv/finv/carry and run
-the exact same a_jit/b_jit. If that measures ~the 32-rank per-rank ms/step,
+the exact same a_jit/b_jit. If that measures ~the N-rank per-rank ms/step,
 the plateau is inside the computation and MPI is not implicated; if it
 measures ~1/N of the 1-rank number, the plateau is in the orchestration layer.
+TIMING ONLY: the masses here are the rank's un-exchanged PARTIALS (a node on
+a shared plane holds only this rank's share, and a split-node half no local
+element touches holds 0.0, replaced by 1.0 so the divide stays finite -- the
+count is reported), so the values stepped are not the solve's; the shapes and
+the work are.
 
 It also times three sub-blocks separately, at the same shapes, so a
 rank-independent cost can be attributed to a code REGION and not to "the step":
@@ -40,6 +46,7 @@ from eqdyna import assembleGlobalKU as KU             # noqa: E402
 from eqdyna import driver, eqdyna3d, faulting as FLT  # noqa: E402
 from eqdyna import MPI4NodalQuant as MQ               # noqa: E402
 from eqdyna import globalvar as gv                    # noqa: E402
+from eqdyna import meshgen                            # noqa: E402
 
 
 def nbytes(tree):
@@ -63,25 +70,31 @@ def main():
     case_dir = sys.argv[1]
     rank, nranks, reps = int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
     t0 = time.perf_counter()
-    S, _mesh = eqdyna3d.build_solver_state(case_dir)
+    part = MQ.Partition.for_size(rank, nranks)
+    S, mesh = eqdyna3d.build_solver_state(case_dir, part=part)
     inv = KU.build(S)
     finv = FLT.build(S)
     finv['tr'] = (FLT.forced_rupture_time(np, finv)
                   if FLT.nucleation_enabled(finv) else None)
-    loc = MQ.decompose(S, inv, finv, rank, nranks)
-    inv_l, finv_l = loc['inv'], loc['finv']
-    computed = loc['fault_computed_rows']
+    inv_l, finv_l = inv, finv
+    faces = MQ.build_faces(part, mesh['n_local'], S['ndof'], S['eq_ids'],
+                           mesh['flt_lists'],
+                           meshgen.flt_mpi_flags(part, mesh['flt_lists']))
+    halo_h = (np.unique(np.concatenate([f['eqs'] for f in faces])) if faces
+              else np.zeros(0, dtype=np.int64)).astype(np.int32)
     build_s = time.perf_counter() - t0
 
-    mass_g = np.concatenate(([1.0], S['nodalMassArr']))
-    mass_h = np.concatenate(([1.0], mass_g[loc['local_eqs']]))
+    mass_h = np.concatenate(([1.0], S['nodalMassArr']))
+    n_nonpos_mass = int(np.count_nonzero(mass_h[1:] <= 0.0))
+    mass_h[1:][mass_h[1:] <= 0.0] = 1.0
     B.check_index_width(inv_l)
     inv_l = B.to_device(xp, inv_l)
     finv_l = B.to_device(xp, finv_l)
     mass = xp.asarray(mass_h)
 
     N = int(inv_l['N']); NEQ = int(inv_l['NEQ'])
-    N_g = int(S['N']); NEQ_g = int(S['NEQ'])
+    N_g = int(np.prod(mesh['n_global'])) + int(mesh['fault_census'][0])
+    NEQ_g = int(mesh['equation_census'])
     nftnd_l = int(finv_l['nftnd'])
     z = (lambda *a: xp.zeros(*a))
     # EXACTLY driver.run_mpi's carry -- and since the rank-local renumbering
@@ -91,14 +104,14 @@ def main():
     # claim of that change is the ratio between them.
     carry = (z(NEQ + 1), z((N, 3)), z((N, 3)), z(NEQ + 1),
              xp.asarray(inv_l['stress_i0']).copy(), z((inv_l['Ep'], 15)),
-             xp.asarray(S['fric_init'][computed].copy()),
+             xp.asarray(S['fric_init'].copy()),
              xp.full(nftnd_l, gv.FNFT_SENTINEL),
              xp.asarray(0.0), z((nftnd_l, 0)), z((nftnd_l, 0)))
 
     B.enable_compilation_cache()
     scratch = KU.alloc_scratch(xp, inv_l)
     dyn, sta = B.promote(xp, inv_l)
-    halo = xp.asarray(loc['halo_idx'])
+    halo = xp.asarray(halo_h)
     dt = inv_l['dt']; rdampk = inv_l['rdampk']
 
     names = ('v1', 'velArr', 'dispArr', 'force', 'stress_i', 's_p', 'fric',
@@ -112,12 +125,11 @@ def main():
                N_global=N_g, NEQ_global=NEQ_g,
                carry_bytes_if_global=int(8 * (2 * (NEQ_g + 1) + 6 * N_g)),
                Ei=int(inv_l['Ei']), Ep=int(inv_l['Ep']), E=int(inv_l['E']),
-               Ei_global=int(inv['Ei']), Ep_global=int(inv['Ep']),
+               decomp=part.dims, mexyz=part.mexyz,
+               nonpositive_partial_mass=n_nonpos_mass,
                nodes_int=int(np.asarray(inv_l['int_nodes_idx']).shape[0]),
                nodes_pml=int(np.asarray(inv_l['pml_nodes_idx']).shape[0]),
-               nodes_int_global=int(np.asarray(inv['int_nodes_idx']).shape[0]),
-               nodes_pml_global=int(np.asarray(inv['pml_nodes_idx']).shape[0]),
-               nftnd_local=nftnd_l, nftnd_global=int(finv['nftnd']),
+               nftnd_local=nftnd_l, nftnd_global=int(mesh['fault_census'][0]),
                halo_eqs=int(np.asarray(halo).shape[0]), carry_bytes=cb,
                carry_bytes_total=sum(cb.values()),
                carry_bytes_global_sized=sum(v for k, v in cb.items()
@@ -134,7 +146,7 @@ def main():
     def b_body(dyn_arrays, c, nt, h, delta):
         _, part_b = driver.make_step_parts(xp, {**sta, **dyn_arrays}, finv_l,
                                            None, mass, scratch)
-        force = B.addat(xp, c[driver.FORCE], h, delta)
+        force = B.setat(xp, c[driver.FORCE], h, delta)
         c = c[:driver.FORCE] + (force,) + c[driver.FORCE + 1:]
         return part_b(c, nt)
 

@@ -95,21 +95,25 @@ PY_MPI_RANKS = {
 
 # PY_MPI_EXPECTED_FRT_FILES: the number of `frt.txt<rank>` files a cell must
 # produce, keyed by (case, ranks) -- DATA, not `== ranks` assumed in code.
-# A rank whose element slab never touches the fault owns 0 fault nodes and
-# writes NO frt file, by design (eqdyna3d.py:run_case_mpi's `if n_own == 0:
-# return None, ...`, mirroring Fortran's own contract) -- so this number CAN
-# be less than the rank count, and a launch that silently started fewer
-# workers than asked must not be indistinguishable from one that started the
-# expected count and had an empty-fault rank.
+# A rank writes a frt file only if it OWNS a fault node, i.e. is the lowest
+# rank holding it (MPI4NodalQuant.owned_mask): a box that never meets the
+# fault writes none, and neither does a box whose fault nodes all sit on a
+# plane it shares with a lower rank. So this number CAN be less than the rank
+# count, and a launch that silently started fewer workers than asked must not
+# be indistinguishable from one that started the expected count.
 #
-# Measured directly (mpirun -np 4 python3 -m eqdyna <serial tpv8 case> \
-# --backend jax --mpi, EQDYNA_MPI_SYNC=halo, this session, 2026-09-21):
-# every one of the 4 ranks logged `fault computed=... owned=...` with
-# owned > 0 (132, 829, 806, 124) and wrote its own frt.txt<rank>, so 4 of 4
-# ranks produced a file here -- unlike test.tpv104 at 4 ranks, where a
-# fault-free slab was observed and one rank wrote none.
+# Which ranks write depends on the DECOMPOSITION, and it changed with item 64
+# (2026-09-24): the python-jax-mpi split is now Fortran's (npx,npy,npz) =
+# MPI4NodalQuant.DECOMP[ranks], rank-local boxes, replacing the 1D element
+# slab under which all 4 tpv8 ranks owned fault nodes (132/829/806/124).
+# Re-measured, not predicted: `mpirun -np 4 python3 -m eqdyna <serial tpv8
+# case> --backend jax --mpi` on the item-64 branch logged decomposition
+# (2, 2, 1), fault computed 961/0/961/0 and owned 961/0/930/0 -- the y split
+# of tpv8's asymmetric y line (-10/+12 km) falls off the fault plane, so the
+# two mey=1 boxes never meet the fault -- and wrote frt.txt0 and frt.txt2,
+# 1891 rows pre-dedup (= the reference's row count).
 PY_MPI_EXPECTED_FRT_FILES = {
-    ('test.tpv8', 4): 4,
+    ('test.tpv8', 4): 2,
 }
 
 THRESHOLD = 1e-3  # PROJECT_RULES rule 5's one outer sanity bound.
@@ -328,17 +332,16 @@ MEASURED_PEAK_RSS_GB = {
     # at least one full post-compile step; 28 is comfortably enough.
     ('test.tpv36', 'python-jax'): 4.34,     # 38.6 s wall (truncated, validated method)
     ('test.tpv37', 'python-jax'): 4.20,     # 30.1 s wall (truncated, validated method)
-    # python-jax-mpi, test.tpv8, 4 ranks: SUM of per-rank RSS, sampled every
-    # 5 s (not /usr/bin/time -v -- that tool's getrusage(RUSAGE_CHILDREN)
-    # does not aggregate mpirun's grandchildren, so it read 1.4 GB total on
-    # this same run, the single-rank figure, not the sum), this session
-    # 2026-09-21: per-rank samples peaked at 1345896/1426012/1424436/1404488
-    # KiB = 5.34 GB summed. A 5 s sampling interval is a LOWER BOUND on true
-    # peak, same caveat as test.drv.a6's 20 s sampling above -- and it is
-    # already 76% of a 7 GB runner with zero margin for the runner's other
-    # overhead, consistent with the ~7.6 GB extrapolated from the
-    # single-rank 1.91 GB figure two rows up. NOT added to CI_CELLS.
-    ('test.tpv8', 'python-jax-mpi'): 5.34,
+    # python-jax-mpi, test.tpv8, 4 ranks: SUM of per-rank peak RSS.
+    # RE-MEASURED 2026-09-24 for item 64 (rank-local boxes, (2,2,1)): each
+    # rank wrapped in `/usr/bin/time -f %M` under mpirun (the process's own
+    # getrusage maxrss, not a sampled poll): 805 MB max rank, 3.10 GB summed,
+    # full 5 s gate term. The SAME method on the pre-item-64 1D
+    # build-then-restrict code, same session: 1193 MB max, 4.65 GB summed.
+    # (The 5.34 GB this row carried before was a 5 s-interval RSS poll of the
+    # older code on 2026-09-21 -- a different instrument, kept in git history.)
+    # NOT added to CI_CELLS.
+    ('test.tpv8', 'python-jax-mpi'): 3.10,
 }
 CI_RUNNER_RAM_GB = 7.0
 

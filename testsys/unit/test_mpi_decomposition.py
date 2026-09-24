@@ -1,19 +1,17 @@
-"""Tests for the two PY-ONLY parallel paths added for pathway item 43.
+"""Tests for the PY-ONLY parallel paths: the shard_map split
+(EQDYNA_JAX_DEVICES > 1) and the rank bookkeeping of the python-jax-mpi
+decomposition (driver.run_mpi under mpirun).
 
-Neither path exists in the Fortran, so the 30-cell sweep cannot cover them:
-the sweep runs the serial python column, and every one of these code paths is
-reached only when EQDYNA_JAX_DEVICES > 1 (shard_map) or under mpirun
-(driver.run_mpi). They are therefore tested here, in the same change that
-adds them.
+Neither path is reached by the serial sweep columns, so they are tested here.
 
-WHAT IS AND IS NOT COVERED HERE. These are the PARTITION's invariants --
-completeness, disjointness, symmetry, and the loud failures -- on a synthetic
-mesh, because they are pure index algebra and do not need a solver. The
-numerical question (does an N-rank run land inside the case bound) is not a
-unit test: it is a full-length gated run, and it is
-testsys/perf/run_mpi_scaling.py's parity companion, documented in
-NOTES_item43_mpi.md. A unit test that "passed" on internal consistency while
-the physics moved is exactly the failure mode this repo's rule 1 exists for.
+WHAT IS AND IS NOT COVERED HERE. Pure index algebra and arithmetic: the
+Fortran partition formulas (meshgen.partition_1d / calc_xyz_mpi_id against
+hand-derived tables), bitwise line slicing, face ordering, ownership, and the
+loud refusals. That a rank's rank-local MESH is the serial mesh's box is a
+real-case check and lives in testsys/regression/test_rank_local_mesh.py; that
+an N-rank run lands inside the case bound is the e2e python-jax-mpi cell. A
+unit test that "passed" on internal consistency while the physics moved is
+exactly the failure mode this repo's rule 1 exists for.
 """
 import os
 import sys
@@ -25,13 +23,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir,
                                 'src', 'python'))
 from eqdyna import MPI4NodalQuant as MQ   # noqa: E402
 from eqdyna import backend as B           # noqa: E402
+from eqdyna import meshgen                 # noqa: E402
 
 
 def synthetic(nx=6, ny=3, nz=3, npml=1):
     """A structured brick mesh with a PML shell and a two-sided fault, as the
     index arrays the partition consumes. NOT a physics case: every float is a
-    placeholder, because decompose() only ever SELECTS rows and never reads a
-    value. The shapes and the connectivity are what is under test."""
+    placeholder, because the shard_map split only ever SELECTS rows and never
+    reads a value. The shapes and the connectivity are what is under test."""
     nnx, nny, nnz = nx + 1, ny + 1, nz + 1
     N = nnx * nny * nnz
     nid = np.arange(N).reshape(nnx, nny, nnz)
@@ -127,110 +126,6 @@ def synthetic(nx=6, ny=3, nz=3, npml=1):
     return S, inv, finv
 
 
-@pytest.mark.parametrize('nranks', [1, 2, 3, 4])
-def test_partition_is_complete_and_disjoint(nranks):
-    """Every element assigned exactly once, every fault node owned exactly
-    once. A partition that drops elements still runs and still produces
-    plausible output -- it just solves a smaller problem."""
-    S, inv, finv = synthetic()
-    got_i = got_p = got_e = 0
-    owned = []
-    for r in range(nranks):
-        d = MQ.decompose(S, inv, finv, r, nranks)
-        got_i += d['inv']['Ei']; got_p += d['inv']['Ep']; got_e += d['inv']['E']
-        owned.append(d['fault_rows'])
-        # the restricted arrays must agree with the declared counts
-        assert d['inv']['lam_i'].shape[0] == d['inv']['Ei']
-        assert d['inv']['idxIx'].shape[0] == d['inv']['Ei'] * 8
-        assert d['inv']['conn'].shape[0] == d['inv']['E']
-        assert d['inv']['idxP12'][0].shape[0] == d['inv']['Ep'] * 8
-    assert (got_i, got_p, got_e) == (inv['Ei'], inv['Ep'], inv['E'])
-    allowned = np.concatenate(owned)
-    assert np.array_equal(np.sort(allowned), np.arange(finv['nftnd']))
-
-
-@pytest.mark.parametrize('nranks', [2, 3, 4])
-def test_halo_is_symmetric_and_same_order(nranks):
-    """Rank r's shared-equation list with s must be s's with r, element for
-    element. Sendrecv pairs the buffers positionally: a different order on the
-    two sides adds neighbours' partials to the WRONG equations, which is a
-    wrong answer with no error anywhere."""
-    S, inv, finv = synthetic()
-    dec = [MQ.decompose(S, inv, finv, r, nranks) for r in range(nranks)]
-    for r in range(nranks):
-        # GLOBAL ids: rank r and rank s number the same shared equation
-        # differently in their own local spaces, so global is the only frame
-        # in which "the same equation" is a statement the two can both make.
-        halo_r = dec[r]['halo_eq_global']
-        for s, pos_rs in dec[r]['neighbours']:
-            pos_sr = dict(dec[s]['neighbours'])[r]
-            assert np.array_equal(halo_r[pos_rs],
-                                  dec[s]['halo_eq_global'][pos_sr])
-        # ...and the local halo is that same list renumbered, position for
-        # position -- which is what Sendrecv's positional pairing relies on.
-        assert dec[r]['halo_idx'].shape == halo_r.shape
-
-
-@pytest.mark.parametrize('nranks', [2, 3, 4])
-def test_every_touched_equation_is_local_or_exchanged(nranks):
-    """The postcondition the whole design rests on: after the exchange, this
-    rank's force must be complete at every equation it will READ. So an
-    equation another rank also touches must be in the halo."""
-    S, inv, finv = synthetic()
-    conn = S['conn']
-    dec = [MQ.decompose(S, inv, finv, r, nranks) for r in range(nranks)]
-    touch = []
-    for r in range(nranks):
-        lo, hi = dec[r]['report']['elem_lo'], dec[r]['report']['elem_hi']
-        t = np.zeros(S['N'], dtype=bool); t[conn[lo:hi].ravel()] = True
-        e = S['eq_ids'][t].ravel()
-        touch.append(np.unique(e[e > 0]))
-    for r in range(nranks):
-        others = np.unique(np.concatenate([touch[s] for s in range(nranks) if s != r]))
-        shared = np.intersect1d(touch[r], others)
-        assert np.array_equal(np.sort(dec[r]['halo_eq_global']), shared)
-
-
-def test_one_rank_is_the_identity_restriction():
-    """1 rank must reduce to the serial arrays exactly -- same rows, same
-    order, empty halo. This is what makes `mpirun -np 1` a usable
-    equivalence check against the serial column.
-
-    The RENUMBERING is the identity at 1 rank only because this mesh has no
-    orphan node and no equation outside the touched set, so local_nodes ==
-    arange(N) and local_eqs == arange(1, NEQ+1). That is asserted rather than
-    assumed: on a mesh with an orphan node the 1-rank arrays would be
-    correctly renumbered and NOT equal to the serial ones, and this test
-    would then be making a claim about the mesh, not about decompose."""
-    S, inv, finv = synthetic()
-    d = MQ.decompose(S, inv, finv, 0, 1)
-    assert np.array_equal(d['local_nodes'], np.arange(S['N']))
-    assert np.array_equal(d['local_eqs'], np.arange(1, S['NEQ'] + 1))
-    assert d['halo_idx'].size == 0 and d['neighbours'] == []
-    for k in B._ELEM_GROUP:
-        a, b = inv[k], d['inv'][k]
-        if isinstance(a, list):
-            for x, y in zip(a, b):
-                assert np.array_equal(np.asarray(x), np.asarray(y))
-        else:
-            assert np.array_equal(np.asarray(a), np.asarray(b))
-    assert d['finv']['nftnd'] == finv['nftnd']
-
-
-def test_more_ranks_than_elements_raises():
-    """Loudly, rather than handing some rank an empty subdomain that
-    contributes nothing while still counting in the speedup."""
-    S, inv, finv = synthetic(nx=2, ny=1, nz=1, npml=0)
-    with pytest.raises(ValueError, match='would get 0 of'):
-        MQ.decompose(S, inv, finv, 0, inv['E'] + 1)
-
-
-def test_rank_out_of_range_raises():
-    S, inv, finv = synthetic()
-    with pytest.raises(ValueError, match='out of range'):
-        MQ.decompose(S, inv, finv, 4, 4)
-
-
 def test_unclassified_invariant_raises():
     """A new array in assembleGlobalKU.build's dict must be classified
     element-axis or replicated deliberately. Defaulting either way is a
@@ -314,222 +209,6 @@ def test_shard_padding_is_exact_multiple_and_pads_divisors_with_one():
     assert np.all(q[inv['Ep']:] == 0.0)
 
 
-# ---------------------------------------------------------------------------
-# THE RANK-LOCAL RENUMBERING (decompose's global->local remap)
-#
-# The restriction above splits the WORK; this splits the PROBLEM. Measured
-# reason it exists: with the carry at global extent, v1+velArr+dispArr+force
-# came to 97.75 MB on test.tpv104 BYTE-IDENTICALLY at 1 rank and at 32 ranks
-# (98.5% of the 32-rank carry), so per-step memory traffic did not fall with
-# rank count and the step was memory-system-bound from 4 ranks up.
-#
-# WHAT CAN GO WRONG HERE, and therefore what these tests are: a single index
-# left at GLOBAL numbering against a rank-local array is not a crash. It is a
-# read from, or a scatter into, whatever local slot that global number lands
-# on -- a wrong answer with nothing to attribute it to. So the tests check
-# totality (every index array remapped, unclassified ones refused), range
-# (nothing addresses outside the local extent), and EXACTNESS (a gather
-# through the local indices returns the identical values a gather through the
-# global ones did -- which is the whole bit-identity argument).
-# ---------------------------------------------------------------------------
-EQ_KEYS = tuple(k for k, v in MQ._INDEX_SPACE.items() if v == 'eq')
-NODE_KEYS = tuple(k for k, v in MQ._INDEX_SPACE.items() if v == 'node')
-
-
-def _flat(v):
-    if isinstance(v, (list, tuple)):
-        return np.concatenate([np.asarray(x).ravel() for x in v])
-    return np.asarray(v).ravel()
-
-
-@pytest.mark.parametrize('nranks', [1, 2, 3, 4])
-def test_every_index_array_is_inside_the_local_extent(nranks):
-    """Range check on every classified index array, on both dicts. An index
-    beyond the local extent would be an out-of-bounds gather (jax CLAMPS it,
-    silently, to the last row) -- the exact failure that produces plausible
-    output."""
-    S, inv, finv = synthetic()
-    for r in range(nranks):
-        d = MQ.decompose(S, inv, finv, r, nranks)
-        n_l, neq_l = int(d['inv']['N']), int(d['inv']['NEQ'])
-        assert n_l == d['local_nodes'].shape[0]
-        assert neq_l == d['local_eqs'].shape[0]
-        assert int(d['inv']['NEQ1']) == neq_l + 1
-        # An EMPTY array is a real case, not a gap in the test: a rank can
-        # hold zero interior elements (this fixture's npml shell swallows the
-        # whole mesh in y) or zero PML ones, and that rank must still work.
-        for k in NODE_KEYS:
-            a = _flat(d['inv'][k])
-            if a.size:
-                assert a.min() >= 0 and a.max() < n_l, (k, r, nranks)
-        for k in EQ_KEYS:
-            a = _flat(d['inv'][k])
-            if a.size:
-                assert a.min() >= 0 and a.max() <= neq_l, (k, r, nranks)
-        for k in ('nsmp1', 'nsmp2'):
-            a = _flat(d['finv'][k])
-            if a.size:
-                assert a.min() >= 0 and a.max() < n_l
-        for k in ('idxF_s', 'idxF_m'):
-            a = _flat(d['finv'][k])
-            if a.size:
-                assert a.min() >= 0 and a.max() <= neq_l
-        assert d['halo_idx'].size == 0 or (
-            d['halo_idx'].min() >= 1 and d['halo_idx'].max() <= neq_l)
-
-
-@pytest.mark.parametrize('nranks', [2, 3, 4])
-def test_remap_is_the_identical_gather(nranks):
-    """THE bit-identity argument, as a test. A gather or a scatter performs
-    exactly the same operations under an INJECTIVE relabelling of its index
-    array: only the addresses change, not the values, the duplicate structure
-    or the array order. So gathering a rank-local nodal array through the
-    LOCAL indices must return, element for element, what gathering the global
-    array through the GLOBAL indices returned."""
-    S, inv, finv = synthetic()
-    rng = np.random.default_rng(0)
-    nodal_g = rng.standard_normal((S['N'], 3))
-    eqn_g = rng.standard_normal(S['NEQ'] + 1)
-    for r in range(nranks):
-        d = MQ.decompose(S, inv, finv, r, nranks)
-        # rank-local copies of the two arrays, in local order
-        nodal_l = nodal_g[d['local_nodes']]
-        eqn_l = np.concatenate(([eqn_g[0]], eqn_g[d['local_eqs']]))
-        # global counterparts of the same restricted index arrays
-        g = MQ.decompose(S, inv, finv, r, nranks)   # fresh, then undo the map
-        for k in NODE_KEYS:
-            loc_idx = _flat(d['inv'][k])
-            glob_idx = d['local_nodes'][loc_idx]
-            assert np.array_equal(nodal_l[loc_idx], nodal_g[glob_idx])
-        for k in EQ_KEYS:
-            loc_idx = _flat(d['inv'][k])
-            glob_idx = np.where(loc_idx == 0, 0, d['local_eqs'][loc_idx - 1])
-            assert np.array_equal(eqn_l[loc_idx], eqn_g[glob_idx])
-        assert g['inv']['N'] == d['inv']['N']
-
-
-@pytest.mark.parametrize('nranks', [2, 4])
-def test_local_extent_actually_shrinks(nranks):
-    """The point of the change, stated as an inequality rather than left to
-    the timing: each rank's node and equation counts must be strictly below
-    the global ones, because that is what makes the carry fall with rank
-    count. A remap that renumbered correctly but still covered the whole mesh
-    would pass every test above and buy nothing."""
-    S, inv, finv = synthetic()
-    for r in range(nranks):
-        d = MQ.decompose(S, inv, finv, r, nranks)
-        assert d['report']['N_local'] < d['report']['N_global']
-        assert d['report']['NEQ_local'] < d['report']['NEQ_global']
-
-
-@pytest.mark.parametrize('nranks', [1, 2, 3, 4])
-def test_published_map_inverts_the_relabelling(nranks):
-    """decompose PUBLISHES local_nodes / local_eqs, and driver.run_mpi builds
-    the local mass array from local_eqs alone:
-
-        mass_local = [1.0] + mass_global[local_eqs]
-
-    So if the published map were not the one used to relabel the index
-    arrays, every equation's mass would be the mass of a DIFFERENT equation.
-    Checked by mapping the local indices BACK and comparing against the
-    global arrays restricted the way decompose says it restricted them
-    (elem_lo/elem_hi for elements, fault_computed_rows for fault nodes) --
-    published quantities on both sides, so this is not the remap re-derived
-    and compared with itself.
-
-    It also pins the SINK: local index 0 exactly where the global index was
-    0, position for position. Equation 0 is the no-equation slot every masked
-    contribution is scattered into and calcHourglassResist scrubs; mapping it
-    onto a real equation would scrub that equation instead."""
-    S, inv, finv = synthetic()
-    sink_seen = 0
-    for r in range(nranks):
-        d = MQ.decompose(S, inv, finv, r, nranks)
-        nodes, eqs = d['local_nodes'], d['local_eqs']
-        lo, hi = d['report']['elem_lo'], d['report']['elem_hi']
-
-        def back_node(a):
-            return nodes[np.asarray(a)]
-
-        def back_eq(a):
-            a = np.asarray(a)
-            return np.where(a == 0, 0, eqs[a - 1])
-
-        # element arrays, group 'E': the restriction is exactly rows lo:hi
-        assert np.array_equal(back_node(d['inv']['conn']), S['conn'][lo:hi])
-        for k in ('idxH0', 'idxH1', 'idxH2'):
-            g = np.asarray(inv[k]).reshape(-1, 8)[lo:hi].reshape(-1)
-            l = np.asarray(d['inv'][k])
-            assert np.array_equal(back_eq(l), g), (k, r, nranks)
-            assert np.array_equal(l == 0, g == 0), (k, r, nranks)
-            sink_seen += int(np.count_nonzero(l == 0))
-
-        # idxP12 / idxP3 are the two arrays build() explicitly MASKS to the
-        # sink (by node dof), so they are where the sink invariant has
-        # something to bite on. PML rows within lo:hi, in PML-array order.
-        # Rows of the PML-only array, which are CONTIGUOUS for a contiguous
-        # global element range: the PML elements before lo, then this slab's.
-        is_pml = S['elemType'] == 2
-        sel_p = int(is_pml[:lo].sum()) + np.arange(int(is_pml[lo:hi].sum()))
-        for k in ('idxP12', 'idxP3'):
-            for dd in range(len(inv[k])):
-                g = np.asarray(inv[k][dd]).reshape(-1, 8)[sel_p].reshape(-1)
-                l = np.asarray(d['inv'][k][dd])
-                assert np.array_equal(back_eq(l), g), (k, dd, r, nranks)
-                assert np.array_equal(l == 0, g == 0), (k, dd, r, nranks)
-                sink_seen += int(np.count_nonzero(l == 0))
-
-        # fault arrays: the restriction is exactly fault_computed_rows
-        computed = d['fault_computed_rows']
-        for k in ('nsmp1', 'nsmp2'):
-            assert np.array_equal(back_node(d['finv'][k]),
-                                  np.asarray(finv[k])[computed])
-        for k in ('idxF_s', 'idxF_m'):
-            for dd in range(3):
-                g = np.asarray(finv[k][dd])[computed]
-                l = np.asarray(d['finv'][k][dd])
-                assert np.array_equal(back_eq(l), g), (k, dd, r, nranks)
-                assert np.array_equal(l == 0, g == 0), (k, dd, r, nranks)
-
-        # the halo, in both frames
-        assert np.array_equal(back_eq(d['halo_idx']), d['halo_eq_global'])
-    assert sink_seen > 0, 'this fixture must exercise the sink somewhere'
-
-
-def test_relabel_maps_the_sink_to_the_sink_and_nothing_else_to_it():
-    """The mapping property the test above observes, stated directly: global
-    0 -> local 0, and every REAL equation -> a positive local index."""
-    g2l = np.array([0, 1, -1, 2, 3], dtype=np.int64)   # global eq 2 not held
-    out = MQ._relabel('probe', np.array([0, 1, 3, 4, 0]), g2l, 'eq', 3)
-    assert out.tolist() == [0, 1, 2, 3, 0]
-    assert np.all(out[np.array([1, 2, 3])] > 0)
-
-
-def test_unclassified_index_array_raises():
-    """A new integer index array in build()'s dict must be classified node-
-    or equation-indexed deliberately. Left unclassified it would keep GLOBAL
-    numbering against a rank-local array -- a silent wrong-slot access."""
-    S, inv, finv = synthetic()
-    bad = dict(inv, idxSomethingNew=np.zeros(4, dtype=np.int64))
-    with pytest.raises(KeyError, match='classified neither'):
-        MQ.decompose(S, bad, finv, 0, 2)
-
-
-def test_negative_index_raises():
-    """Fancy-indexing the global->local table with a negative index would
-    WRAP to a valid-looking local index. Refused rather than wrapped."""
-    with pytest.raises(ValueError, match='negative'):
-        MQ._relabel('idxFake', np.array([-1, 2]), np.arange(5), 'eq', 5)
-
-
-def test_index_outside_the_local_set_raises():
-    """An index the rank does not hold cannot be sized into the local set.
-    Clamping it would land the write on a real node."""
-    g2l = np.array([0, 1, -1, 2])      # global eq 2 not held by this rank
-    with pytest.raises(ValueError, match='does not hold'):
-        MQ._relabel('idxFake', np.array([1, 2]), g2l, 'eq', 2)
-
-
 def test_allreduce_sync_is_refused_by_name(monkeypatch):
     """The allreduce sync reduced the FULL nodal array and so required it
     replicated at global extent on every rank -- the replication the local
@@ -543,7 +222,8 @@ def test_allreduce_sync_is_refused_by_name(monkeypatch):
     comm = types.SimpleNamespace(Get_rank=lambda: 0, Get_size=lambda: 4)
     fake_jnp = types.SimpleNamespace(__name__='jax.numpy')
     with pytest.raises(ValueError, match='allreduce'):
-        driver.run_mpi({'nstep': 1}, comm, xp=fake_jnp)
+        driver.run_mpi({'nstep': 1}, comm, MQ.Partition(0, 4, (2, 2, 1)), {},
+                       xp=fake_jnp)
 
 
 def test_mpi_path_still_refuses_numpy():
@@ -554,4 +234,144 @@ def test_mpi_path_still_refuses_numpy():
     from eqdyna import driver
     comm = types.SimpleNamespace(Get_rank=lambda: 0, Get_size=lambda: 4)
     with pytest.raises(RuntimeError, match='jax'):
-        driver.run_mpi({'nstep': 1}, comm, xp=np)
+        driver.run_mpi({'nstep': 1}, comm, MQ.Partition(0, 4, (2, 2, 1)), {},
+                       xp=np)
+
+
+# ---------------------------------------------------------------------------
+# THE FORTRAN DECOMPOSITION (meshgen.f90 getLocalOneDimCoorArrAndSize /
+# calcXyzMPIId), U1/U2 of design 56d2401. Tables below are HAND-DERIVED from
+# the Fortran formulas, not produced by the code under test.
+# ---------------------------------------------------------------------------
+# (global nodes, ranks) -> [(local size, 0-based offset) per rank]
+PARTITION_TABLE = {
+    (9, 1): [(9, 0)],
+    (9, 2): [(5, 0), (5, 4)],            # per 5, resid 0: shared plane 4
+    (10, 2): [(5, 0), (6, 4)],           # per 5, resid 1: rank 1 = P-resid gets +1
+    (10, 4): [(3, 0), (3, 2), (3, 4), (4, 6)],   # per 3, resid 1: only rank 3 gets +1
+    (11, 4): [(3, 0), (3, 2), (4, 4), (4, 7)],   # resid 2: rank 2 is the `<` vs `<=` case
+    (89, 2): [(45, 0), (45, 44)],        # test.tpv8 x line
+    (89, 4): [(23, 0), (23, 22), (23, 44), (23, 66)],
+}
+
+
+def _hand_partition(n, P, m):
+    """The same formula written the long way, as the Fortran reads."""
+    per = int((n + P - 1) / P)
+    resid = (n + P - 1) - per * P
+    size = per if m < (P - resid) else per + 1
+    if m <= (P - resid):
+        start1 = (per - 1) * m + 1                 # Fortran 1-based first index
+    else:
+        start1 = (per - 1) * m + 1 + (m - P + resid)
+    return size, start1 - 1
+
+
+def test_partition_table_is_the_fortran_formula():
+    for (n, P), want in PARTITION_TABLE.items():
+        assert [_hand_partition(n, P, m) for m in range(P)] == want, (n, P)
+        assert [meshgen.partition_1d(n, P, m) for m in range(P)] == want, (n, P)
+
+
+@pytest.mark.parametrize('n', range(4, 60))
+@pytest.mark.parametrize('P', [1, 2, 3, 4])
+def test_partition_shares_exactly_one_plane_and_covers(n, P):
+    parts = [meshgen.partition_1d(n, P, m) for m in range(P)]
+    if min(sz for sz, _ in parts) < 2:
+        with pytest.raises(ValueError, match='holds'):
+            meshgen.check_partition_1d(n, P)
+        return
+    assert meshgen.check_partition_1d(n, P) == parts
+    assert parts[0][1] == 0 and parts[-1][0] + parts[-1][1] == n
+    for m in range(P - 1):
+        assert parts[m + 1][1] == parts[m][1] + parts[m][0] - 1
+    # every ELEMENT (gap between consecutive planes) belongs to exactly one rank
+    owners = np.zeros(n - 1, dtype=int)
+    for sz, off in parts:
+        owners[off:off + sz - 1] += 1
+    assert np.all(owners == 1)
+
+
+def test_calc_xyz_mpi_id_is_z_fastest():
+    ids = [meshgen.calc_xyz_mpi_id(r, 4, 2, 2) for r in range(16)]
+    assert ids[:5] == [(0, 0, 0), (0, 0, 1), (0, 1, 0), (0, 1, 1), (1, 0, 0)]
+    assert ids[15] == (3, 1, 1)
+    assert len(set(ids)) == 16
+
+
+def test_local_line_is_a_bitwise_slice_never_a_reaccumulation():
+    """U2: the local line must be the global line's own doubles. A
+    re-accumulated geometric stretch differs in the last bits, which is 1e-8 m
+    at 1e5 m -- above frt_canonical.align's 1e-9."""
+    g = np.cumsum(np.concatenate(([-3.0e4], 500.0 * 1.025 ** np.arange(88))))
+    for P in (1, 2, 4):
+        for m in range(P):
+            loc, off = meshgen.local_line(g, P, m)
+            n, o = meshgen.partition_1d(g.size, P, m)
+            assert off == o and loc.size == n
+            assert loc.tobytes() == g[o:o + n].tobytes()
+
+
+def test_decomp_table_is_fortrans_and_refuses_other_counts():
+    assert MQ.DECOMP == {1: (1, 1, 1), 2: (2, 1, 1), 4: (2, 2, 1), 8: (2, 2, 2),
+                         16: (4, 2, 2), 32: (4, 4, 2)}
+    for n, dims in MQ.DECOMP.items():
+        assert dims[0] * dims[1] * dims[2] == n
+    with pytest.raises(ValueError, match='DECOMP'):
+        MQ.Partition.for_size(0, 3)
+    with pytest.raises(ValueError, match='multiply'):
+        MQ.Partition(0, 4, (2, 1, 1))
+    with pytest.raises(ValueError, match='out of range'):
+        MQ.Partition(4, 4, (2, 2, 1))
+
+
+def test_neighbours_and_model_edges():
+    """me -/+ npy*npz, npz, 1 (assembleGlobalMass.f90's dest/source)."""
+    p = MQ.Partition(5, 16, (4, 2, 2))            # (mex,mey,mez) = (1,0,1)
+    assert p.mexyz == (1, 0, 1)
+    assert [p.neighbour(0, 0), p.neighbour(0, 1)] == [1, 9]
+    assert [p.neighbour(1, 0), p.neighbour(1, 1)] == [3, 7]
+    assert [p.neighbour(2, 0), p.neighbour(2, 1)] == [4, 6]
+    assert [p.at_model_edge(d, ib) for d in range(3) for ib in (0, 1)] == \
+        [False, False, True, False, False, True]
+
+
+def test_face_node_ids_follow_the_fortran_loop_order():
+    nx, ny, nz = 3, 4, 2
+    nid = lambda ix, iy, iz: (ix - 1) * ny * nz + (iz - 1) * ny + iy
+    assert list(MQ.face_node_ids(0, 1, nx, ny, nz)) == \
+        [nid(3, iy, iz) for iz in (1, 2) for iy in (1, 2, 3, 4)]
+    assert list(MQ.face_node_ids(1, 0, nx, ny, nz)) == \
+        [nid(ix, 1, iz) for ix in (1, 2, 3) for iz in (1, 2)]
+    assert list(MQ.face_node_ids(2, 1, nx, ny, nz)) == \
+        [nid(ix, iy, 2) for ix in (1, 2, 3) for iy in (1, 2, 3, 4)]
+
+
+def test_every_shared_node_has_exactly_one_owner():
+    """The lowest holder writes: over a (2,2,2) split of a 5x4x3 grid every
+    GLOBAL node is owned by exactly one rank."""
+    dims, n = (2, 2, 2), (5, 4, 3)
+    count = np.zeros(n, dtype=int)
+    for r in range(8):
+        p = MQ.Partition(r, 8, dims)
+        sz = [meshgen.partition_1d(n[d], dims[d], p.mexyz[d]) for d in range(3)]
+        nx, ny, nz = (s[0] for s in sz)
+        ids = np.arange(1, nx * ny * nz + 1)
+        own = MQ.owned_mask(p, ids, (nx, ny, nz))
+        s = ids[own] - 1
+        gx = sz[0][1] + s // (nz * ny)
+        gz = sz[2][1] + (s % (nz * ny)) // ny
+        gy = sz[1][1] + s % ny
+        np.add.at(count, (gx, gy, gz), 1)
+    assert np.all(count == 1)
+
+
+def test_fault_boundary_lists_decode_fltgm():
+    """createMasterNode's fltgm codes and MPI4arn's six lists."""
+    nx, ny, nz = 3, 3, 3
+    nid = lambda ix, iy, iz: (ix - 1) * ny * nz + (iz - 1) * ny + iy
+    slaves = [nid(1, 2, 1), nid(2, 2, 2), nid(3, 2, 3), nid(1, 2, 3)]
+    nsmp = np.array([[s, 100 + i] for i, s in enumerate(slaves)])
+    lists = meshgen.fault_boundary_lists(nsmp, nx, ny, nz)
+    assert [list(x) for x in lists] == [[1, 4], [3], [], [], [1], [3, 4]]
+

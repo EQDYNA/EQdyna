@@ -19,10 +19,11 @@ particular:
     future milestone ports assembleGlobalKU (the FEM stiffness kernel).
     `pydump_elemgeo.txt` remains available as that milestone's oracle.
   - MPI4NodalQuant's neighbor-exchange is entirely guarded behind
-    `if (npxyz(ixyz)>1)` for each of the 3 axes -- for the serial
-    (npx=npy=npz=1) case this milestone targets, confirmed (by reading the
-    guard directly) to be a no-op beyond an MPI barrier/timer; nothing to
-    port.
+    `if (npxyz(ixyz)>1)` for each of the 3 axes -- a no-op for the serial
+    (npx=npy=npz=1) case. For python-jax-mpi's rank-local boxes it IS
+    ported, in MPI4NodalQuant.py (relay/setup_exchange), and applied to this
+    module's partial nodalMassArr/fnms exactly where assembleGlobalMass.f90:
+    41-42 applies it: after the element loop.
   - C_degen==0 (no wedge degeneration): elemTypeArr never takes the 11/12
     values calcGlobalShapeFunc's degeneration branch checks for in this
     milestone's scope (matching every other meshgen milestone's scope
