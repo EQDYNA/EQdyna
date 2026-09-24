@@ -53,6 +53,18 @@ import run_scaling as rs           # noqa: E402
 import ledger                      # noqa: E402
 from testsys import runlock        # noqa: E402
 
+def require_git_sha(returncode, stdout, stderr, what):
+    """Item 91e: a git-sha read with no returncode check records '' on
+    failure -- a snapshot/ledger row with an empty sha is exactly the
+    provenance rule 19 exists to forbid. Pure function over an already-run
+    subprocess.CompletedProcess's fields, so it is unit-testable with no
+    real git invocation."""
+    if returncode != 0 or not stdout.strip():
+        raise SystemExit('FAIL: %s exited %d: %s'
+                         % (what, returncode, stderr.strip()))
+    return stdout.strip()
+
+
 SELF_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
 # Asserted on by testsys/regression/test_perf_tool_locks.py, so the contract is
 # a named constant and not a wording buried in a format string.
@@ -225,9 +237,11 @@ def main():
     arms = [x for x in a.arms.split(',') if x]
     excl = [int(x) for x in a.exclude_cpus.split(',') if x.strip()]
 
-    sha = subprocess.run(['git', 'rev-parse', '--short', a.merged_ref],
-                         cwd=ROOT, capture_output=True,
-                         text=True).stdout.strip()
+    _sha_r = subprocess.run(['git', 'rev-parse', '--short', a.merged_ref],
+                            cwd=ROOT, capture_output=True, text=True)
+    sha = require_git_sha(_sha_r.returncode, _sha_r.stdout, _sha_r.stderr,
+                          'git rev-parse --short %s (cwd %s)'
+                          % (a.merged_ref, ROOT))
     work = tempfile.mkdtemp(prefix='jaxmpiab.',
                             dir=os.environ.get('TMPDIR', '/tmp'))
     vault = build_vault(work, a.merged_ref)
