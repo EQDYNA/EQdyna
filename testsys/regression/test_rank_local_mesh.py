@@ -38,8 +38,11 @@ Cases: test.tpv8 at its gated dx (planar, the opted-in MPI case), test.tpv10
 on a shrunken, y-symmetric domain (insertFaultType>0: the rough y-blend must
 use the MODEL's ymin/ymax, and a y boundary ON the fault plane is the
 DUPLICATE arn path) and test.tpv36
-coarsened (C_degen>3 wedges; a y boundary crossing the dipping fault is the
-DIVIDE path). The test prints, per case, which arn paths it actually
+coarsened to dx=1000 m (C_degen>3 wedges; a y boundary crossing the dipping
+fault is the DIVIDE path).
+Rank counts are the smallest set that reaches every path and both
+zero-fault-node shapes (CI cost, ci_shard.py); 2 and 32 ranks were run once,
+green, when this guard was written (FRT_SHAPE keeps their data). The test prints, per case, which arn paths it actually
 exercised and fails if a path it is responsible for was never reached (a green
 result that tested nothing is this repo's recurring failure).
 
@@ -62,12 +65,12 @@ from eqdyna import readInputFiles         # noqa: E402
 
 # (case, par overrides, decompositions by rank count, arn paths it must reach)
 CASES = (
-    ('test.tpv8', {}, (2, 4, 8, 16, 32), ('xsplit', 'zsplit')),
+    ('test.tpv8', {}, (4, 8, 16), ('xsplit', 'zsplit')),
     # tpv10 keeps its dx (its rough-geometry file is sampled at it) and
     # shrinks its DOMAIN, symmetric in y so npy=2 puts a boundary ON y=0.
     ('test.tpv10', {'xmin': -20.0e3, 'xmax': 20.0e3, 'ymin': -15.0e3,
-                    'ymax': 15.0e3, 'zmin': -20.0e3}, (2, 4, 8), ('xsplit', 'ydup')),
-    ('test.tpv36', {'dx': 1000.0}, (2, 4, 8), ('xsplit', 'ydiv')),
+                    'ymax': 15.0e3, 'zmin': -20.0e3}, (4,), ('xsplit', 'ydup')),
+    ('test.tpv36', {'dx': 1000.0}, (4, 8), ('xsplit', 'ydiv')),
 )
 # THE ZERO-FAULT-NODE CONTRACT, per decomposition, as MEASURED DATA (first run
 # of this guard, 2026-09-24): (ranks that write a frt file, ranks whose box

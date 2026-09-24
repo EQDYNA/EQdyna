@@ -171,8 +171,11 @@ CASE = 'test.tpv104'  # tpv8 runs out of parallel work early (prior session note
 # The (npx,npy,npz) per rank count. ONE copy, shared with the python-jax-mpi
 # solver (item 64): the Fortran binary is handed it through bGlobal.txt here,
 # and driver.run_mpi decomposes by the same table, so a Fortran-vs-python
-# per-rank comparison is between the same subdomains by construction.
-sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
+# per-rank comparison is between the same subdomains by construction. Read
+# from THIS tool's own checkout (where the table used to be defined inline),
+# never from $EQDYNAROOT, which may point at a foreign or scratch tree.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(TESTSYS)),
+                                'src', 'python'))
 from eqdyna.MPI4NodalQuant import DECOMP   # noqa: E402
 FORTRAN_RANKS = [1, 2, 4, 8, 16, 32]
 PY_THREADS = [1, 2, 4, 8, 16, 32]  # F1: was [1,2,4,8]; now matches FORTRAN_RANKS, both backends
