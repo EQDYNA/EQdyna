@@ -72,6 +72,7 @@ def check(C_elastic, output_plastic, rat, C_Q=C_Q):
             ERR_CFG_Q_NEEDS_UNIFORM,
             'Q model (C_Q=1) can only work with uniform element size; rat must be 1.0.')
     if output_plastic == 1 and C_elastic != 0:
+        print(' Now, C_elastic = ', C_elastic, flush=True)   # checkInputConsistency.f90:16
         raise InputConsistencyError(
             ERR_CFG_PLASTIC_OUTPUT,
             'Plastic strains are only output for C_elastic=0. Set output_plastic=0 or C_elastic=0.')

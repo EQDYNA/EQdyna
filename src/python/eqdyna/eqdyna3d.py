@@ -621,18 +621,22 @@ def _select_device(device):
             % (device, got, jax.devices(), device, device))
 
 
-def _abort(exc):
-    """checkInputConsistency.InputConsistencyError -> the same structured
-    FATAL block + process exit status errorCodes.f90's abortRun prints for
-    the Fortran binary (rule 23: same code, same reason, discoverable the
-    same way), then SystemExit(exc.code) so a Python run and a Fortran run
-    of the same bad config exit with the SAME number."""
-    print(file=sys.stderr)
-    print('==================== EQdyna: FATAL ====================', file=sys.stderr)
-    print(' exit code : %d' % exc.code, file=sys.stderr)
-    print(' reason    : %s' % exc, file=sys.stderr)
-    print(' See the "Exit codes" table in README.md for this code.', file=sys.stderr)
-    print('=======================================================', file=sys.stderr)
+def _abort(exc, rank=0):
+    """checkInputConsistency.InputConsistencyError -> the FATAL block
+    errorCodes.f90:153-162 (abortRun) prints: on STDOUT, with the rank line
+    (Fortran always has MPI up, so a serial run is rank 0), then
+    SystemExit(exc.code) so a Python run and a Fortran run of the same bad
+    config exit with the SAME number (rule 23). Every rank raises the same
+    refusal before any collective (build_solver_state runs first on all
+    ranks), so there is no MPI_Abort equivalent to need today."""
+    print(flush=True)
+    print(' ==================== EQdyna: FATAL ====================')
+    print('  rank      : ', rank)
+    print('  exit code : ', exc.code)
+    print('  reason    : ', exc)
+    print('  See the "Exit codes" table in README.md for this code.')
+    print(' =======================================================')
+    print(flush=True)
     raise SystemExit(exc.code)
 
 
@@ -673,7 +677,7 @@ def main():
             path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
                                         profile=prof)
         except checkInputConsistency.InputConsistencyError as exc:
-            _abort(exc)
+            _abort(exc, rank=comm.Get_rank())
         if args.profile:
             prof.report(nsteps=args.nsteps, nelem=prof.nelem or None,
                         stream=sys.stdout)

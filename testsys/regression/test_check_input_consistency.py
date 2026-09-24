@@ -180,28 +180,44 @@ def _run_python(case_dir, nsteps=4):
     return r.returncode, r.stdout + r.stderr
 
 
+def _fortran_truth():
+    """Codes from errorCodes.f90 and reason strings from
+    checkInputConsistency.f90, parsed from the Fortran SOURCE -- not from the
+    Python module under test, so the guard cannot agree with itself."""
+    import re
+    codes = dict(re.findall(r'(ERR_CFG_\w+)\s*=\s*(\d+)',
+                            open(os.path.join(ROOT, 'src', 'fortran', 'errorCodes.f90')).read()))
+    src = open(os.path.join(ROOT, 'src', 'fortran', 'checkInputConsistency.f90')).read()
+    calls = re.findall(r"abortRun\((ERR_CFG_\w+),\s*&\s*'([^']*)'\)", src)
+    return [(name, int(codes[name]), msg) for name, msg in calls]
+
+
 def check_unreachable_q_checks():
+    truth = _fortran_truth()
+    if len(truth) != 3:
+        raise AssertionError('parsed %d abortRun calls from checkInputConsistency.f90, '
+                             'expected 3: %r' % (len(truth), truth))
     fails = []
-    try:
-        cic.check(C_elastic=0, output_plastic=0, rat=1.0, C_Q=1)
-        fails.append('check 1 (C_Q=1, C_elastic=0) did not raise')
-    except cic.InputConsistencyError as e:
-        if e.code != cic.ERR_CFG_Q_NEEDS_ELASTIC:
-            fails.append('check 1 raised code %r, expected %d' % (e.code, cic.ERR_CFG_Q_NEEDS_ELASTIC))
-    try:
-        cic.check(C_elastic=1, output_plastic=0, rat=1.025, C_Q=1)
-        fails.append('check 2 (C_Q=1, rat=1.025>1) did not raise')
-    except cic.InputConsistencyError as e:
-        if e.code != cic.ERR_CFG_Q_NEEDS_UNIFORM:
-            fails.append('check 2 raised code %r, expected %d' % (e.code, cic.ERR_CFG_Q_NEEDS_UNIFORM))
+    cases = [(dict(C_elastic=0, output_plastic=0, rat=1.0, C_Q=1), truth[0]),
+             (dict(C_elastic=1, output_plastic=0, rat=1.025, C_Q=1), truth[1]),
+             (dict(C_elastic=1, output_plastic=1, rat=1.0, C_Q=0), truth[2])]
+    for kw, (name, code, msg) in cases:
+        try:
+            cic.check(**kw)
+            fails.append('%s: %r did not raise' % (name, kw))
+        except cic.InputConsistencyError as e:
+            if e.code != code:
+                fails.append('%s: raised code %r, Fortran errorCodes.f90 says %d' % (name, e.code, code))
+            if str(e) != msg:
+                fails.append('%s: message %r != Fortran %r' % (name, str(e), msg))
     try:
         cic.check(C_elastic=1, output_plastic=0, rat=1.0, C_Q=1)
     except cic.InputConsistencyError as e:
         fails.append('check 2 raised at rat==1.0 (boundary; must only fire for rat>1): %r' % e)
     if fails:
         raise AssertionError('; '.join(fails))
-    print('  PASS  checks 1/2 (C_Q==1 combinations, unreachable via any real '
-          'case) match errorCodes.f90 11/12 by direct unit call')
+    print('  PASS  all 3 checks: code and message equal to the Fortran source '
+          '(errorCodes.f90 + checkInputConsistency.f90), by direct unit call')
 
 
 def check_plastic_output_refused_end_to_end():
@@ -235,6 +251,17 @@ def check_plastic_output_refused_end_to_end():
         if PLASTIC_MSG not in out_p:
             raise AssertionError('python port refused (exit %d) but did not print '
                                  'the expected message:\n%s' % (rc_p, out_p[-1500:]))
+        # The rest of Fortran's output, which the reason string alone would
+        # not catch (PR #9 audit): the C_elastic echo and the FATAL block's
+        # rank line, on BOTH sides.
+        import re
+        for tag, out in (('fortran', out_f), ('python', out_p)):
+            if not re.search(r'Now, C_elastic =\s+1', out):
+                raise AssertionError('%s did not echo "Now, C_elastic = 1" '
+                                     '(checkInputConsistency.f90:16):\n%s' % (tag, out[-1500:]))
+            if not re.search(r'rank\s+:\s+0', out):
+                raise AssertionError('%s FATAL block has no "rank : 0" line '
+                                     '(errorCodes.f90:156):\n%s' % (tag, out[-1500:]))
     print('  PASS  output_plastic=1/C_elastic=1 refused by BOTH binaries, '
           'exit %d, message matches' % ERR_CFG_PLASTIC_OUTPUT)
 
