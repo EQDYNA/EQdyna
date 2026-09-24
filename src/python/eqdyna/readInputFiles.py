@@ -120,6 +120,18 @@ def read_bglobal(path):
         raise stale('a complete viscoplastic/plastic-output block')
     if len(g['plasticOutputHalfWidth']) != 3:
         raise stale('three plastic-strain output window half-widths')
+    # Station n-stress sign convention (board row 22a), the file's last line:
+    # +1 positive means extension, -1 positive means compression -- the case's
+    # SCEC spec convention (scripts/lib.py resolveNormalStressSign). Same
+    # stale/invalid verdicts as readInputFiles.f90's readglobal.
+    try:
+        g['nStressOutSign'] = int(nxtOrStale('the station normal-stress sign convention')[0])
+    except (IndexError, ValueError):
+        raise stale('a valid station normal-stress sign convention')
+    if g['nStressOutSign'] not in (1, -1):
+        raise ValueError('read_bglobal: %s station normal-stress sign is %d; it '
+                         'must be +1 (extension) or -1 (compression). Re-run '
+                         'case.setup.' % (path, g['nStressOutSign']))
 
     g['str1ToFaultAngle'] = g['str1ToFaultAngle'] * np.pi / 180.0
     # nstep = idnint(totalSimuTime/dt) -- Fortran round-half-away-from-zero.

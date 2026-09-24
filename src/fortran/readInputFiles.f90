@@ -57,6 +57,16 @@ subroutine readglobal
         if (ios /= 0) call stopStaleGlobal('the deviatoric pre-stress taper depths, m positive down (par.devStrTaperDepthStart/End)')
         read(1001,*,iostat=ios) (plasticOutputHalfWidth(i), i = 1, 3)
         if (ios /= 0) call stopStaleGlobal('the plastic-strain output window half-widths, m (par.plasticOutputHalfWidth)')
+        ! Station normal-stress sign convention (board row 22a). SCEC specs do
+        ! not agree on it -- TPV29/30, TPV10/11 and TPV36/37 say "Positive means
+        ! extension", TPV103/104 and TPV105-3D say "Positive means
+        ! compression" -- so it is a per-case input, not a constant. Until
+        ! row 22a library_output.f90 negated column 8 for EVERY case, i.e.
+        ! wrote compression-positive everywhere.
+        read(1001,*,iostat=ios) nStressOutSign
+        if (ios /= 0) call stopStaleGlobal('the station normal-stress sign convention, +1 extension / -1 compression (par.faultStNormalStressSign)')
+        if (nStressOutSign /= 1 .and. nStressOutSign /= -1) call abortRun(ERR_CFG_NSTRESS_SIGN_INVALID, &
+            'bGlobal.txt station normal-stress sign must be +1 (extension) or -1 (compression); re-run case.setup.')
 
     close(1001)
     str1ToFaultAngle = str1ToFaultAngle*pi/180.0d0 !convert degrees to radian
