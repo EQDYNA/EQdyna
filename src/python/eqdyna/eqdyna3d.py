@@ -435,13 +435,10 @@ def build_solver_state(case_dir, part=None):
         ccosphi=ccosphi, sinphi=sinphi, tv=tv, init_stress=init_stress,
         # Row 114 -- station output.
         dx=params['dx'], fault_dip_rad=fault_dip_rad,
-        # TODO(row114/22a): switch to g['nStressOutSign'] once board item 22a
-        # (Fortran normal-stress sign fix) lands on origin/master and
-        # readInputFiles.read_bglobal returns it -- see NOTES_row114.md and
-        # driver.py's build_invariants. Until then this reproduces the
-        # CURRENT (pre-22a) Fortran, which always writes column 8 as
-        # -tnrm/1e6.
-        nStressOutSign=-1.0,
+        # Column 8 (n-stress) sign: the case's SCEC spec convention, +1
+        # extension-positive / -1 compression-positive, read from bGlobal.txt
+        # exactly as readInputFiles.f90 reads it (board row 22a, PR #20).
+        nStressOutSign=float(g['nStressOutSign']),
         st_on_idx=st_on_idx, st_on_strike_m=st_on_strike_m, st_on_depth_m=st_on_depth_m,
         st_off_idx=st_off_idx, st_off_x_m=st_off_x_m, st_off_y_m=st_off_y_m,
         st_off_z_m=st_off_z_m, st_on_total=st_on_total, st_off_total=st_off_total,

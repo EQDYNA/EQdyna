@@ -293,17 +293,14 @@ def build_invariants(S, nsteps):
     # path (eqdyna3d.build_solver_state does not run the matching there --
     # see run_case_mpi's loud refusal). st_ncols_on/st_sign are plain Python
     # scalars (static under jit, like `friclaw`), not device arrays.
-    finv['st_on_idx'] = np.asarray(S.get('st_on_idx', np.zeros(0, dtype=np.int64)),
+    finv['st_on_idx'] = np.asarray(S['st_on_idx'],
                                    dtype=np.int64)
-    finv['st_off_idx'] = np.asarray(S.get('st_off_idx', np.zeros(0, dtype=np.int64)),
+    finv['st_off_idx'] = np.asarray(S['st_off_idx'],
                                     dtype=np.int64)
     finv['st_ncols_on'] = 11 if S['friclaw'] >= 3 else 8
-    # TODO(row114/22a): board item 22a (Fortran normal-stress sign fix,
-    # library_output.f90:115/:138) lands nStressOutSign into
-    # readInputFiles.read_bglobal as g['nStressOutSign']. Until that PR is on
-    # origin/master this port reproduces the CURRENT (pre-22a) Fortran, which
-    # always writes column 8 as -tnrm/1e6 -- see NOTES_row114.md.
-    finv['st_sign'] = float(S.get('nStressOutSign', -1.0))
+    # Column 8's sign is the case's spec convention (board row 22a): no
+    # default -- a state without it is a caller bug, not a sign to guess.
+    finv['st_sign'] = float(S['nStressOutSign'])
     return inv, finv, tp, hist_w
 
 
