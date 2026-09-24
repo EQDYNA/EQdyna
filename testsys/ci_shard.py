@@ -121,6 +121,7 @@ SHARDS = {
         "test_backend_axis.py",  # added 2026-09-23 (wei-lin, numpy out of the gates): <1 s
         "test_perf_meta_imports.py",  # added 2026-09-23 (wei-lin): <1 s
         "test_sweep_speed_2026_09_23.py",  # added at merge (wei-lin): landed d488dae after this partition was timed; 0.2 s
+        "test_src_stamp.py",  # added 2026-09-24 (wei-lin, source stamp): synthetic binaries + one refused run_e2e, <5 s
         "test_ci_shard_coverage.py",
         "test_ci_workflow_coverage.py",
         "test_create_newcase.py",

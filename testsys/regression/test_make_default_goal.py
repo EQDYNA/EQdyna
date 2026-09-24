@@ -29,12 +29,19 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 SRC = os.path.join(ROOT, 'src', 'fortran')
 
 
-def _copySrc(dest):
-    """Copy the sources and makefile only -- never build products (rule 12)."""
+def _copySrc(tmp):
+    """Copy the sources and makefile only -- never build products (rule 12) --
+    into the REAL layout, <tmp>/src/fortran, plus scripts/src_hash.py beside
+    it: the makefile runs ../../scripts/src_hash.py to stamp the build
+    (2026-09-24), so a flat copy is no longer a buildable tree."""
+    dest = os.path.join(tmp, 'src', 'fortran')
     os.makedirs(dest, exist_ok=True)
     for name in sorted(os.listdir(SRC)):
         if name.endswith('.f90') or name == 'makefile':
             shutil.copy2(os.path.join(SRC, name), os.path.join(dest, name))
+    os.makedirs(os.path.join(tmp, 'scripts'), exist_ok=True)
+    shutil.copy2(os.path.join(ROOT, 'scripts', 'src_hash.py'),
+                 os.path.join(tmp, 'scripts', 'src_hash.py'))
     return dest
 
 
@@ -50,7 +57,7 @@ def main():
     problems = []
 
     with tempfile.TemporaryDirectory(prefix='testMakeDefaultGoal.') as tmp:
-        work = _copySrc(os.path.join(tmp, 'src'))
+        work = _copySrc(tmp)
 
         # The whole point: no target named on the command line, exactly as
         # install-eqdyna.sh invokes it.
