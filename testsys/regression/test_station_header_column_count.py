@@ -82,6 +82,79 @@ end program library_output_item67_driver
 '''
 
 
+# Item 93 (2026-09-24): the OFF-fault writer, same three-number check, plus
+# its filename. One station at y = 1.99 km: nint -> body020, the truncating
+# int() the writer used to use -> body019.
+_OFF_DRIVER_SRC = r'''
+program library_output_item93_driver
+    use globalvar
+    implicit none
+
+    nstep = 1
+    dx = 100.0d0
+    dt = 0.01d0
+    numOfOffFaultStCount = 1
+    allocate(x4nds(3,1))
+    x4nds(:,1) = (/ 0.0d0, 1990.0d0, 0.0d0 /)
+    allocate(OffFaultStNodeIdIndex(2,1))
+    OffFaultStNodeIdIndex(1,1) = 1; OffFaultStNodeIdIndex(2,1) = 1
+    allocate(OffFaultStGramSCEC(7,1))
+    OffFaultStGramSCEC = 1.0d0
+
+    call output_offfault_st
+end program library_output_item93_driver
+'''
+
+
+def build_and_run_offfault(tmp):
+    """Same build as build_and_run, driving output_offfault_st; returns the
+    list of body* files it wrote."""
+    objs = []
+    for fname in FORTRAN_DEPS:
+        obj = os.path.join(tmp, fname.replace('.f90', '.off.o'))
+        r = subprocess.run(
+            ['gfortran', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp,
+             '-c', os.path.join(FSRC, fname), '-o', obj],
+            capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            raise RuntimeError(f'compiling {fname} (off) failed:\n{r.stdout}\n{r.stderr}')
+        objs.append(obj)
+    src = os.path.join(tmp, 'driver.off.f90')
+    with open(src, 'w') as fh:
+        fh.write(_OFF_DRIVER_SRC)
+    binary = os.path.join(tmp, 'driver.off')
+    r = subprocess.run(['gfortran', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp]
+                       + objs + [src, '-o', binary], capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise RuntimeError(f'building driver (off) failed:\n{r.stdout}\n{r.stderr}')
+    rundir = os.path.join(tmp, 'run.off')
+    os.makedirs(rundir, exist_ok=True)
+    r = subprocess.run([binary], cwd=rundir, capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        raise RuntimeError(f'driver (off) exited {r.returncode}:\n{r.stdout}\n{r.stderr}')
+    return rundir, sorted(f for f in os.listdir(rundir) if f.startswith('body'))
+
+
+def check_offfault(tmp):
+    fails = []
+    rundir, files = build_and_run_offfault(tmp)
+    if files != ['body020st000dp000.txt']:
+        fails.append(f'off-fault: wrote {files}, expected [\'body020st000dp000.txt\'] '
+                     f'(y=1.99 km must ROUND to 020 like the on-fault writer, not truncate to 019)')
+    if len(files) != 1:
+        return fails + [f'off-fault: expected exactly one body file, got {files}']
+    got = three_counts(os.path.join(rundir, files[0]))
+    if got != (7, 7, 7):
+        fails.append(f'off-fault: declared/names/data = {got}, expected (7, 7, 7)')
+    with open(os.path.join(rundir, files[0])) as fh:
+        lines = fh.read().splitlines()
+    names = [l for l in lines if l.strip().startswith('t h-disp')]
+    if not names or not names[0].startswith(' t h-disp'):
+        fails.append(f'off-fault: field-name line {names[:1]} is not the (1X,103A) shape '
+                     f'the on-fault writer uses (one leading blank)')
+    return fails
+
+
 def build_and_run(tmp, friclaw, strike_m, tag):
     """Compile globalvar.f90 + library_output.f90 + a tiny driver that calls
     output_onfault_st once with the given friclaw, run it in `tmp`, and
@@ -186,6 +259,7 @@ def main():
         try:
             fails += check_one(tmp, friclaw=1, strike_m=500.0, tag='low', expected=8)
             fails += check_one(tmp, friclaw=4, strike_m=700.0, tag='high', expected=11)
+            fails += check_offfault(tmp)
         except RuntimeError as e:
             print('FAIL test_station_header_column_count')
             print(' -', e)
@@ -199,7 +273,8 @@ def main():
             print('  -', f)
         return 1
     print('SUCCESS test_station_header_column_count '
-          '(friclaw<3 declares/names/data = 8/8/8, friclaw>=3 declares/names/data = 11/11/11)')
+          '(friclaw<3 declares/names/data = 8/8/8, friclaw>=3 declares/names/data = 11/11/11, '
+          'off-fault 7/7/7 in body020st000dp000.txt for y=1.99 km)')
     return 0
 
 
