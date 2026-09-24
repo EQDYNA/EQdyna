@@ -98,6 +98,7 @@ SHARDS = {
         "test_stop_exit_status.py",
         "test_symlink_integrity.py",
         "test_term_axis.py",
+        "test_nstress_sign_convention.py",  # added 2026-09-24 (wei-lin, row 22a): 11 case-param subprocesses + tempdir gate checks, ~1 s
         "test_threadprobe.py",  # added 2026-09-24 (wei-lin, item 47a): pure function, <1 s
     ],
     "2": [

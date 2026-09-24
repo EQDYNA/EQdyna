@@ -177,6 +177,7 @@ MODULE globalvar
     real (kind = dp) :: devStrTaperDepthStart     ! depth (m, positive down) at which the off-fault deviatoric pre-stress starts tapering; the taper is INACTIVE when End <= Start
     real (kind = dp) :: devStrTaperDepthEnd       ! depth (m, positive down) at which the off-fault deviatoric pre-stress reaches zero
     real (kind = dp) :: plasticOutputHalfWidth(3) ! |x|, |y|, |z| half-widths (m) of the plastic-strain output window (library_output.f90)
+    integer (kind = 4) :: nStressOutSign = 0 ! faultst*.txt n-stress sign: +1 positive means extension, -1 positive means compression -- the CASE's SCEC spec convention (bGlobal.txt last line, par.faultStNormalStressSign; board row 22a). 0 = unread, refused.
 
     !=====================================================================
     ! PML & damping

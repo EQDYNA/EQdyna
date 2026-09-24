@@ -3,7 +3,7 @@
 Script to setup the case via user_defined_params.py.
 """
 from user_defined_params import par
-from lib import ensureFaultRoughGeometryForCase, resolveViscoplasticParams
+from lib import ensureFaultRoughGeometryForCase, resolveNormalStressSign, resolveViscoplasticParams
 import netCDF4 as nc
 import numpy as np
 import os
@@ -51,6 +51,10 @@ def create_model_input_file():
         f.write(str(tv) + "\n")
         f.write(str(taperStart) + " " + str(taperEnd) + "\n")
         f.write(str(plasticWindow[0]) + " " + str(plasticWindow[1]) + " " + str(plasticWindow[2]) + "\n")
+        # Station n-stress sign convention (board row 22a): the LAST line,
+        # read unconditionally by readglobal and read_bglobal, which refuse a
+        # file without it as stale.
+        f.write(str(resolveNormalStressSign(par)) + "\n")
 
 
     with open('bModelGeometry.txt', "w") as f:

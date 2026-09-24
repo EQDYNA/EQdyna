@@ -28,6 +28,11 @@ one shared mesh.
 
 **Result** (`faultst000dp120.txt`, first output row, t=0.0417 s):
 
+(Sign note, 2026-09-24, board row 22a: these n-stress values were written
+by the pre-22a writer, compression-positive. From 22a on, TPV29/30 station
+files are extension-positive per their spec, so the same stress reads
+negative -- e.g. -181.504 MPa.)
+
 | case  | h-shear-stress (MPa) | n-stress (MPa) |
 |---|---|---|
 | tpv29 (C_elastic=1) | 27.7913 | 181.504 |

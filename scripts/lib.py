@@ -92,6 +92,24 @@ def linear1(x,ww,w):
 NUC_VS_FIXED = 3464.0
 
 
+def resolveNormalStressSign(par):
+    """The integer case.setup writes as bGlobal.txt's last line: +1 when the
+    case's station files report n-stress positive in extension, -1 when
+    positive in compression (par.faultStNormalStressSign; board row 22a).
+    Anything else RAISES (rule 2) -- the sign is the case's spec convention and
+    there is no neutral value to fall back to."""
+    signs = {'extension': 1, 'compression': -1}
+    value = par.faultStNormalStressSign
+    if value not in signs:
+        raise ValueError(
+            'case.setup: par.faultStNormalStressSign must be %s (got %r). It '
+            'is the n-stress sign convention the case SCEC spec states for '
+            'faultst*.txt column 8.' % (' or '.join(repr(k) for k in signs), value))
+    print('case.setup: station n-stress sign = %+d (positive means %s)'
+          % (signs[value], value))
+    return signs[value]
+
+
 def resolveViscoplasticParams(par):
     """Resolve the viscoplastic/plastic-output block case.setup writes to the
     end of bGlobal.txt, and print the values it resolved.

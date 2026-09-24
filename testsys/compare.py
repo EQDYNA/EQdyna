@@ -38,7 +38,9 @@ kinds of backend:
 Nothing in here skips. A missing reference, a missing run artifact, a node-set
 mismatch and an out-of-bound diff are all failures, and each says which it was.
 """
+import glob
 import os
+import re
 
 import numpy as np
 
@@ -308,14 +310,88 @@ def compare_nc(case, run_dir):
                                            % (verdict, matrix.THRESHOLD)]
 
 
+# --------------------------------------------------------------------------
+# station files: the n-stress sign convention (board row 22a)
+# --------------------------------------------------------------------------
+ONFAULT_STATION_RE = re.compile(r'^faultst(-?\d+)dp(\d+)\.txt$')
+
+
+def read_station_file(path):
+    """(field_names, data) for one faultst*/body* station file, as written by
+    library_output.f90: `#` header lines, one line of field names starting
+    with `t`, then one numeric row per time step. Raises on a file with no
+    names line or no data -- an unreadable station is a failure, not a
+    station to skip."""
+    names, rows = None, []
+    with open(path) as f:
+        for line in f:
+            tok = line.split()
+            if not tok or tok[0].startswith('#'):
+                continue
+            if tok[0] == 't':
+                names = tok
+                continue
+            rows.append([float(v) for v in tok])
+    if names is None or not rows:
+        raise ValueError('%s: no field-name line or no data rows' % path)
+    data = np.asarray(rows)
+    if data.shape[1] != len(names):
+        raise ValueError('%s: %d data columns but %d field names'
+                         % (path, data.shape[1], len(names)))
+    return names, data
+
+
+def nstress_sign_gate(case, run_dir):
+    """(ok, lines): at every BURIED on-fault station (down-dip field of the
+    filename > 0; a surface station's normal stress is legitimately zero), the
+    n-stress at the first recorded step must carry the sign an initially
+    COMPRESSIVE stress has in the case's SCEC convention
+    (matrix.NSTRESS_CONVENTION): negative where "positive means extension",
+    positive where "positive means compression". Zero is a failure (the sign
+    cannot be read), and so is a run with no buried on-fault station at all
+    -- a check that examined nothing must not read as a pass (rule 2)."""
+    convention, citation = matrix.NSTRESS_CONVENTION[case]
+    expected = -1.0 if convention == 'extension' else 1.0
+    buried, unparsed = [], []
+    for p in sorted(glob.glob(os.path.join(run_dir, 'faultst*.txt'))):
+        m = ONFAULT_STATION_RE.match(os.path.basename(p))
+        if not m:
+            unparsed.append(os.path.basename(p))
+        elif int(m.group(2)) > 0:
+            buried.append(p)
+    if unparsed:
+        return False, ['nsign: FAIL on-fault station file name(s) not of the '
+                       'form faultst<sss>dp<ddd>.txt, so their depth cannot '
+                       'be read: %s' % ', '.join(unparsed)]
+    if not buried:
+        return False, ['nsign: FAIL no buried on-fault station file '
+                       '(faultst*dp<ddd>.txt, ddd > 0) in %s -- nothing to '
+                       'check' % run_dir]
+    values, bad = [], []
+    for p in buried:
+        names, data = read_station_file(p)
+        v = float(data[0, names.index('n-stress')])
+        values.append(v)
+        if np.sign(v) != expected:
+            bad.append('%s n-stress %.6g MPa' % (os.path.basename(p), v))
+    lines = ['nsign: positive means %s (%s); %d buried on-fault stations, '
+             'first-step n-stress in [%.6g, %.6g] MPa'
+             % (convention, citation, len(buried), min(values), max(values))]
+    if bad:
+        lines.append('nsign: FAIL %d of %d stations carry the wrong sign for '
+                     'an initially compressive stress: %s'
+                     % (len(bad), len(buried), '; '.join(bad)))
+    return not bad, lines
+
+
 def compare_cell(case, backend, run_dir):
     """(ok, lines) for one (case, backend) cell: every artifact that backend
     produces, compared against the ONE committed reference (there is no term
     axis and no second reference file, 2026-09-23).
 
     Which artifacts is DATA (matrix.ARTIFACTS), so the cell's report states
-    what it covered -- 'frt' alone for the python backends, 'frt+nc' for
-    fortran. Every declared artifact is compared, unconditionally; nothing
+    what it covered -- 'frt' alone for the python backends, 'frt+nc+nsign'
+    for fortran. Every declared artifact is compared, unconditionally; nothing
     here is ever skipped."""
     artifacts = matrix.ARTIFACTS[backend]
     ok, lines = True, []
@@ -324,6 +400,8 @@ def compare_cell(case, backend, run_dir):
             a_ok, a_lines = compare_frt(case, run_dir)
         elif artifact == 'nc':
             a_ok, a_lines = compare_nc(case, run_dir)
+        elif artifact == 'nsign':
+            a_ok, a_lines = nstress_sign_gate(case, run_dir)
         else:
             raise ValueError('unknown artifact %r for backend %r -- every '
                              'artifact needs a comparison, none is skipped'
