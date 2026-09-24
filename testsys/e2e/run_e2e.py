@@ -489,24 +489,36 @@ def make_serial_case(case_name, case_dir, env):
 def _call_kept(cmd, cwd, env, log_prefix):
     """subprocess.call, but the child's stdout and stderr are ALSO kept on disk
     as `<log_prefix>.stdout` / `<log_prefix>.stderr` (pathway_forward.md item
-    109). The console still gets both streams live, byte for byte, so nothing
-    reading the sweep's own output changes. Before this, a python cell's
+    109). The console still gets both streams live, byte for byte, exactly as
+    the inherited streams used to deliver them (unsynchronised with other
+    cells' output, as before). Before this, a python cell's
     streams were inherited and nothing was written to disk: `test.tpv36 x
     python-jax` exited 1 after all 464 steps, frt.txt0 and its profile were
     written, and the traceback that would have explained it was gone.
+    A write failure in either pump (disk full on test/, a broken console
+    pipe) does NOT stop that pump draining its pipe -- a pump that died would
+    leave the child blocked on a full pipe and wait() hanging forever -- and
+    is re-raised here once the child has exited (rule 2).
     Returns (rc, stdout_path, stderr_path)."""
     out_path, err_path = log_prefix + '.stdout', log_prefix + '.stderr'
     with open(out_path, 'wb') as fo, open(err_path, 'wb') as fe:
         p = subprocess.Popen(cmd, cwd=cwd, env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+        errors = []
+
         def pump(src, keep, console):
             for chunk in iter(lambda: src.read1(65536), b''):
-                keep.write(chunk)
-                keep.flush()
-                console.flush()
-                console.buffer.write(chunk)
-                console.buffer.flush()
+                if errors:
+                    continue  # keep draining so the child never blocks
+                try:
+                    keep.write(chunk)
+                    keep.flush()
+                    console.flush()
+                    console.buffer.write(chunk)
+                    console.buffer.flush()
+                except Exception as exc:  # re-raised after join, never lost
+                    errors.append(exc)
 
         pumps = [threading.Thread(target=pump, args=(p.stdout, fo, sys.stdout)),
                  threading.Thread(target=pump, args=(p.stderr, fe, sys.stderr))]
@@ -515,6 +527,10 @@ def _call_kept(cmd, cwd, env, log_prefix):
         rc = p.wait()
         for t in pumps:
             t.join()
+    if errors:
+        raise RuntimeError('%s: keeping/relaying the child\'s output failed '
+                           '(child rc=%d; %s may be truncated): %r'
+                           % (' '.join(cmd[:4]), rc, log_prefix, errors[0]))
     return rc, out_path, err_path
 
 
@@ -1143,9 +1159,12 @@ def main(argv=None):
     # never below the largest selected cell's own cost). --jobs 1 restores
     # the serial order exactly, which is what CI uses when its runner has 2.
     #
-    # Output is COLLECTED per cell and printed when that cell finishes, never
-    # streamed, so concurrent cells cannot interleave their lines into an
-    # unreadable log. The results table is re-sorted into table order
+    # The HARNESS's own per-cell messages are COLLECTED and printed when that
+    # cell finishes, never streamed, so concurrent cells cannot interleave
+    # them into an unreadable log. The SOLVER child's own stdout/stderr is
+    # NOT collected: it streams live (python cells also keep it in
+    # <case_dir>/eqdyna.<backend>.stdout/.stderr, item 109), so a concurrent
+    # sweep's console can interleave solver lines -- read the kept files. The results table is re-sorted into table order
     # afterwards, so a parallel run and a serial run print identically.
     table_cells = [(c, b) for c in matrix.CASES for b in matrix.BACKENDS
                   if (c, b) in runnable]

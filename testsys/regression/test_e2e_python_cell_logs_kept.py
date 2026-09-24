@@ -19,6 +19,9 @@ Behaviour, not source text (rule 10a), in two checks:
   (a) `_call_kept` on a child that writes to both streams and exits 3:
       rc is 3, each file holds exactly its stream, and the console (this
       guard runs the helper in a subprocess to capture it) saw both.
+  (c) a kept-file write that fails (stdout kept on /dev/full, 1 MB child
+      output) raises after the child exits cleanly instead of hanging on a
+      full pipe (victor-reyes, PR #11 audit);
   (b) `run_standalone` on an EMPTY case dir, the real `python3 -m eqdyna`
       path: the solver fails reading its inputs, the RuntimeError names the
       kept stderr path, and that file exists and is non-empty.
@@ -42,6 +45,25 @@ import run_e2e
 rc, o, e = run_e2e._call_kept([sys.executable, '-c', {child!r}], {tmp!r}, None,
                               {prefix!r})
 print('RC=%d' % rc)
+'''
+
+HELPER_FULL = r'''
+import builtins, os, sys
+sys.path.insert(0, {e2e!r})
+import run_e2e
+real_open = builtins.open
+def fake_open(path, mode='r', *a, **k):
+    if str(path).endswith('.stdout') and 'w' in mode:
+        return real_open('/dev/full', mode, *a, **k)
+    return real_open(path, mode, *a, **k)
+run_e2e.open = fake_open
+try:
+    run_e2e._call_kept([sys.executable, '-c',
+                        "import sys; sys.stdout.write('x' * (1 << 20))"],
+                       {tmp!r}, None, os.path.join({tmp!r}, 'full'))
+    print('NO RAISE')
+except RuntimeError as e:
+    print('RAISED', e)
 '''
 
 
@@ -72,6 +94,23 @@ def main():
         if 'OUT-LINE' not in r.stdout or 'ERR-LINE' not in r.stderr:
             fails.append('(a) console did not receive both streams: stdout=%r stderr=%r'
                          % (r.stdout, r.stderr))
+
+        # (c) a write failure in a pump must RAISE after the child exits, not
+        # hang: stdout is kept on /dev/full (every write fails with ENOSPC)
+        # while the child writes 1 MB, far past a pipe buffer.
+        try:
+            r3 = subprocess.run(
+                [sys.executable, '-c', HELPER_FULL.format(
+                    e2e=os.path.join(ROOT, 'testsys', 'e2e'), tmp=tmp)],
+                capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired:
+            r3 = None
+            fails.append('(c) a failing kept-file write HUNG the helper (>60 s): '
+                         'a dead pump stopped draining and the child blocked')
+        if r3 is not None and ('RAISED' not in r3.stdout or 'rc=0' not in r3.stdout):
+            fails.append('(c) a failing kept-file write did not raise after a '
+                         'clean child exit: stdout=%r stderr=%r'
+                         % (r3.stdout[-300:], r3.stderr[-300:]))
 
         import run_e2e
         case_dir = os.path.join(tmp, 'empty_case')
