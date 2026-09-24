@@ -23,8 +23,9 @@ par.dz = par.dx
 
 # On-fault stations ON THIS CASE'S 400 m NODE GRID (board row 22a). The
 # default list (scripts/defaultParameters.py) is on a 500 m-compatible grid:
-# at dx=400 only its (0,0) surface station matched a fault node, so 12 of 13
-# requested on-fault stations were dropped with no message, and the case had
+# at dx=400 NONE of its 13 matched a fault node -- all 13 were dropped with
+# no message (the one faultst000dp000.txt written was PR #21's phantom), and
+# the case had
 # NO buried station for the n-stress sign gate (compare.nstress_sign_gate) to
 # check. Hypocentre depth -3.4 km is not a node here; -3.6 km is the nearest.
 par.st_coor_on_fault = [[0.0, 0.0], [0.0, -0.8], [0.0, -3.6], [2.0, -3.6],

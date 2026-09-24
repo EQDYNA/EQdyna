@@ -95,6 +95,7 @@ SHARDS = {
         "test_rsfNucleation_tpv2802_td.py",
         "test_station_header_column_count.py",
         "test_offfault_station_dropped_report.py",  # added 2026-09-24 (wei-lin, item 94): 2 tiny gfortran builds, <2 s
+        "test_onfault_station_dropped_report.py",  # added 2026-09-24 (wei-lin, item 116): 2 tiny gfortran builds, <2 s
         "test_stop_exit_status.py",
         "test_symlink_integrity.py",
         "test_term_axis.py",
