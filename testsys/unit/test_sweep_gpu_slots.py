@@ -105,6 +105,8 @@ def test_cpu_sweeps_are_untouched(monkeypatch):
 
     monkeypatch.setattr(E, 'make_serial_case', lambda *a, **k: None)
     monkeypatch.setattr(E, 'run_standalone', fake_standalone)
+    # run_cell also post-processes a python cell (plotRuptureDynamics -> nc)
+    monkeypatch.setattr(E, '_run', lambda *a, **k: 0)
     E.run_cell('test.tpv8', 'python-jax', '/tmp', None, {}, 'cpu')
     assert calls == {'gpu_index': None, 'device': 'cpu'}
 

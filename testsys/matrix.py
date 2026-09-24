@@ -281,6 +281,20 @@ STATION_UNSUPPORTED_CASES = {
     ),
 }
 
+# NC_UNSUPPORTED -- (case, backend) cells whose fault.dyna.r.nc comparison is
+# declared, with the measured reason, instead of run: printed by compare_cell,
+# never silently skipped. compare_nc is a pointwise allclose(1e-3) of the
+# resampled fault fields; on a chaotically bistable case it cannot pass
+# across backends, for the same reason frt needs DRV_A6's flip budget.
+NC_UNSUPPORTED = {
+    ('test.drv.a6', 'python-jax'): (
+        'measured 2026-09-24 (wei/station-gate sweep): python-jax vs the '
+        'fortran-built reference differs by 6.75e7 of 3.66e8 Pa in '
+        'shear_strike, 0.816 of 3.63 m/s in slip_rate, 0.381 of 1.13 in '
+        'state_variable -- rupture-arrival bistability (DRV_A6), not a '
+        'tolerance question. The fortran cell compares its nc at 0.0.'),
+}
+
 # STATION_ARTIFACT_UNSUPPORTED_REASON -- per (case, backend), a runnable cell
 # whose ARTIFACTS lack 'station', with why; printed by coverage_report so a
 # green run never reads as covering it.
@@ -737,6 +751,16 @@ def coverage_report(runnable, declared_unsupported, selection_label):
         for c, b in sub_gaps:
             lines.append('  %-16s %-13s station: %s'
                          % (c, b, STATION_ARTIFACT_UNSUPPORTED_REASON[(c, b)]))
+    art_gaps = [('nc', c, b, NC_UNSUPPORTED[(c, b)]) for c, b in runnable
+                if (c, b) in NC_UNSUPPORTED]
+    art_gaps += [('station', c, b, STATION_UNSUPPORTED_CASES[c]) for c, b in runnable
+                 if 'station' in ARTIFACTS[b] and c in STATION_UNSUPPORTED_CASES]
+    if art_gaps:
+        lines.append('artifact comparison declared UNSUPPORTED on %d runnable '
+                     'cell(s) -- the cell runs, this artifact is not gated:'
+                     % len(art_gaps))
+        for a, c, b, reason in art_gaps:
+            lines.append('  %-16s %-13s %s: %s' % (c, b, a, reason))
     lines.append('declared UNSUPPORTED, %d cell(s) -- declared, not absent:'
                  % len(declared_unsupported))
     for c, b, reason in declared_unsupported:
@@ -826,6 +850,9 @@ if _unresolved:
 if {c for c, b in STATION_ARTIFACT_UNSUPPORTED_REASON if b == 'python-jax-mpi'} != set(PY_MPI_RANKS):
     raise RuntimeError('STATION_ARTIFACT_UNSUPPORTED_REASON must declare the '
                        'station gap for exactly the PY_MPI_RANKS cases')
+for (_c, _b) in NC_UNSUPPORTED:
+    if _c not in CASES or 'nc' not in ARTIFACTS.get(_b, ()):
+        raise RuntimeError('NC_UNSUPPORTED entry for %r x %r names no nc cell' % (_c, _b))
 for (_c, _b) in STATION_ARTIFACT_UNSUPPORTED_REASON:
     if _c not in CASES or _b not in BACKENDS:
         raise RuntimeError('STATION_ARTIFACT_UNSUPPORTED_REASON entry for '

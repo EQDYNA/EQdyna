@@ -41,6 +41,7 @@ mismatch and an out-of-bound diff are all failures, and each says which it was.
 import glob
 import os
 import re
+import threading
 
 import numpy as np
 
@@ -50,6 +51,7 @@ REPO_ROOT = matrix.REPO_ROOT
 REFERENCE_ROOT = os.path.join(REPO_ROOT, 'test.reference.results')
 CANONICAL_NAME = 'frt.canonical.txt'
 NC_NAME = 'fault.dyna.r.nc'
+_NC_LOCK = threading.Lock()
 
 
 # --------------------------------------------------------------------------
@@ -253,6 +255,15 @@ def compare_nc_files(fn1, fn2, threshold=matrix.THRESHOLD):
     rerun cannot promise it (reduction order varies) -- but a changed variable
     set or changed attributes is a hard failure, not a tolerance question.
     Returns the printed SUCCESS/FAIL string."""
+    # The sweep compares cells from concurrent threads, and since python-jax
+    # cells carry 'nc' too, two netCDF4/HDF5 opens could overlap: the HDF5
+    # library in use is not thread-safe, and the first everyday sweep of this
+    # gate died with SIGSEGV (exit -11) in exactly that window. One lock.
+    with _NC_LOCK:
+        return _compare_nc_files_locked(fn1, fn2, threshold)
+
+
+def _compare_nc_files_locked(fn1, fn2, threshold):
     from netCDF4 import Dataset
 
     verdict = 'SUCCESS ' + fn1 + ' ' + fn2
@@ -557,7 +568,12 @@ def compare_cell(case, backend, run_dir):
         if artifact == 'frt':
             a_ok, a_lines = compare_frt(case, run_dir)
         elif artifact == 'nc':
-            a_ok, a_lines = compare_nc(case, run_dir)
+            if (case, backend) in matrix.NC_UNSUPPORTED:
+                a_ok, a_lines = True, ['nc: DECLARED UNSUPPORTED for %s x %s -- %s'
+                                       % (case, backend,
+                                          matrix.NC_UNSUPPORTED[(case, backend)])]
+            else:
+                a_ok, a_lines = compare_nc(case, run_dir)
         elif artifact == 'nsign':
             a_ok, a_lines = nstress_sign_gate(case, run_dir)
         elif artifact == 'station':

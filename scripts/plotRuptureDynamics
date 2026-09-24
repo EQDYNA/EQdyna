@@ -3,6 +3,7 @@
 1. Plot on fault rupture dynamics.
 2. Generate SCECRuptureTime.txt for benchmarking.
 """
+import sys
 import numpy as np
 from math    import *
 from user_defined_params import par
@@ -101,6 +102,15 @@ def finalSurfDisp():
                 scec = surfCoorDispPerProc
             else: 
                 scec = np.concatenate((scec, surfCoorDispPerProc), axis=0)
+    if ntag == 0:
+        # Used to fall through to an UnboundLocalError on `scec`. A run with
+        # outputFinalSurfDisp=1 that wrote no surface_coor.txt* is a missing
+        # output, and says so (rule 2).
+        raise SystemExit('plotRuptureDynamics: par.outputFinalSurfDisp=1 but no '
+                         'surface_coor.txt<rank> file exists for any of %d rank(s). '
+                         'The Python port does not write it (output_finalSurfDisp '
+                         'is not ported, docs/fortran_python_correspondence.md); '
+                         'pass --skip-final-surf-disp to build only the nc.' % nprocs)
 
     _, unique_indices = np.unique(scec[:, :2], axis=0, return_index=True)
     scec = scec[unique_indices]
@@ -199,7 +209,11 @@ def _main_func(description):
     print('Generating restart file fault.dyna.r.nc ...')
 
     if par.outputFinalSurfDisp==1:
-        finalSurfDisp()
+        if '--skip-final-surf-disp' in sys.argv[1:]:
+            print('plotRuptureDynamics: --skip-final-surf-disp -- final surface '
+                  'displacement NOT post-processed (outputFinalSurfDisp=1)')
+        else:
+            finalSurfDisp()
 
 if __name__ == "__main__":
     _main_func(__doc__)

@@ -752,7 +752,10 @@ def run_cell(case, backend, test_dir, eqdyna_cmd, env, device, gpu_slots=None):
         # run_fortran runs, on the serial case's frt.txt0 (make_serial_case
         # builds nx=ny=nz=1, so plotRuptureDynamics reads exactly that file),
         # compared against the SAME committed reference (matrix.ARTIFACTS).
-        rc = _run([sys.executable, 'plotRuptureDynamics'], case_dir, env)
+        # --skip-final-surf-disp: the port does not write surface_coor.txt*
+        # (output_finalSurfDisp is not ported), and the nc does not need it.
+        rc = _run([sys.executable, 'plotRuptureDynamics', '--skip-final-surf-disp'],
+                  case_dir, env)
         if rc != 0:
             raise RuntimeError('`plotRuptureDynamics` exited %d in %s' % (rc, case_dir))
     return case_dir
