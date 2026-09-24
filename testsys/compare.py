@@ -352,11 +352,17 @@ def nstress_sign_gate(case, run_dir):
     -- a check that examined nothing must not read as a pass (rule 2)."""
     convention, citation = matrix.NSTRESS_CONVENTION[case]
     expected = -1.0 if convention == 'extension' else 1.0
-    buried = []
+    buried, unparsed = [], []
     for p in sorted(glob.glob(os.path.join(run_dir, 'faultst*.txt'))):
         m = ONFAULT_STATION_RE.match(os.path.basename(p))
-        if m and int(m.group(2)) > 0:
+        if not m:
+            unparsed.append(os.path.basename(p))
+        elif int(m.group(2)) > 0:
             buried.append(p)
+    if unparsed:
+        return False, ['nsign: FAIL on-fault station file name(s) not of the '
+                       'form faultst<sss>dp<ddd>.txt, so their depth cannot '
+                       'be read: %s' % ', '.join(unparsed)]
     if not buried:
         return False, ['nsign: FAIL no buried on-fault station file '
                        '(faultst*dp<ddd>.txt, ddd > 0) in %s -- nothing to '
