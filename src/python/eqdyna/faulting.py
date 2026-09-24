@@ -147,6 +147,18 @@ def _rot(vx, vy, vz, dirvec):
     return vx * dirvec[:, 0] + vy * dirvec[:, 1] + vz * dirvec[:, 2]
 
 
+def _unrot(vn, vs_, vd, un, us, ud):
+    """_rot's inverse: compose a fault-local (normal, strike, dip) vector back
+    into its three xyz components, returned as a 3-tuple.
+
+    One spelling for the three places faulting.f90 writes this out
+    (:170-172's traction, :174-176's initial traction, :286-288's relative
+    acceleration). Same operands in the same order as the lines it replaces,
+    so each component is the same left-associative n*un + s*us + d*ud."""
+    return tuple(vn * un[:, k] + vs_ * us[:, k] + vd * ud[:, k]
+                 for k in range(3))
+
+
 def getNsdSlipSliprateTraction(xp, finv, fric, velArr, dispArr, force, dt):
     """faulting.f90:58-134 -- slip, slip rate and traction on every fault
     split-node pair, in fault-local (normal, strike, dip) coordinates.
@@ -198,13 +210,16 @@ def getNsdSlipSliprateTraction(xp, finv, fric, velArr, dispArr, force, dt):
     massSlave = finv['massSlave']; massMaster = finv['massMaster']
     totalMass = (massSlave + massMaster) * arn
     C_elastic = finv['C_elastic']
-    Tn = (massSlave * massMaster * ((vN_m - vN_s) + (dN_m - dN_s) / dt) / dt
+    # srN/srS/srD and slipN above ARE the differences faulting.f90:110-121
+    # spells out again here; naming them once removes four re-typed
+    # subexpressions without changing an operand or an operation.
+    Tn = (massSlave * massMaster * (srN + slipN / dt) / dt
           + massSlave * fN_m - massMaster * fN_s) / totalMass \
         + fric[:, gv.INIT_NORM] * C_elastic
-    Ts = (massSlave * massMaster * (vS_m - vS_s) / dt
+    Ts = (massSlave * massMaster * srS / dt
           + massSlave * fS_m - massMaster * fS_s) / totalMass \
         + fric[:, gv.INIT_STRIKE_SHEAR] * C_elastic
-    Td = (massSlave * massMaster * (vD_m - vD_s) / dt
+    Td = (massSlave * massMaster * srD / dt
           + massSlave * fD_m - massMaster * fD_s) / totalMass \
         + fric[:, gv.INIT_DIP_SHEAR] * C_elastic
 
@@ -263,16 +278,10 @@ def solveSWTW(xp, finv, fric, fnft, comps, force, timeElapsed, tr, friclaw):
     Ts = Ts * scale
     Td = Td * scale
 
-    xT0 = Tn * un[:, 0] + Ts * us[:, 0] + Td * ud[:, 0]
-    xT1 = Tn * un[:, 1] + Ts * us[:, 1] + Td * ud[:, 1]
-    xT2 = Tn * un[:, 2] + Ts * us[:, 2] + Td * ud[:, 2]
-    xTrac = xp.stack([xT0, xT1, xT2], axis=1) * arn[:, None]
+    xTrac = xp.stack(list(_unrot(Tn, Ts, Td, un, us, ud)), axis=1) * arn[:, None]
     iN = fric[:, gv.INIT_NORM]; iS = fric[:, gv.INIT_STRIKE_SHEAR]
     iD = fric[:, gv.INIT_DIP_SHEAR]
-    xInit = xp.stack([iN * un[:, 0] + iS * us[:, 0] + iD * ud[:, 0],
-                      iN * un[:, 1] + iS * us[:, 1] + iD * ud[:, 1],
-                      iN * un[:, 2] + iS * us[:, 2] + iD * ud[:, 2]],
-                     axis=1) * arn[:, None]
+    xInit = xp.stack(list(_unrot(iN, iS, iD, un, us, ud)), axis=1) * arn[:, None]
     delta_f = xTrac - xInit * finv['C_elastic']
 
     # faulting.f90:178-181: slave += delta, master -= delta. For a split-node
@@ -556,9 +565,7 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
     accN = -srN / dt - slipN / dt / dt
     accS = (v_trial * (trialS / trialMag) - srS) / dt
     accD = (v_trial * (trialD / trialMag) - srD) / dt
-    xAcc = accN * un[:, 0] + accS * us[:, 0] + accD * ud[:, 0]
-    yAcc = accN * un[:, 1] + accS * us[:, 1] + accD * ud[:, 1]
-    zAcc = accN * un[:, 2] + accS * us[:, 2] + accD * ud[:, 2]
+    xAcc, yAcc, zAcc = _unrot(accN, accS, accD, un, us, ud)
     xR = comps['fx_s'] + comps['fx_m']
     yR = comps['fy_s'] + comps['fy_m']
     zR = comps['fz_s'] + comps['fz_m']
