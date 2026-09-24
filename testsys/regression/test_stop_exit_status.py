@@ -374,7 +374,20 @@ def main():
     real = probe_real_binary()
 
     rc = 0
-    if real:
+    if real is None:
+        # The docstring for probe_real_binary promises this is "SKIPPED,
+        # never PASS" -- `if real:` alone treated None the same as an empty
+        # (passing) list, which folded a missing prerequisite into a green
+        # exit. bin/eqdyna (or src/fortran/eqdyna) and mpirun are both
+        # supposed to exist in this tier's declared, built environment
+        # (testsys/run.py and CI build the binary first), so their absence
+        # here is itself a failure, not an optional environment.
+        print('\nFAIL: real-binary probe SKIPPED -- bin/eqdyna (or '
+              'src/fortran/eqdyna) and mpirun are required in this tier\'s '
+              'build environment; build the binary (./install-eqdyna.sh) '
+              'and ensure mpirun is on PATH to enable this probe.')
+        rc = 1
+    elif real:
         print('\nFAIL: the real binary does not refuse correctly:')
         for r in real:
             print('  ' + r)
