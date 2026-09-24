@@ -35,16 +35,21 @@ A 3D finite-element dynamic-rupture code, in **two implementations of the same
 solver**:
 
 ```
-src/fortran/   26 .f90 + makefile     — the production solver, MPI
-src/python/    eqdyna/ — 15 .py       — numpy/jax serial backends, plus a
-                                         real-MPI jax execution mode (one
-                                         process per rank, opt-in per case)
+src/fortran/   .f90 + makefile        — the production solver, MPI
+src/python/    eqdyna/*.py            — jax (gated) and numpy (parked, run by
+                                         hand) serial backends, plus a real-MPI
+                                         jax execution mode (one process per
+                                         rank, opt-in per case)
 ```
 
 Every Python module is named after its Fortran counterpart and is meant to be
 read beside it: `faulting.py` ↔ `faulting.f90`, `fric.py` ↔ `fric.f90`,
-`driver.py` ↔ `driver.f90`, and so on. Two files have no counterpart by design:
-`backend.py` (the numpy/jax array-module adapter) and `__main__.py`.
+`driver.py` ↔ `driver.f90`, and so on. Files with no counterpart by design:
+`backend.py` (the numpy/jax array-module adapter), `profile_emit.py` (the
+always-on per-rank run profile writer) and `__main__.py`. The per-file record,
+every Fortran file with its counterpart, folding or declared absence (rule 23),
+is `docs/fortran_python_correspondence.md`. Don't quote file counts here; they
+drift.
 `assembleGlobalKU.py` covers four Fortran files (`assembleGlobalKU`,
 `calcElemKU`, `calcHourglassResist`, `calcElemMass`) because they are one fused
 loop in the port. `MPI4NodalQuant.py` (added 2026-09-21, item 43) corresponds
@@ -61,21 +66,20 @@ changed and why. The port exists so a fix can be verified twice.
 export EQDYNAROOT=$(pwd); PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 
 python3 testsys/run.py all           # unit + regression + the everyday sweep, all at the ONE 5 s GATE_TERM_S
-python3 testsys/run.py release       # everyday cells + matrix.RELEASE_ONLY, same 5 s term; writes docs/evidence/sweep-<sha>/summary.json (release gate)
+python3 testsys/run.py release       # the release gate: same cells, same 5 s term as the everyday sweep; writes docs/evidence/sweep-<sha>/summary.json
 python3 testsys/run.py unit regression       # seconds — run this constantly
 python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends fortran   # one cell
 ```
 
 CI (`.github/workflows/test.yml`, redesigned 2026-09-23) no longer runs the
-physics sweep: `build`, `unit-regression`, and one `e2e-ci-smoke` job --
-`test.tpv8` x {fortran at 4 ranks on the runner's mpich, python-numpy,
-python-jax} at the gate term (`matrix.CI_CELLS`). Its job is PORTABILITY
-(clean checkout, fresh deps, a different MPI from this box's Open MPI), not
-physics coverage. The LOCAL sweep is the science gate: `run.py all` at the
-5 s gate term every day, `run.py release` at that SAME 5 s term over a wider
-cell selection (everyday cells plus `matrix.RELEASE_ONLY`, held out of the
-everyday run for cost alone, never because they fail — rule 17 step 7 still
-applies) before every tag, committed as evidence and checked by
+physics sweep: `build`, `unit-regression` (sharded), a PR-policy gate, and
+one `e2e-ci-smoke` job, which runs the cells in `matrix.CI_CELLS` at the gate
+term (today `test.tpv8` × fortran at 4 ranks on the runner's mpich, and ×
+python-jax). Its job is PORTABILITY (clean checkout, fresh deps, a different
+MPI from this box's Open MPI), not physics coverage. The LOCAL sweep is the
+science gate: `run.py all` at the 5 s gate term every day, and `run.py
+release`, the same cells at the same term, before every tag, committed as
+evidence and checked by
 `testsys/regression/check_pretag_ci.py` (a tag needs that sweep AND green CI
 for its exact SHA). **There is ONE term, everywhere** (owner decision,
 2026-09-23, superseding a same-day earlier two-term design that gave
@@ -94,25 +98,23 @@ retired-reference SHAs.
 The e2e sweep, and backend is an AXIS of it, not a tier:
 
 ```
-for case in testNameList.nameList:        # 10 cases
-    for backend in (fortran, python-numpy, python-jax):
+for case in testNameList.nameList:
+    for backend in (fortran, python-jax):
         run → canonical frt → compare against ONE committed reference
               at THAT CASE's bound
 ```
 
-A fourth backend, `python-jax-mpi` (real MPI, one process per rank; landed
-2026-09-21, item 43), joined as a per-case OPT-IN via `matrix.PY_MPI_RANKS`,
-not a fourth row of the loop above. As of that landing exactly one case is
-opted in (`test.tpv8` at 4 ranks); the other 9 are DECLARED UNSUPPORTED for
-that mode with a recorded reason, the same contract as any other UNSUPPORTED
-cell. So the table carries 40 cells (10 cases x 3 backends, plus 10 cases x
-the opt-in 4th axis), of which 31 run. The new cell is NOT in CI (4 ranks x
-~1.9 GB measured jax `test.tpv8` exceeds the 7 GB runner). **This is not a
-40-cell sweep obligation**: PROJECT_RULES rule 17 step 7 ("all three backends
-must pass") is about a case being supported on every backend
-IMPLEMENTATION — it does not require every case to opt into a new optional
-execution mode; widening the opt-in beyond `test.tpv8` is a suite-cost
-decision for the owner, not something this landing owes.
+`python-numpy` is PARKED (owner, 2026-09-23): outside every gate and CI, the
+code kept and runnable by hand (`--backend numpy`) as the no-jit debugging
+fallback. `python-jax-mpi` (real MPI, one process per rank; item 43) is a
+per-case OPT-IN via `matrix.PY_MPI_RANKS`, not a row of the loop above. Every
+case not opted in is DECLARED UNSUPPORTED for that mode with a recorded reason,
+the same contract as any other UNSUPPORTED cell. Rule 17 step 7 ("fortran and
+python-jax must pass") is about a case being supported on every gated backend
+IMPLEMENTATION. It does not require every case to opt into an optional
+execution mode; widening the opt-in is a suite-cost decision for the owner.
+Case and cell counts live in `testNameList.py` and `testsys/matrix.py`; don't
+quote them here, they drift.
 
 `testsys/matrix.py` is the table (which cells exist, the one bound per case).
 `testsys/compare.py` is the only comparison. A cell is SUPPORTED or DECLARED
@@ -151,13 +153,14 @@ reason each step exists:
 6. **Validate against something independent, as a committed SCRIPT.** TPV29's
    cross-code numbers are prose-only with a gitignored baseline; that is
    pathway item 28 and it is the part of the TPV29 work done wrong.
-7. **Run all three backends, and all three must pass.** A new case is 3 cells,
-   not 1. **Supporting a TPV means supporting it on every backend** -- a case is
-   never added with its Python columns declared UNSUPPORTED to be filled in
-   later. If the port lacks a feature the case needs, port the feature first.
-   `UNSUPPORTED` records a gap that already exists; it is not a runway for new
-   ones. This step is about the three backend IMPLEMENTATIONS (fortran,
-   python-numpy, python-jax); it does not extend to `python-jax-mpi`, an
+7. **Run both gated backends, and both must pass.** A new case is 2 cells
+   (fortran, python-jax), not 1. **Supporting a TPV means supporting it on every
+   gated backend** -- a case is never added with its jax column declared
+   UNSUPPORTED to be filled in later. If the port lacks a feature the case
+   needs, port the feature first. `UNSUPPORTED` records a gap that already
+   exists; it is not a runway for new ones. This step is about the gated backend
+   IMPLEMENTATIONS; it does not extend to parked `python-numpy`, nor to
+   `python-jax-mpi`, an
    optional per-case execution mode of the jax backend (see "There is ONE
    test" above) -- a case can be fully supported per this step while declared
    UNSUPPORTED for that mode.
