@@ -29,7 +29,12 @@ import profile_record  # noqa: E402
 RECORD_PATH = profile_record.RECORD_PATH
 
 
-def load_rows(path=RECORD_PATH):
+def load_rows(path=RECORD_PATH, exclude_dirty=False):
+    """Every profile_record.py row carries `tree_dirty` (required on that
+    schema, unlike the legacy-tolerant perf ledger). `exclude_dirty=True`
+    drops any row whose working tree was locally modified at capture time --
+    a row from an uncommitted tree is not evidence about the sha it happens
+    to be stamped with."""
     if not os.path.exists(path):
         return []
     rows = []
@@ -38,6 +43,8 @@ def load_rows(path=RECORD_PATH):
             line = line.strip()
             if line:
                 rows.append(json.loads(line))
+    if exclude_dirty:
+        rows = [r for r in rows if not r.get('tree_dirty', False)]
     return rows
 
 
@@ -57,8 +64,8 @@ def _bucket_means(rows):
 
 
 def cmd_buckets(a):
-    rows = filter_rows(load_rows(a.path), case=a.case, backend=a.backend,
-                       ranks=a.ranks)
+    rows = filter_rows(load_rows(a.path, a.exclude_dirty), case=a.case,
+                       backend=a.backend, ranks=a.ranks)
     if a.sha:
         rows = [r for r in rows if r['sha'] in a.sha]
     if not rows:
@@ -76,10 +83,10 @@ def cmd_buckets(a):
 
 
 def cmd_compare(a):
-    rows_a = filter_rows(load_rows(a.path), case=a.case, backend=a.backend_a,
-                         ranks=a.ranks)
-    rows_b = filter_rows(load_rows(a.path), case=a.case, backend=a.backend_b,
-                         ranks=a.ranks)
+    rows_a = filter_rows(load_rows(a.path, a.exclude_dirty), case=a.case,
+                         backend=a.backend_a, ranks=a.ranks)
+    rows_b = filter_rows(load_rows(a.path, a.exclude_dirty), case=a.case,
+                         backend=a.backend_b, ranks=a.ranks)
     if not rows_a or not rows_b:
         raise SystemExit(
             'missing rows for case=%r ranks=%r: backend=%r has %d row(s), '
@@ -97,8 +104,8 @@ def cmd_compare(a):
 
 
 def cmd_diff(a):
-    rows = filter_rows(load_rows(a.path), case=a.case, backend=a.backend,
-                       ranks=a.ranks)
+    rows = filter_rows(load_rows(a.path, a.exclude_dirty), case=a.case,
+                       backend=a.backend, ranks=a.ranks)
     lo = {r['rank']: r for r in rows if r['nsteps'] == a.n_lo}
     hi = {r['rank']: r for r in rows if r['nsteps'] == a.n_hi}
     common = sorted(set(lo) & set(hi))
@@ -133,6 +140,11 @@ def main(argv=None):
     p.add_argument('--path', default=RECORD_PATH,
                    help='docs/run_profiles.jsonl to read (default: the '
                         'checked-out repo\'s own)')
+    p.add_argument('--exclude-dirty', action='store_true',
+                   help='drop rows captured from a locally modified '
+                        'src/testsys tree -- such a row is evidence about '
+                        'an uncommitted tree, not about the sha it is '
+                        'stamped with (2026-09-23 incident)')
     sub = p.add_subparsers(dest='cmd', required=True)
 
     b = sub.add_parser('buckets', help='bucket breakdown for a case, by sha')

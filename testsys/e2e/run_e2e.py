@@ -72,6 +72,8 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from testsys import compare, frt_canonical, matrix, runlock  # noqa: E402
+sys.path.insert(0, TESTSYS)  # testsys/ itself (profile_record.py lives there)
+import profile_record  # noqa: E402  (append-only per-rank profile totals)
 
 # Line-buffered stdout. Redirected to a file or through `tee`, Python block-
 # buffers its OWN prints while subprocess children write straight to the fd --
@@ -709,7 +711,7 @@ def memory_note(runnable):
     return lines
 
 
-def _perf_meta(results, label, device, budget):
+def _perf_meta(results, label, device, budget, sha, tree_dirty):
     """The snapshot dict for this sweep's per-cell wall clocks (owner policy
     2026-09-22: every gate run is a free perf data point). Platform per cell
     is what the launch PINS, never what was merely requested:
@@ -723,10 +725,11 @@ def _perf_meta(results, label, device, budget):
         as a measurement).
       - python-jax-mpi: eqdyna3d's MPI branch forces the cpu platform when
         --device is left at 'auto' (run_e2e passes no --device) -- the very
-        override that produced that incident is, here, the pin."""
-    import ledger  # resolved via the sys.path insert at the call site
-    sha = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', '--short',
-                          'HEAD'], capture_output=True, text=True).stdout.strip()
+        override that produced that incident is, here, the pin.
+
+    `sha`/`tree_dirty` are the caller's values, captured once at sweep START
+    (see `main`) -- never recomputed here at sweep END, which is the exact
+    rule-24 shape of bug this field exists to avoid on its own axis."""
     cells = []
     for case, backend, ok, dt, _lines in results:
         if backend == 'fortran':
@@ -755,10 +758,11 @@ def _perf_meta(results, label, device, budget):
     return dict(tool='run_e2e', sha=sha, host=os.uname().nodename,
                 date=time.strftime('%Y-%m-%d %H:%M'), label=label,
                 device=device, jobs_budget=budget,
-                tenancy_ceiling=ledger.TENANCY_REFERENCE_CEILING, cells=cells)
+                tenancy_ceiling=ledger.TENANCY_REFERENCE_CEILING, cells=cells,
+                tree_dirty=tree_dirty)
 
 
-def _capture_perf(results, label, device, budget):
+def _capture_perf(results, label, device, budget, sha, tree_dirty):
     """Append this sweep's per-cell wall clocks to the perf ledger. NEVER part
     of the verdict: any error, including import failure, degrades to a loud
     WARNING (ledger.capture_e2e_cells_or_warn does the same for errors past
@@ -768,7 +772,7 @@ def _capture_perf(results, label, device, budget):
         sys.path.insert(0, os.path.join(TESTSYS, 'perf'))
         import ledger
         ledger.capture_e2e_cells_or_warn(
-            _perf_meta(results, label, device, budget))
+            _perf_meta(results, label, device, budget, sha, tree_dirty))
     except (Exception, SystemExit) as exc:          # noqa: BLE001
         print('WARNING: perf-ledger capture failed (%s: %s) -- the sweep '
               'verdict is unaffected.' % (type(exc).__name__, exc))
@@ -993,6 +997,23 @@ def main(argv=None):
     start = time.time()
     started_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+    # sha + tree_dirty for the profile-guard/collection calls below, captured
+    # HERE at sweep START, before any cell runs -- the same rule-24 lesson
+    # already applied to write_release_evidence's tree_clean: computed at the
+    # END would read as clean if uncommitted work from DURING the sweep gets
+    # committed before the sweep finishes, silently mislabelling a row that
+    # was actually produced by a dirty tree. Computed once, not per cell: it
+    # does not change mid-sweep on this axis either.
+    sys.path.insert(0, os.path.join(TESTSYS, 'perf'))
+    import ledger
+    _sha_r = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', '--short',
+                             'HEAD'], capture_output=True, text=True)
+    if _sha_r.returncode != 0 or not _sha_r.stdout.strip():
+        raise RuntimeError('git rev-parse --short HEAD failed (rc=%d): %s'
+                           % (_sha_r.returncode, _sha_r.stderr.strip()))
+    sweep_sha = _sha_r.stdout.strip()
+    sweep_tree_dirty = ledger.tree_dirty()
+
     # Cells are independent: each gets its own directory ('<case>.<backend>'),
     # reads the same read-only reference tree, and shares nothing else. So the
     # sweep runs them concurrently rather than one at a time.
@@ -1059,6 +1080,21 @@ def main(argv=None):
             case_dir = run_cell(case, backend, test_dir, eqdyna_cmd, env,
                                 args.device, gpu_slots=gpu_slots)
             ok, lines = compare.compare_cell(case, backend, case_dir)
+            if ok:
+                # Mechanical profile guard + collection (owner mission,
+                # 2026-09-23): every cell this sweep PASSES must also carry a
+                # present, schema-valid, sum-checked profile.rank<r>.json per
+                # rank (profile_schema.validate_run_dir, called inside
+                # capture_run), appended to docs/run_profiles.jsonl.
+                # capture_run RAISES on any problem -- missing/invalid
+                # profile files included -- and there is deliberately no
+                # `_or_warn` variant here (unlike the perf-ledger capture
+                # below): a profile defect must be able to turn a physics-
+                # passing cell into a failed one, not vanish into a warning.
+                profile_record.capture_run(
+                    case_dir, case=case, backend=backend,
+                    ranks=cell_cost(case, backend),
+                    term=str(matrix.GATE_TERM_S), sha=sweep_sha)
         except Exception as exc:                # noqa: BLE001 - reported, not swallowed
             ok, lines = False, ['%s: %s' % (type(exc).__name__, exc)]
         return (case, backend, ok, time.time() - t0, lines)
@@ -1158,7 +1194,8 @@ def main(argv=None):
     # Every sweep is a free timing data point (owner policy 2026-09-22).
     # Placed BEFORE the verdict returns below but able to affect none of them:
     # _capture_perf swallows everything into a WARNING.
-    _capture_perf(results, label, args.device, budget)
+    _capture_perf(results, label, args.device, budget, sweep_sha,
+                 sweep_tree_dirty)
     # Release-sweep evidence: only for a default (--release, no
     # --cases/--backends) run over the full runnable matrix -- see the
     # function's own docstring. Written before the pass/fail return below so

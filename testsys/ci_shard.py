@@ -70,6 +70,10 @@ SHARDS = {
         "test_multifault_refused.py",
         "test_perf_parallelism_discriminator.py",
         "test_release_evidence_tree_clean.py",  # added 2026-09-23 (Iris, rule-24 tree_clean fix): 2 sandbox git-init scenarios, well under 1 s
+        "test_profile_guard.py",  # added 2026-09-23 (item 3, profile-guard
+                                 # testsys half); ~0.03 s, pure fixture/schema
+                                 # checks, no subprocess -- negligible to
+                                 # shard 1's timed 41.5 s total.
         "test_rough_fault_normal_consistency.py",
         "test_rsfNucleation_tpv2802_td.py",
         "test_station_header_column_count.py",
