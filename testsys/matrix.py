@@ -63,22 +63,233 @@ BACKENDS = ('fortran', 'python-jax', 'python-jax-mpi')
 #   frt -- the canonical fault-node table (testsys/frt_canonical.py). Every
 #          backend produces it; it is what makes the sweep ONE comparison.
 #   nc  -- fault.dyna.r.nc, written by scripts/plotRuptureDynamics from the frt
-#          output. DELIBERATELY still compared, for the fortran column only:
-#          it is strictly lossy relative to frt (12 resampled dip x strike
-#          variables vs 18 physics columns at native node resolution), so it
-#          adds no physics coverage -- but it is the ONLY thing that exercises
-#          plotRuptureDynamics, post-processing that would otherwise be gated
-#          by nothing. It is backend DATA here, so a green run states that the
-#          python columns did not cover it.
+#          output. Compared for BOTH fortran and python-jax (owner addition,
+#          2026-09-24, mission "iris/station-gate"): it is strictly lossy
+#          relative to frt (12 resampled dip x strike variables vs 18 physics
+#          columns at native node resolution), so it adds no NEW physics
+#          coverage over frt -- but it is the only thing that exercises
+#          plotRuptureDynamics, and until this change a green python-jax cell
+#          stated (in this very comment) that "the python columns did not
+#          cover it", which stopped being true once run_e2e.py started running
+#          plotRuptureDynamics on the jax case directory too (run_cell). Same
+#          ONE committed fault.dyna.r.nc reference, same compare.compare_nc,
+#          same matrix.THRESHOLD (rule 5) -- there is no second reference and
+#          no second nc comparison. python-jax-mpi does NOT get 'nc': its case
+#          directory carries par.nx=par.ny=par.nz=1 (make_serial_case, the
+#          same serial case build every python backend uses) while the real
+#          MPI run writes frt.txt<rank> for whichever ranks OWN fault nodes
+#          under Fortran's decomposition (PY_MPI_EXPECTED_FRT_FILES) --
+#          test.tpv8 at 4 ranks writes frt.txt0 and frt.txt2, not frt.txt0
+#          alone. plotRuptureDynamics.loadFrtData loops range(par.nx*par.ny*
+#          par.nz) = range(1) and would read ONLY frt.txt0, silently dropping
+#          every node frt.txt2 owns -- a wrong-but-plausible-looking nc, not a
+#          missing one. Measured, not assumed: this is NOT trivial (per the
+#          mission's escape valve), so python-jax-mpi's nc stays uncovered,
+#          stated here rather than silently attempted.
 #   nsign -- the SIGN of on-fault station column 8 (n-stress) at the first
 #          recorded step, at every buried on-fault station, against the case's
 #          SCEC spec convention (NSTRESS_CONVENTION below; board row 22a).
-#          Fortran only until the port writes station files (board row 114).
+#          Both gated backends: the port writes station files since row 114.
+#   station -- on/off-fault station time series (GATE_STATIONS below),
+#          normalized per column against the case's own signal scale
+#          (STATION_BOUND, normalize_station_error in compare.py), against
+#          ONE committed set per case, test.reference.results/<case>/stations/.
+#          Both gated backends. python-jax-mpi writes no station files
+#          (eqdyna3d.run_case_mpi says so on stderr): its gap is declared in
+#          STATION_ARTIFACT_UNSUPPORTED_REASON, never silently absent.
 ARTIFACTS = {
-    'fortran': ('frt', 'nc', 'nsign'),
-    'python-jax': ('frt',),
+    'fortran': ('frt', 'nc', 'nsign', 'station'),
+    'python-jax': ('frt', 'nc', 'nsign', 'station'),
     'python-jax-mpi': ('frt',),
 }
+
+# --------------------------------------------------------------------------
+# station gate (owner design, mission "iris/station-gate", 2026-09-24)
+# --------------------------------------------------------------------------
+# GATE_STATIONS -- per case, the on-fault and off-fault station FILES this
+# gate reads, chosen from the files each case's own bStations.txt ALREADY
+# makes it write at the 5 s gate term (measured: a fresh fortran e2e run of
+# every case, this commit's binary). A file named here that a run does not
+# produce is a FAIL, not a skip.
+#
+# On-fault (3 per case): a station at/near the hypocentre depth (par.xsource/
+# zsource in case_input/<case>/), one shallow-but-buried station (the
+# shallowest available dp>0), and one far along strike (the largest |strike|
+# available) -- chosen to exercise nucleation, the free-surface-adjacent
+# region, and lateral rupture propagation with three different signals.
+# Off-fault (2 per case): one near the fault, one farther away, both at the
+# depth the case's own off-fault list favours (usually 0 = surface).
+#
+# KNOWN CAVEAT, read before trusting Fortran's OWN station files at face
+# value for a multi-rank case (every case here runs at 4 ranks,
+# FORTRAN_RANKS): output_onfault_st/output_offfault_st (library_output.f90)
+# open 'faultst'+strike+'dp'+depth+'.txt' with NO rank suffix (unlike
+# frt.txt<rank>), so a station whose x sits near an MPI x-partition boundary
+# can be matched by more than one rank, and the LAST rank to call the
+# subroutine wins the shared filename -- observed directly this session:
+# test.drv.a6, test.tpv104 and test.tpv1053d (all three inherit
+# defaultParameters.py's station list) each wrote a 14th file,
+# faultst000dp000.txt, that is IDENTICALLY ZERO across all columns and all
+# steps and corresponds to NO requested station coordinate -- confirmed by
+# mira-volkov's independent serial-Fortran reproduction (NOTES_row114.md on
+# origin/mira/row114-station-output: a `mpirun -np 1` rerun of test.tpv104
+# writes the correct 13 files and no spurious 14th). None of the files
+# selected below is that spurious file (all three cases' picks avoid dp000);
+# this is recorded so a future widening of GATE_STATIONS does not walk into
+# it blind. Not fixed here -- src/fortran/ is out of this mission's scope;
+# flagged for the Fortran station-output owner (a rank suffix on faultst*/
+# body*, matching frt.txt's own contract, or gating multi-rank Fortran
+# stations from a serial rerun the way frt_canonical dedupes frt).
+GATE_STATIONS = {
+    'test.drv.a6': {
+        'on': ('faultst000dp075.txt', 'faultst000dp030.txt',
+               'faultst180dp075.txt'),
+        'off': ('body060st120dp000.txt', 'body090st000dp000.txt'),
+    },
+    'test.tpv104': {
+        'on': ('faultst000dp075.txt', 'faultst000dp030.txt',
+               'faultst180dp075.txt'),
+        'off': ('body060st120dp000.txt', 'body090st000dp000.txt'),
+    },
+    'test.tpv1053d': {
+        'on': ('faultst000dp075.txt', 'faultst000dp030.txt',
+               'faultst180dp075.txt'),
+        'off': ('body060st120dp000.txt', 'body090st000dp000.txt'),
+    },
+    'test.tpv8': {
+        # hypocentre par.xsource,zsource = 0, -12.0e3 -> faultst000dp120
+        # exactly; shallowest buried station dp045; farthest strike dp075
+        # at strike 12 km.
+        'on': ('faultst000dp120.txt', 'faultst000dp045.txt',
+               'faultst120dp075.txt'),
+        'off': ('body010st000dp000.txt', 'body060st120dp000.txt'),
+    },
+    'test.tpv10': {
+        # hypocentre zsource = -12.0e3 (down-dip) -> faultst000dp104 (the
+        # station grid snaps to the nearest fault node, not the raw
+        # coordinate); shallowest buried dp013; farthest strike dp065 at
+        # strike 12 km.
+        'on': ('faultst000dp104.txt', 'faultst000dp013.txt',
+               'faultst120dp065.txt'),
+        'off': ('body010st000dp000.txt', 'body030st120dp000.txt'),
+    },
+    'test.meng2023a': {
+        # hypocentre zsource = -3.4e3 -> faultst000dp036 nearest; shallowest
+        # buried dp008; farthest strike dp036 at strike 4 km (same depth,
+        # isolating the along-strike variation).
+        'on': ('faultst000dp036.txt', 'faultst000dp008.txt',
+               'faultst040dp036.txt'),
+        'off': ('body060st120dp000.txt', 'body090st000dp000.txt'),
+    },
+    'test.meng2023cb': {
+        'on': ('faultst000dp036.txt', 'faultst000dp008.txt',
+               'faultst040dp036.txt'),
+        'off': ('body060st120dp000.txt', 'body090st000dp000.txt'),
+    },
+    'test.tpv29': {
+        # hypocentre xsource,zsource = -5.0e3, -10.0e3 -> faultst-050dp100
+        # exactly; a shallower buried station away from the hypocentre
+        # (faultst100dp050); farthest strike (17 km) faultst170dp045.
+        'on': ('faultst-050dp100.txt', 'faultst100dp050.txt',
+               'faultst170dp045.txt'),
+        'off': ('body030st000dp000.txt', 'body200st000dp000.txt'),
+    },
+    'test.tpv30': {
+        # same station grid and hypocentre as tpv29 (shared compset shape).
+        'on': ('faultst-050dp100.txt', 'faultst100dp050.txt',
+               'faultst170dp045.txt'),
+        'off': ('body030st000dp000.txt', 'body200st000dp000.txt'),
+    },
+    'test.tpv36': {
+        # hypocentre xsource=0, zsource=-18 km down-dip -> faultst000dp180
+        # exactly; shallowest buried dp010; farthest strike (12 km)
+        # faultst120dp030. Off-fault: nearest (1 km) and farthest committed
+        # (39 km, body390) of this case's 22-station list.
+        'on': ('faultst000dp180.txt', 'faultst000dp010.txt',
+               'faultst120dp030.txt'),
+        'off': ('body010st000dp000.txt', 'body390st000dp000.txt'),
+    },
+    'test.tpv37': {
+        # identical station grid/hypocentre to tpv36 (shared compset shape).
+        'on': ('faultst000dp180.txt', 'faultst000dp010.txt',
+               'faultst120dp030.txt'),
+        'off': ('body010st000dp000.txt', 'body390st000dp000.txt'),
+    },
+}
+
+# STATION_ZERO_FLOOR -- the absolute floor a per-column scale S_q is clamped
+# to before a diff is divided by it (compare.normalize_station_error): e_q =
+# max_t|run-ref| / max(S_q, STATION_ZERO_FLOOR). This is the mission's
+# "S_q == 0" rule generalised from EXACT zero to "at or below a measured
+# floor", because a serial floating-point solver essentially never lands a
+# genuinely-zero physical component at EXACTLY 0.0 -- it lands at its own
+# roundoff noise floor instead. MEASURED, not assumed (2026-09-24, fortran
+# vs the mira-volkov/row114-station-output branch, before its merge): every
+# selected station's down-dip-slip-type column on a planar dip=90 fault
+# (test.tpv104's v-slip/v-slip-rate, test.tpv10's h-slip/h-slip-rate -- the
+# genuinely-near-zero component for that fault's rake) sits at 1e-22 to
+# 3.4e-14 in its own physical units (m, m/s); dividing that by an
+# equally-tiny S_q from the SAME near-zero physics turned an 8e-16 m
+# difference into a raw ratio of 2.0 or worse, indistinguishable from a real
+# divergence. 1e-6 (a micron, or a micron/s, or 1 Pa expressed in the
+# station files' own MPa units) sits 8-14 orders of magnitude above every
+# roundoff value measured this session and 3-9 orders below the smallest
+# case bound below, so it cannot mask a real signal at the scale this gate
+# is calibrated to catch.
+STATION_ZERO_FLOOR = 1e-6
+
+# STATION_BOUND -- one bound per case (rule 5), applied identically to every
+# non-time column of every selected station file (n-stress included), on BOTH
+# gated backends. Set from the MEASURED fortran-vs-python-jax spread under
+# this normalization with CASE_BOUND's headroom convention: the worst
+# observation times ~121.5x, rounded UP to the nearest bound already in use
+# (1e-10, 1e-8, 1e-6, 1e-5). Measured 2026-09-24 by the conductor on branch
+# wei/row114-station-output (the port rebased onto master 9444d9a, 22a sign
+# wired), `python3 testsys/run.py e2e` at load ~35, jax cells scored by
+# compare.station_gate itself against the fortran cells' own files -- the
+# files committed as the references. Fortran against its own reference reads
+# e = 0.0 for every case (4-rank Fortran is deterministic). Whole-file,
+# every-column spread: docs/perf_snapshots/station_spread_2026-09-24_
+# fortran_vs_jax.json. "floor" = the scale was STATION_ZERO_FLOOR-clamped.
+STATION_BOUND = {
+    'test.tpv8': 1e-6,       # 1.00e-10 (on v-slip-rate, dp120, floor) -> 1.2e-8
+    'test.tpv10': 1e-6,      # 1.98e-10 (on h-slip-rate, dp104, floor) -> 2.4e-8
+    'test.tpv104': 1e-5,     # 3.25e-08 (on v-slip-rate, dp030, floor) -> 4.0e-6
+    'test.tpv1053d': 1e-10,  # 3.06e-16 (on v-slip-rate, dp075, floor) -> 3.7e-14
+    'test.meng2023a': 1e-8,  # 1.12e-11 (on v-slip-rate, dp036, floor) -> 1.4e-9
+    'test.meng2023cb': 1e-8, # 9.53e-12 (on v-slip-rate, dp036, floor) -> 1.2e-9
+    'test.tpv29': 1e-10,     # 4.06e-14 (on v-slip-rate, 170dp045) -> 4.9e-12
+    'test.tpv30': 1e-10,     # 2.44e-13 (on v-slip-rate, 170dp045) -> 3.0e-11
+    'test.tpv36': 1e-6,      # 1.16e-10 (off h-vel, body010st000dp000) -> 1.4e-8
+    'test.tpv37': 1e-6,      # 1.16e-10 (off h-vel, body010st000dp000) -> 1.4e-8
+}
+
+# STATION_UNSUPPORTED_CASES -- cases whose station comparison is refused
+# outright, with the MEASURED reason (never "not yet looked at"). Checked by
+# compare.station_gate, which raises rather than silently skip if asked to
+# gate one of these.
+STATION_UNSUPPORTED_CASES = {
+    'test.drv.a6': (
+        'measured chaotic (2026-09-24, wei/row114-station-output at master '
+        '9444d9a): python-jax scores e=36.5 against the fortran reference, '
+        "on faultst000dp075's h-slip-rate -- one backend has ruptured the "
+        'station inside the 5 s window and the other has not, the same '
+        'arrival bistability DRV_A6/flip-budget exists for at the frt level. '
+        'Whole-file worst e=0.78 (v-shear-stress). No scalar bound is '
+        'meaningful here, so none is set. Its Fortran station files are '
+        'still written and sign-checked (nsign).'
+    ),
+}
+
+# STATION_ARTIFACT_UNSUPPORTED_REASON -- per (case, backend), a runnable cell
+# whose ARTIFACTS lack 'station', with why; printed by coverage_report so a
+# green run never reads as covering it.
+STATION_ARTIFACT_UNSUPPORTED_REASON = {}
+for _c in ('test.tpv8',):  # PY_MPI_RANKS' keys; that table is defined below
+    STATION_ARTIFACT_UNSUPPORTED_REASON[(_c, 'python-jax-mpi')] = (
+        "'station'/'nsign' not in ARTIFACTS['python-jax-mpi']: "
+        'eqdyna3d.run_case_mpi writes no station files (it warns on stderr); '
+        'row 114 ported the serial path only.')
 
 # NSTRESS_CONVENTION -- per case, the sign convention its SCEC spec states for
 # the on-fault station n-stress column, and where it says so (board row 22a;
@@ -512,6 +723,20 @@ def coverage_report(runnable, declared_unsupported, selection_label):
     for c, b in runnable:
         lines.append('  %-16s %-13s artifacts=%-7s gate: %s'
                      % (c, b, '+'.join(ARTIFACTS[b]), gate_description(c)))
+    # A cell runs, but not every artifact it COULD carry -- 'station' absent
+    # from a runnable cell's own ARTIFACTS tuple is a sub-cell gap, not a
+    # missing cell, and rule 2 says "could not check" must print differently
+    # from "nothing to check here": print its reason too, not just imply it
+    # via the artifacts= list above.
+    sub_gaps = [(c, b) for c, b in runnable
+                if 'station' not in ARTIFACTS[b]
+                and (c, b) in STATION_ARTIFACT_UNSUPPORTED_REASON]
+    if sub_gaps:
+        lines.append("'station' artifact declared UNSUPPORTED on %d "
+                     'runnable cell(s):' % len(sub_gaps))
+        for c, b in sub_gaps:
+            lines.append('  %-16s %-13s station: %s'
+                         % (c, b, STATION_ARTIFACT_UNSUPPORTED_REASON[(c, b)]))
     lines.append('declared UNSUPPORTED, %d cell(s) -- declared, not absent:'
                  % len(declared_unsupported))
     for c, b, reason in declared_unsupported:
@@ -572,3 +797,36 @@ for (_c, _b) in list(MEASURED_PEAK_RSS_GB):
         raise RuntimeError('measurement for unknown cell %r x %r' % (_c, _b))
 # RELEASE_ONLY's own consistency check retired with the flag itself
 # (2026-09-23) -- there is nothing left to validate.
+
+# Every case must resolve the station gate exactly one way: a GATE_STATIONS
+# entry (with a real STATION_BOUND) XOR a STATION_UNSUPPORTED_CASES entry.
+# Neither, or both, is a case this table lost track of.
+if set(GATE_STATIONS) != set(CASES):
+    raise RuntimeError(
+        'testsys/matrix.py GATE_STATIONS must name every case: missing %r, '
+        'unknown %r' % (sorted(set(CASES) - set(GATE_STATIONS)),
+                        sorted(set(GATE_STATIONS) - set(CASES))))
+for _c, _kinds in GATE_STATIONS.items():
+    if set(_kinds) != {'on', 'off'} or not _kinds['on'] or not _kinds['off']:
+        raise RuntimeError(
+            "%s's GATE_STATIONS entry must carry a non-empty 'on' and a "
+            "non-empty 'off' tuple, got %r" % (_c, sorted(_kinds)))
+_bounded = set(STATION_BOUND)
+_chaotic = set(STATION_UNSUPPORTED_CASES)
+if _bounded & _chaotic:
+    raise RuntimeError('%r carry BOTH a STATION_BOUND and a '
+                       'STATION_UNSUPPORTED_CASES entry -- one gate per case'
+                       % sorted(_bounded & _chaotic))
+_unresolved = set(CASES) - _bounded - _chaotic
+if _unresolved:
+    raise RuntimeError(
+        'testsys/matrix.py: %r have a GATE_STATIONS entry but neither a '
+        'STATION_BOUND nor a STATION_UNSUPPORTED_CASES entry -- every case '
+        'must resolve the station gate one way or the other' % sorted(_unresolved))
+if {c for c, b in STATION_ARTIFACT_UNSUPPORTED_REASON if b == 'python-jax-mpi'} != set(PY_MPI_RANKS):
+    raise RuntimeError('STATION_ARTIFACT_UNSUPPORTED_REASON must declare the '
+                       'station gap for exactly the PY_MPI_RANKS cases')
+for (_c, _b) in STATION_ARTIFACT_UNSUPPORTED_REASON:
+    if _c not in CASES or _b not in BACKENDS:
+        raise RuntimeError('STATION_ARTIFACT_UNSUPPORTED_REASON entry for '
+                           'unknown cell %r x %r' % (_c, _b))
