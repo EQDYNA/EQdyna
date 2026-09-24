@@ -72,7 +72,7 @@ import time
 
 import numpy as np
 
-from . import assembleGlobalMass, driver, func_lib, library_output, meshgen, readInputFiles
+from . import assembleGlobalMass, checkInputConsistency, driver, func_lib, library_output, meshgen, readInputFiles
 from . import backend as _backend
 from . import profile_emit as _profile_emit
 
@@ -205,6 +205,13 @@ def build_solver_state(case_dir):
     (S itself is converted to loading.load()'s 0-indexed convention).
     """
     params, g = readInputFiles.build_params(case_dir)
+    # checkInputConsistency.f90:7-19 <-> checkInputConsistency.check, called
+    # at the SAME point Fortran calls it: every bFile has been read, no mesh
+    # or solver work has started (eqdyna3d.f90:104). Raises
+    # InputConsistencyError (caught in main()'s _abort) rather than
+    # NotImplementedError, since these are configuration refusals with a
+    # numbered exit code to match, not scope gaps in this port.
+    checkInputConsistency.check(g['C_elastic'], g['output_plastic'], params['rat'])
     if g['ntotft'] != 1:
         raise NotImplementedError('build_solver_state: only ntotft==1 is supported (got %d)'
                                    % g['ntotft'])
@@ -614,6 +621,21 @@ def _select_device(device):
             % (device, got, jax.devices(), device, device))
 
 
+def _abort(exc):
+    """checkInputConsistency.InputConsistencyError -> the same structured
+    FATAL block + process exit status errorCodes.f90's abortRun prints for
+    the Fortran binary (rule 23: same code, same reason, discoverable the
+    same way), then SystemExit(exc.code) so a Python run and a Fortran run
+    of the same bad config exit with the SAME number."""
+    print(file=sys.stderr)
+    print('==================== EQdyna: FATAL ====================', file=sys.stderr)
+    print(' exit code : %d' % exc.code, file=sys.stderr)
+    print(' reason    : %s' % exc, file=sys.stderr)
+    print(' See the "Exit codes" table in README.md for this code.', file=sys.stderr)
+    print('=======================================================', file=sys.stderr)
+    raise SystemExit(exc.code)
+
+
 def main():
     ap = argparse.ArgumentParser(prog='python3 -m eqdyna')
     ap.add_argument('case_dir')
@@ -647,8 +669,11 @@ def main():
         from mpi4py import MPI      # ImportError is deliberate, not caught
         comm = MPI.COMM_WORLD
         prof = Profile('jax')
-        path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
-                                    profile=prof)
+        try:
+            path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
+                                        profile=prof)
+        except checkInputConsistency.InputConsistencyError as exc:
+            _abort(exc)
         if args.profile:
             prof.report(nsteps=args.nsteps, nelem=prof.nelem or None,
                         stream=sys.stdout)
@@ -688,8 +713,11 @@ def main():
         raise SystemExit('--device %s is meaningless with --backend numpy'
                          % args.device)
     prof = Profile(args.backend)
-    path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend,
-                    profile=prof)
+    try:
+        path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend,
+                        profile=prof)
+    except checkInputConsistency.InputConsistencyError as exc:
+        _abort(exc)
     print('backend=%s device=%s' % (args.backend, active_device(args.backend)))
     if args.profile:
         prof.report(nsteps=args.nsteps, nelem=prof.nelem or None,
