@@ -696,7 +696,7 @@ subroutine report_dropped_onfault_st(matchedAnyRank, nReq)
     ! the fault's node grid matches no node on any rank and output_onfault_st
     ! writes no faultst* file for it. That happened with no message at all
     ! (test.tpv29 at dx = 500 m: 11 of 24; test.meng2023a/cb at dx = 400 m:
-    ! 12 of 13 before their station list moved onto the grid). This names
+    ! 13 of 13 before their station list moved onto the grid). This names
     ! every such station. It does NOT snap or refuse -- the same owner call as
     ! item 94. matchedAnyRank(k) is OR-reduced over all ranks
     ! (checkOnFaultStationCoverage, eqdyna3d.f90); k runs over fault 1's

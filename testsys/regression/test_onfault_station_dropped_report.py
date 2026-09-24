@@ -2,7 +2,7 @@
 """
 Regression guard (pathway_forward.md item 116) for ON-fault stations that
 match no fault node being dropped with NO message -- the on-fault half of item
-94 (test_onfault_station_dropped_report.py is the off-fault half and the
+94 (test_offfault_station_dropped_report.py is the off-fault half and the
 template this file follows).
 
 THE BUG: `setOnFaultStation` (`src/fortran/meshgen.f90`) matches a station's
@@ -17,31 +17,11 @@ station indices (`anonfs(2,:)`) over all ranks after meshgen, and rank 0 calls
 `report_dropped_onfault_st` (`library_output.f90`), which prints a WARNING with
 the dropped count and one line per dropped station (index, fault, x,z in km).
 
-The text below is the item 94 original this was adapted from:
 
-Regression guard (pathway_forward.md item 94) for off-fault stations that
-match no grid node being dropped with NO message.
-
-THE BUG: `setSurfaceStation` (`src/fortran/meshgen.f90`) matches a station's
-depth EXACTLY (|nodeCoor(3) - x4nds(3,i)| < tol) and snaps only x and y to
-the nearest interior node. A station whose depth is not a grid z-plane (or
-that lies outside the interior x/y range) therefore matches no node on any
-rank, and `output_offfault_st` writes no file for it -- silently. test.tpv8
-at dx = 500 m requested 15 off-fault stations and wrote 11: its four
-z = -0.3 km stations sit between the z = 0 and z = -0.5 km planes.
-
-THE FIX: `checkOffFaultStationCoverage` (`eqdyna3d.f90`) OR-reduces `n4yn`
-over all ranks after `meshgen`, and rank 0 calls
-`report_dropped_offfault_st` (`library_output.f90`), which prints a WARNING
-with the dropped count and one line per dropped station (index and x,y,z in
-km). It neither snaps nor refuses; that choice changes which files a case
-writes and is the owner's.
-
-This test compiles `report_dropped_offfault_st` directly (no MPI, no case,
-no mesh; same technique as test_station_header_column_count.py) and checks
-BEHAVIOUR, not source text (rule 10a):
+This test compiles `report_dropped_onfault_st` directly (no MPI, no case, no
+mesh) and checks BEHAVIOUR, not source text (rule 10a):
   (a) 3 stations, station 2 unmatched -> the WARNING says "1 of 3", names
-      station 2 with its km coordinates, and names neither 1 nor 3;
+      station 2 (fault 1) with its x,z in km, and names neither 1 nor 3;
   (b) all 3 matched -> prints nothing at all.
 Before the fix the subroutine did not exist, so the build itself fails.
 Fails loudly (rule 2) if gfortran is unavailable -- never silently skips.
