@@ -124,6 +124,7 @@ program EQdyna
     call meshgen
     call checkFaultMPIAlignment
     call checkOffFaultStationCoverage
+    call checkOnFaultStationCoverage
     call checkMeshMaterial
     !call checkArrSize  ! disabled for productive runs
     call netcdf_read_on_fault_eqdyna
@@ -455,6 +456,38 @@ subroutine checkOffFaultStationCoverage
     if (me == masterProcsId) call report_dropped_offfault_st(matchedAnyRank)
     deallocate(matchedHere, matchedAnyRank)
 end subroutine checkOffFaultStationCoverage
+
+subroutine checkOnFaultStationCoverage
+    ! pathway_forward.md item 116, the on-fault half of item 94: name every
+    ! requested ON-fault station that no rank matched to a fault node
+    ! (report_dropped_onfault_st, library_output.f90). meshgen's
+    ! setOnFaultStation matches x and z against a fault node within tol, so a
+    ! station off the node grid gets no faultst* file -- test.tpv29 at the
+    ! 500 m gate dx wrote 13 of 24, silently. anonfs(2,:) holds the matched
+    ! station index per rank; OR-reduce over ranks exactly as
+    ! checkOffFaultStationCoverage does (same LOGICAL buffer, same reason).
+    ! nonfs is read from bStations.txt identically on every rank, so the early
+    ! return is taken by all ranks or by none.
+    use globalvar
+    implicit none
+    include 'mpif.h'
+    integer (kind = 4) :: iMPIerr, iFault, j, k, nReq
+    logical, allocatable :: matchedHere(:), matchedAnyRank(:)
+
+    nReq = sum(nonfs(1:ntotft))
+    if (nReq <= 0) return
+    allocate(matchedHere(nReq), matchedAnyRank(nReq))
+    matchedHere = .false.
+    do j = 1, numOfOnFaultStCount
+        iFault = anonfs(3,j)
+        k = sum(nonfs(1:iFault-1)) + anonfs(2,j)
+        matchedHere(k) = .true.
+    enddo
+    call MPI_Allreduce(matchedHere(1), matchedAnyRank(1), nReq, MPI_LOGICAL, MPI_LOR, &
+        MPI_COMM_WORLD, iMPIerr)
+    if (me == masterProcsId) call report_dropped_onfault_st(matchedAnyRank, nReq)
+    deallocate(matchedHere, matchedAnyRank)
+end subroutine checkOnFaultStationCoverage
 
 subroutine checkMeshMaterial
     use globalvar
