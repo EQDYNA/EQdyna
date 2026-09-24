@@ -134,6 +134,10 @@ def main():
                    gate(ext, good_ext + [('faultst000dp000.txt', 'zeros')]), False))
     checks.append(('MUTATION unparseable station name fails',
                    gate(ext, good_ext + [('faultst000dpXYZ.txt', -1.0)]), False))
+    for tok, want in (('0.1234567-100', 1.234567e-101), ('-0.5000000+100', -0.5e100),
+                      ('0.2544000E+02', 25.44)):
+        got = compare._fortran_float(tok)
+        checks.append(('Fortran value %s parses' % tok, abs(got - want) <= 1e-12 * abs(want), True))
     for label, got, want in checks:
         if got != want:
             fails.append('%s: gate returned %s' % (label, got))
