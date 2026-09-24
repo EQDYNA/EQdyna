@@ -48,16 +48,17 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 21b. No session writes the main checkout — conductors branch too, and its HEAD moves only by fast-forward sync.
 21c. `PROJECT_RULES.md` and `pathway_forward.md` have exactly one writer per session.
 21d. A dispatch carries its isolation and its scope in writing, or it is not issued.
+21e. Only real workload goes to an agent.
 22. A scope restriction is itself a rule, and it can conflict with another rule.
 23. Fortran is the reference implementation; the port follows its NUMERICS, not its file layout.
 24. A release tag requires a committed local sweep at the exact SHA, not only green CI.
-25. `src/` and `testsys/` reach master only through a merged pull request; everything else may still push direct.
+25. `src/`, `testsys/`, and `.github/` reach master only through a merged pull request; everything else may still push direct.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 25 numbered rules
-(1-25) plus twenty-five lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
+(1-25) plus twenty-six lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
 4e, 5a, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 20a, 20b, 20c, 21a, 21b, 21c,
-21d) — 50 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md`
+21d, 21e) — 51 `## ` headings total. Verify: `grep -c '^## ' PROJECT_RULES.md`
 reads 50; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md` (numbered rules only, no
 letter suffix) reads 25.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
@@ -2194,6 +2195,36 @@ recognised as the second and not the first.
 
 ---
 
+## 21e. Only real workload goes to an agent
+
+A dispatch is issued only for a port, a multi-file build, a long
+investigation, a release, or a per-PR audit. A lookup, a fixture fix, a
+one-line edit, a doc touch, a status check, or a single board line is done
+by the conductor directly — it is not routed through a sub-agent. When in
+doubt, do it yourself.
+
+**Rationale**: every dispatch pays a cold start — re-reading `CLAUDE.md`,
+this rule book, and a ~200 KB status board — before it produces a minute of
+the actual work asked. That cost is worth paying for real workload; it is
+pure overhead on anything the conductor could finish directly in less time
+than the agent takes to load.
+
+**Incident (2026-09-23)**: owner instruction, relayed by the conductor,
+naming the pattern directly rather than pointing at one dispatch that went
+wrong — the cost was already visible across a run of small dispatches, not
+concentrated in a single incident worth its own postmortem.
+
+**How to apply**: before writing a dispatch brief, name which of the five
+categories above it is. If none fits, do the task directly instead of
+writing a brief for it.
+
+**Tier**: hortatory. No guard in this repository can see a dispatch that was
+never issued, or judge whether one that was issued was "real workload" —
+that call is made once, before the dispatch, by the person or conductor
+deciding to make it.
+
+---
+
 ## 22. A scope restriction is itself a rule, and it can conflict with another rule
 
 A brief, dispatch, or session-level restriction — "do not edit anything under
@@ -2466,12 +2497,19 @@ guard against the retired two-term design reappearing).
 
 ---
 
-## 25. `src/` and `testsys/` reach master only through a merged pull request; everything else may still push direct
+## 25. `src/`, `testsys/`, and `.github/` reach master only through a merged pull request; everything else may still push direct
 
-Owner-approved hybrid PR workflow (relayed 2026-09-23). Two paths to master,
-by content, not by author:
+Owner-approved hybrid PR workflow (relayed 2026-09-23; merged as PR #3,
+`bf4d451`). Two paths to master, by content, not by author:
 
-- **A change under `src/` or `testsys/` goes through a PR.** Branch off
+- **A change under `src/`, `testsys/`, or `.github/` goes through a PR.**
+  `.github/` was added to the gated set by the conductor before merge,
+  loudly: without it, one direct push could delete the `pr-policy-gate` job
+  itself, and the "mechanical" enforcement below would be deletable by the
+  thing it is supposed to gate. The three prefixes live in exactly one
+  place — `GATED_PREFIXES` in `testsys/pr_policy.py` — and widening or
+  narrowing the gated set is an owner decision made by editing that one
+  constant, never by editing the two callers separately. Branch off
   master, or an isolated worktree for anything that builds (rule 21). Run
   the local fast suite (`python3 testsys/run.py unit regression`); for a
   `src/` change ALSO run the everyday e2e sweep covering every backend of
@@ -2501,9 +2539,9 @@ a PR, a parallel CI-and-audit gate, and a serial merge order is how this
 project already recovers from that kind of miss without letting a second one
 land while the first is still being fixed.
 
-**How to apply**: before touching `src/` or `testsys/`, open (or confirm)
-a branch or worktree off master; do not commit such a change directly to
-master even with a passing local gate. Before touching only docs, board,
+**How to apply**: before touching `src/`, `testsys/`, or `.github/`, open (or
+confirm) a branch or worktree off master; do not commit such a change
+directly to master even with a passing local gate. Before touching only docs, board,
 evidence, session logs, rule text, or a reference artifact, push directly
 after the local fast suite — do not route it through a code PR only to keep
 one workflow. When both a code PR and a direct docs push are ready at once,
@@ -2511,38 +2549,84 @@ land the direct push on its own; it does not wait for the PR's serial slot,
 because rule 21c/15d's separation means it never shared a commit with the
 code in the first place.
 
-**Enforcement (Tier: mechanical, once PR #3 merges —
+**Enforcement (Tier: mechanical, LIVE — PR #3 merged as `bf4d451`,
 https://github.com/EQDYNA/EQdyna/pull/3, branch
 `iris/pr-enforce-2026-09-23`)**: `testsys/pr_policy.py` is the one copy of
 the decision logic (which paths are gated, how a push range resolves, how a
 commit's changed paths are read), called from two places. `test.yml`'s
-`pr-policy-gate` job runs it in `ci-check` mode on every push to master: for
-each commit in the push range that touches `src/` or `testsys/`, it calls
-`GET /repos/{owner}/{repo}/commits/{sha}/pulls` and requires a MERGED PR
-covering that commit; a squash-merge subject's trailing `(#NNN)` is used
-only as a fallback when the API call itself fails, never to override what
-the API said, and an unresolvable check raises rather than defaulting to a
-pass. `testsys/hooks/pre-push` (installed via the same `core.hooksPath` as
+`pr-policy-gate` job declares explicit `permissions: {contents: read,
+pull-requests: read}` so the commits-pulls API call never depends on the
+repo's default token setting, and runs the module in `ci-check` mode on
+every push to master: for each commit in the push range that touches
+`src/`, `testsys/`, or `.github/` (`GATED_PREFIXES`), it calls
+`GET /repos/{owner}/{repo}/commits/{sha}/pulls` and counts a PR only when
+ALL of: `merged_at` is set, the PR's base ref is `master`, GitHub's own
+`merge_commit_sha` for that PR equals this commit, and this commit is NOT
+the PR's head sha (the last clause is what catches an agent fast-forwarding
+master to an open PR's head, which GitHub still marks "merged"). A commit
+range is walked with `git rev-list --first-parent`, so a merge commit
+carrying its own gated edits is evaluated too, not skipped as a merge; a
+rename OUT of a gated prefix is read via `--no-renames`, so it reports the
+OLD (gated) path and cannot launder a gated file through a move. A
+squash-merge subject's trailing `(#NNN)` is used only as a fallback when the
+API call itself fails, never to override what the API said, and an
+unresolvable check raises rather than defaulting to a pass.
+`testsys/hooks/pre-push` (installed via the same `core.hooksPath` as
 `testsys/hooks/pre-commit`) is the local half: it refuses a push to
-`refs/heads/master` carrying any new commit that touches `src/` or
-`testsys/`, unconditionally and with no API call, because a merged PR can
+`refs/heads/master` carrying any new commit that touches `src/`, `testsys/`,
+or `.github/`, unconditionally and with no API call, because a merged PR can
 only ever reach a local clone via fetch, never via a local push — so a local
 push touching a gated path is by construction a direct push. No bypass flag.
 Guarded by `testsys/regression/test_pr_policy_guard.py`,
 `test_prepush_pr_policy_guard.py`, and `test_ci_pr_policy_step.py`.
 
-**GitHub branch protection is NOT enabled, and this is a scope decision, not
-an oversight.** The repository is public on the org's free plan; a branch
-protection ruleset requiring a pull request cannot be scoped to paths, so
-turning it on would also block the docs/board/evidence direct-push path this
-rule deliberately keeps open. Path-scoped push rulesets are documented by
-GitHub for private/internal repositories only. Left to the owner: whether
-`.github/`, `scripts/`, `install-eqdyna.sh`, and `case_input/` join the
-PR-required set — today they do not, and a direct push to any of those is
-not caught by either enforcement half above.
+**Repo settings, changed by the conductor under the owner's authorisation
+(2026-09-23), matching the workflow this rule enforces**: squash-merge only
+(`squashMergeAllowed=true`, `mergeCommitAllowed=false`,
+`rebaseMergeAllowed=false`) and `deleteBranchOnMerge=true`. Merge-commit and
+rebase-merge are disabled, not merely unused: a multi-commit rebase-merge
+would land several new commits on master under one PR, but only the LAST of
+them equals that PR's `merge_commit_sha`, so every rebased commit before it
+would fail the `merge_commit_sha == this commit` check above and the gate
+would report a false RED on a real merged PR. Squash-merge is the only
+strategy that puts exactly one new commit on master per PR, which is what
+the per-commit check above assumes.
 
-**Tier**: mechanical for `src/`/`testsys/` once PR #3 merges, per the
-guards named above. The path list itself (today exactly `src/` and
-`testsys/`) is an owner decision, reviewable only — no guard can tell
-whether a future new top-level directory should have joined the gated set
-the day it was created.
+**GitHub branch protection is NOT enabled, and this is a scope decision, not
+an oversight.** The repository is public (`visibility=PUBLIC`) on the org's
+free plan; a branch protection ruleset requiring a pull request cannot be
+scoped to paths, so turning it on would also block the docs/board/evidence
+direct-push path this rule deliberately keeps open. Path-scoped push
+rulesets are documented by GitHub for private/internal repositories only.
+Left to the owner: whether `scripts/`, `install-eqdyna.sh`, and
+`case_input/` join the PR-required set — today they do not, and a direct
+push to any of those is not caught by either enforcement half above.
+
+**Known limits, stated so this rule does not claim more than it enforces —
+these matter against a DELIBERATE bypass; the realistic risk this rule
+addresses is an agent pushing direct by mistake**: (a) the CI job runs the
+pushed copy of `pr_policy.py`, so a commit that rewrites the module itself is
+checked against its own edited rules, not a fixed reference copy; (b) the
+squash-subject `(#NNN)` fallback fires on ANY commits-API error and is
+developer-writable, hence forgeable, text; (c) force-push refusal is narrow
+— only when `resolve_push_range`'s `before` sha is unreachable in the CI
+clone; (d) the CI check marks AFTER the push lands, so it cannot block a bad
+push, only report it — `testsys/hooks/pre-push` is the preventive layer, and
+`core.hooksPath` points at the main checkout's absolute `testsys/hooks` so a
+worktree on an old branch still runs the CURRENT hook, not a stale copy of
+it; (e) a direct docs push made after a non-fast-forward `git pull` merge
+commit falsely fails the local guard (that merge commit's diff can touch a
+gated path even when no individual change did) — use `git pull --ff-only`,
+already this project's prescribed pull.
+
+**Cycle-time evidence, the first PR under this workflow**: PR #3 opened
+2026-09-24T02:06:14Z, merged 2026-09-24T02:53:35Z — 47 minutes covering one
+audit round, three accident-class fixes, and one re-audit. Master CI run
+`35949158106` on `bf4d451` finished green including `pr-policy-gate`'s first
+real (non-drill) run.
+
+**Tier**: mechanical for `src/`/`testsys/`/`.github/`, live as of `bf4d451`,
+per the guards named above. The path list itself (`GATED_PREFIXES`, today
+`src/`, `testsys/`, `.github/`) is an owner decision, reviewable only — no
+guard can tell whether a future new top-level directory should have joined
+the gated set the day it was created.
