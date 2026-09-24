@@ -60,6 +60,8 @@ sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 
 from eqdyna import checkInputConsistency as cic  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mpirun_capture  # noqa: E402  (item 95: rank-owned output past MPI_Abort)
 
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 CASE_NAME = 'test.tpv8'
@@ -159,6 +161,7 @@ def _make_case(tmp, name, output_plastic):
     return case_dir
 
 
+
 def _run_fortran(case_dir):
     binary = None
     for cand in (os.path.join(ROOT, 'bin', 'eqdyna'),
@@ -168,9 +171,7 @@ def _run_fortran(case_dir):
             break
     if binary is None:
         return None
-    r = subprocess.run([MPIRUN, '-np', '1', binary], cwd=case_dir,
-                       capture_output=True, text=True, timeout=120)
-    return r.returncode, r.stdout + r.stderr
+    return mpirun_capture.run_rank_files(MPIRUN, binary, case_dir)
 
 
 def _run_python(case_dir, nsteps=4):
