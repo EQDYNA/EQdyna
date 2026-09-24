@@ -225,7 +225,9 @@ def check_evidence_only_ancestor_accepted(guard, tmp, fails, log):
     # rule 15d shape: a second evidence/ledger-only commit lands between the
     # swept sha and the tag (e.g. a perf ledger append), touching no physics.
     write(d, 'docs/perf_ledger.jsonl', '{"note": "post-sweep ledger append"}\n')
-    tag_sha = commit_all(d, 'perf: ledger append after the sweep')
+    # ...and the sweep's own per-rank profile record (2026-09-24, v5.17.0).
+    write(d, 'docs/run_profiles.jsonl', '{"note": "post-sweep profile rows"}\n')
+    tag_sha = commit_all(d, 'perf: ledger + run-profile append after the sweep')
     ok, msg = guard.evaluate_sweep_evidence(tag_sha, repo_root=d,
                                             full_runnable_count=fixed_count)
     log.append(('6 evidence-only change after swept ancestor', ok, msg))
