@@ -50,7 +50,9 @@ check_plastic_output_refused_end_to_end to go RED naming exactly that
 condition (the python side no longer refuses while the Fortran side still
 does).
 """
+import glob
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -159,6 +161,28 @@ def _make_case(tmp, name, output_plastic):
     return case_dir
 
 
+def _mpirun_rank_files(mpirun, binary, cwd, env=None, timeout=120):
+    """(returncode, text) for `mpirun -np 1 <binary>` with the rank's stdout and
+    stderr redirected to a rank-owned FILE (pathway item 95; the technique is
+    test_stop_exit_status.py probe B, item 89). Open MPI discards
+    already-flushed bytes it has not yet forwarded when MPI_Abort tears the
+    job down, so text asserted from mpirun's piped capture past a refusal is
+    a launcher property that can flake. The file cannot lose bytes the rank
+    flushed. `exec` keeps the binary's own exit status; `$$` names the file.
+    Raises when no rank file appears: then the binary never ran."""
+    before = set(glob.glob(os.path.join(cwd, 'eqdyna-stdout.*.txt')))
+    shell = 'exec %s > eqdyna-stdout.$$.txt 2>&1' % shlex.quote(binary)
+    r = subprocess.run([mpirun, '-np', '1', 'sh', '-c', shell], cwd=cwd, env=env,
+                       capture_output=True, text=True, timeout=timeout)
+    files = sorted(set(glob.glob(os.path.join(cwd, 'eqdyna-stdout.*.txt'))) - before)
+    if not files:
+        raise RuntimeError('no rank-owned stdout file under %s -- %s never ran '
+                           '(mpirun rc=%d): %s' % (cwd, binary, r.returncode,
+                                                   (r.stdout + r.stderr)[-500:]))
+    text = ''.join(open(f, errors='replace').read() for f in files)
+    return r.returncode, text + r.stdout + r.stderr
+
+
 def _run_fortran(case_dir):
     binary = None
     for cand in (os.path.join(ROOT, 'bin', 'eqdyna'),
@@ -168,9 +192,7 @@ def _run_fortran(case_dir):
             break
     if binary is None:
         return None
-    r = subprocess.run([MPIRUN, '-np', '1', binary], cwd=case_dir,
-                       capture_output=True, text=True, timeout=120)
-    return r.returncode, r.stdout + r.stderr
+    return _mpirun_rank_files(MPIRUN, binary, case_dir)
 
 
 def _run_python(case_dir, nsteps=4):
