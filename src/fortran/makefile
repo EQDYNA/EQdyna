@@ -84,6 +84,10 @@ eqdyna: $(OBJ)
 FORCE:
 srcStamp.inc: FORCE
 	python3 ../../scripts/src_hash.py --write-inc srcStamp.inc
+# Every object depends on this makefile: the stamp hashes it, so a flag-only
+# edit (e.g. -O3 -> -O2) must rebuild EVERY object, or the stamp would vouch
+# for a binary mixing old- and new-flag objects (PR #12 audit).
+$(OBJ): makefile
 eqdyna3d.o: eqdyna3d.f90 srcStamp.inc globalvar.o driver.o countMeshEntities.o errorCodes.o \
             meshgen.o readInputFiles.o checkInputConsistency.o         \
             library_output.o netcdf_io.o
