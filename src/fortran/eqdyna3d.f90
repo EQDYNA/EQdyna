@@ -111,6 +111,7 @@ program EQdyna
     call memory_estimate
     call meshgen
     call checkFaultMPIAlignment
+    call checkOffFaultStationCoverage
     call checkMeshMaterial
     !call checkArrSize  ! disabled for productive runs
     call netcdf_read_on_fault_eqdyna
@@ -407,6 +408,33 @@ subroutine checkFaultMPIAlignment
           write(*,*) '  npx,npy,npz =', npx, npy, npz
       endif
 end subroutine checkFaultMPIAlignment
+
+subroutine checkOffFaultStationCoverage
+    ! pathway_forward.md item 94: name every requested off-fault station that
+    ! no rank matched to a grid node (report_dropped_offfault_st,
+    ! library_output.f90). n4yn is per-rank, so reduce it first with a
+    ! logical OR (a station two ranks both matched still counts once).
+    ! mpif.h declares no interfaces, and gfortran refuses two MPI_Allreduce
+    ! calls in one file whose buffers differ in type or rank
+    ! (checkFaultMPIAlignment's is a LOGICAL scalar). So the buffer is
+    ! LOGICAL, and it is passed by its first element: sequence association
+    ! hands MPI the whole contiguous array, as with any implicit interface.
+    ! totalNumOfOffSt is read from bStations.txt identically on every rank, so
+    ! the early return is taken by all ranks or by none.
+    use globalvar
+    implicit none
+    include 'mpif.h'
+    integer (kind = 4) :: iMPIerr
+    logical, allocatable :: matchedHere(:), matchedAnyRank(:)
+
+    if (totalNumOfOffSt <= 0) return
+    allocate(matchedHere(totalNumOfOffSt), matchedAnyRank(totalNumOfOffSt))
+    matchedHere = (n4yn /= 0)
+    call MPI_Allreduce(matchedHere(1), matchedAnyRank(1), totalNumOfOffSt, MPI_LOGICAL, MPI_LOR, &
+        MPI_COMM_WORLD, iMPIerr)
+    if (me == masterProcsId) call report_dropped_offfault_st(matchedAnyRank)
+    deallocate(matchedHere, matchedAnyRank)
+end subroutine checkOffFaultStationCoverage
 
 subroutine checkMeshMaterial
     use globalvar
