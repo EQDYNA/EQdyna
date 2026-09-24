@@ -200,11 +200,13 @@ reason each step exists:
   0.00 and then delivered `EFFECTIVE_CORES` 0.39 -- 1859 vs 605 ms/step for
   identical work in the same session (item 43). Exclude cpus by MEASUREMENT
   (`EFFECTIVE_CORES`, `--exclude-cpus`), never by trusting the idle read.
-- **A rank whose element slab never touches the fault owns 0 fault nodes**,
-  and Fortran writes no `frt` file for such a rank -- the jax-MPI port matches
-  that contract deliberately (`write_frt` refuses `nftnd==0`). 2 ranks could
-  not reproduce this; 4 could (item 43) -- a bug shape that exists only above
-  the rank count you happened to smoke-test at.
+- **A rank whose subdomain box never touches the fault owns 0 fault nodes**,
+  and Fortran writes no `frt` file for such a rank. The jax-MPI port matches
+  that contract deliberately (`write_frt` refuses `nftnd==0`). Since item 64
+  (PR #19, `dea8df7`) jax-MPI uses Fortran's 3D box decomposition
+  (`MPI4NodalQuant.DECOMP`) with a rank-local mesh; `test.tpv8` at (2,2,1)
+  writes 2 frt files, as Fortran does. The shape only appeared above the rank
+  count first smoke-tested, so test past it.
 
 ## Papercuts
 
@@ -235,7 +237,8 @@ regression (an artifact of compile time in the metric), a friclaw-4 coverage
 gap (friclaw 4 is drv.a6 and tpv104, the two largest cases), a
 compile-fraction figure taken in the wrong environment, and decomposition
 IMBALANCE as the cause of the jax-MPI 32-rank plateau (item 60 — `PML_WEIGHT =
-3.0` at `src/python/eqdyna/MPI4NodalQuant.py:85` really is five times the
+3.0`, then in `src/python/eqdyna/MPI4NodalQuant.py` and deleted with the 1D
+slab in PR #19, really was five times the
 measured ~0.6 cost ratio, recutting really did take predicted work spread from
 3.350x to 1.004x and zero-`Ei` ranks from 4 to 0, and the scaling curve did not
 move: 134.12 → 132.20 ms at 32 ranks, 1.4%, inside this box's run-to-run
