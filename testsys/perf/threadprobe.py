@@ -18,7 +18,7 @@ fell under --min-effective-cores of its wall time is REPORTED, not dropped
 (it is the straggler signal, rule 2). A non-positive timing raises. All
 workers warm up, then wait at a stdin barrier so the timed loops start
 together; the run is refused unless the timed windows overlap
---min-overlap of the longest one, and unless every worker saw exactly one
+--min-overlap of the shortest one, and unless every worker saw exactly one
 allowed cpu.
 
     python3 testsys/perf/threadprobe.py --k 16 --iters 200
