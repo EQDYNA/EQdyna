@@ -30,7 +30,9 @@ below was captured 2026-09-22 from this repo's own CI history with:
     gh run list --workflow 'Automatic Testing of EQdyna' --limit 300 \
        --json databaseId,headSha,conclusion,status,createdAt,headBranch
 
-verbatim, with exactly ONE disclosed modification: `_IN_PROGRESS_RUN` is real
+verbatim, plus a `workflowName` field on every record (added 2026-09-24 for
+item 78, which asks `gh` for it; every one of these runs IS a run of that
+workflow), and with exactly ONE disclosed modification: `_IN_PROGRESS_RUN` is real
 run 35673827398 with `status` changed 'completed' -> 'in_progress' and
 `conclusion` changed 'success' -> None, because GitHub keeps no historical
 record of a run while it was still running. Every other field of every other
@@ -85,14 +87,17 @@ SHA_CODE_NO_RUN = '01a1040'   # touches src/python -- CAN trigger CI, here has n
 
 # --- real run records, captured 2026-09-22 (see PROVENANCE above) ----------
 _RUN_FAILED = {
+    'workflowName': 'Automatic Testing of EQdyna', 
     'conclusion': 'failure', 'createdAt': '2026-09-19T07:01:52Z',
     'databaseId': 35428208759, 'headBranch': 'master',
     'headSha': SHA_FAILED_CI, 'status': 'completed'}
 _RUN_GREEN_MASTER = {
+    'workflowName': 'Automatic Testing of EQdyna', 
     'conclusion': 'success', 'createdAt': '2026-09-21T23:56:43Z',
     'databaseId': 35669818523, 'headBranch': 'master',
     'headSha': SHA_GREEN, 'status': 'completed'}
 _RUN_GREEN_TAGPUSH = {
+    'workflowName': 'Automatic Testing of EQdyna', 
     'conclusion': 'success', 'createdAt': '2026-09-22T00:54:44Z',
     'databaseId': 35673827398, 'headBranch': 'v5.14.0',
     'headSha': SHA_GREEN, 'status': 'completed'}
@@ -100,13 +105,30 @@ _RUN_GREEN_TAGPUSH = {
 _RUN_IN_PROGRESS = dict(_RUN_GREEN_MASTER, databaseId=35676386267,
                         status='in_progress', conclusion=None)
 _RUN_V5131_TAGPUSH = {
+    'workflowName': 'Automatic Testing of EQdyna', 
     'conclusion': 'success', 'createdAt': '2026-09-21T23:26:04Z',
     'databaseId': 35667535066, 'headBranch': 'v5.13.1',
     'headSha': SHA_PATHS_IGNORED, 'status': 'completed'}
 _RUN_ACK_PARENT = {
+    'workflowName': 'Automatic Testing of EQdyna', 
     'conclusion': 'success', 'createdAt': '2026-09-21T21:42:44Z',
     'databaseId': 35658746273, 'headBranch': 'master',
     'headSha': SHA_ACK_EVIDENCE, 'status': 'completed'}
+
+# Item 78 (2026-09-24): a SECOND workflow's run at the same sha. Modelled on
+# real run 35819232914 ('Publish EQdyna Docker image', failure, 894cdc1 =
+# v5.16.0) -- DISCLOSED CONSTRUCTION: that real run was triggered by the tag
+# push (headBranch 'v5.16.0'), which the pre-tag gate must exclude, so here it
+# is re-pointed to SHA_GREEN with headBranch 'master', i.e. the shape a
+# non-tag trigger of a second workflow would have. test_release_complete.py's
+# post-tag half is driven against the unmodified real run instead.
+_RUN_PUBLISH_FAILED = {
+    'workflowName': 'Publish EQdyna Docker image', 'conclusion': 'failure',
+    'createdAt': '2026-09-23T04:39:47Z', 'databaseId': 35819232914,
+    'headBranch': 'master', 'headSha': SHA_GREEN, 'status': 'completed'}
+_RUN_PUBLISH_IN_PROGRESS = dict(_RUN_PUBLISH_FAILED, status='in_progress',
+                                conclusion=None)
+_RUN_PUBLISH_TAGPUSH_FAILED = dict(_RUN_PUBLISH_FAILED, headBranch='v5.14.0')
 
 # Refs that are TAGS on origin, as `git ls-remote refs/tags/` reports them.
 REAL_TAGS = ('v5.13.1', 'v5.14.0', 'v5.6.0')
@@ -127,7 +149,10 @@ def injected_ci(runs, unavailable=False, honour_tags=True):
     def _gh_run_list(workflow_name, limit=300):
         if unavailable:
             raise ci_status.GhUnavailable('gh is not installed (injected)')
-        return list(runs)
+        # None = every workflow (item 78); a name = only that workflow's runs,
+        # exactly as `gh run list --workflow` filters.
+        return [r for r in runs
+                if workflow_name is None or r.get('workflowName') == workflow_name]
 
     def _is_tag_ref(name):
         return bool(honour_tags) and name in REAL_TAGS
@@ -204,6 +229,82 @@ def check_injected_cases(failures):
     return seen_codes
 
 
+# Item 78: test.yml green is not CI green. (label, runs, exit, substring)
+MULTI_WORKFLOW_CASES = [
+    ('I  FAIL            test.yml green, a second workflow red',
+     [_RUN_GREEN_MASTER, _RUN_PUBLISH_FAILED], 1, "'Publish EQdyna Docker image'"),
+    ('J  PENDING         test.yml green, a second workflow running',
+     [_RUN_GREEN_MASTER, _RUN_PUBLISH_IN_PROGRESS], 2, 'have not completed yet'),
+    ('K  PASS            a red second workflow on the TAG push is not counted',
+     [_RUN_GREEN_MASTER, _RUN_PUBLISH_TAGPUSH_FAILED], 0, 'is green (1:'),
+]
+
+
+def check_every_workflow_cases(failures):
+    for label, runs, want_code, want_text in MULTI_WORKFLOW_CASES:
+        with injected_ci(runs):
+            code, out = run_guard(['--pre-tag', SHA_GREEN])
+        ok = (code == want_code) and (want_text in out)
+        print('  %s %-58s exit=%d (want %d)'
+              % ('.' if ok else 'X', label, code, want_code))
+        if not ok:
+            failures.append('%s: exit=%d want=%d, stdout=%r'
+                            % (label.split()[0], code, want_code, out.strip()))
+    # Load-bearing: with the every-workflow check neutered, case I reads green
+    # -- the v5.16.0 shape (item 78) reappears.
+    saved = ci_status.classify_every_workflow
+    ci_status.classify_every_workflow = lambda runs, req, exclude_run_id=None: ([], [], [req])
+    try:
+        with injected_ci([_RUN_GREEN_MASTER, _RUN_PUBLISH_FAILED]):
+            code, out = run_guard(['--pre-tag', SHA_GREEN])
+    finally:
+        ci_status.classify_every_workflow = saved
+    ok = code == 0
+    print('  %s L  every-workflow check off -> case I reads green          '
+          'exit=%d (want 0)' % ('.' if ok else 'X', code))
+    if not ok:
+        failures.append('L: with classify_every_workflow neutered case I did not '
+                        'flip to exit 0 (exit=%d) -- case I may be passing for the '
+                        'wrong reason' % code)
+
+
+# The REAL, unmodified v5.16.0 records (gh run view, 2026-09-24): test.yml's
+# tag-push run green, publish.yml's tag-push run red.
+SHA_V5160 = '894cdc1560f2ef3cbaa379f886c41bd60598a474'
+_RUN_V5160_PUBLISH = {
+    'workflowName': 'Publish EQdyna Docker image', 'conclusion': 'failure',
+    'createdAt': '2026-09-23T04:39:47Z', 'databaseId': 35819232914,
+    'headBranch': 'v5.16.0', 'headSha': SHA_V5160, 'status': 'completed'}
+_RUN_V5160_TEST = dict(_RUN_V5160_PUBLISH, workflowName='Automatic Testing of EQdyna',
+                       conclusion='success', databaseId=35819232915)
+
+
+def check_post_tag_every_workflow(failures):
+    """M: test_release_complete.py's post-tag half on v5.16.0's real
+    records raises; with publish green it passes."""
+    path = os.path.join(HERE, 'test_release_complete.py')
+    spec = importlib.util.spec_from_file_location('release_complete_under_test', path)
+    rc_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rc_mod)
+    wf = 'Automatic Testing of EQdyna'
+    outcomes = []
+    for runs in ([_RUN_V5160_TEST, _RUN_V5160_PUBLISH],
+                 [_RUN_V5160_TEST, dict(_RUN_V5160_PUBLISH, conclusion='success')]):
+        buf = io.StringIO()
+        with injected_ci(runs), contextlib.redirect_stdout(buf):
+            try:
+                rc_mod.check_every_workflow_for_tagged_sha('5.16.0', SHA_V5160, wf, None)
+                outcomes.append('pass' if 'PASS  every workflow' in buf.getvalue() else 'other')
+            except AssertionError as e:
+                outcomes.append('raise' if 'Publish EQdyna Docker image' in str(e) else 'other')
+    ok = outcomes == ['raise', 'pass']
+    print('  %s M  post-tag: v5.16.0 real runs raise, publish green passes   '
+          '%s' % ('.' if ok else 'X', outcomes))
+    if not ok:
+        failures.append('M: post-tag every-workflow outcomes %s, want [raise, pass]'
+                        % outcomes)
+
+
 def check_tag_filter_is_load_bearing(failures):
     """The v5.13.1 violation, reproduced: with the tag-run filter disabled the
     guard reads dfee14d as green off the run its own tag push created. This is
@@ -277,6 +378,8 @@ def main():
     seen_codes = check_injected_cases(failures)
     check_unverified_end_to_end(failures)
     check_tag_filter_is_load_bearing(failures)
+    check_every_workflow_cases(failures)
+    check_post_tag_every_workflow(failures)
 
     # Anti-vacuity: the six outcomes must be six DIFFERENT exit codes, and all
     # five documented codes must be reached (4 comes from the subprocess case).
@@ -295,7 +398,9 @@ def main():
         return 1
     print('\nPASS: 6 outcomes -> exit codes {0,1,2,3,4} (0 twice: plain and '
           'acked), the tag-run filter shown load-bearing, UNVERIFIED shown '
-          'end-to-end with no injection')
+          'end-to-end with no injection; item 78: a red/running second '
+          'workflow -> exit 1/2, its tag-push run not counted, the check '
+          'shown load-bearing')
     return 0
 
 

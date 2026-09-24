@@ -170,12 +170,15 @@ def commit_is_paths_ignore_only(sha, patterns=None):
 
 
 def _gh_run_list(workflow_name, limit=300):
+    """Runs of `workflow_name`, or of EVERY workflow when it is None
+    (item 78; `workflowName` is in the JSON so callers can group)."""
     if subprocess.run(['which', 'gh'], capture_output=True).returncode != 0:
         raise GhUnavailable('gh is not installed')
-    r = subprocess.run(
-        ['gh', 'run', 'list', '--workflow', workflow_name, '--limit', str(limit),
-         '--json', 'databaseId,headSha,conclusion,status,createdAt,headBranch'],
-        cwd=ROOT, capture_output=True, text=True)
+    cmd = ['gh', 'run', 'list', '--limit', str(limit), '--json',
+           'databaseId,headSha,conclusion,status,createdAt,headBranch,workflowName']
+    if workflow_name is not None:
+        cmd[3:3] = ['--workflow', workflow_name]
+    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
         raise GhUnavailable('gh run list failed (rc=%d): %s'
                             % (r.returncode, (r.stderr or '').strip()[:200]))
@@ -199,6 +202,50 @@ def find_ci_runs(sha, workflow_name=None, limit=300):
         workflow_name = parse_workflow_name()
     runs = _gh_run_list(workflow_name, limit=limit)
     return [r for r in runs if r.get('headSha') == sha]
+
+
+def find_all_workflow_runs(sha, limit=300):
+    """Runs of EVERY workflow (not only test.yml) whose headSha is `sha`."""
+    return [r for r in _gh_run_list(None, limit=limit) if r.get('headSha') == sha]
+
+
+def classify_every_workflow(runs, required_workflow, exclude_run_id=None):
+    """Item 78: "test.yml is green" is not "CI is green for this SHA" --
+    v5.16.0 passed rule 15a honestly while 'Publish EQdyna Docker image'
+    failed on the same SHA (run 35819232914) and no image was published.
+
+    `runs` is every workflow's runs for ONE sha. Groups them by workflowName
+    and classifies each group with classify_runs. Returns
+    (failed, pending, names): workflow names whose runs completed without
+    any success, names with no completed run yet, and every name seen.
+    Raises GhUnavailable when a run carries no workflowName, or when
+    `required_workflow` is absent from the listing although its own
+    per-workflow query found a run: the all-workflow listing's window is
+    shorter than the per-workflow one, and an incomplete listing must not
+    read as "no other workflow ran".
+    """
+    if exclude_run_id is not None:
+        runs = [r for r in runs if r.get('databaseId') != exclude_run_id]
+    groups = {}
+    for r in runs:
+        name = r.get('workflowName')
+        if not name:
+            raise GhUnavailable('run %s carries no workflowName -- cannot tell '
+                                'which workflow it belongs to' % r.get('databaseId'))
+        groups.setdefault(name, []).append(r)
+    if required_workflow is not None and required_workflow not in groups:
+        raise GhUnavailable('the all-workflow run listing holds no %r run for '
+                            'this sha although the per-workflow query did -- '
+                            'the listing window is too short to judge the '
+                            'other workflows' % required_workflow)
+    failed, pending = [], []
+    for name in sorted(groups):
+        status = classify_runs(groups[name])
+        if status == 'FAIL':
+            failed.append(name)
+        elif status == 'IN_PROGRESS':
+            pending.append(name)
+    return failed, pending, sorted(groups)
 
 
 _TAG_REF_CACHE = {}
@@ -313,10 +360,37 @@ def evaluate_pretag(sha, ack_paths_ignored_parent=False, max_hops=10):
                           'could not query CI runs for %s: %s' % (current, exc))
         status = classify_runs(runs)
         if status == 'PASS':
+            # Item 78: every OTHER workflow with a non-tag run at this sha
+            # must be green too. Tag-triggered runs stay excluded here for
+            # the same reason as above (they cannot exist before the tag);
+            # test_release_complete.py reads those after the tag.
+            try:
+                every = drop_tag_triggered_runs(find_all_workflow_runs(current))
+                failed, pending, names = classify_every_workflow(every, workflow_name)
+            except GhUnavailable as exc:
+                return Result(UNVERIFIED,
+                              'could not check every workflow for %s: %s'
+                              % (current, exc))
+            if failed:
+                return Result(
+                    FAIL,
+                    '%s is green for %s, but workflow(s) %s also ran for that '
+                    'sha and finished WITHOUT success -- every workflow '
+                    'triggered for the sha must be green (item 78)'
+                    % (workflow_name, current, ', '.join(repr(n) for n in failed)),
+                    evidence_sha=current, hops=hops)
+            if pending:
+                return Result(
+                    PENDING,
+                    '%s is green for %s, but workflow(s) %s for that sha have '
+                    'not completed yet -- wait' % (
+                        workflow_name, current, ', '.join(repr(n) for n in pending)),
+                    evidence_sha=current, hops=hops)
             return Result(
                 PASS,
-                'a completed, successful %s run exists for %s'
-                % (workflow_name, current) +
+                'a completed, successful %s run exists for %s, and every '
+                'workflow with a non-tag run at that sha is green (%d: %s)'
+                % (workflow_name, current, len(names), ', '.join(names)) +
                 ('' if not hops else ' (evidence for %s, reached by walking '
                                      'up %d paths-ignore-only commit(s): %s)'
                                      % (full_sha, len(hops),

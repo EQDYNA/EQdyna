@@ -36,11 +36,16 @@ the reader has to open the log to find out which):
 
   0  PASS            a completed, successful CI run exists for the SHA
                       being asked about (or, with --ack-paths-ignored-parent,
-                      for the nearest ancestor that could have one).
+                      for the nearest ancestor that could have one), AND
+                      every other workflow with a non-tag run at that SHA
+                      is green too (item 78, 2026-09-24: v5.16.0 had green
+                      test.yml runs and a red publish.yml run).
   1  FAIL             a completed CI run for the relevant SHA finished
-                      WITHOUT success -- CI ran and failed. Do not tag.
+                      WITHOUT success -- CI ran and failed -- in test.yml or
+                      in any other workflow that ran for it. Do not tag.
   2  PENDING          no completed run yet -- either none has started, or
-                      one is in progress. Wait; do not tag.
+                      one is in progress, in test.yml or any other
+                      workflow that ran for the SHA. Wait; do not tag.
   3  PATHS_IGNORED    this SHA touches only paths-ignore'd files and so can
                       never trigger its own CI run. Re-run with
                       --ack-paths-ignored-parent to accept the nearest
@@ -148,6 +153,16 @@ def default_full_runnable_count():
     return len(runnable)
 
 
+def default_runnable_cells():
+    """The runnable (case, backend) SET from this checkout's matrix.py
+    (item 106(2): the count alone let a sweep of the wrong 23 cells pass)."""
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    from testsys import matrix as _matrix
+    runnable, _declared_unsupported = _matrix.cells()
+    return set(runnable)
+
+
 def find_sweep_summaries(repo_root):
     """[(path, data_or_None, parse_error_or_None)] for every
     docs/evidence/sweep-*/summary.json under repo_root."""
@@ -168,7 +183,8 @@ def find_sweep_summaries(repo_root):
     return out
 
 
-def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count):
+def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count,
+                             runnable_cells=None):
     """Reasons this ONE summary.json fails to justify tagging `tag_sha`
     (empty list means it qualifies)."""
     reasons = []
@@ -197,6 +213,16 @@ def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count
                        % (path, len(cells), n_runnable))
     if n_success != n_runnable:
         reasons.append('%s: n_success=%r != n_runnable=%r' % (path, n_success, n_runnable))
+    # Item 106(2): the SET, not just the count -- a sweep that ran the wrong
+    # cells at the right total must not justify a tag.
+    want_set = (runnable_cells or default_runnable_cells)()
+    got_set = {(c.get('case'), c.get('backend')) for c in cells if isinstance(c, dict)}
+    if got_set != want_set:
+        missing = sorted('%s/%s' % cb for cb in want_set - got_set)
+        extra = sorted('%s/%s' % cb for cb in got_set - want_set)
+        reasons.append('%s: swept cell SET differs from the tagged tree\'s '
+                       'matrix.py runnable set -- missing %s, extra %s'
+                       % (path, missing or 'none', extra or 'none'))
     bad = [c for c in cells if not isinstance(c, dict) or c.get('verdict') != 'SUCCESS']
     if bad:
         names = ['%s/%s=%s' % (c.get('case'), c.get('backend'), c.get('verdict'))
@@ -222,7 +248,8 @@ def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count
     return reasons
 
 
-def evaluate_sweep_evidence(tag_sha, repo_root=None, full_runnable_count=None):
+def evaluate_sweep_evidence(tag_sha, repo_root=None, full_runnable_count=None,
+                            runnable_cells=None):
     """(ok, message). PASS iff some committed docs/evidence/sweep-*/summary.json
     justifies tagging `tag_sha`: term==matrix.GATE_TERM_S (the one term every
     cell runs at), tree_clean, every declared cell SUCCESS,
@@ -245,7 +272,7 @@ def evaluate_sweep_evidence(tag_sha, repo_root=None, full_runnable_count=None):
             all_reasons.append(err)
             continue
         reasons = evaluate_sweep_candidate(path, data, tag_sha, repo_root,
-                                           full_runnable_count)
+                                           full_runnable_count, runnable_cells)
         if not reasons:
             return True, ('%s: swept sha %s justifies tagging %s (n_runnable=%d, '
                          'all SUCCESS)' % (path, data['sha'], tag_sha, data['n_runnable']))
