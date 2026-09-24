@@ -135,8 +135,10 @@ OUT = os.path.join(TESTSYS, 'scaling_last.json')
 
 sys.path.insert(0, TESTSYS)
 sys.path.insert(0, REPO_ROOT)
+sys.path.insert(0, os.path.dirname(TESTSYS))  # testsys/ itself, for profile_record
 import run_numa_scaling as numa  # noqa: E402  (numa_topology, cpu_busy_fractions, require_idle)
 import perflib                   # noqa: E402  (acquire_case_lock, rebuild_serial_case)
+import profile_record            # noqa: E402  (append-only per-rank profile totals)
 
 # What a second concurrent invocation costs, printed by the refusal (item 77).
 LOCK_CONSEQUENCE = [
@@ -388,6 +390,21 @@ def run_fortran(work, n, policy, cpus, node_map, term, nsteps):
     t0 = time.time()
     r = sh(fortran_cmd(n, cpus, node_map, binary), cwd=d)
     wall = time.time() - t0
+    # Profile-guard/collection wiring (item 3, testsys half, 2026-09-23):
+    # captured HERE, before the rmtree two lines down destroys `d` -- this is
+    # the only point in the fortran path where the run's own
+    # profile.rank<r>.json files still exist on disk. Degraded to a WARNING,
+    # never allowed to turn a scaling measurement red: this tool's verdict is
+    # the ms/step figure, not profile coverage (unlike run_e2e's per-cell
+    # hook, which deliberately CAN fail a cell -- see its own comment).
+    try:
+        _sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
+        profile_record.capture_run(d, case=CASE, backend='fortran', ranks=n,
+                                   term='perf-scaling-probe', sha=_sha)
+    except Exception as exc:                        # noqa: BLE001
+        print('WARNING: profile-record capture failed for fortran n=%d (%s: '
+             '%s) -- the scaling measurement above is unaffected.'
+             % (n, type(exc).__name__, exc))
     shutil.rmtree(d, ignore_errors=True)
     return wall, r.stdout
 
@@ -490,6 +507,22 @@ def per_step_py(case_dir, cpus, node_map, backend, n_lo, n_hi):
     t_hi = time_one_py(case_dir, n_hi, cpus, node_map, backend)
     if t_lo is None or t_hi is None:
         return None, None, None, None
+    # Profile-guard/collection wiring (item 3, testsys half, 2026-09-23):
+    # `case_dir` is REUSED across calls (build_py_case, never rmtree'd
+    # between them), so the profile.rank0.json resident right after the
+    # n_hi call above is that run's own -- captured here, right after the
+    # LARGER run, same convention as run_perf.py's single-nsteps capture.
+    # Warn-only: this tool's verdict is the ms/step figure, not profile
+    # coverage.
+    try:
+        _sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
+        profile_record.capture_run(case_dir, case=CASE,
+                                   backend='python-%s' % backend, ranks=1,
+                                   term='perf-scaling-probe', sha=_sha)
+    except Exception as exc:                        # noqa: BLE001
+        print('WARNING: profile-record capture failed for python-%s (%s: '
+             '%s) -- the scaling measurement above is unaffected.'
+             % (backend, type(exc).__name__, exc))
     ps, fixed = numa.per_step_and_fixed(t_lo, t_hi, n_lo, n_hi)
     return ps, fixed, t_lo, t_hi
 

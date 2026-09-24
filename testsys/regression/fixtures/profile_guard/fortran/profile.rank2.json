@@ -1,0 +1,23 @@
+{
+"schema": "eqdyna-profile/1",
+"backend": "fortran",
+"rank": 2,
+"nranks": 4,
+"host": "cotopaxi",
+"pid": 2052325,
+"cpus_allowed": [16,17,18,19,20,21,22,23],
+"numa_nodes": [2],
+"nsteps": 114,
+"sampling_every": 1,
+"buckets_s": {
+"setup": 0.103582411,
+"element": 8.130110101,
+"fault": 0.032553305,
+"exchange": 0.075327443,
+"wait": 0.289011123,
+"io": 0.034841451
+},
+"loop_s": 8.568714928,
+"total_s": 8.707177500,
+"unaccounted_s": 0.041751666
+}
