@@ -38,22 +38,25 @@ def region_damp(x, y, z, PMLb, nPML, vmaxPML, R):
 
     d1 = np.zeros(n); d2 = np.zeros(n)
     taken = np.zeros(n, dtype=bool)
+    yMid = (y > ymin0) & (y < ymax0)
+    xMid = (x > xmin0) & (x < xmax0)
+    # ONE first-match-wins cascade, in pmlRegionDistance's own branch order:
+    # the four corner regions first, then the four edge regions. Each entry
+    # sets BOTH d1 and d2, so the edge rows carry an explicit 0.0 for the
+    # component their region does not damp -- exactly what the four
+    # copy-pasted edge blocks this replaces wrote out one line at a time.
     for cond, a, b in [
         (xHi & yHi, np.abs(x - xmax0), np.abs(y - ymax0)),          # region 11
         (xHi & yLo, np.abs(x - xmax0), np.abs(y - ymin0)),          # region 12
         (xLo & yLo, np.abs(x - xmin0), np.abs(y - ymin0)),          # region 13
         (xLo & yHi, np.abs(x - xmin0), np.abs(y - ymax0)),          # region 14 (fixed)
+        (xHi & yMid, np.abs(x - xmax0), 0.0),                       # region 1_12
+        (yLo & xMid, 0.0, np.abs(y - ymin0)),                       # region 1_23
+        (xLo & yMid, np.abs(x - xmin0), 0.0),                       # region 1_34
+        (yHi & xMid, 0.0, np.abs(y - ymax0)),                       # region 1_41
     ]:
         sel = cond & ~taken
         d1 = np.where(sel, a, d1); d2 = np.where(sel, b, d2); taken |= sel
-    sel = ~taken & xHi & (y > ymin0) & (y < ymax0)                  # region 1_12
-    d1 = np.where(sel, np.abs(x - xmax0), d1); d2 = np.where(sel, 0.0, d2); taken |= sel
-    sel = ~taken & yLo & (x > xmin0) & (x < xmax0)                  # region 1_23
-    d1 = np.where(sel, 0.0, d1); d2 = np.where(sel, np.abs(y - ymin0), d2); taken |= sel
-    sel = ~taken & xLo & (y > ymin0) & (y < ymax0)                  # region 1_34
-    d1 = np.where(sel, np.abs(x - xmin0), d1); d2 = np.where(sel, 0.0, d2); taken |= sel
-    sel = ~taken & yHi & (x > xmin0) & (x < xmax0)                  # region 1_41
-    d1 = np.where(sel, 0.0, d1); d2 = np.where(sel, np.abs(y - ymax0), d2); taken |= sel
     # else (middle area 9): d1=d2=0, already the default.
 
     out = []

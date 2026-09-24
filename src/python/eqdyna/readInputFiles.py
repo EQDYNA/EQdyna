@@ -29,12 +29,14 @@ import numpy as np
 
 
 def _read_records(path):
-    """Yield each non-blank, non-comment-only line's whitespace-split tokens,
-    in file order -- mirrors Fortran list-directed READ's own skip-blank-
-    lines behavior (`read(unit,*)` with an empty format skips nothing itself,
-    but every blank-line placeholder in these files is read by its own bare
-    `read(1001,*)` in the Fortran, so line-for-line correspondence is exact,
-    not a `skip blanks` heuristic)."""
+    """Yield every line of `path`, unfiltered, in file order.
+
+    NOTHING IS SKIPPED, and that is the contract: each blank-line placeholder
+    in these files is consumed by its own bare `read(1001,*)` in the Fortran,
+    so the readers below advance line for line against readglobal and count
+    the blanks explicitly (`next(it)  # blank`). Dropping blank or comment
+    lines here -- which this docstring used to claim was happening -- would
+    silently shift every field after the first placeholder."""
     with open(path) as f:
         for line in f:
             yield line
@@ -202,13 +204,6 @@ def read_bstations(path):
         vals = [float(v) for v in next(it).split()]
         x4nds[:, i] = vals[:3]
     return xonfs * 1000.0, x4nds * 1000.0
-
-
-def _fortran_nint(x):
-    """Fortran's nint(): round-half-away-from-zero (not Python round()'s or
-    np.round()'s round-half-to-even). Shared verbatim formula, same as
-    read_on_fault_vars's local helper above."""
-    return int(np.sign(x) * np.floor(np.abs(x) + 0.5)) if x != 0 else 0
 
 
 def read_fault_rough_geometry(path):
