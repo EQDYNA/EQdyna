@@ -36,11 +36,16 @@ the reader has to open the log to find out which):
 
   0  PASS            a completed, successful CI run exists for the SHA
                       being asked about (or, with --ack-paths-ignored-parent,
-                      for the nearest ancestor that could have one).
+                      for the nearest ancestor that could have one), AND
+                      every other workflow with a non-tag run at that SHA
+                      is green too (item 78, 2026-09-24: v5.16.0 had green
+                      test.yml runs and a red publish.yml run).
   1  FAIL             a completed CI run for the relevant SHA finished
-                      WITHOUT success -- CI ran and failed. Do not tag.
+                      WITHOUT success -- CI ran and failed -- in test.yml or
+                      in any other workflow that ran for it. Do not tag.
   2  PENDING          no completed run yet -- either none has started, or
-                      one is in progress. Wait; do not tag.
+                      one is in progress, in test.yml or any other
+                      workflow that ran for the SHA. Wait; do not tag.
   3  PATHS_IGNORED    this SHA touches only paths-ignore'd files and so can
                       never trigger its own CI run. Re-run with
                       --ack-paths-ignored-parent to accept the nearest
