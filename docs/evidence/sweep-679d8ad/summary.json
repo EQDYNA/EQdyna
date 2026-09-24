@@ -1,0 +1,228 @@
+{
+  "sha": "679d8add85f698229a415a3d6e3cb2984b5a40e4",
+  "tree_clean": false,
+  "term": 5.0,
+  "n_runnable": 31,
+  "n_success": 31,
+  "cells": [
+    {
+      "case": "test.drv.a6",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": null,
+      "wall_s": 107.54493379592896
+    },
+    {
+      "case": "test.drv.a6",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": null,
+      "wall_s": 1518.5296025276184
+    },
+    {
+      "case": "test.drv.a6",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": null,
+      "wall_s": 373.5078036785126
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 3.05176e-11,
+      "wall_s": 18.37336254119873
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": 3.861189e-10,
+      "wall_s": 372.73985028266907
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 1.983643e-10,
+      "wall_s": 67.34005331993103
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "python-jax-mpi",
+      "verdict": "SUCCESS",
+      "max_diff": 1.220703e-10,
+      "wall_s": 43.46380567550659
+    },
+    {
+      "case": "test.tpv10",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 2.87823e-08,
+      "wall_s": 49.62587785720825
+    },
+    {
+      "case": "test.tpv10",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": 2.8644e-08,
+      "wall_s": 798.6405298709869
+    },
+    {
+      "case": "test.tpv10",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 3.03525e-08,
+      "wall_s": 181.20330810546875
+    },
+    {
+      "case": "test.tpv104",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 42.283488273620605
+    },
+    {
+      "case": "test.tpv104",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": 4.152048e-07,
+      "wall_s": 820.9696316719055
+    },
+    {
+      "case": "test.tpv104",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 4.9819e-07,
+      "wall_s": 87.00633311271667
+    },
+    {
+      "case": "test.tpv1053d",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 53.969382762908936
+    },
+    {
+      "case": "test.tpv1053d",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": 4.569608e-06,
+      "wall_s": 850.401186466217
+    },
+    {
+      "case": "test.tpv1053d",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 1.360451e-06,
+      "wall_s": 94.40359830856323
+    },
+    {
+      "case": "test.meng2023a",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 58.377121686935425
+    },
+    {
+      "case": "test.meng2023a",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": 4.628301e-09,
+      "wall_s": 626.1024954319
+    },
+    {
+      "case": "test.meng2023a",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 2.735853e-09,
+      "wall_s": 172.32162237167358
+    },
+    {
+      "case": "test.meng2023cb",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 57.71977162361145
+    },
+    {
+      "case": "test.meng2023cb",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": 5.054473e-09,
+      "wall_s": 821.9199275970459
+    },
+    {
+      "case": "test.meng2023cb",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 4.631281e-09,
+      "wall_s": 123.01810765266418
+    },
+    {
+      "case": "test.tpv29",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 49.537718057632446
+    },
+    {
+      "case": "test.tpv29",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": 1.197572e-14,
+      "wall_s": 774.0631377696991
+    },
+    {
+      "case": "test.tpv29",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 1.792826e-14,
+      "wall_s": 185.9785053730011
+    },
+    {
+      "case": "test.tpv36",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 186.40420842170715
+    },
+    {
+      "case": "test.tpv36",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": 3.713213e-09,
+      "wall_s": 1561.5629978179932
+    },
+    {
+      "case": "test.tpv36",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 3.999404e-09,
+      "wall_s": 336.90093445777893
+    },
+    {
+      "case": "test.tpv37",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 187.51772713661194
+    },
+    {
+      "case": "test.tpv37",
+      "backend": "python-numpy",
+      "verdict": "SUCCESS",
+      "max_diff": 3.713213e-09,
+      "wall_s": 2197.8404483795166
+    },
+    {
+      "case": "test.tpv37",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 4.066276e-09,
+      "wall_s": 363.029757976532
+    }
+  ],
+  "started_utc": "2026-09-23T23:58:27.933255+00:00",
+  "finished_utc": "2026-09-24T00:35:07.806241+00:00"
+}
