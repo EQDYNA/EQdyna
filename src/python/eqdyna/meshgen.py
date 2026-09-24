@@ -62,12 +62,19 @@ unverified deliverable this discipline forbids. See the module's TODO
 list at the bottom for what a follow-up milestone needs next, in
 dependency order.
 
-Serial-only simplification used throughout: `getLocalOneDimCoorArrAndSize`'s
-MPI-partition slicing (numOfMPIXyz>1 branch) is never exercised at
-npx=npy=npz=1 -- the "local" 1D coordinate array IS the global one. This
-is not a shortcut that changes results for npx=npy=npz=1; it is the same
-code path the Fortran takes for MPIXyzId=0, numOfMPIXyz=1
-(`residualNumOfNodes=0`, `localOneDimCoorArrSize=globalOneDimCoorArrSize`).
+RANK-LOCAL MESHES (python-jax-mpi, pathway item 64). Every builder below is
+a function of `(xline, yline, zline)` exactly as the Fortran loop nest is a
+function of its local lines, so a rank builds ITS OWN box by being handed its
+local slices: `partition_1d`/`local_line` port getLocalOneDimCoorArrAndSize's
+split (meshgen.f90:543-550, :588-596) and SLICE the globally accumulated line,
+never re-accumulate it (restarting the geometric stretch rank-locally moves
+coordinates by 1e-8..1e-7 m). What must NOT come from the local lines is the
+MODEL boundary: Fortran overwrites xmin/.../zmax with the GLOBAL
+modelBoundCoor (meshgen.f90:32-37), so the builders that test "is this node on
+the model boundary" take `model_bound` explicitly; left None (the serial
+path) it is read from the lines' own ends, which ARE the global line there --
+the serial path's arithmetic is unchanged. `fault_boundary_lists` and
+`mpi4arn` port createMasterNode's fltgm bookkeeping and MPI4arn.
 """
 import numpy as np
 
@@ -169,6 +176,202 @@ def build_grid_lines(params):
         p['zmin'], p['zmax'], p['rat'], p['nPML'])
     pmlb = dict(**pmlx, **pmly, **pmlz)
     return xline, yline, zline, pmlb, (xbound, ybound, zbound)
+
+
+# ---------------------------------------------------------------------------
+# Rank-local decomposition: Fortran's own arithmetic, verbatim (rule 23).
+# ---------------------------------------------------------------------------
+def calc_xyz_mpi_id(me, npx, npy, npz):
+    """meshgen.f90's calcXyzMPIId, verbatim: z fastest, then y, then x.
+    Python rank r must hold the same subdomain Fortran rank r holds, or every
+    per-rank number compares the wrong pair."""
+    mex = me // (npy * npz)
+    mey = (me - mex * npy * npz) // npz
+    mez = me - mex * npy * npz - mey * npz
+    return mex, mey, mez
+
+
+def partition_1d(global_size, num_mpi, mpi_id):
+    """getLocalOneDimCoorArrAndSize's split of one global 1D line, verbatim:
+    local SIZE from meshgen.f90:543-550 (`<`), local OFFSET from :588-596
+    (`<=`) -- two genuinely different comparisons in the Fortran, reproduced,
+    not tidied. Returns (local_size, offset), offset 0-based into the global
+    line.
+
+    Neighbouring ranks OVERLAP by exactly one node plane (stride per-1, size
+    per): node planes are shared, elements are not, because each rank makes
+    elements only for its local ix,iy,iz >= 2 (meshgen.f90:86). That overlap
+    is what MPI4NodalQuant and MPI4arn sum across. Checked here rather than
+    trusted: a gap or a double overlap would be a partition defect, and it
+    raises before any mesh is built."""
+    if num_mpi < 1 or not 0 <= mpi_id < num_mpi:
+        raise ValueError('partition_1d: mpi_id %r out of range for %r ranks'
+                         % (mpi_id, num_mpi))
+    per = (global_size + num_mpi - 1) // num_mpi
+    resid = (global_size + num_mpi - 1) - per * num_mpi
+    size = per if mpi_id < (num_mpi - resid) else per + 1
+    if mpi_id <= (num_mpi - resid):
+        off = (per - 1) * mpi_id
+    else:
+        off = (per - 1) * mpi_id + (mpi_id - num_mpi + resid)
+    return size, off
+
+
+def check_partition_1d(global_size, num_mpi):
+    """Every rank's (size, offset) for one dimension, with the invariant the
+    halo rests on ASSERTED: consecutive ranks share exactly one node plane,
+    the first starts at 0, the last ends at global_size, and no rank is
+    thinner than 2 nodes (a 1-node slab owns no element and would sit on both
+    of its own faces, which fltgm's mod-10 coding cannot express). Raises
+    naming the numbers rather than building a mesh on a broken split."""
+    parts = [partition_1d(global_size, num_mpi, m) for m in range(num_mpi)]
+    bad = []
+    if parts[0][1] != 0:
+        bad.append('rank 0 starts at %d' % parts[0][1])
+    if parts[-1][1] + parts[-1][0] != global_size:
+        bad.append('last rank ends at %d' % (parts[-1][1] + parts[-1][0]))
+    for m in range(num_mpi - 1):
+        if parts[m + 1][1] != parts[m][1] + parts[m][0] - 1:
+            bad.append('ranks %d/%d do not share exactly one plane' % (m, m + 1))
+    for m, (n, _o) in enumerate(parts):
+        if n < 2:
+            bad.append('rank %d holds %d node(s)' % (m, n))
+    if bad:
+        raise ValueError('partition_1d(%d nodes, %d ranks): %s -- %r'
+                         % (global_size, num_mpi, '; '.join(bad), parts))
+    return parts
+
+
+def local_line(line, num_mpi, mpi_id):
+    """This rank's slice of a GLOBAL grid line (meshgen.f90:588-596's copy
+    out of globalOneDimCoorArr). A slice, never a re-accumulation: the
+    returned doubles are the global line's own, bit for bit. Returns
+    (local_line, offset)."""
+    check_partition_1d(len(line), num_mpi)
+    n, off = partition_1d(len(line), num_mpi, mpi_id)
+    return np.array(line[off:off + n]), off
+
+
+def fault_boundary_lists(nsmp, nx, ny, nz):
+    """createMasterNode's fltgm bookkeeping (meshgen.f90:877-900) and
+    MPI4arn's fltl..fltu fill (:271-300), for ONE fault (ntotft==1).
+
+    fltgm codes which LOCAL faces a split node sits on (+1 ix==1, +2 ix==nx,
+    +10 iy==1, +20 iy==ny, +100 iz==1, +200 iz==nz) and the six lists are
+    decoded from it with the Fortran's own mod arithmetic. Returns a list of
+    six int64 arrays, k = 0..5 for Fortran's k = 1..6 (x-, x+, y-, y+, z-,
+    z+), each the ascending 1-based local fault-node indices on that face.
+    `nsmp` is the (nftnd, 2) 1-based [slave, master] table in fault-encounter
+    order, so row j IS local fault node j+1."""
+    s = np.asarray(nsmp[:, 0], dtype=np.int64) - 1
+    ix = s // (nz * ny)
+    iz = (s % (nz * ny)) // ny
+    iy = s % ny
+    fltgm = ((ix == 0) * 1 + (ix == nx - 1) * 2 + (iy == 0) * 10 + (iy == ny - 1) * 20
+             + (iz == 0) * 100 + (iz == nz - 1) * 200).astype(np.int64)
+    masks = (fltgm % 10 == 1, fltgm % 10 == 2,
+             fltgm % 100 - fltgm % 10 == 10, fltgm % 100 - fltgm % 10 == 20,
+             fltgm - fltgm % 100 == 100, fltgm - fltgm % 100 == 200)
+    return [np.nonzero(m)[0].astype(np.int64) + 1 for m in masks]
+
+
+def mpi4arn(comm, part, arn, flt_lists, params):
+    """MPI4arn + syncArnBoundary (meshgen.f90:212-433), for ONE fault.
+
+    Walks x (left, right), y (front, back), z (down, up) in the Fortran's
+    order; on every face that is interior to the model AND carries fault
+    nodes on THIS rank, Sendrecv's the arn of those nodes with the face
+    neighbour and adds the neighbour's values back ONLY when the fault has
+    non-zero nominal extent (fltxyz, i.e. params f*min/f*max) along that
+    dimension -- the DIVIDE path. Along a degenerate dimension (a vertical or
+    inserted fault's y) both ranks already hold the complete tributary area,
+    the neighbour's value is a duplicate, and nothing is added -- but the
+    exchange still happens and fltMPI(k) is still set, because
+    MPI4NodalQuant's addFaultBoundaryTerm keys on fltMPI (see the long FIX
+    comment at meshgen.f90:291-315 for why skipping the call was reverted).
+    Evidence for both branches: testsys/regression/test_fault_mpi_boundary_arn.py
+    (DUPLICATE) and test_dipping_fault_y_split.py (DIVIDE), on the Fortran.
+
+    `arn` is the 1-indexed (nftnd+1,) array, updated IN PLACE. Returns
+    fltMPI, six bools. Tags are syncArnBoundary's (tagBase+me /
+    tagBase+neighbour, tagBase 1000/2000/3000)."""
+    p = params
+    fext = ((p['fxmin'], p['fxmax']), (p['fymin'], p['fymax']),
+            (p['fzmin'], p['fzmax']))
+    flt_mpi = [False] * 6
+    for d in range(3):
+        if part.dims[d] <= 1:
+            continue
+        for ib in (0, 1):
+            k = 2 * d + ib
+            if part.at_model_edge(d, ib):
+                continue
+            idx = flt_lists[k]
+            if idx.size == 0:
+                continue
+            flt_mpi[k] = True
+            nb = part.neighbour(d, ib)
+            tag = (1000, 2000, 3000)[d]
+            send = np.ascontiguousarray(arn[idx])
+            recv = np.empty_like(send)
+            comm.Sendrecv(send, dest=nb, sendtag=tag + part.rank, recvbuf=recv,
+                          source=nb, recvtag=tag + nb)
+            if fext[d][1] != fext[d][0]:
+                arn[idx] += recv
+    return flt_mpi
+
+
+def fault_census(xline, yline, zline, params):
+    """(count, key_sum) over EVERY fault node of the GLOBAL grid, key =
+    0-based global regular-grid index ix*nz*ny + iz*ny + iy. Streams one
+    x-plane at a time -- O(ny*nz) memory, never the (nx,nz,ny) mask -- so a
+    rank-local run can check, with two integers, that the ranks' OWNED fault
+    nodes are exactly the global set (a count alone would pass a node owned
+    twice plus one owned never). Same predicate, elementwise, as
+    on_fault_grid_mask."""
+    p = params
+    X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
+    ny, nz = Y.shape[0], Z.shape[0]
+    dx = p['dx'] if p['C_degen'] > 3.0 else None
+    count, key_sum = 0, 0
+    for ix in range(X.shape[0]):
+        m = _check_is_on_fault_vec(X[ix], Y[None, :], Z[:, None], p['fxmin'],
+                                   p['fxmax'], p['fymin'], p['fymax'],
+                                   p['fzmin'], p['fzmax'], p['tol'],
+                                   p['C_degen'], dx)
+        flat = np.nonzero(np.broadcast_to(m, (nz, ny)).ravel())[0]
+        count += int(flat.size)
+        key_sum += int(flat.sum()) + int(flat.size) * ix * nz * ny
+    return count, key_sum
+
+
+def equation_census(xline, yline, zline, params, pmlb, model_bound):
+    """totalNumOfEquations of the GLOBAL mesh, streamed one x-plane at a time
+    (countMeshEntities.f90's per-node count: 0 if on the fixed model
+    boundary else numOfDof, plus 3 per master node) -- the number a
+    rank-local run's OWNED equations must sum to. It is what catches a
+    boundary test that used a local line's end instead of the model's."""
+    p = params
+    X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
+    tol = p['tol']
+    (xmin, xmax), (ymin, ymax), (zmin, _zmax) = model_bound
+    fy = (np.abs(Y - ymin) < tol) | (np.abs(Y - ymax) < tol)
+    fz = np.abs(Z - zmin) < tol
+    py = (Y > pmlb['ymax0']) | (Y < pmlb['ymin0'])
+    pz = Z < pmlb['zmin0']
+    dx = p['dx'] if p['C_degen'] > 3.0 else None
+    total = 0
+    for ix in range(X.shape[0]):
+        x = X[ix]
+        fx = (abs(x - xmin) < tol) or (abs(x - xmax) < tol)
+        px = (x > pmlb['xmax0']) or (x < pmlb['xmin0'])
+        fixed = fx | fz[:, None] | fy[None, :]
+        ndpn = np.where(px | pz[:, None] | py[None, :], 12, 3)
+        m = _check_is_on_fault_vec(x, Y[None, :], Z[:, None], p['fxmin'],
+                                   p['fxmax'], p['fymin'], p['fymax'],
+                                   p['fzmin'], p['fzmax'], tol, p['C_degen'], dx)
+        total += int(np.where(fixed, 0, ndpn).sum()) + 3 * int(np.broadcast_to(m, fixed.shape).sum())
+    return total
 
 
 def _dip_plane_distance(y, z, c_degen):
@@ -320,7 +523,7 @@ def insert_fault_interface(x, y, z, rough, dx, dz, ymin, ymax, tol):
     return ycoort, pfx, pfz
 
 
-def build_node_coordinates(xline, yline, zline, params):
+def build_node_coordinates(xline, yline, zline, params, model_bound=None):
     """Port of countMeshEntities/meshgen's node-creation loop (do ix; do iz;
     do iy) for a SINGLE planar fault (ntotft==1, C_degen==0). Returns
     meshCoor (N,3) in Fortran 1-indexed node-id order (row 0 unused,
@@ -346,6 +549,10 @@ def build_node_coordinates(xline, yline, zline, params):
     tol = p['tol']
     rough = p.get('rough')
     insert_fault_type = p.get('insertFaultType', 0)
+    # insertFaultInterface blends against the MODEL's ymin/ymax (the global
+    # modelBoundCoor, meshgen.f90:34-35), never a rank's local line ends.
+    ymin_m, ymax_m = ((yline[0], yline[-1]) if model_bound is None
+                      else model_bound[1])
 
     if insert_fault_type == 0:
         # PERFORMANCE: insertFaultType==0 means y_store IS ycoor for every
@@ -392,7 +599,7 @@ def build_node_coordinates(xline, yline, zline, params):
                     # input bounds) -- same trap M3's build_equation_numbers
                     # docstring already flags for xmin/xmax/zmin.
                     y_store, _, _ = insert_fault_interface(
-                        xcoor, ycoor, zcoor, rough, p['dx'], p['dz'], yline[0], yline[-1], tol)
+                        xcoor, ycoor, zcoor, rough, p['dx'], p['dz'], ymin_m, ymax_m, tol)
                 regular.append((xcoor, y_store, zcoor))
                 slave_id = len(regular)  # 1-indexed nodeCount at this point
                 if is_fault:
@@ -895,7 +1102,7 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
     return conn, elem_type, mat, depth
 
 
-def build_equation_numbers(xline, yline, zline, params, pmlb):
+def build_equation_numbers(xline, yline, zline, params, pmlb, model_bound=None):
     """Milestone 3: port of meshgen.f90's setNumDof + setEquationNumber +
     the equation-number half of createMasterNode, single planar fault
     (ntotft==1), serial (npx=npy=npz=1).
@@ -951,10 +1158,16 @@ def build_equation_numbers(xline, yline, zline, params, pmlb):
     # or exceeds the requested bound, so the two differ by design). Using
     # the input params here (an earlier version of this function did) undercounts
     # fixed-boundary nodes and silently inflates totalNumOfEquations.
+    # A RANK-LOCAL build passes `model_bound` (the GLOBAL modelBoundCoor,
+    # countMeshEntities.f90:34-35): a local line's own ends would mark every
+    # subdomain face fixed and weld the model shut.
     X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
-    xmin, xmax = X[0], X[-1]
-    ymin, ymax = Y[0], Y[-1]
-    zmin = Z[0]
+    if model_bound is None:
+        xmin, xmax = X[0], X[-1]
+        ymin, ymax = Y[0], Y[-1]
+        zmin = Z[0]
+    else:
+        (xmin, xmax), (ymin, ymax), (zmin, _zmax) = model_bound
     xmax0, xmin0 = pmlb['xmax0'], pmlb['xmin0']
     ymax0, ymin0 = pmlb['ymax0'], pmlb['ymin0']
     zmin0 = pmlb['zmin0']
@@ -1024,7 +1237,7 @@ def build_equation_numbers(xline, yline, zline, params, pmlb):
     return num_dof, eq_start, eq_nums, eq_count
 
 
-def _build_equation_numbers_scalar(xline, yline, zline, params, pmlb):
+def _build_equation_numbers_scalar(xline, yline, zline, params, pmlb, model_bound=None):
     """The original verbatim scalar port of setNumDof/setEquationNumber/
     createMasterNode's equation-number half, kept as the bit-for-bit ORACLE
     for `build_equation_numbers`' vectorization. Not used on any production
@@ -1034,9 +1247,12 @@ def _build_equation_numbers_scalar(xline, yline, zline, params, pmlb):
     p = params
     nx, ny, nz = len(xline), len(yline), len(zline)
     tol = p['tol']
-    xmin, xmax = xline[0], xline[-1]
-    ymin, ymax = yline[0], yline[-1]
-    zmin = zline[0]
+    if model_bound is None:
+        xmin, xmax = xline[0], xline[-1]
+        ymin, ymax = yline[0], yline[-1]
+        zmin = zline[0]
+    else:
+        (xmin, xmax), (ymin, ymax), (zmin, _zmax) = model_bound
     xmax0, xmin0 = pmlb['xmax0'], pmlb['xmin0']
     ymax0, ymin0 = pmlb['ymax0'], pmlb['ymin0']
     zmin0 = pmlb['zmin0']
@@ -1137,7 +1353,7 @@ def pack_eq_ids(num_dof, eq_nums, n_nodes, ncols=12):
     return nd, eq_ids
 
 
-def build_fault_geometry(xline, yline, zline, params, nsmp):
+def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
     """Milestone 4 (+ Milestone 9's insertFaultType>0 extension): port of
     meshgen.f90's split-node unit-vector assignment (`createMasterNode`'s
     un/us/ud writes) and the on-fault quadrilateral-area accumulation onto
@@ -1192,6 +1408,9 @@ def build_fault_geometry(xline, yline, zline, params, nsmp):
     rough = p.get('rough')
     insert_fault_type = p.get('insertFaultType', 0)
 
+    ymin_m, ymax_m = ((yline[0], yline[-1]) if model_bound is None
+                      else model_bound[1])
+
     fstrike = p['fstrike'] * np.pi / 180.0
     fdip = (p['C_degen'] * np.pi / 180.0) if p['C_degen'] > 3.0 else (90.0 * np.pi / 180.0)
 
@@ -1244,7 +1463,7 @@ def build_fault_geometry(xline, yline, zline, params, nsmp):
             # traversal order is independently re-walked in every M-builder).
             y_geo, pfx, pfz = insert_fault_interface(
                 xcoor, ycoor, zcoor, rough, p['dx'], p['dz'],
-                yline[0], yline[-1], tol)
+                ymin_m, ymax_m, tol)
             denom = (pfx ** 2 + 1.0 + pfz ** 2) ** 0.5
             un[seq] = (-pfx / denom, 1.0 / denom, -pfz / denom)
             us_denom = (1.0 + pfx ** 2) ** 0.5
@@ -1252,6 +1471,10 @@ def build_fault_geometry(xline, yline, zline, params, nsmp):
             ud[seq] = np.cross(us[seq], un[seq])
         grid[(ifs, ifd)] = (seq, (xcoor, y_geo, zcoor))
     assert seq == nftnd, (seq, nftnd)
+    if nftnd == 0:
+        # meshgen.f90:115 `if(nftnd0(ift)>0)`: a rank whose box never meets
+        # the fault has no quad grid and no area to accumulate.
+        return un, us, ud, np.zeros(1)
     ns = max(k[0] for k in grid)
     nd = max(k[1] for k in grid)
     if len(grid) != ns * nd:

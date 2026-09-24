@@ -351,7 +351,7 @@ def run(S, nsteps=None, verbose=True, xp=np):
                 force=np.asarray(force), fault_s=fault_s)
 
 
-def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
+def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
     """The whole solve, ONE PROCESS PER RANK -- Fortran's decomposition, with
     jax owning only the local element kernel.
 
@@ -363,26 +363,20 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
 
         part_a (jit)   velDispUpdate, zero force, both element kernels
                        + gather this rank's halo equations, on device
-        MPI            Sendrecv the halo values with each neighbour
-        part_b (jit)   add the received partials, faulting, mass divide
+        MPI            MPI4NodalQuant's x/y/z relay over the halo values
+        part_b (jit)   write back the completed halo values, faulting,
+                       mass divide
 
     The two jits are built ONCE, before the loop -- a jax.jit constructed
     inside the loop recompiles every call. The halo gather is an extra OUTPUT
-    of part_a and the received delta an extra ARGUMENT of part_b, so the only
-    host traffic per step is the halo itself (O(boundary)), and the 30.5 MB
-    force array is never copied to the host or re-scattered eagerly.
+    of part_a and the completed values an extra ARGUMENT of part_b, so the
+    only host traffic per step is the halo itself (O(boundary)).
 
-    Every rank builds the full serial mesh and then restricts it
-    (MPI4NodalQuant.decompose), so every index array comes from the gated
-    serial path -- but the restricted indices are then RENUMBERED into this
-    rank's own node and equation sets, and the carry is allocated at that
-    local extent. That is the difference between splitting the work and
-    splitting the problem: with a global-extent carry (v1+velArr+dispArr+
-    force = 97.75 MB on test.tpv104, byte-identical at 1 rank and at 32) the
-    step was memory-system-bound from 4 ranks up and plateaued at 5.28x on 32
-    while Fortran reached 37.33x by shrinking its working set into cache. See
-    MPI4NodalQuant's renumbering block for the measurement and for why the
-    remap is expected BIT-IDENTICAL, not merely within the case bound.
+    `S` is THIS RANK'S BOX, built rank-locally (eqdyna3d.build_solver_state
+    with a Partition) and completed by MPI4NodalQuant.setup_exchange, which
+    also produced `plan` (the exchange faces, the halo equations, the fault
+    rows this rank writes). Every array here is already at local extent;
+    there is no global mesh, no restriction and no relabelling left to do.
 
     Returns the same dict `run` returns, plus the fault-row selectors the
     caller needs to write this rank's `frt.txt<rank>`, plus `report` -- the
@@ -413,6 +407,10 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     t_setup0 = time.perf_counter() if profile_on else 0.0
 
     rank = comm.Get_rank(); nranks = comm.Get_size()
+    if (rank, nranks) != (part.rank, part.nranks):
+        raise RuntimeError('driver.run_mpi: communicator is rank %d/%d but the '
+                           'mesh was built for rank %d/%d'
+                           % (rank, nranks, part.rank, part.nranks))
     if not B.is_jax(xp):
         raise RuntimeError('driver.run_mpi: the MPI path exists for the jax '
                            'backend only (numpy is explicitly out of scope); '
@@ -422,86 +420,46 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     if sync == 'allreduce':
         # NO FALLBACK to halo. See MQ.sync_mode: the allreduce sync reduced
         # the full nodal array and therefore needed it replicated at global
-        # extent on every rank, which is the replication this path exists to
-        # remove. Each rank's force now has its own length; an Allreduce over
-        # unequal buffers is undefined, not a cheaper variant.
+        # extent on every rank, which no rank holds any more.
         raise ValueError(
             'driver.run_mpi: %s=allreduce reduced the FULL nodal array and '
-            'required every rank to hold it at global extent. The carry is '
-            'now allocated at rank-local extent (MPI4NodalQuant.decompose\'s '
-            'renumbering), so the ranks\' force arrays have different '
-            'lengths and there is nothing an Allreduce could reduce. Use '
-            '%s=halo.' % (MQ.SYNC_ENV, MQ.SYNC_ENV))
-
+            'required every rank to hold it at global extent. Each rank now '
+            'holds only its own subdomain, so the ranks\' force arrays have '
+            'different lengths and there is nothing an Allreduce could '
+            'reduce. Use %s=halo.' % (MQ.SYNC_ENV, MQ.SYNC_ENV))
 
     inv, finv, tp, hist_w = build_invariants(S, nsteps)
+    nftnd_l = int(finv['nftnd'])
 
-    loc = MQ.decompose(S, inv, finv, rank, nranks)
-    inv_l, finv_l = loc['inv'], loc['finv']
-    computed = loc['fault_computed_rows']
-    nftnd_global = int(finv['nftnd'])
-    if tp is not None:
-        tp = MQ.restrict_rows(tp, computed, nftnd_global)
-
-    # Every fault node must be written by exactly one rank, or the frt files
-    # the gate reads are short and nothing says so.
-    owned_total = comm.allreduce(int(loc['fault_rows'].shape[0]))
-    if owned_total != nftnd_global:
-        raise RuntimeError(
-            'driver.run_mpi: the ranks together own %d of %d fault nodes. '
-            'frt.txt* would be missing %d rows and the canonical comparison '
-            'would silently compare a shorter file.'
-            % (owned_total, nftnd_global, nftnd_global - owned_total))
-
-    # The mass check stays GLOBAL: it is a statement about the MESH, it costs
-    # one host pass, and a rank-local check would let a broken equation pass
-    # unnoticed on every rank that does not hold it.
-    mass_g = np.concatenate(([1.0], S['nodalMassArr']))
-    bad = int(np.count_nonzero(mass_g[1:] <= 0.0))
+    # driver.f90:30 divides by every lumped mass unconditionally. Each rank
+    # checks its own (complete, post-relay) masses and the COUNT is summed, so
+    # a bad equation anywhere stops every rank -- every equation is held by at
+    # least one rank, and no rank holds a global array to check instead.
+    mass_h = np.concatenate(([1.0], S['nodalMassArr']))
+    bad = comm.allreduce(int(np.count_nonzero(mass_h[1:] <= 0.0)))
     if bad:
         raise ValueError(
-            'driver.run_mpi: %d of %d lumped nodal masses are <= 0. '
-            'driver.f90:30 divides by them unconditionally.'
-            % (bad, mass_g.shape[0] - 1))
-    # ...but the array handed to the step is this rank's equations only, in
-    # local order: local equation j+1 is global loc['local_eqs'][j], and
-    # local 0 is the sink, whose 1.0 is never divided by (the divide slices
-    # [1:]).
-    mass_l = np.concatenate(([1.0], mass_g[loc['local_eqs']]))
+            'driver.run_mpi: %d lumped nodal mass(es) <= 0 across the ranks. '
+            'driver.f90:30 divides by them unconditionally.' % bad)
 
-    B.check_index_width(inv_l)
-    fric_init_l = S['fric_init'][computed].copy()
-    # The GLOBAL invariants are dead from here on: every array the step reads
-    # is in inv_l / finv_l, and decompose's restriction fancy-indexed (i.e.
-    # copied) all of them. Dropping the reference releases ~1.03 GB per rank
-    # on test.tpv104 -- 33 GB across 32 ranks of a host array nothing reads
-    # again. Explicit, because a rank that keeps it is not wrong, only
-    # needlessly resident, which is exactly the class of cost this path is
-    # about.
-    del inv
-    inv_l = B.to_device(xp, inv_l)
-    finv_l = B.to_device(xp, finv_l)
+    B.check_index_width(inv)
+    fric_init = S['fric_init'].copy()
+    inv = B.to_device(xp, inv)
+    finv = B.to_device(xp, finv)
     if tp is not None:
         tp = B.to_device(xp, tp)
-    mass = xp.asarray(mass_l)
+    mass = xp.asarray(mass_h)
 
-    # LOCAL extents. inv_l['N'] / ['NEQ'] are this rank's node and equation
-    # counts (decompose renumbered every index array into them), NOT S['N'] /
-    # S['NEQ']. This is the line the whole change is for: at global extent
-    # these four entries were byte-identical at every rank count.
-    N_l = int(inv_l['N']); NEQ_l = int(inv_l['NEQ'])
-    nftnd_l = int(finv_l['nftnd'])
+    N_l = int(inv['N']); NEQ_l = int(inv['NEQ'])
     z = (lambda *a: xp.zeros(*a))
     carry = (z(NEQ_l + 1), z((N_l, 3)), z((N_l, 3)), z(NEQ_l + 1),
-             xp.asarray(inv_l['stress_i0']).copy(), z((inv_l['Ep'], 15)),
-             xp.asarray(fric_init_l),
+             xp.asarray(inv['stress_i0']).copy(), z((inv['Ep'], 15)),
+             xp.asarray(fric_init),
              xp.full(nftnd_l, gv.FNFT_SENTINEL),
              xp.asarray(0.0),
              z((nftnd_l, hist_w)), z((nftnd_l, hist_w)))
     # Per-rank carry bytes, from the ALLOCATED arrays rather than recomputed
-    # from shapes: the primary check on this change is that this number falls
-    # as ~1/nranks. A timing win with an unchanged footprint means something
-    # else was measured.
+    # from shapes: the primary check that the subdomain really shrank.
     carry_bytes = {n: int(a.nbytes) for n, a in zip(
         ('v1', 'velArr', 'dispArr', 'force', 'stress_i', 's_p', 'fric',
          'fnft', 'timeElapsed', 'sliprate_hist', 'shear_hist'), carry)}
@@ -512,21 +470,23 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     # shared directory buys no reuse and pays JAX's per-key lock, which is
     # what wedged this cell three times (see backend.enable_compilation_cache).
     B.enable_compilation_cache(subdir='rank%d' % rank)
-    scratch = KU.alloc_scratch(xp, inv_l)
-    dyn, sta = B.promote(xp, inv_l)
-    halo = xp.asarray(loc['halo_idx'])
-    nbrs = loc['neighbours']
+    scratch = KU.alloc_scratch(xp, inv)
+    dyn, sta = B.promote(xp, inv)
+    halo = xp.asarray(plan['halo_idx'])
+    faces = plan['faces']
 
     def a_body(dyn_arrays, c, nt, h):
-        part_a, _ = make_step_parts(xp, {**sta, **dyn_arrays}, finv_l, tp,
+        part_a, _ = make_step_parts(xp, {**sta, **dyn_arrays}, finv, tp,
                                     mass, scratch)
         c = part_a(c, nt)
         return c, c[FORCE][h]
 
-    def b_body(dyn_arrays, c, nt, h, delta):
-        _, part_b = make_step_parts(xp, {**sta, **dyn_arrays}, finv_l, tp,
+    def b_body(dyn_arrays, c, nt, h, vals):
+        _, part_b = make_step_parts(xp, {**sta, **dyn_arrays}, finv, tp,
                                     mass, scratch)
-        force = B.addat(xp, c[FORCE], h, delta)     # MPI4NodalQuant's sum
+        # MPI4NodalQuant's completed values, WRITTEN over the partials (see
+        # MQ.exchange for why a set and not an add of a delta).
+        force = B.setat(xp, c[FORCE], h, vals)
         c = c[:FORCE] + (force,) + c[FORCE + 1:]
         return part_b(c, nt)
 
@@ -541,18 +501,23 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
     a_jit = jax.jit(a_body, donate_argnums=(1,))
     b_jit = jax.jit(b_body, donate_argnums=(1,))
 
-    rep = loc['report']
+    rep = dict(rank=rank, nranks=nranks, decomp=part.dims, mexyz=part.mexyz,
+               Ei=int(inv['Ei']), Ep=int(inv['Ep']), E=int(inv['E']),
+               nodes=N_l, eqs=NEQ_l, halo_eqs=int(plan['halo_idx'].size),
+               halo_frac=float(plan['halo_idx'].size) / max(NEQ_l, 1),
+               neighbours=[int(f['nb']) for f in faces],
+               fault_computed=nftnd_l,
+               fault_owned=int(plan['fault_rows'].shape[0]),
+               N_local=N_l, NEQ_local=NEQ_l)
     if verbose:
-        print('driver.run_mpi rank %d/%d: %d steps, friclaw=%d, elements '
-              'Ei=%d Ep=%d E=%d (work %.1f%% of total), nodes=%d eqs=%d '
-              'halo=%d (%.2f%% of eqs), neighbours=%s, fault computed=%d '
-              'owned=%d, LOCAL N=%d of %d NEQ=%d of %d, carry %.2f MB'
-              % (rank, nranks, nsteps, S['friclaw'], rep['Ei'], rep['Ep'],
-                 rep['E'], 100.0 * rep['work'] / rep['work_total'],
-                 rep['nodes'], rep['eqs'], rep['halo_eqs'],
+        print('driver.run_mpi rank %d/%d: %d steps, friclaw=%d, decomposition '
+              '%r box %r, elements Ei=%d Ep=%d E=%d, LOCAL N=%d NEQ=%d, '
+              'halo=%d (%.2f%% of eqs), faces with %s, fault computed=%d '
+              'owned=%d, carry %.2f MB'
+              % (rank, nranks, nsteps, S['friclaw'], part.dims, part.mexyz,
+                 rep['Ei'], rep['Ep'], rep['E'], N_l, NEQ_l, rep['halo_eqs'],
                  100.0 * rep['halo_frac'], rep['neighbours'],
                  rep['fault_computed'], rep['fault_owned'],
-                 N_l, rep['N_global'], NEQ_l, rep['NEQ_global'],
                  sum(carry_bytes.values()) / 1e6), flush=True)
 
     # STEP ATTRIBUTION, off by default (MPI4NodalQuant.step_profile). The two
@@ -650,12 +615,13 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
             # them fused exactly as they were, because moving the clock
             # would redefine an already-published number.
             tg0 = time.perf_counter()
-            hv_host = np.asarray(jax.device_get(hv))
+            hv_host = np.array(jax.device_get(hv))   # writable copy: exchange adds in place
             t_d2h += time.perf_counter() - tg0
             t1 = time.perf_counter()
-            delta = MQ.exchange(comm, nbrs, hv_host)
+            hvals = MQ.exchange(comm, part, faces, hv_host)
         else:
-            delta = MQ.exchange(comm, nbrs, np.asarray(jax.device_get(hv)))
+            hvals = MQ.exchange(comm, part, faces,
+                                np.array(jax.device_get(hv)))
         t_mpi += time.perf_counter() - t1
         # Dispatch-side timing only (b_jit/xp.asarray do not block; jax
         # queues them and the actual device execution is drained by NEXT
@@ -670,10 +636,10 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         # is False (EQDYNA_PROFILE=0).
         if profile_on:
             tb0 = time.perf_counter()
-            carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
+            carry = b_jit(dyn, carry, nt, halo, xp.asarray(hvals))
             t_compute += time.perf_counter() - tb0
         else:
-            carry = b_jit(dyn, carry, nt, halo, xp.asarray(delta))
+            carry = b_jit(dyn, carry, nt, halo, xp.asarray(hvals))
     # Drains the LAST step's part_b (every earlier step's part_b was already
     # drained, one step later, by the loop's own block_until_ready(hv)).
     # This block is pre-existing and unconditional; only the timing around
@@ -726,7 +692,7 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
         # buckets sum to the step by construction and an unattributed cost
         # cannot hide in a gap between two clocks. It covers the Python loop
         # itself, pytree flatten/unflatten on both dispatches, and
-        # xp.asarray(delta).
+        # xp.asarray(hvals).
         acc = t_compute + t_wait + t_mpi + t_d2h
         rep = dict(rep, step_profile=True, barrier_in_step=True,
                    compute_ms_per_step=t_compute / nsteps * 1e3,
@@ -746,16 +712,14 @@ def run_mpi(S, comm, nsteps=None, verbose=True, xp=np):
                  rep['mpi_ms_per_step'], rep['wait_ms_per_step'],
                  eff, rep['threads'], rep['cpus_allowed'], rep['cpus']),
               flush=True)
-    # velArr / dispArr / force are RANK-LOCAL now, so they are returned under
-    # different keys than driver.run's global ones. A consumer that indexes
-    # them by a global node or equation id would read a real but WRONG row, so
-    # it must fail with a KeyError instead: local_nodes / local_eqs carry the
-    # map back. Nothing in the tree consumed them (checked); the frt writer
-    # uses fric/fnft, which are fault-row indexed and unaffected.
+    # velArr / dispArr / force are RANK-LOCAL (this rank's box numbering), so
+    # they are returned under different keys than driver.run's global ones: a
+    # consumer indexing them by a serial node or equation id would read a real
+    # but WRONG row, and must fail with a KeyError instead. fric/fnft are this
+    # rank's fault rows; `fault_rows` are the ones it WRITES.
     return dict(velArr_local=np.asarray(velArr),
                 dispArr_local=np.asarray(dispArr),
                 force_local=np.asarray(force),
-                local_nodes=loc['local_nodes'], local_eqs=loc['local_eqs'],
                 fnft=np.asarray(fnft), fric=np.asarray(fric),
-                fault_rows=loc['fault_rows'],
-                own_in_computed=loc['own_in_computed'], report=rep)
+                fault_rows=plan['fault_rows'],
+                own_in_computed=plan['fault_rows'], report=rep)
