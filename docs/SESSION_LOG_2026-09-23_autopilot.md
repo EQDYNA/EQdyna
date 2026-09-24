@@ -1636,3 +1636,49 @@ file-path push rulesets for private/internal repos only (documented, not
 tested here). Enforcement = a CI check on the pushed range + a pre-push hook
 (iris, in flight). Because that enforcement itself touches testsys/, it lands
 as the FIRST PR; item 3's combo becomes the second.
+
+## SS. Item 3's paired gate: bit-identical everywhere, and one integration bug; PR #3 opened and held (21:25)
+
+**Paired gate (`run.py release` at `100a73b`, 20:43-21:10, WALL 1615.95 s):**
+21 passed, **10 FAILED — every python-jax cell** — and the physics was not the
+cause. **Byte comparison against my `679d8ad` release sweep: 50 of 50 frt files
+over all 31 cells IDENTICAL**, so the refactor retry, the numpy buffer reuse
+and the always-on profiler are bit-identical on every backend of every case —
+the refactor-round-2 lesson, paid in full this time. The 10 FAILs are a
+combination bug: `run_e2e.py` passes `ranks=cell_cost(case, backend)` into the
+profile collection, and since `ef9656b` `cell_cost` bills a serial jax cell at
+3 cores; `capture_run` asserts ranks == the profile's nranks (1) and raises.
+Two landings, each right alone (honest cost; collection), wrong together.
+Found by my gate, diagnosed by mira. Fix in flight (iris, one rank helper,
+guarded).
+
+**Pre-release audits:** zofia Mode B — no rule violations at `100a73b`; doc
+drift `CLAUDE.md:26`/`pathway_forward.md:41` say 15 python modules (now 16,
+`profile_emit.py`), and `profile_emit.py` is missing from the no-counterpart
+list; one unreproduced regression-tier red during my concurrent sweep (rule
+3b: undiagnosed; a clean re-run is not a diagnosis). victor — not
+release-blocking after fixes: banner still 5.16.2; "NOT gated, not for master"
+WIP commit messages in the range (a squash-merged PR removes them); Fortran
+re-read EQDYNA_PROFILE at `library_output.f90:427`; any value but "0" meant ON
+(a silent fallback on a typo). mira fixed the last two (`9fc762a`: exactly
+unset/""/"1"/"0", else a named hard failure, new exit code 14). Open, not
+blocking: `compare_nc_files` returns SUCCESS on zero variables
+(`compare.py:271-277`, pre-existing, a gate that can pass on nothing); the
+rule-24 summary has no link to the run that produced it.
+
+**PR workflow.** PR #3 (enforcement: `testsys/pr_policy.py`, `pr-policy-gate`
+job, `testsys/hooks/pre-push`, 3 guards): all CI green on the pull_request run
+35945825755 (the push run's "fail" is the concurrency group CANCELLING it — 3
+jobs `cancelled`, not failed). **victor's audit: merge-blocking, six ways to
+pass a direct push**, four reproduced in a scratch repo: any `merged_at` PR
+accepted (base and merge sha unchecked); the job runs the PUSHED copy of its
+own policy, so a direct push approves itself, and `.github/` is ungated so a
+direct push can delete the job; merge commits skipped (`--no-merges`), an evil
+merge passes; renames out of `src/` report only the new path; the `(#NNN)`
+fallback fires on any error, forgeable; force-push "hard refusal" only when the
+old tip is unreachable. Fixing on the branch, then re-audit of the new commit
+only. **I am widening the gated set to include `.github/`, loudly:** without it
+the owner's "mechanical" enforcement is deletable by one direct push. The owner
+can reverse it at the one constant. Rule 25 text (zofia, `b40c590`/`33bd22a`)
+is written and waits for PR #3's merge, so the rule never claims enforcement
+that is not live.
