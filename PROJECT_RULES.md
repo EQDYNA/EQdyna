@@ -899,6 +899,23 @@ computed at `src/fortran/library_output.f90:55` and never reaches a `write`
 statement (see item 85). The command could not have been run as written by
 anyone, ever, and yet the row carried a recent "Last checked" date.
 
+**Incident (2026-09-24)**: two more rows carried the same shape, found while
+closing them, not while writing them. Item 105 tracked an unmerged branch with
+`git log master..wei/combo-2026-09-23` -- once that branch landed it was
+SQUASH-merged (rule 25 permits only squash-merge on this repo), so none of the
+branch's own commits are reachable from `master` and the same command reads
+nonzero forever, merged or not; a squash-merge can only ever ADD commits to
+`master`, never make a `branch..master` diff of the branch's own commits
+shrink to empty. Item 90's guard command was `grep -c
+"shutil.rmtree(d)" testsys/regression/test_perf_tool_locks.py`, which counts
+occurrences of a line inside a COMMENT that explains the defect, not the
+defect itself -- the ordinary fix (deduplicating the four patched copies)
+leaves the comment in place, so the count can never reach 0 no matter what
+lands. General lesson: before trusting what a command counts, check which
+direction its counting METHOD can move in at all -- a commit-log diff across
+a squash-merge can only grow, and a grep over prose can only read prose,
+neither one can register a fix it was never wired to see.
+
 **How to apply**: when writing or updating a row's `Command` column, state or
 demonstrate both readings before trusting either — what it prints against the
 tree as it stands, and what it would print if the fix already existed
@@ -1095,27 +1112,37 @@ pathway items 50/51); or accept and record — as this rule requires,
 not as an afterthought — that the tag's only CI evidence is the tag-push run
 itself.
 
-**Scope limit, measured 2026-09-23 — this gate reads ONE workflow's
-conclusion, which is not the same claim as "CI is green for this SHA."**
-v5.16.0 passed this rule honestly: both "Automatic Testing of EQdyna" runs on
-`894cdc1` succeeded. On that same SHA the "Publish EQdyna Docker image"
-workflow was RED (run 35819232914) — `.github/workflows/publish.yml` used
-`actions/checkout@v2` at the default fetch-depth 1 and `Dockerfile:33` is
-`COPY . /opt/eqdyna`, so a shallow `.git` travelled into the image and
-`test_history_table.py` and `test_pretag_ci_negative.py` failed inside it
-reading history that was not there. The guards were RIGHT and the environment
-was wrong; the fix was `fetch-depth: 0` (`a99902f`) and deliberately NOT
-teaching the guards to skip when their evidence is missing, which is rule 2.
-The consequence the gate did not catch: the gate step runs before the push
-step, so `ghcr.io/eqdyna/eqdyna:v5.16.0` was never published and `:latest`
-still points at v5.15.0.
+**Scope, widened 2026-09-24 (PR #13, `5de359a`) — this gate now reads EVERY
+workflow with a non-tag run at the SHA, not one workflow's conclusion.**
+Originally measured 2026-09-23: v5.16.0 passed this rule honestly while both
+"Automatic Testing of EQdyna" runs on `894cdc1` succeeded, but on that same
+SHA the "Publish EQdyna Docker image" workflow was RED (run 35819232914) —
+`.github/workflows/publish.yml` used `actions/checkout@v2` at the default
+fetch-depth 1 and `Dockerfile:33` is `COPY . /opt/eqdyna`, so a shallow `.git`
+travelled into the image and `test_history_table.py` and
+`test_pretag_ci_negative.py` failed inside it reading history that was not
+there. The guards were RIGHT and the environment was wrong; the fix was
+`fetch-depth: 0` (`a99902f`) and deliberately NOT teaching the guards to skip
+when their evidence is missing, which is rule 2. The consequence the gate did
+not catch at the time: the gate step runs before the push step, so
+`ghcr.io/eqdyna/eqdyna:v5.16.0` was never published and `:latest` still
+pointed at v5.15.0.
 
-Whether this rule should require EVERY workflow for the SHA rather than the
-testing workflow is a methodology change at the release boundary and is NOT
-decided here — it is the owner's, recorded as pathway item 78 with the
-recommendation that it should. Until it is decided, this rule requires what it
-has always required, and a releaser who wants the wider claim reads
-`gh run list --commit <SHA>` themselves and says so in the release record.
+**The decision this rule left open is now made, and the gate has two halves.**
+Pre-tag, `ci_status.evaluate_pretag` requires every workflow with a NON-TAG
+run at the SHA to be green — this is what runs BEFORE `git tag` and what this
+rule has always gated. Post-tag, `testsys/regression/test_release_complete.py`'s
+`check_every_workflow_for_tagged_sha` requires every workflow with a run at
+the TAGGED SHA, tag-push runs included, to be green — this is the half that
+can see a workflow like `publish.yml` that only ever runs ON the tag push and
+therefore structurally cannot exist before `git tag` for the pre-tag half to
+read. Neither half is optional and neither replaces the other: the pre-tag
+half blocks the tag from being cut on foreknowable red; the post-tag half
+catches what only the tag push itself can trigger. Verified live 2026-09-24:
+v5.16.0 (`894cdc1`) RAISES under the post-tag check, naming 'Publish EQdyna
+Docker image' (run 35819232914) — recorded, not backfilled, as pathway item
+78's owner-accepted exception; v5.16.1 and v5.17.0 both PASS (2 workflows
+each).
 
 ---
 
@@ -1494,6 +1521,20 @@ Shortcuts like `EQDYNA_E2E_BIN=src/eqdyna` exist to keep a gate from disturbing
 a running job; they skip the build-and-install path, so a green run under them
 says nothing about it. If you used one, say so, and run the real entry point
 before the tag.
+
+**Binary freshness is now mechanical, not a discipline to remember (PR #12,
+`6c52408`, 2026-09-24).** `scripts/src_hash.py` embeds a source-tree hash in
+the build and the runtime banner prints it (`(src <12hex>)`); `testsys/run.py`
+(regression tier) and `testsys/e2e/run_e2e.py` (fortran cells) refuse to run
+against a `bin/eqdyna` that is missing, unstamped, or stamped for a different
+tree, with no bypass. This is exactly a rule-16 violation made unrunnable
+instead of merely discouraged: editing `src/fortran/*.f90` without rebuilding
+now fails loud at the next `run.py`/`run_e2e.py` invocation rather than
+silently gating against a stale binary. **What it does not cover**: the
+`testsys/perf/` tools, `run_e2e_full.py`, and `testsys/parity/` scripts all
+still run whatever binary happens to be present, unchecked; CI shards call
+`ci_shard.py`, not `run.py`, so this guard governs the binary CI downloads,
+not those other paths. Extending the stamp check to them is unscheduled.
 
 ---
 
