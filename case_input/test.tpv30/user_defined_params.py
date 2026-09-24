@@ -134,6 +134,13 @@ par.term = 20.
 #     yield  = ccosphi - sinphi*(strmea + porep)     = c cos(phi) - (sm+Pf) sin(phi)
 #     rjust  = yield/taomax + (1-yield/taomax)*exp(-dt/tv)
 #            = exp(-dt/Tv) + (1-exp(-dt/Tv)) Y/sqrt(J2)     [spec Part 7, Step 4]
+# SCEC initial-condition method (spec TPV29_30_Description_v06, p.24; pathway
+# item 97): this case uses METHOD 2, "explicit gravity and boundary
+# tractions". C_elastic = 0 turns the gravity body force on and the stored
+# stress is the TOTAL effective tensor built by meshgen.f90:setPlasticStress.
+# test.tpv29 uses METHOD 1 (stress change, no gravity). The two are mutually
+# exclusive per the spec. Pore pressure is implicit: it is folded into
+# roumax - rhow*(gamar+1) and eleporep is hardcoded 0.0d0 (item 97(2)).
 par.C_elastic = 0
 par.coheplas  = 1.18e6    # plastic cohesion c, Pa (NOT the frictional C0 below)
 par.bulk      = 0.1680    # bulk friction nu
