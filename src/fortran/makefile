@@ -69,11 +69,26 @@ OBJ  = eqdyna3d.o  globalvar.o errorCodes.o countMeshEntities.o  meshgen.o   cal
 # never cleaned.
 .PHONY: clean
 clean:
-	rm -f *.o *.mod
+	rm -f *.o *.mod srcStamp.inc
 
 eqdyna: $(OBJ)
 	$(FC) $(OPT1) $(OBJ) -o eqdyna ${NETCDF_LIB}
-eqdyna3d.o: eqdyna3d.f90 globalvar.o driver.o countMeshEntities.o errorCodes.o \
+# Source stamp (owner-approved 2026-09-24): scripts/src_hash.py -- the ONE
+# implementation, never reimplemented here -- hashes src/fortran/*.f90 plus
+# this makefile from the working tree and writes srcStamp.inc, which
+# eqdyna3d.f90's srcStampMod includes. FORCE makes it run on every build; the
+# script rewrites the file only when the stamp changed, so an unchanged tree
+# does not recompile eqdyna3d.o. No python3 = a loud build failure, never a
+# silently unstamped binary.
+.PHONY: FORCE
+FORCE:
+srcStamp.inc: FORCE
+	python3 ../../scripts/src_hash.py --write-inc srcStamp.inc
+# Every object depends on this makefile: the stamp hashes it, so a flag-only
+# edit (e.g. -O3 -> -O2) must rebuild EVERY object, or the stamp would vouch
+# for a binary mixing old- and new-flag objects (PR #12 audit).
+$(OBJ): makefile
+eqdyna3d.o: eqdyna3d.f90 srcStamp.inc globalvar.o driver.o countMeshEntities.o errorCodes.o \
             meshgen.o readInputFiles.o checkInputConsistency.o         \
             library_output.o netcdf_io.o
 	$(FC) $(OPT) eqdyna3d.f90

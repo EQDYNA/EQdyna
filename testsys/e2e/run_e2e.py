@@ -408,6 +408,17 @@ def default_jobs_budget(cells, args):
     return budget
 
 
+def _load_src_hash():
+    """scripts/src_hash.py -- the ONE source-stamp implementation -- loaded by
+    path, so putting scripts/ on sys.path cannot shadow any other module."""
+    import importlib.util
+    path = os.path.join(REPO_ROOT, 'scripts', 'src_hash.py')
+    spec = importlib.util.spec_from_file_location('src_hash', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def base_env():
     env = dict(os.environ)
     env['EQDYNAROOT'] = REPO_ROOT
@@ -1105,6 +1116,16 @@ def main(argv=None):
                 print('e2e: FAIL - build finished but bin/eqdyna does not exist')
                 return 1
             eqdyna_cmd = 'eqdyna'
+        # Gate 2b - the binary about to run was built from THIS tree
+        # (scripts/src_hash.py; owner-approved 2026-09-24). A fresh build
+        # passes by construction; EQDYNA_E2E_BIN, or an install that built
+        # some other checkout, does not get a pass for being there. No bypass.
+        stamped = eqdyna_cmd if BIN_OVERRIDE else bin_exe
+        stamp_ok, stamp_msg = _load_src_hash().check_binary(stamped)
+        if not stamp_ok:
+            print('e2e: FAIL - REFUSED: %s' % stamp_msg)
+            return 1
+        print('e2e: %s' % stamp_msg)
     else:
         print('e2e: no fortran cell in this selection - no Fortran build needed')
 

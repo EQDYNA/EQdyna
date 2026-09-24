@@ -54,6 +54,31 @@ import sys
 
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(TESTSYS)
+
+
+def _load_src_hash():
+    """scripts/src_hash.py -- the ONE source-stamp implementation -- loaded by
+    path, so putting scripts/ on sys.path cannot shadow any other module."""
+    import importlib.util
+    path = os.path.join(REPO_ROOT, 'scripts', 'src_hash.py')
+    spec = importlib.util.spec_from_file_location('src_hash', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def require_fresh_fortran_binary(binary=None, fsrc=None):
+    """The regression tier drives bin/eqdyna directly; refuse (return the
+    reason) unless it was built from THIS tree's src/fortran (owner-approved
+    2026-09-24: a Sep-22 binary made test_profile_env_strict fail for no
+    real reason, and a stale one could as easily pass on old code). A
+    missing binary and a missing stamp refuse too. No bypass. Returns None
+    when the binary is fresh."""
+    src_hash = _load_src_hash()
+    binary = binary or os.path.join(REPO_ROOT, 'bin', 'eqdyna')
+    ok, msg = src_hash.check_binary(binary, fsrc or src_hash.FSRC)
+    print(('testsys: ' if ok else 'testsys: REFUSED - ') + msg)
+    return None if ok else msg
 TIERS = ('unit', 'regression', 'e2e')
 
 # Line-buffered: redirected to a log (CI pipes this through `tee`), Python
@@ -264,6 +289,9 @@ def main(argv):
         for t in (TIERS if tier == 'all' else (tier,)):
             if t not in selected:
                 selected.append(t)
+
+    if 'regression' in selected and require_fresh_fortran_binary() is not None:
+        return 1
 
     results = {tier: RUNNERS[tier]() for tier in selected}
 
