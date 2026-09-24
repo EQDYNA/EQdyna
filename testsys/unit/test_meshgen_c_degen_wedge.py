@@ -241,8 +241,13 @@ class TestEqdyna3dGuards:
         from eqdyna import eqdyna3d, readInputFiles
 
         def fake_build_params(case_dir):
+            # output_plastic=0 so this fake `g` (a build_params return, which
+            # a real bGlobal.txt always carries) clears
+            # checkInputConsistency.check() before reaching the C_degen/
+            # C_elastic guard this test actually exercises.
             return dict(_small_c_degen36_params(), insertFaultType=0), dict(
-                ntotft=1, friclaw=1, npx=1, npy=1, npz=1, C_elastic=0)
+                ntotft=1, friclaw=1, npx=1, npy=1, npz=1, C_elastic=0,
+                output_plastic=0)
         monkeypatch.setattr(readInputFiles, 'build_params', fake_build_params)
         with pytest.raises(NotImplementedError, match='C_elastic'):
             eqdyna3d.build_solver_state('/nonexistent')
