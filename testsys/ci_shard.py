@@ -116,6 +116,10 @@ SHARDS = {
         "test_history_table.py",
         "test_make_default_goal.py",
         "test_perf_mpi_placement.py",
+        "test_rank_local_mesh.py",  # added 2026-09-24 (mira-volkov, item 64):
+                                 # 3 serial case builds + 6 decompositions'
+                                 # rank-local builds in one process, no MPI;
+                                 # the heaviest script in this shard.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
         "test_sweep_core_budget.py",

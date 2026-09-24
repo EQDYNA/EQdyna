@@ -13,7 +13,8 @@ assembleGlobalKU implementation; there is no per-backend and no per-friclaw
 solver module to dispatch between.
 
 SCOPE, enforced by loud refusals in build_solver_state rather than by silent
-partial runs: ntotft==1, serial (npx==npy==npz==1), C_degen==0 (planar) OR
+partial runs: ntotft==1, serial (npx==npy==npz==1) OR -- python-jax-mpi only --
+one rank's box of an MPI4NodalQuant.DECOMP decomposition, C_degen==0 (planar) OR
 C_degen>3 (dipping, wedge-degeneration -- meshgen.py's build_elements/
 build_fault_geometry port library_degeneration.f90's wedge()/reorder(); see
 those functions' docstrings and testsys/parity/evidence_c_degen_port.py).
@@ -195,7 +196,7 @@ def active_device(backend):
     return '%s:%d (%s)' % (d.platform, d.id, getattr(d, 'device_kind', '?'))
 
 
-def build_solver_state(case_dir):
+def build_solver_state(case_dir, part=None):
     """Builds the full `S` dict eqdyna/driver.py's `run()` expects,
     reading ONLY case-input files (bGlobal.txt/bModelGeometry.txt/
     bFaultGeometry.txt/bMaterial.txt/on_fault_vars_input.nc) via
@@ -203,6 +204,17 @@ def build_solver_state(case_dir):
     anywhere. Returns (S, mesh) where mesh is a dict of the raw 1-indexed
     builder outputs (meshCoor, nsmp, eq_nums, ...) library_output needs later
     (S itself is converted to loading.load()'s 0-indexed convention).
+
+    `part` (an MPI4NodalQuant.Partition) builds ONE RANK'S BOX instead, with
+    rank-local numbering, the way meshgen.f90 does: the same builders handed
+    the rank's local line slices plus the GLOBAL model bounds. No global mesh
+    is built. This function does NO communication, so `nodalMassArr`, `fnms`
+    and `arn` come back as this rank's PARTIAL sums -- exactly what Fortran
+    holds after its element loop and before MPI4arn / MPI4NodalQuant --
+    and MPI4NodalQuant.setup_exchange completes them. `mesh` then also
+    carries what that needs (n_local, flt_lists, the 1-indexed partials) and
+    the two global censuses the run checks its ownership against. part=None
+    is the serial path, and its arithmetic is unchanged.
     """
     params, g = readInputFiles.build_params(case_dir)
     # checkInputConsistency.f90:7-19 <-> checkInputConsistency.check, called
@@ -218,9 +230,18 @@ def build_solver_state(case_dir):
     if g['friclaw'] not in SUPPORTED_FRICLAW:
         raise NotImplementedError('build_solver_state: friclaw=%d is not implemented '
                                    '(implemented: %r)' % (g['friclaw'], list(SUPPORTED_FRICLAW)))
-    if (g['npx'], g['npy'], g['npz']) != (1, 1, 1):
+    case_decomp = (g['npx'], g['npy'], g['npz'])
+    if part is None and case_decomp != (1, 1, 1):
         raise NotImplementedError('build_solver_state: only serial (npx=npy=npz=1) is supported '
-                                   '(got %r)' % ((g['npx'], g['npy'], g['npz']),))
+                                   '(got %r)' % (case_decomp,))
+    if part is not None and case_decomp not in ((1, 1, 1), part.dims):
+        # The python MPI path takes its split from MPI4NodalQuant.DECOMP (the
+        # table the Fortran is run with). A case that names a DIFFERENT split
+        # in bGlobal.txt is refused rather than silently re-split.
+        raise NotImplementedError(
+            'build_solver_state: bGlobal.txt names npx,npy,npz=%r but this '
+            'run is decomposed %r (MPI4NodalQuant.DECOMP[%d])'
+            % (case_decomp, part.dims, part.nranks))
     # C_degen: meshgen.py's build_elements/build_fault_geometry (and
     # readInputFiles.py's fltxyz(2,4,i) derivation) now port BOTH C_degen==0
     # (planar fault, tpv8/tpv104/tpv10/drv.a6) and C_degen>3
@@ -260,13 +281,24 @@ def build_solver_state(case_dir):
     material = readInputFiles.read_bmaterial(
         os.path.join(case_dir, 'bMaterial.txt'), g['nmat'], g['n2mat'])
 
-    xline, yline, zline, pmlb, _ = meshgen.build_grid_lines(params)
-    meshCoor, nftnd, nsmp = meshgen.build_node_coordinates(xline, yline, zline, params)
+    xline, yline, zline, pmlb, bounds = meshgen.build_grid_lines(params)
+    model_bound = None
+    if part is not None:
+        # The global lines are O(nx+ny+nz) and kept only for the two
+        # censuses; every builder below sees the rank's SLICES. PMLb and the
+        # model bounds stay global (meshgen.f90:32-37), or setNumDof and the
+        # fixed-boundary test would reclassify nodes on subdomain faces.
+        glines = (xline, yline, zline)
+        (xline, yline, zline), offsets = part.slice_lines(xline, yline, zline)
+        model_bound = bounds
+    meshCoor, nftnd, nsmp = meshgen.build_node_coordinates(
+        xline, yline, zline, params, model_bound=model_bound)
     conn, elem_type, mat, elem_depth = meshgen.build_elements(
         xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
     num_dof, eq_start, eq_nums, total_eqs = meshgen.build_equation_numbers(
-        xline, yline, zline, params, pmlb)
-    un, us, ud, arn = meshgen.build_fault_geometry(xline, yline, zline, params, nsmp)
+        xline, yline, zline, params, pmlb, model_bound=model_bound)
+    un, us, ud, arn = meshgen.build_fault_geometry(
+        xline, yline, zline, params, nsmp, model_bound=model_bound)
 
     fric = readInputFiles.read_on_fault_vars(
         os.path.join(case_dir, 'on_fault_vars_input.nc'), params['fxmin'], params['fzmin'],
@@ -372,6 +404,17 @@ def build_solver_state(case_dir):
         ccosphi=ccosphi, sinphi=sinphi, tv=tv, init_stress=init_stress,
     )
     mesh = dict(meshCoor=meshCoor, nsmp=nsmp)
+    if part is not None:
+        n_local = (len(xline), len(yline), len(zline))
+        mesh.update(
+            n_local=n_local, offsets=offsets,
+            n_global=tuple(len(a) for a in glines),
+            flt_lists=meshgen.fault_boundary_lists(nsmp, *n_local),
+            fault_box={k: params[k] for k in ('fxmin', 'fxmax', 'fymin', 'fymax',
+                                               'fzmin', 'fzmax')},
+            arn1=arn, mass1=nodalMassArr, fnms1=fnms,
+            fault_census=meshgen.fault_census(*glines, params),
+            equation_census=meshgen.equation_census(*glines, params, pmlb, bounds))
     return S, mesh
 
 
@@ -440,11 +483,13 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     """run_case's one-process-per-rank twin: Fortran's decomposition, jax
     owning the local element kernel (driver.run_mpi, MPI4NodalQuant.py).
 
-    Each rank writes `frt.txt<rank>` holding exactly the fault nodes it OWNS,
-    which is the same output shape a 4-rank Fortran run produces and what
-    testsys/frt_canonical.py already globs for -- so an N-rank python run is
-    compared against the SAME committed reference, through the same
-    canonicalisation, with no new comparison path.
+    Each rank builds only its own box (MPI4NodalQuant.DECOMP, Fortran's
+    split) and writes `frt.txt<rank>` holding exactly the fault nodes it OWNS
+    (the lowest rank holding each), which testsys/frt_canonical.py already
+    globs for -- so an N-rank python run is compared against the SAME
+    committed reference, through the same canonicalisation, with no new
+    comparison path. (Fortran writes every fault node a rank holds, so its
+    shared-plane nodes appear twice; this port writes each once.)
 
     Returns (path, report) -- the report carries this rank's element counts,
     halo size and ms/step, which every multi-rank measurement must print."""
@@ -459,10 +504,15 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     profile_on = _profile_emit.enabled()
     run_t0 = time.perf_counter() if profile_on else 0.0
     prof = profile if profile is not None else Profile('jax')
+    from . import MPI4NodalQuant as MQ
+    part = MQ.Partition.for_size(comm.Get_rank(), comm.Get_size())
     with prof.phase('setup (mesh+input)'):
-        S, mesh = build_solver_state(case_dir)
+        # THIS RANK'S BOX only (meshgen.f90's rank-local build), then the
+        # setup exchanges Fortran does (MPI4arn, MPI4NodalQuant on mass/fnms).
+        S, mesh = build_solver_state(case_dir, part=part)
+        plan = MQ.setup_exchange(comm, part, S, mesh)
     with prof.phase('solve'):
-        out = driver.run_mpi(S, comm, nsteps=nsteps, verbose=verbose,
+        out = driver.run_mpi(S, comm, part, plan, nsteps=nsteps, verbose=verbose,
                              xp=_backend.array_module('jax'))
 
     rank, nranks = comm.Get_rank(), comm.Get_size()
@@ -473,7 +523,7 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         # into `element`, both Python backends) and why `wait`=0.0 here is a
         # REAL measurement (no barrier on the default path), not a gap.
         # setup = mesh+input build (Profile phase) PLUS driver.run_mpi's own
-        # pre-loop decompose/to_device/jit-construction span (rep['setup_s'],
+        # pre-loop invariants/to_device/jit-construction span (rep['setup_s'],
         # see driver.py's t_setup comment) -- both are real setup cost, and
         # omitting the latter is what left ~30% of total_s in
         # unaccounted_s on test.tpv8 x 4 ranks before this fix.
@@ -491,15 +541,18 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     sel = out['own_in_computed']
     n_own = int(rows.shape[0])
     if n_own == 0:
-        # A rank whose element slab never touches the fault owns no fault
-        # node, and Fortran writes NO frt.txt for such a rank -- which is why
-        # library_output.write_frt refuses nftnd==0. Mirror that: write
-        # nothing and say so. This cannot hide lost nodes: driver.run_mpi has
-        # already allreduced the owned counts and raised unless they sum to
-        # nftnd, so a missing file means "this rank owned none", never
-        # "these nodes went missing". Found at 4 ranks on test.tpv104 (2
-        # ranks is not enough to produce a fault-free slab) -- the shape of
-        # bug that only exists above the rank count you smoke-tested at.
+        # A rank that OWNS no fault node writes no frt.txt, and
+        # library_output.write_frt refuses nftnd==0. Two shapes reach here:
+        # a box that never meets the fault (Fortran writes nothing for it
+        # either), and a box that holds fault nodes all of which a LOWER rank
+        # also holds and therefore writes (e.g. the +y side of a y split lying
+        # on the fault plane) -- Fortran would write duplicates there; this
+        # port writes each fault row once so frt_canonical's duplicate branch
+        # never fires. This cannot hide lost nodes: setup_exchange has already
+        # checked the owned (count, key sum) against the global fault census,
+        # so a missing file means "this rank owned none", never "these nodes
+        # went missing". Which ranks own none depends on the decomposition --
+        # test at the rank counts that change it, not at 2.
         # It still gets a profile.rank<r>.json -- the parity gate's byte-
         # identity check is about frt output, not about profile coverage,
         # and a rank that did real setup/compute/exchange work is not "no
@@ -628,7 +681,9 @@ def _abort(exc, rank=0):
     SystemExit(exc.code) so a Python run and a Fortran run of the same bad
     config exit with the SAME number (rule 23). Every rank raises the same
     refusal before any collective (build_solver_state runs first on all
-    ranks), so there is no MPI_Abort equivalent to need today."""
+    ranks), so THIS path needs no MPI_Abort. Any OTHER exception raised on
+    one rank goes through the MPI entry point's traceback + comm.Abort
+    handler instead, so its partners cannot hang."""
     print(flush=True)
     print(' ==================== EQdyna: FATAL ====================')
     print('  rank      : ', rank)
@@ -678,6 +733,20 @@ def main():
                                         profile=prof)
         except checkInputConsistency.InputConsistencyError as exc:
             _abort(exc, rank=comm.Get_rank())
+        except BaseException:
+            # A failure on ONE rank -- its own box's mesh, its own faces --
+            # while the others wait in a Sendrecv would otherwise hang the job
+            # forever (observed: a fault-free box raised in
+            # build_node_coordinates and three ranks sat 27 min in the setup
+            # exchange). Fortran's abortRun calls MPI_Abort for the same
+            # reason. The traceback is printed first, flushed, so the cause is
+            # attributable to a rank and a line.
+            import traceback
+            traceback.print_exc()
+            sys.stdout.flush(); sys.stderr.flush()
+            print('rank %d/%d: aborting the MPI job (see traceback above)'
+                  % (comm.Get_rank(), comm.Get_size()), file=sys.stderr, flush=True)
+            comm.Abort(1)
         if args.profile:
             prof.report(nsteps=args.nsteps, nelem=prof.nelem or None,
                         stream=sys.stdout)

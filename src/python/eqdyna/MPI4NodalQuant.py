@@ -1,425 +1,363 @@
-"""MPI4NodalQuant.py <- assembleGlobalMass.f90:58-245 (the MPI4NodalQuant
-subroutine) + the per-rank domain decomposition meshgen.f90 performs from
-npx/npy/npz.
+"""MPI4NodalQuant.py <- assembleGlobalMass.f90:58-298 (the MPI4NodalQuant
+and processNodalQuantArr subroutines) + the rank bookkeeping meshgen.f90 does
+from npx/npy/npz (calcXyzMPIId, the per-face neighbour ranks).
 
 WHY THIS FILE HAS A SUBROUTINE'S NAME AND NOT A FILE'S. Every other module
 here is named after the Fortran FILE it ports. MPI4NodalQuant is a subroutine
-inside assembleGlobalMass.f90, and folding 300 lines of domain decomposition
-into assembleGlobalMass.py (670 lines of lumped-mass assembly) would bury the
-one thing this code is: the nodal exchange, and the partition it exchanges
-across. It is named after the Fortran entity it ports, which is the rule the
-convention is actually serving.
+inside assembleGlobalMass.f90, and the nodal exchange -- plus the partition it
+exchanges across -- is the one thing this code is. It is named after the
+Fortran entity it ports.
 
-WHAT THIS IS FOR. The jax backend's per-step kernel is FASTER than Fortran's
-at one core (611 vs 931 ms/step on test.tpv104) and does not scale: 2.76x at
-16 cores against Fortran MPI's 14.39x. Two routes were measured before this
-one was written, and both are recorded so this file is not mistaken for a
-first guess:
+WHAT THIS IS FOR. python-jax-mpi is the Fortran decomposition, one OS PROCESS
+per rank, with jax owning only the local element kernel. XLA automatic
+partitioning and explicit shard_map were both measured first and both lose to
+it (0 of 38 HLO scatters partitioned; the shard_map route replicates the nodal
+stages and all-reduces O(NEQ)); see backend.run_time_loop_sharded.
 
-  XLA AUTOMATIC partitioning -- 0 of 38 HLO scatters ever get a partition
-    annotation, and fusions partition only to round(sqrt(N)) (item 43).
-  EXPLICIT jax sharding (shard_map over host CPU devices) -- implemented and
-    measured; see backend.run_time_loop_sharded and
-    testsys/perf/run_shard_scaling.py. It works and it is bounded by two
-    things a device mesh cannot fix: the nodal stages stay REPLICATED on
-    every device, and the collective is an all-reduce of the WHOLE nodal
-    array (O(NEQ)) where MPI moves O(boundary).
+THE DECOMPOSITION IS FORTRAN'S (pathway item 64, owner decisions 2026-09-24:
+"follow Fortran"). Each rank builds ONLY its own (x,y,z) box, with rank-local
+numbering, exactly as meshgen.f90 does:
 
-This file is the third route and it is not a jax idea at all: it is the
-Fortran decomposition, one OS PROCESS per rank, with jax owning only the
-local element kernel -- which is exactly where it already wins. Nothing in
-XLA has to cooperate: there is no partition annotation to hope for, no
-host-platform device fiction, the duplicate-index scatter-add becomes a
-purely LOCAL operation, and the halo is O(boundary) by construction.
+  * the split is (npx,npy,npz) = DECOMP[nranks] below -- the same table the
+    perf tools hand the Fortran binary (testsys/perf/run_scaling.py imports
+    it from here, so the two cannot drift);
+  * rank -> (mex,mey,mez) is calcXyzMPIId, z fastest (meshgen.calc_xyz_mpi_id);
+  * each dimension's global grid line is split by getLocalOneDimCoorArrAndSize
+    (meshgen.partition_1d): neighbouring boxes SHARE one node plane and never
+    an element, and the local line is a bitwise SLICE of the global one;
+  * every node in the box is local -- including both halves of a split-node
+    pair on a shared face, which Fortran's createMasterNode creates on every
+    rank that holds the plane. A fault node pair is therefore never split
+    across ranks, and a y boundary lying ON the fault plane is legal;
+  * elements are the box's own ix,iy,iz >= 2, so the element sets partition.
 
-THE DECOMPOSITION, and how it differs from Fortran's. Fortran gives each rank
-its own MESH: meshgen.f90 generates only that rank's nodes and elements, with
-rank-local numbering. This port keeps the PROVEN serial mesh build on every
-rank and then RESTRICTS it -- same global node and equation numbering on
-every rank, each rank holding the full-length nodal arrays but touching only
-its own elements' entries. That trade is deliberate:
+Nothing here builds or holds the global mesh. The only global-extent objects
+a rank keeps are the three 1D grid lines (O(n^(1/3))) and two O(1) integer
+censuses (meshgen.fault_census / equation_census) used to check that the
+ranks' owned entities add up.
 
-  + every index array (eq_ids, conn, idx*, nsmp) comes from the serial code
-    path that is already gated on 10 cases x 3 backends, so the partition
-    cannot introduce a numbering bug -- it only SELECTS rows.
-  + a rank's frt output is a subset of the serial rows, so the existing
-    per-rank `frt.txt<rank>` canonicalisation (testsys/frt_canonical.py,
-    which already globs frt.txt* for exactly this reason) compares an
-    N-rank python run against the SAME committed reference as a 4-rank
-    Fortran run and a serial run. No new comparison path.
-  - every rank pays the serial mesh build (fixed cost, differenced out of
-    any per-step number) and holds the full-length nodal arrays
-    (NEQ+1 doubles = 30.5 MB on test.tpv104, times nranks).
+THE EXCHANGE, verbatim in ORDER. A node on a shared plane holds a PARTIAL sum
+on each rank that holds it. MPI4NodalQuant sums them the way
+assembleGlobalMass.f90:95-217 does: three phases, x then y then z; in each,
+the minus face then the plus face; per face, fetch this rank's values at the
+face's regular nodes (loop order below) and -- when fltMPI(k), i.e. this rank
+has fault nodes on that face -- at the master nodes on it
+(addFaultBoundaryTerm), Sendrecv with the face neighbour, add what came back.
+An edge or corner contribution reaches its other sharers by RELAY (the
+x-phase result is what the y-phase sends), not by a 26-neighbour exchange.
+That relay is load-bearing, not incidental: with it every sharer ends with
+the same bits (IEEE addition is commutative, so a+b == b+a and
+(a+b)+(c+d) == (c+d)+(a+b)), which is what lets a shared node -- and a
+split-node pair on a shared face -- be integrated REDUNDANTLY by every rank
+that holds it, from identical complete forces, with no velocity exchange.
+A one-round own+sum(neighbours) exchange does not have that property at 3+
+sharers.
 
-THE EXCHANGE. After each rank assembles ITS elements, an equation on a
-subdomain boundary holds a PARTIAL sum on each rank that touches it.
-MPI4NodalQuant below sums those partials, exactly as
-assembleGlobalMass.f90:58-245 does for Fortran, and it moves only the shared
-equations -- not the array. Everything after the exchange (velDispUpdate,
-faulting, the mass divide) is then plain local work on a force array that is
-COMPLETE at every equation this rank will read, which is the same
-postcondition Fortran relies on and the reason no velocity exchange is
-needed: a node shared by two ranks is updated redundantly by both, from
-identical complete forces, so the two agree without talking.
+Used for nodalMassArr (numDof 3) and fnms (numDof 1) once at setup, as
+assembleGlobalMass.f90:41-42, and for the nodal force every step, as
+driver.f90:27. Fortran's mpi_barrier after each phase is a timing device and
+not reproduced; the Sendrecv chain is deadlock-free without it (each phase
+completes from rank 0 upward along every line).
 
-BIT-EXACTNESS. An N-rank run is NOT bit-identical to a serial one and cannot
-be: a boundary equation's contributions are summed in a different order
-(own-partial + received-partial, instead of element by element), and float
-addition is not associative. It is gated the way every other backend column
-is gated -- against the committed canonical reference at the case's bound in
-testsys/matrix.py. Deterministic and reproducible run to run: the neighbour
-loop walks ranks in ascending order, so the additions happen in a fixed
-order for a given rank count.
+BIT-EXACTNESS. An N-rank run is not bit-identical to a serial one and cannot
+be: a shared equation's partials are summed in a different order. It is gated
+against the committed canonical reference at the case bound, like every
+other column, and is reproducible run to run for a given decomposition.
 """
 import numpy as np
 
-from . import backend as B
+from . import meshgen
 
-# Relative cost of a PML element against an interior one, used ONLY to choose
-# the cut points so the ranks get equal WORK rather than equal element counts.
-# calcPMLElemKU computes 15 split stress components and 12 force blocks
-# against calcElemKU's 6 and 3, so a PML element is several times an interior
-# one; the exact figure is a load-balance heuristic, not physics, which is why
-# decompose() REPORTS each rank's (Ei, Ep) so an imbalance is visible in the
-# measurement instead of hiding inside it.
-PML_WEIGHT = 3.0
+# (npx, npy, npz) per rank count -- the Fortran perf/e2e decomposition. ONE
+# copy: testsys/perf/run_scaling.py imports this name.
+DECOMP = {1: (1, 1, 1), 2: (2, 1, 1), 4: (2, 2, 1), 8: (2, 2, 2),
+          16: (4, 2, 2), 32: (4, 4, 2)}
 
 
-def _cuts(weights, nranks):
-    """Contiguous element ranges whose weight sums are as equal as the
-    integer cuts allow. Contiguity is the point: serial element order is the
-    mesh generator's nested loop order, so a contiguous range is a spatial
-    slab and its shared-equation set is a surface. decompose() measures that
-    surface and reports it, rather than trusting the claim."""
-    c = np.concatenate(([0.0], np.cumsum(weights)))
-    total = c[-1]
-    edges = [0]
-    for r in range(1, nranks):
-        edges.append(int(np.searchsorted(c, total * r / nranks)))
-    edges.append(len(weights))
-    # A rank with zero elements would make its local kernel shapes zero and
-    # its exchange meaningless -- refuse loudly rather than produce a rank
-    # that contributes nothing while still being counted in the speedup.
-    for r in range(nranks):
-        if edges[r + 1] <= edges[r]:
+class Partition(object):
+    """This rank's place in an (npx,npy,npz) decomposition. Pure bookkeeping:
+    no communicator, so a test can build any rank's mesh in one process."""
+
+    def __init__(self, rank, nranks, dims):
+        dims = tuple(int(d) for d in dims)
+        if len(dims) != 3 or min(dims) < 1 or dims[0] * dims[1] * dims[2] != nranks:
+            raise ValueError('Partition: decomposition %r does not multiply to '
+                             '%d ranks' % (dims, nranks))
+        if not 0 <= rank < nranks:
+            raise ValueError('Partition: rank %d out of range for %d ranks'
+                             % (rank, nranks))
+        self.rank, self.nranks, self.dims = int(rank), int(nranks), dims
+        self.mexyz = meshgen.calc_xyz_mpi_id(self.rank, *dims)
+
+    @classmethod
+    def for_size(cls, rank, nranks):
+        """The decomposition for `nranks` is DECOMP's -- never inferred, never
+        a nearest match. A rank count the table does not name is refused."""
+        if nranks not in DECOMP:
             raise ValueError(
-                'MPI4NodalQuant._cuts: rank %d would get 0 of %d elements at '
-                'nranks=%d. Use fewer ranks than elements.'
-                % (r, len(weights), nranks))
-    return edges
+                'python-jax-mpi runs at the rank counts MPI4NodalQuant.DECOMP '
+                'names (%s), the same (npx,npy,npz) table the Fortran is run '
+                'with; got %d ranks.' % (sorted(DECOMP), nranks))
+        return cls(rank, nranks, DECOMP[nranks])
+
+    def neighbour(self, d, ib):
+        """Face neighbour in dimension d (0=x,1=y,2=z), ib 0 = minus side,
+        1 = plus side: me -/+ npy*npz, npz, 1 (assembleGlobalMass.f90:77-90)."""
+        stride = (self.dims[1] * self.dims[2], self.dims[2], 1)[d]
+        return self.rank - stride if ib == 0 else self.rank + stride
+
+    def at_model_edge(self, d, ib):
+        """bnd(ib)==0 in the Fortran: the minus face of the first rank and the
+        plus face of the last rank along d are model boundary, not halo."""
+        return self.mexyz[d] == 0 if ib == 0 else self.mexyz[d] == self.dims[d] - 1
+
+    def slice_lines(self, xline, yline, zline):
+        """Local grid lines (bitwise slices of the global ones) and their
+        0-based global offsets."""
+        out, offs = [], []
+        for d, line in enumerate((xline, yline, zline)):
+            loc, off = meshgen.local_line(line, self.dims[d], self.mexyz[d])
+            out.append(loc)
+            offs.append(off)
+        return out, tuple(offs)
 
 
-def _take(a, sel):
-    return np.asarray(a)[sel]
+def face_node_ids(d, ib, nx, ny, nz):
+    """1-based LOCAL regular node ids on face (d, ib), in MPI4NodalQuant's own
+    loop order (assembleGlobalMass.f90:152-172 / :190-210): x faces loop iz
+    then iy, y faces ix then iz, z faces ix then iy. Both sides of a face
+    walk it in this order over the same (shared) local extents, which is
+    what makes the Sendrecv buffers line up -- checked at setup by
+    `handshake`, not assumed."""
+    bnd = 1 if ib == 0 else (nx, ny, nz)[d]
+    if d == 0:
+        iz, iy = np.meshgrid(np.arange(1, nz + 1), np.arange(1, ny + 1), indexing='ij')
+        ids = (bnd - 1) * ny * nz + (iz - 1) * ny + iy
+    elif d == 1:
+        ix, iz = np.meshgrid(np.arange(1, nx + 1), np.arange(1, nz + 1), indexing='ij')
+        ids = (ix - 1) * ny * nz + (iz - 1) * ny + bnd
+    else:
+        ix, iy = np.meshgrid(np.arange(1, nx + 1), np.arange(1, ny + 1), indexing='ij')
+        ids = (ix - 1) * ny * nz + (bnd - 1) * ny + iy
+    return ids.ravel().astype(np.int64)
 
 
-def _take_ravelled(a, sel):
-    """The (n*8,) index arrays assembleGlobalKU.build already ravelled:
-    reshaped, row-selected, re-ravelled, so the kernel receives exactly the
-    flat layout it receives serially and the within-rank scatter order is the
-    serial one."""
-    return np.asarray(a).reshape(-1, 8)[sel].reshape(-1)
+def build_faces(part, n_local, ndof, eq_ids, flt_lists, flt_mpi):
+    """The exchange plan: one entry per face this rank exchanges, in the
+    Fortran's order (x-, x+, y-, y+, z-, z+; model-boundary faces and
+    undivided dimensions skipped).
 
-
-# WHICH INDEX SPACE each integer index array addresses -- the table that makes
-# the global->local remap below total rather than a list somebody remembered to
-# extend. Every integer ARRAY in assembleGlobalKU.build's dict must appear in
-# _INDEX_SPACE and every one in faulting.build's in _FAULT_INDEX_SPACE, or
-# _relabel_all raises: an unremapped index array is not a crash, it is a read
-# from (or a scatter into) whatever local slot that global number happens to
-# land on -- a wrong answer with nothing to attribute it to. Same discipline,
-# and the same reason, as backend._ELEM_GROUP.
-_INDEX_SPACE = {
-    # node-indexed: they address velArr / dispArr, which are (N_local, 3)
-    'conn': 'node', 'conn_i': 'node', 'conn_p': 'node',
-    'int_nodes_idx': 'node', 'pml_nodes_idx': 'node',
-    # equation-indexed: they address v1 / force / mass, which are (NEQ_local+1,)
-    'idx3_v': 'eq', 'idx12_v': 'eq',
-    'idxIx': 'eq', 'idxIy': 'eq', 'idxIz': 'eq',
-    'idxP12': 'eq', 'idxP3': 'eq',
-    'idxH0': 'eq', 'idxH1': 'eq', 'idxH2': 'eq',
-}
-_FAULT_INDEX_SPACE = {
-    'nsmp1': 'node', 'nsmp2': 'node',
-    'idxF_s': 'eq', 'idxF_m': 'eq',
-}
-
-
-def _is_index_array(v):
-    """An integer ARRAY (or list of them), i.e. something that addresses a
-    nodal or equation array. Excludes the integer SCALARS in the same dicts
-    (N, NEQ, Ei, friclaw, TPV, ...), which are counts and trace-time
-    branches, not indices."""
-    if isinstance(v, (list, tuple)):
-        return bool(len(v)) and all(_is_index_array(x) for x in v)
-    return (isinstance(v, np.ndarray) and v.ndim >= 1
-            and v.dtype.kind in 'iu')
-
-
-def _relabel(name, v, g2l, space, n_local):
-    """`v` with every global index replaced by its local one.
-
-    A gather or a scatter reproduces exactly the same additions, in the same
-    order, under an INJECTIVE relabelling of its index array: duplicate
-    structure and array order are untouched, only the addresses change. That
-    is why this remap is expected to be BIT-IDENTICAL to the global-extent
-    run at the same rank count, and it is gated as such rather than at the
-    case bound (see NOTES_item43_mpi.md).
-    """
-    if isinstance(v, (list, tuple)):
-        return [_relabel(name, x, g2l, space, n_local) for x in v]
-    a = np.asarray(v)
-    if a.size and int(a.min()) < 0:
-        raise ValueError(
-            'MPI4NodalQuant._relabel: %r holds a negative %s index (min %d). '
-            'Fancy-indexing the global->local table with it would wrap to a '
-            'VALID-looking local index and scatter into the wrong slot.'
-            % (name, space, int(a.min())))
-    out = g2l[a]
-    nbad = int(np.count_nonzero(out < 0))
-    if nbad:
-        raise ValueError(
-            'MPI4NodalQuant._relabel: %d of %d entries of %r address a %s '
-            'this rank does not hold, so it cannot be sized into the local '
-            '%s set (%d entries). The element restriction and the touched-set '
-            'are out of step; do not clamp -- the clamped write would land on '
-            'a real node.' % (nbad, out.size, name, space, space, n_local))
-    return out
-
-
-def _relabel_all(d, table, g2l_node, g2l_eq, n_node, n_eq):
-    """`d` with every classified index array remapped, in place."""
-    for k in list(d):
-        v = d[k]
-        if not _is_index_array(v):
+    Each entry carries `nodes` (1-based local node ids: the face's regular
+    nodes, then -- when fltMPI(k) -- nx*ny*nz + its fault-node indices, i.e.
+    addFaultBoundaryTerm's master nodes) and `eqs` (processNodalQuantArr's
+    numDof==3 slots: every eq>0 of those nodes in dof order). `ndof`/`eq_ids`
+    are the 0-indexed-by-node S['ndof']/S['eq_ids'] tables (sink 0 = no
+    equation)."""
+    nx, ny, nz = n_local
+    n_reg = nx * ny * nz
+    faces = []
+    for d in range(3):
+        if part.dims[d] <= 1:
             continue
-        space = table.get(k)
-        if space is None:
-            raise KeyError(
-                'MPI4NodalQuant._relabel_all: %r is an integer index array '
-                'that is classified neither node-indexed nor equation-indexed. '
-                'Add it to _INDEX_SPACE / _FAULT_INDEX_SPACE. Leaving it at '
-                'GLOBAL numbering against a rank-local array is a silent '
-                'wrong-slot access, not an error.' % (k,))
-        d[k] = _relabel(k, v, g2l_node if space == 'node' else g2l_eq,
-                        space, n_node if space == 'node' else n_eq)
-    return d
+        for ib in (0, 1):
+            if part.at_model_edge(d, ib):
+                continue
+            k = 2 * d + ib
+            nodes = face_node_ids(d, ib, nx, ny, nz)
+            if flt_mpi[k]:
+                nodes = np.concatenate((nodes, n_reg + flt_lists[k]))
+            if np.unique(nodes).size != nodes.size:
+                raise ValueError('build_faces: face %d holds a node twice' % k)
+            e = eq_ids[nodes - 1]
+            live = (np.arange(e.shape[1])[None, :] < ndof[nodes - 1][:, None]) & (e > 0)
+            faces.append(dict(d=d, ib=ib, k=k, nb=part.neighbour(d, ib),
+                              nodes=nodes, eqs=e[live].astype(np.int64),
+                              eqs_per_node=live.sum(axis=1).astype(np.int64)))
+    return faces
 
 
-def decompose(S, inv, finv, rank, nranks):
-    """Rank-local `inv`, `finv`, exchange plan and output row selection.
-
-    Returns a dict with
-        inv, finv      -- the same dicts, element rows and fault-node rows
-                          restricted to this rank, and EVERY index array
-                          renumbered into this rank's local node / equation
-                          space (inv['N'], inv['NEQ'], inv['NEQ1'] are the
-                          local extents, which is what driver.run_mpi sizes
-                          the carry on)
-        local_nodes    -- global node id of each local node, ascending
-        local_eqs      -- global equation id of each local equation,
-                          ascending; local equation j+1 is global
-                          local_eqs[j], and local 0 is the sink, as globally
-        halo_idx       -- LOCAL equation indices this rank exchanges (int32)
-        halo_eq_global -- the same equations as GLOBAL ids; the only form in
-                          which two ranks can agree on a shared equation, so
-                          it is what the symmetry invariant is checked on
-        neighbours     -- [(rank, positions-into-halo_idx), ...], ascending
-        fault_rows     -- fault-node rows this rank OWNS and therefore writes
-        report         -- counts for the measurement to print (rule: a
-                          multi-rank number that does not state its per-rank
-                          element count cannot be checked)
-    """
-    if not 0 <= rank < nranks:
-        raise ValueError('decompose: rank %d out of range for nranks %d'
-                         % (rank, nranks))
-    elemType = S['elemType']
-    eq_ids = S['eq_ids']
-    conn = S['conn']
-    E = conn.shape[0]
-
-    # --- element partition: contiguous, work-weighted -----------------------
-    w = np.where(elemType == 2, PML_WEIGHT, 1.0)
-    edges = _cuts(w, nranks)
-    lo, hi = edges[rank], edges[rank + 1]
-    mine = np.zeros(E, dtype=bool)
-    mine[lo:hi] = True
-
-    # Positions within the interior / PML / all-element arrays. build() keeps
-    # those arrays in ascending global-element order, so a contiguous global
-    # range maps to a contiguous range in each -- computed, not assumed.
-    is_int = (elemType == 1) | (elemType > 10)
-    is_pml = elemType == 2
-    sel_i = np.nonzero(mine[np.nonzero(is_int)[0]])[0]
-    sel_p = np.nonzero(mine[np.nonzero(is_pml)[0]])[0]
-    sel_e = np.arange(lo, hi)
-
-    # The element-axis classification lives in ONE table (backend._ELEM_GROUP,
-    # written for the shard_map route) so that a new array in build()'s dict
-    # cannot be handled by one decomposition and forgotten by the other.
-    inv_l = dict(inv)
-    for k, group in B._ELEM_GROUP.items():
-        sel = {'Ei': sel_i, 'Ep': sel_p, 'E': sel_e}[group]
-        v = inv[k]
-        if isinstance(v, (list, tuple)):
-            inv_l[k] = [_take_ravelled(x, sel) if k in B._RAVELLED else _take(x, sel)
-                        for x in v]
-        else:
-            inv_l[k] = (_take_ravelled(v, sel) if k in B._RAVELLED
-                        else _take(v, sel))
-    inv_l['Ei'] = int(sel_i.shape[0])
-    inv_l['Ep'] = int(sel_p.shape[0])
-    inv_l['E'] = int(sel_e.shape[0])
-
-    # --- nodal restriction: the nodes this rank's elements touch ------------
-    # velDispUpdate then integrates exactly those nodes. A node shared with
-    # another rank is integrated by BOTH, from the same post-exchange force,
-    # so the two agree with no further communication -- this is the reason
-    # MPI4NodalQuant exchanges force and nothing exchanges velocity.
-    touched = np.zeros(S['N'], dtype=bool)
-    touched[conn[lo:hi].ravel()] = True
-    mask_int = touched[inv['int_nodes_idx']]
-    mask_pml = touched[inv['pml_nodes_idx']]
-    for k, m in (('int_nodes_idx', mask_int), ('idx3_v', mask_int),
-                 ('pml_nodes_idx', mask_pml), ('idx12_v', mask_pml),
-                 ('a9', mask_pml), ('b9', mask_pml)):
-        inv_l[k] = np.asarray(inv[k])[m]
-
-    # --- exchange plan ------------------------------------------------------
-    # Every rank can compute every other rank's touched set (it holds the full
-    # mesh), so the plan needs no communication to build and both sides of a
-    # pair derive the SAME shared-equation list in the same (sorted) order.
-    my_eq = _eqs_of(eq_ids, touched)
-    neighbours, halo_list = [], []
-    for s in range(nranks):
-        if s == rank:
-            continue
-        t = np.zeros(S['N'], dtype=bool)
-        t[conn[edges[s]:edges[s + 1]].ravel()] = True
-        shared = np.intersect1d(my_eq, _eqs_of(eq_ids, t), assume_unique=True)
-        if shared.size:
-            neighbours.append((s, shared))
-            halo_list.append(shared)
-    halo_idx = (np.unique(np.concatenate(halo_list)) if halo_list
-                else np.zeros(0, dtype=np.int64))
-    pos = {int(e): i for i, e in enumerate(halo_idx)}
-    neighbours = [(s, np.array([pos[int(e)] for e in sh], dtype=np.int64))
-                  for s, sh in neighbours]
-
-    # --- fault rows this rank owns (lowest rank that touches both nodes) ----
-    fault_touched = touched[finv['nsmp1']] & touched[finv['nsmp2']]
-    owner = np.full(finv['nftnd'], -1, dtype=np.int64)
-    for s in range(nranks):
-        t = np.zeros(S['N'], dtype=bool)
-        t[conn[edges[s]:edges[s + 1]].ravel()] = True
-        cand = t[finv['nsmp1']] & t[finv['nsmp2']]
-        owner = np.where((owner < 0) & cand, s, owner)
-    if np.any(owner < 0):
-        raise ValueError(
-            'MPI4NodalQuant.decompose: %d of %d fault nodes are touched by no '
-            'rank -- they would be missing from every frt.txt and the gate '
-            'would compare a short file without saying so.'
-            % (int(np.count_nonzero(owner < 0)), finv['nftnd']))
-    finv_l = _restrict_fault(finv, fault_touched, int(finv['nftnd']))
-    fault_rows = np.nonzero(owner == rank)[0]
-    # Rows this rank OWNS, expressed as positions within the rows it COMPUTES
-    # (finv_l), because that is what the solver will hand back.
-    computed = np.nonzero(fault_touched)[0]
-    own_in_computed = np.nonzero(np.isin(computed, fault_rows))[0]
-
-    # --- global -> local renumbering ---------------------------------------
-    # WHY THIS EXISTS. Restricting the index ARRAYS (above) shrinks the work;
-    # it does not shrink the arrays those indices address. The carry stayed at
-    # global extent -- v1+velArr+dispArr+force = 97.75 MB on test.tpv104,
-    # BYTE-IDENTICAL at 1 rank and at 32, 98.5% of the 32-rank carry -- so
-    # compute fell with rank count and memory traffic did not, and from 4
-    # ranks up the step was memory-system-bound (measured: 32 concurrent
-    # INDEPENDENT zero-communication processes reproduce the in-situ per-step
-    # cost to 3.7%, which excludes MPI, barrier and exchange outright).
-    # Fortran goes SUPERLINEAR to 37.33x on 32 ranks precisely because its
-    # per-rank working set shrinks into cache. Renumbering into the local node
-    # and equation sets is what makes that available here.
-    #
-    # The local sets are exactly what the restriction above already computed:
-    # `touched` (the nodes this rank's elements reach, own plus halo) and
-    # `my_eq` (their equations). Nothing new is derived.
-    #
-    # THE SINK STAYS AT INDEX 0. Equation 0 is the no-equation slot every
-    # masked-out contribution is scattered into and calcHourglassResist
-    # scrubs, mass[0] is its dummy 1.0, and driver's mass divide skips it by
-    # slicing [1:]. Mapping it anywhere else would either scrub a real
-    # equation or divide the sink by a real mass.
-    nodes_l = np.nonzero(touched)[0]
-    g2l_node = np.full(S['N'], -1, dtype=np.int64)
-    g2l_node[nodes_l] = np.arange(nodes_l.shape[0])
-    eqs_l = my_eq
-    g2l_eq = np.full(int(S['NEQ']) + 1, -1, dtype=np.int64)
-    g2l_eq[0] = 0
-    g2l_eq[eqs_l] = np.arange(1, eqs_l.shape[0] + 1)
-
-    n_node_l = int(nodes_l.shape[0]); n_eq_l = int(eqs_l.shape[0])
-    _relabel_all(inv_l, _INDEX_SPACE, g2l_node, g2l_eq, n_node_l, n_eq_l)
-    _relabel_all(finv_l, _FAULT_INDEX_SPACE, g2l_node, g2l_eq,
-                 n_node_l, n_eq_l)
-    inv_l['N'] = n_node_l
-    inv_l['NEQ'] = n_eq_l
-    inv_l['NEQ1'] = n_eq_l + 1
-    halo_global = halo_idx
-    halo_local = _relabel('halo_idx', halo_idx, g2l_eq, 'eq', n_eq_l)
-
-    report = dict(rank=rank, nranks=nranks, elem_lo=lo, elem_hi=hi,
-                  Ei=inv_l['Ei'], Ep=inv_l['Ep'], E=inv_l['E'],
-                  work=float(w[lo:hi].sum()), work_total=float(w.sum()),
-                  nodes=int(touched.sum()), eqs=int(my_eq.size),
-                  halo_eqs=int(halo_idx.size),
-                  halo_frac=float(halo_idx.size) / max(int(my_eq.size), 1),
-                  neighbours=[int(s) for s, _ in neighbours],
-                  fault_computed=int(computed.size), fault_owned=int(fault_rows.size),
-                  N_local=n_node_l, NEQ_local=n_eq_l,
-                  N_global=int(S['N']), NEQ_global=int(S['NEQ']))
-    return dict(inv=inv_l, finv=finv_l, halo_idx=halo_local.astype(np.int32),
-                halo_eq_global=halo_global, local_nodes=nodes_l,
-                local_eqs=eqs_l,
-                neighbours=neighbours, fault_rows=fault_rows,
-                fault_computed_rows=computed,
-                own_in_computed=own_in_computed, report=report)
+def _tags(part, face, num_dof):
+    """MPI4NodalQuant's sendtag/recvtag (assembleGlobalMass.f90:127-141)."""
+    base = (0, 10000, 20000)[face['d']] * num_dof
+    return base + part.rank, base + face['nb']
 
 
-def restrict_rows(d, rows, n):
-    """`d` with every per-fault-node array reduced to `rows`. Used for the
-    thermal-pressurization constants and history (friclaw 5), which are
-    built per fault node by updateThermalPressurization.build and must follow
-    the same restriction as finv or the two disagree on which node is which."""
-    mask = np.zeros(n, dtype=bool)
-    mask[rows] = True
-    return _restrict_fault(d, mask, n)
+def relay(comm, part, faces, key, arr, num_dof):
+    """MPI4NodalQuant(arr, numDof) on a 1-indexed builder array, IN PLACE:
+    for each face in order, fetch arr[face[key]], Sendrecv with the face
+    neighbour, add the neighbour's values back (processNodalQuantArr's
+    fetch/add). `key` is 'eqs' for numDof 3 (nodalMassArr, indexed by
+    equation) and 'nodes' for numDof 1 (fnms, indexed by node)."""
+    for f in faces:
+        idx = f[key]
+        send = np.ascontiguousarray(arr[idx])
+        recv = np.empty_like(send)
+        st, rt = _tags(part, f, num_dof)
+        comm.Sendrecv(send, dest=f['nb'], sendtag=st, recvbuf=recv,
+                      source=f['nb'], recvtag=rt)
+        arr[idx] += recv
+    return arr
 
 
-def _eqs_of(eq_ids, node_mask):
-    """Sorted unique equation indices of the flagged nodes, sink (0) dropped.
-    Index 0 is the no-equation sink every masked-out contribution is scattered
-    into and calcHourglassResist scrubs; exchanging it would sum garbage."""
-    e = eq_ids[node_mask].ravel()
-    return np.unique(e[e > 0])
+def handshake(comm, part, faces, meshCoor):
+    """Once per run, per face: exchange the face's length, per-node equation
+    counts and node COORDINATES with the neighbour and require bitwise
+    equality. This is the replacement for the global-id symmetry check the
+    build-then-restrict design had: without it a transposed loop on one side
+    would sum the wrong partials and nothing downstream could attribute it.
+    `meshCoor` is the 1-indexed (N+1, 3) builder array. Tags 70000+ sit
+    above every MPI4NodalQuant tag (at most 20000*3 + rank)."""
+    for f in faces:
+        mine = np.concatenate((np.array([f['nodes'].size, f['eqs'].size], dtype=np.float64),
+                               f['eqs_per_node'].astype(np.float64),
+                               meshCoor[f['nodes']].ravel()))
+        n_theirs = np.empty(1)
+        comm.Sendrecv(np.array([float(mine.size)]), dest=f['nb'], sendtag=70000 + part.rank,
+                      recvbuf=n_theirs, source=f['nb'], recvtag=70000 + f['nb'])
+        if int(n_theirs[0]) != mine.size:
+            raise RuntimeError(
+                'MPI4NodalQuant.handshake: rank %d face %d carries %d values, '
+                'neighbour %d carries %d -- the two sides do not describe the '
+                'same shared plane.' % (part.rank, f['k'] + 1, mine.size, f['nb'],
+                                        int(n_theirs[0])))
+        theirs = np.empty_like(mine)
+        comm.Sendrecv(mine, dest=f['nb'], sendtag=71000 + part.rank, recvbuf=theirs,
+                      source=f['nb'], recvtag=71000 + f['nb'])
+        if not np.array_equal(mine, theirs):
+            nbad = int(np.count_nonzero(mine != theirs))
+            raise RuntimeError(
+                'MPI4NodalQuant.handshake: rank %d face %d and neighbour %d '
+                'disagree in %d of %d entries (node count, eq count, per-node '
+                'eq counts, coordinates). A Sendrecv over these buffers would '
+                'add partials of DIFFERENT nodes.'
+                % (part.rank, f['k'] + 1, f['nb'], nbad, mine.size))
 
 
-def _restrict_fault(d, mask, n):
-    """`d` with its per-fault-node rows (leading axis == n) reduced to `mask`.
-    Scalars pass through. `tr` is either None (no nucleation for this case) or
-    one value per fault node -- both handled, because a wrong guess here
-    silently disables nucleation, the exact defect rule 17 step 3 records."""
-    out = {}
-    for k, v in d.items():
-        if k == 'nftnd':
-            out[k] = int(mask.sum())
-        elif isinstance(v, (list, tuple)) and len(v) and \
-                all(hasattr(x, 'shape') and x.shape[:1] == (n,) for x in v):
-            out[k] = [np.asarray(x)[mask] for x in v]
-        elif hasattr(v, 'shape') and getattr(v, 'shape', (0,))[:1] == (n,):
-            out[k] = np.asarray(v)[mask]
-        else:
-            out[k] = v
-    return out
+def owned_mask(part, ids, n_local):
+    """True for each 1-based local REGULAR node id in `ids` that this rank
+    OWNS: the lowest rank holding it. A node on a shared plane is held by the
+    ranks on both sides; since rank = mex*npy*npz + mey*npz + mez is monotone
+    in each coordinate, the lowest holder is the one that is lowest in every
+    dimension, i.e. this rank owns it unless it sits on this rank's minus
+    face of a dimension in which this rank is not first. Pure arithmetic, the
+    same answer on every rank with no communication. Used ONLY to decide who
+    WRITES a fault row and who COUNTS an equation -- never who computes one
+    (every holder computes, as Fortran does)."""
+    nx, ny, nz = n_local
+    s = np.asarray(ids, dtype=np.int64) - 1
+    loc = (s // (nz * ny), s % ny, (s % (nz * ny)) // ny)     # (ix, iy, iz)
+    own = np.ones(s.shape, dtype=bool)
+    for d in range(3):
+        if part.mexyz[d] > 0:
+            own &= loc[d] > 0
+    return own
+
+
+def exchange(comm, part, faces, vals):
+    """The per-step nodal-force MPI4NodalQuant (driver.f90:27), on the HALO
+    VALUES only. `vals` is this rank's force at every face equation (the
+    sorted union `halo_idx`, already on the host); each face's `pos` indexes
+    into it. Returns the COMPLETE values, which the caller writes back over
+    the device array -- a set, not an add of a delta, because own+delta is
+    not own+recv in floating point once a relay has summed three terms."""
+    for f in faces:
+        pos = f['pos']
+        send = np.ascontiguousarray(vals[pos])
+        recv = np.empty_like(send)
+        st, rt = _tags(part, f, 3)
+        comm.Sendrecv(send, dest=f['nb'], sendtag=st, recvbuf=recv,
+                      source=f['nb'], recvtag=rt)
+        vals[pos] += recv
+    return vals
+
+
+def setup_exchange(comm, part, S, mesh):
+    """Everything the Fortran exchanges at SETUP, in its order, then the
+    per-step plan:
+
+      handshake                        -- the shared planes really are shared
+      MPI4arn (meshgen.f90:156)        -- arn, with the DIVIDE/DUPLICATE rule
+      MPI4NodalQuant(nodalMassArr, 3)  -- assembleGlobalMass.f90:41
+      MPI4NodalQuant(fnms, 1)          -- assembleGlobalMass.f90:42
+
+    and re-binds S['arn'] / S['nodalMassArr'] / S['fnms'] to the completed
+    values. Returns the plan dict driver.run_mpi steps with."""
+    n_local = mesh['n_local']
+    arn1 = mesh['arn1']
+    flt_lists = mesh['flt_lists']
+    flt_mpi = meshgen.flt_mpi_flags(part, flt_lists)
+    faces = build_faces(part, n_local, S['ndof'], S['eq_ids'], flt_lists, flt_mpi)
+    handshake(comm, part, faces, mesh['meshCoor'])
+    if meshgen.mpi4arn(comm, part, arn1, flt_lists, mesh['fault_box']) != flt_mpi:
+        raise RuntimeError('MPI4NodalQuant.setup_exchange: MPI4arn set fltMPI '
+                           'differently from the plan it was built against')
+    mass1, fnms1 = mesh['mass1'], mesh['fnms1']
+    relay(comm, part, faces, 'eqs', mass1, 3)
+    relay(comm, part, faces, 'nodes', fnms1, 1)
+    # assemble_mass's invariant, which the two relays must preserve because
+    # they add the same neighbour values in the same order: nodalMassArr[eq]
+    # == fnms[node] bit for bit for every live equation. A mis-paired eq list
+    # breaks it; checked, not assumed.
+    e = S['eq_ids']
+    live = (np.arange(e.shape[1])[None, :] < S['ndof'][:, None]) & (e > 0)
+    node_of = np.nonzero(live)[0] + 1
+    if not np.array_equal(mass1[e[live]], fnms1[node_of]):
+        raise RuntimeError('MPI4NodalQuant.setup_exchange: after the relay, '
+                           'nodalMassArr and fnms disagree at %d equation(s).'
+                           % int(np.count_nonzero(mass1[e[live]] != fnms1[node_of])))
+    S['arn'] = arn1[1:]
+    S['nodalMassArr'] = mass1[1:]
+    S['fnms'] = fnms1[1:]
+
+    halo_idx = (np.unique(np.concatenate([f['eqs'] for f in faces]))
+                if faces else np.zeros(0, dtype=np.int64))
+    for f in faces:
+        f['pos'] = np.searchsorted(halo_idx, f['eqs'])
+    # Rows this rank WRITES: every local fault row is COMPUTED here (both
+    # halves of each pair are local), but each is written by exactly one
+    # rank -- the lowest holder -- so the frt files partition the fault and
+    # frt_canonical's duplicate branch never fires for this backend.
+    nsmp = mesh['nsmp']
+    owned_rows = (np.nonzero(owned_mask(part, nsmp[:, 0], n_local))[0]
+                  if nsmp.shape[0] else np.zeros(0, dtype=np.int64))
+    _check_censuses(comm, part, S, mesh, owned_rows, live)
+    return dict(faces=faces, halo_idx=halo_idx.astype(np.int32),
+                fault_rows=owned_rows, flt_mpi=flt_mpi)
+
+
+def _check_censuses(comm, part, S, mesh, owned_rows, live):
+    """The partition's conservation checks, O(1) communication each, run on
+    every MPI run (design 56d2401 section 1.2, R1). The ranks' OWNED fault
+    nodes must be the global set -- count AND sum of global grid keys, so a
+    node owned twice plus one owned never cannot pass -- and their OWNED
+    equations must add up to the global totalNumOfEquations. Both globals
+    come from meshgen's streaming censuses over the global grid lines, not
+    from any rank's mesh, so a numbering or boundary-classification defect in
+    the rank-local build has nothing to agree with by construction."""
+    nx, ny, nz = mesh['n_local']
+    nxg, nyg, nzg = mesh['n_global']
+    ox, oy, oz = mesh['offsets']
+    s0 = mesh['nsmp'][owned_rows, 0].astype(np.int64) - 1
+    keys = ((ox + s0 // (nz * ny)) * nzg * nyg + (oz + (s0 % (nz * ny)) // ny) * nyg
+            + (oy + s0 % ny))
+    got = (comm.allreduce(int(owned_rows.size)), comm.allreduce(int(keys.sum())))
+    if got != tuple(mesh['fault_census']):
+        raise RuntimeError(
+            'MPI4NodalQuant: the ranks OWN fault nodes (count, key sum) = %r, '
+            'the global grid has %r. frt.txt* would be short or doubled and '
+            'the canonical comparison would not say so.'
+            % (got, tuple(mesh['fault_census'])))
+    n_reg = nx * ny * nz
+    per_node = live.sum(axis=1)
+    own_reg = owned_mask(part, np.arange(1, n_reg + 1), mesh['n_local'])
+    owned_eqs = int(per_node[:n_reg][own_reg].sum()) + int(per_node[n_reg + owned_rows].sum())
+    total = comm.allreduce(owned_eqs)
+    if total != mesh['equation_census']:
+        raise RuntimeError(
+            'MPI4NodalQuant: the ranks OWN %d equations, the global mesh has '
+            '%d (countMeshEntities). A subdomain face was classified as model '
+            'boundary, or a shared node was dropped or doubled.'
+            % (total, mesh['equation_census']))
 
 
 SYNC_ENV = 'EQDYNA_MPI_SYNC'
@@ -477,26 +415,3 @@ def step_profile():
     if v not in ('0', '1'):
         raise ValueError('%s=%r: must be "0" or "1"' % (STEP_PROFILE_ENV, v))
     return v == '1'
-
-
-def exchange(comm, neighbours, halo_vals):
-    """MPI4NodalQuant's nodal sum, on the HALO VALUES only.
-
-    `halo_vals` is this rank's partial sums at its shared equations, already
-    on the host. Returns the DELTA to add (neighbours' partials), so the
-    caller adds once on the device and the local values are never sent back
-    through a second conversion.
-
-    Neighbours are walked in ASCENDING RANK ORDER and summed in that order,
-    so the result is reproducible run to run for a given rank count. Sendrecv
-    (not Isend/Irecv) because it cannot deadlock and, at the two neighbours a
-    slab decomposition produces, has nothing to gain from overlap: measured
-    0.116 ms for a 160 kB ring exchange at 16 ranks, 0.18% of a 64.74 ms
-    step."""
-    delta = np.zeros_like(halo_vals)
-    for s, pos in neighbours:
-        send = np.ascontiguousarray(halo_vals[pos])
-        recv = np.empty_like(send)
-        comm.Sendrecv(send, dest=s, recvbuf=recv, source=s)
-        delta[pos] += recv
-    return delta
