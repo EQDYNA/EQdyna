@@ -265,8 +265,16 @@ subroutine allocInitAfterMeshGen
     use errorCodes
     implicit none 
     integer (kind = 4) :: iSt, iDof, dispOrVel, rowCount, nodeId
-    if(numOfOnFaultStCount<=0) numOfOnFaultStCount=1 
-    allocate(onFaultQuantHistSCECForm(12,nstep,numOfOnFaultStCount))
+    ! Allocate at least one station slot, but NEVER raise the count itself.
+    ! This used to set numOfOnFaultStCount=1 on a rank that matched no
+    ! on-fault station, so output_onfault_st (library_output.f90) wrote a
+    ! PHANTOM station from anonfs(:,1)=0 -- an all-zero faultst000dp000.txt,
+    ! read through xonfs(:,0,0), out of bounds -- that no bStations.txt entry
+    ! asked for (tpv104/tpv1053d/drv.a6: 14 files for 13 stations; meng2023a/cb:
+    ! the ONLY file written). Where a case really has a (0,0) station, both the
+    ! real rank and the empty rank opened the same file name, so which one
+    ! survived depended on write order.
+    allocate(onFaultQuantHistSCECForm(12,nstep,max(numOfOnFaultStCount,1)))
     onFaultQuantHistSCECForm = 0.0d0
 
     allocate(nodalForceArr(totalNumOfEquations), v1(totalNumOfEquations), &

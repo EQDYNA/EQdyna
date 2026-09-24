@@ -48,11 +48,14 @@ BGLOBAL = ('1\n1\n1\n0\n0\n1\n1\n1\n8\n0\n0\n0\n \n2 2 1\n \n5.0\n'
 
 
 def write_station(d, name, nstress):
+    # nstress == 'zeros' writes the phantom-station shape: every value 0.
+    shear = 0.0 if nstress == 'zeros' else 70.0
+    nstress = 0.0 if nstress == 'zeros' else nstress
     with open(os.path.join(d, name), 'w') as f:
         f.write(HEADER)
         for k in range(3):
             f.write('  %.13E' % (0.01 * (k + 1)) + '  %.7E' * 7 % (
-                0, 0, 70.0, 0, 0, 0, nstress) + '\n')
+                0, 0, shear, 0, 0, 0, nstress) + '\n')
 
 
 def declared(case):
@@ -127,8 +130,14 @@ def main():
                        gate(ext, good_ext), False))
     finally:
         matrix.NSTRESS_CONVENTION[ext] = saved
+    checks.append(('MUTATION all-zero phantom station file fails',
+                   gate(ext, good_ext + [('faultst000dp000.txt', 'zeros')]), False))
     checks.append(('MUTATION unparseable station name fails',
                    gate(ext, good_ext + [('faultst000dpXYZ.txt', -1.0)]), False))
+    for tok, want in (('0.1234567-100', 1.234567e-101), ('-0.5000000+100', -0.5e100),
+                      ('0.2544000E+02', 25.44)):
+        got = compare._fortran_float(tok)
+        checks.append(('Fortran value %s parses' % tok, abs(got - want) <= 1e-12 * abs(want), True))
     for label, got, want in checks:
         if got != want:
             fails.append('%s: gate returned %s' % (label, got))
