@@ -161,10 +161,11 @@ which this rule does not replace.
 Named commands, named pass criteria:
 
 - Build: `cd src/fortran && make` (via `./install-eqdyna.sh -m <machine>`) must exit 0.
-- Test: `python3 testsys/run.py all` — the sweep (10 cases x {fortran,
-  python-jax} = 20 cells, plus one opt-in `python-jax-mpi` cell = 21, as of
-  2026-09-23; numpy dropped from the gate that day, owner decision — see rule
-  17 step 7 — and stays runnable by hand (`--backend numpy`), ungated. The
+- Test: `python3 testsys/run.py all` — the sweep (11 cases x {fortran,
+  python-jax} = 22 cells, plus one opt-in `python-jax-mpi` cell = 23, as of
+  2026-09-23; numpy dropped from the gate and `test.tpv30` was registered,
+  both that day — see rule 17 step 7 and `pathway_forward.md` item 19(b) —
+  and numpy stays runnable by hand (`--backend numpy`), ungated. The
   table itself is `testsys/matrix.py`, which is authoritative over this
   count).
   Pass means every
@@ -662,20 +663,16 @@ Nothing writes through it — not the sweep, not a debug run, not manually.
 As of 2026-09-21 it holds 11 case directories, and the enumeration below is a
 reader's aid, not the authority: `ls test.reference.results/` is.
 
-- The 10 GATED cases, every one of them covered by this rule: `test.drv.a6`,
+- The 11 GATED cases, every one of them covered by this rule: `test.drv.a6`,
   `test.meng2023a`, `test.meng2023cb`, `test.tpv10`, `test.tpv104`,
-  `test.tpv1053d`, `test.tpv29`, `test.tpv8`, and — added when they were
-  gated in v5.9.0/v5.10.0 and read-only on exactly the same terms as the
-  other eight — `test.tpv36` and `test.tpv37`.
-- `test.tpv30` is an eleventh committed reference belonging to a case that is
-  DELIBERATELY NOT REGISTERED in `testNameList.py`/`matrix.py` (pathway item
-  19(b); the equilibrium question that first blocked it was closed 2026-09-21
-  — measured as the fault frictionally failing at t=0, not a force-balance
-  defect — but the case stays unregistered while the python-port divergence
-  and the rule-17 steps-4/7 registration decision stand). Being ungated does
-  not make it writable: it is the frozen artifact
-  that investigation's evidence is measured against, so it is read-only for
-  the same reason as the rest. Do not regenerate it to close the divergence.
+  `test.tpv1053d`, `test.tpv29`, `test.tpv8`, `test.tpv36` and `test.tpv37`
+  (gated in v5.9.0/v5.10.0), and — registered 2026-09-23, PR #5 `567e723`,
+  owner-approved gating at 5 s / 500 m, fortran + python-jax, `CASE_BOUND`
+  1e-10 abs-max (pathway item 19(b), now CLOSED) — `test.tpv30`. Its reference
+  was ungated for months while the equilibrium question (closed 2026-09-21 —
+  measured as the fault frictionally failing at t=0, not a force-balance
+  defect) and the rule-17 steps-4/7 registration decision stood; both are now
+  settled and it is read-only on exactly the same terms as the other ten.
 
 **Rationale**: `check.test.py` sets `refRoot='test.reference.results'` and
 `testRoot='test'` as two distinct trees precisely so a run's scratch output
@@ -731,7 +728,8 @@ will otherwise overwrite `test.prev/`.
 `testNameList.py` already sequences small, fast, low-core cases
 (`test.drv.a6`, `test.tpv8`, `test.tpv10`, `test.tpv104`, `test.tpv1053d`,
 `test.meng2023a`, `test.meng2023cb`, `test.tpv29`, `test.tpv36`,
-`test.tpv37` — 10 cases, 4 ranks each, in that order) ahead of any HPC-scale
+`test.tpv37`, `test.tpv30` (registered 2026-09-23, PR #5) — 11 cases, 4 ranks
+each, in that order) ahead of any HPC-scale
 allocation. Read the order from `testNameList.nameList`, not from this list.
 
 **Rationale**: a TPV36-class run at 512 cores on Lonestar6 costs hours of
@@ -923,8 +921,9 @@ The release workflow, in order:
 
 1. Green gate first (rule 3): `./install-eqdyna.sh -m ubuntu` exits 0 and
    `python3 testsys/run.py all` reports every cell in the table SUCCESS —
-   21/21 as of 2026-09-23 (10 cases x {fortran, python-jax}, plus one opt-in
-   `python-jax-mpi` cell). The number is
+   23/23 as of 2026-09-23 (11 cases x {fortran, python-jax}, plus one opt-in
+   `python-jax-mpi` cell — `test.tpv30` was registered the same day, PR #5
+   `567e723`, taking the case count from 10 to 11). The number is
    `len(matrix.CASE_BOUND) * 2 + len(matrix.PY_MPI_RANKS)`, not a constant in
    this rule: a releaser who accepts a green count smaller than the current
    table has accepted a partial sweep. Never tag over a
@@ -2451,8 +2450,9 @@ what a release tag requires of it, on top of rule 15a's existing CI check
   python-numpy, went away the same day numpy was dropped from every gate
   (rule 17 step 7; owner decision, "I actually don't care numpy... I will use
   Jax anyway"; PR #4, `91afba4`). The release sweep today runs the SAME
-  runnable cells as the everyday sweep — 10 cases x {fortran, python-jax} plus
-  `test.tpv8` x `python-jax-mpi`, 21 cells — run locally on the exact release
+  runnable cells as the everyday sweep — 11 cases x {fortran, python-jax} plus
+  `test.tpv8` x `python-jax-mpi`, 23 cells (`test.tpv30` registered the same
+  day, PR #5 `567e723`) — run locally on the exact release
   tree and committed as evidence at `docs/evidence/sweep-<shortsha>/summary.json`,
   before `git tag` runs. If a future case is held out of the everyday run for
   cost, `RELEASE_ONLY` (or an equivalent) is reintroduced deliberately, not
@@ -2504,6 +2504,8 @@ second reference and a `--term` flag to maintain but no additional case ever
 actually ran past 5 s in CI or in the everyday gate — only the release sweep
 saw it, and infrequently. The tradeoff this rule now states plainly (above)
 is the one the owner accepted in exchange for that simplification.
+`test.tpv30`'s own registration (PR #5, `567e723`, same day) runs at this
+same 5 s / 500 m point from the start — it was never on a separate term.
 
 **How to apply**: before `git tag`, run the local sweep (today, all 21
 runnable cells — `RELEASE_ONLY` no longer exists, see above) at
@@ -2521,7 +2523,7 @@ evidence: `evaluate_sweep_evidence` requires a committed
 `docs/evidence/sweep-<shortsha>/summary.json` with `term==matrix.GATE_TERM_S`
 (there is no `"full"` term to check for anymore), `tree_clean`, every declared
 cell `SUCCESS`, and `n_runnable`/`n_success`/`len(cells)` all equal to the
-current `testsys/matrix.py`'s runnable-cell count (21 today — `RELEASE_ONLY`
+current `testsys/matrix.py`'s runnable-cell count (23 today — `RELEASE_ONLY`
 is deleted, not a set to add) for the exact tag SHA (or a rule-15d-permitted
 ancestor); it
 exits 5 (`SWEEP_INSUFFICIENT`) otherwise. Guarded itself by
