@@ -25,12 +25,12 @@ one-to-one symmetry.
 | `calcHourglassResist.f90` | FOLDED — `assembleGlobalKU.py:471-515`, a separate function called separately from `driver.py:140` | — | — |
 | `calcLocalShapeFunc.f90` | FOLDED — `assembleGlobalMass.py:111-124` (`_LOCAL_DERIV`, `_W`) | — | — |
 | `calcQAttenuationCoeff.f90` | **ABSENT** | no Q attenuation; no `C_Q` in `readInputFiles.py:43-128` | **UNREACHABLE ON BOTH SIDES**: `C_Q` is hardcoded `0` at `globalvar.f90:104` and read from no input file, so `calcElemKU.f90:77`'s branch cannot execute without editing source. Not a port gap |
-| `checkInputConsistency.f90` | **ABSENT** | no configuration-consistency validation in the port | NOTHING GATED — every gated case is consistent by construction. Live example: `output_plastic==1` with `C_elastic==1` aborts in Fortran; the port computes no plastic output (`assembleGlobalKU.py:344`) and silently produces nothing |
+| `checkInputConsistency.f90` | `checkInputConsistency.py` (`check`), called from `eqdyna3d.py`'s `build_solver_state` right after `readInputFiles.build_params` — the same point `eqdyna3d.f90:104` calls it, before any mesh or solver work. Raises `InputConsistencyError` carrying the matching `errorCodes.f90` `ERR_CFG_*` number; `eqdyna3d.py main()`'s `_abort` turns that into `SystemExit(code)` on both the serial and `--mpi` paths, so `python3 -m eqdyna` exits with the same code a Fortran run of the same bad config exits with. Two of the three ported checks (`C_Q==1` combinations) stay unreachable through any real case on BOTH sides — `C_Q` is never case input (see the `calcQAttenuationCoeff.f90` row) — and are pinned by direct unit call in `testsys/regression/test_check_input_consistency.py`, not through a case directory | — | — |
 | `computePMLDampingVector.f90` | FOLDED — `func_lib.py:59-62` (the 3·vmax/2δ·log(1/R)·(d/δ)² scaling, which Fortran keeps OUT of `pmlRegionDistance`) + `assembleGlobalKU.py:133-137` (the `dv(1:9)` tiling). The negative-component guard (`:40-44`) is not folded | — | — |
 | `countMeshEntities.f90` | FOLDED — `meshgen.py:323-408` (nodes, `nftnd`), `:410-646` (elements incl. `wedge4num`'s extra count), `:898-1026` (equations). Counts are array shapes; one pass instead of two | — | — |
 | `driver.f90` | `driver.py` | — | — |
 | `eqdyna3d.f90` | `eqdyna3d.py` | — | — |
-| `errorCodes.f90` | **ABSENT as a numbered-code contract** | `ValueError`/`NotImplementedError`, no numbered exit codes and no `abortRun` status contract | NOTHING GATED for the exit-code contract. **But see the re-verification below: the Jacobian guard the audit reported as missing DOES exist in the port.** `ERR_NUM_PML_DAMPING` and `ERR_NUM_VELOCITY_NAN` analogues are unverified either way |
+| `errorCodes.f90` | **PARTIAL as a numbered-code contract** — the `ERR_CFG_*` (11-13) range now has a Python analogue: `checkInputConsistency.py`'s `InputConsistencyError.code` + `eqdyna3d.py`'s `_abort`, matched code-for-code against this registry. Every other range (`ERR_INPUT_FILE_*`, `ERR_GEOM_*`, `ERR_MESH_*`, `ERR_MPI_*`, `ERR_NUM_*`, `ERR_NETCDF`) still has no Python counterpart | outside `ERR_CFG_*`: `ValueError`/`NotImplementedError`, no numbered exit codes and no `abortRun` status contract | NOTHING GATED for the exit-code contract outside `ERR_CFG_*`. **But see the re-verification below: the Jacobian guard the audit reported as missing DOES exist in the port.** `ERR_NUM_PML_DAMPING` and `ERR_NUM_VELOCITY_NAN` analogues are unverified either way |
 | `faulting.f90` | `faulting.py` | — | — |
 | `fric.f90` | `fric.py` | — | — |
 | `func_lib.f90` | `func_lib.py` | — | — |
@@ -93,8 +93,9 @@ sides, like `C_Q`.
 
 **Standing, unverified by me** (recorded as the audit reported them, not
 independently re-derived): the `computePMLDampingVector` negative-damping guard
-and the velocity-NaN guard having no port analogue; the restart-read absence;
-`checkInputConsistency`'s absence. Each is a candidate board row.
+and the velocity-NaN guard having no port analogue; the restart-read absence.
+Each is a candidate board row. (`checkInputConsistency`'s absence, also listed
+here by the original audit, is CLOSED — see its row above.)
 
 **One folding stands on no measurement.** `calcB` — never forming B — is
 nowhere justified, measured or otherwise. Under rule 23 clause 5 that makes it

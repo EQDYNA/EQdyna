@@ -95,6 +95,11 @@ SHARDS = {
         "test_term_axis.py",
     ],
     "2": [
+        "test_check_input_consistency.py",  # added 2026-09-24 (mira-volkov,
+                                 # checkInputConsistency port): one build +
+                                 # 2 tiny 1-rank runs each on Fortran and
+                                 # python-numpy, well under shard 2's other
+                                 # subprocess-heavy scripts.
         "test_ci_board_separation_step.py",
         "test_dev_str_depth_taper.py",
         "test_e2e_run_tree_lock.py",
