@@ -26,9 +26,7 @@ existing contract (test_stop_exit_status.py's probe_real_binary), that
 absence is itself scored as a FAIL, because the regression tier's declared
 environment already requires the binary to be built.
 """
-import glob
 import os
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -39,6 +37,8 @@ SRC_FORTRAN = os.path.join(REPO_ROOT, 'src', 'fortran')
 SRC_PYTHON = os.path.join(REPO_ROOT, 'src', 'python')
 sys.path.insert(0, SRC_PYTHON)
 from eqdyna import profile_emit  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mpirun_capture  # noqa: E402  (item 95: rank-owned output past MPI_Abort)
 
 OFF_ENV = profile_emit.OFF_ENV
 ACCEPTED_MARKERS = ('unset', '"1"', '"0"')
@@ -134,27 +134,6 @@ def _err_cfg_profile_env_invalid():
     return None
 
 
-def _mpirun_rank_files(mpirun, binary, cwd, env=None, timeout=120):
-    """(returncode, text) for `mpirun -np 1 <binary>` with the rank's stdout and
-    stderr redirected to a rank-owned FILE (pathway item 95; the technique is
-    test_stop_exit_status.py probe B, item 89). Open MPI discards
-    already-flushed bytes it has not yet forwarded when MPI_Abort tears the
-    job down, so text asserted from mpirun's piped capture past a refusal is
-    a launcher property that can flake. The file cannot lose bytes the rank
-    flushed. `exec` keeps the binary's own exit status; `$$` names the file.
-    Raises when no rank file appears: then the binary never ran."""
-    before = set(glob.glob(os.path.join(cwd, 'eqdyna-stdout.*.txt')))
-    shell = 'exec %s > eqdyna-stdout.$$.txt 2>&1' % shlex.quote(binary)
-    r = subprocess.run([mpirun, '-np', '1', 'sh', '-c', shell], cwd=cwd, env=env,
-                       capture_output=True, text=True, timeout=timeout)
-    files = sorted(set(glob.glob(os.path.join(cwd, 'eqdyna-stdout.*.txt'))) - before)
-    if not files:
-        raise RuntimeError('no rank-owned stdout file under %s -- %s never ran '
-                           '(mpirun rc=%d): %s' % (cwd, binary, r.returncode,
-                                                   (r.stdout + r.stderr)[-500:]))
-    text = ''.join(open(f, errors='replace').read() for f in files)
-    return r.returncode, text + r.stdout + r.stderr
-
 
 def check_fortran_bogus_aborts_with_named_code():
     """Real bin/eqdyna, EQDYNA_PROFILE=bogus, an EMPTY tempdir -- legitimate
@@ -179,7 +158,7 @@ def check_fortran_bogus_aborts_with_named_code():
         env['EQDYNA_PROFILE'] = bad
         with tempfile.TemporaryDirectory() as d:
             try:
-                rc, out = _mpirun_rank_files(mpirun, binary, d, env=env, timeout=60)
+                rc, out = mpirun_capture.run_rank_files(mpirun, binary, d, env=env, timeout=60)
             except subprocess.TimeoutExpired:
                 raise AssertionError(
                     'bin/eqdyna EQDYNA_PROFILE=%r HUNG instead of aborting' % bad)

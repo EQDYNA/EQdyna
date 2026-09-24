@@ -58,6 +58,8 @@ SRC = os.path.join(ROOT, 'src', 'fortran')
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mpirun_capture  # noqa: E402  (item 95: rank-owned output past MPI_Abort)
 
 GUARD_MSG = 'read_fault_rough_geometry: bFault_Rough_Geometry.txt is not usable'
 
@@ -216,10 +218,11 @@ def corrupt(case, mutate):
 
 
 def runCase(case):
+    # Item 95: the refusal is abortRun(ERR_GEOM_ROUGH_INVALID) -> MPI_Abort,
+    # and GUARD_MSG / the defect text are asserted on the output, so read the
+    # rank's own file, not mpirun's pipe (which can drop them at teardown).
     eqdyna = os.path.join(SRC, 'eqdyna')
-    r = subprocess.run([MPIRUN, '-np', '1', eqdyna], cwd=case,
-                       capture_output=True, text=True, timeout=300)
-    return r.returncode, r.stdout + r.stderr
+    return mpirun_capture.run_rank_files(MPIRUN, eqdyna, case, timeout=300)
 
 
 def main():
@@ -258,7 +261,11 @@ def main():
                 fails.append(str(e))
                 continue
             corrupt(case, mutate)
-            rc, out = runCase(case)
+            try:
+                rc, out = runCase(case)
+            except RuntimeError as e:
+                fails.append('%s: %s' % (name, e))
+                continue
             if rc == 0:
                 fails.append(f'{name}: ran to completion on a corrupted '
                              f'geometry file (exit 0) -- this is the original '
