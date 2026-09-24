@@ -137,13 +137,36 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
     tr = finv['tr']
     friclaw = finv['friclaw']
 
+    st_off_idx = finv['st_off_idx']
+    n_off_st = st_off_idx.shape[0]
+
     def part_a(carry, nt):
         (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
-         sliprate_hist, shear_hist) = carry
+         sliprate_hist, shear_hist, on_st_hist, off_st_hist) = carry
         timeElapsed = timeElapsed + dt                       # driver.f90:12
 
         v1, velArr, dispArr = velDispUpdate(xp, inv, v1, velArr, dispArr,
                                             force, dt)
+
+        # driver.f90:21 storeOffFaultStData -- recorded right after
+        # velDispUpdate, on THIS step's just-updated dispArr/velArr, exactly
+        # where the Fortran call sits (before the force array is zeroed,
+        # which off-fault stations never read anyway). idhist's dispOrVel
+        # is always 1 or 2 (never 3, see eqdyna3d.f90:287-298's
+        # allocInitAfterMeshGen loop) -- nodalForceArr/eqNum is dead code in
+        # storeOffFaultStData and is not reproduced here.
+        # Columns, from output_offfault_st's write order (library_output.f90
+        # :235-242): t, x-disp, x-vel, -z-disp, -z-vel, y-disp, y-vel.
+        if n_off_st:
+            col = nt - 1
+            xh = st_off_idx
+            vals = xp.stack([
+                xp.full((n_off_st,), timeElapsed),
+                dispArr[xh, 0], velArr[xh, 0],
+                -dispArr[xh, 2], -velArr[xh, 2],
+                dispArr[xh, 1], velArr[xh, 1],
+            ], axis=1)
+            off_st_hist = B.setat(xp, off_st_hist, (slice(None), slice(None), col), vals)
 
         force = B.setat(xp, force, slice(None), 0.0)         # driver.f90:23
         force, stress_i, s_p = KU.assembleGlobalKU(
@@ -156,11 +179,16 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
         # run_mpi's real MPI exchange). Nothing is exchanged inside part_a;
         # see make_step for what happens at the seam and why it sits here.
         return (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft,
-                timeElapsed, sliprate_hist, shear_hist)
+                timeElapsed, sliprate_hist, shear_hist, on_st_hist, off_st_hist)
+
+    st_on_idx = finv['st_on_idx']
+    n_on_st = st_on_idx.shape[0]
+    st_ncols_on = finv['st_ncols_on']
+    st_sign = finv['st_sign']
 
     def part_b(carry, nt):
         (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
-         sliprate_hist, shear_hist) = carry
+         sliprate_hist, shear_hist, on_st_hist, off_st_hist) = carry
 
         if friclaw == 5:                                   # driver.f90:28
             fric = TP.updateThermalPressurization(
@@ -176,6 +204,41 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
             fric, fnft, force = FLT.faulting(xp, finv, fric, fnft, velArr,
                                              dispArr, force, dt, timeElapsed,
                                              tr, nt)
+
+        # faulting.f90:24 storeOnFaultStationQuantSCEC -- recorded right
+        # after faulting (so fric holds THIS step's post-friction-law
+        # traction/state), before the mass divide below (which never touches
+        # fric). See library_output.write_onfault_stations for the exact
+        # column derivation this mirrors (getNsdSlipSliprateTraction writes
+        # fric[SLIP_STRIKE]/[SLIP_DIP]/[SLIPRATE_STRIKE]/[SLIPRATE_DIP]
+        # BEFORE solveRSF's own background-slip-rate add at faulting.f90:219
+        # -- so for friclaw>=3 the creep term is added back here, at record
+        # time, exactly as solveRSF's local nsdSlipVector/nsdSliprateVector
+        # would carry it into storeOnFaultStationQuantSCEC; friclaw<=2 never
+        # adds it, matching solveSWTW, which never touches those slots).
+        if n_on_st:
+            col = nt - 1
+            xh = st_on_idx
+            slipS = fric[xh, gv.SLIP_STRIKE]
+            slipD = fric[xh, gv.SLIP_DIP]
+            srS = fric[xh, gv.SLIPRATE_STRIKE]
+            srD = fric[xh, gv.SLIPRATE_DIP]
+            if friclaw >= 3:
+                vx = fric[xh, gv.VINI_X]; vz = fric[xh, gv.VINI_Z]
+                slipS = slipS + vx * timeElapsed
+                slipD = slipD + vz * timeElapsed
+                srS = srS + vx
+                srD = srD + vz
+            hShear = fric[xh, gv.TRACT_STRIKE] / 1.0e6
+            vShear = -fric[xh, gv.TRACT_DIP] / 1.0e6
+            nStress = st_sign * fric[xh, gv.TRACT_NORM] / 1.0e6
+            cols = [xp.full((n_on_st,), timeElapsed), slipS, srS, hShear,
+                    -slipD, -srD, vShear, nStress]
+            if st_ncols_on == 11:
+                cols += [fric[xh, gv.STATE], fric[xh, gv.TP_TEMP],
+                         (fric[xh, gv.TP_NORM_TP] + fric[xh, gv.TP_PINI]) / 1.0e6]
+            vals = xp.stack(cols, axis=1)
+            on_st_hist = B.setat(xp, on_st_hist, (slice(None), slice(None), col), vals)
 
         if friclaw == 5:
             # onFaultTPHist(1|2, i, nt, ift) -- written AFTER faulting, so the
@@ -195,7 +258,7 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
         force = B.setat(xp, force, 0, 0.0)
 
         return (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft,
-                timeElapsed, sliprate_hist, shear_hist)
+                timeElapsed, sliprate_hist, shear_hist, on_st_hist, off_st_hist)
 
     return part_a, part_b
 
@@ -219,6 +282,25 @@ def build_invariants(S, nsteps):
     # a case that should nucleate and does not cannot look like a no-op.
     finv['tr'] = (FLT.forced_rupture_time(np, finv)
                   if FLT.nucleation_enabled(finv) else None)
+
+    # Row 114 -- station output (library_output.f90's output_onfault_st /
+    # output_offfault_st). Index arrays are host numpy here (as every other
+    # finv array is, at this point) and travel through B.to_device with the
+    # rest of finv exactly like nsmp1/idxF_s/etc -- no new plumbing path.
+    # st_on_idx/st_off_idx are 0-indexed rows into the fault-node axis
+    # (matches S['nsmp1']/fric) and the node axis (matches
+    # velArr/dispArr) respectively; empty (shape (0,)) on the python-jax-mpi
+    # path (eqdyna3d.build_solver_state does not run the matching there --
+    # see run_case_mpi's loud refusal). st_ncols_on/st_sign are plain Python
+    # scalars (static under jit, like `friclaw`), not device arrays.
+    finv['st_on_idx'] = np.asarray(S['st_on_idx'],
+                                   dtype=np.int64)
+    finv['st_off_idx'] = np.asarray(S['st_off_idx'],
+                                    dtype=np.int64)
+    finv['st_ncols_on'] = 11 if S['friclaw'] >= 3 else 8
+    # Column 8's sign is the case's spec convention (board row 22a): no
+    # default -- a state without it is a caller bug, not a sign to guess.
+    finv['st_sign'] = float(S['nStressOutSign'])
     return inv, finv, tp, hist_w
 
 
@@ -277,6 +359,12 @@ def run(S, nsteps=None, verbose=True, xp=np):
             'Fix the mass assembly rather than masking the divide.'
             % (bad, mass.shape[0] - 1))
 
+    # Row 114 station-history widths, read off finv BEFORE B.to_device (still
+    # plain host numpy/int here, same as every other finv array at this point).
+    n_on_st = int(finv['st_on_idx'].shape[0])
+    n_off_st = int(finv['st_off_idx'].shape[0])
+    st_ncols_on = finv['st_ncols_on']
+
     B.check_index_width(inv)
     inv = B.to_device(xp, inv)
     finv = B.to_device(xp, finv)
@@ -291,14 +379,15 @@ def run(S, nsteps=None, verbose=True, xp=np):
               xp.asarray(S['fric_init'].copy()),
               xp.full(nftnd, gv.FNFT_SENTINEL),
               xp.asarray(0.0),
-              z((nftnd, hist_w)), z((nftnd, hist_w)))
+              z((nftnd, hist_w)), z((nftnd, hist_w)),
+              z((n_on_st, st_ncols_on, nsteps)), z((n_off_st, 7, nsteps)))
 
     # Which carry entries live on the ELEMENT axis, and therefore get cut
     # across devices under explicit decomposition. Stated here, beside
     # carry0, because this is where the shapes are; backend must not infer it
     # from a shape (Ei == Ep is possible on a small mesh).
     carry_shard = (None, None, None, None, 'Ei', 'Ep',
-                   None, None, None, None, None)
+                   None, None, None, None, None, None, None)
 
     ndev = B.jax_device_count()
     if ndev > 1 and not B.is_jax(xp):
@@ -345,10 +434,11 @@ def run(S, nsteps=None, verbose=True, xp=np):
     fault_s = fault_timer['s'] if fault_timer is not None else 0.0
 
     (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
-     sliprate_hist, shear_hist) = carry
+     sliprate_hist, shear_hist, on_st_hist, off_st_hist) = carry
     return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr),
                 fnft=np.asarray(fnft), fric=np.asarray(fric),
-                force=np.asarray(force), fault_s=fault_s)
+                force=np.asarray(force), fault_s=fault_s,
+                on_st_hist=np.asarray(on_st_hist), off_st_hist=np.asarray(off_st_hist))
 
 
 def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
@@ -442,6 +532,16 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
             'driver.run_mpi: %d lumped nodal mass(es) <= 0 across the ranks. '
             'driver.f90:30 divides by them unconditionally.' % bad)
 
+    # Row 114: python-jax-mpi does not port station output (build_solver_state
+    # hands this path empty st_on_idx/st_off_idx -- see eqdyna3d.run_case_mpi's
+    # loud warning when a case actually names stations). n_on_st_l/n_off_st_l
+    # are therefore always 0 here, but the carry tuple still carries the two
+    # slots so make_step_parts's part_a/part_b (ONE implementation, shared with
+    # `run`) can unpack the same-length tuple on both entry points.
+    n_on_st_l = int(finv['st_on_idx'].shape[0])
+    n_off_st_l = int(finv['st_off_idx'].shape[0])
+    st_ncols_on_l = finv['st_ncols_on']
+
     B.check_index_width(inv)
     fric_init = S['fric_init'].copy()
     inv = B.to_device(xp, inv)
@@ -457,12 +557,14 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
              xp.asarray(fric_init),
              xp.full(nftnd_l, gv.FNFT_SENTINEL),
              xp.asarray(0.0),
-             z((nftnd_l, hist_w)), z((nftnd_l, hist_w)))
+             z((nftnd_l, hist_w)), z((nftnd_l, hist_w)),
+             z((n_on_st_l, st_ncols_on_l, nsteps)), z((n_off_st_l, 7, nsteps)))
     # Per-rank carry bytes, from the ALLOCATED arrays rather than recomputed
     # from shapes: the primary check that the subdomain really shrank.
     carry_bytes = {n: int(a.nbytes) for n, a in zip(
         ('v1', 'velArr', 'dispArr', 'force', 'stress_i', 's_p', 'fric',
-         'fnft', 'timeElapsed', 'sliprate_hist', 'shear_hist'), carry)}
+         'fnft', 'timeElapsed', 'sliprate_hist', 'shear_hist',
+         'on_st_hist', 'off_st_hist'), carry)}
     carry_bytes['mass'] = int(mass.nbytes)
 
     # PER-RANK CACHE DIRECTORY. Every rank traces part_a/part_b against its
@@ -662,7 +764,7 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
     eff = ((c1[0] - c0[0]) + (c1[1] - c0[1])) / elapsed if elapsed > 0 else 0.0
 
     (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
-     sliprate_hist, shear_hist) = carry
+     sliprate_hist, shear_hist, on_st_hist, off_st_hist) = carry
     rep = dict(rep, ms_per_step=elapsed / nsteps * 1e3, solve_s=elapsed,
                mpi_ms_per_step=t_mpi / nsteps * 1e3,
                wait_ms_per_step=t_wait / nsteps * 1e3,

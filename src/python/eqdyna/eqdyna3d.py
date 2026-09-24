@@ -196,6 +196,39 @@ def active_device(backend):
     return '%s:%d (%s)' % (d.platform, d.id, getattr(d, 'device_kind', '?'))
 
 
+def report_dropped_stations(xonfs, x4nds, anonfs, off_matches):
+    """Port of report_dropped_onfault_st / report_dropped_offfault_st
+    (library_output.f90; board rows 116 and 94): name, on stdout and in
+    Fortran's own words, every requested station that matched no node and so
+    gets no file. Neither snaps nor refuses (the owner's call, as in the
+    Fortran). ntotft == 1 is the only case case.setup allows, so on-fault
+    stations are all fault 1. Coordinates arrive in metres."""
+    # Fortran's order: off-fault first (checkOffFaultStationCoverage,
+    # eqdyna3d.f90:126), then on-fault (checkOnFaultStationCoverage).
+    off_matched = {sc for sc, nc in off_matches}
+    off_dropped = [i for i in range(1, x4nds.shape[1] + 1) if i not in off_matched]
+    if off_dropped:
+        print(' WARNING: %d of %d requested off-fault stations match no grid '
+              'node and get NO body* file' % (len(off_dropped), x4nds.shape[1]))
+        print('   (setSurfaceStation, meshgen.f90: depth must equal a grid '
+              'z-plane within tol; x and y snap to the nearest interior node)')
+        for i in off_dropped:
+            print('   dropped off-fault station %d at x,y,z =%10.3f%10.3f%10.3f km'
+                  % (i, x4nds[0, i - 1] / 1000.0, x4nds[1, i - 1] / 1000.0,
+                     x4nds[2, i - 1] / 1000.0))
+    on_matched = {sc for fs, sc, ift in anonfs}
+    on_dropped = [i for i in range(1, xonfs.shape[1] + 1) if i not in on_matched]
+    if on_dropped:
+        print(' WARNING: %d of %d requested on-fault stations match no fault '
+              'node and get NO faultst* file' % (len(on_dropped), xonfs.shape[1]))
+        print('   (setOnFaultStation, meshgen.f90: along-strike x and depth z '
+              'must both equal a fault node within tol)')
+        for i in on_dropped:
+            print('   dropped on-fault station %d (fault 1) at x,z =%10.3f%10.3f km'
+                  % (i, xonfs[0, i - 1] / 1000.0, xonfs[1, i - 1] / 1000.0))
+    return on_dropped, off_dropped
+
+
 def build_solver_state(case_dir, part=None):
     """Builds the full `S` dict eqdyna/driver.py's `run()` expects,
     reading ONLY case-input files (bGlobal.txt/bModelGeometry.txt/
@@ -281,7 +314,39 @@ def build_solver_state(case_dir, part=None):
     material = readInputFiles.read_bmaterial(
         os.path.join(case_dir, 'bMaterial.txt'), g['nmat'], g['n2mat'])
 
+    # Row 114 -- station output. bStations.txt is read unconditionally (every
+    # case.setup-generated case dir has one, scripts/case.setup:111); MATCHING
+    # (meshgen.build_station_matching, which needs the GLOBAL grid lines) runs
+    # only on the serial path -- see run_case_mpi's loud warning for why the
+    # python-jax-mpi path leaves st_on_idx/st_off_idx empty instead.
+    xonfs, x4nds = readInputFiles.read_bstations(os.path.join(case_dir, 'bStations.txt'))
+    st_on_total, st_off_total = xonfs.shape[1], x4nds.shape[1]
+
     xline, yline, zline, pmlb, bounds = meshgen.build_grid_lines(params)
+    if part is None:
+        anonfs, off_matches = meshgen.build_station_matching(
+            xline, yline, zline, params, xonfs, x4nds)
+        st_on_idx = np.array([fs - 1 for fs, sc, ift in anonfs], dtype=np.int64)
+        st_on_strike_m = np.array([xonfs[0, sc - 1] for fs, sc, ift in anonfs])
+        st_on_depth_m = np.array([xonfs[1, sc - 1] for fs, sc, ift in anonfs])
+        st_off_idx = np.array([nc - 1 for sc, nc in off_matches], dtype=np.int64)
+        st_off_x_m = np.array([x4nds[0, sc - 1] for sc, nc in off_matches])
+        st_off_y_m = np.array([x4nds[1, sc - 1] for sc, nc in off_matches])
+        st_off_z_m = np.array([x4nds[2, sc - 1] for sc, nc in off_matches])
+        report_dropped_stations(xonfs, x4nds, anonfs, off_matches)
+    else:
+        st_on_idx = np.zeros(0, dtype=np.int64)
+        st_on_strike_m = st_on_depth_m = np.zeros(0)
+        st_off_idx = np.zeros(0, dtype=np.int64)
+        st_off_x_m = st_off_y_m = st_off_z_m = np.zeros(0)
+    # fltxyz(2,4,1) (readInputFiles.f90:139-143), the fault dip angle in
+    # radians used by output_onfault_st's down-dip-distance conversion
+    # (library_output.f90:51/68) -- same formula as meshgen.py's
+    # build_fault_geometry `fdip`, recomputed here (pure function of
+    # params['C_degen']) rather than plumbed through that builder's return.
+    fault_dip_rad = (params['C_degen'] * np.pi / 180.0 if params['C_degen'] > 3.0
+                      else 90.0 * np.pi / 180.0)
+
     model_bound = None
     if part is not None:
         # The global lines are O(nx+ny+nz) and kept only for the two
@@ -402,6 +467,15 @@ def build_solver_state(case_dir, part=None):
         nsmp1=nsmp[:, 0] - 1, nsmp2=nsmp[:, 1] - 1,
         un=un[1:], us=us[1:], ud=ud[1:], arn=arn[1:], fric_init=fric[1:, 1:101],
         ccosphi=ccosphi, sinphi=sinphi, tv=tv, init_stress=init_stress,
+        # Row 114 -- station output.
+        dx=params['dx'], fault_dip_rad=fault_dip_rad,
+        # Column 8 (n-stress) sign: the case's SCEC spec convention, +1
+        # extension-positive / -1 compression-positive, read from bGlobal.txt
+        # exactly as readInputFiles.f90 reads it (board row 22a, PR #20).
+        nStressOutSign=float(g['nStressOutSign']),
+        st_on_idx=st_on_idx, st_on_strike_m=st_on_strike_m, st_on_depth_m=st_on_depth_m,
+        st_off_idx=st_off_idx, st_off_x_m=st_off_x_m, st_off_y_m=st_off_y_m,
+        st_off_z_m=st_off_z_m, st_on_total=st_on_total, st_off_total=st_off_total,
     )
     mesh = dict(meshCoor=meshCoor, nsmp=nsmp)
     if part is not None:
@@ -511,6 +585,20 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         # setup exchanges Fortran does (MPI4arn, MPI4NodalQuant on mass/fnms).
         S, mesh = build_solver_state(case_dir, part=part)
         plan = MQ.setup_exchange(comm, part, S, mesh)
+    # Row 114: python-jax-mpi does NOT port station output (build_solver_state
+    # leaves S['st_on_idx']/['st_off_idx'] empty on this path; see driver.py's
+    # run_mpi carry comment). Recorded clearly, once per job, rather than
+    # silently writing no faultst*/body* files -- this must not be a hard
+    # refusal: test.tpv8 (the one case opted into this mode) has stations in
+    # its DEFAULT bStations.txt (scripts/defaultParameters.py's
+    # st_coor_on_fault/st_coor_off_fault), so raising here would break the
+    # existing gated cell rather than just leave a documented gap.
+    if comm.Get_rank() == 0 and (S['st_on_total'] > 0 or S['st_off_total'] > 0):
+        print('run_case_mpi: bStations.txt names %d on-fault / %d off-fault '
+              'station(s), but python-jax-mpi does not port station output '
+              '(row 114 scope: fortran and the serial python backends only) '
+              '-- NO faultst*/body* files are written by this run.'
+              % (S['st_on_total'], S['st_off_total']), file=sys.stderr, flush=True)
     with prof.phase('solve'):
         out = driver.run_mpi(S, comm, part, plan, nsteps=nsteps, verbose=verbose,
                              xp=_backend.array_module('jax'))
@@ -619,6 +707,19 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     with prof.phase('write frt'):
         library_output.write_frt(frt_path, mesh['meshCoor'], mesh['nsmp'],
                              fnft_1idx, fric_1idx)
+    with prof.phase('write stations'):
+        # Same TIMING-ONLY guard as frt_path above: a run made under one of
+        # backend.py's timing-only sharding knobs computes the wrong answer
+        # by construction and must not silently overwrite the real
+        # faultst*/body* files (which carry no distinguishing suffix the way
+        # frt.txt0.TIMING-ONLY-INVALID does).
+        if _backend.timing_only():
+            print('run_case: *** TIMING-ONLY RUN -- NOT writing faultst*/body* '
+                  '(would overwrite valid station files under their real names) ***',
+                  file=sys.stderr)
+        else:
+            library_output.write_onfault_stations(case_dir, S, out['on_st_hist'])
+            library_output.write_offfault_stations(case_dir, S, out['off_st_hist'])
     prof.nelem = S.get('totalNumOfElements') or 0
 
     # ALWAYS-ON profile.rank0.json (nranks=1: this path is serial by
