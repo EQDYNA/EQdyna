@@ -114,9 +114,14 @@ def api_fail_if_called(_sha):
                          'gated -- it must never be invoked at all for one')
 
 
-def make_api_returns_merged(pr_number):
-    def fetch(_sha):
-        return [{'number': pr_number, 'merged_at': '2026-09-23T00:00:00Z'}]
+def make_api_returns_merged(pr_number, base='master', merge_sha=None, head_sha='f' * 40):
+    """A merged PR as GitHub reports it. merge_sha=None means 'the commit
+    being asked about' -- a genuine squash merge."""
+    def fetch(sha):
+        return [{'number': pr_number, 'merged_at': '2026-09-23T00:00:00Z',
+                 'base': {'ref': base},
+                 'merge_commit_sha': sha if merge_sha is None else merge_sha,
+                 'head': {'sha': head_sha}}]
     return fetch
 
 
@@ -166,6 +171,46 @@ def main():
         if 'commits-api' not in d.reason:
             fails.append('case 3: pass reason does not cite commits-api evidence: %r'
                         % d.reason)
+
+        # ---- case 3b-3d (accident class, 2026-09-23 audit C1): a merged PR
+        # only counts if merged INTO master, AS this commit, and this commit
+        # is not the PR head (a fast-forward of master to an open PR's head).
+        for tag, api in (('3b base=feature', make_api_returns_merged(42, base='feature')),
+                         ('3c merge_commit_sha is another commit', make_api_returns_merged(42, merge_sha='e' * 40)),
+                         ('3d commit IS the PR head', make_api_returns_merged(42, head_sha=src_pr_sha))):
+            d = pp.evaluate_commit_gate(src_pr_sha, 'feature: scratch fortran routine (#42)',
+                                        pp.commit_files(src_pr_sha, cwd=repo),
+                                        lambda sha, subj, api=api: pp.commit_pr_evidence(sha, subj, api))
+            if d.ok:
+                fails.append('case %s: was GREEN (reason: %r) -- expected RED' % (tag, d.reason))
+
+        # ---- case 3e (audit H1): a rename OUT of src/ must report the OLD path
+        sh(['mv', 'src/fortran/scratch.f90', 'scratch_moved.f90'], cwd=repo)
+        sh(['commit', '-q', '-m', 'move a fortran file out of src/'], cwd=repo)
+        rename_sha = sh(['rev-parse', 'HEAD'], cwd=repo).stdout.strip()
+        rfiles = pp.commit_files(rename_sha, cwd=repo)
+        if 'src/fortran/scratch.f90' not in pp.touches_gated_paths(rfiles):
+            fails.append('case 3e: rename src/fortran/scratch.f90 -> scratch_moved.f90 '
+                         'reported files %r -- the OLD gated path is missing, so '
+                         'the move reads as ungated' % (rfiles,))
+
+        # ---- case 3f (audit C3): an "evil merge" -- a merge commit carrying
+        # its own src/ edit, pushed direct -- must be evaluated, not skipped.
+        base_sha = sh(['rev-parse', 'HEAD'], cwd=repo).stdout.strip()
+        sh(['checkout', '-q', '-b', 'side', root], cwd=repo)
+        commit(repo, {'notes.md': 'side\n'}, 'side: docs only')
+        sh(['checkout', '-q', '-'], cwd=repo)
+        sh(['merge', '-q', '--no-ff', '--no-commit', 'side'], cwd=repo)
+        write(repo, 'src/evil.f90', '! carried by the merge itself\n')
+        sh(['add', 'src/evil.f90'], cwd=repo)
+        sh(['commit', '-q', '-m', 'merge side (plus a src edit)'], cwd=repo)
+        evil_sha = sh(['rev-parse', 'HEAD'], cwd=repo).stdout.strip()
+        ok, decs = pp.evaluate_range('%s..%s' % (base_sha, evil_sha), cwd=repo,
+                                     verify_pr=lambda sha, subj: pp.commit_pr_evidence(sha, subj, api_no_merged_pr))
+        if ok or evil_sha not in [x.sha for x in decs if not x.ok]:
+            fails.append('case 3f: evil merge %s was not refused (ok=%s, evaluated=%r)'
+                         % (evil_sha[:12], ok, [(x.sha[:12], x.ok) for x in decs]))
+        sh(['checkout', '-q', mixed_sha], cwd=repo)
 
         # ---- case 4: mixed docs+src, no PR -> RED, names the src/ path ------
         d = pp.evaluate_commit_gate(mixed_sha, 'mixed: docs plus src, no PR',

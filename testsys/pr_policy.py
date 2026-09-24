@@ -57,7 +57,12 @@ import urllib.error
 import urllib.request
 from collections import namedtuple
 
-GATED_PREFIXES = ('src/', 'testsys/')
+# '.github/' added 2026-09-23 by the conductor, loudly: without it one direct
+# push could delete the pr-policy-gate job itself, so the owner's "mechanical"
+# enforcement would be deletable. The owner named src/ and testsys/; this is
+# the one constant to edit to reverse it.
+GATED_PREFIXES = ('src/', 'testsys/', '.github/')
+MASTER_REF = 'master'
 ZERO_SHA = '0' * 40
 SQUASH_SUFFIX_RE = re.compile(r'\(#(\d+)\)\s*$')
 
@@ -88,9 +93,12 @@ def run_git(args, cwd=None):
 
 def commit_files(sha, cwd=None):
     """Paths a commit changes against its (first) parent; root commit: all."""
-    out = run_git(['show', '--pretty=format:', '--name-only', '-m',
-                   '--first-parent', sha], cwd=cwd)
-    return [p for p in (line.strip() for line in out.splitlines()) if p]
+    # --no-renames: a rename out of a gated prefix must report the OLD path
+    # (git's rename detection prints only the new one, so src/a -> docs/a
+    # used to read as ungated). -z: no quoting of non-ASCII paths.
+    out = run_git(['show', '--pretty=format:', '--name-only', '--no-renames',
+                   '-z', '-m', '--first-parent', sha], cwd=cwd)
+    return [p for p in (x.strip() for x in out.split('\0')) if p]
 
 
 def touches_gated_paths(files, gated_prefixes=GATED_PREFIXES):
@@ -154,12 +162,31 @@ def commit_pr_evidence(sha, subject, api_fetcher):
             "cannot determine PR association for %s: commits-api failed (%s) "
             "and subject %r carries no (#NNN) squash-merge suffix to "
             "fall back on" % (sha, e, subject))
-    merged = sorted(pr['number'] for pr in prs if pr.get('merged_at'))
+    # A PR counts only if it was merged INTO master AND GitHub's own merge
+    # commit for it is THIS commit AND this commit is not the PR's head. The
+    # last clause catches the accident this module exists for: an agent
+    # fast-forwarding master to an open PR's head, which GitHub then marks
+    # "merged" with that head as merge_commit_sha.
+    merged, rejected = [], []
+    for pr in prs:
+        why = []
+        if not pr.get('merged_at'):
+            why.append('not merged')
+        if (pr.get('base') or {}).get('ref') != MASTER_REF:
+            why.append('base %r != %r' % ((pr.get('base') or {}).get('ref'), MASTER_REF))
+        if pr.get('merge_commit_sha') != sha:
+            why.append('merge_commit_sha %r != this commit' % pr.get('merge_commit_sha'))
+        if (pr.get('head') or {}).get('sha') == sha:
+            why.append('this commit IS the PR head (a direct push of the branch, not a merge)')
+        (rejected if why else merged).append((pr.get('number'), why))
     if merged:
-        return Evidence(True, 'commits-api', 'merged PR(s) %s' % merged)
+        return Evidence(True, 'commits-api',
+                        'merged into %s as this commit: PR(s) %s'
+                        % (MASTER_REF, sorted(n for n, _ in merged)))
     return Evidence(False, 'commits-api',
-                    'no merged PR associated with this commit (checked %d '
-                    'associated PR(s))' % len(prs))
+                    'no PR merged into %s as this commit (checked %d associated '
+                    'PR(s)%s)' % (MASTER_REF, len(prs),
+                                 ''.join('; #%s: %s' % (n, ', '.join(w)) for n, w in rejected)))
 
 
 def evaluate_commit_gate(sha, subject, files, verify_pr,
@@ -187,13 +214,14 @@ def evaluate_commit_gate(sha, subject, files, verify_pr,
 
 
 def evaluate_range(range_spec, cwd, verify_pr):
-    """Every non-merge commit in range_spec (same --no-merges choice as
-    check_board_separation.py, and for the same reason: an automatic merge
-    commit's own diff is the union of both sides and introduces no content
-    of its own, while EACH commit it brings in is evaluated on its own merits
-    regardless of which of the three GitHub merge strategies landed it).
-    Returns (ok: bool, decisions: list[Decision])."""
-    shas = run_git(['rev-list', '--no-merges', range_spec], cwd=cwd).split()
+    """Every commit on range_spec's first-parent chain, merges included (see
+    the comment below). Returns (ok: bool, decisions: list[Decision])."""
+    # --first-parent, NOT --no-merges: every commit on master's own chain is
+    # evaluated, merges included, each diffed against its first parent. A
+    # merge commit carrying its own gated edits (an "evil merge") used to be
+    # dropped entirely. Commits reachable only through a merge's second
+    # parent are covered by that merge's first-parent diff.
+    shas = run_git(['rev-list', '--first-parent', range_spec], cwd=cwd).split()
     decisions = []
     for sha in shas:
         subject = run_git(['log', '-1', '--pretty=format:%s', sha], cwd=cwd).strip()
