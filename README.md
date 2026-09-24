@@ -291,6 +291,7 @@ authoritative; the specific number is advisory under `srun`.
 | 11 | `ERR_CFG_Q_NEEDS_ELASTIC` | C_Q=1 requires C_elastic=1 |
 | 12 | `ERR_CFG_Q_NEEDS_UNIFORM` | C_Q=1 requires rat=1.0 (uniform elements) |
 | 13 | `ERR_CFG_PLASTIC_OUTPUT` | output_plastic=1 requires C_elastic=0 |
+| 14 | `ERR_CFG_PROFILE_ENV_INVALID` | EQDYNA_PROFILE is set to a value other than unset, "", "1" or "0" |
 
 **Input files** (21-29)
 

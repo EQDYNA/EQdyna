@@ -113,8 +113,20 @@ def numa_nodes(cpu_list):
 
 def enabled():
     """EQDYNA_PROFILE=0 is the OFF switch (A/B instrument only); default ON,
-    same contract as the Fortran side's output_profile."""
-    return os.environ.get(OFF_ENV, '') != '0'
+    same contract as the Fortran side (eqdyna3d.f90's startup parse of
+    EQDYNA_PROFILE into `profileEnabled`). Accepted values, identical in
+    both languages: unset or "" -> ON (documented default), "1" -> ON,
+    "0" -> OFF. Anything else (EQDYNA_PROFILE=off/false/a typo) used to be
+    silently treated as ON -- refused loudly instead, before any work,
+    naming the variable, the bad value and the accepted values."""
+    raw = os.environ.get(OFF_ENV)
+    if raw is None or raw == '' or raw == '1':
+        return True
+    if raw == '0':
+        return False
+    raise ValueError(
+        '%s=%r is not a recognised value -- accepted values are unset, '
+        '"", "1" (profiling on) or "0" (profiling off)' % (OFF_ENV, raw))
 
 
 def build_row(backend, rank, nranks, nsteps, buckets_s, loop_s, total_s,

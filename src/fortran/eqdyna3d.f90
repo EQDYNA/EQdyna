@@ -13,19 +13,50 @@ program EQdyna
     ! always-on per-rank profile into "exchange" vs "wait" buckets without
     ! computing either as a total-minus-everything-else remainder.
     real (kind = dp) :: mpiCommSetup, mpiWaitSetup, mpiCommLoop, mpiWaitLoop, tLoopStart, loopS
-    character (len = 8) :: envval
+    character (len = 32) :: envval
+    character (len = 16) :: envStatusStr, envLengthStr
+    integer (kind = 4) :: envStatus, envLength
 
     call MPI_Init(iMPIerr)
     call mpi_comm_rank(MPI_COMM_WORLD,me,iMPIerr)
     call mpi_comm_size(MPI_COMM_WORLD,totalNumOfMPIProcs,iMPIerr)
 
     ! EQDYNA_PROFILE read ONCE here, right after MPI_Init, into the module
-    ! logical `profileEnabled` (globalvar.f90) -- never re-read per step.
-    ! Default ON (envval blank or anything but '0'), same contract as
-    ! output_profile's own switch (library_output.f90).
+    ! logical `profileEnabled` (globalvar.f90) -- never re-read per step
+    ! (library_output.f90's output_profile now tests this flag instead of
+    ! reading the variable a second time). Accepted values, identical on
+    ! the Python side (profile_emit.enabled()): unset or "" -> ON (the
+    ! documented default), "1" -> ON, "0" -> OFF. Anything else is a
+    ! misconfiguration (e.g. EQDYNA_PROFILE=off/false/a typo) that used to
+    ! be silently treated as ON -- refused loudly instead, naming the
+    ! variable, the bad value and the accepted values.
     envval = ' '
-    call get_environment_variable('EQDYNA_PROFILE', envval)
-    profileEnabled = (trim(envval) /= '0')
+    call get_environment_variable('EQDYNA_PROFILE', envval, length=envLength, status=envStatus)
+    if (envStatus == 1) then
+        profileEnabled = .true.   ! not set: documented default
+    else if (envStatus /= 0) then
+        ! status -1: value did not fit in the 32-char buffer (truncated);
+        ! status 2 (or other nonzero): environment variables unsupported
+        ! on this platform. Either way the value could not be read
+        ! reliably, so refuse rather than silently guessing "on".
+        write(envStatusStr,'(I0)') envStatus
+        write(envLengthStr,'(I0)') envLength
+        call abortRun(ERR_CFG_PROFILE_ENV_INVALID, &
+            'EQDYNA_PROFILE could not be read (get_environment_variable status=' &
+            //trim(envStatusStr)//', length='//trim(envLengthStr)// &
+            ').  Accepted values: unset, "", "1" (profiling on) or "0" (profiling off).')
+    else
+        select case (trim(envval))
+        case ('', '1')
+            profileEnabled = .true.
+        case ('0')
+            profileEnabled = .false.
+        case default
+            call abortRun(ERR_CFG_PROFILE_ENV_INVALID, &
+                'EQDYNA_PROFILE="'//trim(envval)//'" is not a recognised value.' &
+                //'  Accepted values: unset, "", "1" (profiling on) or "0" (profiling off).')
+        end select
+    endif
 
     if (me == masterProcsId) then 
         write(*,*) '====================================================================='
