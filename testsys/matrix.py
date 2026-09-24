@@ -269,9 +269,9 @@ STATION_BOUND = {
 }
 
 # STATION_UNSUPPORTED -- (case, backend) cells whose station comparison is refused
-# outright, with the MEASURED reason (never "not yet looked at"). Checked by
-# compare.station_gate, which raises rather than silently skip if asked to
-# gate one of these.
+# outright, with the MEASURED reason (never "not yet looked at"). Handled by
+# compare.compare_cell, which prints the reason instead of calling
+# station_gate; coverage_report prints it before the sweep starts.
 STATION_UNSUPPORTED = {
     ('test.drv.a6', 'python-jax'): (
         'measured chaotic (2026-09-24, wei/row114-station-output at master '

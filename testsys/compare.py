@@ -576,14 +576,13 @@ def compare_cell(case, backend, run_dir):
         elif artifact == 'nsign':
             a_ok, a_lines = nstress_sign_gate(case, run_dir)
         elif artifact == 'station':
-            # A sub-cell declared-unsupported case (matrix.STATION_UNSUPPORTED_
-            # CASES): reported, not silently absent, but does NOT fail the
-            # cell -- test.drv.a6 x fortran must still be able to pass its
-            # frt/nc/nsign gates the way it always has. This is deliberately
-            # NOT the same state machine as matrix.UNSUPPORTED (whole-CELL
-            # unsupported): here the CELL runs and is gated on everything
-            # else it carries; only this one artifact, for this one case, is
-            # declared uncheckable, with the measured reason printed.
+            # A sub-cell declaration (matrix.STATION_UNSUPPORTED, keyed per
+            # (case, backend)): reported, not silently absent, and it does NOT
+            # fail the cell -- test.drv.a6 x python-jax still passes or fails
+            # on its frt/nsign gates. Not the same state machine as
+            # matrix.UNSUPPORTED (whole-CELL unsupported): the cell runs and
+            # is gated on everything else it carries; only this artifact, for
+            # this one cell, is declared, with the measured reason printed.
             if (case, backend) in matrix.STATION_UNSUPPORTED:
                 a_ok, a_lines = True, [
                     'station: DECLARED UNSUPPORTED for %s x %s -- %s'
