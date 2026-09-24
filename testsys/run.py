@@ -10,6 +10,7 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
     python3 testsys/run.py e2e-full      # SCEC cases at spec dx/term, 16 ranks, report-only (opt-in; hours)
     python3 testsys/run.py gpu           # the sweep's python-jax column on CUDA (one cell; needs a GPU)
     python3 testsys/run.py perf          # pinned single-core Fortran/NumPy/JAX timing, ratio-guarded
+    python3 testsys/run.py profile-overhead   # EQDYNA_PROFILE on/off A/B, all 4 backends (needs EQDYNA_PROFILE_OVERHEAD_CPUS)
     python3 testsys/run.py all           # unit + regression + e2e, in that order (default; perf is opt-in, not in "all" -- it needs a Fortran build a fresh checkout does not have yet)
 
 There is ONE test here -- e2e -- and backend is an axis of it, not a tier.
@@ -164,9 +165,47 @@ def run_perf():
                             cwd=REPO_ROOT)
 
 
+def run_profile_overhead():
+    """Zero-perf-cost gate for the always-on per-rank profiler
+    (EQDYNA_PROFILE=1 vs 0): testsys/perf/profile_overhead.py, once per
+    backend (python-numpy, python-jax, fortran, python-jax-mpi), NEVER
+    concurrently -- each subprocess.call blocks until the previous one has
+    fully exited, one measurement in flight at a time on this box.
+
+    Opt-in, same shape as `perf`/`scaling`: requires `EQDYNA_PROFILE_OVERHEAD_CPUS`
+    (comma-separated cpu list, e.g. "16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31")
+    naming the cpus to pin every arm to -- refused, not defaulted, if unset:
+    an overhead measurement on a placement nobody named is not reproducible
+    (profile_overhead.py's own module docstring). `EQDYNA_PROFILE_OVERHEAD_CASE`
+    defaults to test.tpv8 (the case this gate's owner measured against).
+    `EQDYNA_PROFILE_OVERHEAD_RANKS` defaults to 4 for the two MPI backends."""
+    print('\n==== testsys: profile-overhead ====')
+    cpus = os.environ.get('EQDYNA_PROFILE_OVERHEAD_CPUS')
+    if not cpus:
+        print('profile-overhead: FAIL - EQDYNA_PROFILE_OVERHEAD_CPUS is not '
+              'set. This gate refuses to run unpinned; export the cpu list '
+              'this box reserves for it (see this function\'s docstring) and '
+              're-run.')
+        return 1
+    case = os.environ.get('EQDYNA_PROFILE_OVERHEAD_CASE', 'test.tpv8')
+    ranks = os.environ.get('EQDYNA_PROFILE_OVERHEAD_RANKS', '4')
+    overall = 0
+    for backend in ('python-numpy', 'python-jax', 'fortran', 'python-jax-mpi'):
+        print(f'-- profile-overhead: {backend} --')
+        cmd = [sys.executable, os.path.join(TESTSYS, 'perf', 'profile_overhead.py'),
+              '--case', case, '--backend', backend, '--cpus', cpus]
+        if backend in ('fortran', 'python-jax-mpi'):
+            cmd += ['--ranks', ranks]
+        rc = subprocess.call(cmd, cwd=REPO_ROOT)
+        print(f'{"SUCCESS" if rc == 0 else "FAIL"} profile-overhead {backend} (exit {rc})')
+        overall = overall or rc
+    return overall
+
+
 RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
            'e2e-ci': run_e2e_ci, 'release': run_release, 'perf': run_perf,
-           'gpu': run_gpu, 'scaling': run_scaling, 'e2e-full': run_e2e_full}
+           'gpu': run_gpu, 'scaling': run_scaling, 'e2e-full': run_e2e_full,
+           'profile-overhead': run_profile_overhead}
 # 'all' stays unit+regression+e2e only (TIERS below, `e2e` the everyday
 # selection) -- perf requires a Fortran build and a generated baseline that a
 # fresh checkout does not have; it is opt-in, invoked by name, not swept into
@@ -180,7 +219,8 @@ RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
 # e2e-full additionally needs EQDYNA_FULL_LAUNCH=yes-hours (see
 # testsys/e2e/run_e2e_full.py) -- spec-resolution SCEC runs are hours long
 # and user-scheduled, never automatic.
-OPTIONAL_TIERS = ('e2e-ci', 'release', 'perf', 'gpu', 'scaling', 'e2e-full')
+OPTIONAL_TIERS = ('e2e-ci', 'release', 'perf', 'gpu', 'scaling', 'e2e-full',
+                  'profile-overhead')
 
 
 def main(argv):
