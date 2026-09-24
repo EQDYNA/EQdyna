@@ -16,11 +16,18 @@ index block carries the current count and the regression tier checks it.
 must be able to come out BOTH ways, because two rows were found carrying
 commands that could never go red.
 
-**Rule 25**: a change under `src/` or `testsys/` reaches master only through
-a merged pull request (branch, CI + `victor-reyes` audit in parallel,
-squash-merge, serial). Everything else — docs, board, evidence, session
+**Rule 25**: a change under `src/`, `testsys/`, or `.github/` reaches master
+only through a merged pull request (branch, CI + `victor-reyes` audit in
+parallel, squash-merge only — repo settings disable merge-commit and
+rebase-merge — serial). Everything else — docs, board, evidence, session
 logs, rule text, reference artifacts — pushes directly to master after the
-local fast suite.
+local fast suite. Live as of `bf4d451` (PR #3); the rule's own text carries
+the enforcement detail, the repo-settings rationale, and its known limits.
+
+**Rule 21e, for whoever is conducting**: a dispatch is for a port, a
+multi-file build, a long investigation, a release, or a per-PR audit — a
+lookup, a fixture fix, a one-line edit, a doc touch, a status check, or a
+single board line is done directly, not dispatched.
 
 ## What this is
 
