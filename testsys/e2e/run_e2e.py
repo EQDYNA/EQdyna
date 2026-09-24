@@ -306,10 +306,13 @@ def profile_ranks(case, backend):
                          per.
     """
     if backend == 'fortran':
-        return max(1, matrix.FORTRAN_RANKS.get(case, 4))
+        return max(1, matrix.FORTRAN_RANKS[case])
     if backend == 'python-jax-mpi':
         return max(1, matrix.PY_MPI_RANKS[case])
-    return 1
+    if backend == 'python-jax':
+        return 1
+    raise ValueError('profile_ranks: unknown backend %r -- known: %s'
+                     % (backend, ', '.join(matrix.BACKENDS)))
 
 
 # Margin subtracted from measured-free cores before it becomes the default
@@ -784,7 +787,7 @@ def _perf_meta(results, label, device, budget, sha, tree_dirty):
                 tree_dirty=tree_dirty)
 
 
-def _run_profile_capture(case_dir, case, backend, term, sha):
+def _run_profile_capture(case_dir, case, backend, term, sha, tree_dirty):
     """Capture this PASSED cell's per-rank profile into
     docs/run_profiles.jsonl. Module-level (not inlined in run_one's closure)
     so a regression guard can call it directly and observe exactly what
@@ -809,9 +812,12 @@ def _run_profile_capture(case_dir, case, backend, term, sha):
     try:
         profile_record.capture_run(
             case_dir, case=case, backend=backend,
-            ranks=profile_ranks(case, backend), term=term, sha=sha)
+            ranks=profile_ranks(case, backend), term=term, sha=sha,
+            tree_dirty=tree_dirty)
         return True, []
-    except Exception as exc:                # noqa: BLE001 - reported, not swallowed
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 - reported, not swallowed;
+        # SystemExit too: ledger.box_tenancy raises it, and uncaught it killed
+        # the whole sweep process (CI smoke, 2026-09-23) instead of one cell.
         return False, ['PROFILE CAPTURE FAILED (not a physics result): %s: %s'
                        % (type(exc).__name__, exc)]
 
@@ -1159,7 +1165,7 @@ def main(argv=None):
                 # as a physics divergence (_run_profile_capture's contract).
                 profile_ok, profile_lines = _run_profile_capture(
                     case_dir, case, backend, str(matrix.GATE_TERM_S),
-                    sweep_sha)
+                    sweep_sha, sweep_tree_dirty)
                 if not profile_ok:
                     ok = False
                     lines = lines + profile_lines

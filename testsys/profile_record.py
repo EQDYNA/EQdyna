@@ -204,7 +204,7 @@ def _ranks_per_node(per_rank_rows):
     return [counts[h] for h in sorted(counts)]
 
 
-def capture_run(run_dir, *, case, backend, ranks, term, sha):
+def capture_run(run_dir, *, case, backend, ranks, term, sha, tree_dirty):
     """Validate every profile.rank<r>.json under `run_dir`, then append one
     docs/run_profiles.jsonl row per rank. Returns the list of rows appended.
 
@@ -236,7 +236,13 @@ def capture_run(run_dir, *, case, backend, ranks, term, sha):
 
     tenancy = ledger.box_tenancy(ledger.TENANCY_REFERENCE_CEILING)  # raises if
                                                                      # unmeasurable
-    dirty = ledger.tree_dirty()   # raises if git itself cannot answer
+    # tree_dirty is the CALLER's value, captured once at sweep START (rule 24
+    # shape: recomputed per cell mid-sweep it would read the sweep's own
+    # ledger/snapshot writes). PR #6 audit, 2026-09-23.
+    if not isinstance(tree_dirty, bool):
+        raise ValueError('capture_run: tree_dirty must be a bool captured at '
+                         'sweep start, got %r' % (tree_dirty,))
+    dirty = tree_dirty
     rpn = _ranks_per_node(per_rank)
     ts = ledger.utc_now()
 

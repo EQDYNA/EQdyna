@@ -45,6 +45,15 @@ program EQdyna
             'EQDYNA_PROFILE could not be read (get_environment_variable status=' &
             //trim(envStatusStr)//', length='//trim(envLengthStr)// &
             ').  Accepted values: unset, "", "1" (profiling on) or "0" (profiling off).')
+    else if (envLength /= len_trim(envval)) then
+        ! A value with trailing blanks ("0 ", "1 ") must be refused exactly as
+        ! the Python side refuses it (rule 23): trim() would otherwise make it
+        ! look valid here while profile_emit.enabled() raises.
+        write(envLengthStr,'(I0)') envLength
+        call abortRun(ERR_CFG_PROFILE_ENV_INVALID, &
+            'EQDYNA_PROFILE="'//envval(1:envLength)//'" (length '//trim(envLengthStr)// &
+            ') is not a recognised value -- it carries blanks.' &
+            //'  Accepted values: unset, "", "1" (profiling on) or "0" (profiling off).')
     else
         select case (trim(envval))
         case ('', '1')

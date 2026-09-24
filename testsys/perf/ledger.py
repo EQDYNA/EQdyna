@@ -490,6 +490,16 @@ def utc_now():
     return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 
 
+def _proc_stat_cpus(path='/proc/stat'):
+    """Online cpu ids as /proc/stat lists them (its cpuN lines)."""
+    try:
+        with open(path) as f:
+            return sorted(int(ln.split()[0][3:]) for ln in f
+                          if ln.startswith('cpu') and ln[3:4].isdigit())
+    except OSError:
+        return []
+
+
 def box_tenancy(ceiling):
     """Whole-box tenancy right now: how many cpus are over `ceiling`, out of
     how many read. Reuses run_numa_scaling's measured busy fractions (one bug
@@ -499,10 +509,20 @@ def box_tenancy(ceiling):
     sys.path.insert(0, TESTSYS)
     import run_numa_scaling as numa
     nodes = numa.numa_topology()
-    if not nodes:
-        raise SystemExit('FAIL: numactl --hardware gave no topology -- cannot '
-                         'record box tenancy for the perf ledger.')
-    all_cpus = sorted(c for cs in nodes.values() for c in cs)
+    if nodes:
+        all_cpus = sorted(c for cs in nodes.values() for c in cs)
+    else:
+        # A host with no NUMA topology from numactl (a GitHub runner, a
+        # container) still has its cpus listed in /proc/stat: read the box
+        # from there. A measurement from a second source, not a default --
+        # an unreadable /proc/stat still raises below. (2026-09-23: the
+        # run-profile record made this path mandatory on every cell, and the
+        # CI smoke died on it with exit 1.)
+        all_cpus = _proc_stat_cpus()
+        if not all_cpus:
+            raise SystemExit('FAIL: numactl --hardware gave no topology and '
+                             '/proc/stat lists no cpuN lines -- cannot record '
+                             'box tenancy.')
     busy = numa.cpu_busy_fractions(all_cpus)
     vals = [b for b in (busy or {}).values() if b is not None]
     if not vals:

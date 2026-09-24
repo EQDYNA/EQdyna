@@ -110,6 +110,7 @@ SHARDS = {
         "test_sweep_tenancy_budget_2026_09_23.py",
     ],
     "3": [
+        "test_tenancy_without_numa.py",  # added 2026-09-23 (wei-lin, PR #6 CI smoke fix): <2 s
         "test_backend_axis.py",  # added 2026-09-23 (wei-lin, numpy out of the gates): <1 s
         "test_perf_meta_imports.py",  # added 2026-09-23 (wei-lin): <1 s
         "test_sweep_speed_2026_09_23.py",  # added at merge (wei-lin): landed d488dae after this partition was timed; 0.2 s

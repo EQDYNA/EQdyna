@@ -400,7 +400,8 @@ def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync,
         _sha = rs.sh(f'git -C {rs.ROOT} rev-parse --short HEAD').stdout.strip()
         profile_record.capture_run(case_dir, case=rs.CASE,
                                    backend='python-jax-mpi', ranks=ranks,
-                                   term='perf-scaling-probe', sha=_sha)
+                                   term='perf-scaling-probe', sha=_sha,
+            tree_dirty=profile_record.ledger.tree_dirty())
     except Exception as exc:                        # noqa: BLE001
         print('WARNING: profile-record capture failed for python-jax-mpi '
              '(%s: %s) -- the scaling measurement above is unaffected.'

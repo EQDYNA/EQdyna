@@ -127,13 +127,13 @@ def check_capture_uses_profile_ranks_not_cell_cost():
     case, backend = 'test.tpv8', 'python-jax'
     seen = {}
 
-    def fake_capture_run(run_dir, *, case, backend, ranks, term, sha):
+    def fake_capture_run(run_dir, *, case, backend, ranks, term, sha, tree_dirty=None):
         seen['ranks'] = ranks
         return []
 
     mod.profile_record.capture_run = fake_capture_run
     ok, lines = mod._run_profile_capture('/nonexistent-not-touched', case,
-                                         backend, '5.0', 'deadbeefcafe')
+                                         backend, '5.0', 'deadbeefcafe', False)
     expected = mod.profile_ranks(case, backend)
     wrong = mod.cell_cost(case, backend)
     assert ok is True and lines == [], (
@@ -153,13 +153,13 @@ def check_profile_failure_is_labelled_and_fails_the_cell():
     line."""
     mod = _load_module('run_e2e_profile_ranks_d', E2E_PY)
 
-    def raising_capture_run(run_dir, *, case, backend, ranks, term, sha):
+    def raising_capture_run(run_dir, *, case, backend, ranks, term, sha, tree_dirty=None):
         raise ValueError('missing profile.rank1.json')
 
     mod.profile_record.capture_run = raising_capture_run
     ok, lines = mod._run_profile_capture('/nonexistent-not-touched',
                                          'test.tpv8', 'python-jax', '5.0',
-                                         'deadbeefcafe')
+                                         'deadbeefcafe', False)
     assert ok is False, 'a capture_run failure must fail the cell (ok=False)'
     assert len(lines) == 1, 'expected exactly one line describing the profile failure, got %r' % (lines,)
     line = lines[0]

@@ -139,31 +139,34 @@ def check_fortran_bogus_aborts_with_named_code():
     ERR_INPUT_FILE_MISSING. That distinction is the proof this is the
     strict-parse guard firing, not merely some unrelated refusal."""
     binary = _find_binary()
-    if binary is None:
-        return ('SKIPPED: no built bin/eqdyna (or src/fortran/eqdyna) -- '
-                'build with ./install-eqdyna.sh to enable this check')
+    # A missing binary is a FAILURE in this tier's declared environment (the
+    # tier builds it first; a32c566 made the same call for the other guards).
+    assert binary is not None, ('no built bin/eqdyna (or src/fortran/eqdyna) '
+                                '-- build with ./install-eqdyna.sh')
     want = _err_cfg_profile_env_invalid()
     assert want is not None, (
         'ERR_CFG_PROFILE_ENV_INVALID not found in %s' % ERRCODES)
     mpirun = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
-    env = dict(os.environ)
-    env['EQDYNA_PROFILE'] = 'bogus'
-    with tempfile.TemporaryDirectory() as d:
-        try:
-            p = subprocess.run([mpirun, '-np', '1', binary], cwd=d, env=env,
-                               capture_output=True, timeout=60)
-        except FileNotFoundError:
-            return 'SKIPPED: %s not found on PATH' % mpirun
-        except subprocess.TimeoutExpired:
-            raise AssertionError(
-                'bin/eqdyna EQDYNA_PROFILE=bogus HUNG instead of aborting')
-    out = (p.stdout + p.stderr).decode(errors='replace')
-    assert p.returncode == want, (
-        'bin/eqdyna EQDYNA_PROFILE=bogus exited %d, expected %d '
-        '(ERR_CFG_PROFILE_ENV_INVALID) -- output:\n%s'
-        % (p.returncode, want, out))
-    assert 'EQDYNA_PROFILE' in out and 'bogus' in out, (
-        'FATAL block does not name the variable/bad value: %s' % out)
+    # 'bogus' plus the blank-padded values Python refuses: rule 23 requires the
+    # SAME accepted set in both languages (PR #6 audit: Fortran's trim() let
+    # "0 " through while profile_emit.enabled() raised).
+    for bad in ('bogus', '0 ', ' 0', '1 '):
+        env = dict(os.environ)
+        env['EQDYNA_PROFILE'] = bad
+        with tempfile.TemporaryDirectory() as d:
+            try:
+                p = subprocess.run([mpirun, '-np', '1', binary], cwd=d, env=env,
+                                   capture_output=True, timeout=60)
+            except subprocess.TimeoutExpired:
+                raise AssertionError(
+                    'bin/eqdyna EQDYNA_PROFILE=%r HUNG instead of aborting' % bad)
+        out = (p.stdout + p.stderr).decode(errors='replace')
+        assert p.returncode == want, (
+            'bin/eqdyna EQDYNA_PROFILE=%r exited %d, expected %d '
+            '(ERR_CFG_PROFILE_ENV_INVALID) -- output:\n%s'
+            % (bad, p.returncode, want, out))
+        assert 'EQDYNA_PROFILE' in out, (
+            'FATAL block does not name the variable for %r: %s' % (bad, out))
     return None
 
 

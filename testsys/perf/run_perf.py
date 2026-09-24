@@ -248,12 +248,14 @@ def main():
     t_fortran = time_fortran(nsteps)
     profile_record.capture_run(PERF_CASE, case=PERF_CASE_NAME,
                                backend='fortran', ranks=1,
-                               term='perf-pinned-single-core', sha=perf_sha)
+                               term='perf-pinned-single-core', sha=perf_sha,
+            tree_dirty=profile_record.ledger.tree_dirty())
     t_numpy_wall, t_numpy_solve = time_python('numpy', nsteps)
     if t_numpy_solve is not None:
         profile_record.capture_run(PERF_CASE, case=PERF_CASE_NAME,
                                    backend='python-numpy', ranks=1,
-                                   term='perf-pinned-single-core', sha=perf_sha)
+                                   term='perf-pinned-single-core', sha=perf_sha,
+            tree_dirty=profile_record.ledger.tree_dirty())
     try:
         import jax  # noqa: F401
         have_jax = True
@@ -263,7 +265,8 @@ def main():
     if have_jax and t_jax_solve is not None:
         profile_record.capture_run(PERF_CASE, case=PERF_CASE_NAME,
                                    backend='python-jax', ranks=1,
-                                   term='perf-pinned-single-core', sha=perf_sha)
+                                   term='perf-pinned-single-core', sha=perf_sha,
+            tree_dirty=profile_record.ledger.tree_dirty())
 
     print('\n==== testsys: perf -- provenance ====')
     for k, v in prov.items():

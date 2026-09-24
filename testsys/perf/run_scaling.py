@@ -400,7 +400,8 @@ def run_fortran(work, n, policy, cpus, node_map, term, nsteps):
     try:
         _sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
         profile_record.capture_run(d, case=CASE, backend='fortran', ranks=n,
-                                   term='perf-scaling-probe', sha=_sha)
+                                   term='perf-scaling-probe', sha=_sha,
+            tree_dirty=profile_record.ledger.tree_dirty())
     except Exception as exc:                        # noqa: BLE001
         print('WARNING: profile-record capture failed for fortran n=%d (%s: '
              '%s) -- the scaling measurement above is unaffected.'
@@ -518,7 +519,8 @@ def per_step_py(case_dir, cpus, node_map, backend, n_lo, n_hi):
         _sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
         profile_record.capture_run(case_dir, case=CASE,
                                    backend='python-%s' % backend, ranks=1,
-                                   term='perf-scaling-probe', sha=_sha)
+                                   term='perf-scaling-probe', sha=_sha,
+            tree_dirty=profile_record.ledger.tree_dirty())
     except Exception as exc:                        # noqa: BLE001
         print('WARNING: profile-record capture failed for python-%s (%s: '
              '%s) -- the scaling measurement above is unaffected.'
