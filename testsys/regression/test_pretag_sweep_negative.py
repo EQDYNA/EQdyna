@@ -133,11 +133,18 @@ def fixed_count():
     return 2
 
 
+def fixed_cells():
+    """Matches FULL_CELLS' (case, backend) set -- the item 106(2) set check's
+    injected table, for the same reason fixed_count exists."""
+    return {(c['case'], c['backend']) for c in FULL_CELLS}
+
+
 def check_missing_summary(guard, tmp, fails, log):
     d = new_repo(tmp, 'case1')
     tag_sha = git(['rev-parse', 'HEAD'], cwd=d).stdout.strip()
     ok, msg = guard.evaluate_sweep_evidence(tag_sha, repo_root=d,
-                                            full_runnable_count=fixed_count)
+                                            full_runnable_count=fixed_count,
+                                            runnable_cells=fixed_cells)
     log.append(('1 missing summary', ok, msg))
     if ok:
         fails.append('1: no summary.json exists anywhere, but the guard ACCEPTED')
@@ -157,7 +164,8 @@ def check_wrong_term(guard, tmp, fails, log):
     write_summary(d, tag_sha, base_summary(tag_sha, term=wrong_term))
     tag_sha = commit_all(d, 'evidence: wrong-term sweep')
     ok, msg = guard.evaluate_sweep_evidence(tag_sha, repo_root=d,
-                                            full_runnable_count=fixed_count)
+                                            full_runnable_count=fixed_count,
+                                            runnable_cells=fixed_cells)
     log.append(('2 term!=GATE_TERM_S', ok, msg))
     if ok:
         fails.append('2: term=%r (!= matrix.GATE_TERM_S=%r) was ACCEPTED'
@@ -173,7 +181,8 @@ def check_one_fail_cell(guard, tmp, fails, log):
     write_summary(d, tag_sha, base_summary(tag_sha, n_success=1, cells=cells))
     tag_sha = commit_all(d, 'evidence: one FAIL cell')
     ok, msg = guard.evaluate_sweep_evidence(tag_sha, repo_root=d,
-                                            full_runnable_count=fixed_count)
+                                            full_runnable_count=fixed_count,
+                                            runnable_cells=fixed_cells)
     log.append(('3 one FAIL cell', ok, msg))
     if ok:
         fails.append('3: a cell with verdict=="FAIL" was ACCEPTED')
@@ -189,7 +198,8 @@ def check_n_runnable_short(guard, tmp, fails, log):
                                            cells=cells))
     tag_sha = commit_all(d, 'evidence: short sweep')
     ok, msg = guard.evaluate_sweep_evidence(tag_sha, repo_root=d,
-                                            full_runnable_count=fixed_count)
+                                            full_runnable_count=fixed_count,
+                                            runnable_cells=fixed_cells)
     log.append(('4 n_runnable short', ok, msg))
     if ok:
         fails.append('4: n_runnable=1 against a declared table of 2 was ACCEPTED')
@@ -205,7 +215,8 @@ def check_ancestor_src_change_refused(guard, tmp, fails, log):
     write(d, 'src/solver.txt', 'a real code change after the sweep\n')
     tag_sha = commit_all(d, 'code: change after the sweep')
     ok, msg = guard.evaluate_sweep_evidence(tag_sha, repo_root=d,
-                                            full_runnable_count=fixed_count)
+                                            full_runnable_count=fixed_count,
+                                            runnable_cells=fixed_cells)
     log.append(('5 src/ change after swept ancestor', ok, msg))
     if ok:
         fails.append(
@@ -229,7 +240,8 @@ def check_evidence_only_ancestor_accepted(guard, tmp, fails, log):
     write(d, 'docs/run_profiles.jsonl', '{"note": "post-sweep profile rows"}\n')
     tag_sha = commit_all(d, 'perf: ledger + run-profile append after the sweep')
     ok, msg = guard.evaluate_sweep_evidence(tag_sha, repo_root=d,
-                                            full_runnable_count=fixed_count)
+                                            full_runnable_count=fixed_count,
+                                            runnable_cells=fixed_cells)
     log.append(('6 evidence-only change after swept ancestor', ok, msg))
     if not ok:
         fails.append(
@@ -253,7 +265,8 @@ def mutation_self_check(guard, tmp, fails, log):
                         cells=[dict(FULL_CELLS[0])])
     reasons_broken = guard.evaluate_sweep_candidate(
         'sandbox-summary.json', data, tag_sha, d,
-        full_runnable_count=lambda: data['n_runnable'])  # mutated: always agrees
+        full_runnable_count=lambda: data['n_runnable'],  # mutated: always agrees
+        runnable_cells=lambda: {(c['case'], c['backend']) for c in data['cells']})
     log.append(('mutation: n_runnable check neutered (want PASS)',
                 not reasons_broken, reasons_broken))
     if reasons_broken:
@@ -263,7 +276,8 @@ def mutation_self_check(guard, tmp, fails, log):
             'isolating the n_runnable comparison the way it claims to'
             % reasons_broken)
     reasons_fixed = guard.evaluate_sweep_candidate(
-        'sandbox-summary.json', data, tag_sha, d, full_runnable_count=fixed_count)
+        'sandbox-summary.json', data, tag_sha, d, full_runnable_count=fixed_count,
+                                            runnable_cells=fixed_cells)
     log.append(('mutation: n_runnable check restored (want REFUSE)',
                 bool(reasons_fixed), reasons_fixed))
     if not reasons_fixed:
@@ -272,8 +286,32 @@ def mutation_self_check(guard, tmp, fails, log):
                      'assertion is vacuous')
 
 
+def check_wrong_cell_set_right_count(guard, tmp, fails, log):
+    """Item 106(2): the right COUNT of cells but the wrong SET is refused, and
+    with the set check neutered (the table agrees with whatever ran) it is
+    accepted -- so the refusal is the set check's, not something else's."""
+    d = new_repo(tmp, 'case7_wrong_set')
+    tag_sha = git(['rev-parse', 'HEAD'], cwd=d).stdout.strip()
+    wrong = [dict(FULL_CELLS[0]), dict(FULL_CELLS[0], backend='python-jax')]
+    data = base_summary(tag_sha, cells=wrong)
+    reasons = guard.evaluate_sweep_candidate(
+        'sandbox-summary.json', data, tag_sha, d, full_runnable_count=fixed_count,
+        runnable_cells=fixed_cells)
+    log.append(('7 right count, wrong cell set (want REFUSE)', not reasons, reasons))
+    if not any('cell SET differs' in r for r in reasons):
+        fails.append('7: 2 cells at n_runnable=2 but the wrong set was not refused '
+                     'for its set: %r' % reasons)
+    neutered = guard.evaluate_sweep_candidate(
+        'sandbox-summary.json', data, tag_sha, d, full_runnable_count=fixed_count,
+        runnable_cells=lambda: {(c['case'], c['backend']) for c in wrong})
+    log.append(('7 mutation: set check neutered (want PASS)', not neutered, neutered))
+    if neutered:
+        fails.append('7 mutation: with the set check agreeing, reasons remained '
+                     '(%r) -- case 7 is not isolating the set check' % neutered)
+
+
 def main():
-    print('Negative test: check_pretag_ci.evaluate_sweep_evidence, 6 scenarios')
+    print('Negative test: check_pretag_ci.evaluate_sweep_evidence, 7 scenarios')
     guard = load_guard()
     fails = []
     log = []
@@ -286,6 +324,7 @@ def main():
         check_ancestor_src_change_refused(guard, tmp, fails, log)
         check_evidence_only_ancestor_accepted(guard, tmp, fails, log)
         mutation_self_check(guard, tmp, fails, log)
+        check_wrong_cell_set_right_count(guard, tmp, fails, log)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

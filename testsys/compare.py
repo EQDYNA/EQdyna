@@ -285,6 +285,11 @@ def compare_nc_files(fn1, fn2, threshold=matrix.THRESHOLD):
                 verdict = 'FAIL var numbers ' + fn1 + ' ' + fn2
         if not metadata_equal and verdict.startswith('SUCCESS'):
             verdict = 'FAIL metadata ' + fn1 + ' ' + fn2
+        # Item 106(1): with zero variables the loop above compares nothing
+        # and the verdict stayed SUCCESS -- a pass must mean the check ran
+        # (rule 2). Two empty files are "nothing to compare", not "equal".
+        if not f1.variables and verdict.startswith('SUCCESS'):
+            verdict = 'FAIL no variables compared ' + fn1 + ' ' + fn2
     finally:
         f1.close()
         f2.close()

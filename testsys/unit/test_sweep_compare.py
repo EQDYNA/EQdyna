@@ -262,3 +262,31 @@ def test_compare_nc_files_differing_attrs_reports_fail(tmp_path):
 def test_reference_root_is_the_committed_tree_and_is_never_written(tmp_path):
     # Rule 7: the gate reads this tree and nothing else writes through it.
     assert compare.REFERENCE_ROOT == os.path.join(REPO_ROOT, 'test.reference.results')
+
+
+# --------------------------------------------------------------------------
+# item 106(1): an empty netCDF comparison is not a pass
+# --------------------------------------------------------------------------
+def _nc(path, with_var):
+    from netCDF4 import Dataset
+    ds = Dataset(str(path), 'w')
+    if with_var:
+        ds.createDimension('n', 3)
+        v = ds.createVariable('slip', 'f8', ('n',))
+        v[:] = [1.0, 2.0, 3.0]
+    ds.close()
+    return str(path)
+
+
+def test_compare_nc_files_refuses_zero_variables(tmp_path):
+    a = _nc(tmp_path / 'a.nc', with_var=False)
+    b = _nc(tmp_path / 'b.nc', with_var=False)
+    verdict = compare.compare_nc_files(a, b)
+    assert verdict.startswith('FAIL no variables compared'), verdict
+
+
+def test_compare_nc_files_still_passes_one_equal_variable(tmp_path):
+    a = _nc(tmp_path / 'a.nc', with_var=True)
+    b = _nc(tmp_path / 'b.nc', with_var=True)
+    assert compare.compare_nc_files(a, b).startswith('SUCCESS')
+

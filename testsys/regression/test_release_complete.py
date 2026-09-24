@@ -323,6 +323,41 @@ def check_network_side(v):
         print('  UNVERIFIED  %s -- not a pass; re-run where it can be checked' % u)
 
 
+def check_every_workflow_for_tagged_sha(v, sha, workflow_name, self_run_id):
+    """Item 78, post-tag half: EVERY workflow with a run at the tagged sha --
+    tag-triggered runs INCLUDED, since after the tag they exist and are the
+    only runs publish.yml ever makes -- must be green. v5.16.0 is the case:
+    its test.yml runs were green, and 'Publish EQdyna Docker image' run
+    35819232914, triggered by the v5.16.0 tag push itself, failed, so no
+    image was published and nothing in the release checks said so. The
+    pre-tag gate cannot see that run (it does not exist before the tag);
+    this is the check that can. A run still in progress is UNVERIFIED, as
+    above -- inside the tag's own CI job, publish.yml is usually still
+    running."""
+    try:
+        runs = ci_status.find_all_workflow_runs(sha)
+        failed, pending, names = ci_status.classify_every_workflow(
+            runs, workflow_name, exclude_run_id=self_run_id)
+    except ci_status.GhUnavailable as exc:
+        print('  UNVERIFIED  every-workflow CI status for tagged sha %s (%s) -- '
+              'not a pass, not a fail' % (sha, exc))
+        return
+    if failed:
+        raise AssertionError(
+            'v%s is tagged at %s and workflow(s) %s ran for that sha and '
+            'finished WITHOUT success -- %s being green is not CI being green '
+            '(item 78; v5.16.0 shipped with no Docker image this way). A pushed '
+            'tag cannot be re-pointed (rule 8); this needs a human decision.'
+            % (v, sha, ', '.join(repr(n) for n in failed), workflow_name))
+    if pending:
+        print('  UNVERIFIED  workflow(s) %s for tagged sha %s (v%s) still in '
+              'progress -- re-run after they finish'
+              % (', '.join(repr(n) for n in pending), sha, v))
+        return
+    print('  PASS  every workflow with a run at tagged sha %s is green (%d: %s)'
+          % (sha, len(names), ', '.join(names)))
+
+
 def check_ci_green_for_tagged_sha(v):
     """A completed, successful CI run must exist for the exact SHA `vX.Y.Z`
     points at (rule 15 step 6/7's post-hoc half; testsys/regression/
@@ -360,6 +395,7 @@ def check_ci_green_for_tagged_sha(v):
     if status == 'PASS':
         print('  PASS  a completed, successful %s run exists for tagged sha '
               '%s (v%s)' % (workflow_name, sha, v))
+        check_every_workflow_for_tagged_sha(v, sha, workflow_name, self_run_id)
         return
     if status == 'FAIL':
         raise AssertionError(
