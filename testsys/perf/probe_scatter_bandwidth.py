@@ -173,6 +173,16 @@ def per_iter(op, cpus, node_map, n_lo, n_hi, dump_hlo_dir=None):
     if t_lo is None or t_hi is None:
         return None, None
     per = (t_hi - t_lo) / float(n_hi - n_lo)
+    # Item 91b: a non-positive per-iteration figure is not a slow
+    # measurement, it is an invalid one (CLAUDE.md's per-step-by-difference
+    # contract) -- raise rather than let it flow into us_per_iter and the
+    # 8->32 speedup verdict below.
+    if per <= 0:
+        raise RuntimeError(
+            'per-iteration by difference came out %.9f s/iter for op=%r '
+            '(t_lo=%.3fs at n_lo=%d, t_hi=%.3fs at n_hi=%d). Refusing to '
+            'report a non-positive per-iteration cost.'
+            % (per, op, t_lo, n_lo, t_hi, n_hi))
     fixed = t_lo - n_lo * per
     return per, fixed
 

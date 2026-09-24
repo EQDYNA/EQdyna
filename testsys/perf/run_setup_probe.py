@@ -68,6 +68,17 @@ print(json.dumps(out), flush=True)
 '''
 
 
+def require_git_sha(returncode, stdout, stderr, what):
+    """Item 91e: a git-sha read with no returncode check records '' on
+    failure -- a snapshot with an empty sha is exactly the provenance rule
+    19 exists to forbid. Pure function over an already-run subprocess
+    result, so it is unit-testable with no real git invocation."""
+    if returncode != 0 or not stdout.strip():
+        raise SystemExit('FAIL: %s exited %d: %s'
+                         % (what, returncode, stderr.strip()))
+    return stdout.strip()
+
+
 def cpu_pool(exclude):
     """CPUs this process may use, minus the ones MEASURED to misbehave."""
     return [c for c in sorted(os.sched_getaffinity(0)) if c not in exclude]
@@ -151,8 +162,10 @@ def main():
                           'setup_probe_children_%s' % time.strftime('%H%M%S'))
     os.makedirs(outdir, exist_ok=True)
 
-    sha = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=ROOT,
-                         capture_output=True, text=True).stdout.strip()
+    _sha_r = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=ROOT,
+                            capture_output=True, text=True)
+    sha = require_git_sha(_sha_r.returncode, _sha_r.stdout, _sha_r.stderr,
+                          'git rev-parse --short HEAD (cwd %s)' % ROOT)
     print('## setup probe  case %s  sha %s  cpus %d usable (excluded %s)  '
           'loadavg %.2f' % (a.case, sha, len(cpus), sorted(excl),
                             os.getloadavg()[0]), flush=True)

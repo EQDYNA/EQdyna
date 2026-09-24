@@ -90,6 +90,21 @@ def pinned_env():
     return env
 
 
+def require_affinity_pinned(affinity_str, core):
+    """Item 91f: this gate used to print a WARNING and proceed when the
+    pin did not take effect -- perf is the only red/green gate in this
+    tool family, and proceeding on a failed precondition is rule 2's
+    silent fallback. Pure function over the already-read affinity string,
+    so it is unit-testable without a real taskset subprocess."""
+    want = '[%s]' % core
+    if affinity_str != want:
+        raise SystemExit(
+            'FAIL: affinity check did not report exactly core %s '
+            '(got %r, wanted %r) -- pinning did not take effect on this '
+            'system. Refusing to gate on an unpinned timing.'
+            % (core, affinity_str, want))
+
+
 def verify_affinity():
     """Runs a subprocess UNDER the same taskset used for the real timings and
     reports os.sched_getaffinity(0) from inside it -- proof the pin took
@@ -143,6 +158,15 @@ def steady_state_per_step(engine, n_lo, n_hi):
             return None, None
         out[n] = solve
     per_step = (out[n_hi] - out[n_lo]) / float(n_hi - n_lo)
+    # Item 91b: a non-positive per-step figure is an invalid measurement, not
+    # a slow one -- raise rather than let it flow into the ratio this tool
+    # gates on.
+    if per_step <= 0:
+        raise RuntimeError(
+            'per-step by difference came out %.9f s/step for engine=%r '
+            '(solve=%.3fs at n_lo=%d, solve=%.3fs at n_hi=%d). Refusing to '
+            'report a non-positive per-step cost.'
+            % (per_step, engine, out[n_lo], n_lo, out[n_hi], n_hi))
     fixed = out[n_lo] - n_lo * per_step
     return per_step, fixed
 
@@ -214,10 +238,7 @@ def main():
 
     affinity = verify_affinity()
     print(f'Pinned-core affinity check (taskset -c {CORE}): {affinity}')
-    if affinity != f'[{CORE}]':
-        print(f'WARNING: affinity check did not report exactly core {CORE} -- '
-              'pinning may not have taken effect on this system; timings below are '
-              'still reported but treat the ratio with more suspicion than usual.')
+    require_affinity_pinned(affinity, CORE)
 
     prov = provenance()
 

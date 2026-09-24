@@ -67,12 +67,14 @@ TESTSYS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get('EQDYNAROOT') or os.path.dirname(os.path.dirname(TESTSYS))
 PYTHON_PKG = os.path.join(ROOT, 'src', 'python')
 OUT = os.path.join(ROOT, 'docs', 'perf_snapshots',
-                   'shard_scaling_%s_%s.json' % (time.strftime('%Y-%m-%d'),
+                   'shard_scaling_%s_%s.json' % (time.strftime('%Y-%m-%d_%H%M%S'),
                                           os.environ.get('EQDYNA_SNAPSHOT_TAG', 'tpv104')))
 # PROJECT_RULES rule 19: dated and immutable, never a shared *_last.* file.
 # A path whose name says "last" cites whatever ran most recently, so it is
 # not evidence a board row can point at; two tools writing one such file
-# silently discard each other.
+# silently discard each other. Item 91a: the timestamp must include time of
+# day (not just the date), or two runs on the same day overwrite each other
+# -- exactly the failure mode this comment already warned about.
 
 sys.path.insert(0, TESTSYS)
 import run_numa_scaling as numa      # noqa: E402
@@ -138,6 +140,28 @@ def time_one(case_dir, nsteps, cpus, node_map, ndev, mode):
     return got['WALL'], int(got['DEVICES']), int(got['THREADS'])
 
 
+def record_point(base, base_n, mode, n, ms_per_step, first_n):
+    """Pure bookkeeping for the speedup baseline (item 91g), factored out of
+    main()'s loop so it is directly unit-testable with no jax/subprocess.
+
+    Mutates `base`/`base_n` (dicts keyed by mode) in place the first time
+    `mode` is seen, and returns (speedup, baseline_n, note). `note` is a
+    non-None warning string exactly when the baseline point being set is NOT
+    `first_n` -- i.e. the intended n=1 (or whatever devices[0] is) baseline
+    was skipped or failed and this mode's speedup column is grounded on a
+    later point instead. The caller must not silently drop `note`."""
+    note = None
+    if mode not in base:
+        base[mode] = ms_per_step
+        base_n[mode] = n
+        if n != first_n:
+            note = ('baseline for mode %r is n=%d (n=%d, the requested '
+                    'first point, was SKIPPED or FAILED) -- speedup values '
+                    'for this mode are relative to n=%d, not n=%d'
+                    % (mode, n, first_n, n, first_n))
+    return base[mode] / ms_per_step, base_n[mode], note
+
+
 def per_step(case_dir, cpus, node_map, ndev, mode, n_lo, n_hi):
     lo = time_one(case_dir, n_lo, cpus, node_map, ndev, mode)
     hi = time_one(case_dir, n_hi, cpus, node_map, ndev, mode)
@@ -199,6 +223,14 @@ def main():
           % (a.case, sha, os.uname().nodename, a.n_lo, a.n_hi), flush=True)
 
     base = {}
+    base_n = {}
+    # Item 91g: the speedup column baselines on the first NON-SKIPPED n for
+    # each mode. If devices[0] (the intended n=1 baseline) is skipped or
+    # fails, base_n[mode] silently becomes whatever n measured first, and a
+    # speedup of 1.00x at that n would be misread as "no scaling" rather than
+    # "this IS the baseline". So the baseline point is recorded explicitly
+    # (baseline_n on every row, in both the printed table and the snapshot)
+    # and a mismatch against devices[0] is printed loudly, never silent.
     for mode in modes:
         print('\n-- %s --' % mode, flush=True)
         for n in devices:
@@ -220,39 +252,54 @@ def main():
             if best is None:
                 print('  %-26s FAILED' % label, flush=True)
                 continue
-            base.setdefault(mode, best['ms_per_step'])
+            speedup, bn, note = record_point(base, base_n, mode, n,
+                                             best['ms_per_step'], devices[0])
+            if note:
+                print('  NOTE: ' + note, flush=True)
             best.update(mode=mode, n=n, cpus=cpus, nodes=rs.nodes_of(nodes, cpus),
-                        speedup=base[mode] / best['ms_per_step'], busy=busy,
+                        speedup=speedup, baseline_n=bn, busy=busy,
                         loadavg=os.getloadavg(), n_lo=a.n_lo, n_hi=a.n_hi)
             rows.append(best)
-            print('  %-26s %9.2f ms/step  speedup %5.2fx  fixed %6.2fs  '
+            print('  %-26s %9.2f ms/step  speedup %5.2fx (vs n=%d)  fixed %6.2fs  '
                   'threads %3d  wall %.1f/%.1fs  cpus=%s nodes=%s'
-                  % (label, best['ms_per_step'], best['speedup'], best['fixed_s'],
-                     best['threads'], best['wall_lo_s'], best['wall_hi_s'],
-                     cpus, best['nodes']), flush=True)
+                  % (label, best['ms_per_step'], best['speedup'], bn,
+                     best['fixed_s'], best['threads'], best['wall_lo_s'],
+                     best['wall_hi_s'], cpus, best['nodes']), flush=True)
 
-    print('\n%-14s %10s %10s %8s %8s' % ('devices/ranks', 'fortran', 'jax-shard',
-                                         'f-up', 'j-up'))
     el = {r['n']: r['ms_per_step'] for r in rows if r['mode'] == 'element'}
+    el_base_n = min(el) if el else None
+    print('\n%-14s %10s %10s %8s %8s' % ('devices/ranks', 'fortran', 'jax-shard',
+                                         'f-up', 'j-up (vs n=%s)' % el_base_n))
+    if el_base_n is not None and el_base_n != devices[0]:
+        print('  NOTE: j-up baselines on n=%d (n=%d, the requested first '
+              'point, has no "element"-mode measurement) -- not a silent '
+              'baseline swap.' % (el_base_n, devices[0]))
     for n in devices:
         f = FORTRAN_MS.get(n)
         j = el.get(n)
         print('%-14d %10s %10s %8s %8s'
               % (n, '%.2f' % f if f else '-', '%.2f' % j if j else '-',
                  '%.2fx' % (FORTRAN_MS[1] / f) if f else '-',
-                 '%.2fx' % (el[min(el)] / j) if j else '-'))
+                 '%.2fx' % (el[el_base_n] / j) if j else '-'))
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    json.dump(dict(case=a.case, sha=sha, host=os.uname().nodename,
-                   date=time.strftime('%Y-%m-%d %H:%M'), n_lo=a.n_lo,
-                   n_hi=a.n_hi, busy_ceiling=a.busy_ceiling,
-                   overridden=bool(a.i_know_the_box_is_busy),
-                   fortran_quoted=FORTRAN_MS, rows=rows, skipped=skipped),
-              open(OUT, 'w'), indent=1)
+    meta = dict(case=a.case, sha=sha, host=os.uname().nodename,
+               date=time.strftime('%Y-%m-%d %H:%M'), n_lo=a.n_lo,
+               n_hi=a.n_hi, busy_ceiling=a.busy_ceiling,
+               overridden=bool(a.i_know_the_box_is_busy),
+               fortran_quoted=FORTRAN_MS, rows=rows, skipped=skipped,
+               element_baseline_n=el_base_n)
+    json.dump(meta, open(OUT, 'w'), indent=1)
     print('\nsaved %s' % OUT)
     if skipped:
         print('%d point(s) SKIPPED as busy (not measured, not silently dropped): %s'
               % (len(skipped), [s['label'] for s in skipped]))
+
+    # Item 91a's ledger half is NOT wired (PR #15 audit): the shared
+    # ledger.rows_from_scaling_snapshot stamps tool='run_scaling' and
+    # parallelism='threads', so shard points would be appended -- append-only
+    # -- as run_scaling rows. What a shard point's `ranks` counts must be
+    # declared in ledger.py first; open board residual, not done here.
 
 
 if __name__ == '__main__':
