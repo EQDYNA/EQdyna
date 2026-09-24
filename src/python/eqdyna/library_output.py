@@ -62,9 +62,9 @@ have run for this step, so:
     output_onfault_st's write list (library_output.f90:107-118/130-138) --
     confirmed by reading the write statement's argument order against the
     column-name line two lines above it -- so it is not recorded here.
-  - The n-stress sign is `nStressOutSign * tnrm / 1e6` per board item 22a;
-    until that Fortran PR lands this port uses the CURRENT (pre-22a) sign,
-    always -1 (see driver.py's build_invariants and NOTES_row114.md).
+  - The n-stress sign is `nStressOutSign * tnrm / 1e6`, the case's SCEC
+    spec convention read from bGlobal.txt (board row 22a, PR #20); see
+    driver.py's build_invariants (finv['st_sign']).
 
 `write_offfault_stations` (output_offfault_st): idhist's dispOrVel is always
 1 or 2 (eqdyna3d.f90:287-298's allocInitAfterMeshGen loop never writes 3), so
@@ -337,6 +337,10 @@ def write_offfault_stations(case_dir, S, off_st_hist):
     n_off = int(S['st_off_idx'].shape[0])
     if n_off == 0:
         return []
+    if off_st_hist.ndim != 3 or off_st_hist.shape[:2] != (n_off, 7):
+        raise ValueError('write_offfault_stations: off_st_hist shape %r does not '
+                         'match (%d stations, 7 columns, nstep)'
+                         % (off_st_hist.shape, n_off))
     nstep = off_st_hist.shape[2]
     paths = []
     for i in range(n_off):

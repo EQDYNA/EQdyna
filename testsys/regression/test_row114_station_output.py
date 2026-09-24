@@ -172,6 +172,31 @@ def main():
                 print('  numpy == jax: same %d on-fault / %d off-fault filenames, '
                       'same column count' % (len(on_n), len(off_n)))
 
+    # Dropped-station report (rows 94/116): same words as Fortran's
+    # report_dropped_onfault_st / report_dropped_offfault_st, and silence when
+    # nothing is dropped. Behaviour: captured stdout of the real function.
+    import contextlib, io
+    import numpy as np
+    from eqdyna import eqdyna3d
+    xonfs = np.array([[0.0, -18000.0, 5000.0], [0.0, -15600.0, -12000.0]])
+    x4nds = np.array([[0.0, 0.0], [1000.0, -500.0], [0.0, -300.0]])
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        eqdyna3d.report_dropped_stations(xonfs, x4nds, [(1, 1, 1), (7, 3, 1)], [(1, 42)])
+    out = buf.getvalue()
+    for want in ('WARNING: 1 of 3 requested on-fault stations match no fault node',
+                 'dropped on-fault station 2 (fault 1) at x,z =   -18.000   -15.600 km',
+                 'WARNING: 1 of 2 requested off-fault stations match no grid node',
+                 'dropped off-fault station 2 at x,y,z =     0.000    -0.500    -0.300 km'):
+        if want not in out:
+            fails.append('drop report lacks %r; stdout was:\n%s' % (want, out))
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        eqdyna3d.report_dropped_stations(xonfs, x4nds, [(1, 1, 1), (2, 2, 1), (3, 3, 1)],
+                                         [(1, 4), (2, 5)])
+    if buf.getvalue():
+        fails.append('drop report printed with nothing dropped: %r' % buf.getvalue())
+
     if fails:
         print('FAIL test_row114_station_output')
         for f in fails:

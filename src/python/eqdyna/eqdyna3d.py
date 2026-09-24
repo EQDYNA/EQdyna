@@ -196,6 +196,37 @@ def active_device(backend):
     return '%s:%d (%s)' % (d.platform, d.id, getattr(d, 'device_kind', '?'))
 
 
+def report_dropped_stations(xonfs, x4nds, anonfs, off_matches):
+    """Port of report_dropped_onfault_st / report_dropped_offfault_st
+    (library_output.f90; board rows 116 and 94): name, on stdout and in
+    Fortran's own words, every requested station that matched no node and so
+    gets no file. Neither snaps nor refuses (the owner's call, as in the
+    Fortran). ntotft == 1 is the only case case.setup allows, so on-fault
+    stations are all fault 1. Coordinates arrive in metres."""
+    on_matched = {sc for fs, sc, ift in anonfs}
+    on_dropped = [i for i in range(1, xonfs.shape[1] + 1) if i not in on_matched]
+    if on_dropped:
+        print(' WARNING: %d of %d requested on-fault stations match no fault '
+              'node and get NO faultst* file' % (len(on_dropped), xonfs.shape[1]))
+        print('   (setOnFaultStation, meshgen.f90: along-strike x and depth z '
+              'must both equal a fault node within tol)')
+        for i in on_dropped:
+            print('   dropped on-fault station %d (fault 1) at x,z =%10.3f%10.3f km'
+                  % (i, xonfs[0, i - 1] / 1000.0, xonfs[1, i - 1] / 1000.0))
+    off_matched = {sc for sc, nc in off_matches}
+    off_dropped = [i for i in range(1, x4nds.shape[1] + 1) if i not in off_matched]
+    if off_dropped:
+        print(' WARNING: %d of %d requested off-fault stations match no grid '
+              'node and get NO body* file' % (len(off_dropped), x4nds.shape[1]))
+        print('   (setSurfaceStation, meshgen.f90: depth must equal a grid '
+              'z-plane within tol; x and y snap to the nearest interior node)')
+        for i in off_dropped:
+            print('   dropped off-fault station %d at x,y,z =%10.3f%10.3f%10.3f km'
+                  % (i, x4nds[0, i - 1] / 1000.0, x4nds[1, i - 1] / 1000.0,
+                     x4nds[2, i - 1] / 1000.0))
+    return on_dropped, off_dropped
+
+
 def build_solver_state(case_dir, part=None):
     """Builds the full `S` dict eqdyna/driver.py's `run()` expects,
     reading ONLY case-input files (bGlobal.txt/bModelGeometry.txt/
@@ -300,6 +331,7 @@ def build_solver_state(case_dir, part=None):
         st_off_x_m = np.array([x4nds[0, sc - 1] for sc, nc in off_matches])
         st_off_y_m = np.array([x4nds[1, sc - 1] for sc, nc in off_matches])
         st_off_z_m = np.array([x4nds[2, sc - 1] for sc, nc in off_matches])
+        report_dropped_stations(xonfs, x4nds, anonfs, off_matches)
     else:
         st_on_idx = np.zeros(0, dtype=np.int64)
         st_on_strike_m = st_on_depth_m = np.zeros(0)
