@@ -216,6 +216,52 @@ def check_91f_affinity_gate():
 
 # ---------------------------------------------------------------- (g) ----
 
+def check_91g_run_scaling_loop_labels_baseline():
+    """91g residual (item 91 PR #15 NOTES): run_scaling.py's own python loop,
+    driven FOR REAL through main() with every measurement and box probe
+    stubbed (no case, no jax, no numactl, nothing written to the repo): with
+    th=1 SKIPPED, the th=2 row must carry baseline_n=2 and a NOTE must be
+    printed -- before, base.setdefault silently made th=2 read 1.00x."""
+    import io, contextlib, json as _json, tempfile as _tf, types
+    import run_scaling as rscal
+    tmp = _tf.mkdtemp(prefix='item91g_rs.')
+    saved = {k: getattr(rscal, k) for k in
+             ('free_node_map', 'select_cpus', 'build_py_case', 'per_step_py',
+              'nodes_of', 'sh', 'OUT', 'ROOT')}
+    saved_numa = (rscal.numa.numa_topology, rscal.numa.require_idle)
+    saved_led = (ledger.append_rows, ledger.box_tenancy)
+    saved_argv = sys.argv
+    try:
+        rscal.numa.numa_topology = lambda: {0: [0, 1, 2, 3]}
+        rscal.numa.require_idle = lambda cpus, ceil, ov: {}
+        rscal.free_node_map = lambda nodes, ceil, ov: {0: [0, 1, 2, 3]}
+        rscal.select_cpus = lambda free, k, policy: None if k == 1 else list(range(k))
+        rscal.build_py_case = lambda case: tmp
+        rscal.per_step_py = lambda d, cpus, nodes, backend, lo, hi: (0.2 / len(cpus), 1.0, 2.0, 3.0)
+        rscal.nodes_of = lambda nodes, cpus: [0]
+        rscal.sh = lambda cmd, **kw: types.SimpleNamespace(stdout='abc1234\n', returncode=0)
+        rscal.OUT = os.path.join(tmp, 'scaling_last.json')
+        rscal.ROOT = tmp
+        ledger.append_rows = lambda rows: len(rows)
+        ledger.box_tenancy = lambda ceil: dict(busy=0, total=4)
+        sys.argv = ['run_scaling.py', '--skip-fortran', '--backends', 'numpy',
+                    '--py-threads', '1,2,4', '--policies', 'compact']
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rscal.main()
+        rows = _json.load(open(rscal.OUT))['rows']
+    finally:
+        for k, v in saved.items():
+            setattr(rscal, k, v)
+        rscal.numa.numa_topology, rscal.numa.require_idle = saved_numa
+        ledger.append_rows, ledger.box_tenancy = saved_led
+        sys.argv = saved_argv
+    got = [(r['n'], r.get('baseline_n'), round(r['speedup'], 2)) for r in rows]
+    check(got == [(2, 2, 1.0), (4, 2, 2.0)] and 'NOTE: baseline for mode' in buf.getvalue(),
+          '91g run_scaling main(): th=1 skipped -> rows (n, baseline_n, speedup) '
+          '%r want [(2, 2, 1.0), (4, 2, 2.0)] and a printed NOTE' % (got,))
+
+
 def check_91g_baseline_labelling():
     base, base_n = {}, {}
     _, bn1, note1 = rss.record_point(base, base_n, 'element', 2, 100.0, 1)
@@ -252,6 +298,7 @@ CHECKS = [
     ('91e', check_91e_git_sha),
     ('91f', check_91f_affinity_gate),
     ('91g', check_91g_baseline_labelling),
+    ('91g-run_scaling', check_91g_run_scaling_loop_labels_baseline),
 ]
 
 

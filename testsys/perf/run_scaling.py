@@ -410,6 +410,28 @@ def run_fortran(work, n, policy, cpus, node_map, term, nsteps):
     return wall, r.stdout
 
 
+def record_point(base, base_n, mode, n, ms_per_step, first_n):
+    """Pure bookkeeping for the speedup baseline (item 91g), factored out of
+    the callers' loops so it is directly unit-testable with no jax/subprocess.
+
+    Mutates `base`/`base_n` (dicts keyed by mode) in place the first time
+    `mode` is seen, and returns (speedup, baseline_n, note). `note` is a
+    non-None warning string exactly when the baseline point being set is NOT
+    `first_n` -- i.e. the intended n=1 (or whatever devices[0] is) baseline
+    was skipped or failed and this mode's speedup column is grounded on a
+    later point instead. The caller must not silently drop `note`."""
+    note = None
+    if mode not in base:
+        base[mode] = ms_per_step
+        base_n[mode] = n
+        if n != first_n:
+            note = ('baseline for mode %r is n=%d (n=%d, the requested '
+                    'first point, was SKIPPED or FAILED) -- speedup values '
+                    'for this mode are relative to n=%d, not n=%d'
+                    % (mode, n, first_n, n, first_n))
+    return base[mode] / ms_per_step, base_n[mode], note
+
+
 def per_step_fortran(work, n, policy, cpus, node_map, dt, n_lo, n_hi):
     """PER-STEP BY DIFFERENCE for Fortran too (2026-09-19 fix, item 33
     headline measurement).
@@ -582,7 +604,7 @@ def main():
         make_case(d0, 1, 1, 1)
         _, dt = read_term_dt(d0)
         shutil.rmtree(d0, ignore_errors=True)
-        base = {}
+        base, base_n = {}, {}
         for policy in policies:
             for n in fortran_ranks:
                 free = free_node_map(nodes, a.busy_ceiling, a.i_know_the_box_is_busy)
@@ -603,15 +625,19 @@ def main():
                         work, n, policy, cpus, nodes, dt, a.n_lo, a.n_hi)
                     if best_ps is None or ps < best_ps:
                         best_ps, best_fixed, best_lo, best_hi = ps, fixed, t_lo, t_hi
-                base.setdefault(policy, best_ps)
-                speedup = base[policy] / best_ps
+                # Item 91g: the baseline point is labelled, never silently
+                # swapped when the first n was skipped.
+                speedup, bn, note = record_point(base, base_n, policy, n, best_ps,
+                                                 fortran_ranks[0])
+                if note:
+                    print('  NOTE: ' + note, flush=True)
                 used_nodes = nodes_of(nodes, cpus)
                 row = dict(engine='fortran', n=n, policy=policy, ms_per_step=best_ps * 1e3,
-                          speedup=speedup, fixed_s=best_fixed, cpus=cpus, nodes=used_nodes,
+                          speedup=speedup, baseline_n=bn, fixed_s=best_fixed, cpus=cpus, nodes=used_nodes,
                           n_lo=a.n_lo, n_hi=a.n_hi, wall_lo_s=best_lo, wall_hi_s=best_hi,
                           busy=chk, loadavg=os.getloadavg())
                 rows.append(row)
-                print(f'  {label:<28} {best_ps*1e3:9.2f} ms/step  speedup {speedup:5.2f}x  '
+                print(f'  {label:<28} {best_ps*1e3:9.2f} ms/step  speedup {speedup:5.2f}x (vs n={bn})  '
                       f'fixed {best_fixed:6.2f}s  n_lo/n_hi {a.n_lo}/{a.n_hi}  '
                       f'wall {best_lo:.1f}/{best_hi:.1f}s  cpus={cpus} nodes={used_nodes}',
                       flush=True)
@@ -620,7 +646,7 @@ def main():
         py_backend = 'python-%s' % backend
         print('\n-- %s --' % py_backend)
         case_dir = build_py_case(CASE)
-        base = {}
+        base, base_n = {}, {}
         for policy in policies:
             for n in py_threads:
                 free = free_node_map(nodes, a.busy_ceiling, a.i_know_the_box_is_busy)
@@ -646,15 +672,17 @@ def main():
                 if best_ps is None:
                     print(f'  {label:<28} FAILED')
                     continue
-                base.setdefault(policy, best_ps)
-                speedup = base[policy] / best_ps
+                speedup, bn, note = record_point(base, base_n, policy, n, best_ps,
+                                                 py_threads[0])
+                if note:
+                    print('  NOTE: ' + note, flush=True)
                 used_nodes = nodes_of(nodes, cpus)
                 row = dict(engine=py_backend, n=n, policy=policy, ms_per_step=best_ps * 1e3,
-                          speedup=speedup, fixed_s=best_fixed, cpus=cpus, nodes=used_nodes,
+                          speedup=speedup, baseline_n=bn, fixed_s=best_fixed, cpus=cpus, nodes=used_nodes,
                           n_lo=a.n_lo, n_hi=a.n_hi, wall_lo_s=best_lo, wall_hi_s=best_hi,
                           busy=chk, loadavg=os.getloadavg())
                 rows.append(row)
-                print(f'  {label:<28} {best_ps*1e3:9.2f} ms/step  speedup {speedup:5.2f}x  '
+                print(f'  {label:<28} {best_ps*1e3:9.2f} ms/step  speedup {speedup:5.2f}x (vs n={bn})  '
                       f'fixed {best_fixed:6.2f}s  n_lo/n_hi {a.n_lo}/{a.n_hi}  '
                       f'wall {best_lo:.1f}/{best_hi:.1f}s  cpus={cpus} nodes={used_nodes}',
                       flush=True)
