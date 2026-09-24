@@ -203,16 +203,8 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches):
     gets no file. Neither snaps nor refuses (the owner's call, as in the
     Fortran). ntotft == 1 is the only case case.setup allows, so on-fault
     stations are all fault 1. Coordinates arrive in metres."""
-    on_matched = {sc for fs, sc, ift in anonfs}
-    on_dropped = [i for i in range(1, xonfs.shape[1] + 1) if i not in on_matched]
-    if on_dropped:
-        print(' WARNING: %d of %d requested on-fault stations match no fault '
-              'node and get NO faultst* file' % (len(on_dropped), xonfs.shape[1]))
-        print('   (setOnFaultStation, meshgen.f90: along-strike x and depth z '
-              'must both equal a fault node within tol)')
-        for i in on_dropped:
-            print('   dropped on-fault station %d (fault 1) at x,z =%10.3f%10.3f km'
-                  % (i, xonfs[0, i - 1] / 1000.0, xonfs[1, i - 1] / 1000.0))
+    # Fortran's order: off-fault first (checkOffFaultStationCoverage,
+    # eqdyna3d.f90:126), then on-fault (checkOnFaultStationCoverage).
     off_matched = {sc for sc, nc in off_matches}
     off_dropped = [i for i in range(1, x4nds.shape[1] + 1) if i not in off_matched]
     if off_dropped:
@@ -224,6 +216,16 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches):
             print('   dropped off-fault station %d at x,y,z =%10.3f%10.3f%10.3f km'
                   % (i, x4nds[0, i - 1] / 1000.0, x4nds[1, i - 1] / 1000.0,
                      x4nds[2, i - 1] / 1000.0))
+    on_matched = {sc for fs, sc, ift in anonfs}
+    on_dropped = [i for i in range(1, xonfs.shape[1] + 1) if i not in on_matched]
+    if on_dropped:
+        print(' WARNING: %d of %d requested on-fault stations match no fault '
+              'node and get NO faultst* file' % (len(on_dropped), xonfs.shape[1]))
+        print('   (setOnFaultStation, meshgen.f90: along-strike x and depth z '
+              'must both equal a fault node within tol)')
+        for i in on_dropped:
+            print('   dropped on-fault station %d (fault 1) at x,z =%10.3f%10.3f km'
+                  % (i, xonfs[0, i - 1] / 1000.0, xonfs[1, i - 1] / 1000.0))
     return on_dropped, off_dropped
 
 
