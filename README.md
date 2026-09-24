@@ -133,10 +133,13 @@ been measured yet and is not estimated here (rule 6).
 
 `test.tpv36` and `test.tpv37` are the ninth and tenth gated cases (dipping
 thrust, wedge degeneration; `abs-max` gate at 1e-6, registered 2026-09-17 at
-v5.10.0) and are absent from the table above only because their per-backend
-fast-tier wall times have never been recorded as a sweep measurement -- an
-unrecorded number is left unrecorded rather than estimated (rule 6).
-`testsys/matrix.py` is the authoritative cell list: 10 cases, `CASE_BOUND` and
+v5.10.0), and `test.tpv30` is the eleventh (fortran + python-jax, `abs-max`
+gate at 1e-10, registered 2026-09-23, PR #5 `567e723` -- see
+`pathway_forward.md` item 19(b)). All three are absent from the table above
+only because their per-backend fast-tier wall times have never been recorded
+as a sweep measurement -- an unrecorded number is left unrecorded rather than
+estimated (rule 6).
+`testsys/matrix.py` is the authoritative cell list: 11 cases, `CASE_BOUND` and
 `GATE` per case.
 
 # Environment
@@ -166,14 +169,15 @@ chmod 755 install-eqdyna.sh
 ./install-eqdyna.sh -m ubuntu # ubuntu/ls6/macos
 export EQDYNAROOT=$(pwd)
 PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-python3 testsys/run.py all # unit + regression + the sweep: 10 cases x
+python3 testsys/run.py all # unit + regression + the sweep: 11 cases x
                            # {fortran, python-jax} against one canonical
                            # reference each, plus test.tpv8 x python-jax-mpi
-                           # = 21 cells (numpy dropped from every gate
-                           # 2026-09-23; `--backend numpy` still runs by
-                           # hand, ungated). Cells run concurrently; the
-                           # 30-cell/2263.3-2123.2s figures below predate
-                           # that change and are historical.
+                           # = 23 cells (numpy dropped from every gate and
+                           # test.tpv30 registered, both 2026-09-23;
+                           # `--backend numpy` still runs by hand, ungated).
+                           # Cells run concurrently; the 30-cell/2263.3-
+                           # 2123.2s figures below predate both changes and
+                           # are historical.
                            # It prints which cells it ran, so a pass states its scope.
 ```
 For bash, please insert the following lines in .bashrc
