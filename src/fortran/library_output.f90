@@ -418,15 +418,18 @@ subroutine output_profile(setupBucket, elementBucket, faultBucket, exchangeBucke
                                      waitBucket, ioBucket, loopS, totalS
     integer (kind = 4), intent(in) :: nstepsArg, samplingEvery
     integer (kind = 4), parameter :: UNIT_PROFILE_BASE = 40009
-    character(len=8) :: envval
     integer (kind = 4), allocatable :: cpuList(:), numaList(:)
     integer (kind = 4) :: nCpus, nNuma, i, pid
     character(len=256) :: hostStr
     real (kind = dp) :: unaccounted
 
-    envval = ' '
-    call get_environment_variable('EQDYNA_PROFILE', envval)
-    if (trim(envval) == '0') return
+    ! EQDYNA_PROFILE is read ONCE, at startup (eqdyna3d.f90, right after
+    ! MPI_Init), into the module logical profileEnabled (globalvar.f90).
+    ! Re-reading it here via get_environment_variable broke that read-once
+    ! contract AND used an 8-char buffer that silently truncated anything
+    ! longer -- both defects are avoided by testing the already-parsed
+    ! module flag instead.
+    if (.not. profileEnabled) return
 
     call readCpusAllowed(cpuList, nCpus)
     call computeNumaNodes(cpuList, nCpus, numaList, nNuma)

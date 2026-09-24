@@ -63,6 +63,7 @@ MODULE errorCodes
     integer, parameter :: ERR_CFG_Q_NEEDS_ELASTIC    = 11  ! C_Q=1 requires C_elastic=1
     integer, parameter :: ERR_CFG_Q_NEEDS_UNIFORM    = 12  ! C_Q=1 requires rat=1.0 (uniform elements)
     integer, parameter :: ERR_CFG_PLASTIC_OUTPUT     = 13  ! output_plastic=1 requires C_elastic=0
+    integer, parameter :: ERR_CFG_PROFILE_ENV_INVALID = 14 ! EQDYNA_PROFILE is set to a value other than unset, "", "1" or "0"
 
     ! --- 21-29 input files --------------------------------------------
     integer, parameter :: ERR_INPUT_FILE_MISSING     = 21  ! a required FE_*.txt / data file is absent
