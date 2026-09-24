@@ -1530,3 +1530,65 @@ so it does not land (rule 23: departure only for a measured gain). Closing the
 or a summation reorder (`add.at` -> bincount breaks bit-identity): both
 OWNER decisions, not mine. Also: cProfile changed numpy's frt bytes — a
 profiled run is never a parity oracle.
+
+## QQ. One-term simplification LANDED (19:40); release sweep at 5 s measured; rule 24's guard cannot pass as built
+
+**Landed** as 13 commits ending `789d96f` (rebased onto master's docs-only
+commits; code tree byte-equal to the gated `679d8ad`, `git diff --stat
+679d8ad HEAD -- <code>` empty). iris: `--term` removed, `--release` =
+everyday + `RELEASE_ONLY`, pretag guard requires the ONE 5 s sweep,
+`test_term_axis.py` rewritten as the one-term guard; `frt.canonical.term5.txt`
+-> `frt.canonical.txt` for tpv29/36/37 (one commit per case). **iris stopped
+on a real gap, correctly:** each case's `fault.dyna.r.nc` was a FULL-term
+artifact the two-term code had been skipping at 5 s; removing the axis made
+tpv29's fortran nc comparison FAIL (`threshold=1e-03`). I committed 5 s nc
+references (one per case, rule 7) from my own b979de9 sweep's Fortran cells,
+whose frt matched the 5 s canonical reference at `max|diff|=0.000000e+00`,
+each message naming the SHA that last carried the retired nc
+(bbe6f1a / ed2aec6 / 3e13715 — the last commit that WROTE it; zofia's row cites
+the retirement commits instead, whose parents carry the same bytes: both
+recover it). zofia: rules 7/15b/16/24, CLAUDE.md, README, board item 102,
+including what the owner gave up (late-time rupture ungated).
+
+**Landing gate, mine:** `run.py unit regression release` at `679d8ad`, clean
+worktree, 18:56-19:35, **WALL 2294.8 s**; SUCCESS unit, regression, release;
+**31/31** (nc comparisons at 5 s included). Release sweep (e2e part) ≈ 2100 s;
+longest cells tpv37 numpy 2197.8, tpv36 numpy 1561.6, drv.a6 numpy 1518.5 s,
+load 17-40. So the RELEASE sweep is **~35 min** at 5 s vs 1801 s (30 min) for
+the last full-term release (2026-09-22, quieter box): the simplification did not
+make the release cheaper on this box, because the two release-only numpy
+cells start first and run 2x their solo time under contention.
+
+**Defect found, blocks v5.17.0: the rule-24 evidence can never say
+`tree_clean: true`.** `run_e2e.write_release_evidence` computes `tree_clean`
+from `git status --porcelain` AFTER the sweep (`run_e2e.py:803-805`), by
+which time the sweep itself has appended to `docs/perf_ledger.jsonl` and
+written a snapshot and the evidence dir. The summary for this run reads
+`tree_clean: False` from a tree whose status was 0 lines at start. The guard
+(`check_pretag_ci.py`) requires `tree_clean`, so a real release sweep can
+never satisfy it — the guard's negative tests used synthetic summaries, so its
+first real use is where this shows. Routed to iris: capture cleanliness at
+sweep START (and/or exclude the paths the sweep itself writes), mutation-tested
+both ways.
+
+**meng2023a/cb at 500 m: legal, priced, NOT regenerated (owner's to decide).**
+Neither case ships a fault-geometry file, so
+`lib.requireFaultGeometryResolution` (`scripts/lib.py:400`) does not apply —
+500 m is legal. Priced at 5 s, scratch worktree, sequential, serial pinned
+6-7, MPI via `mpirun --cpu-set 56-59 --bind-to core`: meng2023a fortran 63.0 s
+(incl. build), numpy 399.1 s, jax 39.7 s; meng2023cb fortran 26.1, numpy 170.3,
+jax 37.4 s; peak RSS 0.38 / 1.81 / 3.2-3.3 GB (the a/cb numpy gap is tenancy,
+load 40 vs 18). Against the 400 m cells in my 18:23 sweep (numpy 682 / 715 s
+in-sweep) that is roughly half the cost, as (400/500)^3 x 1.25 predicts.
+Physics change to weigh: `zsource = -3.4 km` is not a 500 m node (-3.0/-3.5),
+so the nucleation patch moves; new references for 2 cases x (frt + nc) would
+be rule-7 regenerations. All 500 m cells FAIL `align` against the 400 m
+references, as they must (651 vs 425 fault nodes).
+
+**Numpy, second profile (mira, drv.a6, `b5e13f1`, branch only):** E=1,982,128
+(nftnd 5,151): friclaw-4/TP/plasticity are 0.15% of the step — E is why
+drv.a6 is slow, same as tpv36. Hourglass buffer reuse MEASURED in-process
+(12 interleaved reps): 2.5919 -> 2.4386 s median, spread 0.153/0.126 s, 5.9% of
+an 18% kernel, ~1% of a step. Real and small. It rides the next src/python
+bundle gate (profile emitter + refactor retry + this), which needs a paired
+byte-identity sweep, not a bound comparison.
