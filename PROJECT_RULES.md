@@ -50,7 +50,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 21d. A dispatch carries its isolation and its scope in writing, or it is not issued.
 22. A scope restriction is itself a rule, and it can conflict with another rule.
 23. Fortran is the reference implementation; the port follows its NUMERICS, not its file layout.
-24. A release tag requires a committed full-term local sweep at the exact SHA, not only green CI.
+24. A release tag requires a committed local sweep at the exact SHA, not only green CI.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 24 numbered rules
@@ -681,21 +681,22 @@ destroys the only baseline the suite has.
 **How to apply**: regenerating a reference result is a deliberate, reviewed
 commit to `test.reference.results/`, never a side effect of running tests.
 
-**Two references per case, when the case has two terms (added 2026-09-23,
-owner decision relayed by the conductor — landed the same day: `frt.canonical.term5.txt`
+**One reference per case, always — the two-references provision above was
+retired the same day it was added (2026-09-23).** Earlier on 2026-09-23 this
+rule carried a "two references per case" provision: `frt.canonical.term5.txt`
 committed for `test.tpv29`/`test.tpv36`/`test.tpv37` in `ef56615`/`6d50f0e`/
-`f369bf6`; see rule 24).** A case whose full term differs from the 5 s
-everyday term (as of 2026-09-23: `test.tpv29` 20 s, `test.tpv36`/`test.tpv37`
-6 s; `test.tpv30` 20 s if it is ever gated) carries TWO committed references
-under
-`test.reference.results/<case>/`, not one — the existing full-term
-`frt.canonical.txt`, compared against by the release sweep (rule 24), and a
-second, 5 s reference, compared against by the everyday local gate (rule 9).
-Each is its own reviewed commit under this rule, generated from the SAME code
-at its own term, never to make a cell pass. The gate-term reference is a
-separate artifact with its own commit; it does not replace the full-term
-reference, and the full-term reference is never regenerated at the shorter
-term to save time.
+`f369bf6`, alongside each case's existing full-term `frt.canonical.txt`, per
+what was then rule 24. The owner's later same-day decision retired the
+two-term design entirely: every gated case runs at the ONE 5 s
+`GATE_TERM_S` (rule 24), so there is exactly one committed reference per case
+again — `frt.canonical.txt` (`fault.dyna.r.nc` too, for `test.tpv36`/
+`test.tpv37`), regenerated at the 5 s term and committed at `5a744a9`/
+`84ccbcf`/`26bbbae` (`frt.canonical.txt`) and `c7ae5ad`/`7ec272c`/`679d8ad`
+(`fault.dyna.r.nc`), each its own reviewed commit under this rule, never to
+make a cell pass. Do not reintroduce a second reference file, a `--term`
+flag, or a per-case full-term table — `testsys/regression/test_term_axis.py`
+is the mechanical guard against exactly that regression. See
+`pathway_forward.md` item 102 for what this simplification gives up.
 
 ---
 
@@ -1125,10 +1126,13 @@ exact SHA being tagged.
   checkout on a different MPI. `testsys/regression/test_ci_workflow_coverage.py`
   is retained and stays authoritative over what `CI_CELLS` actually is; this
   rule does not restate its count.
-- **The local sweep is the ONLY physics gate this project has**, at either of
-  two terms: the 5 s everyday term for ordinary gating (rule 9), and the full
-  term at release, committed as evidence before the tag (rule 24). Nothing in
-  CI substitutes for either.
+- **The local sweep is the ONLY physics gate this project has**, at the ONE
+  5 s `GATE_TERM_S` everywhere — the everyday local gate (rule 9) and the
+  release sweep (rule 24) run the same term; release differs only in cell
+  SELECTION (`matrix.RELEASE_ONLY`, held out of the everyday run for cost, not
+  physics), never in term. A same-day 2026-09-23 design that gave release a
+  separate "full term" was retired the same day (rule 7, rule 24); nothing in
+  CI substitutes for the local sweep at either tier.
 
 **What used to be an owner-set staleness bound is no longer a bound to set.**
 This rule previously proposed that a release commit could inherit an
@@ -1137,7 +1141,7 @@ than some number of days old, "until the owner sets that number, treat it as
 0." The owner has not set a number, and under the division above there is no
 ancestor full-matrix CI run to go stale in the first place — CI does not run
 one, on any commit, release or merge. The bound stays owner-held and stays
-treated as 0: a release requires the full-term local sweep at the exact
+treated as 0: a release requires the committed local sweep at the exact
 release SHA (rule 24), with no ancestor-based or time-based exemption. This
 rule does not choose a number in the owner's place.
 
@@ -1358,7 +1362,7 @@ which is authoritative over any count written in prose, this rule's included.
 what CI invokes, so a green `run.py e2e-ci` is a close model of CI, not a
 reproduction of it. Physics coverage across the full case x backend table now
 lives only in `run.py e2e` (gate term, on demand) and `run.py release` /
-rule 24's committed full-term sweep (release gate) — run those, not CI, for
+rule 24's committed sweep (release gate) — run those, not CI, for
 physics evidence. Run `run.py all` too — it is the wider local gate — but do
 not mistake it for CI either.
 
@@ -2368,7 +2372,7 @@ right direction — is reviewable only.
 
 ---
 
-## 24. A release tag requires a committed full-term local sweep at the exact SHA, not only green CI
+## 24. A release tag requires a committed local sweep at the exact SHA, not only green CI
 
 Rule 15b now divides the gates so CI never runs a physics sweep, on any
 commit, release or merge — it is a portability check only. That leaves the
@@ -2376,20 +2380,42 @@ local sweep as the only physics gate this project has, and this rule states
 what a release tag requires of it, on top of rule 15a's existing CI check
 (which stays, unchanged).
 
-- The EVERYDAY local gate uses the 5 s term for every case (rule 9, rule 3) —
-  this rule does not change ordinary, non-release gating.
-- At RELEASE time, the FULL committed term is required: every runnable cell of
-  `testsys/matrix.py`'s table, each at that case's own full term (`test.tpv29`
-  20 s; `test.tpv36`/`test.tpv37` 6 s; `test.tpv30` 20 s if it is ever gated;
-  5 s everywhere else — rule 7's two-references provision), run locally on the
-  exact release tree and committed as evidence, at
-  `docs/evidence/sweep-<shortsha>/summary.json`, before `git tag` runs.
+- **ONE term everywhere (rewritten 2026-09-23, same day as first landed —
+  see the incident below).** Every gated case, at every tier — the everyday
+  local gate (rule 9, rule 3), the release sweep, and CI's smoke selection —
+  runs at the ONE `GATE_TERM_S` (5 s). There is no second, per-case "full"
+  term and no `--term` flag; rule 7's "two references per case" provision is
+  retired along with it.
+- At RELEASE time, what widens is the CELL SELECTION, not the term: every
+  runnable cell of `testsys/matrix.py`'s table, including
+  `matrix.RELEASE_ONLY` (currently `test.tpv36`/`test.tpv37` x python-numpy,
+  held out of the everyday run for COST alone — each ~1110-1120 s — and
+  SUPPORTED, never UNSUPPORTED; rule 17 step 7 still requires it to pass), all
+  at the same 5 s term, run locally on the exact release tree and committed as
+  evidence at `docs/evidence/sweep-<shortsha>/summary.json`, before `git tag`
+  runs.
 - A release tag requires BOTH of the following for the exact SHA being
   tagged, or for an ancestor whose diff from that SHA lands entirely inside
   `docs/evidence/`, the perf ledger, or `pathway_forward.md`: (i) a committed
-  full-term local sweep as above; and (ii) a completed, successful CI run per
-  rule 15a. Neither substitutes for the other, and CI's smoke cells (rule 15b)
-  are not physics evidence toward (i).
+  local sweep as above; and (ii) a completed, successful CI run per rule 15a.
+  Neither substitutes for the other, and CI's smoke cells (rule 15b) are not
+  physics evidence toward (i).
+- **A cell may be RELEASE_ONLY for cost; it may never be release-only because
+  it fails.** Moving a cell out of the everyday run is a scheduling decision;
+  it still gates the release, at the same bound, and a cell that cannot pass
+  is UNSUPPORTED with a recorded reason (rule 17 step 7), not RELEASE_ONLY.
+- **What this simplification gives up, plainly**: `test.tpv29` (20 s),
+  `test.tpv36`/`test.tpv37` (6 s) each have a full physical term longer than
+  the 5 s gate — the owner's own accounting puts 47-63% of the fault
+  rupturing after the 5 s cutoff across those three cases, and none of that
+  late-time rupture is gated anywhere, everyday or release. `full_specs.py`
+  stays the record of each case's official spec resolution and duration and
+  remains defined and unrun (the separate, opt-in, report-only `e2e-full`
+  tier, not a release gate). The TPV29/TPV30 cross-code overlay against the
+  2015 SCEC submissions remains the only check on physics past 5 s, and it is
+  manual, not a gate. The owner accepted this tradeoff on 2026-09-23; see
+  `pathway_forward.md` item 102 for the retired-reference SHAs and the full
+  account.
 
 **Rationale**: CI's e2e sweep duplicated roughly 25 of the table's cells on
 every release at a median 55.4 minutes per push (n=27), verifying nothing the
@@ -2404,24 +2430,35 @@ allowed to mean "CI ran a subset of it."
 redefined to a `test.tpv8` portability smoke and the e2e sweep is removed from
 `test.yml`. Without a rule naming a replacement physics gate at release, the
 tag guard (rule 15a) would still pass on CI-green alone, and a release could
-ship having run full-term physics nowhere at all. This rule closes that gap by
-naming the local sweep, committed as evidence, as the non-optional replacement.
+ship having run physics nowhere at all. This rule closed that gap by naming
+the local sweep, committed as evidence, as the non-optional replacement — at
+first with the gate itself split into a 5 s everyday term and a per-case
+"full" term (two references per case, rule 7). That two-term design lasted
+under a day: the owner's follow-on decision the same day replaced it with the
+ONE term everywhere, stated above, because a per-case full term bought a
+second reference and a `--term` flag to maintain but no additional case ever
+actually ran past 5 s in CI or in the everyday gate — only the release sweep
+saw it, and infrequently. The tradeoff this rule now states plainly (above)
+is the one the owner accepted in exchange for that simplification.
 
-**How to apply**: before `git tag`, run the full-term local sweep on the exact
-release SHA, write and commit `docs/evidence/sweep-<shortsha>/summary.json`,
-then run rule 15a's pre-tag guard. Record both the evidence commit's SHA and
-the CI run id in the Tasks-done row (rule 15 step 4). A tag with CI green and
-no committed full-term evidence is not a compliant release under this rule,
-and neither is full-term evidence committed on a SHA the tag does not point
-at (or an ancestor differing by more than the whitelisted paths above).
+**How to apply**: before `git tag`, run the local sweep (everyday cells plus
+`RELEASE_ONLY`) at `GATE_TERM_S` on the exact release SHA, write and commit
+`docs/evidence/sweep-<shortsha>/summary.json`, then run rule 15a's pre-tag
+guard. Record both the evidence commit's SHA and the CI run id in the
+Tasks-done row (rule 15 step 4). A tag with CI green and no committed sweep
+evidence is not a compliant release under this rule, and neither is sweep
+evidence committed on a SHA the tag does not point at (or an ancestor
+differing by more than the whitelisted paths above).
 
-**Tier: mechanical, and landed** (`6143beb`, 2026-09-23).
+**Tier: mechanical, and landed** (`849c1c3`/`82e3094`/`e82d57c`, 2026-09-23).
 `testsys/regression/check_pretag_ci.py` now refuses a tag lacking this
 evidence: `evaluate_sweep_evidence` requires a committed
-`docs/evidence/sweep-<shortsha>/summary.json` with `term=="full"`,
-`tree_clean`, every declared cell `SUCCESS`, and `n_runnable`/`n_success`/
-`len(cells)` all equal to the current `testsys/matrix.py`'s runnable-cell
-count for the exact tag SHA (or a rule-15d-permitted ancestor); it exits 5
-(`SWEEP_INSUFFICIENT`) otherwise. Guarded itself by
-`testsys/regression/test_pretag_sweep_negative.py` and
-`test_release_complete.py`.
+`docs/evidence/sweep-<shortsha>/summary.json` with `term==matrix.GATE_TERM_S`
+(there is no `"full"` term to check for anymore), `tree_clean`, every declared
+cell `SUCCESS`, and `n_runnable`/`n_success`/`len(cells)` all equal to the
+current `testsys/matrix.py`'s runnable-cell count (everyday cells plus
+`RELEASE_ONLY`) for the exact tag SHA (or a rule-15d-permitted ancestor); it
+exits 5 (`SWEEP_INSUFFICIENT`) otherwise. Guarded itself by
+`testsys/regression/test_pretag_sweep_negative.py`,
+`test_release_complete.py`, and `testsys/regression/test_term_axis.py` (the
+guard against the retired two-term design reappearing).
