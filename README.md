@@ -187,6 +187,14 @@ python3 testsys/run.py all # unit + regression + the sweep: 11 cases x
                            # are historical.
                            # It prints which cells it ran, so a pass states its scope.
 ```
+The build stamps `bin/eqdyna` with a hash of the Fortran source it was
+compiled from (`scripts/src_hash.py`, which is why the Fortran build needs
+`python3`), and the banner prints it as `(src <12 hex>)` under the version
+line. `python3 testsys/run.py` (regression tier) and the e2e sweep refuse a
+binary built from different source, with no bypass:
+`bin/eqdyna was built from different source (stamp X, tree Y); rebuild with ./install-eqdyna.sh`.
+After editing anything in `src/fortran/`, rebuild before testing.
+
 For bash, please insert the following lines in .bashrc
 ```
 export EQDYNAROOT=/path/to/EQdynaRootDirectory
