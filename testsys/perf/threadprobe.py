@@ -67,11 +67,16 @@ def summarize(results):
         ms.append(1e3 * r['wall_s'] / r['iters'])
     mean = sum(ms) / len(ms)
     # Concurrency of the timed windows: the spread is only meaningful if the
-    # workers contended for bandwidth AT THE SAME TIME (PR #18 audit).
+    # workers contended for bandwidth AT THE SAME TIME (PR #18 audit). The
+    # common window is normalised by the SHORTEST window, not the longest:
+    # under a real spread the fastest worker finishes first by construction,
+    # so dividing by the longest would read every true straggler as poor
+    # overlap (re-audit). 1.0 = every worker ran through the fastest one's
+    # entire window.
     if all('t_start' in r for r in results):
-        span = max(r['t_end'] - r['t_start'] for r in results)
+        shortest = min(r['t_end'] - r['t_start'] for r in results)
         common = min(r['t_end'] for r in results) - max(r['t_start'] for r in results)
-        overlap = max(common, 0.0) / span if span > 0 else 0.0
+        overlap = max(common, 0.0) / shortest if shortest > 0 else 0.0
     else:
         overlap = None
     return dict(n=len(ms), ms_min=min(ms), ms_max=max(ms), ms_mean=mean,
@@ -93,7 +98,10 @@ def main():
     ap.add_argument('--i-know-the-box-is-busy', action='store_true')
     ap.add_argument('--min-effective-cores', type=float, default=0.95)
     ap.add_argument('--min-overlap', type=float, default=0.9,
-                    help='refuse unless the timed windows overlap this fraction')
+                    help='refuse unless the common timed window covers this fraction '
+                         'of the shortest worker window')
+    ap.add_argument('--timeout', type=float, default=1800.0,
+                    help='kill every worker and refuse after this many seconds')
     a = ap.parse_args()
     import run_scaling as rs
     import run_numa_scaling as numa
@@ -114,11 +122,37 @@ def main():
                               stderr=subprocess.PIPE, text=True, env=env)
              for c in cpus]
 
-    def fail(msg):
+    import threading
+
+    def kill_all():
         for q in procs:          # never leave pinned workers behind
             if q.poll() is None:
                 q.kill()
+
+    def fail(msg):
+        kill_all()
         raise SystemExit('FAIL: ' + msg)
+
+    watchdog = threading.Timer(a.timeout, kill_all)   # a hung worker cannot hang us
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        results = collect(procs, cpus, fail)
+    except SystemExit:
+        raise
+    except Exception as exc:     # BrokenPipe, bad JSON, ...: still reap the workers
+        fail('%s: %r' % (type(exc).__name__, exc))
+    finally:
+        watchdog.cancel()
+    s = summarize(results)
+    if s['overlap'] < a.min_overlap:
+        fail('the common timed window covered only %.2f of the shortest worker '
+             'window (< %.2f) -- the workers did not contend together, so the '
+             'spread is not a measurement' % (s['overlap'], a.min_overlap))
+    finish(a, cpus, results, s)
+
+
+def collect(procs, cpus, fail):
 
     for c, p in zip(cpus, procs):
         line = p.stdout.readline()
@@ -138,11 +172,10 @@ def main():
             fail('worker on cpu %d saw cpus_allowed=%d, not 1 -- the pin did not take'
                  % (c, r['cpus_allowed']))
         results.append(r)
-    s = summarize(results)
-    if s['overlap'] < a.min_overlap:
-        fail('timed windows overlapped only %.2f of the longest (< %.2f) -- the '
-             'workers did not contend together, so the spread is not a measurement'
-             % (s['overlap'], a.min_overlap))
+    return results
+
+
+def finish(a, cpus, results, s):
     sha_r = subprocess.run(['git', '-C', ROOT, 'rev-parse', '--short', 'HEAD'],
                            capture_output=True, text=True)
     if sha_r.returncode != 0 or not sha_r.stdout.strip():
