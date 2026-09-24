@@ -136,7 +136,8 @@ def main():
     # 4. read_bglobal: the new last line is read, and a missing or invalid one
     # is REFUSED, not defaulted (rule 2). BGLOBAL is test.tpv8's real
     # case.setup output (5 s gate term), verbatim.
-    from src.python.eqdyna import readInputFiles
+    sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
+    from eqdyna import readInputFiles
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'bGlobal.txt')
         variants = [('as written (+1)', BGLOBAL, 1),
