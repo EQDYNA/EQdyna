@@ -501,7 +501,11 @@ def _call_kept(cmd, cwd, env, log_prefix):
     is re-raised here once the child has exited (rule 2).
     Returns (rc, stdout_path, stderr_path)."""
     out_path, err_path = log_prefix + '.stdout', log_prefix + '.stderr'
-    with open(out_path, 'wb') as fo, open(err_path, 'wb') as fe:
+    # buffering=0: every write reaches the file (or fails) inside the pump,
+    # so close() has nothing left to flush and cannot raise a bare OSError
+    # past the RuntimeError below (PR #11 re-audit; CI hit exactly that).
+    with open(out_path, 'wb', buffering=0) as fo, \
+            open(err_path, 'wb', buffering=0) as fe:
         p = subprocess.Popen(cmd, cwd=cwd, env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -512,8 +516,9 @@ def _call_kept(cmd, cwd, env, log_prefix):
                 if errors:
                     continue  # keep draining so the child never blocks
                 try:
-                    keep.write(chunk)
-                    keep.flush()
+                    view = memoryview(chunk)
+                    while view:  # an unbuffered write may be partial
+                        view = view[keep.write(view):]
                     console.flush()
                     console.buffer.write(chunk)
                     console.buffer.flush()
