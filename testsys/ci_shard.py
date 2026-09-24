@@ -104,6 +104,7 @@ SHARDS = {
         "test_ci_board_separation_step.py",
         "test_dev_str_depth_taper.py",
         "test_e2e_run_tree_lock.py",
+        "test_e2e_python_cell_logs_kept.py",  # added 2026-09-24 (wei-lin, item 109): one tee child + one failed jax import, ~3 s
         "test_equilibrium_dump.py",
         "test_fault_geometry_guard.py",
         "test_fault_mpi_boundary_arn.py",
