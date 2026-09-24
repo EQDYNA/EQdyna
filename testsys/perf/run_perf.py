@@ -43,7 +43,9 @@ TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
 sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, TESTSYS)
+sys.path.insert(0, os.path.dirname(TESTSYS))  # testsys/ itself, for profile_record
 import perflib  # noqa: E402  (acquire_case_lock, rebuild_serial_case)
+import profile_record  # noqa: E402  (append-only per-rank profile totals)
 
 PYTHON_PKG = os.path.join(REPO_ROOT, 'src', 'python')
 PERF_CASE_NAME = 'test.tpv8'
@@ -228,15 +230,40 @@ def main():
     # case's own step count; n_hi is 3x it, which was measured to give a
     # per-step figure reproducible to under 1% run-to-run (114 steps:
     # 7.032/7.076 s; 342 steps: 10.216/10.200 s).
+    # Profile-guard/collection wiring (owner mission, 2026-09-23): PERF_CASE
+    # is a fixed, reused directory, so its profile.rank0.json is captured
+    # here, right after the ONE run at the case's own `nsteps` -- before the
+    # next engine's run (or steady_state_per_step's n_lo/n_hi runs, further
+    # below) overwrites it. term='perf-pinned-single-core' names this axis
+    # explicitly; it is not one of the e2e sweep's 'gate'/'full' values and
+    # must never be confused with them.
+    _sha_r = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', '--short',
+                             'HEAD'], capture_output=True, text=True)
+    if _sha_r.returncode != 0 or not _sha_r.stdout.strip():
+        raise SystemExit('FAIL: git rev-parse --short HEAD failed (rc=%d): %s'
+                         % (_sha_r.returncode, _sha_r.stderr.strip()))
+    perf_sha = _sha_r.stdout.strip()
+
     n_lo, n_hi = nsteps, nsteps * 3
     t_fortran = time_fortran(nsteps)
+    profile_record.capture_run(PERF_CASE, case=PERF_CASE_NAME,
+                               backend='fortran', ranks=1,
+                               term='perf-pinned-single-core', sha=perf_sha)
     t_numpy_wall, t_numpy_solve = time_python('numpy', nsteps)
+    if t_numpy_solve is not None:
+        profile_record.capture_run(PERF_CASE, case=PERF_CASE_NAME,
+                                   backend='python-numpy', ranks=1,
+                                   term='perf-pinned-single-core', sha=perf_sha)
     try:
         import jax  # noqa: F401
         have_jax = True
     except ImportError:
         have_jax = False
     t_jax_wall, t_jax_solve = (time_python('jax', nsteps) if have_jax else (None, None))
+    if have_jax and t_jax_solve is not None:
+        profile_record.capture_run(PERF_CASE, case=PERF_CASE_NAME,
+                                   backend='python-jax', ranks=1,
+                                   term='perf-pinned-single-core', sha=perf_sha)
 
     print('\n==== testsys: perf -- provenance ====')
     for k, v in prov.items():
