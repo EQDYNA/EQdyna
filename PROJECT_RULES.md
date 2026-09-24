@@ -161,9 +161,12 @@ which this rule does not replace.
 Named commands, named pass criteria:
 
 - Build: `cd src/fortran && make` (via `./install-eqdyna.sh -m <machine>`) must exit 0.
-- Test: `python3 testsys/run.py all` — the sweep (10 cases x 3 backends = 30
-  cells, as of 2026-09-21; the table itself is `testsys/matrix.py`, which is
-  authoritative over this count).
+- Test: `python3 testsys/run.py all` — the sweep (10 cases x {fortran,
+  python-jax} = 20 cells, plus one opt-in `python-jax-mpi` cell = 21, as of
+  2026-09-23; numpy dropped from the gate that day, owner decision — see rule
+  17 step 7 — and stays runnable by hand (`--backend numpy`), ungated. The
+  table itself is `testsys/matrix.py`, which is authoritative over this
+  count).
   Pass means every
   printed line for every `testid` in `testNameList.nameList` reads `SUCCESS`,
   with **no** `FAIL` string, for every file in `fileNameList`.
@@ -920,9 +923,9 @@ The release workflow, in order:
 
 1. Green gate first (rule 3): `./install-eqdyna.sh -m ubuntu` exits 0 and
    `python3 testsys/run.py all` reports every cell in the table SUCCESS —
-   31/31 as of 2026-09-21 (10 cases x 3 backends, plus one opt-in
+   21/21 as of 2026-09-23 (10 cases x {fortran, python-jax}, plus one opt-in
    `python-jax-mpi` cell). The number is
-   `len(matrix.CASE_BOUND) * 3 + len(matrix.PY_MPI_RANKS)`, not a constant in
+   `len(matrix.CASE_BOUND) * 2 + len(matrix.PY_MPI_RANKS)`, not a constant in
    this rule: a releaser who accepts a green count smaller than the current
    table has accepted a partial sweep. Never tag over a
    red gate, and never tag before CI is green on the pushed commit (rule 15).
@@ -937,6 +940,14 @@ The release workflow, in order:
    the new mode: see CLAUDE.md's "There is ONE test" and rule 17 step 7's own
    note on the distinction between a backend implementation and an optional
    execution mode of one.
+
+   **Corrected 2026-09-23**: numpy dropped from every gate the same day (owner
+   decision, "I actually don't care numpy... I will use Jax anyway"; PR #4,
+   `91afba4`; see rule 17 step 7). The formula's multiplier moves from 3 to 2 —
+   `len(matrix.CASE_BOUND) * 2 + len(matrix.PY_MPI_RANKS)` — because a backend
+   left the gate, not because the table shrank some other way. `--backend
+   numpy` still runs by hand; it is simply no longer part of what a green gate
+   must cover.
 2. Bump `VERSION`.
 3. Release notes: add a `* YYYYMMDD vX.Y.Z release notes` block under a
    `# News in <year>` heading at the TOP of `README.md`, ending with the
@@ -1123,16 +1134,19 @@ exact SHA being tagged.
   gfortran/mpich/libnetcdf/numpy/jax versions, and the network-side release
   guards that need `GH_TOKEN`. Its only e2e cells are `matrix.CI_CELLS`,
   redefined to exactly one smoke set — `test.tpv8` x {fortran on the runner's
-  mpich, python-numpy, python-jax} at the 5 s everyday term — proving the
-  toolchain still builds and executes one case end to end from a clean
-  checkout on a different MPI. `testsys/regression/test_ci_workflow_coverage.py`
+  mpich, python-jax} at the 5 s everyday term (numpy dropped the same day,
+  rule 17 step 7) — proving the toolchain still builds and executes one case
+  end to end from a clean checkout on a different MPI.
+  `testsys/regression/test_ci_workflow_coverage.py`
   is retained and stays authoritative over what `CI_CELLS` actually is; this
   rule does not restate its count.
 - **The local sweep is the ONLY physics gate this project has**, at the ONE
   5 s `GATE_TERM_S` everywhere — the everyday local gate (rule 9) and the
   release sweep (rule 24) run the same term; release differs only in cell
-  SELECTION (`matrix.RELEASE_ONLY`, held out of the everyday run for cost, not
-  physics), never in term. A same-day 2026-09-23 design that gave release a
+  SELECTION, never in term — though as of 2026-09-23 there is nothing left to
+  widen: `matrix.RELEASE_ONLY` is DELETED, not emptied, along with numpy (its
+  only member); today's release sweep runs the SAME cells as the everyday
+  sweep. A same-day 2026-09-23 design that gave release a
   separate "full term" was retired the same day (rule 7, rule 24); nothing in
   CI substitutes for the local sweep at either tier.
 
@@ -1355,9 +1369,11 @@ the two jobs above are separate GitHub Actions jobs, each with its own clean
 checkout and dependency install.
 
 `e2e-ci-smoke`'s unfiltered `run_e2e.py --ci` selects exactly
-`matrix.CI_CELLS`, redefined 2026-09-23 to **3 cells**: `test.tpv8` x
-{fortran (against the runner's own mpich), python-numpy, python-jax}, at the
-5 s gate term — a portability smoke, not physics coverage (rule 15b). This is
+`matrix.CI_CELLS`, redefined 2026-09-23 to **2 cells**: `test.tpv8` x
+{fortran (against the runner's own mpich), python-jax}, at the
+5 s gate term — a portability smoke, not physics coverage (rule 15b). Numpy
+dropped out of this set the same day it dropped out of every other gate
+(rule 17 step 7); `--backend numpy` still runs, just not under CI. This is
 proved mechanically by `testsys/regression/test_ci_workflow_coverage.py`,
 which is authoritative over any count written in prose, this rule's included.
 `run.py e2e-ci` is a local convenience that runs the same cell list; it is not
@@ -1438,11 +1454,21 @@ in-tree reproduces them — that is pathway item 28, and it is the one part of
 the TPV29 work that was done wrong. Write the comparison as a committed script
 from the start (rule 4).
 
-**7. Run the FULL sweep, all three backends -- and ALL THREE MUST PASS.**
-A new case is 3 cells, not 1.
+**7. Run the FULL sweep, fortran + python-jax -- and BOTH MUST PASS.**
+A new case is 2 gated cells, not 1.
 
-**Supporting a TPV, or any problem, means supporting it on every backend**
-(owner, 2026-09-16). A case is not added with its Python columns declared
+**Rewritten 2026-09-23** (owner decision: "I actually don't care numpy... I
+will use Jax anyway"; landed PR #4, `91afba4`). Before this date the step read
+"all three backends -- fortran, python-numpy, python-jax -- and all three
+must pass." Numpy is now OUT of the gate entirely: it is not a backend a new
+case must support to be added, and it is not run by `testsys/run.py` in any
+tier. `--backend numpy` still exists and still runs by hand
+(`python3 -m eqdyna <case_dir> --backend numpy`); it simply carries no gate
+obligation, for a new case or an existing one.
+
+**Supporting a TPV, or any problem, means supporting it on every GATED
+backend** (owner, 2026-09-16; narrowed to fortran + python-jax, owner,
+2026-09-23). A case is not added with its `python-jax` column declared
 UNSUPPORTED to be filled in later: that ships a benchmark the Fortran can run
 and the port cannot, and the sweep's whole value is that the two
 implementations check each other. If the port lacks a feature the case needs,
@@ -1454,13 +1480,14 @@ friclaw-2 gap is the worked example: test.meng2023a and test.meng2023cb sat
 declared-unsupported for months, and closing it turned out to be ~20 lines of
 `time_weak`. Had this rule been in force, that gap would never have opened.
 
-**Scope note added 2026-09-21 (item 43)**: this step is about the three
-backend IMPLEMENTATIONS -- fortran, python-numpy, python-jax. It does not
-require every case to opt into a new OPTIONAL execution mode of one of those
-backends (e.g. `python-jax-mpi`, per-case opt-in via `matrix.PY_MPI_RANKS`).
-A case fully supported per this step may still be declared UNSUPPORTED for
-such a mode; expanding that opt-in is a suite-cost decision for the owner,
-not a requirement this step imposes on new landings.
+**Scope note added 2026-09-21 (item 43), updated 2026-09-23**: this step is
+about the backend IMPLEMENTATIONS -- fortran and python-jax (numpy is no
+longer one of them for gating purposes). It does not require every case to
+opt into a new OPTIONAL execution mode of one of those backends (e.g.
+`python-jax-mpi`, per-case opt-in via `matrix.PY_MPI_RANKS`). A case fully
+supported per this step may still be declared UNSUPPORTED for such a mode;
+expanding that opt-in is a suite-cost decision for the owner, not a
+requirement this step imposes on new landings.
 
 **How to apply**: `python3 testsys/e2e/run_e2e.py --cases test.tpvNN` for the
 new case alone while iterating, then `python3 testsys/run.py all` before
@@ -2418,24 +2445,29 @@ what a release tag requires of it, on top of rule 15a's existing CI check
   runs at the ONE `GATE_TERM_S` (5 s). There is no second, per-case "full"
   term and no `--term` flag; rule 7's "two references per case" provision is
   retired along with it.
-- At RELEASE time, what widens is the CELL SELECTION, not the term: every
-  runnable cell of `testsys/matrix.py`'s table, including
-  `matrix.RELEASE_ONLY` (currently `test.tpv36`/`test.tpv37` x python-numpy,
-  held out of the everyday run for COST alone — each ~1110-1120 s — and
-  SUPPORTED, never UNSUPPORTED; rule 17 step 7 still requires it to pass), all
-  at the same 5 s term, run locally on the exact release tree and committed as
-  evidence at `docs/evidence/sweep-<shortsha>/summary.json`, before `git tag`
-  runs.
+- At RELEASE time, what widens is the CELL SELECTION, not the term — though as
+  of 2026-09-23 there is nothing left TO widen: `matrix.RELEASE_ONLY` is
+  DELETED, not empty. Its only member, `test.tpv36`/`test.tpv37` x
+  python-numpy, went away the same day numpy was dropped from every gate
+  (rule 17 step 7; owner decision, "I actually don't care numpy... I will use
+  Jax anyway"; PR #4, `91afba4`). The release sweep today runs the SAME
+  runnable cells as the everyday sweep — 10 cases x {fortran, python-jax} plus
+  `test.tpv8` x `python-jax-mpi`, 21 cells — run locally on the exact release
+  tree and committed as evidence at `docs/evidence/sweep-<shortsha>/summary.json`,
+  before `git tag` runs. If a future case is held out of the everyday run for
+  cost, `RELEASE_ONLY` (or an equivalent) is reintroduced deliberately, not
+  left implied.
 - A release tag requires BOTH of the following for the exact SHA being
   tagged, or for an ancestor whose diff from that SHA lands entirely inside
   `docs/evidence/`, the perf ledger, or `pathway_forward.md`: (i) a committed
   local sweep as above; and (ii) a completed, successful CI run per rule 15a.
   Neither substitutes for the other, and CI's smoke cells (rule 15b) are not
   physics evidence toward (i).
-- **A cell may be RELEASE_ONLY for cost; it may never be release-only because
-  it fails.** Moving a cell out of the everyday run is a scheduling decision;
-  it still gates the release, at the same bound, and a cell that cannot pass
-  is UNSUPPORTED with a recorded reason (rule 17 step 7), not RELEASE_ONLY.
+- **A cell may be held out of the everyday run for cost; it may never be held
+  out because it fails.** Moving a cell out of the everyday run is a
+  scheduling decision; it still gates the release, at the same bound, and a
+  cell that cannot pass is UNSUPPORTED with a recorded reason (rule 17 step
+  7), never held out as a scheduling decision.
 - **What this simplification gives up, plainly**: `test.tpv29` (20 s),
   `test.tpv36`/`test.tpv37` (6 s) each have a full physical term longer than
   the 5 s gate — the owner's own accounting puts 47-63% of the fault
@@ -2473,8 +2505,9 @@ actually ran past 5 s in CI or in the everyday gate — only the release sweep
 saw it, and infrequently. The tradeoff this rule now states plainly (above)
 is the one the owner accepted in exchange for that simplification.
 
-**How to apply**: before `git tag`, run the local sweep (everyday cells plus
-`RELEASE_ONLY`) at `GATE_TERM_S` on the exact release SHA, write and commit
+**How to apply**: before `git tag`, run the local sweep (today, all 21
+runnable cells — `RELEASE_ONLY` no longer exists, see above) at
+`GATE_TERM_S` on the exact release SHA, write and commit
 `docs/evidence/sweep-<shortsha>/summary.json`, then run rule 15a's pre-tag
 guard. Record both the evidence commit's SHA and the CI run id in the
 Tasks-done row (rule 15 step 4). A tag with CI green and no committed sweep
@@ -2488,8 +2521,9 @@ evidence: `evaluate_sweep_evidence` requires a committed
 `docs/evidence/sweep-<shortsha>/summary.json` with `term==matrix.GATE_TERM_S`
 (there is no `"full"` term to check for anymore), `tree_clean`, every declared
 cell `SUCCESS`, and `n_runnable`/`n_success`/`len(cells)` all equal to the
-current `testsys/matrix.py`'s runnable-cell count (everyday cells plus
-`RELEASE_ONLY`) for the exact tag SHA (or a rule-15d-permitted ancestor); it
+current `testsys/matrix.py`'s runnable-cell count (21 today — `RELEASE_ONLY`
+is deleted, not a set to add) for the exact tag SHA (or a rule-15d-permitted
+ancestor); it
 exits 5 (`SWEEP_INSUFFICIENT`) otherwise. Guarded itself by
 `testsys/regression/test_pretag_sweep_negative.py`,
 `test_release_complete.py`, and `testsys/regression/test_term_axis.py` (the
