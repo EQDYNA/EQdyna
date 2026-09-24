@@ -384,17 +384,17 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
     import jax
     from . import MPI4NodalQuant as MQ
 
-    # PRE-LOOP setup timer (decompose, device transfer, jit function
+    # PRE-LOOP setup timer (invariants, device transfer, jit function
     # CONSTRUCTION -- not execution, so no sync). Added by the profile-emitter
     # landing (2026-09-23): without it, eqdyna3d.run_case_mpi's outer
     # 'solve' Profile phase (which wraps this ENTIRE call) attributed only
-    # the step-loop portion to any bucket, and this decompose/jit-build cost
+    # the step-loop portion to any bucket, and this pre-loop/jit-build cost
     # -- MEASURED on test.tpv8 x 4 ranks: 2.4-3.8 s of a 12.0 s total_s, i.e.
     # roughly 30%, not a rounding error -- fell into unaccounted_s, which
     # blew past profile_schema's 5% SUM_TOLERANCE. This is real pre-loop
     # work (Fortran's analogue is meshgen+assembleGlobalMass, its own
     # `setup` bucket), so it belongs in `setup`, not in a gap. No new sync:
-    # decompose/to_device/jax.jit(...) construction are synchronous host-side
+    # build_invariants/to_device/jax.jit(...) construction are synchronous host-side
     # calls already executing on this path; this only wraps them with two
     # perf_counter() calls.
     #
@@ -537,7 +537,7 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
     comm.Barrier()
     # t_setup stops HERE, right after this pre-existing barrier (present on
     # the default path already, unconditional -- not added by this change):
-    # decompose/to_device/jit-construction plus the rendezvous that lines
+    # build_invariants/to_device/jit-construction plus the rendezvous that lines
     # every rank up before the loop's own clock starts. Reported as `setup`
     # (see the comment above this function's `t_setup0`), not folded into
     # `wait_ms_per_step`/t_wait -- that field's existing, documented meaning
@@ -592,10 +592,9 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
         #
         # Why it must NOT run otherwise: it was unconditional, so every
         # production step paid a 32-rank global rendezvous that the algorithm
-        # does not need. The exchange is nearest-neighbour (two neighbours in
-        # a slab decomposition) and deadlock-free on its own, so a rank that
-        # is momentarily slow should delay its two neighbours, not all 31
-        # others. A global barrier per step makes the run pay the MAXIMUM
+        # does not need. The exchange is nearest-neighbour (at most six face
+        # neighbours) and deadlock-free on its own, so a rank that is
+        # momentarily slow should delay its neighbours, not all 31 others. A global barrier per step makes the run pay the MAXIMUM
         # over 32 ranks of each step's jitter instead of letting jitter
         # average out along the chain. Measured at 32 ranks on test.tpv104,
         # differenced over 200 vs 40 steps: 13.15 ms/step mean in this

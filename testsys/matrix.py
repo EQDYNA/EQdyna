@@ -95,21 +95,25 @@ PY_MPI_RANKS = {
 
 # PY_MPI_EXPECTED_FRT_FILES: the number of `frt.txt<rank>` files a cell must
 # produce, keyed by (case, ranks) -- DATA, not `== ranks` assumed in code.
-# A rank whose element slab never touches the fault owns 0 fault nodes and
-# writes NO frt file, by design (eqdyna3d.py:run_case_mpi's `if n_own == 0:
-# return None, ...`, mirroring Fortran's own contract) -- so this number CAN
-# be less than the rank count, and a launch that silently started fewer
-# workers than asked must not be indistinguishable from one that started the
-# expected count and had an empty-fault rank.
+# A rank writes a frt file only if it OWNS a fault node, i.e. is the lowest
+# rank holding it (MPI4NodalQuant.owned_mask): a box that never meets the
+# fault writes none, and neither does a box whose fault nodes all sit on a
+# plane it shares with a lower rank. So this number CAN be less than the rank
+# count, and a launch that silently started fewer workers than asked must not
+# be indistinguishable from one that started the expected count.
 #
-# Measured directly (mpirun -np 4 python3 -m eqdyna <serial tpv8 case> \
-# --backend jax --mpi, EQDYNA_MPI_SYNC=halo, this session, 2026-09-21):
-# every one of the 4 ranks logged `fault computed=... owned=...` with
-# owned > 0 (132, 829, 806, 124) and wrote its own frt.txt<rank>, so 4 of 4
-# ranks produced a file here -- unlike test.tpv104 at 4 ranks, where a
-# fault-free slab was observed and one rank wrote none.
+# Which ranks write depends on the DECOMPOSITION, and it changed with item 64
+# (2026-09-24): the python-jax-mpi split is now Fortran's (npx,npy,npz) =
+# MPI4NodalQuant.DECOMP[ranks], rank-local boxes, replacing the 1D element
+# slab under which all 4 tpv8 ranks owned fault nodes (132/829/806/124).
+# Re-measured, not predicted: `mpirun -np 4 python3 -m eqdyna <serial tpv8
+# case> --backend jax --mpi` on the item-64 branch logged decomposition
+# (2, 2, 1), fault computed 961/0/961/0 and owned 961/0/930/0 -- the y split
+# of tpv8's asymmetric y line (-10/+12 km) falls off the fault plane, so the
+# two mey=1 boxes never meet the fault -- and wrote frt.txt0 and frt.txt2,
+# 1891 rows pre-dedup (= the reference's row count).
 PY_MPI_EXPECTED_FRT_FILES = {
-    ('test.tpv8', 4): 4,
+    ('test.tpv8', 4): 2,
 }
 
 THRESHOLD = 1e-3  # PROJECT_RULES rule 5's one outer sanity bound.

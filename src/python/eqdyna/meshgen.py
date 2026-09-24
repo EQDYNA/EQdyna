@@ -275,6 +275,14 @@ def fault_boundary_lists(nsmp, nx, ny, nz):
     return [np.nonzero(m)[0].astype(np.int64) + 1 for m in masks]
 
 
+def flt_mpi_flags(part, flt_lists):
+    """fltMPI(1:6): syncArnBoundary runs -- and sets fltMPI(k) -- exactly when
+    the dimension is divided, face k is not model boundary (bnd /= 0) and this
+    rank has fault nodes on it (fltnum(k) > 0), meshgen.f90:316-372."""
+    return [part.dims[k // 2] > 1 and not part.at_model_edge(k // 2, k % 2)
+            and flt_lists[k].size > 0 for k in range(6)]
+
+
 def mpi4arn(comm, part, arn, flt_lists, params):
     """MPI4arn + syncArnBoundary (meshgen.f90:212-433), for ONE fault.
 
@@ -298,18 +306,13 @@ def mpi4arn(comm, part, arn, flt_lists, params):
     p = params
     fext = ((p['fxmin'], p['fxmax']), (p['fymin'], p['fymax']),
             (p['fzmin'], p['fzmax']))
-    flt_mpi = [False] * 6
+    flt_mpi = flt_mpi_flags(part, flt_lists)
     for d in range(3):
-        if part.dims[d] <= 1:
-            continue
         for ib in (0, 1):
             k = 2 * d + ib
-            if part.at_model_edge(d, ib):
+            if not flt_mpi[k]:
                 continue
             idx = flt_lists[k]
-            if idx.size == 0:
-                continue
-            flt_mpi[k] = True
             nb = part.neighbour(d, ib)
             tag = (1000, 2000, 3000)[d]
             send = np.ascontiguousarray(arn[idx])

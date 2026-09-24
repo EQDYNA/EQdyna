@@ -625,7 +625,8 @@ def run_python_jax_mpi(case_name, case_dir, env):
     an assumption baked into this function:
       1. the number of frt.txt<rank> files actually written must equal
          matrix.PY_MPI_EXPECTED_FRT_FILES[(case, ranks)] -- NOT `== ranks`,
-         because a rank whose element slab never touches the fault legitimately
+         because a rank that owns no fault node (its box never meets the fault,
+         or a lower rank holds all of its fault nodes) legitimately
          writes none (see that dict's comment in matrix.py).
       2. the PRE-DEDUP total row count across those files -- before
          frt_canonical's dedup-by-coordinate collapses any double-ownership --

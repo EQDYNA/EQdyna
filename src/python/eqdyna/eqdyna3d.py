@@ -521,7 +521,7 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         # into `element`, both Python backends) and why `wait`=0.0 here is a
         # REAL measurement (no barrier on the default path), not a gap.
         # setup = mesh+input build (Profile phase) PLUS driver.run_mpi's own
-        # pre-loop decompose/to_device/jit-construction span (rep['setup_s'],
+        # pre-loop invariants/to_device/jit-construction span (rep['setup_s'],
         # see driver.py's t_setup comment) -- both are real setup cost, and
         # omitting the latter is what left ~30% of total_s in
         # unaccounted_s on test.tpv8 x 4 ranks before this fix.
