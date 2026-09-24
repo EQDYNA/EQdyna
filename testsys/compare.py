@@ -41,6 +41,7 @@ mismatch and an out-of-bound diff are all failures, and each says which it was.
 import glob
 import os
 import re
+import threading
 
 import numpy as np
 
@@ -50,6 +51,7 @@ REPO_ROOT = matrix.REPO_ROOT
 REFERENCE_ROOT = os.path.join(REPO_ROOT, 'test.reference.results')
 CANONICAL_NAME = 'frt.canonical.txt'
 NC_NAME = 'fault.dyna.r.nc'
+_NC_LOCK = threading.Lock()
 
 
 # --------------------------------------------------------------------------
@@ -253,6 +255,15 @@ def compare_nc_files(fn1, fn2, threshold=matrix.THRESHOLD):
     rerun cannot promise it (reduction order varies) -- but a changed variable
     set or changed attributes is a hard failure, not a tolerance question.
     Returns the printed SUCCESS/FAIL string."""
+    # The sweep compares cells from concurrent threads, and since python-jax
+    # cells carry 'nc' too, two netCDF4/HDF5 opens could overlap: the HDF5
+    # library in use is not thread-safe, and the first everyday sweep of this
+    # gate died with SIGSEGV (exit -11) in exactly that window. One lock.
+    with _NC_LOCK:
+        return _compare_nc_files_locked(fn1, fn2, threshold)
+
+
+def _compare_nc_files_locked(fn1, fn2, threshold):
     from netCDF4 import Dataset
 
     verdict = 'SUCCESS ' + fn1 + ' ' + fn2
@@ -411,6 +422,136 @@ def nstress_sign_gate(case, run_dir):
     return not bad, lines
 
 
+# --------------------------------------------------------------------------
+# station gate: on/off-fault time series, normalized (owner design,
+# mission "iris/station-gate", 2026-09-24)
+# --------------------------------------------------------------------------
+STATION_REFERENCE_DIRNAME = 'stations'
+
+
+def station_reference_path(case, filename):
+    """The committed reference station file for one of matrix.GATE_STATIONS'
+    selected files. Raises if absent -- same contract as reference_path
+    above: a missing reference is a broken checkout, not a skip."""
+    p = os.path.join(REFERENCE_ROOT, case, STATION_REFERENCE_DIRNAME, filename)
+    if not os.path.isfile(p):
+        raise FileNotFoundError(
+            'no station reference %s for %s at %s -- the reference tree is '
+            'incomplete; this is a failure, not a case to skip' % (filename, case, p))
+    return p
+
+
+def _load_station_pair(case, kind, filename, run_dir):
+    """(names, ref_data, run_data) for one selected station file, having
+    already checked field names, column count and the time axis match.
+    Raises (never returns a partial/interpolated result) on any of: the run
+    not writing the file, a field-name/column-count mismatch, or a time-axis
+    mismatch (different row count or different t values) -- rule 2, and the
+    mission's explicit "never an interpolation"."""
+    ref_path = station_reference_path(case, filename)
+    run_path = os.path.join(run_dir, filename)
+    if not os.path.isfile(run_path):
+        raise FileNotFoundError(
+            'station gate: %s x %s: %s is a SELECTED station '
+            '(matrix.GATE_STATIONS) but the run wrote no such file -- a '
+            'selected file missing from a run is a FAIL, not a skip'
+            % (case, kind, filename))
+    ref_names, ref_data = read_station_file(ref_path)
+    run_names, run_data = read_station_file(run_path)
+    if ref_names != run_names:
+        raise ValueError(
+            'station gate: %s %s: field-name line differs -- ref %r vs run '
+            '%r (%s)' % (case, filename, ref_names, run_names, ref_path))
+    if ref_data.shape[0] != run_data.shape[0]:
+        raise ValueError(
+            'station gate: %s %s: %d reference rows vs %d run rows -- a row '
+            'count mismatch is a FAIL, never an interpolation'
+            % (case, filename, ref_data.shape[0], run_data.shape[0]))
+    if not np.allclose(ref_data[:, 0], run_data[:, 0], atol=1e-9, rtol=0.0):
+        bad = int(np.argmax(np.abs(ref_data[:, 0] - run_data[:, 0])))
+        raise ValueError(
+            'station gate: %s %s: time column mismatch at row %d (ref t=%.6e '
+            's vs run t=%.6e s) -- a FAIL, never an interpolation'
+            % (case, filename, bad, ref_data[bad, 0], run_data[bad, 0]))
+    return ref_names, ref_data, run_data
+
+
+def normalize_station_error(ref_datas, run_datas, col):
+    """e_q = max_t|run-ref| / max(S_q, matrix.STATION_ZERO_FLOOR), where
+    S_q = max over the given stations (one case, one kind: 'on' or 'off') of
+    max_t|ref_q|. `ref_datas`/`run_datas` are lists of per-station (nsteps,
+    ncols) arrays, already time-aligned by `_load_station_pair`. Returns
+    (e, worst_diff, S_q, station_index_of_worst).
+
+    The max(S_q, FLOOR) clamp is the mission's "S_q == 0" rule generalised to
+    a MEASURED floor rather than exact zero -- see matrix.STATION_ZERO_FLOOR's
+    own docstring for the measurement that motivated it (a genuinely-zero
+    physical component never lands at literal 0.0 in a floating-point run;
+    it lands at that run's own roundoff noise, and two roundoff numbers
+    divided by each other is not a physics statement)."""
+    S_q = max(float(np.max(np.abs(d[:, col]))) for d in ref_datas)
+    diffs = [float(np.max(np.abs(r[:, col] - u[:, col])))
+             for r, u in zip(ref_datas, run_datas)]
+    worst_i = int(np.argmax(diffs))
+    worst_diff = diffs[worst_i]
+    scale = max(S_q, matrix.STATION_ZERO_FLOOR)
+    return worst_diff / scale, worst_diff, S_q, worst_i
+
+
+def station_gate(case, run_dir):
+    """(ok, lines) for one cell's station artifact.
+
+    Reads every file matrix.GATE_STATIONS[case] selects (both 'on' and
+    'off'), checks field names/column count/time axis (rule 2: never an
+    interpolation), computes the case-level scale S_q per (kind, column) and
+    the normalized error e_q = diff/max(S_q, FLOOR), and gates every e_q
+    against the ONE matrix.STATION_BOUND[case] (rule 5). A cell declared in
+    matrix.STATION_UNSUPPORTED is handled by compare_cell, which never calls
+    this for it."""
+    bound = matrix.STATION_BOUND[case]
+    kinds = matrix.GATE_STATIONS[case]
+    worst = (0.0, None)
+    lines, bad_cols = [], []
+    for kind, files in kinds.items():
+        names = None
+        ref_datas, run_datas = [], []
+        for fn in files:
+            try:
+                n, ref_d, run_d = _load_station_pair(case, kind, fn, run_dir)
+            except (OSError, ValueError) as e:
+                # A missing selected file, a field-name/column mismatch or a
+                # time-axis mismatch is a FAILED cell with its reason, the
+                # same way an out-of-bound diff is -- never a crash that
+                # reads differently in the sweep summary.
+                return False, ['station: FAIL %s' % e]
+            names = n
+            ref_datas.append(ref_d)
+            run_datas.append(run_d)
+        ncols = ref_datas[0].shape[1]
+        for col in range(1, ncols):
+            e, worst_diff, S_q, worst_i = normalize_station_error(
+                ref_datas, run_datas, col)
+            floor_used = S_q < matrix.STATION_ZERO_FLOOR
+            lines.append(
+                '  %-3s %-16s S_q=%.4e%s diff=%.4e e=%.4e/%.1e %s'
+                % (kind, names[col], S_q,
+                   ' (FLOOR-clamped)' if floor_used else '', worst_diff, e,
+                   bound, 'ok' if e <= bound else 'FAIL'))
+            if not e <= bound:
+                # `not e <= bound`, never `e > bound`: a NaN anywhere in a
+                # run's column makes e NaN, and NaN > bound is False -- the
+                # form that read a NaN station as green.
+                bad_cols.append('%s %s at %s' % (kind, names[col], files[worst_i]))
+            if e > worst[0] or np.isnan(e):
+                worst = (e, '%s %s at %s' % (kind, names[col], files[worst_i]))
+    ok = not bad_cols
+    header = ('station: %d on-fault + %d off-fault file(s), worst e=%.4e '
+              'bound=%.1e (%s)%s'
+             % (len(kinds['on']), len(kinds['off']), worst[0], bound,
+                worst[1], '' if ok else ' -- FAILED'))
+    return ok, [header] + lines
+
+
 def compare_cell(case, backend, run_dir):
     """(ok, lines) for one (case, backend) cell: every artifact that backend
     produces, compared against the ONE committed reference (there is no term
@@ -426,9 +567,28 @@ def compare_cell(case, backend, run_dir):
         if artifact == 'frt':
             a_ok, a_lines = compare_frt(case, run_dir)
         elif artifact == 'nc':
-            a_ok, a_lines = compare_nc(case, run_dir)
+            if (case, backend) in matrix.NC_UNSUPPORTED:
+                a_ok, a_lines = True, ['nc: DECLARED UNSUPPORTED for %s x %s -- %s'
+                                       % (case, backend,
+                                          matrix.NC_UNSUPPORTED[(case, backend)])]
+            else:
+                a_ok, a_lines = compare_nc(case, run_dir)
         elif artifact == 'nsign':
             a_ok, a_lines = nstress_sign_gate(case, run_dir)
+        elif artifact == 'station':
+            # A sub-cell declaration (matrix.STATION_UNSUPPORTED, keyed per
+            # (case, backend)): reported, not silently absent, and it does NOT
+            # fail the cell -- test.drv.a6 x python-jax still passes or fails
+            # on its frt/nsign gates. Not the same state machine as
+            # matrix.UNSUPPORTED (whole-CELL unsupported): the cell runs and
+            # is gated on everything else it carries; only this artifact, for
+            # this one cell, is declared, with the measured reason printed.
+            if (case, backend) in matrix.STATION_UNSUPPORTED:
+                a_ok, a_lines = True, [
+                    'station: DECLARED UNSUPPORTED for %s x %s -- %s'
+                    % (case, backend, matrix.STATION_UNSUPPORTED[(case, backend)])]
+            else:
+                a_ok, a_lines = station_gate(case, run_dir)
         else:
             raise ValueError('unknown artifact %r for backend %r -- every '
                              'artifact needs a comparison, none is skipped'

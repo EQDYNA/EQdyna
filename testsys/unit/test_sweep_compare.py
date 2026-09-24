@@ -208,11 +208,24 @@ def test_fortran_cell_fails_when_plotruptureDynamics_output_is_missing(tmp_path)
     assert any('fault.dyna.r.nc' in line for line in lines)
 
 
-def test_python_cell_compares_frt_only(tmp_path):
+def test_python_cell_compares_every_declared_artifact(tmp_path):
+    # Since the owner's gate design (2026-09-24) a python-jax cell is gated on
+    # frt + fault.dyna.r.nc + the n-stress sign + the station series, exactly
+    # like a fortran cell -- not frt alone.
+    assert matrix.ARTIFACTS['python-jax'] == ('frt', 'nc', 'nsign', 'station')
     shutil.copy(compare.reference_path('test.tpv8'), str(tmp_path / 'frt.txt0'))
+    shutil.copy(compare.reference_path('test.tpv8', compare.NC_NAME), str(tmp_path))
+    for kind in ('on', 'off'):
+        for fn in matrix.GATE_STATIONS['test.tpv8'][kind]:
+            shutil.copy(compare.station_reference_path('test.tpv8', fn), str(tmp_path))
     ok, lines = compare.compare_cell('test.tpv8', 'python-jax', str(tmp_path))
     assert ok, lines
-    assert not any('fault.dyna.r.nc' in line for line in lines)
+    assert any('fault.dyna.r.nc' in line for line in lines)
+    assert any(line.startswith('station:') for line in lines)
+    assert any(line.startswith('nsign:') for line in lines)
+    # and each one really gates: drop the nc and the cell fails
+    os.remove(str(tmp_path / compare.NC_NAME))
+    assert not compare.compare_cell('test.tpv8', 'python-jax', str(tmp_path))[0]
 
 
 # --------------------------------------------------------------------------
