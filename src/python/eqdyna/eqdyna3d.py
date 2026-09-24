@@ -731,6 +731,20 @@ def main():
                                         profile=prof)
         except checkInputConsistency.InputConsistencyError as exc:
             _abort(exc, rank=comm.Get_rank())
+        except BaseException:
+            # A failure on ONE rank -- its own box's mesh, its own faces --
+            # while the others wait in a Sendrecv would otherwise hang the job
+            # forever (observed: a fault-free box raised in
+            # build_node_coordinates and three ranks sat 27 min in the setup
+            # exchange). Fortran's abortRun calls MPI_Abort for the same
+            # reason. The traceback is printed first, flushed, so the cause is
+            # attributable to a rank and a line.
+            import traceback
+            traceback.print_exc()
+            sys.stdout.flush(); sys.stderr.flush()
+            print('rank %d/%d: aborting the MPI job (see traceback above)'
+                  % (comm.Get_rank(), comm.Get_size()), file=sys.stderr, flush=True)
+            comm.Abort(1)
         if args.profile:
             prof.report(nsteps=args.nsteps, nelem=prof.nelem or None,
                         stream=sys.stdout)

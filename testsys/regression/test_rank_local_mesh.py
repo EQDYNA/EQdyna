@@ -63,14 +63,19 @@ from eqdyna import MPI4NodalQuant as MQ   # noqa: E402
 from eqdyna import eqdyna3d, meshgen      # noqa: E402
 from eqdyna import readInputFiles         # noqa: E402
 
-# (case, par overrides, decompositions by rank count, arn paths it must reach)
+# (label, case, par overrides, decompositions by rank count, arn paths it must reach)
 CASES = (
-    ('test.tpv8', {}, (4, 8, 16), ('xsplit', 'zsplit')),
+    ('tpv8', 'test.tpv8', {}, (4, 8, 16), ('xsplit', 'zsplit')),
     # tpv10 keeps its dx (its rough-geometry file is sampled at it) and
     # shrinks its DOMAIN, symmetric in y so npy=2 puts a boundary ON y=0.
-    ('test.tpv10', {'xmin': -20.0e3, 'xmax': 20.0e3, 'ymin': -15.0e3,
-                    'ymax': 15.0e3, 'zmin': -20.0e3}, (4,), ('xsplit', 'ydup')),
-    ('test.tpv36', {'dx': 1000.0}, (4, 8), ('xsplit', 'ydiv')),
+    ('tpv10-ysym', 'test.tpv10', {'xmin': -20.0e3, 'xmax': 20.0e3, 'ymin': -15.0e3,
+                                  'ymax': 15.0e3, 'zmin': -20.0e3}, (4,), ('xsplit', 'ydup')),
+    # ...and with its own asymmetric y (-20/+40 km), so the mey=1 boxes never
+    # meet the fault: the rough-fault builders' fault-free-box path (found by
+    # the full-scale tpv10 4-rank run, not by this guard's first version).
+    ('tpv10-yasym', 'test.tpv10', {'xmin': -20.0e3, 'xmax': 20.0e3, 'zmin': -20.0e3},
+     (4,), ('xsplit',)),
+    ('tpv36', 'test.tpv36', {'dx': 1000.0}, (4, 8), ('xsplit', 'ydiv')),
 )
 # THE ZERO-FAULT-NODE CONTRACT, per decomposition, as MEASURED DATA (first run
 # of this guard, 2026-09-24): (ranks that write a frt file, ranks whose box
@@ -81,10 +86,11 @@ CASES = (
 # ones write it. A change to either number is a change to what the e2e cell's
 # PY_MPI_EXPECTED_FRT_FILES counts, so it must be made here deliberately.
 FRT_SHAPE = {
-    ('test.tpv8', 2): (2, 0), ('test.tpv8', 4): (2, 2), ('test.tpv8', 8): (4, 4),
-    ('test.tpv8', 16): (8, 8), ('test.tpv8', 32): (8, 24),
-    ('test.tpv10', 2): (2, 0), ('test.tpv10', 4): (2, 0), ('test.tpv10', 8): (4, 0),
-    ('test.tpv36', 2): (2, 0), ('test.tpv36', 4): (4, 0), ('test.tpv36', 8): (6, 2),
+    ('tpv8', 2): (2, 0), ('tpv8', 4): (2, 2), ('tpv8', 8): (4, 4),
+    ('tpv8', 16): (8, 8), ('tpv8', 32): (8, 24),
+    ('tpv10-ysym', 2): (2, 0), ('tpv10-ysym', 4): (2, 0), ('tpv10-ysym', 8): (4, 0),
+    ('tpv10-yasym', 4): (2, 2),
+    ('tpv36', 2): (2, 0), ('tpv36', 4): (4, 0), ('tpv36', 8): (6, 2),
 }
 ELEM_KEYS = ('elemType', 'mat', 'eledet', 'eleshp', 'ss', 'phi', 'init_stress')
 FAULT_KEYS = ('un', 'us', 'ud', 'fric_init')
@@ -218,8 +224,8 @@ def _close(name, loc, ser, shared):
     return worst
 
 
-def check_case(case, overrides, rank_counts, must_reach, tmp):
-    case_dir = os.path.join(tmp, case)
+def check_case(label, case, overrides, rank_counts, must_reach, tmp):
+    case_dir = os.path.join(tmp, label)
     _make_case(case, case_dir, overrides)
     t0 = time.time()
     S_s, mesh_s = eqdyna3d.build_solver_state(case_dir)
@@ -229,7 +235,7 @@ def check_case(case, overrides, rank_counts, must_reach, tmp):
     fnms_s1 = np.concatenate(([0.0], S_s['fnms']))
     mass_s1 = np.concatenate(([0.0], S_s['nodalMassArr']))
     print('  %s serial: N=%d E=%d NEQ=%d nftnd=%d (%.1f s)'
-          % (case, S_s['N'], S_s['E'], S_s['NEQ'], S_s['nftnd'], time.time() - t0))
+          % (label, S_s['N'], S_s['E'], S_s['NEQ'], S_s['nftnd'], time.time() - t0))
     if tuple(meshgen.fault_census(xg, yg, zg, params))[0] != S_s['nftnd']:
         raise AssertionError('fault_census count != serial nftnd')
     if meshgen.equation_census(xg, yg, zg, params, pmlb, bounds) != S_s['NEQ']:
@@ -310,11 +316,11 @@ def check_case(case, overrides, rank_counts, must_reach, tmp):
         _eq('owned fault rows partition the serial fault', allown, np.arange(S_s['nftnd']))
         files = sum(1 for o in owned if o.size)
         empty = sum(1 for S in Ss if int(S['nftnd']) == 0)
-        if (files, empty) != FRT_SHAPE[(case, nranks)]:
+        if (files, empty) != FRT_SHAPE[(label, nranks)]:
             raise AssertionError(
                 '%s at %d ranks: %d rank(s) write frt and %d hold no fault node; '
-                'FRT_SHAPE records %r' % (case, nranks, files, empty,
-                                          FRT_SHAPE[(case, nranks)]))
+                'FRT_SHAPE records %r' % (label, nranks, files, empty,
+                                          FRT_SHAPE[(label, nranks)]))
         print('    %2d ranks %r: %d ranks write frt, fault computed per rank %s, '
               'shared-plane max rel diff %.2e, arn paths %s'
               % (nranks, parts[0].dims, files, [int(s['nftnd']) for s in Ss], worst,
@@ -322,7 +328,7 @@ def check_case(case, overrides, rank_counts, must_reach, tmp):
     missing = [p for p in must_reach if p not in reached]
     if missing:
         raise AssertionError('%s: arn path(s) %s never exercised by %r -- this test would '
-                             'be green without testing them' % (case, missing, rank_counts))
+                             'be green without testing them' % (label, missing, rank_counts))
 
 
 def main():
@@ -330,13 +336,13 @@ def main():
           '(pathway item 64)')
     fails = []
     with tempfile.TemporaryDirectory(prefix='ranklocal.') as tmp:
-        for case, ov, counts, must in CASES:
+        for label, case, ov, counts, must in CASES:
             try:
-                check_case(case, ov, counts, must, tmp)
+                check_case(label, case, ov, counts, must, tmp)
             except Exception as exc:          # noqa: BLE001 -- reported, then FAIL
                 import traceback
                 traceback.print_exc()
-                fails.append('%s: %s' % (case, exc))
+                fails.append('%s: %s' % (label, exc))
     if fails:
         print('FAIL test_rank_local_mesh')
         for f in fails:

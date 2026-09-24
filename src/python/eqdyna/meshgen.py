@@ -613,8 +613,10 @@ def build_node_coordinates(xline, yline, zline, params, model_bound=None):
     N = len(regular) + nftnd
     meshCoor = np.zeros((N + 1, 3))  # index 0 unused (1-indexed node ids)
     meshCoor[1:1 + len(regular)] = regular
-    meshCoor[1 + len(regular):] = master
-    nsmp = np.array(nsmp, dtype=np.int64)  # (nftnd, 2)
+    # reshape: a rank-local box that never meets the fault has NO master node,
+    # and np.array([]) is shape (0,), not (0, 3) / (0, 2).
+    meshCoor[1 + len(regular):] = np.asarray(master, dtype=float).reshape(-1, 3)
+    nsmp = np.array(nsmp, dtype=np.int64).reshape(-1, 2)  # (nftnd, 2)
     return meshCoor, nftnd, nsmp
 
 def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
