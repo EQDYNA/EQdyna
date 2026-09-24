@@ -316,6 +316,17 @@ def compare_nc(case, run_dir):
 ONFAULT_STATION_RE = re.compile(r'^faultst(-?\d+)dp(\d+)\.txt$')
 
 
+_FORTRAN_E_DROPPED = re.compile(r'^([-+]?\d*\.\d*)([-+]\d{3})$')
+
+
+def _fortran_float(tok):
+    """float() of one Fortran-written value. A plain Ew.d edit (the station
+    writers' E16.7) DROPS the 'E' when the exponent needs three digits, e.g.
+    '0.1234567-100' for 1.234567e-101; float() would raise on it."""
+    m = _FORTRAN_E_DROPPED.match(tok)
+    return float(m.group(1) + 'E' + m.group(2)) if m else float(tok)
+
+
 def read_station_file(path):
     """(field_names, data) for one faultst*/body* station file, as written by
     library_output.f90: `#` header lines, one line of field names starting
@@ -331,7 +342,7 @@ def read_station_file(path):
             if tok[0] == 't':
                 names = tok
                 continue
-            rows.append([float(v) for v in tok])
+            rows.append([_fortran_float(v) for v in tok])
     if names is None or not rows:
         raise ValueError('%s: no field-name line or no data rows' % path)
     data = np.asarray(rows)
@@ -367,6 +378,22 @@ def nstress_sign_gate(case, run_dir):
         return False, ['nsign: FAIL no buried on-fault station file '
                        '(faultst*dp<ddd>.txt, ddd > 0) in %s -- nothing to '
                        'check' % run_dir]
+    # Every on-fault station file, surface ones included, must carry data. A
+    # buried station's initial traction is nonzero; a surface station can start
+    # at zero stress (tpv8/10/36/37) and is kept nonzero here by the waves that
+    # reach it within the gate term (<= ~19 km from a t=0 nucleation, well
+    # inside 5 s). An all-zero file is the phantom
+    # station eqdyna3d.f90's allocInitAfterMeshGen used to make a rank with no
+    # matched station write (faultst000dp000.txt, requested by nobody).
+    empty = []
+    for p in sorted(glob.glob(os.path.join(run_dir, 'faultst*.txt'))):
+        names, data = read_station_file(p)
+        if not np.any(data[:, 1:]):
+            empty.append(os.path.basename(p))
+    if empty:
+        return False, ['nsign: FAIL on-fault station file(s) with no nonzero '
+                       'value in any column: %s -- a phantom station, not a '
+                       'real one' % ', '.join(empty)]
     values, bad = [], []
     for p in buried:
         names, data = read_station_file(p)
