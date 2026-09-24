@@ -13,6 +13,7 @@
 ! 9. output_src_evol
 ! 10. output_profile (+ readCpusAllowed, computeNumaNodes, parseRangeList,
 !     readHostname, readPid, jsonNum helpers) -- docs/run_profile.md
+! 11. report_dropped_offfault_st
 
 !#1
 subroutine output_onfault_st
@@ -636,3 +637,38 @@ subroutine readPid(pid)
     enddo
     close(u)
 end subroutine readPid
+
+!#11
+subroutine report_dropped_offfault_st(matchedAnyRank)
+    ! pathway_forward.md item 94. setSurfaceStation (meshgen.f90) matches an
+    ! off-fault station's DEPTH exactly (|nodeCoor(3) - x4nds(3,i)| < tol)
+    ! and snaps only x and y to the nearest interior node, so a station whose
+    ! depth is not a grid z-plane, or which lies outside the interior x/y
+    ! range, matches no node on any rank and output_offfault_st writes no
+    ! file for it. That used to happen with no message at all (test.tpv8 at
+    ! dx = 500 m: its four z = -0.3 km stations). This names every such
+    ! station. It does NOT snap or refuse: either would change which body*
+    ! files a case writes, and that is the owner's call.
+    ! matchedAnyRank(i) is (n4yn(i) /= 0) OR-reduced over all ranks
+    ! (checkOffFaultStationCoverage, eqdyna3d.f90), so a station found by any
+    ! rank counts as written.
+    use globalvar
+    implicit none
+
+    logical, intent(in) :: matchedAnyRank(totalNumOfOffSt)
+    integer (kind = 4) :: i, nDropped
+
+    nDropped = count(.not. matchedAnyRank)
+    if (nDropped == 0) return
+
+    write(*,'(a,i0,a,i0,a)') ' WARNING: ', nDropped, ' of ', totalNumOfOffSt, &
+        ' requested off-fault stations match no grid node and get NO body* file'
+    write(*,'(a)') '   (setSurfaceStation, meshgen.f90: depth must equal a grid z-plane' // &
+        ' within tol; x and y snap to the nearest interior node)'
+    do i = 1, totalNumOfOffSt
+        if (.not. matchedAnyRank(i)) then
+            write(*,'(a,i0,a,3f10.3,a)') '   dropped off-fault station ', i, &
+                ' at x,y,z =', x4nds(1,i)/1000.d0, x4nds(2,i)/1000.d0, x4nds(3,i)/1000.d0, ' km'
+        endif
+    enddo
+end subroutine report_dropped_offfault_st
