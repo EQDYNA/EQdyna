@@ -128,10 +128,13 @@ def _run(tmp, tag, decomp):
 def main():
     print('Regression guard: a wedge-degenerate dipping fault may be split in y')
     if _binary() is None:
-        print('  SKIPPED (no bin/eqdyna or src/fortran/eqdyna; build it to enable).')
-        print('  This is a SKIP, not a pass -- the DIVIDE branch is unverified in '
-              'this run.')
-        return 0
+        print('  FAIL no bin/eqdyna or src/fortran/eqdyna -- this tier\'s '
+              'declared environment builds the binary before running '
+              'regression (testsys/run.py, CI); a missing binary here means '
+              'the tree was never built, not that this check is optional. '
+              'Build it (./install-eqdyna.sh) to enable.')
+        print('\nFAIL test_dipping_fault_y_split')
+        return 1
     from testsys import frt_canonical
     import numpy as np
     try:
