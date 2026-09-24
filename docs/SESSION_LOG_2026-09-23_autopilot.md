@@ -1817,3 +1817,32 @@ contention was falsified by an A/B (30.63 s shared against 29.63 s pinned).
 Index dtype, scatter lowering and transfers are already optimal. Clean
 per-cell estimates are tpv36 149 s, tpv37 ~139 s and drv.a6 ~94 s, against
 286/277/218 s measured in-sweep. The gap is box tenancy, not code.
+
+## WW. MILESTONE: queue exhausted — checkInputConsistency ported (#9), release order fixed (#8, 15f) (02:05)
+
+- **PR #8** `b39206f` (4.5 min): `docs/run_profiles.jsonl` added to check_pretag_ci's
+  permitted-ancestor allow-list. Guard scenario 6 goes RED without it.
+- **Rules** `989fc8b` (zofia, pushed direct): new rule 15f records the working release order
+  (release PR → M → M's CI → sweep on M → E1 evidence → E2 board row → pre-tag → tag +
+  Release → release-complete → stranger gate). Rule 25's unsatisfiable sentence is corrected,
+  and the stale 15 / 15d order is annotated.
+- **PR #9** `87d7079` (17.8 min): `checkInputConsistency.f90` ported to
+  `src/python/eqdyna/checkInputConsistency.py`.
+  - Same 3 predicates, codes 11/12/13, messages and call point (`eqdyna3d.f90:104`).
+  - The first audit was merge-blocking for three reasons: no `Now, C_elastic` echo; the
+    FATAL block went to stderr without its rank line; the guard compared codes against the
+    Python module's own constants. All fixed myself. The guard now parses the Fortran source.
+    Four mutations each go RED: echo removed, rank line removed, code changed, message changed.
+  - My mutation helper's `git checkout` once reverted my own uncommitted fixes. I caught it
+    because the controls went red for the wrong reason. Lesson: commit before mutating.
+  - Gate: 23/23, 438.9 s, then 444.1 s after the fix. Master CI green.
+- **OPEN, undiagnosed (rule 3b):** in mira's everyday sweep on 51eb44b (01:27-01:33),
+  test.tpv36 x python-jax exited 1 after finishing all 464 steps and writing `frt.txt0`
+  and `profile.rank0.json`.
+  - That leaves only post-solve prints or interpreter teardown. stderr was not kept.
+  - Not reproduced in 4 later sweeps (isolated re-run; my gates at 51eb44b and 56eca0b;
+    the 23/23 release). A clean re-run is not a diagnosis.
+  - Next step: keep each python cell's stdout/stderr in its case dir so the next occurrence
+    is diagnosable.
+
+Session cycle times for PRs #3-#9: 47, 13.7, 7.6, 78, 10.2, 4.5 and 17.8 min.
