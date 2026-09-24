@@ -2,8 +2,9 @@
 """
 THE test. One sweep, two nested loops, one comparison:
 
-    for case in CASES:                       # testNameList.py, 8 cases
-        for backend in BACKENDS:             # fortran, python-numpy, python-jax
+    for case in CASES:                       # testNameList.py, 10 cases
+        for backend in BACKENDS:             # fortran, python-jax (+ the
+                                              # python-jax-mpi opt-in axis)
             run(case, backend) -> canonical frt -> compare vs the ONE
                                   committed reference, at THAT CASE's bound
 
@@ -258,14 +259,11 @@ def cell_cost(case, backend):
                          citation on that constant for the measurement.
                          Rounded UP: under-billing a real cost is the defect
                          this exists to close.
-      python-numpy    -- 1, and this is a MEASURED number too, not merely an
-                         assumption: eqdyna3d._narrow_numpy_affinity pins the
-                         standalone numpy backend to exactly one cpu
-                         (flat 1/2/4-cpu scaling measured there, and ~2x
-                         WORSE spanning NUMA nodes with a wider mask), and
-                         `/usr/bin/time -v` on test.tpv8 x python-numpy this
-                         session read "Percent of CPU this job got: 101%"
-                         over the full 197.5s run -- one core, not several.
+
+    python-numpy LEFT the backend axis entirely 2026-09-23 (owner decision):
+    its old branch here (1 core, measured via eqdyna3d._narrow_numpy_affinity
+    pinning it to one cpu) is gone with it, not left as a silent fallback for
+    an unrecognized backend -- see the raise below.
     """
     if backend == 'fortran':
         return max(1, matrix.FORTRAN_RANKS.get(case, 4))
@@ -273,7 +271,8 @@ def cell_cost(case, backend):
         return max(1, matrix.PY_MPI_RANKS[case])
     if backend == 'python-jax':
         return max(1, math.ceil(matrix.JAX_MEASURED_CORES))
-    return 1
+    raise ValueError('cell_cost: unknown backend %r -- known: %s'
+                     % (backend, ', '.join(matrix.BACKENDS)))
 
 
 # Margin subtracted from measured-free cores before it becomes the default
@@ -385,7 +384,7 @@ def base_env():
 def apply_term_override(case_name, case_dir):
     """Append a par.term override to the just-copied user_defined_params.py.
     Called from EVERY backend's case-build path -- make_serial_case
-    (python-numpy/jax/jax-mpi) and run_fortran -- right after create.newcase
+    (jax/jax-mpi) and run_fortran -- right after create.newcase
     and before case.setup runs, so every cell goes through the ONE case-build
     path rather than forking a second one.
 
@@ -447,14 +446,18 @@ def make_serial_case(case_name, case_dir, env):
 
 
 def run_standalone(case_dir, backend, device='cpu', env=None, gpu_index=None):
-    """`python3 -m eqdyna <case_dir> --backend <numpy|jax>` -- the
-    exact command a user would type, with the backend ALWAYS named.
+    """`python3 -m eqdyna <case_dir> --backend jax` -- the exact command a
+    user would type, with the backend ALWAYS named.
 
     It used to be invoked with no --backend at all, which silently meant the
     jax default: ~1700 lines of NumPy port (port.py, port_rsf.py, port_tp.py)
     had never been exercised by any gate while the tier reported success.
+    That NumPy port is unaffected by, and predates, the 2026-09-23 removal of
+    python-numpy from this sweep's own BACKENDS axis -- the code is still
+    there and still runnable by hand (`python3 -m eqdyna <case> --backend
+    numpy`); this function just no longer has a caller that asks for it.
     """
-    solver = {'python-numpy': 'numpy', 'python-jax': 'jax'}[backend]
+    solver = {'python-jax': 'jax'}[backend]
     env = dict(env or base_env())
     env['PYTHONPATH'] = os.path.join(REPO_ROOT, 'src', 'python')
     env['PYTHONUNBUFFERED'] = '1'
@@ -637,15 +640,12 @@ def run_cell(case, backend, test_dir, eqdyna_cmd, env, device, gpu_slots=None):
 # selection
 # --------------------------------------------------------------------------
 def select(args):
-    """(runnable, declared_unsupported, label, explicit, release_only) for
-    this invocation. release_only is non-empty only for the DEFAULT everyday
-    selection (no --cases/--backends, no --ci, no --release) -- matrix.py's
-    RELEASE_ONLY cells (2026-09-23 owner decision): SUPPORTED cells held out
-    of the everyday sweep for wall-clock cost, restored by --release (the
-    release tier -- everyday cells + RELEASE_ONLY, at the SAME GATE_TERM_S;
-    this is a cell-selection split, never a term split) and by any EXPLICIT
-    --cases/--backends ask, which names exactly what it wants and is
-    answered exactly, not cost-filtered."""
+    """(runnable, declared_unsupported, label, explicit) for this invocation.
+
+    --release selects the same cells as the default everyday selection (the
+    one cost-deferred mechanism, matrix.RELEASE_ONLY, was retired 2026-09-23
+    with the python-numpy axis); the flag stays because it is what triggers
+    write_release_evidence (rule 24's committed pre-tag artifact)."""
     if args.ci:
         # --backends/--cases, WHEN COMBINED WITH --ci, filter matrix.CI_CELLS
         # itself rather than switching to matrix.cells() -- this is what lets
@@ -675,26 +675,19 @@ def select(args):
         return (runnable, unsupported,
                 'CI (declared cell list, chosen against a measured %.0f GB '
                 'runner -- matrix.CI_CELLS%s)' % (matrix.CI_RUNNER_RAM_GB, filt),
-                True, [])
+                True)
     cases = args.cases.split(',') if args.cases else None
     backends = args.backends.split(',') if args.backends else None
     explicit = bool(cases or backends)
+    runnable, unsupported = matrix.cells(cases, backends)
     if explicit:
-        # A named ask is answered exactly, not cost-filtered: RELEASE_ONLY is
-        # a default-selection policy, not a per-cell refusal (matrix.py's
-        # cells() already includes these cells; that is unchanged here).
-        runnable, unsupported = matrix.cells(cases, backends)
-        release_only = []
         label = 'explicit: cases=%s backends=%s' % (args.cases or 'all',
                                                       args.backends or 'all')
     elif args.release:
-        runnable, unsupported = matrix.cells(cases, backends)
-        release_only = []
         label = 'default: every cell of the table (release, --release)'
     else:
-        runnable, unsupported, release_only = matrix.everyday_cells(cases, backends)
-        label = 'default: every cell of the table minus matrix.RELEASE_ONLY (everyday)'
-    return runnable, unsupported, label, explicit, release_only
+        label = 'default: every supported cell of the table (everyday)'
+    return runnable, unsupported, label, explicit
 
 
 def memory_note(runnable):
@@ -714,7 +707,6 @@ def _perf_meta(results, label, device, budget):
     2026-09-22: every gate run is a free perf data point). Platform per cell
     is what the launch PINS, never what was merely requested:
       - fortran: CPU-only solver, no GPU path exists.
-      - python-numpy: host arrays only.
       - python-jax with --device cpu (the default): run_standalone exports
         JAX_PLATFORMS=cpu, which jax cannot override onto a GPU.
       - python-jax with --device cuda: the sweep records NO device evidence,
@@ -737,9 +729,6 @@ def _perf_meta(results, label, device, budget):
             plat, ev = 'cpu', ('eqdyna3d --mpi with --device left at "auto" '
                                'forces JAX_PLATFORMS=cpu (run_e2e passes no '
                                '--device)')
-        elif backend == 'python-numpy':
-            ranks = 1
-            plat, ev = 'cpu', 'numpy backend: host arrays only, no GPU path'
         elif device == 'cpu':
             ranks = 1
             plat, ev = 'cpu', ('run_standalone pins JAX_PLATFORMS=cpu; jax '
@@ -811,7 +800,7 @@ def write_release_evidence(results, is_release, explicit, started_utc,
                            finished_utc, tree_clean, dirty_at_start):
     """docs/evidence/sweep-<shortsha>/summary.json -- written only for a
     default `--release` selection (no --cases/--backends), i.e. the release
-    tier sweeping the full runnable matrix (everyday cells + RELEASE_ONLY).
+    tier sweeping the full runnable matrix.
     A filtered selection is not 'the full runnable matrix' and gets no
     evidence artifact under this name.
 
@@ -870,14 +859,18 @@ def main(argv=None):
     ap.add_argument('--backends', help='comma-separated subset of the backend axis')
     ap.add_argument('--ci', action='store_true',
                     help='run matrix.CI_CELLS, the declared portability-smoke '
-                         'cell list (2026-09-23: one case, all three backend '
-                         'implementations, at matrix.GATE_TERM_S)')
+                         'cell list (2026-09-23: one case, both remaining '
+                         'backend implementations -- fortran, python-jax -- '
+                         'at matrix.GATE_TERM_S)')
     ap.add_argument('--release', action='store_true',
-                    help='the RELEASE selection: every supported cell '
-                         '(everyday cells + matrix.RELEASE_ONLY), used by '
-                         '`run.py release`. Same GATE_TERM_S as every other '
-                         'selection -- this flag only widens which CELLS run, '
-                         'not the term they run at. Ignored (a named ask is '
+                    help='the RELEASE selection, used by `run.py release` '
+                         '(rule 24: writes docs/evidence/sweep-<sha>/'
+                         'summary.json). Currently selects the SAME cells as '
+                         'the default everyday selection -- matrix.RELEASE_ONLY '
+                         'was retired 2026-09-23 -- but stays a distinct flag '
+                         'because it is the deliberate pre-tag/evidence '
+                         'invocation, not a per-cell widener. Same GATE_TERM_S '
+                         'as every other selection. Ignored (a named ask is '
                          'answered exactly) when --cases/--backends is given.')
     ap.add_argument('--jobs', type=int, default=None,
                     help='core budget for concurrent cells (default: TENANCY-'
@@ -886,8 +879,7 @@ def main(argv=None):
                          'own cost; see default_jobs_budget). A fortran or '
                          'python-jax-mpi cell costs its rank count, a '
                          'python-jax cell its measured core count '
-                         '(matrix.JAX_MEASURED_CORES, ceil\'d), a '
-                         'python-numpy cell 1 (also measured). --jobs 1 runs '
+                         '(matrix.JAX_MEASURED_CORES, ceil\'d). --jobs 1 runs '
                          'serially, which is what a 2-core CI runner should '
                          'use; the printed output is identical either way.')
     ap.add_argument('--device', default='cpu', choices=('cpu', 'cuda'),
@@ -906,13 +898,13 @@ def main(argv=None):
         for ln in dirty_at_start:
             print('  %s' % ln)
 
-    runnable, unsupported, label, explicit, release_only = select(args)
+    runnable, unsupported, label, explicit = select(args)
 
     print('\n==== e2e sweep: coverage ====')
     print('term     : %gs (matrix.GATE_TERM_S, applied to every selected '
           'case regardless of its own committed par.term -- there is only '
           'one term)' % matrix.GATE_TERM_S)
-    for line in matrix.coverage_report(runnable, unsupported, label, release_only):
+    for line in matrix.coverage_report(runnable, unsupported, label):
         print(line)
     for line in memory_note(runnable):
         print(line)
@@ -997,24 +989,26 @@ def main(argv=None):
     # reads the same read-only reference tree, and shares nothing else. So the
     # sweep runs them concurrently rather than one at a time.
     #
-    # WHY THIS MATTERS: measured serially, the 20-cell sweep took 3496 s on a
-    # 64-core box, and 67% of that was the python-numpy column alone
-    # (2267 s over 6 cells; test.tpv29 964 s, test.drv.a6 553 s). Meanwhile at
-    # most 4 cores were busy. Wall time is now bounded by the SLOWEST CELL, not
-    # the sum.
+    # WHY THIS MATTERS: measured serially (pre-2026-09-23, when python-numpy
+    # was still a backend column), a 20-cell sweep took 3496 s on a 64-core
+    # box, and 67% of that was the python-numpy column alone (2267 s over 6
+    # cells; test.tpv29 964 s, test.drv.a6 553 s) -- meanwhile at most 4 cores
+    # were busy. That column is gone from the axis now (owner decision: "I
+    # actually don't care numpy"), but the concurrency mechanism it motivated
+    # stays, because a fortran/python-jax/python-jax-mpi sweep is still
+    # bounded by whichever cell is SLOWEST, not by the sum, once cells run
+    # concurrently.
     #
-    # The budget is CORES, not memory: all 20 cells together peak at ~23.5 GB
-    # (matrix.MEASURED_PEAK_RSS_GB) against 1 TB here. Per-cell cost is
-    # cell_cost() above (module-level, MEASURED per backend -- see its own
-    # docstring): a fortran or python-jax-mpi cell costs its real rank count,
-    # a python-jax cell costs matrix.JAX_MEASURED_CORES (ceil'd, not 1 -- see
-    # the 2026-09-23 speed-campaign citation there), a python-numpy cell costs
-    # 1 (also measured, not assumed -- eqdyna3d._narrow_numpy_affinity pins it
-    # to one cpu). --jobs sets the budget explicitly; left unset, the budget
-    # is TENANCY-AWARE (default_jobs_budget: cores measured free right now,
-    # minus a margin, never below the largest selected cell's own cost).
-    # --jobs 1 restores the serial order exactly, which is what CI uses when
-    # its runner has 2.
+    # The budget is CORES, not memory: measured cells together peak at a few
+    # GB per cell (matrix.MEASURED_PEAK_RSS_GB) against 1 TB here. Per-cell
+    # cost is cell_cost() above (module-level, MEASURED per backend -- see its
+    # own docstring): a fortran or python-jax-mpi cell costs its real rank
+    # count, a python-jax cell costs matrix.JAX_MEASURED_CORES (ceil'd, not 1
+    # -- see the 2026-09-23 speed-campaign citation there). --jobs sets the
+    # budget explicitly; left unset, the budget is TENANCY-AWARE
+    # (default_jobs_budget: cores measured free right now, minus a margin,
+    # never below the largest selected cell's own cost). --jobs 1 restores
+    # the serial order exactly, which is what CI uses when its runner has 2.
     #
     # Output is COLLECTED per cell and printed when that cell finishes, never
     # streamed, so concurrent cells cannot interleave their lines into an
@@ -1151,9 +1145,6 @@ def main(argv=None):
     print('not gated : %d declared-unsupported cell(s): %s'
           % (len(unsupported),
              ', '.join('%s x %s' % (c, b) for c, b, _ in unsupported) or 'none'))
-    print('release-only (not run in this everyday sweep): %d cell(s): %s'
-          % (len(release_only),
-             ', '.join('%s x %s' % (c, b) for c, b, _ in release_only) or 'none'))
     print('wall clock: %.1fs' % elapsed)
     # Every sweep is a free timing data point (owner policy 2026-09-22).
     # Placed BEFORE the verdict returns below but able to affect none of them:

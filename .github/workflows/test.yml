@@ -39,7 +39,7 @@ concurrency:
 # release gate -- PROJECT_RULES rule 15/16).
 #
 # CI's e2e job is now a single SMOKE test: matrix.CI_CELLS is exactly
-# test.tpv8 x {fortran, python-numpy, python-jax} at the gate term (5 s). Its
+# test.tpv8 x {fortran, python-jax} at the gate term (5 s). Its
 # purpose is portability -- a clean checkout, freshly `pip install`ed
 # dependencies, and (for the fortran cell) the RUNNER's own mpich rather than
 # this box's Open MPI 4.1.1 -- not physics regression, which the release tier
@@ -302,7 +302,7 @@ jobs:
       run: cat testRunLog.txt
 
 
-  # matrix.CI_CELLS in full: test.tpv8 x {fortran, python-numpy, python-jax},
+  # matrix.CI_CELLS in full: test.tpv8 x {fortran, python-jax},
   # at the gate term (5 s) -- the ONE e2e job CI runs (2026-09-23,
   # owner-approved test-methodology change; see the jobs: comment above).
   # This job's purpose is portability, not physics coverage: a clean
@@ -343,7 +343,7 @@ jobs:
     - name: Restore exec bit on eqdyna binary
       run: chmod +x bin/eqdyna
 
-    - name: Run e2e-ci (smoke - test.tpv8 x fortran/python-numpy/python-jax, gate term)
+    - name: Run e2e-ci (smoke - test.tpv8 x fortran/python-jax, gate term)
       run: |
         export EQDYNAROOT=$(pwd)
         export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
