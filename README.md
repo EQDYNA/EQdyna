@@ -72,11 +72,11 @@ an HPC cluster, `./case.submit` submits the run as a batch job instead.
 
 ### Python solver
 
-The same physics is also implemented in Python/JAX. Install it with
-`pip install jax` (or `pip install "jax[cuda12]"` for NVIDIA GPUs). It runs a case
-on one process, so first set the decomposition to one rank:
+The same physics is also implemented in Python/JAX. It runs a case on one
+process, so first set the decomposition to one rank:
 
 ```
+pip install jax      # or "jax[cuda12]" for NVIDIA GPUs
 create.newcase ~/runs/tpv8-jax test.tpv8
 cd ~/runs/tpv8-jax
 printf '\npar.nx = 1\npar.ny = 1\npar.nz = 1\n' >> user_defined_params.py
