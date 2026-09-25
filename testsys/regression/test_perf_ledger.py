@@ -80,6 +80,10 @@ def good_row(i=0, proc=0):
                 # is a fortran row, i.e. mpirun -np 4. The field itself is
                 # guarded in test_perf_parallelism_discriminator.py.
                 parallelism='mpi',
+                # required since 2026-09-24 (row 76): the busy fraction of
+                # the SPECIFIC cpus this row's (synthetic) run used. The
+                # field itself is guarded in test_perf_row76_contention.py.
+                contention=dict(cpus=[0, 1, 2, 3], busy=0, total=4),
                 proc=proc, i=i)
 
 
@@ -194,6 +198,7 @@ def main():
                     date='2026-09-21 16:37', n_lo=40, n_hi=160, max_busy=0.6,
                     rows=[dict(ranks=2, skipped=True, cpus=[2, 3]),
                           dict(ranks=4, cpus=[8, 9, 16, 17], n_lo=40, n_hi=160,
+                               busy={'8': 0.0, '9': 0.0, '16': 0.0, '17': 0.0},
                                jax_halo=dict(ms_per_step=605.0,
                                              rank_ms=[600.0, 605.0, 590.0, 601.0],
                                              eff=[3.9, 3.8, 4.0, 3.7],
@@ -220,7 +225,9 @@ def main():
                    date='2026-09-21 11:35', busy_ceiling=0.45,
                    rows=[dict(engine='python-numpy', n=8, policy='spread',
                               ms_per_step=250.25, n_lo=20, n_hi=60,
-                              cpus=[0, 8, 16, 24, 32, 40, 48, 56])])
+                              cpus=[0, 8, 16, 24, 32, 40, 48, 56],
+                              busy={c: 0.0 for c in
+                                   (0, 8, 16, 24, 32, 40, 48, 56)})])
     conv2 = ledger.rows_from_scaling_snapshot(
         sc_meta, 'docs/perf_snapshots/scaling_x.json', dict(busy=10, total=64))
     check(len(conv2) == 1 and conv2[0]['backend'] == 'python-numpy'
@@ -388,7 +395,7 @@ def main():
                                 platform_evidence='numpy: no GPU path')])
     erows = ledger.rows_from_e2e_results(
         e2e_meta, 'docs/perf_snapshots/e2e_cells_x.json',
-        dict(busy=12, total=64))
+        dict(busy=12, total=64, cpus=list(range(64))))
     check(len(erows) == 2
           and sorted(r['backend'] for r in erows) == ['fortran',
                                                       'python-numpy']
@@ -405,7 +412,8 @@ def main():
     root2 = os.path.join(tmp, 'e2e_root')
     real_tenancy = ledger.box_tenancy
     try:
-        ledger.box_tenancy = lambda ceiling: dict(busy=9, total=64)
+        ledger.box_tenancy = lambda ceiling: dict(busy=9, total=64,
+                                                  cpus=list(range(64)))
         n = ledger.capture_e2e_cells_or_warn(e2e_meta, root=root2)
         led3 = os.path.join(root2, 'docs', 'perf_ledger.jsonl')
         got = [json.loads(ln) for ln in open(led3)]

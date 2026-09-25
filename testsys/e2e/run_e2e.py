@@ -269,10 +269,27 @@ def cell_cost(case, backend):
     an unrecognized backend -- see the raise below.
     """
     if backend == 'fortran':
-        return max(1, matrix.FORTRAN_RANKS[case])
+        ranks = matrix.FORTRAN_RANKS[case]
+        if ranks <= 0:
+            raise ValueError(
+                'cell_cost: matrix.FORTRAN_RANKS[%r] = %r -- a configured '
+                'rank count must be a positive int; max(1, ...) used to '
+                'silently floor a non-positive value to 1 instead of naming '
+                'the bad config' % (case, ranks))
+        return ranks
     if backend == 'python-jax-mpi':
-        return max(1, matrix.PY_MPI_RANKS[case])
+        ranks = matrix.PY_MPI_RANKS[case]
+        if ranks <= 0:
+            raise ValueError(
+                'cell_cost: matrix.PY_MPI_RANKS[%r] = %r -- a configured '
+                'rank count must be a positive int; max(1, ...) used to '
+                'silently floor a non-positive value to 1 instead of naming '
+                'the bad config' % (case, ranks))
+        return ranks
     if backend == 'python-jax':
+        # Left alone (mission item 112.i): this is JAX_MEASURED_CORES ceil'd
+        # up to a whole thread count, not a configured rank count that could
+        # be silently wrong -- a different defect shape from the two above.
         return max(1, math.ceil(matrix.JAX_MEASURED_CORES))
     raise ValueError('cell_cost: unknown backend %r -- known: %s'
                      % (backend, ', '.join(matrix.BACKENDS)))
@@ -307,9 +324,23 @@ def profile_ranks(case, backend):
                          per.
     """
     if backend == 'fortran':
-        return max(1, matrix.FORTRAN_RANKS[case])
+        ranks = matrix.FORTRAN_RANKS[case]
+        if ranks <= 0:
+            raise ValueError(
+                'profile_ranks: matrix.FORTRAN_RANKS[%r] = %r -- a '
+                'configured rank count must be a positive int; max(1, ...) '
+                'used to silently floor a non-positive value to 1 instead '
+                'of naming the bad config' % (case, ranks))
+        return ranks
     if backend == 'python-jax-mpi':
-        return max(1, matrix.PY_MPI_RANKS[case])
+        ranks = matrix.PY_MPI_RANKS[case]
+        if ranks <= 0:
+            raise ValueError(
+                'profile_ranks: matrix.PY_MPI_RANKS[%r] = %r -- a '
+                'configured rank count must be a positive int; max(1, ...) '
+                'used to silently floor a non-positive value to 1 instead '
+                'of naming the bad config' % (case, ranks))
+        return ranks
     if backend == 'python-jax':
         return 1
     raise ValueError('profile_ranks: unknown backend %r -- known: %s'

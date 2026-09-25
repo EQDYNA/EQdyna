@@ -94,7 +94,15 @@ def check_python_bogus_raises():
     """THE mutation guard for the Python side: if enabled() regresses to
     `!= '0'`, every one of these returns True instead of raising, and the
     assertion below fires."""
-    for bogus in ('off', 'false', 'FALSE', '2', 'yes', ' 0', '0 '):
+    for bogus in ('off', 'false', 'FALSE', '2', 'yes', ' 0', '0 ',
+                  '   ',        # item 112.iii: blank-only (distinct from ''
+                                 # which is the documented ON default)
+                  'x' * 33):    # item 112.iii: one over the Fortran side's
+                                 # 32-char envval buffer (src/fortran/
+                                 # eqdyna3d.f90:27) -- Python has no such
+                                 # buffer, so this must still raise on its
+                                 # own terms, not merely "because Fortran
+                                 # would truncate it"
         with _EnvCtx(bogus):
             try:
                 profile_emit.enabled()
@@ -153,7 +161,16 @@ def check_fortran_bogus_aborts_with_named_code():
     # 'bogus' plus the blank-padded values Python refuses: rule 23 requires the
     # SAME accepted set in both languages (PR #6 audit: Fortran's trim() let
     # "0 " through while profile_emit.enabled() raised).
-    for bad in ('bogus', '0 ', ' 0', '1 '):
+    for bad in ('bogus', '0 ', ' 0', '1 ',
+                '   ',      # item 112.iii: blank-only -- hits the
+                            # envLength/=len_trim(envval) "carries blanks"
+                            # branch (eqdyna3d.f90:59-67), same code path
+                            # as '0 '/' 0', not the truncation branch below
+                'x' * 33):  # item 112.iii: one over the 32-char envval
+                            # buffer -- hits get_environment_variable's
+                            # status=-1 truncation branch (eqdyna3d.f90:
+                            # 48-58), the ONE case in this list that takes a
+                            # different code path than the others
         env = dict(os.environ)
         env['EQDYNA_PROFILE'] = bad
         with tempfile.TemporaryDirectory() as d:

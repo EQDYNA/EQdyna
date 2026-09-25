@@ -139,7 +139,11 @@ def main():
         platform='cpu', devices=None,
         platform_evidence='requested cpu: JAX_PLATFORMS=cpu pins the jax '
                           'backend to host devices',
-        parallelism='mpi')
+        parallelism='mpi',
+        # required since 2026-09-24 (row 76): the busy fraction of the
+        # SPECIFIC cpus this row's (synthetic) run used. The field itself is
+        # guarded in test_perf_row76_contention.py.
+        contention=dict(cpus=list(range(16)), busy=0, total=16))
     missing = copy.deepcopy(base_row)
     refuses_val = None
     try:
@@ -187,6 +191,7 @@ def main():
                     date='2026-09-23 16:37', n_lo=40, n_hi=160, max_busy=0.6,
                     rows=[dict(ranks=16, cpus=list(range(16)), n_lo=40, n_hi=160,
                                placement='spread',
+                               busy={c: 0.0 for c in range(16)},
                                ranks_per_node=[2, 2, 2, 2, 2, 2, 2, 2],
                                jax_halo=dict(
                                    ms_per_step=52.5,

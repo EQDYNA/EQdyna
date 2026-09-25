@@ -401,12 +401,18 @@ def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync,
         profile_record.capture_run(case_dir, case=rs.CASE,
                                    backend='python-jax-mpi', ranks=ranks,
                                    term='perf-scaling-probe', sha=_sha,
-            tree_dirty=profile_record.ledger.tree_dirty())
+            tree_dirty=profile_record.ledger.tree_dirty_once())
     except Exception as exc:                        # noqa: BLE001
         print('WARNING: profile-record capture failed for python-jax-mpi '
              '(%s: %s) -- the scaling measurement above is unaffected.'
              % (type(exc).__name__, exc))
     ps = (hi[0] - lo[0]) / float(n_hi - n_lo)
+    if ps <= 0:
+        raise RuntimeError(
+            'per-step by difference over mpirun wall clock came out %.3f ms '
+            'at %d ranks (wall %.2f s at %d steps, %.2f s at %d steps). That '
+            'is not a slow measurement, it is an invalid one -- refusing to '
+            'record it.' % (ps * 1e3, ranks, lo[0], n_lo, hi[0], n_hi))
     ms = [d['ms_per_step'] for d in hi[1]]
     ms_lo = [d['ms_per_step'] for d in lo[1]]
     solve_lo = max(ms_lo) * n_lo / 1e3
