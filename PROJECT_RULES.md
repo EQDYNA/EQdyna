@@ -1033,12 +1033,26 @@ The release workflow, in order:
    numpy` still runs by hand; it is simply no longer part of what a green gate
    must cover.
 2. Bump `VERSION`.
-3. Release notes: add a `* YYYYMMDD vX.Y.Z release notes` block under a
-   `# News in <year>` heading at the TOP of `README.md`, ending with the
-   pointer line "For past release notes, please refer to
-   pastReleaseNotes.md." Move the previous release's block from `README.md`
-   into `pastReleaseNotes.md` under its year heading, dropping the pointer
-   line.
+3. Release notes: add a `* YYYYMMDD vX.Y.Z release notes` POINTER LINE under
+   a `# News in <year>` heading at the TOP of `README.md`, linking to the
+   GitHub Release for that tag, plus the standing pointer line "For past
+   release notes, please refer to pastReleaseNotes.md." The full notes go in
+   the GitHub Release body and in `pastReleaseNotes.md` under that release's
+   own entry — never as a block of bullets inside `README.md` itself.
+
+   **Corrected 2026-09-25 (rule 26)**: this step used to read "add a `* ...
+   release notes` **block** under a `# News in <year>` heading ... Move the
+   previous release's block from `README.md` into `pastReleaseNotes.md`" —
+   i.e. it kept the CURRENT release's full notes in `README.md` until
+   superseded by the next one. Rule 26 (2026-09-24) caps `README.md` at
+   ~150 lines and requires: "Release history lives in the GitHub Release for
+   that tag and in `pastReleaseNotes.md`; `README.md` carries at most a
+   3-line 'latest release' pointer to them, never the notes themselves." PR
+   #31 followed rule 26, not this step, when it cut `README.md` from 382 to
+   127 lines, so the two texts had disagreed since 26 landed. This is a
+   rule-text conflict being reconciled, not a violation being closed: step 3
+   above is rewritten to match 26's pointer-only requirement, and no
+   release's full notes belong in `README.md` again.
 4. Add a Tasks-done row to `pathway_forward.md` (rule 14).
 5. Commit everything above together.
 6. Push the COMMIT and wait for CI to go green. Do not tag yet.
@@ -2449,12 +2463,28 @@ concentrated in a single incident worth its own postmortem.
 
 **How to apply**: before writing a dispatch brief, name which of the five
 categories above it is. If none fits, do the task directly instead of
-writing a brief for it.
+writing a brief for it. A brief for the per-PR-audit category additionally
+states, in the prompt itself: "read-only: no runs outside a scratch copy or
+your own worktree" — that category is the one most likely to reach for a
+real sweep to verify a claim, which is exactly the run rule 21b already
+forbids in the main checkout.
+
+**Incident (2026-09-25)**: an audit dispatch (this rule's per-PR-audit
+category) ran a full `testsys/run.py all` sweep in the main checkout instead
+of its own worktree or a scratch copy (pathway item 129). The sweep itself
+passed, 23/23, so the only cost was three files
+(`docs/perf_ledger.jsonl`, `docs/run_profiles.jsonl`, a snapshot) left
+uncommitted in a tree rule 21b already names as nobody's to write. This rule
+authorizes the dispatch; until now it said nothing about what the brief must
+forbid the agent from touching once it starts, and a brief silent on that
+reads as permission.
 
 **Tier**: hortatory. No guard in this repository can see a dispatch that was
 never issued, or judge whether one that was issued was "real workload" —
 that call is made once, before the dispatch, by the person or conductor
-deciding to make it.
+deciding to make it. The read-only sentence above is likewise unenforceable
+mechanically: nothing here can inspect a prompt that was never issued as a
+file.
 
 ---
 
@@ -2900,6 +2930,12 @@ PR reviewer. Concretely:
   `pastReleaseNotes.md`; `README.md` carries at most a 3-line "latest
   release" pointer to them, never the notes themselves.
 
+**The owner's own bar, verbatim (2026-09-25)**: "README is user facing,
+concise, and accurate, and new users should follow easily." Accurate and
+followable are requirements this rule enforces, not only the format bullets
+above — a README that is short, single-`H1`, and free of internal references
+can still fail this rule if a user cannot act on it unchanged.
+
 **Rationale**: the two audiences want opposite things from the same page. An
 agent wants the SHA, the PR, the exact line — a citation trail it can
 re-verify. A user wants to install the code and run a case; every one of
@@ -2912,6 +2948,17 @@ bad." Measured: 382 lines / 3,672 words, every heading `H1` (no `H2`/`H3` at
 all), and a "News in 2026" block whose 15 longest lines (all over 200
 characters) carry PR numbers, commit SHAs, rule numbers and `file:line`
 citations — exactly the internal-reference content this rule now excludes.
+
+**Incident (2026-09-25)**: the 127-line `README.md` that closed pathway item
+125 (PR #31) passed every format bullet above and was still wrong end to
+end, verified fresh: `python3 -m eqdyna ... --backend jax` raised
+`ModuleNotFoundError` because no documented install step sets `PYTHONPATH`;
+`bash ubuntu.env.sh` runs `apt-get` with no `sudo`; the documented "unit
+regression # a few seconds" step actually takes minutes; there is no
+runnable quick-start example and no statement of what a user gets at the
+end; dev-only detail (the stale-binary paragraph, `run.py gpu`, `chmod`)
+remained. Format compliance measured correctness not at all — carried as
+pathway item 128, distinct from item 125's format closure.
 
 **Why ~150 lines**: at one or two sentences per bullet, 150 lines covers an
 overview, a quickstart, and the handful of things that most often go wrong —
@@ -2927,9 +2974,15 @@ cites a PR, a SHA, a rule, an agent, or a `file:line`, it belongs in
 internal-reference content out the same way, in the same change that trims
 it.
 
-**Tier**: unenforceable today — `testsys/regression/test_user_docs_style.py`
-is written into `pathway_forward.md` (item 124) but not yet built. It becomes
-mechanical once that guard runs in `testsys/run.py unit regression` and
-checks, per covered file: heading shape (one `H1`), an internal-reference
-pattern list (SHA regex, `#\d+` PR-number pattern, `file\.\w+:\d+`, known
-agent names), and `README.md`'s line count.
+**Tier**: mixed. The FORMAT half is MECHANICAL since 2026-09-25:
+`testsys/regression/test_user_docs_style.py` (PR #31, pathway item 124,
+closed) checks, per covered file, heading shape (one `H1`), an
+internal-reference pattern list (SHA regex, `#\d+` PR-number pattern,
+`file\.\w+:\d+`, known agent names), and `README.md`'s line count. The
+ACCURACY/FOLLOWABILITY half added above is UNENFORCEABLE today: it needs
+`testsys/regression/test_readme_executes.py` (pathway item 128, not yet
+built) — a test that executes the README verbatim, in order, in a fresh
+clone, as non-root, with no pre-set `PYTHONPATH`/`EQDYNAROOT`, through
+install, quick start (one case at the gate term) and viewing a result;
+documented root/apt and hours-long exceptions aside, mutation-tested so an
+erroring README step fails it.
