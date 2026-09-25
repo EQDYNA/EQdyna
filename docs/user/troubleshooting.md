@@ -65,6 +65,7 @@ authoritative; the specific number is advisory under `srun`.
 |-----:|------|---------|
 | 51 | `ERR_MPI_FAULT_ALIGNMENT` | a rank boundary in y coincides with the fault plane (not raised as of v5.8.2; downgraded to a NOTICE, see syncArnBoundary) |
 | 52 | `ERR_MPI_BAD_NEIGHBOR` | point-to-point exchange with a rank outside 0..npx*npy*npz-1 |
+| 53 | `ERR_MPI_AXIS_TOO_THIN` | a rank's local 1D slice on x/y/z has fewer than 2 nodes (npx/npy/npz too large for this grid) |
 
 **Numerics and runtime state** (61-69)
 

@@ -271,19 +271,29 @@ def _off_fault_only(rank_files):
             for r, files in rank_files.items()}
 
 
-def _ownership_violations(rank_files):
+def _ownership_violations(rank_files, expected=None):
     """The ONE check this guard is built on: every filename across every
     rank's set must appear in EXACTLY ONE rank. Returns a dict
     {filename: [owning ranks]} for every filename that appears 0 or >1
-    times (0 is impossible to observe this way -- a name that appears
-    nowhere is simply absent -- so in practice this reports >1; the
-    MUTATION check below exercises the 0-owner shape by comparing
-    EXPECTED names against the observed set instead)."""
+    times. Without `expected`, a 0-owner name is invisible (a name that
+    appears nowhere is simply absent from `rank_files`) -- so the real
+    per-case checks below, which have no independent "expected" list, only
+    ever see the >1 (DUPLICATE) shape through this function, by
+    construction. When `expected` (a set of filenames the caller knows
+    SHOULD have been produced) is given, any name in it that owns zero
+    ranks is ALSO reported here, as `name: []` -- this is what lets the
+    0-owner (DROP) shape be observed through this SAME function instead of
+    a separate hand-rolled set-difference (row 132(2))."""
     owners = {}
     for r, files in rank_files.items():
         for f in files:
             owners.setdefault(f, []).append(r)
-    return {f: rs for f, rs in owners.items() if len(rs) != 1}
+    violations = {f: rs for f, rs in owners.items() if len(rs) != 1}
+    if expected is not None:
+        for f in expected:
+            if f not in owners:
+                violations[f] = []
+    return violations
 
 
 def _run_one_case(spec, binpath, tmp):
@@ -350,21 +360,32 @@ def main():
             checks.append(('%s: boundary station owned by the SAME rank in both languages'
                            % label, f_owner == p_owner, True))
 
-            # Point 4: on-fault has NO drop gap but DOES carry a pre-existing,
-            # untouched duplicate hazard -- assert it happens, identically,
-            # in both languages (a KNOWN fact, like test_row120's own DROP
-            # assertion), so a future accidental fix to setOnFaultStation
-            # is noticed here rather than silently changing this test's
-            # meaning.
-            fortran_on_violations = _ownership_violations(
-                {r: {f for f in files if f.startswith('faultst')}
-                 for r, files in fortran_ranks.items()})
-            python_on_violations = _ownership_violations(
-                {r: {f for f in files if f.startswith('faultst')}
-                 for r, files in python_ranks.items()})
-            checks.append(('%s: on-fault duplicate hazard reproduces IDENTICALLY '
-                           'in both languages (point 4, pre-existing, not fixed here)'
-                           % label, fortran_on_violations == python_on_violations, True))
+            # Row 131: on-fault matching now carries the SAME x/z ownership
+            # gate as off-fault (row 127) -- assert EXACTLY ONE owner per
+            # faultst* file, in both languages, not merely "both languages
+            # agree" (that equality would pass vacuously if both sides
+            # still duplicated the SAME way, which is exactly the shape
+            # this row closes -- before the fix this assertion read "on-
+            # fault duplicate hazard reproduces IDENTICALLY in both
+            # languages" and PASSED on the hazard; a fix that broke only
+            # one language would have shown up there only as an inequality,
+            # not as a violation count).
+            fortran_on = {r: {f for f in files if f.startswith('faultst')}
+                          for r, files in fortran_ranks.items()}
+            python_on = {r: {f for f in files if f.startswith('faultst')}
+                         for r, files in python_ranks.items()}
+            fortran_on_violations = _ownership_violations(fortran_on)
+            python_on_violations = _ownership_violations(python_on)
+            checks.append(('%s: zero on-fault ownership violations (fortran)'
+                           % label, len(fortran_on_violations) == 0, True))
+            checks.append(('%s: zero on-fault ownership violations (python)'
+                           % label, len(python_on_violations) == 0, True))
+            checks.append(('%s: fortran per-rank map == python per-rank map (on-fault)'
+                           % label, fortran_on == python_on, True))
+            if fortran_on_violations:
+                print('  fortran on-fault violations:', fortran_on_violations)
+            if python_on_violations:
+                print('  python  on-fault violations:', python_on_violations)
 
         # MUTATION CHECK (rule 10a): corrupt real data two ways and assert
         # the checker catches both shapes origin/master fails in (recorded
@@ -379,9 +400,15 @@ def main():
                        'a.txt' in _ownership_violations(dup), True))
         dropped = {0: {'b.txt'}, 1: {'c.txt'}}  # 'a.txt' vanished from every rank
         expected_names = {'a.txt', 'b.txt', 'c.txt'}
-        observed_names = set().union(*dropped.values())
-        checks.append(('MUTATION: drop is CAUGHT (expected-vs-observed name set)',
-                       expected_names - observed_names == {'a.txt'}, True))
+        # Row 132(2): this used to compute `expected_names - observed_names`
+        # by hand, never calling `_ownership_violations` at all -- tautological,
+        # it proved python set arithmetic works, not that the guard function
+        # can see a drop. Now it calls the SAME function real callers use,
+        # with `expected` supplied so the 0-owner name is observable through
+        # it (see that function's docstring).
+        drop_violations = _ownership_violations(dropped, expected=expected_names)
+        checks.append(('MUTATION: drop is CAUGHT (via _ownership_violations)',
+                       drop_violations.get('a.txt') == [], True))
 
         for label, got, expect_pass in checks:
             ok = (got is True) == expect_pass
