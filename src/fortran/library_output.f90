@@ -164,6 +164,16 @@ subroutine output_offfault_st
             ! nint(), not int() (pathway item 93): the on-fault writer rounds
             ! and this one truncated, so a station at y=1.99 km filed as
             ! body019 instead of body020. The i4.3 edit carries the sign.
+            !
+            ! Row 94 (owner ruling 2026-09-24): the FILE NAME is deliberately
+            ! kept derived from x4nds, the REQUESTED station coordinate, not
+            ! the matched node's actual location -- unlike the location
+            ! stamp just below. A name keyed to the request is the stable,
+            ! resolution-independent identifier a station has (it is what
+            ! bStations.txt asked for, and what testsys/matrix.py's
+            ! GATE_STATIONS names by), where a name keyed to the snapped
+            ! node would change with grid spacing for any station not
+            ! already on a grid plane.
             write(bodytmp,'(i4.3)') nint(x4nds(2,OffFaultStNodeIdIndex(1,i))/100.d0)
             write(sttmp,'(i4.3)') nint(x4nds(1,OffFaultStNodeIdIndex(1,i))/100.d0)
             write(dptmp,'(i4.3)') nint(abs(x4nds(3,OffFaultStNodeIdIndex(1,i)))/100.d0)
@@ -173,19 +183,26 @@ subroutine output_offfault_st
             bodytmp = '      '
             sttmp = '      '
             dptmp = '      '
-            write(bodytmp,'(f5.1)') x4nds(2,OffFaultStNodeIdIndex(1,i))/1000. 
-            write(sttmp,'(f5.1)') x4nds(1,OffFaultStNodeIdIndex(1,i))/1000. 
-            write(dptmp,'(f5.1)') abs(x4nds(3,OffFaultStNodeIdIndex(1,i)))/1000. 
+            ! Row 94: the header LOCATION STAMP (unlike the file name above)
+            ! now records the ACTUAL matched node location, meshCoor(:,
+            ! OffFaultStNodeIdIndex(2,i)) -- OffFaultStNodeIdIndex(2,i) is
+            ! the matched node's id (nodeCount, meshgen.f90), so this is
+            ! exactly the node setSurfaceStation matched this station to,
+            ! not the raw request. Before this fix the request and the match
+            ! were identical whenever depth landed exactly on a grid plane
+            ! (the only case that used to match at all); now that depth can
+            ! snap to a neighbouring plane, the two can legitimately differ
+            ! and the header must say what was actually written, not what
+            ! was asked for.
+            write(bodytmp,'(f5.1)') meshCoor(2,OffFaultStNodeIdIndex(2,i))/1000.
+            write(sttmp,'(f5.1)') meshCoor(1,OffFaultStNodeIdIndex(2,i))/1000.
+            write(dptmp,'(f5.1)') abs(meshCoor(3,OffFaultStNodeIdIndex(2,i)))/1000.
             ! Vertical depth, NOT a down-dip distance -- unlike the on-fault
-            ! stamp at :65, this one takes no /dsin(dip) correction. x4nds is
-            ! read as a plain (x,y,z) triple in km from bStations.txt
-            ! (readInputFiles.f90:218, scaled to m at :223) and its third
-            ! component is matched against the raw mesh node z-coordinate
-            ! nodeCoor(3) in setSurfaceStation (meshgen.f90:625). These are
-            ! body/surface receivers at arbitrary (x,y,z) in the volume, off
-            ! the fault plane by x4nds(2) -- a point that is not on the fault
-            ! has no down-dip coordinate to convert to, so |z| is the right
-            ! quantity and 'depth' is the right label.
+            ! stamp at :65, this one takes no /dsin(dip) correction. These
+            ! are body/surface receivers at arbitrary (x,y,z) in the volume,
+            ! off the fault plane by the y-component -- a point that is not
+            ! on the fault has no down-dip coordinate to convert to, so |z|
+            ! is the right quantity and 'depth' is the right label.
             ! Missing ', ' separator (pathway item 88): the stamp used to
             ! render as '5.0 km along strike3.0 km depth'.
             stLocStamp = '# location = '//trim(adjustl(bodytmp))//' km off fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km depth'
@@ -654,38 +671,85 @@ subroutine readPid(pid)
 end subroutine readPid
 
 !#11
-subroutine report_dropped_offfault_st(matchedAnyRank)
-    ! pathway_forward.md item 94. setSurfaceStation (meshgen.f90) matches an
-    ! off-fault station's DEPTH exactly (|nodeCoor(3) - x4nds(3,i)| < tol)
-    ! and snaps only x and y to the nearest interior node, so a station whose
-    ! depth is not a grid z-plane, or which lies outside the interior x/y
-    ! range, matches no node on any rank and output_offfault_st writes no
-    ! file for it. That used to happen with no message at all (test.tpv8 at
-    ! dx = 500 m: its four z = -0.3 km stations). This names every such
-    ! station. It does NOT snap or refuse: either would change which body*
-    ! files a case writes, and that is the owner's call.
+subroutine report_dropped_offfault_st(matchedAnyRank, actualCoorGlobal)
+    ! pathway_forward.md item 94 (owner ruling 2026-09-24: clamp station
+    ! depth to the nearest node). setSurfaceStation (meshgen.f90) used to
+    ! match an off-fault station's DEPTH exactly
+    ! (|nodeCoor(3) - x4nds(3,i)| < tol), so a station whose depth was not a
+    ! grid z-plane matched no node on any rank and output_offfault_st wrote
+    ! no file for it -- test.tpv8 at dx = 500 m: its four z = -0.3 km
+    ! stations, with no message at all. Depth now snaps to the nearest node
+    ! the same way x and y already do, so every station whose (x,y) is
+    ! inside the mesh now matches SOME node -- possibly not the one
+    ! requested. This subroutine reports that difference loudly instead of
+    ! staying silent about it:
+    !   - a station matched but at a node other than the one requested is a
+    !     SNAP: named as "snapped off-fault station" (and, so a station that
+    !     would have been silently dropped before this fix stays equally
+    !     loud and equally grep-able, the line also says "...would otherwise
+    !     be a dropped off-fault station").
+    !   - a station matched on NO rank at all (x or y outside the mesh --
+    !     snapping depth cannot fix that) is a true DROP: still named
+    !     "dropped off-fault station", unchanged from before.
     ! matchedAnyRank(i) is (n4yn(i) /= 0) OR-reduced over all ranks
     ! (checkOffFaultStationCoverage, eqdyna3d.f90), so a station found by any
-    ! rank counts as written.
+    ! rank counts as matched. actualCoorGlobal(:,i) is that station's
+    ! matched node's (x,y,z), MAX-reduced over all ranks (reduceOffFault-
+    ! StationCoor above); for a station matched by no rank it still carries
+    ! the UNMATCHED_SENTINEL value and is not read.
     use globalvar
     implicit none
 
     logical, intent(in) :: matchedAnyRank(totalNumOfOffSt)
-    integer (kind = 4) :: i, nDropped
+    real (kind = dp), intent(in) :: actualCoorGlobal(3,totalNumOfOffSt)
+    integer (kind = 4) :: i, nDropped, nSnapped
+    real (kind = dp) :: dist
 
     nDropped = count(.not. matchedAnyRank)
-    if (nDropped == 0) return
-
-    write(*,'(a,i0,a,i0,a)') ' WARNING: ', nDropped, ' of ', totalNumOfOffSt, &
-        ' requested off-fault stations match no grid node and get NO body* file'
-    write(*,'(a)') '   (setSurfaceStation, meshgen.f90: depth must equal a grid z-plane' // &
-        ' within tol; x and y snap to the nearest interior node)'
+    nSnapped = 0
     do i = 1, totalNumOfOffSt
-        if (.not. matchedAnyRank(i)) then
-            write(*,'(a,i0,a,3f10.3,a)') '   dropped off-fault station ', i, &
-                ' at x,y,z =', x4nds(1,i)/1000.d0, x4nds(2,i)/1000.d0, x4nds(3,i)/1000.d0, ' km'
+        if (matchedAnyRank(i)) then
+            dist = sqrt((actualCoorGlobal(1,i)-x4nds(1,i))**2 + &
+                        (actualCoorGlobal(2,i)-x4nds(2,i))**2 + &
+                        (actualCoorGlobal(3,i)-x4nds(3,i))**2)
+            if (dist > tol) nSnapped = nSnapped + 1
         endif
     enddo
+    if (nDropped == 0 .and. nSnapped == 0) return
+
+    if (nSnapped > 0) then
+        write(*,'(a,i0,a,i0,a)') ' NOTICE: ', nSnapped, ' of ', totalNumOfOffSt, &
+            ' requested off-fault stations do not sit exactly on a grid node'
+        write(*,'(a)') '   (setSurfaceStation, meshgen.f90: x, y and z all now snap to the' // &
+            ' nearest node instead of z requiring an exact grid-plane match)'
+        do i = 1, totalNumOfOffSt
+            if (matchedAnyRank(i)) then
+                dist = sqrt((actualCoorGlobal(1,i)-x4nds(1,i))**2 + &
+                            (actualCoorGlobal(2,i)-x4nds(2,i))**2 + &
+                            (actualCoorGlobal(3,i)-x4nds(3,i))**2)
+                if (dist > tol) then
+                    write(*,'(a,i0,a,3f10.3,a,3f10.3,a,f8.3,a)') &
+                        '   snapped off-fault station ', i, &
+                        ' (would otherwise be a dropped off-fault station): requested x,y,z =', &
+                        x4nds(1,i)/1000.d0, x4nds(2,i)/1000.d0, x4nds(3,i)/1000.d0, &
+                        ' km, actual x,y,z =', &
+                        actualCoorGlobal(1,i)/1000.d0, actualCoorGlobal(2,i)/1000.d0, &
+                        actualCoorGlobal(3,i)/1000.d0, ' km, distance =', dist/1000.d0, ' km'
+                endif
+            endif
+        enddo
+    endif
+
+    if (nDropped > 0) then
+        write(*,'(a,i0,a,i0,a)') ' WARNING: ', nDropped, ' of ', totalNumOfOffSt, &
+            ' requested off-fault stations match no grid node (outside the mesh) and get NO body* file'
+        do i = 1, totalNumOfOffSt
+            if (.not. matchedAnyRank(i)) then
+                write(*,'(a,i0,a,3f10.3,a)') '   dropped off-fault station ', i, &
+                    ' at x,y,z =', x4nds(1,i)/1000.d0, x4nds(2,i)/1000.d0, x4nds(3,i)/1000.d0, ' km'
+            endif
+        enddo
+    endif
 end subroutine report_dropped_offfault_st
 
 !#12

@@ -1530,6 +1530,13 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
     rematching a station once found, exactly reproducing Fortran's `exit`
     -after-first-match / do-loop-order semantics.
 
+    Row 94 (owner ruling 2026-09-24): the DEPTH test in each branch used to
+    require `zcoor == x4nds[2,i-1]` exactly (within `tol`), so a station
+    whose requested depth was not itself a grid z-plane matched no node at
+    all. It now tests against `z_snap[i-1]`, the requested depth clamped to
+    the nearest node of `zline` (computed once, above, before the loop) --
+    x and y are unchanged, they already snap to the nearest interior node.
+
     On-fault matching is a single exact-coordinate (within `tol`) test
     against `xonfs(1,:,1)` (along-strike x) and `xonfs(2,:,1)` (along-dip
     z), tried once per fault node in fault-encounter order (same order as
@@ -1565,6 +1572,16 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
     n_onf = xonfs.shape[1]
     matched = np.zeros(n_off + 1, dtype=bool)  # 1-indexed
 
+    # Row 94 (owner ruling 2026-09-24): clamp each requested off-fault
+    # station's depth to the nearest node of `zline` -- here the FULL
+    # global z grid already (this port's serial builder holds the whole
+    # domain, not a per-rank slice, unlike meshgen.f90's MPI-partitioned
+    # zline), so this is a plain nearest-value search, no cross-rank
+    # reduction needed. x and y are unchanged: they already snap to the
+    # nearest interior node in the branches below.
+    zline_arr = np.asarray(zline)
+    z_snap = zline_arr[np.argmin(np.abs(zline_arr[None, :] - x4nds[2, :][:, None]), axis=1)]
+
     anonfs = []
     off_fault_matches = []
     node_count = 0
@@ -1590,7 +1607,7 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
                         if matched[i]:
                             continue
                         xs = x4nds[0, i - 1]
-                        if abs(zcoor - x4nds[2, i - 1]) >= tol:
+                        if abs(zcoor - z_snap[i - 1]) >= tol:
                             continue
                         if not (abs(xcoor - xs) < tol or
                                 (xs > xline[ix - 1] and xs < xcoor and
@@ -1607,7 +1624,7 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
                         if matched[i]:
                             continue
                         xs = x4nds[0, i - 1]
-                        if abs(zcoor - x4nds[2, i - 1]) >= tol:
+                        if abs(zcoor - z_snap[i - 1]) >= tol:
                             continue
                         if not (abs(xcoor - xs) < tol or
                                 (xs > xcoor and xs < xline[ix + 1] and
@@ -1622,7 +1639,7 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
                         if matched[i]:
                             continue
                         xs = x4nds[0, i - 1]
-                        if abs(zcoor - x4nds[2, i - 1]) >= tol:
+                        if abs(zcoor - z_snap[i - 1]) >= tol:
                             continue
                         if not (xs > xline[ix - 1] and xs < xcoor and
                                 (xcoor - xs) < (xs - xline[ix - 1])):
