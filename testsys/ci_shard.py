@@ -76,6 +76,18 @@ SHARDS = {
                                  # tool defects): pure monkeypatched
                                  # behavioural checks, no MPI/subprocess/box
                                  # dependence, well under 1 s.
+        "test_perf_row76_contention.py",  # added 2026-09-24 (Iris, row 76
+                                 # contention field + row 112.ii tree_dirty_
+                                 # once): pure in-memory ledger checks, no
+                                 # /proc/stat/numactl/git subprocess, <1 s.
+        "test_perf_row92_busy_probe.py",  # added 2026-09-24 (Iris, row 92
+                                 # busy_probe extraction): monkeypatched
+                                 # cpu_busy_fractions, no real /proc/stat
+                                 # read, <1 s.
+        "test_perf_row112_e2e_ranks.py",  # added 2026-09-24 (Iris, row 112.i
+                                 # cell_cost/profile_ranks non-positive-rank
+                                 # guard): pure monkeypatched matrix table,
+                                 # no case build/solver run, <1 s.
         "test_release_evidence_tree_clean.py",  # added 2026-09-23 (Iris, rule-24 tree_clean fix): 2 sandbox git-init scenarios, well under 1 s
         "test_profile_guard.py",  # added 2026-09-23 (item 3, profile-guard
                                  # testsys half); ~0.03 s, pure fixture/schema

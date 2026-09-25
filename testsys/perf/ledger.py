@@ -48,6 +48,40 @@ Row schema (one measurement = one line):
   tenancy_busy/tenancy_total  whole-box cpus over that ceiling at run time
                     (nullable ONLY on backfilled rows -- old snapshots did not
                     record whole-box tenancy).
+  contention        box-contention field, SCOPED TO THE CPUS THIS ROW'S
+                    MEASUREMENT ACTUALLY USED -- the counterpart tenancy_busy/
+                    tenancy_total is blind to (CLAUDE.md: cpu 0 and cpu 1 both
+                    read /proc/stat busy 0.00 and still delivered
+                    EFFECTIVE_CORES 0.39; a whole-box tenancy figure of "0
+                    busy" cannot show that). {cpus: sorted list of int cpu ids
+                    the measurement was pinned to (its own numactl/mpirun
+                    binding, never the whole box), busy: count of those cpus
+                    whose busy fraction exceeded the row's own busy_ceiling,
+                    total: len(cpus)}. SAMPLED from exactly the same
+                    instrument as tenancy_busy (run_numa_scaling.
+                    cpu_busy_fractions: a TWO-READ /proc/stat idle-time delta
+                    over a short window, sample_s=0.3s by default) but NOT a
+                    second sample of it -- this field is built from the SAME
+                    pre-flight busy check (run_numa_scaling.require_idle, or
+                    the equivalent per-tool busy read) the tool already
+                    performed to decide whether to run the point at all
+                    (row 92's busy_probe sampler), so the number on the row is
+                    the exact one the run was gated on. For a tool that pins
+                    no cpu set at all (run_e2e: unpinned cells), `cpus` is the
+                    whole-box cpu list box_tenancy already read and `busy`/
+                    `total` equal tenancy_busy/tenancy_total exactly -- for an
+                    unpinned process "the cpus the measurement used" IS the
+                    whole box, by construction, not a default.
+                    THIS RECORDS CONTENTION, IT DOES NOT CERTIFY COMPARABILITY
+                    (rule 6a): a low `busy` count is not proof that two
+                    absolute ms/step numbers from different repetitions are
+                    comparable -- only a paired ratio inside one repetition
+                    is. REQUIRED on every row this module APPENDS from now on
+                    (2026-09-24, row 76), on the same fail-closed terms as
+                    `parallelism`: unlike `placement`/`tree_dirty` this is NOT
+                    scoped to one tool -- every tool's new rows carry it.
+                    Rows appended before this field existed lack the key and
+                    must be read as UNMEASURED contention, never as "quiet".
   metric            'per-step-by-difference' (n_lo/n_hi required ints) or
                     'cell-wall-clock' (one e2e cell's whole wall time: setup +
                     solve + compare + XLA compile). THE TWO ARE NOT COMPARABLE
@@ -265,6 +299,28 @@ def _row_identity(row):
                row.get('ranks'), row.get('snapshot')))
 
 
+_tree_dirty_cache = {}
+
+
+def tree_dirty_once(paths=('src', 'testsys'), root=ROOT):
+    """`tree_dirty`, memoized for the lifetime of THIS PROCESS (row 91/item
+    6ii, 2026-09-24: 'once per invocation'). run_perf.py, run_scaling.py and
+    run_mpi_scaling.py each call tree_dirty() once PER CAPTURE, and a single
+    invocation of any of them captures many times (once per engine/rank
+    point) -- so a tree edited mid-sweep (a concurrent session, or the
+    sweep's OWN mid-run writes under docs/) could hand different points of
+    the SAME run different tree_dirty values, and those points would then
+    disagree about whether their own sha is trustworthy. Call this, not
+    `tree_dirty`, from any site that captures more than once per process;
+    the first call's git read is authoritative for every later call in this
+    process, by construction of the cache being process-lifetime and never
+    invalidated."""
+    key = (tuple(paths), root)
+    if key not in _tree_dirty_cache:
+        _tree_dirty_cache[key] = tree_dirty(paths, root)
+    return _tree_dirty_cache[key]
+
+
 def _check_parallelism(row):
     """Fail closed on the `ranks` discriminator. Guarded incident
     (2026-09-23): `ranks` meant MPI processes on fortran/run_mpi_scaling rows
@@ -326,6 +382,90 @@ def _check_placement(row):
             'ranks_per_node %r must be a non-empty list of ints on a row '
             'carrying placement=%r (row: %s)'
             % (rpn, p, _row_identity(row)))
+
+
+def _busy_dict(busy_check):
+    """Normalise a tool's pre-flight busy check into {int cpu: 0..1 fraction}.
+    Two shapes are in live use and both are accepted, deliberately, rather
+    than forcing every caller to convert first:
+      - run_numa_scaling.require_idle's 5-tuple
+        (load1, load5, load15, other_users, busy_dict) -- run_scaling.py and
+        run_shard_scaling.py's rows carry this whole tuple as their 'busy'
+        field.
+      - a bare {cpu (int or str key): fraction} dict -- run_mpi_scaling.py
+        and run_jaxmpi_ab.py's rows carry this shape.
+    Raises on anything else: a contention field built from a busy check this
+    function cannot interpret would be a guess, not a measurement."""
+    if isinstance(busy_check, dict):
+        return {int(k): v for k, v in busy_check.items()}
+    if isinstance(busy_check, (tuple, list)) and len(busy_check) == 5:
+        return {int(k): v for k, v in busy_check[4].items()}
+    raise ValueError('cannot interpret busy check %r as a per-cpu busy map '
+                     '-- known shapes: a require_idle() 5-tuple, or a bare '
+                     '{cpu: fraction} dict' % (busy_check,))
+
+
+def contention_from_check(busy_check, ceiling):
+    """The `contention` field for ONE measurement, built from the tool's OWN
+    pre-flight busy check (see ledger.py's module docstring, `contention`) --
+    never a fresh resample. Raises if the check named no cpus at all."""
+    busy = _busy_dict(busy_check)
+    cpus = sorted(busy)
+    if not cpus:
+        raise ValueError('contention_from_check: busy check named no cpus '
+                         '-- cannot build a contention field from it')
+    return dict(cpus=cpus,
+               busy=sum(1 for b in busy.values()
+                        if b is not None and b > ceiling),
+               total=len(cpus))
+
+
+def contention_from_tenancy(tenancy):
+    """The `contention` field for a tool that pins no cpu set at all
+    (run_e2e: unpinned cells) -- for such a tool, 'the cpus the measurement
+    used' IS the whole box box_tenancy already sampled, so this is a
+    relabelling of that same reading, not a second measurement."""
+    if 'cpus' not in tenancy:
+        raise ValueError(
+            "contention_from_tenancy: tenancy dict has no 'cpus' key -- "
+            'call box_tenancy (which now records the cpu ids it sampled), '
+            'not an older tenancy dict shape')
+    return dict(cpus=list(tenancy['cpus']), busy=tenancy['busy'],
+               total=tenancy['total'])
+
+
+def _check_contention(row):
+    """Fail closed on the `contention` field (row 76, 2026-09-24). UNLIKE
+    `placement`/`tree_dirty`, this is NOT scoped to one tool: every tool's
+    NEW rows carry it. No value is defaulted in -- an assumed low-contention
+    reading is exactly the failure this field exists to prevent (CLAUDE.md:
+    '/proc/stat idle does not mean fast')."""
+    if 'contention' not in row:
+        raise ValueError(
+            'row is missing required field %r -- every appended row must '
+            'record the busy fraction of the cpus it actually used, from %s'
+            % ('contention', _row_identity(row)))
+    c = row['contention']
+    if not isinstance(c, dict):
+        raise ValueError('contention %r must be a dict on row from %s'
+                         % (c, _row_identity(row)))
+    missing = [k for k in ('cpus', 'busy', 'total') if k not in c]
+    if missing:
+        raise ValueError('contention missing %s on row from %s'
+                         % (missing, _row_identity(row)))
+    cpus = c['cpus']
+    if not (isinstance(cpus, list) and cpus
+            and all(isinstance(x, int) for x in cpus)):
+        raise ValueError('contention.cpus %r must be a non-empty list of '
+                         'ints on row from %s' % (cpus, _row_identity(row)))
+    if not (isinstance(c['total'], int) and c['total'] == len(cpus)):
+        raise ValueError('contention.total %r must equal len(cpus)=%d on '
+                         'row from %s'
+                         % (c['total'], len(cpus), _row_identity(row)))
+    if not (isinstance(c['busy'], int) and 0 <= c['busy'] <= c['total']):
+        raise ValueError('contention.busy %r must be an int in [0, total=%d] '
+                         'on row from %s'
+                         % (c['busy'], c['total'], _row_identity(row)))
 
 
 def validate(row, appending=False):
@@ -395,6 +535,11 @@ def validate(row, appending=False):
     # as absent on read (legacy rows, and rows from every other tool).
     if row.get('tool') == 'run_e2e' and (appending or 'tree_dirty' in row):
         _check_tree_dirty(row)
+    # Universal, unlike placement/tree_dirty: every tool's NEW rows carry
+    # contention (row 76). Same legacy-read contract: required on append,
+    # tolerated as absent on read (rows appended before it existed).
+    if appending or 'contention' in row:
+        _check_contention(row)
     if row['metric'] == 'per-step-by-difference':
         ms = row['ms_per_step']
         if not (isinstance(ms, (int, float)) and ms > 0):
@@ -528,7 +673,14 @@ def box_tenancy(ceiling):
     if not vals:
         raise SystemExit('FAIL: could not read per-cpu utilisation from '
                          '/proc/stat -- cannot record box tenancy.')
-    return dict(busy=sum(1 for b in vals if b > ceiling), total=len(vals))
+    # `cpus` (2026-09-24, row 76): exactly the cpu ids counted into `total`
+    # above (i.e. the ones actually read, not the full requested set -- a
+    # cpu that could not be read is excluded from both), so a caller with no
+    # cpu set of its own (run_e2e: unpinned cells) can build a `contention`
+    # field from this SAME sample via contention_from_tenancy, instead of
+    # taking a second one.
+    return dict(busy=sum(1 for b in vals if b > ceiling), total=len(vals),
+               cpus=sorted(c for c in all_cpus if busy.get(c) is not None))
 
 
 def _base(meta, tool, snapshot, tenancy, backfilled_from):
@@ -618,35 +770,55 @@ def _SCALING_PARALLELISM(engine):
             % (engine, sorted(_SCALING_PARALLELISM_BY_ENGINE))) from None
 
 
-def rows_from_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None):
-    """Ledger rows from a run_scaling.py snapshot dict (its `meta`).
-    One row per measured (engine, n, policy) point; skipped configs produce
-    no row -- they are recorded in the snapshot itself.
+def rows_from_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None,
+                               tool='run_scaling'):
+    """Ledger rows from a run_scaling.py-SHAPED snapshot dict (its `meta`):
+    also used by run_shard_scaling.py (item 91a's ledger half, 2026-09-24),
+    via `tool='run_shard_scaling'` -- its rows have no 'engine'/'policy' keys
+    (every point is jax; the axis that varies is 'mode', not engine), so
+    those two are read with a fallback rather than forcing a second,
+    near-identical converter to exist (rule 1).
+
+    One row per measured (engine-or-mode, n, policy-or-mode) point; skipped
+    configs produce no row -- they are recorded in the snapshot itself.
 
     Platform is 'cpu' for every engine BY CONSTRUCTION of the tool, not by
     default: fortran has no GPU path, numpy has no GPU backend, and
-    run_scaling pins JAX_PLATFORMS=cpu on its python runs (run_scaling.py's
-    env setup), which jax cannot override onto a GPU."""
+    run_scaling/run_shard_scaling pin JAX_PLATFORMS=cpu on their python runs,
+    which jax cannot override onto a GPU.
+
+    `ranks` DECLARATION for a run_shard_scaling point (item 91a): `n` is the
+    device count handed to ONE process via EQDYNA_JAX_DEVICES, and `room()`
+    selects exactly `n` cpus for that same process's affinity mask -- so
+    `ranks` counts cpus made available to ONE process, precisely what the
+    EXISTING 'threads' parallelism value already means (ledger.py:77-102);
+    no new PARALLELISM value is invented for it."""
     _CPU_EV = {'fortran': FORTRAN_CPU_EVIDENCE,
                'python-numpy': 'numpy backend: host arrays only, no GPU path',
-               'python-jax': 'run_scaling pins JAX_PLATFORMS=cpu; jax cannot '
-                             'land on a GPU under that pin'}
+               'python-jax': '%s pins JAX_PLATFORMS=cpu; jax cannot land on '
+                             'a GPU under that pin' % tool}
     out = []
     for r in meta['rows']:
-        row = _base(meta, 'run_scaling', snapshot, tenancy, backfilled_from)
-        row.update(backend=r['engine'], ranks=r['n'],
+        row = _base(meta, tool, snapshot, tenancy, backfilled_from)
+        engine = r.get('engine', 'python-jax')
+        policy = r.get('policy', r.get('mode'))
+        row.update(backend=engine, ranks=r['n'],
                    ms_per_step=r['ms_per_step'],
-                   parallelism=_SCALING_PARALLELISM(r['engine']),
+                   parallelism=_SCALING_PARALLELISM(engine),
                    platform='cpu', devices=None,
                    platform_evidence=_CPU_EV.get(
-                       r['engine'], 'run_scaling is a CPU-only tool'),
-                   # run_scaling measures aggregate per-step only; per-rank
-                   # quantities are explicit nulls, not zeros.
+                       engine, '%s is a CPU-only tool' % tool),
+                   # run_scaling/run_shard_scaling measure aggregate per-step
+                   # only; per-rank quantities are explicit nulls, not zeros.
                    rank_ms_min=None, rank_ms_max=None, rank_ms_mean=None,
                    effective_cores=None, threads_per_rank=None,
                    busy_ceiling=meta['busy_ceiling'],
                    n_lo=r['n_lo'], n_hi=r['n_hi'],
-                   policy=r['policy'], cpus=r['cpus'])
+                   policy=policy, cpus=r['cpus'],
+                   contention=contention_from_check(r['busy'],
+                                                    meta['busy_ceiling']))
+        if 'mode' in r:
+            row['mode'] = r['mode']
         validate(row)
         out.append(row)
     return out
@@ -690,6 +862,8 @@ def rows_from_mpi_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None
                        busy_ceiling=meta['max_busy'],
                        n_lo=r['n_lo'], n_hi=r['n_hi'],
                        sync=k[len('jax_'):], cpus=r['cpus'],
+                       contention=contention_from_check(r['busy'],
+                                                        meta['max_busy']),
                        **placement_fields)
             validate(row)
             out.append(row)
@@ -706,6 +880,8 @@ def rows_from_mpi_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None
                        effective_cores=None, threads_per_rank=None,
                        busy_ceiling=meta['max_busy'],
                        n_lo=r['n_lo'], n_hi=r['n_hi'], cpus=r['cpus'],
+                       contention=contention_from_check(r['busy'],
+                                                        meta['max_busy']),
                        **placement_fields)
             validate(row)
             out.append(row)
@@ -767,7 +943,8 @@ def rows_from_e2e_results(meta, snapshot, tenancy):
                    busy_ceiling=meta['tenancy_ceiling'], n_lo=None, n_hi=None,
                    platform=c['platform'],
                    platform_evidence=c['platform_evidence'],
-                   devices=None, verdict='SUCCESS', selection=meta['label'])
+                   devices=None, verdict='SUCCESS', selection=meta['label'],
+                   contention=contention_from_tenancy(tenancy))
         # Same legacy contract as parallelism/platform/placement: 'tree_dirty'
         # is set on the row ONLY if the caller's `meta` carries it. A `meta`
         # dict built before this field existed (an old fixture, or an old

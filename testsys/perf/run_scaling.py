@@ -139,6 +139,7 @@ sys.path.insert(0, os.path.dirname(TESTSYS))  # testsys/ itself, for profile_rec
 import run_numa_scaling as numa  # noqa: E402  (numa_topology, cpu_busy_fractions, require_idle)
 import perflib                   # noqa: E402  (acquire_case_lock, rebuild_serial_case)
 import profile_record            # noqa: E402  (append-only per-rank profile totals)
+import busy_probe                # noqa: E402  (item 92: the box-busy probe, one copy)
 
 # What a second concurrent invocation costs, printed by the refusal (item 77).
 LOCK_CONSEQUENCE = [
@@ -242,57 +243,12 @@ def numactl_prefix(cpus, node_map):
             '--membind=%s' % ','.join(str(n) for n in nodes)]
 
 
-def free_node_map(all_nodes, busy_ceiling, override):
-    """{node: cpus} restricted to the individual cpus currently under
-    `busy_ceiling`, so `compact_cpus`/`spread_cpus` build placements out of
-    room that actually exists right now instead of always starting at node 0
-    (see module docstring, F4). Probes fresh on every call -- occupancy moves
-    over the course of a multi-minute sweep, so a configuration built early
-    from a stale free-set could target a cpu that has since gone busy (the
-    per-cpu `require_idle` check downstream still catches that case, but
-    asking for the wrong cpu in the first place is the defect being fixed).
-
-    PER-CPU, NOT WHOLE-NODE (2026-09-18 fix, item 33 thread-scaling
-    investigation). The original version required EVERY cpu on a node to be
-    idle before offering ANY of that node's cpus -- correct for a box where
-    interference clusters by node, wrong for THIS box: ~20-28 foreign
-    single-core jobs with no cpu affinity of their own, so the Linux
-    scheduler smears them across all 8 nodes and no node is ever seen fully
-    idle in a snapshot even though ~40+ of 64 cores are free at any instant
-    (measured: `free_node_map` returned `{}` on 6 consecutive samples over
-    12s with `nproc` idle cores in the 40s the whole time). Requiring
-    whole-node freedom in that regime means the tool can never select ANY
-    placement, at ANY core count including k=1, and every run silently
-    starves on SKIPPED rather than measuring -- worse than the coarse
-    placement F4 fixed. Cpu-level filtering keeps `compact_cpus` filling
-    node-by-node in cpu-id order exactly as before (so it stays AS compact
-    as the actually-free cpus allow) but no longer demands more idle room
-    than a configuration actually needs.
-
-    `override` mirrors `--i-know-the-box-is-busy`: if the busy ceiling itself
-    is being bypassed, there is nothing to filter FOR, so this reverts to the
-    full topology in node-number order -- identical to pre-fix behaviour.
-
-    Raises SystemExit if per-cpu utilisation could not be read AT ALL (same
-    hard-failure discipline as `cpu_busy_fractions`/`require_idle`: a check
-    that cannot evaluate must fail, not silently call every cpu free). An
-    individual cpu whose utilisation could not be read is dropped from the
-    free set (not assumed free, not used to invalidate cpus that WERE read)."""
-    if override:
-        return dict(all_nodes)
-    all_cpus = sorted(c for cs in all_nodes.values() for c in cs)
-    busy = numa.cpu_busy_fractions(all_cpus)
-    if not busy:
-        raise SystemExit(
-            'FAIL: could not read per-cpu utilisation for cpus %s from '
-            '/proc/stat -- cannot tell which cpus are free (rule 2: a '
-            'check that cannot evaluate must fail).' % all_cpus)
-    free = {}
-    for n, cpus in all_nodes.items():
-        idle_cpus = [c for c in cpus if busy.get(c) is not None and busy[c] <= busy_ceiling]
-        if idle_cpus:
-            free[n] = idle_cpus
-    return free
+# Row 92: `free_node_map` moved to busy_probe.py (2026-09-24) so this tool and
+# run_shard_scaling.py read ONE implementation instead of two that can drift
+# apart (rule 1). Kept as a module attribute here (not just imported at call
+# sites) because test_perf_item91_guards.py monkeypatches `rscal.free_node_map`
+# directly -- reassigning the name still works exactly the same way.
+free_node_map = busy_probe.free_node_map
 
 
 def select_cpus(free_nodes, k, policy):
@@ -408,7 +364,7 @@ def run_fortran(work, n, policy, cpus, node_map, term, nsteps):
         _sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
         profile_record.capture_run(d, case=CASE, backend='fortran', ranks=n,
                                    term='perf-scaling-probe', sha=_sha,
-            tree_dirty=profile_record.ledger.tree_dirty())
+            tree_dirty=profile_record.ledger.tree_dirty_once())
     except Exception as exc:                        # noqa: BLE001
         print('WARNING: profile-record capture failed for fortran n=%d (%s: '
              '%s) -- the scaling measurement above is unaffected.'
@@ -549,7 +505,7 @@ def per_step_py(case_dir, cpus, node_map, backend, n_lo, n_hi):
         profile_record.capture_run(case_dir, case=CASE,
                                    backend='python-%s' % backend, ranks=1,
                                    term='perf-scaling-probe', sha=_sha,
-            tree_dirty=profile_record.ledger.tree_dirty())
+            tree_dirty=profile_record.ledger.tree_dirty_once())
     except Exception as exc:                        # noqa: BLE001
         print('WARNING: profile-record capture failed for python-%s (%s: '
              '%s) -- the scaling measurement above is unaffected.'

@@ -106,8 +106,83 @@ def check_91a_snapshot_naming_and_ledger():
           'apart on the SAME calendar day, differ (%r vs %r)'
           % (out1, out2))
 
-    # 91a's ledger half is deliberately NOT wired (PR #15 audit: the shared
-    # reader would file shard points as run_scaling rows); nothing to guard.
+    # 91a's ledger half (2026-09-24): rows_from_scaling_snapshot(tool=...)
+    # must file a run_shard_scaling point under its OWN tool name and the
+    # EXISTING 'threads' parallelism value, never mislabelled as a
+    # run_scaling row -- driven with a synthetic shard-shaped meta, no jax
+    # or box-state dependence.
+    meta = dict(sha='abc1234', host='h', date='2026-09-24 00:00',
+               case='test.tpv104', busy_ceiling=0.2,
+               rows=[dict(mode='element', n=2, ms_per_step=12.5,
+                         cpus=[0, 1], n_lo=20, n_hi=60,
+                         busy=(0.1, 0.1, 0.1, [], {0: 0.05, 1: 0.05}))])
+    rows = ledger.rows_from_scaling_snapshot(
+        meta, 'docs/perf_snapshots/fake_shard.json', dict(busy=0, total=4),
+        tool='run_shard_scaling')
+    check(len(rows) == 1 and rows[0]['tool'] == 'run_shard_scaling'
+          and rows[0]['backend'] == 'python-jax'
+          and rows[0]['parallelism'] == 'threads'
+          and rows[0]['mode'] == 'element',
+          '91a: a shard-shaped point files as tool=%r backend=%r '
+          'parallelism=%r mode=%r (want run_shard_scaling/python-jax/'
+          'threads/element)'
+          % (rows[0].get('tool'), rows[0].get('backend'),
+             rows[0].get('parallelism'), rows[0].get('mode')))
+    check('run_shard_scaling' in open(os.path.join(
+            PERF, 'run_shard_scaling.py')).read()
+          and 'ledger.append_rows' in open(os.path.join(
+              PERF, 'run_shard_scaling.py')).read(),
+          '91a: run_shard_scaling.py itself calls ledger.append_rows (the '
+          'wiring this check above proves the SHAPE of)')
+
+
+def check_91_wall_clock_guard():
+    """Row 91, second half (2026-09-24): run_mpi_scaling.per_step_jax_mpi's
+    ms_per_step_wall difference (line ~409) must raise on a non-positive
+    result, the SAME pattern PR #15 already applied to the rank-solve-time
+    difference two lines below it (`ps_solve <= 0`) and to
+    run_numa_scaling.per_step_and_fixed / probe_scatter_bandwidth.per_iter /
+    run_perf.steady_state_per_step (check_91b above). Driven with
+    jax_mpi_once faked to return a DECREASING wall clock as nsteps grows --
+    every other dependency (profile_record.capture_run) fails past a
+    nonexistent case_dir and is caught by per_step_jax_mpi's own
+    warn-only try/except, so no real MPI/jax ever runs."""
+    import run_mpi_scaling as rms
+
+    def fake_decreasing(case_dir, n, cpus, ranks, sync, platform):
+        return (15.0, []) if n == 20 else (5.0, [])
+
+    orig = rms.jax_mpi_once
+    try:
+        rms.jax_mpi_once = fake_decreasing
+        raises(lambda: rms.per_step_jax_mpi('/does/not/exist', [0], 1, 20,
+                                            60, 'halo'),
+               (RuntimeError,),
+               '91 run_mpi_scaling.per_step_jax_mpi: wall clock DECREASED '
+               'from n_lo=20 to n_hi=60',
+               must_contain=('per-step', 'wall clock'))
+    finally:
+        rms.jax_mpi_once = orig
+
+    def _rank(ms):
+        return dict(ms_per_step=ms, mpi_ms_per_step=0.1, wait_ms_per_step=0.05,
+                   effective_cores=1.0, Ei=10, Ep=5, halo_eqs=3,
+                   carry_bytes_total=100, N_local=50, NEQ_local=30,
+                   threads=1, cpus_allowed=1)
+
+    def fake_increasing(case_dir, n, cpus, ranks, sync, platform):
+        return ((5.0, [_rank(1.0)]) if n == 20 else (15.0, [_rank(2.0)]))
+
+    orig = rms.jax_mpi_once
+    try:
+        rms.jax_mpi_once = fake_increasing
+        r = rms.per_step_jax_mpi('/does/not/exist', [0], 1, 20, 60, 'halo')
+        check(r is not None and r['ms_per_step_wall'] > 0,
+              '91 run_mpi_scaling.per_step_jax_mpi: a genuine increasing-wall '
+              'case still returns (ms_per_step_wall=%r)'
+              % (r or {}).get('ms_per_step_wall'))
+    finally:
+        rms.jax_mpi_once = orig
 
 
 # ---------------------------------------------------------------- (b) ----
@@ -233,7 +308,14 @@ def check_91g_run_scaling_loop_labels_baseline():
     saved_argv = sys.argv
     try:
         rscal.numa.numa_topology = lambda: {0: [0, 1, 2, 3]}
-        rscal.numa.require_idle = lambda cpus, ceil, ov: {}
+        # A real require_idle() 5-tuple (load1, load5, load15, other_users,
+        # busy_dict), not the old placeholder `{}` -- since row 76 (2026-09-24)
+        # rows_from_scaling_snapshot reads this row's 'busy' field for real
+        # (ledger.contention_from_check), an empty/wrong-shaped stub here
+        # would make the REAL converter raise "named no cpus", not the
+        # vacuous no-op it used to be.
+        rscal.numa.require_idle = lambda cpus, ceil, ov: (
+            0.1, 0.1, 0.1, [], {c: 0.05 for c in cpus})
         rscal.free_node_map = lambda nodes, ceil, ov: {0: [0, 1, 2, 3]}
         rscal.select_cpus = lambda free, k, policy: None if k == 1 else list(range(k))
         rscal.build_py_case = lambda case: tmp
@@ -293,6 +375,7 @@ def check_91g_baseline_labelling():
 
 CHECKS = [
     ('91a', check_91a_snapshot_naming_and_ledger),
+    ('91-wall-clock', check_91_wall_clock_guard),
     ('91b', check_91b_nonpositive_raises),
     ('91c', check_91c_membind),
     ('91e', check_91e_git_sha),
@@ -310,8 +393,8 @@ def main():
     if FAILURES:
         print('FAIL test_perf_item91_guards: %d check(s) failed' % len(FAILURES))
         return 1
-    print('SUCCESS test_perf_item91_guards: all 6 item-91 perf-tool defects '
-          'guarded behaviourally')
+    print('SUCCESS test_perf_item91_guards: all item-91 perf-tool defects '
+          'guarded behaviourally (%d checks)' % len(CHECKS))
     return 0
 
 
