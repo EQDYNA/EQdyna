@@ -790,14 +790,14 @@ def _select_device(device):
     first `import jax` -- which is why this module never imports jax at module
     level and `active_device`/`Profile._sync` import it inside the function.
 
-    `--device gpu` with no GPU is a hard failure: silently running on CPU would
+    `--device cuda` with no GPU is a hard failure: silently running on CPU would
     put a row labelled gpu into a backend comparison whose whole purpose is to
     tell cpu and gpu apart (rule 2).
     """
-    os.environ['JAX_PLATFORMS'] = {'cpu': 'cpu', 'gpu': 'cuda'}[device]
+    os.environ['JAX_PLATFORMS'] = device
     import jax
     got = jax.devices()[0].platform
-    want = 'gpu' if device == 'gpu' else 'cpu'
+    want = 'gpu' if device == 'cuda' else 'cpu'
     if got != want:
         raise RuntimeError(
             '--device %s was requested but JAX resolved to %r (devices: %r). '
@@ -826,18 +826,20 @@ def _abort(exc, rank=0):
     raise SystemExit(exc.code)
 
 
-DEVICE_CHOICES = ('cpu', 'gpu')
+DEVICE_CHOICES = ('cpu', 'cuda')
 
 
 def _device_arg(value):
     """--device's parser. `auto` was removed by owner ruling (board row 56,
     2026-09-24): it let JAX pick a GPU on a serial run while --mpi silently
-    mapped it to cpu. Refused by name, never re-mapped."""
+    mapped it to cpu. Refused by name, never re-mapped. The GPU choice is
+    spelled `cuda` (the owner's wording, and the spelling run_e2e/run.py
+    already used); the old `gpu` spelling is refused with that hint."""
     if value not in DEVICE_CHOICES:
+        hint = {'auto': " -- 'auto' was removed (board row 56); pass --device cuda to request a GPU",
+                'gpu': " -- the GPU choice is spelled 'cuda' (board row 56)"}.get(value, '')
         raise argparse.ArgumentTypeError(
-            '%r is not a device: choose cpu (the default) or gpu%s'
-            % (value, " -- 'auto' was removed (board row 56); pass --device gpu "
-               "to request a GPU" if value == 'auto' else ''))
+            '%r is not a device: choose cpu (the default) or cuda%s' % (value, hint))
     return value
 
 
@@ -850,8 +852,8 @@ def main():
                           'jax with jaxlib missing is an error, not a demotion '
                           'to numpy.')
     ap.add_argument('--device', type=_device_arg, default='cpu',
-                     help='JAX platform: cpu (default) or gpu. GPU runs only '
-                          'on an explicit --device gpu, serial and --mpi '
+                     help='JAX platform: cpu (default) or cuda. GPU runs only '
+                          'on an explicit --device cuda, serial and --mpi '
                           'alike. No fallback: gpu with no GPU is an error.')
     ap.add_argument('--profile', action='store_true',
                      help='print wall-clock per phase (setup / solve / write) '
@@ -929,8 +931,8 @@ def main():
         return
     if args.backend == 'jax':
         _select_device(args.device)
-    elif args.device == 'gpu':
-        raise SystemExit('--device gpu is meaningless with --backend numpy')
+    elif args.device == 'cuda':
+        raise SystemExit('--device cuda is meaningless with --backend numpy')
     prof = Profile(args.backend)
     try:
         path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend,

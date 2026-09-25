@@ -178,7 +178,7 @@ them, unconditional `t_compute` did not yet exist and the pre-loop
 session, not carried forward as a known gap.
 
 **A GPU-side finding, out of scope for the gate but worth recording:**
-`python-jax` run with `--device gpu` (the only way to reach a GPU since
+`python-jax` run with `--device cuda` (the only way to reach a GPU since
 board row 56 removed `--device auto`) showed `unaccounted_s` as high as 19.8% of `total_s` -- first-call
 CUDA context/compile latency not attributed to any bucket. Not investigated
 further because every gate that matters here (`run_e2e.py`, CI) forces

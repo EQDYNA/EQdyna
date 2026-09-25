@@ -591,8 +591,12 @@ def run_standalone(case_dir, backend, device='cpu', env=None, gpu_index=None):
         print('+ (%s) pinned to CUDA device %d, '
               'XLA_PYTHON_CLIENT_MEM_FRACTION=%s'
               % (os.path.basename(case_dir), gpu_index, GPU_MEM_FRACTION))
+    # --device is passed EXPLICITLY (board row 56): eqdyna3d's default is cpu
+    # and it pins JAX_PLATFORMS itself, so relying on the env var alone would
+    # run a --device cuda sweep on the CPU and report it green.
     rc, out_path, err_path = _call_kept(
-        [sys.executable, '-u', '-m', 'eqdyna', case_dir, '--backend', solver],
+        [sys.executable, '-u', '-m', 'eqdyna', case_dir, '--backend', solver,
+         '--device', device],
         REPO_ROOT, env, os.path.join(case_dir, 'eqdyna.%s' % backend))
     if rc != 0:
         raise RuntimeError('eqdyna.eqdyna3d %s --backend %s exited %d '
