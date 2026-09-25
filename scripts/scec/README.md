@@ -69,8 +69,9 @@ tooling is the record of what was there and when.
 
 ## Verifying the on-disk archive against a tracked manifest
 
-`CHECKSUMS.sha256` (693 lines, ~80 KB, standard `sha256sum` format, paths
-relative to `scec_archive/`) is tracked so the 484 MB archive's integrity is
+`CHECKSUMS.sha256` (standard `sha256sum` format, one line per archived file,
+paths relative to `scec_archive/`; it also covers the `-nstress-corrected`
+sibling directories added 2026-09-24) is tracked so the archive's integrity is
 auditable without putting the archive itself in git — "it is an asset, hash
 but no need to be in git" (owner, 2026-09-16, after `f2c9851` accidentally
 committed all 484 MB: a `.gitignore` inline comment on the `scec_archive/`
