@@ -131,7 +131,7 @@ ARTIFACTS = {
 # defaultParameters.py's station list) each wrote a 14th file,
 # faultst000dp000.txt, that is IDENTICALLY ZERO across all columns and all
 # steps and corresponds to NO requested station coordinate -- confirmed by
-# mira-volkov's independent serial-Fortran reproduction (NOTES_row114.md on
+# mira-volkov's independent serial-Fortran reproduction (docs/notes/NOTES_row114.md on
 # origin/mira/row114-station-output: a `mpirun -np 1` rerun of test.tpv104
 # writes the correct 13 files and no spurious 14th). None of the files
 # selected below is that spurious file (all three cases' picks avoid dp000);

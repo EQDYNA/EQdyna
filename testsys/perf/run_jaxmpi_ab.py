@@ -220,7 +220,7 @@ def main():
     ap.add_argument('--exclude-cpus', default='0,1')
     ap.add_argument('--merged-ref', default='HEAD')
     ap.add_argument('--notes', default=os.path.join(
-        ROOT, 'NOTES_jaxmpi_ab_2026-09-22.md'))
+        ROOT, 'docs/notes/NOTES_jaxmpi_ab_2026-09-22.md'))
     a = ap.parse_args()
 
     # GATE 0 (item 74): the exclusive lock on the package this tool STAGES
