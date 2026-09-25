@@ -49,8 +49,9 @@ PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 ```
 
 The build stamps `bin/eqdyna` with a hash of the Fortran source it was built
-from; rebuild with `./install-eqdyna.sh` after editing anything under
-`src/fortran/`.
+from. After editing anything under `src/fortran/`, rebuild with
+`./install-eqdyna.sh`; the test tools otherwise refuse with
+`bin/eqdyna was built from different source ... rebuild with ./install-eqdyna.sh`.
 
 ## Quick start
 
@@ -73,8 +74,8 @@ of one with `user_defined_params.py` edited to match your fault and loading:
 
 ## Benchmarks
 
-EQdyna is verified against SCEC/USGS benchmarks. A fast check runs on every
-change (`python3 testsys/run.py e2e`); a slower, spec-resolution
+EQdyna is verified against SCEC/USGS benchmarks. A fast local check runs
+every case at coarse resolution (`python3 testsys/run.py e2e`); a slower, spec-resolution
 reproduction is opt-in and can take hours
 (`EQDYNA_FULL_LAUNCH=yes-hours python3 testsys/run.py e2e-full`).
 

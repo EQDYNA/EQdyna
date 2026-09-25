@@ -30,12 +30,24 @@ README_MAX_LINES = 150
 MAX_BULLET_CHARS = 200
 AGENTS = ('mira', 'iris', 'lars', 'kai', 'haruto', 'nadia', 'sophia', 'zofia',
           'victor', 'wei-lin', 'wei lin', 'dunyu-liu', 'anya', 'marta', 'priya')
+# Checked in prose, with inline code stripped (commands and paths a user runs
+# are legitimate content). Agent names are matched case-SENSITIVELY in their
+# lowercase handle form, so the seismic data service IRIS or the Argonne
+# machine Mira in ordinary prose is not flagged.
 PROSE_MARKERS = [
     ('PR number', re.compile(r'\bPR\s*#\d+|\(#\d+\)')),
     ('rule number', re.compile(r'\brules?\s+\d+[a-z]?\b', re.I)),
-    ('board reference', re.compile(r'pathway|board row|\bitem\s+\d+', re.I)),
-    ('source line reference', re.compile(r'\.(py|f90|sh):\d+')),
-    ('agent name', re.compile(r'\b(' + '|'.join(re.escape(a) for a in AGENTS) + r')\b', re.I)),
+    ('board reference', re.compile(r'pathway_forward|board row|\bitem\s+\d+', re.I)),
+    ('agent name', re.compile(r'\b(' + '|'.join(re.escape(a) for a in AGENTS) + r')\b')),
+    ('bare commit SHA', re.compile(r'(?<![\w/.-])(?=[0-9a-f]*[a-f])(?=[0-9a-f]*[0-9])(?:[0-9a-f]{7,12}|[0-9a-f]{40})(?![\w/.-])')),
+]
+# Checked on the WHOLE line, inline code included: a file:line citation, a
+# developer-notes reference or a gate-internal name is never user content,
+# backticked or not.
+ANYWHERE_MARKERS = [
+    ('source line reference', re.compile(r'\.(py|f90|sh|md|yml|txt):\d+')),
+    ('developer notes reference', re.compile(r'\bNOTES_\w+')),
+    ('gate internals', re.compile(r'\b(CASE_BOUND|GATE_TERM_S|CI_CELLS|GATE_STATIONS|STATION_BOUND|RELEASE_ONLY)\b')),
 ]
 SHA = re.compile(r'`[0-9a-f]{7,40}`')
 
@@ -63,6 +75,10 @@ def problems(name, text):
         prose = re.sub(r'`[^`]*`', '', line)       # inline code is user content
         for label, rx in PROSE_MARKERS:
             m = rx.search(prose)
+            if m:
+                bad.append('%s:%d: %s %r' % (name, n, label, m.group(0)))
+        for label, rx in ANYWHERE_MARKERS:
+            m = rx.search(line)
             if m:
                 bad.append('%s:%d: %s %r' % (name, n, label, m.group(0)))
         h = re.match(r'(#{1,6})\s', line)
@@ -95,7 +111,17 @@ def negative_controls():
         'two H1': clean + '\n# Second\n',
         'H4': clean + '\n#### Deep\n',
         'long bullet': clean + '\n* ' + 'x' * MAX_BULLET_CHARS + '\n',
+        'file:line in inline code': clean + '\nSee `meshgen.f90:612`.\n',
+        'md:line': clean + '\nSee README.md:40.\n',
+        'notes ref': clean + '\nSee `docs/notes/NOTES_tpv30_gate.md`.\n',
+        'bare sha': clean + '\nFixed in 51b7649 last week.\n',
+        'gate internals': clean + '\nCompared at `CASE_BOUND`.\n',
     }
+    legit = clean + ('\nChecksum md5 f6df5ececc9d95d0c6db43c9ba0c3c6e.\nWaveforms can be fetched from IRIS; the run used a Mira '
+                     'allocation and the rupture pathway was bilateral. Run '
+                     '`python3 testsys/run.py e2e` in `docs/user/`.\n')
+    if problems('synthetic-legit.md', legit):
+        fails.append('legitimate user content was flagged: %r' % problems('synthetic-legit.md', legit))
     fails = []
     if problems('synthetic-clean.md', clean):
         fails.append('clean synthetic doc was flagged: %r' % problems('synthetic-clean.md', clean))
@@ -125,8 +151,8 @@ def main():
         for b in bad:
             print(' -', b)
         return 1
-    print('SUCCESS test_user_docs_style: %d user-facing file(s) clean; 10 negative '
-          'controls flagged, clean control passed' % len(files))
+    print('SUCCESS test_user_docs_style: %d user-facing file(s) clean; 15 negative '
+          'controls flagged, clean and legitimate-content controls passed' % len(files))
     return 0
 
 

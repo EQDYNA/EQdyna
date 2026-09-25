@@ -27,8 +27,9 @@ rule, and regeneration commands, which apply unchanged here.
 the 100 m file, needed for the dx=500 m gate below). Running the recorded
 `full_specs.py` 50 m tier for this case first needs
 `bFault_Rough_Geometry.tpv29.50m.txt` copied in from `case_input/test.tpv29/`
-(or regenerated via `tpv29GeometryTools.py --official ... --dx 50`) -- deferred
-until the 50 m spec-resolution tier is actually run.
+(or regenerated via `tpv29GeometryTools.py --official ... --dx 50`) -- that copy is
+made only when the 50 m spec-resolution run is scheduled, since the run itself
+is recorded but not executed by default.
 
 ## The swtwNucleation branch
 
@@ -107,7 +108,7 @@ Binary-searched to a time window, not yet to a line:
   - The window between 24 and 144 steps (roughly 1-6 s of simulated time)
     is where the first real divergence happens and has NOT been isolated
     further (would need per-step or per-element dumps on both sides, i.e.
-    a debug Fortran build -- out of scope for this pass; see docs/notes/NOTES_tpv30_gate.md).
+    a debug Fortran build -- out of scope for this pass; details are kept with the developer notes in `docs/notes/`).
 
 **What this is not:** not the G6 half-traction blocker (that measured ratio
 was exactly 0.5, depth-independent, from the very first output step;
@@ -134,7 +135,7 @@ regeneration commands (`tpv29GeometryTools.py`).
 
 | tier | dx (m) | term (s) | ranks (decomp) | status |
 |---|---|---|---|---|
-| fast (gate candidate) | 500 | 20 | 4 (2,1,2) | Fortran verified correct; NOT gated (see finding above) |
+| fast (gate) | 500 | 5 | 4 (2,1,2) | gated on fortran and python-jax since 2026-09-23 |
 | full (spec) | 50 | 20 | not yet run (recorded in `testsys/e2e/full_specs.py`, not executed) | -- |
 
 Spec: 50 m preferred / 100 m acceptable, 0-20 s

@@ -32,20 +32,31 @@ One case at a time, measured with `/usr/bin/time -v`:
 
 ## Full benchmark sweep wall clock
 
-Running every benchmark case on every backend (`python3 testsys/run.py all`)
-on a 64-core workstation took between about 2100 and 2300 seconds across
-three runs between 2026-09-17 and 2026-09-19. Wall clock depends heavily on
+Between 2026-09-17 and 2026-09-19, the local sweep (`python3 testsys/run.py
+all`) took between about 2100 and 2300 seconds across three runs on a 64-core
+workstation. That sweep then ran 30 cells, including the NumPy backend and
+each case at its own full simulated time; today's sweep runs fewer cells at a
+5 s term and is faster, and has not been re-timed here. Wall clock depends heavily on
 other work sharing the same machine at the time. Cases are independent and
 each uses roughly one core, so throughput comes from running many cases at
 once, not from any single case scaling across cores.
 
 ## Core scaling
 
-Core-count scaling of a single JAX-CPU run is not currently well
-characterised: one measurement on `test.tpv8` shows about 14x from one
-unpinned core to several, but an earlier, more detailed scaling curve
-predates a solver restructure and has not been reproduced. Treat any core
-scaling claim as provisional until it is remeasured on current code.
+Core-count scaling of a single JAX-CPU run is not currently characterised.
+One ratio is measured on current code: 193 ms/step pinned to one core versus
+13.8 ms/step unpinned, about 14x. An older curve (2.00x / 3.96x / 7.48x on
+2 / 4 / 8 cores) predates a solver restructure and has not been reproduced.
+Its knee sits at exactly 8 cores, the NUMA node size of the machine, so it may
+measure memory locality rather than the solver. Treat any core-scaling claim
+as provisional until it is remeasured.
+
+## Large runs on an HPC cluster
+
+Measured on Lonestar6 (TACC):
+
+* TPV36 and TPV37 at 50 m resolution: 4.7 hours on 512 CPUs.
+* TPV104, a 15 s simulation (1875 time steps): 0.4 hours on 40 CPUs.
 
 ## Historical full-run wall clock, by case
 
