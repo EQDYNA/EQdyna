@@ -90,6 +90,23 @@ def check_python_module_invocations_import(text=None, label='README.md'):
     """
     text = readme() if text is None else text
     mods = set(re.findall(r'python3?\s+-m\s+([\w.]+)', text))
+    # `pip` is the installer itself, and a module the SAME document installs
+    # with `pip install` (e.g. virtualenv) cannot import before its own
+    # install step runs -- test_readme_executes proves those by running them.
+    # Every other module must import here.
+    # Scope: `pip install` lines inside FENCED blocks only (the steps a user,
+    # and test_readme_executes, actually run), and never a module this repo
+    # ships -- `pip install eqdyna` in prose must not exempt `python3 -m eqdyna`.
+    fenced = '\n'.join(re.findall(r'```[^\n]*\n(.*?)```', text, re.S))
+    installed = set()
+    for line in re.findall(r'pip3?\s+install\s+([^\n#]+)', fenced):
+        for tok in line.split():
+            if not tok.startswith('-'):
+                installed.add(re.split(r'[\[<>=]', tok.strip('"\''))[0].lower())
+    repo_mods = {d for d in os.listdir(os.path.join(ROOT, 'src', 'python'))
+                 if os.path.isdir(os.path.join(ROOT, 'src', 'python', d))}
+    installed -= {m.lower() for m in repo_mods}
+    mods = {m for m in mods if m != 'pip' and m.split('.')[0].lower() not in installed}
     if not mods:
         print('  PASS  %s: invokes no python -m module (nothing to check)' % label)
         return

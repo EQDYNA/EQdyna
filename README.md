@@ -16,61 +16,81 @@ Past releases are archived in `pastReleaseNotes.md`.
 
 ## Requirements
 
-* A Fortran compiler (gfortran or Intel Fortran)
-* MPI (mpich or Intel MPI)
-* netCDF (libnetcdf, libnetcdff)
-* Python 3 with numpy>=1.20, matplotlib, xarray, netCDF4
+* A Fortran compiler (gfortran or Intel Fortran), MPI (mpich or Intel MPI) and netCDF (libnetcdf, libnetcdff).
+* Python 3 with numpy>=1.20, matplotlib, xarray and netCDF4.
 
-On Ubuntu 22, `bash ubuntu.env.sh` installs all of the above through
-apt-get and pip.
+On Ubuntu 22 this is one root step, then a Python environment of your own. The
+environment keeps EQdyna's Python packages apart from the system's, which may be
+built for an older numpy:
 
-Optional, for the Python solver on a GPU: `pip install "jax[cuda12]"`, then
-run with `python3 -m eqdyna <case_dir> --backend jax`; verify with
-`python3 testsys/run.py gpu`.
+```
+sudo apt-get install git make gfortran mpich libnetcdf-dev libnetcdff-dev python3 python3-pip   # needs root
+python3 -m pip install --user virtualenv
+python3 -m virtualenv ~/eqdyna-env
+. ~/eqdyna-env/bin/activate
+pip install numpy netCDF4 matplotlib xarray jax
+```
+
+`ubuntu.env.sh` installs the same system packages and must be run as root. For
+NVIDIA GPUs, install `"jax[cuda12]"` instead of `jax`. On macOS, install
+[Homebrew](https://brew.sh) plus `brew install gcc netcdf netcdf-fortran`; the
+`./install-eqdyna.sh -e macos` below then adds mpich and the Python packages.
 
 ## Install
 
 ```
 git clone https://github.com/EQDYNA/EQdyna.git
 cd EQdyna
-chmod 755 install-eqdyna.sh
-./install-eqdyna.sh -m ubuntu   # ubuntu / ls6 / macos
+./install-eqdyna.sh -m ubuntu      # -e macos on a Mac; -m ls6 on TACC Lonestar6
 export EQDYNAROOT=$(pwd)
-PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-python3 testsys/run.py unit regression   # a few seconds
+export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+export PYTHONPATH=$EQDYNAROOT/src/python
 ```
 
-For bash, add these two lines to `.bashrc` so every new shell has EQdyna on
-its path:
-
-```
-export EQDYNAROOT=/path/to/EQdynaRootDirectory
-PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
-```
-
-The build stamps `bin/eqdyna` with a hash of the Fortran source it was built
-from. After editing anything under `src/fortran/`, rebuild with
-`./install-eqdyna.sh`; the test tools otherwise refuse with
-`bin/eqdyna was built from different source ... rebuild with ./install-eqdyna.sh`.
+Add the three `export` lines and `. ~/eqdyna-env/bin/activate` to your `~/.bashrc`
+(with the full path in place of `$(pwd)`) so every new shell finds EQdyna. If you
+later edit `src/fortran/`, re-run `./install-eqdyna.sh`; the tools refuse to use a
+binary built from older source. The quick start below is the install check: if it
+produces the files it lists, the install works.
 
 ## Quick start
 
-Three steps run a new case:
+Run the TPV8 benchmark in a new directory:
 
 ```
-create.newcase $caseDirectoryName $predefinedCompset
-cd $caseDirectoryName
+create.newcase ~/runs/tpv8 test.tpv8
+cd ~/runs/tpv8
 ./case.setup
-bash run.sh   # or ./case.submit to submit a batch job on an HPC cluster
+bash run.sh
 ```
 
-`$predefinedCompset` is one of the pre-defined cases below, or your own copy
-of one with `user_defined_params.py` edited to match your fault and loading:
+`bash run.sh` runs 5 s of simulated time on 4 MPI ranks, in about 15 seconds on a
+workstation. It leaves these results in the case directory:
 
-* test.drv.a6, for deterministic ground motion with a fractal fault and plasticity
-* test.tpv8, test.tpv10, test.tpv36, test.tpv37, test.tpv104, test.tpv1053d, test.tpv29, test.tpv30
+* `cRuptureDynamics.png`, a plot of rupture time, slip and peak slip rate on the fault.
+* `frt.txt*`, the on-fault rupture time, slip and stress at every fault node.
+* `faultst*.txt` and `body*.txt`, time series at on-fault and off-fault stations.
+* `fault.dyna.r.nc`, the final fault state in netCDF.
 
-`TPV<number>` follows the naming convention of the [SCEC/USGS Spontaneous Rupture Code Verification Project](https://strike.scec.org/cvws/).
+To run another case, replace `test.tpv8` with one of the case names below. To
+build your own, copy the closest case and edit its `user_defined_params.py`. On
+an HPC cluster, `./case.submit` submits the run as a batch job instead.
+
+### Python solver
+
+The same physics is also implemented in Python/JAX. It runs a case on one
+process, so first set the decomposition to one rank:
+
+```
+create.newcase ~/runs/tpv8-jax test.tpv8
+cd ~/runs/tpv8-jax
+printf '\npar.nx = 1\npar.ny = 1\npar.nz = 1\n' >> user_defined_params.py
+./case.setup
+python3 -m eqdyna . --backend jax
+```
+
+It writes `frt.txt0` and the station files in about 25 seconds. The default device
+is the CPU; add `--device cuda` to run on a GPU.
 
 ## Benchmarks
 

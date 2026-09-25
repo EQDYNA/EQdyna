@@ -42,12 +42,18 @@ re-running `./case.setup` is enough to change the rank count.
 ## The Python/JAX backend
 
 `run.sh` always runs the Fortran solver. The same case can instead be run
-through EQdyna's Python/JAX port, once `case.setup` has written its input
-files, from inside the case directory:
+through EQdyna's Python/JAX port (`pip install jax` first). The Python solver
+runs on one process, so set the decomposition to one rank before
+`case.setup`, then run it from inside the case directory with `PYTHONPATH`
+set as in the install step:
 
 ```
+printf '\npar.nx = 1\npar.ny = 1\npar.nz = 1\n' >> user_defined_params.py
+./case.setup
 python3 -m eqdyna . --backend jax
 ```
+
+Add `--device cuda` to run on an NVIDIA GPU (after `pip install "jax[cuda12]"`).
 
 JAX is the default backend, and its default device is the CPU. A NumPy
 backend also exists and can be run by hand with `--backend numpy`, but only

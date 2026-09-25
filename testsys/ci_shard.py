@@ -142,6 +142,13 @@ SHARDS = {
         "test_history_table.py",
         "test_make_default_goal.py",
         "test_perf_mpi_placement.py",
+        "test_readme_executes.py",  # added 2026-09-25 (Iris, README-executes
+                                 # gate): default FAST mode only (parser +
+                                 # synthetic mutation self-test, no clone, no
+                                 # network); well under 1 s. Its FULL mode
+                                 # (real clone + real run, ~2-4 min) only
+                                 # fires under EQDYNA_README_GATE=full, set
+                                 # by `run.py readme`, never by this shard.
         "test_rank_local_mesh.py",  # added 2026-09-24 (mira-volkov, item 64):
                                  # 3 serial case builds + 6 decompositions'
                                  # rank-local builds in one process, no MPI;
