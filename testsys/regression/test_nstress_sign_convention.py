@@ -146,21 +146,25 @@ def main():
     # is REFUSED, not defaulted (rule 2). BGLOBAL is test.tpv8's real
     # case.setup output (5 s gate term), verbatim.
     sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
-    from eqdyna import readInputFiles
+    from eqdyna import checkInputConsistency, readInputFiles
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'bGlobal.txt')
+        # A missing line is a stale file (ValueError, as before); an invalid
+        # value is refused with Fortran's numbered code 15 (rule 23).
         variants = [('as written (+1)', BGLOBAL, 1),
                     ('compression (-1)', BGLOBAL[:-2] + '-1\n', -1),
-                    ('MUTATION last line missing', BGLOBAL[:-2], None),
-                    ('MUTATION value 0', BGLOBAL[:-2] + '0\n', None),
-                    ('MUTATION value 2', BGLOBAL[:-2] + '2\n', None)]
+                    ('MUTATION last line missing', BGLOBAL[:-2], 'stale'),
+                    ('MUTATION value 0', BGLOBAL[:-2] + '0\n', 'exit 15'),
+                    ('MUTATION value 2', BGLOBAL[:-2] + '2\n', 'exit 15')]
         for label, text, want in variants:
             with open(path, 'w') as f:
                 f.write(text)
             try:
                 got = readInputFiles.read_bglobal(path)['nStressOutSign']
+            except checkInputConsistency.InputConsistencyError as e:
+                got = 'exit %d' % e.code
             except ValueError:
-                got = None
+                got = 'stale'
             checks.append(('read_bglobal ' + label, got, want))
             if got != want:
                 fails.append('read_bglobal %s: got %r, want %r' % (label, got, want))

@@ -27,6 +27,8 @@ now proving the reader itself, not just the builders.
 """
 import numpy as np
 
+from .checkInputConsistency import ERR_CFG_NSTRESS_SIGN_INVALID, InputConsistencyError
+
 
 def _read_records(path):
     """Yield every line of `path`, unfiltered, in file order.
@@ -129,9 +131,12 @@ def read_bglobal(path):
     except (IndexError, ValueError):
         raise stale('a valid station normal-stress sign convention')
     if g['nStressOutSign'] not in (1, -1):
-        raise ValueError('read_bglobal: %s station normal-stress sign is %d; it '
-                         'must be +1 (extension) or -1 (compression). Re-run '
-                         'case.setup.' % (path, g['nStressOutSign']))
+        # Same numbered exit as readInputFiles.f90's abortRun(ERR_CFG_NSTRESS_SIGN_INVALID)
+        # and the same message text (rule 23); eqdyna3d.main's _abort turns it into exit 15.
+        raise InputConsistencyError(
+            ERR_CFG_NSTRESS_SIGN_INVALID,
+            'bGlobal.txt station normal-stress sign must be +1 (extension) or -1 '
+            '(compression); re-run case.setup. (read %d from %s)' % (g['nStressOutSign'], path))
 
     g['str1ToFaultAngle'] = g['str1ToFaultAngle'] * np.pi / 180.0
     # nstep = idnint(totalSimuTime/dt) -- Fortran round-half-away-from-zero.

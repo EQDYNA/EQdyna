@@ -779,8 +779,7 @@ subroutine report_dropped_offfault_st(matchedAnyRank, actualCoorGlobal)
                     write(*,'(a,i0,a,3f10.3,a)') '   dropped off-fault station ', i, &
                         ' at x,y,z =', x4nds(1,i)/1000.d0, x4nds(2,i)/1000.d0, x4nds(3,i)/1000.d0, &
                         ' km (cause not checked here -- requested depth is within the physical' // &
-                        ' mesh band; the miss may be x or y outside the mesh, or a known y-partition' // &
-                        '-boundary gap in setSurfaceStation)'
+                        ' mesh band; the miss may be x or y outside the mesh)'
                 else
                     write(*,'(a,i0,a,3f10.3,a)') '   dropped off-fault station ', i, &
                         ' at x,y,z =', x4nds(1,i)/1000.d0, x4nds(2,i)/1000.d0, x4nds(3,i)/1000.d0, &

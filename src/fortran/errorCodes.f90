@@ -159,7 +159,7 @@ CONTAINS
         endif
         write(*,*) ' exit code : ', code
         write(*,*) ' reason    : ', trim(reason)
-        write(*,*) ' See the "Exit codes" table in README.md for this code.'
+        write(*,*) ' See docs/user/troubleshooting.md for what this code means.'
         write(*,*) '======================================================='
         write(*,*)
         flush(6)
