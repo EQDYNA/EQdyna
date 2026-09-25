@@ -6,7 +6,9 @@ entries (PROJECT_RULES rule 1, owner 2026-09-24: "follow the rules").
 Incident: ten mission notes (NOTES_*.md) were committed at the top level
 between 2026-09-17 and 2026-09-24 and nothing caught it; they now live in
 docs/notes/. A new tracked root entry fails here by name, with where it
-belongs. Adding a genuinely new root entry is a deliberate edit to ALLOWED.
+belongs; an allowlisted entry that is no longer tracked fails too (so a
+broken enumeration cannot pass). Changing the root is a deliberate edit to
+ALLOWED.
 
 Both ways (rule 14a): before checking the real tree, the checker is run on a
 synthetic listing with one stray NOTES file and one stray evidence file and
@@ -56,6 +58,12 @@ def main():
     entries = tracked_top_level()
     if not entries:
         print('FAIL test_root_allowlist: git ls-files listed nothing -- not a checkout?')
+        return 1
+    absent = sorted(ALLOWED - entries)
+    if absent:
+        print('FAIL test_root_allowlist: allowlisted entr%s not tracked: %s -- either '
+              'git ls-files enumeration broke, or the entry was removed and ALLOWED '
+              'must be edited deliberately' % ('y' if len(absent) == 1 else 'ies', absent))
         return 1
     bad = stray(entries)
     if bad:

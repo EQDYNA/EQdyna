@@ -316,7 +316,7 @@ def check_run_jaxmpi_ab_refuses_and_does_not_stage_into_the_package():
     before = {p: _sha(p) for p in staged}
     cache = os.path.join(pkg, '__pycache__')
     sentinel = os.path.join(cache, 'item74_lock_guard_%d.marker' % os.getpid())
-    notes = os.path.join(ROOT, 'docs/notes/NOTES_jaxmpi_ab_2026-09-22.md')
+    notes = os.path.join(ROOT, 'docs/NOTES_jaxmpi_ab_2026-09-22.md')
     notes_existed = os.path.exists(notes)
     held = _hold(PKG_RESOURCE)
     created = not os.path.isdir(cache)

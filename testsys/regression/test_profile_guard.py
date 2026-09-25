@@ -17,7 +17,7 @@ for, not merely that it runs without crashing on tidy input.
 FIXTURES (testsys/regression/fixtures/profile_guard/<backend>/): REAL
 `profile.rank<r>.json` output, copied verbatim (unedited) from one real
 `testsys/e2e/run_e2e.py --cases test.tpv8 --backends <all four>` sweep run
-on this box, 2026-09-23 (this session; see docs/notes/NOTES_profile_guard.md). Not
+on this box, 2026-09-23 (this session; see NOTES_profile_guard.md). Not
 synthetic: this is what the emitters actually wrote, four fortran ranks
 (4-rank test.tpv8), one python-numpy rank, one python-jax rank, four
 python-jax-mpi ranks. The GREEN checks below assert the guard accepts these
