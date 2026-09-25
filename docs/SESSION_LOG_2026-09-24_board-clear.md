@@ -26,3 +26,27 @@ docs rule, README rewrite, docs site. Grant: merge + minor/patch tags on master 
 - **In flight:** mira-volkov (94), anya-petrov (125 README), victor-reyes (#29 audit). Branches ready, serial
   behind #29: wei/row44-common-loud, wei/row56-no-device-auto, wei/row87-push-filter (live-checked: its push started
   no run), iris/perf-round2 (91/76/92-probe/112), wei/user-docs-style (lands with 125).
+
+## Milestone 2 -- root, README, row 94, row 44 landed (2026-09-25 10:40)
+
+- **#29 -> 482734d** root cleanup: 10 NOTES_*.md -> docs/notes/, `test_root_allowlist.py`. Audit HOLD fixed first:
+  the move had re-pointed `run_jaxmpi_ab.py --notes` at a nonexistent `docs/notes/` path. The tool opens it in append
+  mode, so it would silently have started a second ledger. The guard now also fails on a missing allowlisted entry.
+  The board-only reference update (242a962) is NOT landed: its cherry-pick conflicts, and 1 stale board ref remains
+  (`pathway_forward.md:84` NOTES_tpv3435_spec.md). Routed to the next board pass.
+- **#31 -> fee1315** README 382 -> 127 lines, detail moved to docs/user/, `test_user_docs_style.py` (15 negative +
+  2 positive controls). Audit HOLD: 4 dropped or wrong facts, restored; the guard missed backticked file:line and bare
+  SHAs; 7 case READMEs carried "Provenance: SHA 5e76e8e" (now "shortly after v5.4.0", describe v5.4.0-3). Stranger-clone
+  gate on 4f3f520: clone -> install rc=0 -> unit regression SUCCESS -> tpv8 quickstart rc=0.
+- **#30 -> 7d8b498** row 94 depth clamp (mira-volkov). Audit HOLD with 6 findings. The fix agent died on the rate limit
+  mid-edit, so the conductor salvaged the uncommitted Fortran WIP to `mira/row94-fixes-wip` (d847ccd), and a second
+  dispatch finished it. Re-audit MERGE 6/6. Conductor oracle on cbe3457: 8/8 cells
+  (tpv8/10/36/37 x fortran/jax), references untouched. The fortran/jax body-file counts are 14/15 on tpv8:
+  station 11 sits on the y-partition boundary, a pre-existing Fortran gap and rule-23 divergence that needs a NEW row.
+  tpv36/37 stations 20-22 are real outside-mesh drops. New exit code 49 `ERR_MESH_GRID_TOO_LARGE`.
+- **#32 -> 5dcf6fc** row 44 loud shared-compset failure.
+- **Violation, self-reported:** #32 was opened while #30 was open (rule 25 serial). It was held as a draft on the
+  owner's catch and re-synced after #30.
+- **Dispatch miss:** row 126 went to anya-petrov, who declined it as outside her role (publication staging); it was
+  re-routed to haruto-nakamura. The cost was one cold start.
+- In flight: #33 row 56 (re-audit), haruto (126). Queued: wei/perf-round2-land (91/76/92-probe/112), row 87.
