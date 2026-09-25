@@ -130,6 +130,7 @@ SHARDS = {
                                  # subprocess-heavy scripts.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
+        "test_user_docs_style.py",  # added 2026-09-24 (wei-lin, user-facing docs rule): pure text checks, <1 s
         "test_sweep_core_budget.py",
         "test_sweep_tenancy_budget_2026_09_23.py",
     ],
