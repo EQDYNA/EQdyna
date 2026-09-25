@@ -85,7 +85,10 @@ def good_row(**kw):
              snapshot='docs/perf_snapshots/scaling_2026-09-23_x.json',
              platform='cpu', devices=None,
              platform_evidence='synthetic guard row',
-             parallelism='mpi')
+             parallelism='mpi',
+             # required since 2026-09-24 (row 76): guarded in
+             # test_perf_row76_contention.py, not here.
+             contention=dict(cpus=list(range(16)), busy=0, total=16))
     r.update(kw)
     return r
 
@@ -94,16 +97,20 @@ SCALING_META = dict(
     case='test.tpv104', sha='abc1234', host='cotopaxi',
     date='2026-09-23 11:35', busy_ceiling=0.45,
     rows=[dict(engine='fortran', n=16, policy='compact', ms_per_step=64.74,
-               n_lo=20, n_hi=60, cpus=list(range(16))),
+               n_lo=20, n_hi=60, cpus=list(range(16)),
+               busy={c: 0.0 for c in range(16)}),
           dict(engine='python-jax', n=16, policy='compact', ms_per_step=271.5,
-               n_lo=20, n_hi=60, cpus=list(range(16))),
+               n_lo=20, n_hi=60, cpus=list(range(16)),
+               busy={c: 0.0 for c in range(16)}),
           dict(engine='python-numpy', n=8, policy='spread', ms_per_step=250.25,
-               n_lo=20, n_hi=60, cpus=[0, 8, 16, 24, 32, 40, 48, 56])])
+               n_lo=20, n_hi=60, cpus=[0, 8, 16, 24, 32, 40, 48, 56],
+               busy={c: 0.0 for c in (0, 8, 16, 24, 32, 40, 48, 56)})])
 
 MPI_META = dict(
     case='test.tpv104', sha='abc1234', host='cotopaxi',
     date='2026-09-23 16:37', n_lo=40, n_hi=160, max_busy=0.6,
     rows=[dict(ranks=4, cpus=[8, 9, 16, 17], n_lo=40, n_hi=160,
+               busy={'8': 0.0, '9': 0.0, '16': 0.0, '17': 0.0},
                jax_halo=dict(ms_per_step=605.0,
                              rank_ms=[600.0, 605.0, 590.0, 601.0],
                              eff=[3.9, 3.8, 4.0, 3.7], threads=[1, 1, 1, 1]),
@@ -207,7 +214,7 @@ def main():
 
     erows = ledger.rows_from_e2e_results(
         E2E_META, 'docs/perf_snapshots/e2e_cells_x.json',
-        dict(busy=12, total=64))
+        dict(busy=12, total=64, cpus=list(range(64))))
     # `.get`, not `[...]`: an emitter that stops setting the field must fail
     # with the verdict below naming the emitter and the row, not with a bare
     # KeyError traceback from inside this comprehension. A guard that cannot
