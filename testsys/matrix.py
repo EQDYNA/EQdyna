@@ -287,8 +287,9 @@ STATION_UNSUPPORTED = {
 
 # NC_UNSUPPORTED -- (case, backend) cells whose fault.dyna.r.nc comparison is
 # declared, with the measured reason, instead of run: printed by compare_cell,
-# never silently skipped. compare_nc is a pointwise allclose(1e-3) of the
-# resampled fault fields; on a chaotically bistable case it cannot pass
+# never silently skipped. compare_nc gates each variable at max|diff| <=
+# CASE_BOUND (row 121; the rule 5 allclose(1e-3) only where a case has no
+# scalar bound); on a chaotically bistable case it cannot pass
 # across backends, for the same reason frt needs DRV_A6's flip budget.
 NC_UNSUPPORTED = {
     ('test.drv.a6', 'python-jax'): (
