@@ -532,11 +532,12 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
             'driver.run_mpi: %d lumped nodal mass(es) <= 0 across the ranks. '
             'driver.f90:30 divides by them unconditionally.' % bad)
 
-    # Row 114: python-jax-mpi does not port station output (build_solver_state
-    # hands this path empty st_on_idx/st_off_idx -- see eqdyna3d.run_case_mpi's
-    # loud warning when a case actually names stations). n_on_st_l/n_off_st_l
-    # are therefore always 0 here, but the carry tuple still carries the two
-    # slots so make_step_parts's part_a/part_b (ONE implementation, shared with
+    # Row 120: st_on_idx/st_off_idx are THIS RANK'S matches (build_solver_state
+    # runs meshgen.build_station_matching against the rank-local grid lines,
+    # see its docstring) -- may be empty for a rank that matches no station,
+    # exactly like a rank that owns no fault node writes no frt.txt. The
+    # carry tuple always carries the two history slots (width 0 when empty)
+    # so make_step_parts's part_a/part_b (ONE implementation, shared with
     # `run`) can unpack the same-length tuple on both entry points.
     n_on_st_l = int(finv['st_on_idx'].shape[0])
     n_off_st_l = int(finv['st_off_idx'].shape[0])
@@ -818,9 +819,17 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
     # consumer indexing them by a serial node or equation id would read a real
     # but WRONG row, and must fail with a KeyError instead. fric/fnft are this
     # rank's fault rows; `fault_rows` are the ones it WRITES.
+    #
+    # Row 120: on_st_hist/off_st_hist are RANK-LOCAL too (this rank's
+    # st_on_idx/st_off_idx, from build_solver_state's per-rank station
+    # matching) -- eqdyna3d.run_case_mpi writes them through the SAME
+    # library_output.write_onfault_stations/write_offfault_stations `run`
+    # uses, keyed off THIS rank's S['st_on_idx']/S['st_off_idx'], so no
+    # relabelling is needed here, unlike velArr/dispArr/force above.
     return dict(velArr_local=np.asarray(velArr),
                 dispArr_local=np.asarray(dispArr),
                 force_local=np.asarray(force),
                 fnft=np.asarray(fnft), fric=np.asarray(fric),
+                on_st_hist=np.asarray(on_st_hist), off_st_hist=np.asarray(off_st_hist),
                 fault_rows=plan['fault_rows'],
                 own_in_computed=plan['fault_rows'], report=rep)
