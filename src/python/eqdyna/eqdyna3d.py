@@ -216,6 +216,17 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor):
       - matched on no node at all (x or y outside the mesh -- snapping depth
         cannot fix that): a true DROP, "dropped off-fault station", unchanged.
 
+    SNAP is gated on the DEPTH difference alone (|actual z - requested z|),
+    not the full 3-axis distance -- x and y already snapped to the nearest
+    node before this fix (silently, forever) and that is unchanged and out
+    of scope; gating broadly would flood this NOTICE with stations that were
+    never at risk of being dropped (measured: it would have reported 19 for
+    test.tpv36/test.tpv37, 0 of them depth-caused, and 6 for test.tpv10
+    instead of the 2 this fix actually recovers). Still prints the full
+    (x,y,z) requested vs actual and full 3-axis distance for each reported
+    station, since a depth-snapped station can shift in x/y too (test.tpv10
+    stations 9/10).
+
     Coordinates arrive in metres. `meshCoor` is build_node_coordinates'
     1-indexed (row 0 unused) array; `nc` (off_matches' second element) is
     already that same 1-indexed node id."""
@@ -228,14 +239,15 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor):
         if i in off_matched:
             actual = meshCoor[off_matched[i]]
             requested = x4nds[:, i - 1]
-            dist = float(np.linalg.norm(actual - requested))
-            if dist > 1.0e-5:
+            if abs(float(actual[2]) - float(requested[2])) > 1.0e-5:
+                dist = float(np.linalg.norm(actual - requested))
                 off_snapped.append((i, requested, actual, dist))
     if off_snapped:
         print(' NOTICE: %d of %d requested off-fault stations do not sit exactly '
-              'on a grid node' % (len(off_snapped), x4nds.shape[1]))
-        print('   (setSurfaceStation, meshgen.f90: x, y and z all now snap to the '
-              'nearest node instead of z requiring an exact grid-plane match)')
+              'on a grid z-plane' % (len(off_snapped), x4nds.shape[1]))
+        print('   (setSurfaceStation, meshgen.f90: depth now snaps to the nearest node '
+              'instead of requiring an exact grid-plane match; x and y unchanged, they '
+              'already snapped to the nearest node)')
         for i, requested, actual, dist in off_snapped:
             print('   snapped off-fault station %d (would otherwise be a dropped '
                   'off-fault station): requested x,y,z =%10.3f%10.3f%10.3f km, '

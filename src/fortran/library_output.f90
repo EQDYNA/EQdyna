@@ -697,6 +697,24 @@ subroutine report_dropped_offfault_st(matchedAnyRank, actualCoorGlobal)
     ! matched node's (x,y,z), MAX-reduced over all ranks (reduceOffFault-
     ! StationCoor above); for a station matched by no rank it still carries
     ! the UNMATCHED_SENTINEL value and is not read.
+    !
+    ! SNAP is gated on the DEPTH difference alone (|actual z - requested z|),
+    ! not the full 3-axis distance -- deliberately: x and y already snapped
+    ! to the nearest node before this fix (silently, on every case, forever),
+    ! and that is UNCHANGED and out of this mission's scope. Reporting every
+    ! station with ANY nonzero x/y/z offset would flood this NOTICE with
+    ! stations that were never at risk of being dropped (their z already sat
+    ! exactly on a grid plane, so the OLD exact-z-match rule matched them
+    ! fine too) -- measured directly: it would have inflated test.tpv36/
+    ! test.tpv37's count from a genuine 0 depth-driven snaps to 19, and
+    ! test.tpv10's from 2 to 6, none of it caused by this fix. Gating on z
+    ! alone reports exactly the stations THIS fix changes the fate of --
+    ! test.tpv8 3 recovered + 1 still-dropped = 4, test.tpv10 2 recovered,
+    ! test.tpv36/test.tpv37 0 recovered (their 3 drops are x/y-outside-the-
+    ! mesh, unrelated to depth, and stay drops) -- while still printing the
+    ! full (x,y,z) requested vs actual and the full 3-axis distance for each
+    ! one reported, since a station whose depth needed snapping can (tpv10
+    ! stations 9/10) have its x/y shift too.
     use globalvar
     implicit none
 
@@ -709,25 +727,23 @@ subroutine report_dropped_offfault_st(matchedAnyRank, actualCoorGlobal)
     nSnapped = 0
     do i = 1, totalNumOfOffSt
         if (matchedAnyRank(i)) then
-            dist = sqrt((actualCoorGlobal(1,i)-x4nds(1,i))**2 + &
-                        (actualCoorGlobal(2,i)-x4nds(2,i))**2 + &
-                        (actualCoorGlobal(3,i)-x4nds(3,i))**2)
-            if (dist > tol) nSnapped = nSnapped + 1
+            if (abs(actualCoorGlobal(3,i)-x4nds(3,i)) > tol) nSnapped = nSnapped + 1
         endif
     enddo
     if (nDropped == 0 .and. nSnapped == 0) return
 
     if (nSnapped > 0) then
         write(*,'(a,i0,a,i0,a)') ' NOTICE: ', nSnapped, ' of ', totalNumOfOffSt, &
-            ' requested off-fault stations do not sit exactly on a grid node'
-        write(*,'(a)') '   (setSurfaceStation, meshgen.f90: x, y and z all now snap to the' // &
-            ' nearest node instead of z requiring an exact grid-plane match)'
+            ' requested off-fault stations do not sit exactly on a grid z-plane'
+        write(*,'(a)') '   (setSurfaceStation, meshgen.f90: depth now snaps to the nearest' // &
+            ' node instead of requiring an exact grid-plane match; x and y unchanged, they' // &
+            ' already snapped to the nearest node)'
         do i = 1, totalNumOfOffSt
             if (matchedAnyRank(i)) then
-                dist = sqrt((actualCoorGlobal(1,i)-x4nds(1,i))**2 + &
-                            (actualCoorGlobal(2,i)-x4nds(2,i))**2 + &
-                            (actualCoorGlobal(3,i)-x4nds(3,i))**2)
-                if (dist > tol) then
+                if (abs(actualCoorGlobal(3,i)-x4nds(3,i)) > tol) then
+                    dist = sqrt((actualCoorGlobal(1,i)-x4nds(1,i))**2 + &
+                                (actualCoorGlobal(2,i)-x4nds(2,i))**2 + &
+                                (actualCoorGlobal(3,i)-x4nds(3,i))**2)
                     write(*,'(a,i0,a,3f10.3,a,3f10.3,a,f8.3,a)') &
                         '   snapped off-fault station ', i, &
                         ' (would otherwise be a dropped off-fault station): requested x,y,z =', &
