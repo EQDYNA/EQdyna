@@ -107,7 +107,7 @@ Binary-searched to a time window, not yet to a line:
   - The window between 24 and 144 steps (roughly 1-6 s of simulated time)
     is where the first real divergence happens and has NOT been isolated
     further (would need per-step or per-element dumps on both sides, i.e.
-    a debug Fortran build -- out of scope for this pass; see NOTES_tpv30_gate.md).
+    a debug Fortran build -- out of scope for this pass; see docs/notes/NOTES_tpv30_gate.md).
 
 **What this is not:** not the G6 half-traction blocker (that measured ratio
 was exactly 0.5, depth-independent, from the very first output step;
