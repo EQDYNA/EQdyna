@@ -434,7 +434,7 @@ the evidence manifest are accumulated real work, not one patch-sized change.
   **base** `1f3df0b`
 - **worktree PRESERVED at
   `/home/utig5/dliu/EQdyna/.claude/worktrees/agent-a715e2d874d6d2f05`** -- do
-  not reap it. `NOTES_round6.md` is untracked on disk inside it.
+  not reap it. `docs/notes/NOTES_round6.md` is untracked on disk inside it.
 
 **The gate is already green, run by me, so the next session does not repeat
 25 minutes of it:**
@@ -626,7 +626,7 @@ here rather than reasoning my way into compliance: `pathway_forward.md` and
 this release now disagree about 2026-09-19, and the board is the one people
 trust. First item of the next session is Zofia writing both rows.
 
-## Salvaged from `NOTES_round6.md` before reaping the worktree
+## Salvaged from `docs/notes/NOTES_round6.md` before reaping the worktree
 
 Four things round 6 found and deliberately did NOT fix. None is a defect; each
 is a judgment call that would otherwise die with the worktree.
@@ -650,4 +650,4 @@ is a judgment call that would otherwise die with the worktree.
 
 `agent-a715e2d874d6d2f05` checked before removal, not assumed scratch:
 `git log --cherry-pick --right-only master...` EMPTY (all its work is in
-master) and the only untracked file was `NOTES_round6.md`, salvaged above.
+master) and the only untracked file was `docs/notes/NOTES_round6.md`, salvaged above.
