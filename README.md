@@ -48,10 +48,10 @@ export PYTHONPATH=$EQDYNAROOT/src/python
 ```
 
 Add the three `export` lines and `. ~/eqdyna-env/bin/activate` to your `~/.bashrc`
-(with the full path in place of `$(pwd)`) so every new shell finds EQdyna. If you later edit `src/fortran/`, re-run
-`./install-eqdyna.sh`; the tools refuse to use a binary built from older source. To check the install, run
-`python3 testsys/run.py unit regression`; it takes about 4 minutes and must end
-with two `SUCCESS` lines.
+(with the full path in place of `$(pwd)`) so every new shell finds EQdyna. If you
+later edit `src/fortran/`, re-run `./install-eqdyna.sh`; the tools refuse to use a
+binary built from older source. The quick start below is the install check: if it
+produces the files it lists, the install works.
 
 ## Quick start
 

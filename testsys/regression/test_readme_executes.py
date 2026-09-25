@@ -129,7 +129,7 @@ def build_session_script(blocks, clone_substitution=None):
     `echo` in the generated script so the substitution is visible in the
     run log, not silently baked in.
     """
-    out = ['set -u']   # unbound-variable use (e.g. a removed export) is a
+    out = ['set -u', 'set -o pipefail']   # unbound-variable use (e.g. a removed export) is a
                        # hard failure, not a silent empty string -- this is
                        # what makes the mutation self-test's "export
                        # removed" case actually fail.

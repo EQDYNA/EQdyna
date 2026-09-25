@@ -50,8 +50,9 @@ Check the install with the fast test tiers:
 python3 testsys/run.py unit regression
 ```
 
-Both should finish in well under a minute and print `SUCCESS` for every
-check.
+This needs `pip install pytest` in the same environment. It takes about 4
+minutes (246 s measured on 2026-09-25 on a shared 64-core workstation) and must
+end with `SUCCESS unit` and `SUCCESS regression`.
 
 ## Running a first case
 
