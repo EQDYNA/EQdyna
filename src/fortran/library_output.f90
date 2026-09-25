@@ -715,6 +715,20 @@ subroutine report_dropped_offfault_st(matchedAnyRank, actualCoorGlobal)
     ! full (x,y,z) requested vs actual and the full 3-axis distance for each
     ! one reported, since a station whose depth needed snapping can (tpv10
     ! stations 9/10) have its x/y shift too.
+    !
+    ! Finding 6 (row 94 audit, 2026-09-25): the DROP wording used to say
+    ! "match no grid node (outside the mesh)" unconditionally -- false for
+    ! test.tpv8 station 11, dropped by a pre-existing y-partition-boundary
+    ! gap in setSurfaceStation (meshgen.f90: interior-y test is `iy>1 .and.
+    ! iy<nodeXyzIndex(5)`, no boundary branch for y as there is for x), not
+    ! by anything outside the mesh. `x4ndsZValidPersist` (globalvar; set by
+    ! meshgen alongside x4ndsSnapZ/x4ndsZValid, identical on every rank) is
+    ! the one cause this subroutine HAS checked, so a drop now says either
+    ! "requested depth is outside the physical mesh band" (x4ndsZValidPersist
+    ! .false. -- a CONFIRMED cause) or that the cause is not further
+    ! diagnosed here (x4ndsZValidPersist .true. -- depth was fine; x, y, or
+    ! the y-boundary gap above are candidates, but none is checked by this
+    ! subroutine, so none is named).
     use globalvar
     implicit none
 
@@ -758,11 +772,21 @@ subroutine report_dropped_offfault_st(matchedAnyRank, actualCoorGlobal)
 
     if (nDropped > 0) then
         write(*,'(a,i0,a,i0,a)') ' WARNING: ', nDropped, ' of ', totalNumOfOffSt, &
-            ' requested off-fault stations match no grid node (outside the mesh) and get NO body* file'
+            ' requested off-fault stations match no grid node and get NO body* file'
         do i = 1, totalNumOfOffSt
             if (.not. matchedAnyRank(i)) then
-                write(*,'(a,i0,a,3f10.3,a)') '   dropped off-fault station ', i, &
-                    ' at x,y,z =', x4nds(1,i)/1000.d0, x4nds(2,i)/1000.d0, x4nds(3,i)/1000.d0, ' km'
+                if (x4ndsZValidPersist(i)) then
+                    write(*,'(a,i0,a,3f10.3,a)') '   dropped off-fault station ', i, &
+                        ' at x,y,z =', x4nds(1,i)/1000.d0, x4nds(2,i)/1000.d0, x4nds(3,i)/1000.d0, &
+                        ' km (cause not checked here -- requested depth is within the physical' // &
+                        ' mesh band; the miss may be x or y outside the mesh, or a known y-partition' // &
+                        '-boundary gap in setSurfaceStation)'
+                else
+                    write(*,'(a,i0,a,3f10.3,a)') '   dropped off-fault station ', i, &
+                        ' at x,y,z =', x4nds(1,i)/1000.d0, x4nds(2,i)/1000.d0, x4nds(3,i)/1000.d0, &
+                        ' km (checked cause: requested depth is outside the physical, non-PML' // &
+                        ' mesh band)'
+                endif
             endif
         enddo
     endif

@@ -110,6 +110,7 @@ program EQdyna
     call readstations1
 
     allocate(OffFaultStNodeIdIndex(2,totalNumOfOffSt), xonfs(2,maxval(nonfs),ntotft), x4nds(3,totalNumOfOffSt))
+    allocate(x4ndsZValidPersist(totalNumOfOffSt))
 
     call readstations2
     if (insertFaultType > 0) call read_fault_rough_geometry
