@@ -229,3 +229,44 @@ H7. Full gate (unit+regression, e2e fortran+python-jax on 4 cases,
 - T8: registered `test_row132_axis_too_thin.py` in `testsys/ci_shard.py`
   (`ci_shard.py verify`: 81 on-disk, 81 assigned, 0 missing/stale).
 
+- T9: FULL REQUIRED GATE, fresh:
+    - `python3 testsys/run.py unit regression` -> SUCCESS both tiers (exit 0).
+    - `python3 testsys/e2e/run_e2e.py --cases test.tpv8,test.tpv10,test.tpv36,
+      test.tpv37 --backends fortran,python-jax --jobs 1` -> 8/8 cells SUCCESS
+      (wall clock 878.3s); every frt/nc/station comparison against the
+      COMMITTED reference passed at its case's own bound (e.g. tpv8 fortran
+      max|diff|=3.05e-11 vs bound 1e-08; tpv36/tpv37 fortran EXACT 0.0e+00).
+    - `python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends
+      python-jax-mpi --jobs 1` -> 1/1 cell SUCCESS (14.9s; max|diff|=1.22e-10
+      vs bound 1e-08; station worst e=1.12e-10 vs bound 1e-07).
+    - `git status test.reference.results/` -> clean, nothing to stop for
+      (row 131/132 are ownership/refusal changes, no reference moved).
+  Reverted the gate's own scratch (`docs/perf_ledger.jsonl`,
+  `docs/run_profiles.jsonl`, two new `docs/perf_snapshots/*.json`) before
+  committing, per this mission's instruction.
+
+## Findings summary (for the final report)
+
+1. Row 131 (on-fault station duplicate): FIXED in both languages, same
+   ownership rule as row 127, gating ONLY the station-selection sub-block.
+   Mutation-checked against origin/master (both languages): reproduces
+   identically on unfixed code (tpv8 (2,2,1): ranks 0/2 both write all 4 of
+   rank 0's faultst files; synthetic (2,1,2) corner: 4-way duplicate).
+   frt/physics proven unchanged: serial invariance (0/23 files differ,
+   date header excluded) and multi-rank retained-file content identity
+   (rank 0's own 4 faultst files are byte-identical branch vs master, date
+   header excluded).
+2. Row 132(1) (Fortran axis-too-thin guard): FIXED via new
+   `ERR_MPI_AXIS_TOO_THIN=53` and a guard in `getLocalOneDimCoorArrAndSize`.
+   No real case in this repo fits the shared box's 8-rank cap while
+   triggering the shape (measured floors: tpv8 x=17,y=25,z=9, all >8) --
+   tested via a standalone probe that calls the real production routine
+   with a hand-derived, real, self-consistent decomposition (7 nodes / 8
+   ranks; rank 1, a MIDDLE rank, goes thin). Python's `check_partition_1d`
+   already refused this loudly; now Fortran does too, both exercised in
+   `test_row132_axis_too_thin.py`.
+3. Row 132(2) (mutation-check tautology): fixed -- `_ownership_violations`
+   gained an `expected` parameter so the DROP shape is observable through
+   the SAME function real callers use, not a hand-rolled set difference.
+4. Full gate green: unit+regression, 8/8 e2e cells (fortran+python-jax x
+   4 cases), 1/1 python-jax-mpi cell, `test.reference.results/` untouched.
