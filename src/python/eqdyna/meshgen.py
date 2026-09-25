@@ -1509,7 +1509,7 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
 
 
 def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
-                            pml_zmin, z_free_surface):
+                            pml_zmin, z_free_surface, zline_global=None):
     """Milestone 5: port of meshgen.f90's `setSurfaceStation` (off-fault
     nearest-grid-node matching, called once per regular node, BEFORE
     `createMasterNode` in the main ix/iz/iy loop) and the on-fault station
@@ -1574,6 +1574,19 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
     pml_zmin: Fortran's `PMLb(5)` -- `build_grid_lines`'s `pmlb['zmin0']`.
     z_free_surface: Fortran's `modelBoundCoor(3,2)` -- `build_grid_lines`'s
         `bounds[2][1]` (zbound's upper element).
+    zline_global: Row 120 (python-jax-mpi station output). Fortran's
+        setSurfaceStation reconstructs a GLOBAL zGridFull (meshgen.f90:36-47's
+        getLocalOneDimCoorArrAndSize call with the "full array" flag) purely
+        for the depth-snap/band search, independent of which z-slab THIS rank
+        owns -- so a station's snapped depth is the same physical node
+        regardless of the z-decomposition. `zline` itself stays this rank's
+        LOCAL slice for the node loop (`node_count`/`fault_seq` must match
+        this rank's own nsmp/meshCoor numbering, built from the same local
+        `zline` by `build_node_coordinates`). Defaults to `zline` itself,
+        which is a no-op for the serial caller (global) and for any run with
+        npz==1 (every rank's local z line IS the global one already, e.g.
+        test.tpv8's (2,2,1) decomposition) -- only a future npz>1 opt-in
+        would ever see this default fork.
 
     Returns (anonfs, off_fault_matches, z_valid): anonfs is a list of
     (fault_seq, station_col, iFault=1) tuples, 1-indexed fault_seq/
@@ -1596,13 +1609,12 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
     matched = np.zeros(n_off + 1, dtype=bool)  # 1-indexed
 
     # Row 94 (owner ruling 2026-09-24): clamp each requested off-fault
-    # station's depth to the nearest node of `zline` -- here the FULL
-    # global z grid already (this port's serial builder holds the whole
-    # domain, not a per-rank slice, unlike meshgen.f90's MPI-partitioned
+    # station's depth to the nearest node of the GLOBAL z grid -- the serial
+    # caller holds the whole domain already (zline_global defaults to
     # zline), so this is a plain nearest-value search, no cross-rank
     # reduction needed. x and y are unchanged: they already snap to the
     # nearest interior node in the branches below.
-    zline_arr = np.asarray(zline)
+    zline_arr = np.asarray(zline_global if zline_global is not None else zline)
     # Finding 1 (row 94 audit, 2026-09-25): restrict both the request and
     # the candidate nodes to the physical (non-PML) band, mirroring
     # meshgen.f90's x4ndsZValid / zGridFull(k) < PMLb(5)-tol guards exactly.

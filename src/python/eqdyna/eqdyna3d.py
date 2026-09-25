@@ -386,35 +386,18 @@ def build_solver_state(case_dir, part=None):
     material = readInputFiles.read_bmaterial(
         os.path.join(case_dir, 'bMaterial.txt'), g['nmat'], g['n2mat'])
 
-    # Row 114 -- station output. bStations.txt is read unconditionally (every
-    # case.setup-generated case dir has one, scripts/case.setup:111); MATCHING
-    # (meshgen.build_station_matching, which needs the GLOBAL grid lines) runs
-    # only on the serial path -- see run_case_mpi's loud warning for why the
-    # python-jax-mpi path leaves st_on_idx/st_off_idx empty instead.
+    # Row 114/120 -- station output. bStations.txt is read unconditionally
+    # (every case.setup-generated case dir has one, scripts/case.setup:111).
+    # MATCHING (meshgen.build_station_matching) runs on BOTH paths: the
+    # serial path against the GLOBAL grid lines (matching Fortran's serial
+    # setSurfaceStation/createMasterNode), the MPI path against THIS RANK'S
+    # LOCAL lines (matching Fortran's per-rank setSurfaceStation/
+    # createMasterNode at the SAME decomposition, run 120) -- see below,
+    # after part.slice_lines.
     xonfs, x4nds = readInputFiles.read_bstations(os.path.join(case_dir, 'bStations.txt'))
     st_on_total, st_off_total = xonfs.shape[1], x4nds.shape[1]
 
     xline, yline, zline, pmlb, bounds = meshgen.build_grid_lines(params)
-    if part is None:
-        anonfs, off_matches, off_z_valid = meshgen.build_station_matching(
-            xline, yline, zline, params, xonfs, x4nds,
-            pmlb['zmin0'], bounds[2][1])
-        st_on_idx = np.array([fs - 1 for fs, sc, ift in anonfs], dtype=np.int64)
-        st_on_strike_m = np.array([xonfs[0, sc - 1] for fs, sc, ift in anonfs])
-        st_on_depth_m = np.array([xonfs[1, sc - 1] for fs, sc, ift in anonfs])
-        st_off_idx = np.array([nc - 1 for sc, nc in off_matches], dtype=np.int64)
-        st_off_x_m = np.array([x4nds[0, sc - 1] for sc, nc in off_matches])
-        st_off_y_m = np.array([x4nds[1, sc - 1] for sc, nc in off_matches])
-        st_off_z_m = np.array([x4nds[2, sc - 1] for sc, nc in off_matches])
-        # Row 94: the snap report (and the header stamp write_offfault_stations
-        # uses) needs the ACTUAL matched node location, which needs meshCoor --
-        # not built yet at this point. report_dropped_stations is therefore
-        # called further down, once meshCoor exists (see there).
-    else:
-        st_on_idx = np.zeros(0, dtype=np.int64)
-        st_on_strike_m = st_on_depth_m = np.zeros(0)
-        st_off_idx = np.zeros(0, dtype=np.int64)
-        st_off_x_m = st_off_y_m = st_off_z_m = np.zeros(0)
     # fltxyz(2,4,1) (readInputFiles.f90:139-143), the fault dip angle in
     # radians used by output_onfault_st's down-dip-distance conversion
     # (library_output.f90:51/68) -- same formula as meshgen.py's
@@ -424,30 +407,72 @@ def build_solver_state(case_dir, part=None):
                       else 90.0 * np.pi / 180.0)
 
     model_bound = None
+    zline_global = zline
     if part is not None:
         # The global lines are O(nx+ny+nz) and kept only for the two
-        # censuses; every builder below sees the rank's SLICES. PMLb and the
-        # model bounds stay global (meshgen.f90:32-37), or setNumDof and the
+        # censuses (and, row 120, the off-fault depth-band snap below); every
+        # builder past this point sees the rank's SLICES. PMLb and the model
+        # bounds stay global (meshgen.f90:32-37), or setNumDof and the
         # fixed-boundary test would reclassify nodes on subdomain faces.
         glines = (xline, yline, zline)
         (xline, yline, zline), offsets = part.slice_lines(xline, yline, zline)
         model_bound = bounds
+        zline_global = glines[2]
+
+    # Row 120: build_station_matching, on THIS rank's (xline, yline, zline)
+    # for the MPI path (== the global lines for the serial path, part is
+    # None) -- reproducing Fortran's own per-rank setSurfaceStation/
+    # createMasterNode bit for bit, INCLUDING its two pre-existing gaps
+    # (rule 23: Fortran is the reference for numerics, warts included, and
+    # this mission does not fix either in Fortran):
+    #   - off-fault: no y-partition-boundary branch exists (only x has
+    #     ix==1/ix==nx edge branches), so a station whose y coordinate lands
+    #     exactly on a shared rank-boundary plane is dropped by EVERY rank
+    #     that shares it, not just this one (measured, test.tpv8 at (2,2,1):
+    #     station 11 [0, 0.5, -0.3] km sits exactly at y=500 m, the mey=0/
+    #     mey=1 boundary -- see docs/notes/NOTES_row120.md).
+    #   - both on- and off-fault: a station sitting on a SHARED x/y plane
+    #     that DOES have an edge branch (x) can match on more than one rank,
+    #     each of which then writes the same faultst*/body* filename -- the
+    #     same "last rank to call wins" shape GATE_STATIONS' docstring
+    #     already documents for the Fortran multi-rank case (drv.a6/tpv104/
+    #     tpv1053d's spurious 14th file), not a new hazard this port
+    #     introduces.
+    anonfs, off_matches, off_z_valid = meshgen.build_station_matching(
+        xline, yline, zline, params, xonfs, x4nds,
+        pmlb['zmin0'], bounds[2][1], zline_global=zline_global)
+    st_on_idx = np.array([fs - 1 for fs, sc, ift in anonfs], dtype=np.int64)
+    st_on_strike_m = np.array([xonfs[0, sc - 1] for fs, sc, ift in anonfs])
+    st_on_depth_m = np.array([xonfs[1, sc - 1] for fs, sc, ift in anonfs])
+    st_off_idx = np.array([nc - 1 for sc, nc in off_matches], dtype=np.int64)
+    st_off_x_m = np.array([x4nds[0, sc - 1] for sc, nc in off_matches])
+    st_off_y_m = np.array([x4nds[1, sc - 1] for sc, nc in off_matches])
+    st_off_z_m = np.array([x4nds[2, sc - 1] for sc, nc in off_matches])
+    # Row 94: the snap report (and the header stamp write_offfault_stations
+    # uses) needs the ACTUAL matched node location, which needs meshCoor --
+    # not built yet at this point. Resolved further down, once meshCoor
+    # exists (see there).
     meshCoor, nftnd, nsmp = meshgen.build_node_coordinates(
         xline, yline, zline, params, model_bound=model_bound)
+    # Row 94: the ACTUAL matched node's (x,y,z) per off-fault station,
+    # meshCoor being 1-indexed with row 0 unused (build_node_coordinates)
+    # and `nc` (off_matches' second element) already that same 1-indexed
+    # node id -- read it straight, no offset. A station this run did not
+    # match at all (x or y outside the mesh, or -- row 120 -- outside THIS
+    # rank's box) never appears in off_matches and so never appears here
+    # either.
+    st_off_actual_m = (meshCoor[np.array([nc for sc, nc in off_matches], dtype=np.int64)]
+                        if off_matches else np.zeros((0, 3)))
     if part is None:
-        # Row 94: the ACTUAL matched node's (x,y,z) per off-fault station,
-        # meshCoor being 1-indexed with row 0 unused (build_node_coordinates)
-        # and `nc` (off_matches' second element) already that same 1-indexed
-        # node id -- read it straight, no offset. A station this run did not
-        # match at all (x or y outside the mesh) never appears in off_matches
-        # and so never appears here either; report_dropped_stations reports
-        # that case from off_matched/off_dropped directly, not from this array.
-        st_off_actual_m = (meshCoor[np.array([nc for sc, nc in off_matches], dtype=np.int64)]
-                            if off_matches else np.zeros((0, 3)))
+        # report_dropped_stations reasons about a GLOBAL match set; on the
+        # MPI path a station absent from THIS rank's anonfs/off_matches may
+        # still be matched by another rank, so calling it per-rank here
+        # would misreport a station this run as a whole did not drop as
+        # dropped. Not reproduced on the MPI path this landing (row 120
+        # scope: the station FILES and their selection, not the coverage
+        # diagnostic) -- see docs/notes/NOTES_row120.md.
         report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
                                  off_z_valid, params['tol'])
-    else:
-        st_off_actual_m = np.zeros((0, 3))
     conn, elem_type, mat, elem_depth = meshgen.build_elements(
         xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
     num_dof, eq_start, eq_nums, total_eqs = meshgen.build_equation_numbers(
@@ -665,6 +690,18 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     comparison path. (Fortran writes every fault node a rank holds, so its
     shared-plane nodes appear twice; this port writes each once.)
 
+    Row 120: also writes this rank's matched faultst*/body* station files
+    (library_output.write_onfault_stations/write_offfault_stations, using
+    the per-rank S['st_on_idx']/S['st_off_idx'] build_solver_state's
+    per-rank meshgen.build_station_matching produced), independent of
+    whether this rank owns any fault node -- an off-fault station can sit
+    in a box that never touches the fault at all. Two ranks CAN both match
+    the same station (a shared x/y plane with an edge branch, e.g.
+    test.tpv8's x=0 rank boundary) and both write the SAME filename to the
+    SAME case_dir: this reproduces Fortran's own known multi-rank shared-
+    filename behaviour (GATE_STATIONS' docstring, testsys/matrix.py) rather
+    than fixing it -- out of scope here (rule 23: Fortran is the reference).
+
     Returns (path, report) -- the report carries this rank's element counts,
     halo size and ms/step, which every multi-rank measurement must print."""
     # total_s is an INDEPENDENT timer, not a bucket sum (profile_schema.py's
@@ -685,20 +722,6 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         # setup exchanges Fortran does (MPI4arn, MPI4NodalQuant on mass/fnms).
         S, mesh = build_solver_state(case_dir, part=part)
         plan = MQ.setup_exchange(comm, part, S, mesh)
-    # Row 114: python-jax-mpi does NOT port station output (build_solver_state
-    # leaves S['st_on_idx']/['st_off_idx'] empty on this path; see driver.py's
-    # run_mpi carry comment). Recorded clearly, once per job, rather than
-    # silently writing no faultst*/body* files -- this must not be a hard
-    # refusal: test.tpv8 (the one case opted into this mode) has stations in
-    # its DEFAULT bStations.txt (scripts/defaultParameters.py's
-    # st_coor_on_fault/st_coor_off_fault), so raising here would break the
-    # existing gated cell rather than just leave a documented gap.
-    if comm.Get_rank() == 0 and (S['st_on_total'] > 0 or S['st_off_total'] > 0):
-        print('run_case_mpi: bStations.txt names %d on-fault / %d off-fault '
-              'station(s), but python-jax-mpi does not port station output '
-              '(row 114 scope: fortran and the serial python backends only) '
-              '-- NO faultst*/body* files are written by this run.'
-              % (S['st_on_total'], S['st_off_total']), file=sys.stderr, flush=True)
     with prof.phase('solve'):
         out = driver.run_mpi(S, comm, part, plan, nsteps=nsteps, verbose=verbose,
                              xp=_backend.array_module('jax'))
@@ -725,6 +748,18 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
                                     rep['nsteps'], buckets,
                                     loop_s=rep['solve_s'], total_s=total_s)
 
+    # Row 120: station output, INDEPENDENT of fault-node ownership below --
+    # an off-fault station can sit in a box that never touches the fault at
+    # all (e.g. test.tpv8's mey=1 boxes), so gating this behind `n_own == 0`
+    # (frt's own ownership test) would silently drop every off-fault station
+    # matched by such a rank. write_onfault_stations/write_offfault_stations
+    # already no-op (return []) when THIS rank's S['st_on_idx']/
+    # S['st_off_idx'] is empty, exactly like `run_case`'s serial call.
+    with prof.phase('write stations'):
+        library_output.write_onfault_stations(case_dir, S, out['on_st_hist'])
+        library_output.write_offfault_stations(case_dir, S, out['off_st_hist'])
+    station_io_s = prof.get('write stations', 0.0)
+
     rows = out['fault_rows']
     sel = out['own_in_computed']
     n_own = int(rows.shape[0])
@@ -747,7 +782,7 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         # data" just because it wrote no fault row.
         prof.nelem = rep['E']
         if profile_on:
-            _emit(io_s=0.0)
+            _emit(io_s=station_io_s)
         return None, rep
     fric_1idx = np.zeros((n_own + 1, 101))
     fric_1idx[1:, 1:101] = out['fric'][sel]
@@ -759,7 +794,7 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
                                  fnft_1idx, fric_1idx)
     prof.nelem = rep['E']
     if profile_on:
-        _emit(io_s=prof.get('write frt', 0.0))
+        _emit(io_s=prof.get('write frt', 0.0) + station_io_s)
     return path, rep
 
 
@@ -961,9 +996,11 @@ def main():
                      help='one process per rank, Fortran-style domain '
                           'decomposition, jax owning the local element kernel '
                           '(driver.run_mpi). Launch under mpirun. Writes '
-                          'frt.txt<rank>. No fallback: --mpi with mpi4py '
-                          'missing is an error, and --mpi outside mpirun is a '
-                          'legal 1-rank run, not a silent serial demotion.')
+                          'frt.txt<rank> and this rank\'s matched faultst*/'
+                          'body* station files (row 120). No fallback: --mpi '
+                          'with mpi4py missing is an error, and --mpi outside '
+                          'mpirun is a legal 1-rank run, not a silent serial '
+                          'demotion.')
     args = ap.parse_args()
     if args.mpi:
         if args.backend != 'jax':

@@ -89,18 +89,22 @@ BACKENDS = ('fortran', 'python-jax', 'python-jax-mpi')
 #   nsign -- the SIGN of on-fault station column 8 (n-stress) at the first
 #          recorded step, at every buried on-fault station, against the case's
 #          SCEC spec convention (NSTRESS_CONVENTION below; board row 22a).
-#          Both gated backends: the port writes station files since row 114.
+#          All three backends: the port writes station files since row 114,
+#          python-jax-mpi since row 120.
 #   station -- on/off-fault station time series (GATE_STATIONS below),
 #          normalized per column against the case's own signal scale
 #          (STATION_BOUND, normalize_station_error in compare.py), against
 #          ONE committed set per case, test.reference.results/<case>/stations/.
-#          Both gated backends. python-jax-mpi writes no station files
-#          (eqdyna3d.run_case_mpi says so on stderr): its gap is declared in
-#          STATION_ARTIFACT_UNSUPPORTED_REASON, never silently absent.
+#          All three backends (row 120: build_solver_state now runs
+#          meshgen.build_station_matching against THIS RANK's local grid
+#          lines on the python-jax-mpi path too, mirroring Fortran's own
+#          per-rank setSurfaceStation/createMasterNode -- see
+#          eqdyna3d.build_solver_state's docstring for the two pre-existing
+#          Fortran gaps this reproduces rather than fixes, per rule 23).
 ARTIFACTS = {
     'fortran': ('frt', 'nc', 'nsign', 'station'),
     'python-jax': ('frt', 'nc', 'nsign', 'station'),
-    'python-jax-mpi': ('frt',),
+    'python-jax-mpi': ('frt', 'nsign', 'station'),
 }
 
 # --------------------------------------------------------------------------
@@ -304,16 +308,6 @@ NC_UNSUPPORTED = {
         'state_variable -- rupture-arrival bistability (DRV_A6), not a '
         'tolerance question. The fortran cell compares its nc at 0.0.'),
 }
-
-# STATION_ARTIFACT_UNSUPPORTED_REASON -- per (case, backend), a runnable cell
-# whose ARTIFACTS lack 'station', with why; printed by coverage_report so a
-# green run never reads as covering it.
-STATION_ARTIFACT_UNSUPPORTED_REASON = {}
-for _c in ('test.tpv8',):  # PY_MPI_RANKS' keys; that table is defined below
-    STATION_ARTIFACT_UNSUPPORTED_REASON[(_c, 'python-jax-mpi')] = (
-        "'station'/'nsign' not in ARTIFACTS['python-jax-mpi']: "
-        'eqdyna3d.run_case_mpi writes no station files (it warns on stderr); '
-        'row 114 ported the serial path only.')
 
 # NSTRESS_CONVENTION -- per case, the sign convention its SCEC spec states for
 # the on-fault station n-stress column, and where it says so (board row 22a;
@@ -747,20 +741,6 @@ def coverage_report(runnable, declared_unsupported, selection_label):
     for c, b in runnable:
         lines.append('  %-16s %-13s artifacts=%-7s gate: %s'
                      % (c, b, '+'.join(ARTIFACTS[b]), gate_description(c)))
-    # A cell runs, but not every artifact it COULD carry -- 'station' absent
-    # from a runnable cell's own ARTIFACTS tuple is a sub-cell gap, not a
-    # missing cell, and rule 2 says "could not check" must print differently
-    # from "nothing to check here": print its reason too, not just imply it
-    # via the artifacts= list above.
-    sub_gaps = [(c, b) for c, b in runnable
-                if 'station' not in ARTIFACTS[b]
-                and (c, b) in STATION_ARTIFACT_UNSUPPORTED_REASON]
-    if sub_gaps:
-        lines.append("'station' artifact declared UNSUPPORTED on %d "
-                     'runnable cell(s):' % len(sub_gaps))
-        for c, b in sub_gaps:
-            lines.append('  %-16s %-13s station: %s'
-                         % (c, b, STATION_ARTIFACT_UNSUPPORTED_REASON[(c, b)]))
     art_gaps = [('nc', c, b, NC_UNSUPPORTED[(c, b)]) for c, b in runnable
                 if (c, b) in NC_UNSUPPORTED]
     art_gaps += [('station', c, b, STATION_UNSUPPORTED[(c, b)]) for c, b in runnable
@@ -857,13 +837,6 @@ for (_c, _b) in STATION_UNSUPPORTED:
     if _c not in CASES or 'station' not in ARTIFACTS.get(_b, ()):
         raise RuntimeError('STATION_UNSUPPORTED entry for %r x %r names no '
                            'station cell' % (_c, _b))
-if {c for c, b in STATION_ARTIFACT_UNSUPPORTED_REASON if b == 'python-jax-mpi'} != set(PY_MPI_RANKS):
-    raise RuntimeError('STATION_ARTIFACT_UNSUPPORTED_REASON must declare the '
-                       'station gap for exactly the PY_MPI_RANKS cases')
 for (_c, _b) in NC_UNSUPPORTED:
     if _c not in CASES or 'nc' not in ARTIFACTS.get(_b, ()):
         raise RuntimeError('NC_UNSUPPORTED entry for %r x %r names no nc cell' % (_c, _b))
-for (_c, _b) in STATION_ARTIFACT_UNSUPPORTED_REASON:
-    if _c not in CASES or _b not in BACKENDS:
-        raise RuntimeError('STATION_ARTIFACT_UNSUPPORTED_REASON entry for '
-                           'unknown cell %r x %r' % (_c, _b))

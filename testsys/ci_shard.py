@@ -158,6 +158,14 @@ SHARDS = {
                                  # build + a 3-step run on numpy AND jax,
                                  # well under this shard's other
                                  # subprocess-heavy scripts.
+        "test_row120_mpi_station_output.py",  # added 2026-09-25 (mira-volkov,
+                                 # row 120 python-jax-mpi station output):
+                                 # incremental src/fortran build (no-op if
+                                 # already built) + one 5-step 4-rank mpirun
+                                 # + 4x in-process build_solver_state (no
+                                 # mpi/jax on the python side) -- measured
+                                 # ~4.9 s total, comparable to
+                                 # test_row114_station_output.py above.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
         "test_user_docs_commands.py",  # added 2026-09-25 (board row 126, docs
