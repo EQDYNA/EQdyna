@@ -5,15 +5,21 @@ SELECTION (which faultst*/body* files each rank matches, via
 eqdyna3d.build_solver_state -> meshgen.build_station_matching against THIS
 RANK's local grid lines) reproduces Fortran's own per-rank selection
 (setSurfaceStation/createMasterNode, meshgen.f90) EXACTLY, at test.tpv8's
-opted-in decomposition -- including Fortran's two pre-existing gaps (rule
-23: Fortran is the reference for numerics, warts included):
-  - a station whose y sits exactly on a shared rank-boundary plane is
-    dropped by every rank (no iy-edge branch anywhere in setSurfaceStation);
-  - a station/fault-node on a shared x-boundary plane (which DOES have an
-    edge branch) can be matched by more than one rank and therefore written
-    under the same filename by more than one rank -- the same "last rank to
-    call wins" shape testsys/matrix.py's GATE_STATIONS docstring already
-    documents for Fortran's own multi-rank runs.
+opted-in decomposition.
+
+UPDATED 2026-09-25 (board row 127): this guard originally asserted that
+station 11 (y=+500m, a y-partition seam) was DROPPED by every rank -- that
+was Fortran's own pre-existing gap (item 94's residual), reproduced
+faithfully rather than silently "fixed" on one side only (rule 23). Row
+127 closed that gap in BOTH languages identically (see
+docs/notes/NOTES_row127.md and
+testsys/regression/test_row127_station_ownership.py, which also checks
+PER-RANK OWNERSHIP -- not just the filename-set union this file compares
+-- and the converse duplicate-match hazard). This file's own comparison
+(fortran set == python union) still holds and is still worth keeping: it
+is a SET comparison, weaker than row 127's per-rank check, but on a
+different case shape (this file never varies the decomposition), so it
+stays as a second, independent guard rather than being deleted.
 
 THE BEHAVIOUR under test (rule 10a: on behaviour, not a source grep):
   1. A fresh 4-rank Fortran run of test.tpv8 (tiny term, 5 steps -- this
@@ -26,9 +32,10 @@ THE BEHAVIOUR under test (rule 10a: on behaviour, not a source grep):
      library_output.onfault_filename/offfault_filename) reproduces THAT
      EXACT SET.
   3. Station 11 ([0, 0.5, -0.3] km, y=+500 m -- exactly tpv8's mey=0/mey=1
-     boundary at this decomposition, docs/notes/NOTES_row120.md) is absent
-     from BOTH sets: the known drop is reproduced, not silently "fixed" by
-     one side and not by the other.
+     boundary at this decomposition, docs/notes/NOTES_row120.md) is now
+     PRESENT in both sets (row 127 fix), found by exactly one rank -- see
+     test_row127_station_ownership.py for the per-rank proof; this file
+     only checks it appears in both the fortran set and the python union.
   4. eqdyna3d.run_case_mpi's ACTUAL writer (library_output.
      write_onfault_stations/write_offfault_stations, fed one rank's real
      S plus a synthetic one-step history of the right shape) writes exactly
@@ -70,8 +77,10 @@ MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 
 # The one requested off-fault station (1-indexed, case_input/test.tpv8's
 # st_coor_off_fault) this mission's evidence identified as sitting exactly
-# on the mey=0/mey=1 boundary at (2,2,1): [0, 0.5, -0.3] km.
-DROPPED_STATION_FILE = 'body005st000dp003.txt'
+# on the mey=0/mey=1 boundary at (2,2,1): [0, 0.5, -0.3] km. Row 127 fixed
+# its drop; this file now checks it is PRESENT (see
+# test_row127_station_ownership.py for the per-rank ownership proof).
+BOUNDARY_STATION_FILE = 'body005st000dp003.txt'
 
 
 def _env():
@@ -244,9 +253,9 @@ def main():
             False))
         checks.append((
             'station 11 ([0, 0.5, -0.3] km, y-partition boundary) is '
-            'dropped by BOTH fortran and python',
-            DROPPED_STATION_FILE not in fortran_set
-            and DROPPED_STATION_FILE not in python_set,
+            'PRESENT in both fortran and python (row 127 fix)',
+            BOUNDARY_STATION_FILE in fortran_set
+            and BOUNDARY_STATION_FILE in python_set,
             True))
 
         writer_checked = check_writer_agreement(rank_S, rank_files, tmp)

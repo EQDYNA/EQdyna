@@ -166,6 +166,16 @@ SHARDS = {
                                  # mpi/jax on the python side) -- measured
                                  # ~4.9 s total, comparable to
                                  # test_row114_station_output.py above.
+        "test_row127_station_ownership.py",  # added 2026-09-25 (mira-volkov,
+                                 # row 127 station ownership at a shared
+                                 # MPI-partition boundary): shares
+                                 # test_row120's incremental src/fortran
+                                 # build, runs two 4-rank mpirun cases (5
+                                 # steps each, one real tpv8 (2,2,1), one
+                                 # synthetic (2,1,2) exercising npz>1) with
+                                 # per-rank output directories, plus 8
+                                 # in-process build_solver_state calls --
+                                 # measured ~9.5 s total.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
         "test_user_docs_commands.py",  # added 2026-09-25 (board row 126, docs
