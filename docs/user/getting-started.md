@@ -29,15 +29,19 @@ install the system and Python dependencies listed above.
 * **macOS**: `./install-eqdyna.sh -e macos` installs `mpich` and `python`
   through Homebrew plus the required Python packages, then builds.
 
-After building, set the two environment variables every session needs:
+After building, set the environment variables every session needs:
 
 ```
 export EQDYNAROOT=$(pwd)
 export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+export PYTHONPATH=$EQDYNAROOT/src/python
 ```
 
-Add those two lines to your shell's startup file so a new shell always has
-EQdyna on its path. Optional, for running the Python solver on a GPU:
+Add those lines to your shell's startup file so a new shell always has EQdyna
+on its path. `PYTHONPATH` is what lets `python3 -m eqdyna` find the Python
+solver. The build stamps `bin/eqdyna` with a hash of the Fortran source; after
+editing `src/fortran/`, re-run `./install-eqdyna.sh`, because the test tools
+refuse a binary built from older source. Optional, for running the Python solver on a GPU:
 `pip install "jax[cuda12]"`.
 
 Check the install with the fast test tiers:
@@ -46,8 +50,9 @@ Check the install with the fast test tiers:
 python3 testsys/run.py unit regression
 ```
 
-Both should finish in well under a minute and print `SUCCESS` for every
-check.
+This needs `pip install pytest` in the same environment. It takes about 4
+minutes (246 s measured on 2026-09-25 on a shared 64-core workstation) and must
+end with `SUCCESS unit` and `SUCCESS regression`.
 
 ## Running a first case
 
