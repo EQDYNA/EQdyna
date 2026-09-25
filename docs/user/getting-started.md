@@ -29,15 +29,19 @@ install the system and Python dependencies listed above.
 * **macOS**: `./install-eqdyna.sh -e macos` installs `mpich` and `python`
   through Homebrew plus the required Python packages, then builds.
 
-After building, set the two environment variables every session needs:
+After building, set the environment variables every session needs:
 
 ```
 export EQDYNAROOT=$(pwd)
 export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
+export PYTHONPATH=$EQDYNAROOT/src/python
 ```
 
-Add those two lines to your shell's startup file so a new shell always has
-EQdyna on its path. Optional, for running the Python solver on a GPU:
+Add those lines to your shell's startup file so a new shell always has EQdyna
+on its path. `PYTHONPATH` is what lets `python3 -m eqdyna` find the Python
+solver. The build stamps `bin/eqdyna` with a hash of the Fortran source; after
+editing `src/fortran/`, re-run `./install-eqdyna.sh`, because the test tools
+refuse a binary built from older source. Optional, for running the Python solver on a GPU:
 `pip install "jax[cuda12]"`.
 
 Check the install with the fast test tiers:
