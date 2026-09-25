@@ -243,7 +243,7 @@ STATION_ZERO_FLOOR = 1e-6
 # gated backends. Set from the MEASURED fortran-vs-python-jax spread under
 # this normalization with CASE_BOUND's headroom convention: the worst
 # observation times ~121.5x, rounded UP to the nearest bound already in use
-# (1e-10, 1e-8, 1e-6, 1e-5). TIGHTENED 2026-09-24 (owner) for tpv8, tpv10,
+# (1e-10, 1e-8, 1e-6, 1e-5; 1e-7 is now also in use, see below). TIGHTENED 2026-09-24 (owner) for tpv8, tpv10,
 # tpv36 and tpv37, which that rounding had left ~10^4 above observed: those
 # four are now the next power of ten at or above 100x the worst spread seen
 # on ANY platform (tpv8's CI-runner jax cell reads 1.72e-10, run 36079252531,
