@@ -214,6 +214,39 @@ H6. The commit message's claim ("only the timestamp header differs") is
   the other -- proving the new regression test has teeth in both
   directions the mission asked for, not just one.
 
+- 2026-09-25 T6b: H2, serial invariance, PYTHON. Built 4 serial (nx=ny=nz=1,
+  matching what `run_e2e.py` forces for the python-jax backend) cases --
+  tpv8, tpv10, tpv36, tpv37 -- via `create.newcase`+`case.setup`. Ran
+  `eqdyna3d.build_solver_state(case_dir, part=None)` once with
+  `PYTHONPATH` pointed at THIS branch's `src/python`, once at a fresh
+  `git archive origin/master -- src/python` checkout, same case dirs
+  (station matching doesn't depend on `par.term`). Every printed field --
+  `st_on_idx`, `st_off_idx`, the derived on/off-fault filename lists, even
+  the NOTICE/WARNING diagnostic lines (item 94's snap messages, the
+  known y=45km off-mesh drops for 36/37) -- are BYTE-IDENTICAL across all
+  four cases, both before and after. H2 CONFIRMED for Python: the fix is
+  a genuine no-op in serial, exactly as predicted (serial always has
+  mex=mey=mez=0, and the previously-unconditional high-edge branches were
+  never gated to begin with).
+
+- 2026-09-25 T6c: H2, serial invariance, FORTRAN (mission point 2's other
+  half: "compare numeric content and state exactly what differs"). Ran
+  the SAME 4 serial cases through both the branch's own `bin/eqdyna` and
+  the T6 master-meshgen.f90 binary, in separate directories. `diff -rq`
+  flags every station file as "differs"; per-file `diff` shows exactly
+  ONE line differs in every case, at the same field:
+  `# date =  9/25/2026 HH:MM:SS` (a wall-clock header EQdyna's
+  `library_output.f90` writes on this exact line for every faultst*/
+  body* file). Verified systematically (not by sampling): for all 23
+  (tpv8), 20 (tpv10), 38 (tpv36), 38 (tpv37) station files,
+  `diff <(grep -v '# date' branch/f) <(grep -v '# date' master/f)` is
+  EMPTY -- every numeric row is bit-identical. `compTime0` and
+  `profile.rankN.json` also differ, but only in wall-clock TIMING numbers
+  (setup/element/fault/loop seconds, pid) -- expected run-to-run noise in
+  performance telemetry, not physics output, and not station files.
+  H2 CONFIRMED for Fortran, field named as required: the `# date =`
+  header line, nothing else.
+
 - 2026-09-25 T7: about to (a) write the formal regression test encoding
   T4/T5/T6's harness + assertions, (b) register it in `testsys/ci_shard.py`,
   (c) fix `test_row120_mpi_station_output.py`'s now-stale "station 11 is
