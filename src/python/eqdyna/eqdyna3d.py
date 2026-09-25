@@ -280,8 +280,7 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
         for i in off_dropped:
             if off_z_valid[i - 1]:
                 cause = ('cause not checked here -- requested depth is within the physical '
-                          'mesh band; the miss may be x or y outside the mesh, or a known '
-                          'y-partition-boundary gap in setSurfaceStation')
+                          'mesh band; the miss may be x or y outside the mesh')
             else:
                 cause = ('checked cause: requested depth is outside the physical, non-PML '
                           'mesh band')
@@ -961,7 +960,7 @@ def _abort(exc, rank=0):
     print('  rank      : ', rank)
     print('  exit code : ', exc.code)
     print('  reason    : ', exc)
-    print('  See the "Exit codes" table in README.md for this code.')
+    print('  See docs/user/troubleshooting.md for what this code means.')
     print(' =======================================================')
     print(flush=True)
     raise SystemExit(exc.code)
