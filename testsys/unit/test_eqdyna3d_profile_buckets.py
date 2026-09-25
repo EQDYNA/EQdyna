@@ -30,3 +30,20 @@ def test_unmapped_phase_is_refused():
     p.update({'solve': 1.0, 'write something new': 0.3})
     with pytest.raises(ValueError, match='write something new'):
         E.serial_buckets(p, fault_s=0.0)
+
+
+def test_phase_clock_covers_its_entry_sync(monkeypatch):
+    """The entry _sync (whose first call imports jax, ~1-3 s) must be inside
+    the phase's own time, not in unaccounted_s before it."""
+    import time
+    p = E.Profile('numpy')
+    calls = []
+
+    def slow_first_sync():
+        if not calls:
+            time.sleep(0.2)
+        calls.append(1)
+    monkeypatch.setattr(p, '_sync', slow_first_sync)
+    with p.phase('setup (mesh+input)'):
+        pass
+    assert p['setup (mesh+input)'] >= 0.2
