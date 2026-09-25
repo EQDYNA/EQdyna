@@ -303,3 +303,56 @@ def test_compare_nc_files_still_passes_one_equal_variable(tmp_path):
     b = _nc(tmp_path / 'b.nc', with_var=True)
     assert compare.compare_nc_files(a, b).startswith('SUCCESS')
 
+
+
+# --------------------------------------------------------------------------
+# board row 121: with a case bound, nc data is gated at max|diff| <= bound
+# (the frt metric), not the looser rule 5 allclose(1e-3). Both directions.
+# --------------------------------------------------------------------------
+def test_compare_nc_files_case_bound_tighter_than_threshold(tmp_path):
+    fn1, fn2 = str(tmp_path / 'ref.nc'), str(tmp_path / 'run.nc')
+    _dataset(1.0e8).to_netcdf(fn1)
+    _dataset(1.0e8 + 2e-6).to_netcdf(fn2)       # 2x a 1e-6 bound
+    assert compare.compare_nc_files(fn1, fn2).startswith('SUCCESS')   # allclose passes it
+    assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('FAIL')
+
+
+def test_compare_nc_files_case_bound_passes_inside_bound(tmp_path):
+    fn1, fn2 = str(tmp_path / 'ref.nc'), str(tmp_path / 'run.nc')
+    _dataset(1.0).to_netcdf(fn1)
+    _dataset(1.0 + 5e-7).to_netcdf(fn2)         # 0.5x a 1e-6 bound
+    assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('SUCCESS')
+
+
+def test_compare_nc_files_case_bound_nan_positions_must_match(tmp_path):
+    fn1, fn2 = str(tmp_path / 'ref.nc'), str(tmp_path / 'run.nc')
+    xr.Dataset({'slip': (('node',), np.array([1.0, np.nan, 1.0]))}).to_netcdf(fn1)
+    xr.Dataset({'slip': (('node',), np.array([1.0, 1.0, 1.0]))}).to_netcdf(fn2)
+    assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('FAIL')
+    xr.Dataset({'slip': (('node',), np.array([1.0, np.nan, 1.0]))}).to_netcdf(fn2)
+    assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('SUCCESS')
+
+
+def test_compare_nc_uses_the_case_bound_end_to_end(tmp_path):
+    """compare_nc(case, run_dir) itself, not compare_nc_files with a
+    hand-picked bound (PR #25 audit): on tpv8's real committed nc, a 2x
+    CASE_BOUND perturbation of one variable must FAIL. The old
+    allclose(1e-3) would pass it. The unperturbed copy must pass, and the
+    printed line must name the rule that applied."""
+    import shutil
+    from netCDF4 import Dataset
+    case = 'test.tpv8'
+    bound = matrix.CASE_BOUND[case]
+    ref = compare.reference_path(case, compare.NC_NAME)
+    run = tmp_path / compare.NC_NAME
+    shutil.copy(ref, run)
+    ok, lines = compare.compare_nc(case, str(tmp_path))
+    assert ok and 'CASE_BOUND' in lines[0], lines
+    with Dataset(str(run), 'a') as d:
+        var = next(v for v in d.variables.values()
+                   if v.dtype.kind == 'f' and v.size > 0)
+        a = var[:]
+        a.flat[0] = a.flat[0] + 2 * bound
+        var[:] = a
+    ok, lines = compare.compare_nc(case, str(tmp_path))
+    assert not ok, lines

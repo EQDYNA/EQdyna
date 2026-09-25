@@ -247,23 +247,41 @@ def compare_frt(case, run):
     return flip_budget_gate(case, ref_a, run_a)
 
 
-def compare_nc_files(fn1, fn2, threshold=matrix.THRESHOLD):
+def compare_nc_files(fn1, fn2, threshold=matrix.THRESHOLD, bound=None):
     """fault.dyna.r.nc comparison: variable set + attributes must match, and
     every variable must agree within the one calibrated threshold (rule 5).
 
     Bit-exact data equality is deliberately NOT required -- a parallel MPI
     rerun cannot promise it (reduction order varies) -- but a changed variable
     set or changed attributes is a hard failure, not a tolerance question.
+    With `bound` (a case's CASE_BOUND), the data test is max|a-b| <= bound
+    per variable, the same absolute metric the frt gate uses (board row 121,
+    owner 2026-09-24). Without it, the rule 5 outer sanity bound
+    allclose(rtol=atol=threshold) applies, as before. That is used only
+    where a case has no scalar bound (flip-budget cases). NaN positions
+    must match either way.
     Returns the printed SUCCESS/FAIL string."""
     # The sweep compares cells from concurrent threads, and since python-jax
     # cells carry 'nc' too, two netCDF4/HDF5 opens could overlap: the HDF5
     # library in use is not thread-safe, and the first everyday sweep of this
     # gate died with SIGSEGV (exit -11) in exactly that window. One lock.
     with _NC_LOCK:
-        return _compare_nc_files_locked(fn1, fn2, threshold)
+        return _compare_nc_files_locked(fn1, fn2, threshold, bound)
 
 
-def _compare_nc_files_locked(fn1, fn2, threshold):
+def _nc_data_ok(a, b, threshold, bound):
+    if bound is None:
+        return np.allclose(a, b, rtol=threshold, atol=threshold)
+    a = np.asarray(a, dtype=float); b = np.asarray(b, dtype=float)
+    na, nb = np.isnan(a), np.isnan(b)
+    if a.shape != b.shape or not np.array_equal(na, nb):
+        return False
+    if not (~na).any():
+        return True
+    return bool(np.max(np.abs(a[~na] - b[~na])) <= bound)
+
+
+def _compare_nc_files_locked(fn1, fn2, threshold, bound=None):
     from netCDF4 import Dataset
 
     verdict = 'SUCCESS ' + fn1 + ' ' + fn2
@@ -293,8 +311,8 @@ def _compare_nc_files_locked(fn1, fn2, threshold):
             var2 = f2.variables[var]
             if var1.dimensions != var2.dimensions:
                 verdict = 'FAIL var dim ' + fn1 + ' ' + fn2
-            elif not np.allclose(np.asarray(var1[:]), np.asarray(var2[:]),
-                                 rtol=threshold, atol=threshold):
+            elif not _nc_data_ok(np.asarray(var1[:]), np.asarray(var2[:]),
+                                 threshold, bound):
                 verdict = 'FAIL var numbers ' + fn1 + ' ' + fn2
         if not metadata_equal and verdict.startswith('SUCCESS'):
             verdict = 'FAIL metadata ' + fn1 + ' ' + fn2
@@ -316,9 +334,11 @@ def compare_nc(case, run_dir):
     if not os.path.isfile(run):
         return False, ['nc: FAIL missing %s -- plotRuptureDynamics did not run '
                        'or did not write it' % run]
-    verdict = compare_nc_files(ref, run)
-    return verdict.startswith('SUCCESS'), ['nc: %s (threshold=%.0e)'
-                                           % (verdict, matrix.THRESHOLD)]
+    bound = matrix.CASE_BOUND[case]   # KeyError, not a silent loose fallback, for an unregistered case
+    verdict = compare_nc_files(ref, run, bound=bound)
+    how = ('max|diff| <= CASE_BOUND %.0e' % bound if bound is not None
+           else 'allclose threshold=%.0e (no scalar case bound)' % matrix.THRESHOLD)
+    return verdict.startswith('SUCCESS'), ['nc: %s (%s)' % (verdict, how)]
 
 
 # --------------------------------------------------------------------------
