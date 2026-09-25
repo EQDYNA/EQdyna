@@ -376,9 +376,21 @@ def check_91g_baseline_labelling():
 def check_91a_backfill_detects_shard_schema():
     """Audit finding (PR #34): _rows_from_snapshot_file sent a shard-shaped
     snapshot to rows_from_scaling_snapshot with the default tool, filing its
-    points as run_scaling. It must detect the shard schema."""
+    points as run_scaling. It must detect the shard schema.
+
+    Fragility fix (found 2026-09-25 while building the README-executes
+    gate): this used to write its temp snapshot under `ROOT` -- this TEST
+    FILE's own repo root -- while `ledger._rows_from_snapshot_file` resolves
+    paths against `ledger.ROOT`, which follows `$EQDYNAROOT`. Any process
+    that has EQDYNAROOT pointed at a *different* checkout (the README gate
+    below does exactly that, on purpose, to exercise a stranger clone) made
+    this test die via a bare SystemExit instead of failing informatively --
+    or pass by accident against the wrong tree. Write under `ledger.ROOT`'s
+    own docs/perf_snapshots, and treat a SystemExit from the function under
+    test as a reported FAIL, not an uncaught crash of the whole script."""
     import json, tempfile
-    snapdir = os.path.join(ROOT, 'docs', 'perf_snapshots')
+    snapdir = os.path.join(ledger.ROOT, 'docs', 'perf_snapshots')
+    os.makedirs(snapdir, exist_ok=True)
     meta = dict(case='test.tpv8', sha='0000000', host='h', date='2026-09-25 00:00',
                 n_lo=5, n_hi=10, busy_ceiling=0.5, overridden=False,
                 fortran_quoted={}, element_baseline_n=1, skipped=[],
@@ -389,8 +401,15 @@ def check_91a_backfill_detects_shard_schema():
         with os.fdopen(fd, 'w') as fh:
             json.dump(meta, fh)
         rows, _ = ledger._rows_from_snapshot_file(path)
+    except SystemExit as e:
+        FAILURES.append('91a-backfill: _rows_from_snapshot_file(SystemExit) %s' % e)
+        print('FAIL -- 91a-backfill: _rows_from_snapshot_file raised SystemExit(%r) '
+              'reading %s (ledger.ROOT=%s) instead of returning rows'
+              % (str(e), path, ledger.ROOT))
+        return
     finally:
-        os.remove(path)
+        if os.path.exists(path):
+            os.remove(path)
     tools = {r['tool'] for r in rows}
     if tools != {'run_shard_scaling'}:
         FAILURES.append('91a-backfill: shard snapshot backfilled as %r' % tools)

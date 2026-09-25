@@ -11,6 +11,7 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
     python3 testsys/run.py gpu           # the sweep's python-jax column on CUDA (one cell; needs a GPU)
     python3 testsys/run.py perf          # pinned single-core Fortran/NumPy/JAX timing, ratio-guarded
     python3 testsys/run.py profile-overhead   # EQDYNA_PROFILE on/off A/B, all 4 backends (needs EQDYNA_PROFILE_OVERHEAD_CPUS)
+    python3 testsys/run.py readme        # the README-executes stranger-clone gate, FULL mode: clones this commit, runs README.md's fenced blocks for real (~2-4 min)
     python3 testsys/run.py all           # unit + regression + e2e, in that order (default; perf is opt-in, not in "all" -- it needs a Fortran build a fresh checkout does not have yet)
 
 There is ONE test here -- e2e -- and backend is an axis of it, not a tier.
@@ -196,6 +197,25 @@ def run_gpu():
                 '--device', 'cuda')
 
 
+def run_readme():
+    """The stranger-clone gate, FULL mode (testsys/regression/
+    test_readme_executes.py, same file the seconds-scale regression tier
+    runs in its FAST mode -- one parser/engine, two depths). Sets
+    EQDYNA_README_GATE=full so that script clones THIS commit into a temp
+    dir and actually executes README.md's Requirements/Install/Quick
+    start/Python-solver fenced blocks in a bare env -i-equivalent
+    environment, then checks the documented output files exist and are
+    non-empty. ~2-4 minutes -- opt-in, never swept into `all`, for the same
+    reason e2e-full and perf are not (rule 9: a fresh checkout's `run.py
+    regression` must stay seconds-scale)."""
+    print('\n==== testsys: readme ====')
+    env = dict(os.environ)
+    env['EQDYNA_README_GATE'] = 'full'
+    return subprocess.call(
+        [sys.executable, os.path.join(TESTSYS, 'regression', 'test_readme_executes.py')],
+        cwd=REPO_ROOT, env=env)
+
+
 def run_e2e_full():
     print('\n==== testsys: e2e-full ====')
     return subprocess.call(
@@ -254,7 +274,7 @@ def run_profile_overhead():
 RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
            'e2e-ci': run_e2e_ci, 'release': run_release, 'perf': run_perf,
            'gpu': run_gpu, 'scaling': run_scaling, 'e2e-full': run_e2e_full,
-           'profile-overhead': run_profile_overhead}
+           'profile-overhead': run_profile_overhead, 'readme': run_readme}
 # 'all' stays unit+regression+e2e only (TIERS below, `e2e` the everyday
 # selection) -- perf requires a Fortran build and a generated baseline that a
 # fresh checkout does not have; it is opt-in, invoked by name, not swept into
@@ -270,7 +290,13 @@ RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
 # testsys/e2e/run_e2e_full.py) -- spec-resolution SCEC runs are hours long
 # and user-scheduled, never automatic.
 OPTIONAL_TIERS = ('e2e-ci', 'release', 'perf', 'gpu', 'scaling', 'e2e-full',
-                  'profile-overhead')
+                  'profile-overhead', 'readme')
+# `readme` is the README-executes stranger-clone gate, FULL mode (~2-4 min).
+# Requesting `release` also runs it (mission: "include it in run.py
+# release") -- a release gate that never re-proves the README a new user
+# would actually follow is not the release gate, it is the release gate
+# minus the one artifact every new user reads first. See RELEASE_EXPANDS.
+RELEASE_EXPANDS = ('release', 'readme')
 
 
 def main(argv):
@@ -286,7 +312,13 @@ def main(argv):
 
     selected = []
     for tier in requested:
-        for t in (TIERS if tier == 'all' else (tier,)):
+        if tier == 'all':
+            expansion = TIERS
+        elif tier == 'release':
+            expansion = RELEASE_EXPANDS
+        else:
+            expansion = (tier,)
+        for t in expansion:
             if t not in selected:
                 selected.append(t)
 
