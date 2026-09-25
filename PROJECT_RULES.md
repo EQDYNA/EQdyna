@@ -3,6 +3,7 @@
 Index — read this list first; jump to a rule only when it's load-bearing.
 
 1. Minimal changes; no unnecessary new files.
+1a. Mission notes and scratch never land at the repo root.
 2. No silent fallbacks, swallowed errors, or placeholder data.
 2a. A scripted edit to a tracked document asserts on its shape, not a substring of it.
 3. Gate every stage; pass before moving on.
@@ -17,6 +18,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 4e. A multi-rank performance ratio names its placement policy, and a mechanism claim needs a packed-vs-spread control before it is cited.
 5. One calibrated definition of "pass" — never invent a metric.
 5a. A provably injective relabelling is gated at bit-identity, not at the case bound.
+5b. A red gate is attributed before it is widened.
 6. Every performance number carries its provenance.
 6a. `EFFECTIVE_CORES` admits a measurement; it does not make two measurements comparable.
 7. Reference data is read-only.
@@ -54,14 +56,15 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 23. Fortran is the reference implementation; the port follows its NUMERICS, not its file layout.
 24. A release tag requires a committed local sweep at the exact SHA, not only green CI.
 25. `src/`, `testsys/`, and `.github/` reach master only through a merged pull request; everything else may still push direct.
+26. User-facing docs are written for users.
 
 Count, stated so a heading-shape grep does not undercount it again (that
-undercount happened twice in one night, 2026-09-21/22): 25 numbered rules
-(1-25) plus twenty-seven lettered sub-rules (2a, 3a, 3b, 3c, 4a, 4b, 4c, 4d,
-4e, 5a, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 15f, 20a, 20b, 20c, 21a, 21b,
-21c, 21d, 21e) — 52 `## ` headings total. Verify:
-`grep -c '^## ' PROJECT_RULES.md` reads 52; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
-(numbered rules only, no letter suffix) reads 25.
+undercount happened twice in one night, 2026-09-21/22): 26 numbered rules
+(1-26) plus twenty-nine lettered sub-rules (1a, 2a, 3a, 3b, 3c, 4a, 4b, 4c,
+4d, 4e, 5a, 5b, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 15f, 20a, 20b, 20c,
+21a, 21b, 21c, 21d, 21e) — 55 `## ` headings total. Verify:
+`grep -c '^## ' PROJECT_RULES.md` reads 55; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
+(numbered rules only, no letter suffix) reads 26.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
 the count from heading shape alone.
@@ -86,6 +89,36 @@ accumulates dead weight nobody remembers to remove.
 **How to apply**: when a Fortran/Python/MATLAB file is renamed or superseded,
 delete the old one in the same commit — do not park it in `misc/` or anywhere
 else "for reference."
+
+---
+
+## 1a. Mission notes and scratch never land at the repo root
+
+A session's own working notes — a mission summary, an investigation log, a
+scratch write-up — are not repo-root material. They belong under
+`docs/notes/` (or `scratch/`, for anything gitignored and disposable); the
+root stays the fixed set this project already treats as first-class
+(`README.md`, `CLAUDE.md`, `PROJECT_RULES.md`, `pathway_forward.md`,
+`LICENSE`, release notes) plus the project's own source trees.
+
+**Rationale**: each `NOTES_*.md` is legitimate content — a session's own
+diagnostic record — placed in the one location nothing was watching, on a
+project whose own root already implies a fixed set of first-class documents.
+
+**Incident (2026-09-24)**: ten `NOTES_*.md` files landed at the repo root
+between 2026-09-17 and 2026-09-24, one per session, none caught by any check
+until this pass. PR #29 (`ad8654c`) moved all ten to `docs/notes/` and added
+`testsys/regression/test_root_allowlist.py`, the first mechanical check on
+root contents this project has had; before it, the drift accumulated
+undetected for a week across three sessions.
+
+**How to apply**: write a session's own notes under `docs/notes/` from the
+first line, never at root "temporarily." Before adding any new root-level
+file, run `test_root_allowlist.py` yourself and expect it to name the
+addition.
+
+**Tier**: mechanical once `test_root_allowlist.py` is merged (PR #29,
+audit pending — `pathway_forward.md` item 123 tracks the merge).
 
 ---
 
@@ -594,6 +627,40 @@ artifact byte-for-byte (`md5sum` or equivalent) rather than through
 `testsys/compare.py`'s bound. Cite both: the exact-equality result AND the
 case's own bound run unchanged, so a reader can tell a relabelling proof from
 an ordinary physics-preserving change.
+
+---
+
+## 5b. A red gate is attributed before it is widened
+
+When a calibrated check (rule 5) goes red, the fix is a diagnosis of what
+produced the number, not a wider tolerance around it. A tolerance change
+lands only after the root cause is found and named, and only for whatever
+residual that root cause does not itself explain.
+
+**Rationale**: a tolerance is calibrated once, against a mechanism that is
+understood; loosening it in response to one red event re-calibrates it
+against that event's unexamined cause, which may be a real defect the wider
+tolerance now hides.
+
+**Incident (2026-09-24)**: master went red on `test.tpv8 x python-jax`'s
+profile-schema 5% sum check (0.803 s of 15.398 s unaccounted, CI run
+36082084976). The same-day fix (PR #28, `8425260`) added a `SUM_FLOOR_S =
+2.0` second floor before the actual cause was found. The actual cause (PR
+#27, `f186860`) was two unbucketed costs — a 'write stations' phase in no
+bucket, and a per-step clock that started after the entry sync whose first
+call imports jax (3.45 s here) — and fixing them took the unaccounted
+fraction from 3.1% to 0.003%, a fix that needed no floor. The floor remains,
+admitting a 13% gap on this cell's ~15 s scale, and now needs a separate
+owner decision (`pathway_forward.md` item 122) to remove.
+
+**How to apply**: on a calibrated-check red, find and name the mechanism
+first; propose a tolerance change only as a second, separate step, and only
+for whatever residual the named mechanism does not explain. A tolerance
+change that lands before, or without, a named cause is itself the finding.
+
+**Tier**: norm; nothing scripts "diagnosis happened before the tolerance
+change" — the nearest mechanical backstop is rule 8 (keep the evidence) plus
+a diff review that can see which PR came first.
 
 ---
 
@@ -2811,3 +2878,58 @@ per the guards named above. The path list itself (`GATED_PREFIXES`, today
 `src/`, `testsys/`, `.github/`) is an owner decision, reviewable only — no
 guard can tell whether a future new top-level directory should have joined
 the gated set the day it was created.
+
+---
+
+## 26. User-facing docs are written for users
+
+A document whose audience is a user of this code — `README.md`,
+`Docker.guide.md`, every `case_input/*/README.md`, and everything under
+`docs/user/` — is written for that reader, not for the next agent or the next
+PR reviewer. Concretely:
+
+- No internal references: no PR number, rule number, board-item number, git
+  SHA, agent name, `file:line` citation, or gate/CI mechanics. A user does not
+  have this repo's history open and should not need it to follow the page.
+- One `H1` per document, with any further structure as `H2`/`H3` beneath it —
+  never a flat run of `H1`s standing in for section headings.
+- Bullets carry one or two sentences each. A bullet that needs a paragraph is
+  prose, not a bullet.
+- `README.md` has a hard cap of about 150 lines.
+- Release history lives in the GitHub Release for that tag and in
+  `pastReleaseNotes.md`; `README.md` carries at most a 3-line "latest
+  release" pointer to them, never the notes themselves.
+
+**Rationale**: the two audiences want opposite things from the same page. An
+agent wants the SHA, the PR, the exact line — a citation trail it can
+re-verify. A user wants to install the code and run a case; every one of
+those citations is friction between them and that goal, and a page trying to
+serve both ends up unreadable to either.
+
+**Incident (2026-09-24)**: owner review of `README.md` on `origin/master` —
+"README is user facing. This is too long to read"; "some parts format too
+bad." Measured: 382 lines / 3,672 words, every heading `H1` (no `H2`/`H3` at
+all), and a "News in 2026" block whose 15 longest lines (all over 200
+characters) carry PR numbers, commit SHAs, rule numbers and `file:line`
+citations — exactly the internal-reference content this rule now excludes.
+
+**Why ~150 lines**: at one or two sentences per bullet, 150 lines covers an
+overview, a quickstart, and the handful of things that most often go wrong —
+roughly what a new user reads once, start to finish, before running their
+first case. It is a hard cap, not a target, precisely so that detail is
+FORCED out to the docs site (`docs/user/`, `pathway_forward.md` item 126)
+rather than accumulating back into the README the way the "News" block did.
+
+**How to apply**: before adding a line to any file this rule covers, ask
+whether a user with no repo history could act on it unchanged. If the line
+cites a PR, a SHA, a rule, an agent, or a `file:line`, it belongs in
+`pathway_forward.md`, a commit message, or `docs/` — not here. Move existing
+internal-reference content out the same way, in the same change that trims
+it.
+
+**Tier**: unenforceable today — `testsys/regression/test_user_docs_style.py`
+is written into `pathway_forward.md` (item 124) but not yet built. It becomes
+mechanical once that guard runs in `testsys/run.py unit regression` and
+checks, per covered file: heading shape (one `H1`), an internal-reference
+pattern list (SHA regex, `#\d+` PR-number pattern, `file\.\w+:\d+`, known
+agent names), and `README.md`'s line count.

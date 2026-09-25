@@ -45,7 +45,7 @@ evidence of absence, a broader `ps aux` grep is. Did not touch
    done)". `git log -- testsys/e2e/full_specs.py` shows commit `3677581`
    ("rule 17 step 1: fetch TPV34/TPV35 specs, record full_specs.py entries")
    already on master, part of the v5.10.0 release (HEAD `d47876b`), with
-   `NOTES_tpv3435_spec.md` (also tracked, also on master) recording exactly
+   `docs/notes/NOTES_tpv3435_spec.md` (also tracked, also on master) recording exactly
    what the fetched spec PDFs say. Rule 17 step 1 IS done for both cases;
    the board row is stale. (The raw PDF/txt/html files themselves are
    gitignored per this project's convention like every other `scratch/specs/`
@@ -62,7 +62,7 @@ any CVM/velocity-model ingestion code (none found anywhere in `src/`,
 `scripts/`), grepped for external per-node stress-file input (none for a
 from-scratch run; only the mode=2 cycle-restart netcdf path exists and it's
 a different mechanism), read `swtwNucleation` (`faulting.f90:386-421`).
-Findings appended to `NOTES_tpv3435_spec.md` (extended, not a new file):
+Findings appended to `docs/notes/NOTES_tpv3435_spec.md` (extended, not a new file):
 
 - TPV35's material need (1D profile per side of fault) does not fit the
   existing depth-only `nmat>1` layering; TPV34's need (real 3D CVM-H) has NO
@@ -104,7 +104,7 @@ rank mismatch doesn't look silently overridden.
 
 ## Landings this session
 
-- Docs-only: `NOTES_tpv3435_spec.md` appended (scoping section above).
+- Docs-only: `docs/notes/NOTES_tpv3435_spec.md` appended (scoping section above).
   This file (session log). No version bump — matches this project's own
   precedent of docs-only commits landing without a tag (e.g. `e845ad0`).
 - No code changed. No test tier run (nothing to gate). No tag cut.
@@ -167,7 +167,7 @@ fresh file activity (`test.reference.results/test.tpv30/frt.canonical.txt`,
 a promoted `testsys/parity/evidence_tpv30_vs_tpv29_contrast.py`, and
 `src/fortran/faulting.f90`/`src/python/eqdyna/faulting.py` both modified,
 consistent with the `TPV==30` branch fix asked for) even though her
-`NOTES_tpv30_gate.md` checkpoint is ~35 min stale -- checked broadly with
+`docs/notes/NOTES_tpv30_gate.md` checkpoint is ~35 min stale -- checked broadly with
 `find -newer` before treating that staleness as a stall, per the babysitting
 rule (file/proc progress, not just the one checkpoint file).
 
@@ -242,7 +242,7 @@ SUCCESS both tiers. Landed as `a25ed6c`: the branch fix, the new
 status in its README), the Fortran-only reference under
 `test.reference.results/test.tpv30/` (not wired to any gate), the promoted
 `testsys/parity/evidence_tpv30_vs_tpv29_contrast.py` (report-only), and her
-full trace in `NOTES_tpv30_gate.md`. Both worktrees (kai's, mira's) reaped
+full trace in `docs/notes/NOTES_tpv30_gate.md`. Both worktrees (kai's, mira's) reaped
 after confirming clean/merged status; mira's carried a stale lock (PID
 2872539, this session's own shared harness process, not an active writer)
 and was force-released, recorded here by name and reason.
@@ -700,7 +700,7 @@ note. (2) The Docker.guide.md de-pinning commit (`ca83335`) is also an
 ancestor of v5.10.0 (`git merge-base --is-ancestor` confirmed) -- excluded.
 (3) `scratch/specs/` is gitignored repo-wide (`.gitignore:3`), so nothing
 there is ever "committed" -- corrected to cite the spec by name/part in
-already-committed prose (`NOTES_tpv30_gate.md`, `testsys/e2e/full_specs.py`)
+already-committed prose (`docs/notes/NOTES_tpv30_gate.md`, `testsys/e2e/full_specs.py`)
 instead.
 
 **Correctly stopped before committing anything:** rule 15 requires the

@@ -5,7 +5,7 @@ Compares EQdyna's OWN committed TPV30 Fortran reference
 the OWNER'S OWN published TPV30 submission on the public SCEC/USGS cvws
 archive (scec_archive/tpv30/eqdyna-v3.1-100m-2015/, dx=100 m) -- rule 17 step
 6's independent-validation requirement, previously unsatisfied for TPV30
-(NOTES_tpv30_gate.md).
+(docs/notes/NOTES_tpv30_gate.md).
 
 REPORT-ONLY, same pattern as evidence_tpv29_scec_comparison.py and
 evidence_tpv30_vs_tpv29_contrast.py in this directory: never a gate, never
@@ -26,12 +26,12 @@ PHYSICS as the owner's own finer run (same hypocenter, same rupture
 direction/extent, same order-of-magnitude slip and moment), not "does it
 match to any accuracy standard". Treat every DRIFTED verdict below as a
 regression flag, and every REPRODUCES verdict as "recognizably the same
-physics", never as an accuracy claim. See NOTES_tpv30_gate.md Step 2 for the
+physics", never as an accuracy claim. See docs/notes/NOTES_tpv30_gate.md Step 2 for the
 mission framing this script exists to answer.
 
 This script does NOT touch the separate, open, unresolved finding that
 python-numpy/python-jax diverge from EQdyna's OWN Fortran by up to 30% at
-t=20s on this same case (NOTES_tpv30_gate.md, "STOP -- finding, not a
+t=20s on this same case (docs/notes/NOTES_tpv30_gate.md, "STOP -- finding, not a
 landing"). That is a PORT-CORRECTNESS question (Fortran vs Python) already
 diagnosed by binary search in that document. This script only ever compares
 Fortran-vs-Fortran (EQdyna vs EQdyna, 21 years apart) -- a PHYSICS-VALIDITY
@@ -50,7 +50,7 @@ WHERE EACH INPUT COMES FROM
   2. EQdyna's OWN 500 m REFERENCE --
      test.reference.results/test.tpv30/frt.canonical.txt, the ALREADY
      deduped+lexsorted 22-column fault-node array frozen by the rule-17-step-4
-     gate run (NOTES_tpv30_gate.md). This is a SINGLE static file, not a live
+     gate run (docs/notes/NOTES_tpv30_gate.md). This is a SINGLE static file, not a live
      run directory -- there is no separate SCECRuptureTime.txt/faultst*.txt
      for this coarse gate run, so this script reads final rupture time and
      final slip straight out of the canonical array's own columns (x=col0,
@@ -60,7 +60,7 @@ WHERE EACH INPUT COMES FROM
      dx/fault-extent/hypocenter are read from case_input/test.tpv30/
      user_defined_params.py directly (NOT from testsys/matrix.py, which no
      longer carries a test.tpv30 entry -- it was deliberately removed when
-     the case was found not ready to gate; see NOTES_tpv30_gate.md).
+     the case was found not ready to gate; see docs/notes/NOTES_tpv30_gate.md).
 
 COORDINATE MAPPING (verified, not assumed)
 -------------------------------------------
@@ -148,7 +148,7 @@ def _case_params(case):
     compset -- mirrors evidence_tpv30_vs_tpv29_contrast.py's _dx_and_nproc /
     hypocenter helpers, but WITHOUT the matrix.FORTRAN_RANKS lookup those use
     (test.tpv30 has no matrix.py entry -- it was deliberately removed,
-    NOTES_tpv30_gate.md -- and this script never needs a rank count, since it
+    docs/notes/NOTES_tpv30_gate.md -- and this script never needs a rank count, since it
     reads the single already-canonicalized frt.canonical.txt, not per-rank
     frt.txt<rank> files)."""
     case_input = os.path.join(REPO_ROOT, 'case_input', case)
@@ -161,7 +161,7 @@ def _case_params(case):
     # way case_input does -- this is a pre-existing gap shared by
     # evidence_tpv30_vs_tpv29_contrast.py's identical _dx_and_nproc/
     # hypocenter helpers (untested to completion there per
-    # NOTES_tpv30_gate.md; caught here by actually running this script).
+    # docs/notes/NOTES_tpv30_gate.md; caught here by actually running this script).
     sys.path.insert(0, scripts_dir)
     sys.path.insert(0, case_input)
     cwd = os.getcwd()
@@ -199,7 +199,7 @@ def load_reference(path, p):
     if not os.path.isfile(path):
         raise SystemExit(
             f'{path}: no such file. This is the committed rule-17-step-4 gate '
-            f'reference (NOTES_tpv30_gate.md) -- it should already be in the '
+            f'reference (docs/notes/NOTES_tpv30_gate.md) -- it should already be in the '
             f'repo; do not regenerate it from a fresh run for this comparison '
             f'(that would be a different, undocumented run, rule 4).')
     a = np.loadtxt(path)
@@ -395,7 +395,7 @@ def print_report(res, submission_res, submission_dir):
           f'rho={RHO:g} kg/m3, Vs={VS:g} m/s')
     print(f'  Mw = {m4["mw"]:.3f}')
 
-    print('\n==== Verdict (Step 2/3 framing, NOTES_tpv30_gate.md) ====')
+    print('\n==== Verdict (Step 2/3 framing, docs/notes/NOTES_tpv30_gate.md) ====')
     same_physics = (extent_ratio > 0.85 and
                      0.3 < m2['area_now_km2'] / m2['area_2015_km2'] < 3.0 and
                      m4['moment_Nm'] > 0)
@@ -406,7 +406,7 @@ def print_report(res, submission_res, submission_dir):
           f'area ratio {m2["area_now_km2"]/m2["area_2015_km2"]:.2f}, '
           f'Mw {m4["mw"]:.2f}.')
     print('  (B) port correctness (numpy/jax vs Fortran): UNCHANGED by this '
-          'script -- NOTES_tpv30_gate.md\'s prior finding stands (Fortran vs '
+          'script -- docs/notes/NOTES_tpv30_gate.md\'s prior finding stands (Fortran vs '
           'python-numpy/python-jax diverge up to 30% at t=20s, root cause not '
           'found). This script never touches that question.')
     print('  These are two SEPARATE questions (mission Step 3) -- (A) matching '
