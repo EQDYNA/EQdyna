@@ -2,7 +2,24 @@
 """
 Script to setup the case via user_defined_params.py.
 """
-from user_defined_params import par
+import sys
+
+# Compset files that a case_input directory SHARES with another compset
+# (board item 44): test.tpv37's copy is a symlink to test.tpv36's. If the
+# case directory lacks one, say which file and why, not a bare traceback.
+SHARED_COMPSET_FILES = {
+    'tpv36_37_common': 'case_input/test.tpv36/tpv36_37_common.py '
+                       '(case_input/test.tpv37/tpv36_37_common.py is a symlink to it)',
+}
+try:
+    from user_defined_params import par
+except ModuleNotFoundError as e:
+    if e.name in SHARED_COMPSET_FILES:
+        sys.exit('case.setup: user_defined_params.py imports %s, but %s.py is not '
+                 'in this case directory. It is the shared compset file %s; '
+                 'rebuild the case with create.newcase from a checkout where '
+                 'that file exists.' % (e.name, e.name, SHARED_COMPSET_FILES[e.name]))
+    raise
 from lib import ensureFaultRoughGeometryForCase, resolveNormalStressSign, resolveViscoplasticParams
 import netCDF4 as nc
 import numpy as np
