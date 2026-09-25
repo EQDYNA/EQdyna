@@ -5,8 +5,22 @@ name: Automatic Testing of EQdyna
 # in the trigger set unconditionally. pathway_forward.md and
 # PROJECT_RULES.md are excluded -- a release commit always also touches
 # non-md files (e.g. VERSION), so it still triggers CI regardless.
+#
+# push is filtered to master and tags (board row 87, owner 2026-09-24): under
+# rule 25 every mission branch reaches master through a PR, whose
+# `pull_request` run already gates the identical commit, so a raw
+# feature-branch push run was pure duplication (193 runs / 23 failures
+# counted 2026-09-23; queue depth cost a release ~75 min). master pushes
+# still run -- pr-policy-gate below fires only there -- and tag pushes still
+# run. `tags:` must be named explicitly: a push filter that names only
+# `branches:` stops tag pushes from triggering at all. (paths-ignore is not
+# evaluated for tag pushes.)
 on:
   push:
+    branches:
+      - master
+    tags:
+      - '**'
     paths-ignore:
       - 'pathway_forward.md'
       - 'PROJECT_RULES.md'
