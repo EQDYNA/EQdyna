@@ -62,18 +62,42 @@ def problems(text):
     else:
         if push.get('branches') != ['master']:
             bad.append('push.branches is %r, want exactly [master]' % push.get('branches'))
-        if not push.get('tags'):
-            bad.append('push.tags missing/empty -- a branches-only filter stops tag pushes triggering')
+        tags = push.get('tags') or []
+        if not tags or any(t.startswith('!') for t in tags):
+            bad.append('push.tags is %r -- want a non-negated pattern; a branches-only filter '
+                       'stops tag pushes triggering' % tags)
+        for forbidden in ('branches-ignore', 'tags-ignore'):
+            if forbidden in push:
+                bad.append('push.%s present -- it changes what branches/tags match' % forbidden)
     if 'pull_request' not in on:
         bad.append('pull_request trigger removed')
     return bad
 
 
 def main():
-    if not problems(PRE_ROW_87):
-        print('FAIL test_ci_push_trigger_filter: negative control (unfiltered push) '
-              'was accepted -- the checker cannot go red')
+    good = """on:
+  push:
+    branches:
+      - master
+    tags:
+      - '**'
+  pull_request:
+jobs:
+"""
+    controls = {
+        'unfiltered push': PRE_ROW_87,
+        'negated tags': good.replace("      - '**'", "      - '!**'"),
+        'branches-ignore': good.replace("  pull_request:", "    branches-ignore:\n      - wip\n  pull_request:"),
+        'no pull_request': good.replace("  pull_request:\n", ""),
+    }
+    if problems(good):
+        print('FAIL test_ci_push_trigger_filter: the correct trigger shape was rejected: %r' % problems(good))
         return 1
+    for label, text in controls.items():
+        if not problems(text):
+            print('FAIL test_ci_push_trigger_filter: negative control %r was accepted -- '
+                  'the checker cannot go red' % label)
+            return 1
     with open(WORKFLOW) as fh:
         bad = problems(fh.read())
     if bad:
@@ -82,7 +106,7 @@ def main():
             print(' -', b)
         return 1
     print('SUCCESS test_ci_push_trigger_filter: push = master + tags, pull_request '
-          'kept; negative control (unfiltered push) rejected')
+          'kept; 4 negative controls rejected, correct shape accepted')
     return 0
 
 

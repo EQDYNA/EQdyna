@@ -64,8 +64,8 @@ REGRESSION_DIR = os.path.join(TESTSYS, "regression")
 SHARDS = {
     "1": [
         "test_ci_dependencies.py",
-        "test_ci_pr_policy_step.py",
-        "test_ci_push_trigger_filter.py",  # added 2026-09-24 (wei-lin, row 87): parses test.yml, <1 s  # added 2026-09-23 (Iris, pr-enforce): parses test.yml, one subprocess, <1 s
+        "test_ci_pr_policy_step.py",  # added 2026-09-23 (Iris, pr-enforce): parses test.yml, one subprocess, <1 s
+        "test_ci_push_trigger_filter.py",  # added 2026-09-24 (wei-lin, row 87): parses test.yml, <1 s
         "test_pr_policy_guard.py",  # added 2026-09-23 (Iris, pr-enforce): scratch git repo, no network, <1 s
         "test_prepush_pr_policy_guard.py",  # added 2026-09-23 (Iris, pr-enforce): bare remote + real pushes, ~1-2 s
         "test_dipping_fault_y_split.py",

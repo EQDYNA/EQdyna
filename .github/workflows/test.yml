@@ -29,11 +29,11 @@ on:
       - 'docs/**'
   pull_request:
 
-# A push to a branch with an open PR fires BOTH `push` and `pull_request`
-# for the identical commit. Grouping by the ACTUAL head commit (not by ref,
-# which differs between the two events) puts both runs in the same
-# concurrency group, so the second one cancels the first instead of both
-# running to completion.
+# Since the push filter above (master + tags only), a feature-branch push no
+# longer fires `push` at all. The group is still keyed on the ACTUAL head
+# commit (not the ref, which differs between events), so if a commit ever
+# does arrive through two events -- e.g. a PR's head commit pushed to master
+# -- the second run cancels the first instead of both running to completion.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
