@@ -303,3 +303,31 @@ def test_compare_nc_files_still_passes_one_equal_variable(tmp_path):
     b = _nc(tmp_path / 'b.nc', with_var=True)
     assert compare.compare_nc_files(a, b).startswith('SUCCESS')
 
+
+
+# --------------------------------------------------------------------------
+# board row 121: with a case bound, nc data is gated at max|diff| <= bound
+# (the frt metric), not the looser rule 5 allclose(1e-3). Both directions.
+# --------------------------------------------------------------------------
+def test_compare_nc_files_case_bound_tighter_than_threshold(tmp_path):
+    fn1, fn2 = str(tmp_path / 'ref.nc'), str(tmp_path / 'run.nc')
+    _dataset(1.0e8).to_netcdf(fn1)
+    _dataset(1.0e8 + 2e-6).to_netcdf(fn2)       # 2x a 1e-6 bound
+    assert compare.compare_nc_files(fn1, fn2).startswith('SUCCESS')   # allclose passes it
+    assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('FAIL')
+
+
+def test_compare_nc_files_case_bound_passes_inside_bound(tmp_path):
+    fn1, fn2 = str(tmp_path / 'ref.nc'), str(tmp_path / 'run.nc')
+    _dataset(1.0).to_netcdf(fn1)
+    _dataset(1.0 + 5e-7).to_netcdf(fn2)         # 0.5x a 1e-6 bound
+    assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('SUCCESS')
+
+
+def test_compare_nc_files_case_bound_nan_positions_must_match(tmp_path):
+    fn1, fn2 = str(tmp_path / 'ref.nc'), str(tmp_path / 'run.nc')
+    xr.Dataset({'slip': (('node',), np.array([1.0, np.nan, 1.0]))}).to_netcdf(fn1)
+    xr.Dataset({'slip': (('node',), np.array([1.0, 1.0, 1.0]))}).to_netcdf(fn2)
+    assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('FAIL')
+    xr.Dataset({'slip': (('node',), np.array([1.0, np.nan, 1.0]))}).to_netcdf(fn2)
+    assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('SUCCESS')
