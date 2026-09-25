@@ -951,7 +951,7 @@ def main():
     ap.add_argument('--device', type=_device_arg, default='cpu',
                      help='JAX platform: cpu (default) or cuda. GPU runs only '
                           'on an explicit --device cuda, serial and --mpi '
-                          'alike. No fallback: gpu with no GPU is an error.')
+                          'alike. No fallback: cuda with no GPU is an error.')
     ap.add_argument('--profile', action='store_true',
                      help='print wall-clock per phase (setup / solve / write) '
                           'so one-time cost and per-step cost cannot be '
