@@ -191,6 +191,25 @@ def check_red_on_bucket_inflated_511x_even_with_unaccounted_recomputed():
             % exc)
 
 
+def check_sum_floor_admits_short_run_overhead_but_not_more():
+    """SUM_FLOOR_S (2026-09-24): the gap may be up to max(5% of total_s,
+    2 s). The master CI failure it fixes was 0.80 s of 15.40 s (5.2%) on
+    test.tpv8 x python-jax. That must now pass. A 2.5 s gap on the same 15 s
+    run, and a 10 s gap on a 190 s run, must still fail."""
+    b = {k: 0.0 for k in profile_schema.BUCKET_KEYS}
+    def verdict(total, gap):
+        bb = dict(b); bb['element'] = total - gap
+        try:
+            profile_schema.check_buckets('floor-check', total, bb, gap)
+            return True
+        except ValueError:
+            return False
+    assert verdict(15.40, 0.80), 'the CI case (0.80 s of 15.40 s) must pass'
+    assert not verdict(15.0, 2.5), 'a 2.5 s gap on a 15 s run must fail'
+    assert verdict(190.0, 9.0), '9 s of 190 s (4.7%) must pass'
+    assert not verdict(190.0, 10.0), '10 s of 190 s (5.3%) must fail'
+
+
 def main():
     checks = [check_green_on_real_fortran_output,
               check_green_on_real_numpy_output,
@@ -200,7 +219,8 @@ def main():
               check_red_on_missing_field,
               check_red_on_malformed_field_type,
               check_red_on_bucket_inflated_511x,
-              check_red_on_bucket_inflated_511x_even_with_unaccounted_recomputed]
+              check_red_on_bucket_inflated_511x_even_with_unaccounted_recomputed,
+              check_sum_floor_admits_short_run_overhead_but_not_more]
     failures = []
     for c in checks:
         try:
