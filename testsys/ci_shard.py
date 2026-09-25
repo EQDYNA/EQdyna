@@ -98,6 +98,7 @@ SHARDS = {
         "test_onfault_station_dropped_report.py",  # added 2026-09-24 (wei-lin, item 116): 2 tiny gfortran builds, <2 s
         "test_stop_exit_status.py",
         "test_symlink_integrity.py",
+        "test_shared_compset_file_loud.py",  # added 2026-09-24 (wei-lin, item 44): 3 create.newcase/case.setup subprocesses, ~3 s
         "test_term_axis.py",
         "test_station_gate.py",  # added 2026-09-24 (wei-lin, owner gate design): tempdir copies of committed refs, 10 scenarios, ~1 s
         "test_nstress_sign_convention.py",  # added 2026-09-24 (wei-lin, row 22a): 11 case-param subprocesses + tempdir gate checks, ~1 s
