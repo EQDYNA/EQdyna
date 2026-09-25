@@ -12,13 +12,6 @@ from eqdyna import eqdyna3d as E
 from eqdyna import profile_emit
 
 
-def _prof(**phases):
-    p = E.Profile('numpy')
-    for name, secs in phases.items():
-        p[name.replace('_', ' ')] = secs
-    return p
-
-
 def test_every_phase_is_bucketed_including_station_writes():
     p = E.Profile('numpy')
     p.update({'setup (mesh+input)': 2.0, 'resolve solver': 0.5, 'solve': 10.0,
