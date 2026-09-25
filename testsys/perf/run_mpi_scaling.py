@@ -288,15 +288,15 @@ def jax_mpi_once(case_dir, nsteps, cpus, ranks, sync, platform='cpu'):
               '--backend', 'jax', '--mpi']
     if platform != 'cpu':
         env.pop('CUDA_VISIBLE_DEVICES', None)
-        # --device gpu IS REQUIRED, and JAX_PLATFORMS alone is not enough.
-        # eqdyna3d.main's MPI branch calls _select_device('cpu' if
-        # args.device == 'auto' ...) -- i.e. the default 'auto' OVERWRITES
-        # JAX_PLATFORMS with 'cpu' after this tool set it to 'cuda'. Measured:
+        # --device cuda IS REQUIRED, and JAX_PLATFORMS alone is not enough.
+        # eqdyna3d.main pins JAX_PLATFORMS from --device, whose default is cpu
+        # (board row 56), so the env var alone is OVERWRITTEN with 'cpu'. The
+        # same trap existed under the old `auto` default. Measured then:
         # a 1-rank tpv104 run launched with JAX_PLATFORMS=cuda and no --device
         # returned 812.78 ms/step with a device-memory delta of 0 MiB on all
         # four A100s -- a CPU number under a GPU label, which is the exact
         # failure the per-device memory print below exists to catch.
-        launch = [GPU_WRAP] + launch + ['--device', 'gpu']
+        launch = [GPU_WRAP] + launch + ['--device', 'cuda']
     cmd = ['mpirun', '--cpu-set', ','.join(str(c) for c in cpus),
            '--bind-to', 'cpu-list:ordered', '-np', str(ranks)] + launch
     poll = _GpuPoll() if platform != 'cpu' else None

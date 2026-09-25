@@ -591,8 +591,12 @@ def run_standalone(case_dir, backend, device='cpu', env=None, gpu_index=None):
         print('+ (%s) pinned to CUDA device %d, '
               'XLA_PYTHON_CLIENT_MEM_FRACTION=%s'
               % (os.path.basename(case_dir), gpu_index, GPU_MEM_FRACTION))
+    # --device is passed EXPLICITLY (board row 56): eqdyna3d's default is cpu
+    # and it pins JAX_PLATFORMS itself, so relying on the env var alone would
+    # run a --device cuda sweep on the CPU and report it green.
     rc, out_path, err_path = _call_kept(
-        [sys.executable, '-u', '-m', 'eqdyna', case_dir, '--backend', solver],
+        [sys.executable, '-u', '-m', 'eqdyna', case_dir, '--backend', solver,
+         '--device', device],
         REPO_ROOT, env, os.path.join(case_dir, 'eqdyna.%s' % backend))
     if rc != 0:
         raise RuntimeError('eqdyna.eqdyna3d %s --backend %s exited %d '
@@ -838,9 +842,8 @@ def _perf_meta(results, label, device, budget, sha, tree_dirty):
         so the honest platform is 'unknown' -- requested is not measured
         (the 812.78 ms/step incident is exactly a requested label recorded
         as a measurement).
-      - python-jax-mpi: eqdyna3d's MPI branch forces the cpu platform when
-        --device is left at 'auto' (run_e2e passes no --device) -- the very
-        override that produced that incident is, here, the pin.
+      - python-jax-mpi: eqdyna3d's --device defaults to cpu (board row 56:
+        no `auto`), and run_e2e passes no --device, so the default is the pin.
 
     `sha`/`tree_dirty` are the caller's values, captured once at sweep START
     (see `main`) -- never recomputed here at sweep END, which is the exact
@@ -852,9 +855,9 @@ def _perf_meta(results, label, device, budget, sha, tree_dirty):
         if backend == 'fortran':
             plat, ev = 'cpu', 'fortran solver: CPU-only, src/fortran has no GPU path'
         elif backend == 'python-jax-mpi':
-            plat, ev = 'cpu', ('eqdyna3d --mpi with --device left at "auto" '
-                               'forces JAX_PLATFORMS=cpu (run_e2e passes no '
-                               '--device)')
+            plat, ev = 'cpu', ('eqdyna3d --mpi with no --device pins '
+                               'JAX_PLATFORMS=cpu (the default, board row 56; '
+                               'run_e2e passes no --device)')
         elif device == 'cpu':
             plat, ev = 'cpu', ('run_standalone pins JAX_PLATFORMS=cpu; jax '
                                'cannot land on a GPU under that pin')
