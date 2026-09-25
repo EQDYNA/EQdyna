@@ -131,8 +131,8 @@ def main():
     m = re.search(r'dropped off-fault station 2 at x,y,z =\s*(\S+)\s+(\S+)\s+(\S+)\s+km', out)
     if not m or [float(v) for v in m.groups()] != [0.0, -0.5, -0.3]:
         fails.append(f'station 2 coordinates not reported as 0.000 -0.500 -0.300 km; stdout was:\n{out}')
-    if not re.search(r'NOTICE: 1 of 3 requested off-fault stations do not sit exactly on a grid node', out):
-        fails.append(f'no "NOTICE: 1 of 3 ... do not sit exactly on a grid node" line; stdout was:\n{out}')
+    if not re.search(r'NOTICE: 1 of 3 requested off-fault stations do not sit exactly on a grid z-plane', out):
+        fails.append(f'no "NOTICE: 1 of 3 ... do not sit exactly on a grid z-plane" line; stdout was:\n{out}')
     if snapped != [3]:
         fails.append(f'snapped stations {snapped}, expected [3]; stdout was:\n{out}')
     if 'would otherwise be a dropped off-fault station' not in out:

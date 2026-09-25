@@ -207,7 +207,7 @@ def main():
         eqdyna3d.report_dropped_stations(xonfs, x4nds, [(1, 1, 1), (2, 2, 1), (3, 3, 1)],
                                          [(1, 4), (2, 5)], meshCoor2)
     out2 = buf.getvalue()
-    for want in ('NOTICE: 1 of 2 requested off-fault stations do not sit exactly on a grid node',
+    for want in ('NOTICE: 1 of 2 requested off-fault stations do not sit exactly on a grid z-plane',
                  'snapped off-fault station 2 (would otherwise be a dropped off-fault station): '
                  'requested x,y,z =     0.000    -0.500    -0.300 km, actual x,y,z =     0.000'
                  '    -0.500    -0.500 km, distance =   0.200 km'):

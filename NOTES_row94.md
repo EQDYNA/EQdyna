@@ -75,3 +75,59 @@
 - grep -c 'dropped off-fault station' on each fortran cell log, before/after
 - confirm no committed reference under test.reference.results changes
 - spec-resolution zero-snap-distance evidence for at least one case
+
+## Design correction (post-checkpoint): SNAP gated on Z alone, not 3-axis distance
+
+First pass gated the "snapped" report on the FULL 3-axis Euclidean distance
+(any nonzero x/y/z offset). That over-reports: x and y already silently
+snap to the nearest node (pre-existing, unrelated to this fix), so a broad
+gate flooded the NOTICE with stations whose z was already exactly on a grid
+plane (never at risk of being dropped). Measured before the fix: grep -c
+'dropped off-fault station' on tpv8's fortran log read 4 (all from z).
+Measured with the broad gate: 11 (4 real + 7 pre-existing x/y-only snaps).
+Corrected to gate SNAP on `abs(actual_z - requested_z) > tol` alone (still
+prints the full x,y,z requested/actual/distance for anything that qualifies,
+since a depth-snapped station can also shift in x/y -- test.tpv10 stations
+9/10 do both at once). Re-measured: tpv8 = 4, tpv10 = 2, tpv36 = 0 (its 3
+drops are x/y-outside-the-mesh, never depth-caused), tpv37 = 0. Matches the
+mission's literal grep-4 prediction for tpv8 exactly, and the pathway-item-94
+per-case counts (tpv8 4, tpv10 2, tpv36/37 3) once true-drop and z-driven-snap
+are separated out.
+
+## Found and NOT fixed (out of this mission's scope) -- report to owner
+
+**tpv8 station 11 still drops after the depth fix**, for an UNRELATED reason:
+requested (0, 0.5, -0.3) km. At the 4-rank (npx=2,npy=2,npz=1) gate
+decomposition, y=+0.5 km lands exactly on the MPI y-partition boundary node.
+`setSurfaceStation` (meshgen.f90) has explicit boundary branches for X
+(`ix==1`, `ix==nx`) but NONE for Y -- only the strictly-interior test
+(`iy>1 and iy<ny`). A station whose y is exactly a rank's first-or-last
+local index is tested by NEITHER neighbouring rank's Part1, so it matches on
+no rank -- a pre-existing gap, orthogonal to depth, unmasked only because
+these z=-0.3 km stations were ALWAYS dropped for depth reasons before, so no
+one could see the y-boundary gap underneath. Confirmed NOT depth-related:
+the mirror station 10 (y=-0.5 km, same z) matches fine on the same run;
+tpv10/36/37 show no equivalent divergence. Python's serial matching has no
+MPI partition at all, so it matches this station fine -- a genuine
+Fortran/Python output difference for this one non-gated file
+(body005st000dp030.txt), invisible to this mission's gate (GATE_STATIONS'
+off list for tpv8 is body010st000dp000 / body060st120dp000, both untouched).
+Did not fix: adding a Y-boundary branch to setSurfaceStation is out of this
+mission's explicit scope (depth only) and touches shared x/y matching code
+with its own blast radius. Flagged in the end-of-mission report.
+
+## Found and NOT fixed (out of this mission's scope) -- spec-resolution caveat
+
+Requirement 6 ("at spec resolution nothing may change") holds for the AXIS
+this fix touches (z): at tpv8's spec dx=100 m, all 15 off-fault stations
+match with z-snap distance exactly 0. It does NOT hold for the full 3-axis
+distance: 13 of 15 stations differ by 38-107 m in x/y at spec resolution,
+because `nuni_y_plus`/`nuni_y_minus` (scripts/defaultParameters.py) hardcode
+a FIXED 5-CELL uniform margin around the fault-normal direction, so the
+uniform-grid half-width scales with dx (2500 m at the 500 m gate grid, only
+500 m at the 100 m spec grid) -- stations further than that from the fault
+plane fall into the PML-stretched region, where grid nodes are not at round
+multiples of dx. This is a pre-existing property of the mesh-geometry
+convention, present at BOTH resolutions, unrelated to and unaffected by this
+depth-clamp fix (confirmed: the SAME x/y stations already showed nonzero
+snap distance at the 500 m GATE resolution, before any change here).
