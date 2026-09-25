@@ -196,22 +196,57 @@ def active_device(backend):
     return '%s:%d (%s)' % (d.platform, d.id, getattr(d, 'device_kind', '?'))
 
 
-def report_dropped_stations(xonfs, x4nds, anonfs, off_matches):
+def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor):
     """Port of report_dropped_onfault_st / report_dropped_offfault_st
-    (library_output.f90; board rows 116 and 94): name, on stdout and in
-    Fortran's own words, every requested station that matched no node and so
-    gets no file. Neither snaps nor refuses (the owner's call, as in the
-    Fortran). ntotft == 1 is the only case case.setup allows, so on-fault
-    stations are all fault 1. Coordinates arrive in metres."""
+    (library_output.f90; board rows 116 and 94). On-fault stations: unchanged
+    -- name, on stdout, every requested station that matched no fault node and
+    so gets no file (neither snaps nor refuses; out of this mission's scope).
+    ntotft == 1 is the only case case.setup allows, so on-fault stations are
+    all fault 1.
+
+    Off-fault (row 94, owner ruling 2026-09-24): depth now snaps to the
+    nearest node (build_station_matching), so every station whose (x,y) is
+    inside the mesh matches SOME node -- possibly not the one requested. This
+    reports that difference the same way report_dropped_offfault_st
+    (library_output.f90) does:
+      - matched at a different node than requested: a SNAP, named "snapped
+        off-fault station" (and "...would otherwise be a dropped off-fault
+        station", so the line stays equally loud and equally grep-able as
+        the true-drop case below).
+      - matched on no node at all (x or y outside the mesh -- snapping depth
+        cannot fix that): a true DROP, "dropped off-fault station", unchanged.
+
+    Coordinates arrive in metres. `meshCoor` is build_node_coordinates'
+    1-indexed (row 0 unused) array; `nc` (off_matches' second element) is
+    already that same 1-indexed node id."""
     # Fortran's order: off-fault first (checkOffFaultStationCoverage,
     # eqdyna3d.f90:126), then on-fault (checkOnFaultStationCoverage).
-    off_matched = {sc for sc, nc in off_matches}
+    off_matched = {sc: nc for sc, nc in off_matches}
     off_dropped = [i for i in range(1, x4nds.shape[1] + 1) if i not in off_matched]
+    off_snapped = []
+    for i in range(1, x4nds.shape[1] + 1):
+        if i in off_matched:
+            actual = meshCoor[off_matched[i]]
+            requested = x4nds[:, i - 1]
+            dist = float(np.linalg.norm(actual - requested))
+            if dist > 1.0e-5:
+                off_snapped.append((i, requested, actual, dist))
+    if off_snapped:
+        print(' NOTICE: %d of %d requested off-fault stations do not sit exactly '
+              'on a grid node' % (len(off_snapped), x4nds.shape[1]))
+        print('   (setSurfaceStation, meshgen.f90: x, y and z all now snap to the '
+              'nearest node instead of z requiring an exact grid-plane match)')
+        for i, requested, actual, dist in off_snapped:
+            print('   snapped off-fault station %d (would otherwise be a dropped '
+                  'off-fault station): requested x,y,z =%10.3f%10.3f%10.3f km, '
+                  'actual x,y,z =%10.3f%10.3f%10.3f km, distance =%8.3f km'
+                  % (i, requested[0] / 1000.0, requested[1] / 1000.0, requested[2] / 1000.0,
+                     actual[0] / 1000.0, actual[1] / 1000.0, actual[2] / 1000.0,
+                     dist / 1000.0))
     if off_dropped:
         print(' WARNING: %d of %d requested off-fault stations match no grid '
-              'node and get NO body* file' % (len(off_dropped), x4nds.shape[1]))
-        print('   (setSurfaceStation, meshgen.f90: depth must equal a grid '
-              'z-plane within tol; x and y snap to the nearest interior node)')
+              'node (outside the mesh) and get NO body* file'
+              % (len(off_dropped), x4nds.shape[1]))
         for i in off_dropped:
             print('   dropped off-fault station %d at x,y,z =%10.3f%10.3f%10.3f km'
                   % (i, x4nds[0, i - 1] / 1000.0, x4nds[1, i - 1] / 1000.0,
@@ -333,7 +368,10 @@ def build_solver_state(case_dir, part=None):
         st_off_x_m = np.array([x4nds[0, sc - 1] for sc, nc in off_matches])
         st_off_y_m = np.array([x4nds[1, sc - 1] for sc, nc in off_matches])
         st_off_z_m = np.array([x4nds[2, sc - 1] for sc, nc in off_matches])
-        report_dropped_stations(xonfs, x4nds, anonfs, off_matches)
+        # Row 94: the snap report (and the header stamp write_offfault_stations
+        # uses) needs the ACTUAL matched node location, which needs meshCoor --
+        # not built yet at this point. report_dropped_stations is therefore
+        # called further down, once meshCoor exists (see there).
     else:
         st_on_idx = np.zeros(0, dtype=np.int64)
         st_on_strike_m = st_on_depth_m = np.zeros(0)
@@ -358,6 +396,19 @@ def build_solver_state(case_dir, part=None):
         model_bound = bounds
     meshCoor, nftnd, nsmp = meshgen.build_node_coordinates(
         xline, yline, zline, params, model_bound=model_bound)
+    if part is None:
+        # Row 94: the ACTUAL matched node's (x,y,z) per off-fault station,
+        # meshCoor being 1-indexed with row 0 unused (build_node_coordinates)
+        # and `nc` (off_matches' second element) already that same 1-indexed
+        # node id -- read it straight, no offset. A station this run did not
+        # match at all (x or y outside the mesh) never appears in off_matches
+        # and so never appears here either; report_dropped_stations reports
+        # that case from off_matched/off_dropped directly, not from this array.
+        st_off_actual_m = (meshCoor[np.array([nc for sc, nc in off_matches], dtype=np.int64)]
+                            if off_matches else np.zeros((0, 3)))
+        report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor)
+    else:
+        st_off_actual_m = np.zeros((0, 3))
     conn, elem_type, mat, elem_depth = meshgen.build_elements(
         xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
     num_dof, eq_start, eq_nums, total_eqs = meshgen.build_equation_numbers(
@@ -476,6 +527,13 @@ def build_solver_state(case_dir, part=None):
         st_on_idx=st_on_idx, st_on_strike_m=st_on_strike_m, st_on_depth_m=st_on_depth_m,
         st_off_idx=st_off_idx, st_off_x_m=st_off_x_m, st_off_y_m=st_off_y_m,
         st_off_z_m=st_off_z_m, st_on_total=st_on_total, st_off_total=st_off_total,
+        # Row 94: the ACTUAL matched node (x,y,z), for the header location
+        # stamp only -- st_off_x_m/y_m/z_m above (the REQUESTED coordinate)
+        # stay what the file NAME is derived from; see offfault_filename vs
+        # offfault_location_stamp (library_output.py) and this mission's
+        # explicit ruling that the name stays request-derived.
+        st_off_x_actual_m=st_off_actual_m[:, 0], st_off_y_actual_m=st_off_actual_m[:, 1],
+        st_off_z_actual_m=st_off_actual_m[:, 2],
     )
     mesh = dict(meshCoor=meshCoor, nsmp=nsmp)
     if part is not None:

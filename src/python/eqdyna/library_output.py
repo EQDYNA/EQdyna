@@ -344,12 +344,23 @@ def write_offfault_stations(case_dir, S, off_st_hist):
     nstep = off_st_hist.shape[2]
     paths = []
     for i in range(n_off):
+        # Row 94 (owner ruling 2026-09-24): the FILE NAME is derived from the
+        # REQUESTED coordinate (x_m/y_m/z_m, from bStations.txt) -- the
+        # stable, resolution-independent identifier testsys/matrix.py's
+        # GATE_STATIONS names files by -- while the header LOCATION STAMP
+        # records the ACTUAL matched node (x_actual_m/y_actual_m/z_actual_m),
+        # which can legitimately differ now that depth snaps to the nearest
+        # node instead of requiring an exact grid-plane match. Mirrors
+        # library_output.f90's output_offfault_st exactly (bodytmp/sttmp/
+        # dptmp computed twice there too, once from each source).
         x_m = float(S['st_off_x_m'][i]); y_m = float(S['st_off_y_m'][i])
         z_m = float(S['st_off_z_m'][i])
+        x_actual_m = float(S['st_off_x_actual_m'][i]); y_actual_m = float(S['st_off_y_actual_m'][i])
+        z_actual_m = float(S['st_off_z_actual_m'][i])
         fname = offfault_filename(x_m, y_m, z_m)
         path = os.path.join(case_dir, fname)
         with open(path, 'w') as f:
-            f.write(offfault_location_stamp(x_m, y_m, z_m) + '\n')
+            f.write(offfault_location_stamp(x_actual_m, y_actual_m, z_actual_m) + '\n')
             f.write('# Project=%s\n' % PROJECTNAME)
             f.write('# Author=%s\n' % AUTHOR)
             f.write(_date_line() + '\n')
