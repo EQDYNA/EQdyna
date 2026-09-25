@@ -108,15 +108,83 @@ same race. This port reproduces the selection rule, not a specific winner.
 
 ## Body-file counts, tpv8, at the gate term
 
-(measured below once the e2e run completes -- see the Gate section of the
-final report for the actual numbers: fortran / python-jax-mpi / python-jax)
+Measured from the actual `run_e2e.py --cases test.tpv8 --backends
+fortran,python-jax,python-jax-mpi --jobs 1` run (2026-09-25):
+
+| backend         | body*.txt | faultst*.txt | total |
+|-----------------|-----------|---------------|-------|
+| fortran (4 rank)|        14 |             8 |    22 |
+| python-jax-mpi  |        14 |             8 |    22 |
+| python-jax (serial) |    15 |             8 |    23 |
+
+python-jax-mpi's body count matches Fortran's EXACTLY (14, not the serial
+port's 15) -- `body005st000dp003.txt` (station 11) exists ONLY under
+`test/test.tpv8.python-jax/`, absent from both `test/test.tpv8/` (fortran)
+and `test/test.tpv8.python-jax-mpi/` -- direct confirmation that the MPI
+port reproduces Fortran's y-partition-boundary drop, not the serial port's
+(correct, for a single global domain) full coverage.
 
 ## Per-step cost delta (rule 4e placement)
 
-(measured once the mpi e2e run completes; the new work is a python-side
-`meshgen.build_station_matching` scalar loop over ~this rank's node count,
-run ONCE in `build_solver_state`'s setup phase, and a per-step `xp.stack`/
-`B.setat` already present in `make_step_parts` for ANY nonzero
-`st_on_idx`/`st_off_idx` width -- this landing is what makes that width
-nonzero on the MPI path for the first time, not new code in the per-step
-loop itself.)
+Measured directly (not inferred), same case dir
+(`test/test.tpv8.python-jax-mpi`, tpv8's real mesh, 114 steps, 4 ranks,
+`EQDYNA_MPI_SYNC=halo`, `JAX_PLATFORMS=cpu`), same harness script called
+before and after, back to back, on the shared box (load ~45/64):
+
+  - BEFORE (`build_solver_state` monkeypatched to force
+    `st_on_idx`/`st_off_idx` empty on the MPI path, i.e. this landing
+    reverted in place): rank ms/step = 69.9036 / 69.9166 / 69.9065 / 69.9069
+    (mean 69.908).
+  - AFTER (this landing, unmodified): rank ms/step = 74.7412 / 74.7721 /
+    74.7493 / 74.7438 (mean 74.752).
+  - Delta: **+4.84 ms/step, +6.9%**, uniform across all 4 ranks regardless
+    of which side of the fault they carry stations for (ranks 0/2 carry
+    only the 3 on-fault matches, ranks 1/3 only the 2 off-fault matches) --
+    consistent with CPU jax's per-op DISPATCH overhead dominating over the
+    (tiny, 2-5 station) array width, not a cost that scales with station
+    count.
+  - PLACEMENT: the added work (the on-fault block's `fric[xh, SLOT]`
+    gathers + `xp.stack` + `B.setat`, and the off-fault block's analogous
+    `dispArr`/`velArr` gathers) sits INSIDE `make_step_parts`'s `part_a`/
+    `part_b`, which is jitted together with the element kernel, hourglass
+    resistance, faulting and the mass divide -- the SAME jit `driver.run_mpi`
+    already builds. It is not a new collective, not a new host round-trip,
+    and not a new bucket: like `fault` already does on jax (profile_emit.py's
+    documented fold), this cost lands in the `element` bucket
+    (`compute_s`), not `io`/`exchange`/`wait`/`setup`. No new per-step
+    collective was added (requirement 2): `on_st_hist`/`off_st_hist` are
+    written into the RANK-LOCAL carry by the EXISTING `make_step_parts`
+    (shared with the serial `run`), and returned once, at the end of the
+    loop, by `run_mpi`'s own return dict -- nothing new crosses an MPI
+    boundary per step.
+  - Baseline/after scripts: `row120_perf_before.py` / `row120_perf_after.py`
+    (scratch, not committed -- see this note for the exact monkeypatch and
+    invocation, reproducible from any checkout of this branch).
+
+## Gate (final, this checkpoint)
+
+`python3 testsys/run.py unit regression`: SUCCESS unit (exit 0), SUCCESS
+regression (exit 0) -- includes the new
+`test_row120_mpi_station_output.py` (shard 2), 6 checks incl. 2 mutations,
+0 failures.
+
+`python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends
+fortran,python-jax,python-jax-mpi --jobs 1`:
+```
+test.tpv8        python-jax    SUCCESS      27.1  max|diff|=1.983643e-10 ...
+test.tpv8        python-jax-mpi SUCCESS      17.8  max|diff|=1.220703e-10 ...
+test.tpv8        fortran       SUCCESS      13.0  max|diff|=3.051760e-11 ...
+ran       : 3 of 33 cells in the 11 case x 3 backend table (3 passed, 0 failed)
+```
+python-jax-mpi's station line:
+```
+station: 3 on-fault + 2 off-fault file(s), worst e=1.1176e-10 bound=1.0e-07 (on v-slip-rate at faultst000dp120.txt)
+```
+(all 13 columns individually `ok`, e in [0, 1.12e-10], every S_q either a
+real physical scale or FLOOR-clamped at 1e-6 -- see the full per-column
+table in the run log.) `git status test.reference.results/` is clean (no
+reference regenerated, rule 7).
+
+## Head SHA at this checkpoint
+
+55dd4b0 (mira/row120-jaxmpi-stations)
