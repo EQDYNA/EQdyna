@@ -104,8 +104,8 @@ all steps) alongside its usual dict; `run_case` splits it back out of
 | `fault` | `out['fault_s']` -- `driver.f90:28`'s boundary, measured via `perf_counter()` around `FLT.faulting` in `make_step_parts`'s `part_b` |
 | `exchange` | `0.0` -- genuinely zero: this path is serial by construction (`build_solver_state` refuses `npx/npy/npz>1`), not a folded/unmeasured cost |
 | `wait` | `0.0` -- same reason as `exchange` |
-| `io` | `Profile['write frt']` |
-| `total_s` | independent `time.perf_counter()` span wrapping the whole of `run_case`, NOT a sum of the `Profile` phases |
+| `io` | `Profile['write frt'] + Profile['write stations']` -- Fortran's `compTimeInSeconds(8)` spans the whole output stage, stations included (`eqdyna3d.f90:175-182`). The phase-to-bucket map is `eqdyna3d._SERIAL_PHASE_BUCKET`; `serial_buckets` refuses a phase it does not map |
+| `total_s` | independent `time.perf_counter()` span wrapping the whole of `run_case`, NOT a sum of the `Profile` phases. Each `Profile.phase` starts its clock BEFORE its entry device sync, so the first phase (`setup`) carries the one-time jax import |
 
 ### python-jax (serial, nranks=1) -- `fault` folded into `element`
 Same `run_case` call site as numpy above; same table except `element` is

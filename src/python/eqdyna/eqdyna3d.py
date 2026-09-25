@@ -527,8 +527,11 @@ class Profile(dict):
 
     @contextlib.contextmanager
     def phase(self, name):
-        self._sync()
+        # t0 BEFORE the entry sync: the first _sync imports jax (~1 s), and a
+        # t0 taken after it left that import outside every phase, i.e. in
+        # unaccounted_s (3.1% of total_s on test.tpv8 x jax, this box).
         t0 = time.perf_counter()
+        self._sync()
         try:
             yield
         finally:
@@ -743,12 +746,41 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
         total_s = time.perf_counter() - run_t0
         _profile_emit.write_profile(
             case_dir, 'python-%s' % backend, 0, 1, S['nstep'],
-            dict(setup=prof.get('setup (mesh+input)', 0.0)
-                      + prof.get('resolve solver', 0.0),
-                 element=solve_s - fault_s, fault=fault_s,
-                 exchange=0.0, wait=0.0, io=prof.get('write frt', 0.0)),
+            serial_buckets(prof, fault_s),
             loop_s=solve_s, total_s=total_s)
     return frt_path
+
+
+# Every Profile phase run_case records, and the schema bucket it belongs to.
+# `io` is frt AND station output: Fortran's io figure (compTimeInSeconds(8),
+# eqdyna3d.f90:182) spans the whole post-loop output stage, stations included
+# (rule 23). The 'write stations' phase (row 114) was once left out of this
+# map, so its time fell into unaccounted_s and tripped the schema's 5% sum
+# check on master CI run 36082084976 (0.80 s of 15.40 s, test.tpv8 x jax).
+_SERIAL_PHASE_BUCKET = {
+    'setup (mesh+input)': 'setup',
+    'resolve solver': 'setup',
+    'solve': 'element',
+    'write frt': 'io',
+    'write stations': 'io',
+}
+
+
+def serial_buckets(prof, fault_s):
+    """run_case's Profile phases -> the six profile_emit buckets. Refuses a
+    phase with no bucket rather than letting its time vanish into
+    unaccounted_s; `fault_s` (numpy only, else 0.0) is carved out of solve."""
+    unmapped = sorted(set(prof) - set(_SERIAL_PHASE_BUCKET))
+    if unmapped:
+        raise ValueError('serial_buckets: profile phase(s) %s have no bucket in '
+                         '_SERIAL_PHASE_BUCKET -- map each one, or its time is '
+                         'silently counted as unaccounted_s' % unmapped)
+    buckets = dict.fromkeys(_profile_emit.BUCKET_KEYS, 0.0)
+    for name, secs in prof.items():
+        buckets[_SERIAL_PHASE_BUCKET[name]] += secs
+    buckets['element'] -= fault_s
+    buckets['fault'] = fault_s
+    return buckets
 
 
 def _select_device(device):
