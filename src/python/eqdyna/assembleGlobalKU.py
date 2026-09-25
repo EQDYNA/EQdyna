@@ -514,7 +514,7 @@ def calcHourglassResist(xp, inv, dispArr, velArr, force, rdampk, scratch=None):
     `stage_p` buffers already use, on the same reasoning (mul_into's
     docstring): `np.multiply(a, b, out=buf)` then `np.negative(buf,
     out=buf)` is the SAME two roundings as `-(a * b)` (a plain multiply,
-    then a sign-bit flip), just not reallocated. See NOTES_numpy_drva6_perf.md
+    then a sign-bit flip), just not reallocated. See docs/notes/NOTES_numpy_drva6_perf.md
     for the measured before/after ms/step and the sha256 parity check this
     was gated on."""
     conn = inv['conn']; phi = inv['phi']; ss = inv['ss']

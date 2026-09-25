@@ -1,6 +1,97 @@
 # Row 94 — clamp off-fault station depth to nearest node
 
-## Design
+## 2026-09-25 audit-fixes checkpoint (mira-volkov, branch mira/row94-fixes-wip)
+
+Continuing the fresh audit's findings 1-7 on top of the salvaged WIP
+(d847ccd, Fortran findings 1-2 only, uncompiled). Build succeeded as-is
+(the WIP's `x4ndsZValid` threading through `setSurfaceStation` was already
+complete for all 3 branches; only the Python mirror and findings 3-7 were
+outstanding).
+
+**Finding 1 (band clamp) -- confirmed and mirrored in Python.**
+`PMLb(5)` semantics re-verified directly against `setNumDof`
+(meshgen.f90:698-709): `nodeCoor(3) < PMLb(5)` is exactly the test that
+switches a node to the 12-dof absorbing formulation, so `PMLb(5)` is the
+code's own physical/PML boundary, confirming the WIP's comment.
+`src/python/eqdyna/meshgen.py`'s `build_station_matching` gained two new
+required args (`pml_zmin`, `z_free_surface`, no default -- rule 1) and a
+`z_valid` per-station boolean, gating all 3 x-branches exactly like
+Fortran's `x4ndsZValid`; it now returns `(anonfs, off_fault_matches,
+z_valid)` (call site: `eqdyna3d.py`'s `build_solver_state`, sourced from
+`build_grid_lines`'s `pmlb['zmin0']` / `bounds[2][1]`).
+
+**Finding 2 (fixed 10000 buffer) -- kept, side effects handled.**
+README.md's generated exit-code table (`test_stop_exit_status.py --update`)
+regenerated to add `ERR_MESH_GRID_TOO_LARGE = 49` under "Mesh generation and
+element quality (41-49)" -- one line, `git diff README.md` confirms nothing
+else moved. PR #31 (not yet merged, retargets this table to
+`docs/user/troubleshooting.md`) will need a re-sync once it lands; flagged
+in the end-of-mission report, not fixed here (that file does not exist on
+this branch). Python mirror: NOT needed and NOT added --
+`one_dim_coor_array` (src/python/eqdyna/meshgen.py) builds `arr =
+np.zeros(global_size)`, a dynamically-sized array, so the defect this code
+guards against (a SILENT fixed-size-10000 buffer overflow) has no Python
+analogue to mirror. `checkInputConsistency.py` mirrors only the `ERR_CFG_*`
+(11-13) range (per `docs/fortran_python_correspondence.md`'s own audited
+scope note); `ERR_MESH_*` (41-49) was already, and remains, outside that
+mirror's documented scope -- this is not a new gap.
+
+**Finding 6 (drop wording) -- new module-level `x4ndsZValidPersist`.**
+Added `logical, allocatable, dimension(:) :: x4ndsZValidPersist` to
+globalvar.f90, allocated in eqdyna3d.f90 alongside `x4nds`, and populated by
+meshgen.f90 as a straight copy of the local `x4ndsZValid` it already
+computes (identical on every rank, no MPI reduction). `report_dropped_
+offfault_st` (library_output.f90) reads it directly (`use globalvar`, no
+new dummy argument) and now prints one of two DROP wordings per station:
+"checked cause: requested depth is outside the physical, non-PML mesh band"
+(x4ndsZValidPersist .false.) or "cause not checked here -- ... y-partition-
+boundary gap ..." (x4ndsZValidPersist .true.) -- never the old blanket
+"(outside the mesh)" claim. Python mirror: `build_station_matching` now
+returns `z_valid`, threaded through `report_dropped_stations` (new required
+args `off_z_valid`, `tol`) with the identical two-wording split.
+**test_offfault_station_dropped_report.py's synthetic driver had to gain
+its own `allocate(x4ndsZValidPersist(3))`** -- the existing test never
+called `meshgen`, so the module array would otherwise be read unallocated;
+extended with a 'confirmed' scenario (`zvalid2='.false.'`) to cover both
+wordings.
+
+**Finding 5 (tol source) -- fixed.** `report_dropped_stations` (eqdyna3d.py)
+took a hardcoded `1.0e-5` where every other geometry function in this port
+reads `params['tol']` (the one place the Fortran `tol = 1.0d-5` PARAMETER,
+globalvar.f90:209, is reproduced). Now a required `tol` argument, sourced
+from `params['tol']` at the call site.
+
+**Finding 4 (header stamp) -- new tests, both languages.** The existing
+column-count test's off-fault driver sets `meshCoor(:,1) = x4nds(:,1)`
+(matched == requested), so a revert of the actual-node stamp would still
+pass it. Added `test_offfault_station_header_actual_node.py` (Fortran) and
+`test_offfault_station_header_actual_node_python.py` (Python), both with
+the matched node numerically DIFFERENT from the request in every axis;
+mutation-checked by hand (reverted the stamp to request-derived in each
+language, confirmed red, restored).
+
+**Finding 3 (depth-selection behaviour) -- new integration test,
+real binary + real Python, both languages.** `test_offfault_station_depth_
+selection.py`: a real, forced-serial, 3-step test.tpv8 case with 4
+off-fault stations picked from THAT case's own z-grid (derived once via
+`meshgen.build_grid_lines`, not hand-computed) -- exact-plane, unambiguous
+snap, an exact TIE (asserts the deeper plane wins, per the documented
+rule), and an out-of-band drop. Runs `bin/eqdyna` for real AND calls
+`meshgen.build_station_matching` directly on the same case dir, asserting
+identical matched depths. Mutation-checked three ways (all confirmed red,
+then restored): Fortran tie-break `<` -> `<=` (station 3 flips to the
+shallower plane), Fortran band-check disabled (station 4 stops dropping),
+Python `z_valid` forced all-True (station 4 matches in Python, cross-
+language assertion fails).
+
+**Side effect caught by the gate itself:** the 3 new regression scripts had
+to be added to `testsys/ci_shard.py`'s `SHARDS` table
+(`test_ci_shard_coverage.py` failed loudly with the exact 3 missing names
+until fixed) -- 2 in shard "1" (cheap), 1 (`test_offfault_station_depth_
+selection.py`, a real mpirun) in shard "2" next to `test_check_input_
+consistency.py`, a comparable-cost neighbour.
+
+## Design (original, 2026-09-24 landing)
 - Fortran `setSurfaceStation` (src/fortran/meshgen.f90) depth test switched
   from exact equality against `x4nds(3,i)` to exact equality against a
   precomputed `x4ndsSnapZ(i)` — the requested depth clamped to the nearest

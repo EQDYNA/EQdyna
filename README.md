@@ -343,6 +343,7 @@ authoritative; the specific number is advisory under `srun`.
 | 46 | `ERR_MESH_BAD_WEDGE` | degenerate wedge built with unequal node ids |
 | 47 | `ERR_MESH_BAD_JACOBIAN` | non-positive Jacobian determinant (inverted element) |
 | 48 | `ERR_MESH_MATERIAL_UNSET` | an element has no material property assigned |
+| 49 | `ERR_MESH_GRID_TOO_LARGE` | a 1D grid line (or its per-rank slice) exceeds the fixed-size 10000 buffer |
 
 **MPI and domain decomposition** (51-59)
 
