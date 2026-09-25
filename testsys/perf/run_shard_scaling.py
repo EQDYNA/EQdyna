@@ -79,6 +79,7 @@ OUT = os.path.join(ROOT, 'docs', 'perf_snapshots',
 sys.path.insert(0, TESTSYS)
 import run_numa_scaling as numa      # noqa: E402
 import run_scaling as rs             # noqa: E402
+import ledger                        # noqa: E402
 
 MODES = {
     'element':        dict(EQDYNA_SHARD_MODE='element', EQDYNA_SHARD_SYNC='psum'),
@@ -278,11 +279,19 @@ def main():
         print('%d point(s) SKIPPED as busy (not measured, not silently dropped): %s'
               % (len(skipped), [s['label'] for s in skipped]))
 
-    # Item 91a's ledger half is NOT wired (PR #15 audit): the shared
-    # ledger.rows_from_scaling_snapshot stamps tool='run_scaling' and
-    # parallelism='threads', so shard points would be appended -- append-only
-    # -- as run_scaling rows. What a shard point's `ranks` counts must be
-    # declared in ledger.py first; open board residual, not done here.
+    # Item 91a's ledger half (2026-09-24): ledger.rows_from_scaling_snapshot
+    # now takes `tool` as a parameter and declares a shard point's `ranks` as
+    # the EXISTING 'threads' parallelism value (see that function's
+    # docstring) -- shard rows file under tool='run_shard_scaling', never
+    # mislabelled as run_scaling's own points.
+    snap_rel = os.path.relpath(OUT, ROOT).replace(os.sep, '/')
+    tenancy = ledger.box_tenancy(a.busy_ceiling)
+    nledger = ledger.append_rows(
+        ledger.rows_from_scaling_snapshot(meta, snap_rel, tenancy,
+                                          tool='run_shard_scaling'))
+    print('%d ledger row(s) appended to %s (box tenancy %d/%d cpus over %.2f)'
+          % (nledger, ledger.LEDGER_RELPATH, tenancy['busy'], tenancy['total'],
+             a.busy_ceiling))
 
 
 if __name__ == '__main__':

@@ -388,7 +388,12 @@ def main():
                 verdict='REJECTED_LOW_EFF' if r['rejected'] else 'MEASURED',
                 ab_arm=arm, ab_min_eff=r['min_eff'], sync='halo',
                 cpus=row['cpus'], compile_s=r['compile_s'],
-                mpi_ms_per_rank=r['mpi_ms'], wait_ms_per_rank=r['wait_ms'])
+                mpi_ms_per_rank=r['mpi_ms'], wait_ms_per_rank=r['wait_ms'],
+                # row 76: the cpu set was already busy-checked once per rank
+                # count (line ~283's `busy`, reused by every arm at this
+                # rank count) -- reused here, not resampled.
+                contention=ledger.contention_from_check(row['busy'],
+                                                        a.max_busy))
             lrows.append(lr)
     say('%d ledger row(s) appended to %s'
         % (ledger.append_rows(lrows), ledger.LEDGER_RELPATH))
