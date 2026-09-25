@@ -19,14 +19,20 @@ Past releases are archived in `pastReleaseNotes.md`.
 * A Fortran compiler (gfortran or Intel Fortran), MPI (mpich or Intel MPI) and netCDF (libnetcdf, libnetcdff).
 * Python 3 with numpy>=1.20, matplotlib, xarray and netCDF4.
 
-On Ubuntu 22 this is one root step, then one user step:
+On Ubuntu 22 this is one root step, then a Python environment of your own. The
+environment keeps EQdyna's Python packages apart from the system's, which may be
+built for an older numpy:
 
 ```
 sudo apt-get install git make gfortran mpich libnetcdf-dev libnetcdff-dev python3 python3-pip   # needs root
-pip install numpy netCDF4 matplotlib xarray
+python3 -m pip install --user virtualenv
+python3 -m virtualenv ~/eqdyna-env
+. ~/eqdyna-env/bin/activate
+pip install numpy netCDF4 matplotlib xarray jax
 ```
 
-`ubuntu.env.sh` runs the same packages and must be run as root. On macOS, install
+`ubuntu.env.sh` installs the same system packages and must be run as root. For
+NVIDIA GPUs, install `"jax[cuda12]"` instead of `jax`. On macOS, install
 [Homebrew](https://brew.sh) plus `brew install gcc netcdf netcdf-fortran`; the
 `./install-eqdyna.sh -e macos` below then adds mpich and the Python packages.
 
@@ -41,8 +47,8 @@ export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 export PYTHONPATH=$EQDYNAROOT/src/python
 ```
 
-Add the three `export` lines to your `~/.bashrc` (with the full path in place of
-`$(pwd)`) so every new shell finds EQdyna. If you later edit `src/fortran/`, re-run
+Add the three `export` lines and `. ~/eqdyna-env/bin/activate` to your `~/.bashrc`
+(with the full path in place of `$(pwd)`) so every new shell finds EQdyna. If you later edit `src/fortran/`, re-run
 `./install-eqdyna.sh`; the tools refuse to use a binary built from older source. To check the install, run
 `python3 testsys/run.py unit regression`; it takes about 4 minutes and must end
 with two `SUCCESS` lines.
@@ -76,7 +82,6 @@ The same physics is also implemented in Python/JAX. It runs a case on one
 process, so first set the decomposition to one rank:
 
 ```
-pip install jax      # or "jax[cuda12]" for NVIDIA GPUs
 create.newcase ~/runs/tpv8-jax test.tpv8
 cd ~/runs/tpv8-jax
 printf '\npar.nx = 1\npar.ny = 1\npar.nz = 1\n' >> user_defined_params.py
