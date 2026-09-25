@@ -283,13 +283,30 @@ H6. The commit message's claim ("only the timestamp header differs") is
   the SAME functions the passing run above exercises -- not a
   hypothetical, not a hand-argued case.
 
-- 2026-09-25 T7: remaining before the final gate: (a) register the new
-  test in `testsys/ci_shard.py`, (b) fix
-  `test_row120_mpi_station_output.py`'s now-stale "station 11 is dropped"
-  assertion (T2) to assert the NEW behaviour (found by exactly one rank)
-  instead, (c) run the full required gate, (d) check
-  `test.reference.results/` stays clean (mission point 5), (e) commit +
-  push.
+- 2026-09-25 T7: registered `test_row127_station_ownership.py` in
+  `testsys/ci_shard.py` (`ci_shard.py verify`: 80 on-disk, 80 assigned, 0
+  missing/stale). Updated `test_row120_mpi_station_output.py`'s stale
+  assertion to "PRESENT, found by exactly one rank" -- re-ran, 6/6 PASS.
+
+- 2026-09-25 T8: FULL REQUIRED GATE, all four commands, fresh:
+    - `python3 testsys/run.py unit regression` -> SUCCESS (both tiers);
+      grepped the log for both station tests: `test_row120_mpi_station_
+      output: 6 check(s) ... 0 failure(s)`, `test_row127_station_
+      ownership: 21 check(s); 0 failure(s)`.
+    - `python3 testsys/e2e/run_e2e.py --cases test.tpv8,test.tpv10,
+      test.tpv36,test.tpv37 --backends fortran,python-jax --jobs 1` ->
+      8/8 cells SUCCESS (wall clock 910.5s).
+    - `python3 testsys/e2e/run_e2e.py --cases test.tpv8 --backends
+      python-jax-mpi --jobs 1` -> 1/1 cell SUCCESS (17.4s; first attempt
+      correctly REFUSED with the test/-tree lock message because the
+      first command above was still holding it -- re-ran after it
+      finished, not a bypass).
+    - `git status test.reference.results/` -> empty (mission point 5:
+      no reference changed, nothing to stop for).
+  Committed the perf-ledger/perf-snapshot telemetry these runs appended
+  (`docs/perf_ledger.jsonl`, `docs/run_profiles.jsonl`, two new
+  `docs/perf_snapshots/e2e_cells_*.json`) as the gate's own evidence,
+  same convention `pathway_forward.md` rows already cite. DONE.
 
 ## Findings summary (for the final report)
 
