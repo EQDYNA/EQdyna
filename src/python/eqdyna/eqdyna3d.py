@@ -794,8 +794,6 @@ def _select_device(device):
     put a row labelled gpu into a backend comparison whose whole purpose is to
     tell cpu and gpu apart (rule 2).
     """
-    if device == 'auto':
-        return
     os.environ['JAX_PLATFORMS'] = {'cpu': 'cpu', 'gpu': 'cuda'}[device]
     import jax
     got = jax.devices()[0].platform
@@ -828,6 +826,21 @@ def _abort(exc, rank=0):
     raise SystemExit(exc.code)
 
 
+DEVICE_CHOICES = ('cpu', 'gpu')
+
+
+def _device_arg(value):
+    """--device's parser. `auto` was removed by owner ruling (board row 56,
+    2026-09-24): it let JAX pick a GPU on a serial run while --mpi silently
+    mapped it to cpu. Refused by name, never re-mapped."""
+    if value not in DEVICE_CHOICES:
+        raise argparse.ArgumentTypeError(
+            '%r is not a device: choose cpu (the default) or gpu%s'
+            % (value, " -- 'auto' was removed (board row 56); pass --device gpu "
+               "to request a GPU" if value == 'auto' else ''))
+    return value
+
+
 def main():
     ap = argparse.ArgumentParser(prog='python3 -m eqdyna')
     ap.add_argument('case_dir')
@@ -836,10 +849,10 @@ def main():
                      help='solver backend (default: %(default)s). No fallback: '
                           'jax with jaxlib missing is an error, not a demotion '
                           'to numpy.')
-    ap.add_argument('--device', choices=('auto', 'cpu', 'gpu'), default='auto',
-                     help='JAX platform (default: auto = whatever JAX picks). '
-                          'Only meaningful with --backend jax. No fallback: '
-                          'gpu with no GPU is an error.')
+    ap.add_argument('--device', type=_device_arg, default='cpu',
+                     help='JAX platform: cpu (default) or gpu. GPU runs only '
+                          'on an explicit --device gpu, serial and --mpi '
+                          'alike. No fallback: gpu with no GPU is an error.')
     ap.add_argument('--profile', action='store_true',
                      help='print wall-clock per phase (setup / solve / write) '
                           'so one-time cost and per-step cost cannot be '
@@ -857,7 +870,7 @@ def main():
         if args.backend != 'jax':
             raise SystemExit('--mpi is implemented for --backend jax only '
                              '(numpy is out of scope for the MPI path)')
-        _select_device('cpu' if args.device == 'auto' else args.device)
+        _select_device(args.device)
         from mpi4py import MPI      # ImportError is deliberate, not caught
         comm = MPI.COMM_WORLD
         prof = Profile('jax')
@@ -892,8 +905,9 @@ def main():
         # printed no device at all. Measured consequence: a 1-rank tpv104
         # point launched with JAX_PLATFORMS=cuda recorded 812.78 ms/step with
         # zero bytes allocated on any GPU, because this branch's
-        # `--device auto` maps to cpu (line above) and nothing downstream
-        # said so. One line per rank; note that under a per-rank
+        # `--device auto` mapped to cpu here and nothing downstream
+        # said so (that silent auto->cpu map was removed with `auto` itself,
+        # board row 56; the default is now an explicit cpu). One line per rank; note that under a per-rank
         # CUDA_VISIBLE_DEVICES every rank legitimately reports gpu:0, so this
         # line proves the PLATFORM, and it is the per-device memory poll in
         # testsys/perf/run_mpi_scaling.py that proves four distinct devices.
@@ -915,9 +929,8 @@ def main():
         return
     if args.backend == 'jax':
         _select_device(args.device)
-    elif args.device != 'auto':
-        raise SystemExit('--device %s is meaningless with --backend numpy'
-                         % args.device)
+    elif args.device == 'gpu':
+        raise SystemExit('--device gpu is meaningless with --backend numpy')
     prof = Profile(args.backend)
     try:
         path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend,
