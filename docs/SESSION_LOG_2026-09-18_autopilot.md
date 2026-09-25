@@ -65,7 +65,7 @@ cshyu, enze, junlin, lp, markw, messagebus, rdomeyko, ron, yukoo, zjia) -- a
 genuinely shared login node, not the "finally quiet" box the dispatch brief
 assumed (which named only the owner's 2 train.py jobs).
 
-Corrected `NOTES_item33_scatter_probe.md` in place (marked and dated, original
+Corrected `docs/notes/NOTES_item33_scatter_probe.md` in place (marked and dated, original
 text preserved for the record, not silently overwritten) to: **NOT SETTLED**.
 The HLO partition-count finding is a compile-time property, unaffected by
 runtime noise, and stands as-is. The timing asymmetry is at most a weak,
@@ -73,7 +73,7 @@ directionally-suggestive signal on a box whose noise floor is comparable to
 the effect claimed.
 
 Landed `036b4ba` on master (`testsys/perf/probe_scatter_bandwidth.py`,
-`NOTES_item33_scatter_probe.md`, `testsys/perf/scatter_bandwidth_last.json`)
+`docs/notes/NOTES_item33_scatter_probe.md`, `testsys/perf/scatter_bandwidth_last.json`)
 -- new standalone files, base = current HEAD confirmed via `git diff --stat
 cacf738`, zero staleness. Direct master landing (small, report-only, no
 gate/kernel surface); noted here as the required non-default-branch departure
