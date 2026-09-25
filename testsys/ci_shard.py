@@ -139,6 +139,14 @@ SHARDS = {
                                  # subprocess-heavy scripts.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
+        "test_user_docs_commands.py",  # added 2026-09-25 (board row 126, docs
+                                 # site): reuses test_readme_commands.py's own
+                                 # checks over docs/user/**/*.md, filesystem
+                                 # and import checks only, well under 1 s.
+        "test_params_reference_freshness.py",  # added 2026-09-25 (board row
+                                 # 126, docs site): one AST parse of
+                                 # scripts/defaultParameters.py plus a string
+                                 # compare, well under 1 s.
         "test_user_docs_style.py",  # added 2026-09-24 (wei-lin, user-facing docs rule): pure text checks, <1 s
         "test_sweep_core_budget.py",
         "test_sweep_tenancy_budget_2026_09_23.py",
