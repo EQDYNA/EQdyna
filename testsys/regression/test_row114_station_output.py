@@ -172,30 +172,105 @@ def main():
                 print('  numpy == jax: same %d on-fault / %d off-fault filenames, '
                       'same column count' % (len(on_n), len(off_n)))
 
-    # Dropped-station report (rows 94/116): same words as Fortran's
+    # Dropped/snapped-station report (rows 94/116): same words as Fortran's
     # report_dropped_onfault_st / report_dropped_offfault_st, and silence when
-    # nothing is dropped. Behaviour: captured stdout of the real function.
+    # nothing is dropped or snapped. Behaviour: captured stdout of the real
+    # function. Row 94 (owner ruling 2026-09-24): off-fault depth now snaps
+    # to the nearest node, so report_dropped_stations takes `meshCoor` (the
+    # ACTUAL matched node per station) and reports a SNAP (matched, but not
+    # at the requested node) separately from a true DROP (matched nowhere).
     import contextlib, io
     import numpy as np
     from eqdyna import eqdyna3d
     xonfs = np.array([[0.0, -18000.0, 5000.0], [0.0, -15600.0, -12000.0]])
     x4nds = np.array([[0.0, 0.0], [1000.0, -500.0], [0.0, -300.0]])
+    meshCoor = np.zeros((100, 3))
+    meshCoor[42] = (0.0, 1000.0, 0.0)  # station 1's exact requested node
+    tol = 1.0e-5
+    # Finding 6 (row 94 audit, 2026-09-25): station 2's depth is in-band
+    # (off_z_valid[1]=True) -- an UNCONFIRMED drop cause.
+    off_z_valid = np.array([True, True])
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        eqdyna3d.report_dropped_stations(xonfs, x4nds, [(1, 1, 1), (7, 3, 1)], [(1, 42)])
+        eqdyna3d.report_dropped_stations(xonfs, x4nds, [(1, 1, 1), (7, 3, 1)], [(1, 42)], meshCoor,
+                                         off_z_valid, tol)
     out = buf.getvalue()
     for want in ('WARNING: 1 of 3 requested on-fault stations match no fault node',
                  'dropped on-fault station 2 (fault 1) at x,z =   -18.000   -15.600 km',
                  'WARNING: 1 of 2 requested off-fault stations match no grid node',
-                 'dropped off-fault station 2 at x,y,z =     0.000    -0.500    -0.300 km'):
+                 'dropped off-fault station 2 at x,y,z =     0.000    -0.500    -0.300 km',
+                 'cause not checked here'):
         if want not in out:
             fails.append('drop report lacks %r; stdout was:\n%s' % (want, out))
+    if 'outside the mesh) and get NO body' in out:
+        fails.append('summary line still claims every drop is confirmed outside the mesh; '
+                     'stdout was:\n%s' % out)
+    if 'checked cause' in out:
+        fails.append('station 2 (off_z_valid=True) wrongly claims a checked cause; '
+                     'stdout was:\n%s' % out)
+
+    # Finding 6: same drop, but off_z_valid[1]=False -- a CONFIRMED cause.
+    buf_confirmed = io.StringIO()
+    with contextlib.redirect_stdout(buf_confirmed):
+        eqdyna3d.report_dropped_stations(xonfs, x4nds, [(1, 1, 1), (7, 3, 1)], [(1, 42)], meshCoor,
+                                         np.array([True, False]), tol)
+    out_confirmed = buf_confirmed.getvalue()
+    if 'checked cause: requested depth is outside the physical, non-PML mesh band' not in out_confirmed:
+        fails.append('station 2 (off_z_valid=False) does not report the confirmed depth-out-of-'
+                     'band cause; stdout was:\n%s' % out_confirmed)
+    if 'cause not checked here' in out_confirmed:
+        fails.append('station 2 (off_z_valid=False) wrongly says its cause is unconfirmed; '
+                     'stdout was:\n%s' % out_confirmed)
+
+    # Finding 5: `tol` must actually gate the SNAP notice (not a hardcoded
+    # 1.0e-5) -- station 2's 200 m depth-snap offset (scenario below) must
+    # stop being reported once tol is raised past it.
+    meshCoor_tol = np.zeros((100, 3))
+    meshCoor_tol[4] = (0.0, 1000.0, 0.0)
+    meshCoor_tol[5] = (0.0, -500.0, -500.0)  # requested z=-300, actual z=-500: 200 m offset
+    buf_tol = io.StringIO()
+    with contextlib.redirect_stdout(buf_tol):
+        eqdyna3d.report_dropped_stations(xonfs, x4nds, [(1, 1, 1), (2, 2, 1), (3, 3, 1)],
+                                         [(1, 4), (2, 5)], meshCoor_tol,
+                                         np.array([True, True]), 250.0)
+    if buf_tol.getvalue().strip():
+        fails.append('tol=250.0 (> the 200 m offset) still reported a SNAP -- tol is not '
+                     'reaching the depth comparison; stdout was:\n%s' % buf_tol.getvalue())
+
+    # Station 2 snapped 500 m off its requested depth instead of matching
+    # nowhere -- named as a SNAP, not silently written and not a DROP.
+    meshCoor2 = np.zeros((100, 3))
+    meshCoor2[4] = (0.0, 1000.0, 0.0)   # station 1: exact
+    meshCoor2[5] = (0.0, -500.0, -500.0)  # station 2: requested z=-300, actual z=-500
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         eqdyna3d.report_dropped_stations(xonfs, x4nds, [(1, 1, 1), (2, 2, 1), (3, 3, 1)],
-                                         [(1, 4), (2, 5)])
+                                         [(1, 4), (2, 5)], meshCoor2,
+                                         np.array([True, True]), tol)
+    out2 = buf.getvalue()
+    for want in ('NOTICE: 1 of 2 requested off-fault stations do not sit exactly on a grid z-plane',
+                 'snapped off-fault station 2 (would otherwise be a dropped off-fault station): '
+                 'requested x,y,z =     0.000    -0.500    -0.300 km, actual x,y,z =     0.000'
+                 '    -0.500    -0.500 km, distance =   0.200 km'):
+        if want not in out2:
+            fails.append('snap report lacks %r; stdout was:\n%s' % (want, out2))
+    # A true DROP line starts "   dropped off-fault station N at x,y,z ="; a
+    # SNAP line also contains the substring "dropped off-fault station"
+    # (deliberately, "...would otherwise be a dropped off-fault station..."),
+    # so this must match the DROP line's own shape, not just the substring.
+    if re.search(r'^   dropped off-fault station \d+ at x,y,z =', out2, re.MULTILINE):
+        fails.append('snap report names a true drop when none exists: %r' % out2)
+
+    meshCoor3 = np.zeros((100, 3))
+    meshCoor3[4] = (0.0, 1000.0, 0.0)     # station 1: exact
+    meshCoor3[5] = (0.0, -500.0, -300.0)  # station 2: exact
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        eqdyna3d.report_dropped_stations(xonfs, x4nds, [(1, 1, 1), (2, 2, 1), (3, 3, 1)],
+                                         [(1, 4), (2, 5)], meshCoor3,
+                                         np.array([True, True]), tol)
     if buf.getvalue():
-        fails.append('drop report printed with nothing dropped: %r' % buf.getvalue())
+        fails.append('drop report printed with nothing dropped or snapped: %r' % buf.getvalue())
 
     if fails:
         print('FAIL test_row114_station_output')

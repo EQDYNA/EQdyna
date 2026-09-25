@@ -196,26 +196,98 @@ def active_device(backend):
     return '%s:%d (%s)' % (d.platform, d.id, getattr(d, 'device_kind', '?'))
 
 
-def report_dropped_stations(xonfs, x4nds, anonfs, off_matches):
+def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
+                             off_z_valid, tol):
     """Port of report_dropped_onfault_st / report_dropped_offfault_st
-    (library_output.f90; board rows 116 and 94): name, on stdout and in
-    Fortran's own words, every requested station that matched no node and so
-    gets no file. Neither snaps nor refuses (the owner's call, as in the
-    Fortran). ntotft == 1 is the only case case.setup allows, so on-fault
-    stations are all fault 1. Coordinates arrive in metres."""
+    (library_output.f90; board rows 116 and 94). On-fault stations: unchanged
+    -- name, on stdout, every requested station that matched no fault node and
+    so gets no file (neither snaps nor refuses; out of this mission's scope).
+    ntotft == 1 is the only case case.setup allows, so on-fault stations are
+    all fault 1.
+
+    Off-fault (row 94, owner ruling 2026-09-24): depth now snaps to the
+    nearest node (build_station_matching), so every station whose (x,y) is
+    inside the mesh matches SOME node -- possibly not the one requested. This
+    reports that difference the same way report_dropped_offfault_st
+    (library_output.f90) does:
+      - matched at a different node than requested: a SNAP, named "snapped
+        off-fault station" (and "...would otherwise be a dropped off-fault
+        station", so the line stays equally loud and equally grep-able as
+        the true-drop case below).
+      - matched on no node at all: a true DROP, "dropped off-fault station",
+        unchanged.
+
+    SNAP is gated on the DEPTH difference alone (|actual z - requested z| >
+    `tol`), not the full 3-axis distance -- x and y already snapped to the
+    nearest node before this fix (silently, forever) and that is unchanged
+    and out of scope; gating broadly would flood this NOTICE with stations
+    that were never at risk of being dropped (measured: it would have
+    reported 19 for test.tpv36/test.tpv37, 0 of them depth-caused, and 6 for
+    test.tpv10 instead of the 2 this fix actually recovers). Still prints the
+    full (x,y,z) requested vs actual and full 3-axis distance for each
+    reported station, since a depth-snapped station can shift in x/y too
+    (test.tpv10 stations 9/10). `tol` is the caller's `params['tol']` --
+    finding 5 (row 94 audit, 2026-09-25): this used to hardcode a second
+    `1.0e-5` literal here instead of reading the one place this port already
+    reproduces Fortran globalvar.f90:209's `tol = 1.0d-5` PARAMETER
+    (readInputFiles.build_params).
+
+    Finding 6 (row 94 audit, 2026-09-25): a true DROP used to say "match no
+    grid node (outside the mesh)" unconditionally -- not always true (the
+    Fortran side's tpv8 station 11 is dropped by a pre-existing y-partition-
+    boundary gap in setSurfaceStation, not by being outside the mesh; the
+    serial Python port carries the identical un-gated iy==0/iy==ny-1 case in
+    principle, just unmasked at different domain sizes than that MPI split).
+    `off_z_valid[i-1]` (build_station_matching's return, mirroring Fortran's
+    x4ndsZValidPersist) is the one cause this function HAS checked, so a
+    drop's message says either "requested depth is outside the physical mesh
+    band" (a CONFIRMED cause) or that the cause is not further diagnosed here
+    (depth was in-band; x, y, or the y-boundary gap above are candidates, but
+    none is checked by this function, so none is named).
+
+    Coordinates arrive in metres. `meshCoor` is build_node_coordinates'
+    1-indexed (row 0 unused) array; `nc` (off_matches' second element) is
+    already that same 1-indexed node id."""
     # Fortran's order: off-fault first (checkOffFaultStationCoverage,
     # eqdyna3d.f90:126), then on-fault (checkOnFaultStationCoverage).
-    off_matched = {sc for sc, nc in off_matches}
+    off_matched = {sc: nc for sc, nc in off_matches}
     off_dropped = [i for i in range(1, x4nds.shape[1] + 1) if i not in off_matched]
+    off_snapped = []
+    for i in range(1, x4nds.shape[1] + 1):
+        if i in off_matched:
+            actual = meshCoor[off_matched[i]]
+            requested = x4nds[:, i - 1]
+            if abs(float(actual[2]) - float(requested[2])) > tol:
+                dist = float(np.linalg.norm(actual - requested))
+                off_snapped.append((i, requested, actual, dist))
+    if off_snapped:
+        print(' NOTICE: %d of %d requested off-fault stations do not sit exactly '
+              'on a grid z-plane' % (len(off_snapped), x4nds.shape[1]))
+        print('   (setSurfaceStation, meshgen.f90: depth now snaps to the nearest node '
+              'instead of requiring an exact grid-plane match; x and y unchanged, they '
+              'already snapped to the nearest node)')
+        for i, requested, actual, dist in off_snapped:
+            print('   snapped off-fault station %d (would otherwise be a dropped '
+                  'off-fault station): requested x,y,z =%10.3f%10.3f%10.3f km, '
+                  'actual x,y,z =%10.3f%10.3f%10.3f km, distance =%8.3f km'
+                  % (i, requested[0] / 1000.0, requested[1] / 1000.0, requested[2] / 1000.0,
+                     actual[0] / 1000.0, actual[1] / 1000.0, actual[2] / 1000.0,
+                     dist / 1000.0))
     if off_dropped:
         print(' WARNING: %d of %d requested off-fault stations match no grid '
-              'node and get NO body* file' % (len(off_dropped), x4nds.shape[1]))
-        print('   (setSurfaceStation, meshgen.f90: depth must equal a grid '
-              'z-plane within tol; x and y snap to the nearest interior node)')
+              'node and get NO body* file'
+              % (len(off_dropped), x4nds.shape[1]))
         for i in off_dropped:
-            print('   dropped off-fault station %d at x,y,z =%10.3f%10.3f%10.3f km'
+            if off_z_valid[i - 1]:
+                cause = ('cause not checked here -- requested depth is within the physical '
+                          'mesh band; the miss may be x or y outside the mesh, or a known '
+                          'y-partition-boundary gap in setSurfaceStation')
+            else:
+                cause = ('checked cause: requested depth is outside the physical, non-PML '
+                          'mesh band')
+            print('   dropped off-fault station %d at x,y,z =%10.3f%10.3f%10.3f km (%s)'
                   % (i, x4nds[0, i - 1] / 1000.0, x4nds[1, i - 1] / 1000.0,
-                     x4nds[2, i - 1] / 1000.0))
+                     x4nds[2, i - 1] / 1000.0, cause))
     on_matched = {sc for fs, sc, ift in anonfs}
     on_dropped = [i for i in range(1, xonfs.shape[1] + 1) if i not in on_matched]
     if on_dropped:
@@ -324,8 +396,9 @@ def build_solver_state(case_dir, part=None):
 
     xline, yline, zline, pmlb, bounds = meshgen.build_grid_lines(params)
     if part is None:
-        anonfs, off_matches = meshgen.build_station_matching(
-            xline, yline, zline, params, xonfs, x4nds)
+        anonfs, off_matches, off_z_valid = meshgen.build_station_matching(
+            xline, yline, zline, params, xonfs, x4nds,
+            pmlb['zmin0'], bounds[2][1])
         st_on_idx = np.array([fs - 1 for fs, sc, ift in anonfs], dtype=np.int64)
         st_on_strike_m = np.array([xonfs[0, sc - 1] for fs, sc, ift in anonfs])
         st_on_depth_m = np.array([xonfs[1, sc - 1] for fs, sc, ift in anonfs])
@@ -333,7 +406,10 @@ def build_solver_state(case_dir, part=None):
         st_off_x_m = np.array([x4nds[0, sc - 1] for sc, nc in off_matches])
         st_off_y_m = np.array([x4nds[1, sc - 1] for sc, nc in off_matches])
         st_off_z_m = np.array([x4nds[2, sc - 1] for sc, nc in off_matches])
-        report_dropped_stations(xonfs, x4nds, anonfs, off_matches)
+        # Row 94: the snap report (and the header stamp write_offfault_stations
+        # uses) needs the ACTUAL matched node location, which needs meshCoor --
+        # not built yet at this point. report_dropped_stations is therefore
+        # called further down, once meshCoor exists (see there).
     else:
         st_on_idx = np.zeros(0, dtype=np.int64)
         st_on_strike_m = st_on_depth_m = np.zeros(0)
@@ -358,6 +434,20 @@ def build_solver_state(case_dir, part=None):
         model_bound = bounds
     meshCoor, nftnd, nsmp = meshgen.build_node_coordinates(
         xline, yline, zline, params, model_bound=model_bound)
+    if part is None:
+        # Row 94: the ACTUAL matched node's (x,y,z) per off-fault station,
+        # meshCoor being 1-indexed with row 0 unused (build_node_coordinates)
+        # and `nc` (off_matches' second element) already that same 1-indexed
+        # node id -- read it straight, no offset. A station this run did not
+        # match at all (x or y outside the mesh) never appears in off_matches
+        # and so never appears here either; report_dropped_stations reports
+        # that case from off_matched/off_dropped directly, not from this array.
+        st_off_actual_m = (meshCoor[np.array([nc for sc, nc in off_matches], dtype=np.int64)]
+                            if off_matches else np.zeros((0, 3)))
+        report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
+                                 off_z_valid, params['tol'])
+    else:
+        st_off_actual_m = np.zeros((0, 3))
     conn, elem_type, mat, elem_depth = meshgen.build_elements(
         xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
     num_dof, eq_start, eq_nums, total_eqs = meshgen.build_equation_numbers(
@@ -476,6 +566,13 @@ def build_solver_state(case_dir, part=None):
         st_on_idx=st_on_idx, st_on_strike_m=st_on_strike_m, st_on_depth_m=st_on_depth_m,
         st_off_idx=st_off_idx, st_off_x_m=st_off_x_m, st_off_y_m=st_off_y_m,
         st_off_z_m=st_off_z_m, st_on_total=st_on_total, st_off_total=st_off_total,
+        # Row 94: the ACTUAL matched node (x,y,z), for the header location
+        # stamp only -- st_off_x_m/y_m/z_m above (the REQUESTED coordinate)
+        # stay what the file NAME is derived from; see offfault_filename vs
+        # offfault_location_stamp (library_output.py) and this mission's
+        # explicit ruling that the name stays request-derived.
+        st_off_x_actual_m=st_off_actual_m[:, 0], st_off_y_actual_m=st_off_actual_m[:, 1],
+        st_off_z_actual_m=st_off_actual_m[:, 2],
     )
     mesh = dict(meshCoor=meshCoor, nsmp=nsmp)
     if part is not None:
@@ -790,16 +887,14 @@ def _select_device(device):
     first `import jax` -- which is why this module never imports jax at module
     level and `active_device`/`Profile._sync` import it inside the function.
 
-    `--device gpu` with no GPU is a hard failure: silently running on CPU would
+    `--device cuda` with no GPU is a hard failure: silently running on CPU would
     put a row labelled gpu into a backend comparison whose whole purpose is to
     tell cpu and gpu apart (rule 2).
     """
-    if device == 'auto':
-        return
-    os.environ['JAX_PLATFORMS'] = {'cpu': 'cpu', 'gpu': 'cuda'}[device]
+    os.environ['JAX_PLATFORMS'] = device
     import jax
     got = jax.devices()[0].platform
-    want = 'gpu' if device == 'gpu' else 'cpu'
+    want = 'gpu' if device == 'cuda' else 'cpu'
     if got != want:
         raise RuntimeError(
             '--device %s was requested but JAX resolved to %r (devices: %r). '
@@ -828,6 +923,23 @@ def _abort(exc, rank=0):
     raise SystemExit(exc.code)
 
 
+DEVICE_CHOICES = ('cpu', 'cuda')
+
+
+def _device_arg(value):
+    """--device's parser. `auto` was removed by owner ruling (board row 56,
+    2026-09-24): it let JAX pick a GPU on a serial run while --mpi silently
+    mapped it to cpu. Refused by name, never re-mapped. The GPU choice is
+    spelled `cuda` (the owner's wording, and the spelling run_e2e/run.py
+    already used); the old `gpu` spelling is refused with that hint."""
+    if value not in DEVICE_CHOICES:
+        hint = {'auto': " -- 'auto' was removed (board row 56); pass --device cuda to request a GPU",
+                'gpu': " -- the GPU choice is spelled 'cuda' (board row 56)"}.get(value, '')
+        raise argparse.ArgumentTypeError(
+            '%r is not a device: choose cpu (the default) or cuda%s' % (value, hint))
+    return value
+
+
 def main():
     ap = argparse.ArgumentParser(prog='python3 -m eqdyna')
     ap.add_argument('case_dir')
@@ -836,10 +948,10 @@ def main():
                      help='solver backend (default: %(default)s). No fallback: '
                           'jax with jaxlib missing is an error, not a demotion '
                           'to numpy.')
-    ap.add_argument('--device', choices=('auto', 'cpu', 'gpu'), default='auto',
-                     help='JAX platform (default: auto = whatever JAX picks). '
-                          'Only meaningful with --backend jax. No fallback: '
-                          'gpu with no GPU is an error.')
+    ap.add_argument('--device', type=_device_arg, default='cpu',
+                     help='JAX platform: cpu (default) or cuda. GPU runs only '
+                          'on an explicit --device cuda, serial and --mpi '
+                          'alike. No fallback: cuda with no GPU is an error.')
     ap.add_argument('--profile', action='store_true',
                      help='print wall-clock per phase (setup / solve / write) '
                           'so one-time cost and per-step cost cannot be '
@@ -857,7 +969,7 @@ def main():
         if args.backend != 'jax':
             raise SystemExit('--mpi is implemented for --backend jax only '
                              '(numpy is out of scope for the MPI path)')
-        _select_device('cpu' if args.device == 'auto' else args.device)
+        _select_device(args.device)
         from mpi4py import MPI      # ImportError is deliberate, not caught
         comm = MPI.COMM_WORLD
         prof = Profile('jax')
@@ -892,8 +1004,9 @@ def main():
         # printed no device at all. Measured consequence: a 1-rank tpv104
         # point launched with JAX_PLATFORMS=cuda recorded 812.78 ms/step with
         # zero bytes allocated on any GPU, because this branch's
-        # `--device auto` maps to cpu (line above) and nothing downstream
-        # said so. One line per rank; note that under a per-rank
+        # `--device auto` mapped to cpu here and nothing downstream
+        # said so (that silent auto->cpu map was removed with `auto` itself,
+        # board row 56; the default is now an explicit cpu). One line per rank; note that under a per-rank
         # CUDA_VISIBLE_DEVICES every rank legitimately reports gpu:0, so this
         # line proves the PLATFORM, and it is the per-device memory poll in
         # testsys/perf/run_mpi_scaling.py that proves four distinct devices.
@@ -915,9 +1028,8 @@ def main():
         return
     if args.backend == 'jax':
         _select_device(args.device)
-    elif args.device != 'auto':
-        raise SystemExit('--device %s is meaningless with --backend numpy'
-                         % args.device)
+    elif args.device == 'cuda':
+        raise SystemExit('--device cuda is meaningless with --backend numpy')
     prof = Profile(args.backend)
     try:
         path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend,

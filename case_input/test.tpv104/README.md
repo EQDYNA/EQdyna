@@ -17,7 +17,7 @@ Spec: recommended element-size/node-spacing 50 m, time histories 0-12 s
 (https://strike.scec.org/cvws/tpv103_104docs.html, download/SCEC_validation_slip_law.pdf).
 Cross-code results: https://strike.scec.org/cvws/metric_cvv1_u1/tpv104/metric_cvv1_tpv104_ar_0.html
 
-Provenance: SHA 5e76e8e, cotopaxi, Ubuntu 22.04/gfortran 11.4.0/OpenMPI
+Provenance: EQdyna shortly after v5.4.0, cotopaxi, Ubuntu 22.04/gfortran 11.4.0/OpenMPI
 4.1.1, 2026-09-14, shared box (fast wall time is a 7-case suite total /7,
 not individually timed); full-tier wall time is `(500/dx)^4 * term-ratio`
 scaled from that aggregate -- an estimate, not a measurement, and the

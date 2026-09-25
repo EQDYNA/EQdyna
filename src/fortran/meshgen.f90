@@ -24,11 +24,73 @@ subroutine meshgen
     real (kind = dp) :: nodeCoor(10), elementCenterCoor(3), &
                        a,b,area,aa1,bb1,cc1,dd1,p1,q1, ycoort, pfx = 0.0d0, pfz = 0.0d0
     real (kind = dp) :: xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2)
+    ! pathway_forward.md item 94 (owner ruling 2026-09-24): clamp off-fault
+    ! station depth to the nearest z-grid node instead of dropping a station
+    ! whose requested depth is not exactly a grid z-plane. xGridFull/
+    ! yGridFull/zGridFull are the FULL (unsliced) 1D coordinate arrays
+    ! getLocalOneDimCoorArrAndSize builds internally before slicing to this
+    ! rank's local piece -- identical bit-for-bit on every rank (a pure
+    ! function of dz/fltxyz/rat/nPML/zmin/zmax, all read identically
+    ! everywhere), so no MPI communication is needed to find the nearest
+    ! node. Only z needs this: x and y already snap to the nearest interior
+    ! node inside setSurfaceStation itself.
+    real (kind = dp) :: xGridFull(10000), yGridFull(10000), zGridFull(10000)
+    integer (kind = 4) :: xGridFullSize, yGridFullSize, zGridFullSize
+    real (kind = dp) :: x4ndsSnapZ(max(1,totalNumOfOffSt))
+    logical :: x4ndsZValid(max(1,totalNumOfOffSt))
+    integer (kind = 4) :: iSt2, kNearest
+    real (kind = dp) :: distBest, distCur
 
     call calcXyzMPIId(mex, mey, mez)
-    call getLocalOneDimCoorArrAndSize(nxt, nxuni, edgex1, mex, nx, xline, modelBoundCoor, 1)
-    call getLocalOneDimCoorArrAndSize(nyt, nyuni, edgey1, mey, ny, yline, modelBoundCoor, 2)
-    call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, modelBoundCoor, 3)
+    call getLocalOneDimCoorArrAndSize(nxt, nxuni, edgex1, mex, nx, xline, modelBoundCoor, 1, xGridFull, xGridFullSize)
+    call getLocalOneDimCoorArrAndSize(nyt, nyuni, edgey1, mey, ny, yline, modelBoundCoor, 2, yGridFull, yGridFullSize)
+    call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, modelBoundCoor, 3, zGridFull, zGridFullSize)
+    ! Finding 1 (row 94 audit): "clamp to the nearest node INSIDE the mesh"
+    ! does not mean "nearest node of the raw array", because the raw array
+    ! includes the PML -- the absorbing-boundary layer setNumDof (below)
+    ! itself marks non-physical by testing nodeCoor(3) < PMLb(5) (12-dof
+    ! absorbing formulation instead of the normal ndof). PMLb(5) is set by
+    ! the dimId==3 call just above to globalOneDimCoorArr(nPML+1), the
+    ! shallowest PML node's neighbour -- the code's OWN boundary between
+    ! "real material" and "absorbing layer". A station is a request for a
+    ! PHYSICAL measurement point, so the valid clamp band is
+    ! [PMLb(5), modelBoundCoor(3,2)] (modelBoundCoor(3,2) is the free
+    ! surface, z=0) -- NOT [zmin, 0], which would let a station land inside
+    ! the PML. A requested depth outside that band is left UNCLAMPED
+    ! (x4ndsZValid=.false.): setSurfaceStation below never matches it on
+    ! z, so it stays a genuine, loud DROP (report_dropped_offfault_st names
+    ! the checked reason), not a snap into physically meaningless territory.
+    !
+    ! For an in-band request, nearest-node search is restricted to k with
+    ! zGridFull(k) >= PMLb(5)-tol -- redundant given the band check above
+    ! (the array is monotonic, so an in-band request's nearest node is
+    ! always in-band too), but kept explicit rather than relied upon. A tie
+    ! -- exactly half a grid spacing away from two nodes -- keeps the lower
+    ! index (deeper/more negative z, whichever the ascending array reaches
+    ! first with the strict `<`); ties are not expected at any station
+    ! coordinate this project uses.
+    x4ndsZValid = .false.
+    do iSt2 = 1, totalNumOfOffSt
+        if (x4nds(3,iSt2) < PMLb(5)-tol .or. x4nds(3,iSt2) > modelBoundCoor(3,2)+tol) cycle
+        distBest = huge(distBest)
+        kNearest = 1
+        do k = 1, zGridFullSize
+            if (zGridFull(k) < PMLb(5)-tol) cycle
+            distCur = abs(zGridFull(k) - x4nds(3,iSt2))
+            if (distCur < distBest) then
+                distBest = distCur
+                kNearest = k
+            endif
+        enddo
+        x4ndsSnapZ(iSt2) = zGridFull(kNearest)
+        x4ndsZValid(iSt2) = .true.
+    enddo
+    ! Finding 6 (row 94 audit): persist the band check so
+    ! report_dropped_offfault_st (library_output.f90) can distinguish a
+    ! CHECKED depth-out-of-band drop from an unconfirmed one. Identical on
+    ! every rank (x4ndsZValid depends only on the global z grid and the
+    ! request), so a plain overwrite each call is fine -- no reduction needed.
+    x4ndsZValidPersist = x4ndsZValid
     xmin = modelBoundCoor(1,1)
     xmax = modelBoundCoor(1,2)
     ymin = modelBoundCoor(2,1)
@@ -78,7 +140,7 @@ subroutine meshgen
                 numOfDofPerNodeArr(nodeCount) = numOfDofPerNodeTmp
                 
                 call setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equationNumCount, numOfDofPerNodeTmp)
-                call setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
+                call setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount, x4ndsSnapZ, x4ndsZValid)
                 call createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCount, msnode, nftnd0, equationNumCount, eqNumIndexArrLocTag, &
                             pfx, pfz, ixfi, izfi, ifs, ifd, fltrc)
                 
@@ -481,18 +543,30 @@ subroutine calcXyzMPIId(mex, mey, mez)
 end subroutine calcXyzMPIId
 
 subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithUniformGridsize, &
-    frontEdgeNodeId, MPIXyzId, localOneDimCoorArrSize, localOneDimCoorArr, modelBoundCoor, dimId)
+    frontEdgeNodeId, MPIXyzId, localOneDimCoorArrSize, localOneDimCoorArr, modelBoundCoor, dimId, &
+    globalOneDimCoorArrOut, globalOneDimCoorArrOutSize)
+    ! globalOneDimCoorArrOut/globalOneDimCoorArrOutSize (pathway item 94,
+    ! owner ruling 2026-09-24): the FULL 1D grid this subroutine already
+    ! builds before slicing it down to this rank's local piece, exposed so a
+    ! caller can find the nearest node to an arbitrary requested coordinate
+    ! without any MPI communication -- every rank builds this same array
+    ! from the same inputs (dz/fltxyz/rat/nPML/zmin/zmax etc.), so it is
+    ! identical bit-for-bit everywhere. Fixed-size (10000), matching
+    ! localOneDimCoorArr's own existing convention, so the implicit
+    ! (no-interface) call sites need only pass a same-shaped actual argument.
     use globalvar
     use errorCodes
-    implicit none 
+    implicit none
     integer (kind = 4) :: globalOneDimCoorArrSize, numOfNodesWithUniformGridsize, dimId
     integer (kind = 4) :: frontEdgeNodeId, localOneDimCoorArrSize, MPIXyzId
     integer (kind = 4) :: numOfNodesPerMPI, residualNumOfNodes
     integer (kind = 4) :: i, numOfMPIXyz
+    integer (kind = 4) :: globalOneDimCoorArrOutSize
     real (kind = dp) :: gridSize, frontEdgeCoor, backEdgeCoor, &
             minCoor, maxCoor, coorTmp, gridSizeTmp, localOneDimCoorArr(10000), &
-            modelBoundCoor(3,2)
+            modelBoundCoor(3,2), globalOneDimCoorArrOut(10000)
     real (kind = dp), allocatable :: globalOneDimCoorArr(:)
+    character(len=300) :: reasonMsg
 
     if (dimId == 1) then 
         numOfNodesWithUniformGridsize = nint((fltxyz(2,1,1) - fltxyz(1,1,1))/dx) + 1
@@ -536,19 +610,47 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
         coorTmp = coorTmp + gridSizeTmp
         if (coorTmp >= maxCoor) exit
     enddo
-    if (dimId == 3) i = -nPML 
+    if (dimId == 3) i = -nPML
     globalOneDimCoorArrSize = numOfNodesWithUniformGridsize + frontEdgeNodeId + i + nPML
+    ! Finding 2 (row 94 audit): globalOneDimCoorArrOut/xline/yline/zline/
+    ! localOneDimCoorArr are ALL fixed-size(10000) below and in the caller
+    ! (meshgen); the copy at the end of this subroutine
+    ! (globalOneDimCoorArrOut(1:globalOneDimCoorArrSize) = ...) is an
+    ! unchecked write into that fixed buffer. A grid fine/large enough to
+    ! exceed 10000 nodes used to overflow it silently -- hard-refuse instead
+    ! (rule 2: no silent overflow), before the allocate below, so the message
+    ! names the actual oversized count rather than segfaulting downstream.
+    if (globalOneDimCoorArrSize > 10000) then
+        write(reasonMsg,'(a,i0,a,i0,a)') &
+            'getLocalOneDimCoorArrAndSize: dimId=', dimId, &
+            ' built a full 1D grid of ', globalOneDimCoorArrSize, &
+            ' nodes, exceeding the fixed-size 10000 buffer (xline/yline/zline/' // &
+            'globalOneDimCoorArrOut/localOneDimCoorArr); reduce nx/ny/nz (dx/dy/dz) for ' // &
+            'this dimension, or raise the fixed buffer size (10000) in meshgen.f90 and ' // &
+            'this subroutine.'
+        call abortRun(ERR_MESH_GRID_TOO_LARGE, trim(reasonMsg))
+    endif
     allocate(globalOneDimCoorArr(globalOneDimCoorArrSize))
 
     numOfNodesPerMPI = int((globalOneDimCoorArrSize+numOfMPIXyz-1)/numOfMPIXyz)
     residualNumOfNodes = (globalOneDimCoorArrSize+numOfMPIXyz-1) - numOfNodesPerMPI * numOfMPIXyz
 
-    if (MPIXyzId<(numOfMPIXyz-residualNumOfNodes)) then 
+    if (MPIXyzId<(numOfMPIXyz-residualNumOfNodes)) then
         localOneDimCoorArrSize = numOfNodesPerMPI
-    else 
+    else
         localOneDimCoorArrSize = numOfNodesPerMPI + 1
-    endif 
-    if (localOneDimCoorArrSize > 10000) write(*,*) 'localOneDimCoorArrSize should be < 10000'
+    endif
+    ! Finding 2: the per-rank local slice is copied into localOneDimCoorArr,
+    ! also fixed-size(10000), by the loops just below -- this used to only
+    ! PRINT a warning and continue straight into the overflowing write.
+    if (localOneDimCoorArrSize > 10000) then
+        write(reasonMsg,'(a,i0,a,i0,a,i0,a,i0,a)') &
+            'getLocalOneDimCoorArrAndSize: dimId=', dimId, ', MPIXyzId=', MPIXyzId, &
+            ' has a local slice of ', localOneDimCoorArrSize, &
+            ' nodes (', 10000, &
+            '-node fixed buffer localOneDimCoorArr); reduce nx/ny/nz per rank or increase npx/npy/npz.'
+        call abortRun(ERR_MESH_GRID_TOO_LARGE, trim(reasonMsg))
+    endif
 
     globalOneDimCoorArr(frontEdgeNodeId+1) = frontEdgeCoor
     gridSizeTmp = gridSize
@@ -585,7 +687,7 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
         PMLb(8) = globalOneDimCoorArr(2) - globalOneDimCoorArr(1)
     endif 
 
-    if (MPIXyzId <= (numOfMPIXyz - residualNumOfNodes)) then 
+    if (MPIXyzId <= (numOfMPIXyz - residualNumOfNodes)) then
         do i = 1, localOneDimCoorArrSize
             localOneDimCoorArr(i) = globalOneDimCoorArr((numOfNodesPerMPI-1)*MPIXyzId+i)
         enddo
@@ -594,6 +696,9 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
             localOneDimCoorArr(i) = globalOneDimCoorArr((numOfNodesPerMPI-1)*MPIXyzId+i+(MPIXyzId-numOfMPIXyz+residualNumOfNodes))
         enddo
     endif
+
+    globalOneDimCoorArrOutSize = globalOneDimCoorArrSize
+    globalOneDimCoorArrOut(1:globalOneDimCoorArrSize) = globalOneDimCoorArr(1:globalOneDimCoorArrSize)
 end subroutine getLocalOneDimCoorArrAndSize
 
 subroutine setNumDof(nodeCoor, numOfDofPerNodeTmp)
@@ -609,20 +714,36 @@ subroutine setNumDof(nodeCoor, numOfDofPerNodeTmp)
     endif   
 end subroutine setNumDof
 
-subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
+subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount, x4ndsSnapZ, x4ndsZValid)
+    ! pathway_forward.md item 94 (owner ruling 2026-09-24): the depth test
+    ! below compares against x4ndsSnapZ(i), the requested depth CLAMPED to
+    ! the nearest node of the full z grid (computed once in meshgen, before
+    ! the node loop), not the raw request x4nds(3,i) -- so a station whose
+    ! requested depth is not itself a grid z-plane still matches, at the
+    ! nearest node, instead of matching nothing. x and y are unchanged: they
+    ! already snap to the nearest interior node below.
+    !
+    ! Finding 1 (row 94 audit): x4ndsZValid(i) is .false. for a station whose
+    ! requested depth falls outside the physical (non-PML) clamp band (see
+    ! meshgen's computation of x4ndsSnapZ/x4ndsZValid, above) -- for such a
+    ! station x4ndsSnapZ(i) was never assigned a meaningful value, so the
+    ! depth test below is gated on x4ndsZValid(i) first (short-circuit
+    ! .and.): it can never match, and the station stays a genuine DROP.
     use globalvar
     use errorCodes
     implicit none
     integer (kind = 4) :: nodeXyzIndex(10), ix, iy, nodeCount, i
     real (kind = dp) :: nodeCoor(10), xline(nodeXyzIndex(4)), yline(nodeXyzIndex(5))
-    
+    real (kind = dp) :: x4ndsSnapZ(max(1,totalNumOfOffSt))
+    logical :: x4ndsZValid(max(1,totalNumOfOffSt))
+
     ix = nodeXyzIndex(1)
     iy = nodeXyzIndex(2)
     !Part1. Stations inside the region.
     if(ix>1.and.ix<nodeXyzIndex(4) .and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
         do i=1,totalNumOfOffSt
             if(n4yn(i)==0) then
-                if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
+                if (x4ndsZValid(i) .and. abs(nodeCoor(3)-x4ndsSnapZ(i))<tol) then
                     if(abs(nodeCoor(1)-x4nds(1,i))<tol .or.&
                     (x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<nodeCoor(1).and. &
                     (nodeCoor(1)-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
@@ -650,7 +771,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
     if(ix==1.and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
         do i=1,totalNumOfOffSt
             if(n4yn(i)==0) then
-                if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
+                if (x4ndsZValid(i) .and. abs(nodeCoor(3)-x4ndsSnapZ(i))<tol) then
                     if(abs(nodeCoor(1)-x4nds(1,i))<tol .or. &
                     (x4nds(1,i)>nodeCoor(1).and.x4nds(1,i)<xline(ix+1).and. &
                     (x4nds(1,i)-nodeCoor(1))<(xline(ix+1)-x4nds(1,i)))) then
@@ -675,7 +796,7 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
     if(ix==nodeXyzIndex(4) .and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
         do i=1,totalNumOfOffSt
             if(n4yn(i)==0) then
-                if (abs(nodeCoor(3)-x4nds(3,i))<tol) then
+                if (x4ndsZValid(i) .and. abs(nodeCoor(3)-x4ndsSnapZ(i))<tol) then
                     if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<nodeCoor(1).and. &
                     (nodeCoor(1)-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) then
                         if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
@@ -695,6 +816,41 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount)
         enddo
     endif    
 end subroutine setSurfaceStation
+
+subroutine reduceOffFaultStationCoor(actualCoorHere, actualCoorGlobal)
+    ! pathway_forward.md item 94 (owner ruling 2026-09-24: clamp station
+    ! depth to the nearest node). The REAL(dp) MPI_Allreduce for the snap
+    ! report (checkOffFaultStationCoverage/report_dropped_offfault_st,
+    ! eqdyna3d.f90/library_output.f90) lives HERE, in a file with no other
+    ! MPI_Allreduce call, deliberately: eqdyna3d.f90's own MPI_Allreduce
+    ! calls are all LOGICAL (checkFaultMPIAlignment/checkOffFaultStation-
+    ! Coverage/checkOnFaultStationCoverage), and gfortran's no-explicit-
+    ! interface argument check refuses two calls to the SAME external name
+    ! IN ONE FILE whose buffers differ in type or rank (see that
+    ! subroutine's own header comment). It cannot live in library_output.f90
+    ! either: testsys/regression/test_station_header_*.py compiles
+    ! globalvar.f90+library_output.f90 alone with plain gfortran (no MPI
+    ! wrapper, no mpif.h on the include path) to check the station writers
+    ! in isolation, and an `include 'mpif.h'` there breaks that compile.
+    ! meshgen.f90 carries no such isolated-compile test and already
+    ! `include`s mpif.h in this same file (the `meshgen` subroutine, for its
+    ! MPI_sendrecv calls), so this is a safe, uncontested home for it.
+    ! MAX over a very-negative sentinel (set by the caller on every rank
+    ! that did not match a given station) picks up whichever rank(s) did;
+    ! safe because no real model coordinate is anywhere near -1e30, and a
+    ! station matched by more than one rank (the documented MPI-boundary
+    ! caveat, testsys/matrix.py) lands on the identical bit value on each of
+    ! them, so MAX picks it either way.
+    use globalvar
+    implicit none
+    include 'mpif.h'
+    real (kind = dp), intent(in)  :: actualCoorHere(3,totalNumOfOffSt)
+    real (kind = dp), intent(out) :: actualCoorGlobal(3,totalNumOfOffSt)
+    integer (kind = 4) :: iMPIerr
+
+    call MPI_Allreduce(actualCoorHere(1,1), actualCoorGlobal(1,1), 3*totalNumOfOffSt, &
+        MPI_DOUBLE_PRECISION, MPI_MAX, MPI_COMM_WORLD, iMPIerr)
+end subroutine reduceOffFaultStationCoor
 
 subroutine setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equationNumCount, numOfDofPerNodeTmp)
     use globalvar 

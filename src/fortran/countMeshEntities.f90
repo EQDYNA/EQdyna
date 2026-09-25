@@ -9,11 +9,17 @@ subroutine countMeshEntities
             nxt, nyt, nzt, nx, ny, nz, ix, iy, iz, &
         edgex1,edgey1, iDof,edgezn, eqNumIndexArrSizeCount=0,numOfDof, nxuni,nyuni,nzuni,ift,mex,mey,mez,isOnFt
     real (kind = dp) :: xcoor, ycoor, zcoor, xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2), nodeCoor(10)
+    ! Row 94: getLocalOneDimCoorArrAndSize now also returns the FULL global
+    ! 1D grid it builds internally (see meshgen.f90); countMeshEntities has
+    ! no use for it, so these are throwaway actual arguments only to match
+    ! the (no-explicit-interface) call signature.
+    real (kind = dp) :: xGridFullUnused(10000), yGridFullUnused(10000), zGridFullUnused(10000)
+    integer (kind = 4) :: xGridFullSizeUnused, yGridFullSizeUnused, zGridFullSizeUnused
 
     call calcXyzMPIId(mex, mey, mez)
-    call getLocalOneDimCoorArrAndSize(nxt, nxuni, edgex1, mex, nx, xline, modelBoundCoor, 1)
-    call getLocalOneDimCoorArrAndSize(nyt, nyuni, edgey1, mey, ny, yline, modelBoundCoor, 2)
-    call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, modelBoundCoor, 3)
+    call getLocalOneDimCoorArrAndSize(nxt, nxuni, edgex1, mex, nx, xline, modelBoundCoor, 1, xGridFullUnused, xGridFullSizeUnused)
+    call getLocalOneDimCoorArrAndSize(nyt, nyuni, edgey1, mey, ny, yline, modelBoundCoor, 2, yGridFullUnused, yGridFullSizeUnused)
+    call getLocalOneDimCoorArrAndSize(nzt, nzuni, edgezn, mez, nz, zline, modelBoundCoor, 3, zGridFullUnused, zGridFullSizeUnused)
 
     nftnd = 0
 
