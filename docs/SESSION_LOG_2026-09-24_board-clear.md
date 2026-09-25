@@ -50,3 +50,27 @@ docs rule, README rewrite, docs site. Grant: merge + minor/patch tags on master 
 - **Dispatch miss:** row 126 went to anya-petrov, who declined it as outside her role (publication staging); it was
   re-routed to haruto-nakamura. The cost was one cold start.
 - In flight: #33 row 56 (re-audit), haruto (126). Queued: wei/perf-round2-land (91/76/92-probe/112), row 87.
+
+## Milestone 3 -- 56, perf round 2, CI trigger + docs site landed; README executed (2026-09-25 13:00)
+
+- **#33 -> 4faf0dc** row 56. The audit caught a CRITICAL: run_e2e's GPU sweep set only JAX_PLATFORMS=cuda, which the new
+  cpu default overwrote, so `run.py gpu` would have gone green on the CPU. Fixed by passing --device explicitly. The GPU
+  choice is now spelled `cuda` (the owner's words), which reverses my earlier choice to keep `gpu`.
+- **#34 -> 7607fd9** rows 91/76/92-probe/112 (iris). Audit HOLD: a backfill of a shard-shaped snapshot filed it as
+  tool=run_scaling, the exact mislabel 91a claimed to close. Fixed, and the check was mutation-verified. All 659 historical
+  ledger rows still validate; an append without `contention` is refused. Limitation: run_e2e rows sample contention after
+  the sweep, box-wide.
+- **#35 -> 9ea1d07** rows 87 + 126, batched per the owner. Live evidence for 87: the batch branch's push started no push
+  run. Docs site: MkDocs --strict 0.40 s; parameters are generated from defaultParameters.py and checked for freshness.
+  Row 126 was first dispatched to anya-petrov, who declined it as outside her role; re-routed to haruto-nakamura.
+  **Owner step pending:** Settings -> Pages -> Source = GitHub Actions.
+- **Board 7d0f4b7 / rules e1c9234** (zofia): 94/56/44/76/91/112/123/124/125 closed; new rows 127 (station-11
+  y-partition gap), 128 (README executed), 129 (main-checkout sweep at 08:42, left untouched for the owner).
+- **Row 128, PR #36 open.** The executing gate (iris) found 3 README defects that existence checks could never see:
+  `create.newcase ~/runs/tpv8` failed in a fresh HOME; `pip install jax` was prose, not a step; and, in a clean user env,
+  `pip install jax` pulled numpy 2.2.6 under apt-built netCDF4/cftime (`numpy.dtype size changed`), so the README now
+  uses a rootless virtualenv. The full gate passes on 17cfe3c: 19 lines, exit 0, 77.8 s.
+- **Lessons:** my session's python3 is a venv (/home/utig5/dliu/gns/gns/venv_cotopaxi), so no earlier run of mine exercised
+  the system python a new user gets. Twice a shared branch checked out in two worktrees left one tree stale under a
+  moved ref: 'dirty' was an artifact, and a gate run on the stale tree was invalid.
+- Worktrees: 20 reaped after a per-tree check (no uncommitted or unpushed work). Kept: 2 pre-existing owner-held, 2 live.
