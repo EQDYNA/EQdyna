@@ -872,7 +872,7 @@ before walking away from it. Its own 3 ledger rows landed at `8fd2252`, pinned
 to `f278056` — the tree I actually gated — rather than left dirty for the next
 session (rule 20a's gap, closed for this run).
 
-`NOTES_plateau.md` moved to `docs/NOTES_plateau_32rank_2026-09-22.md`
+`docs/notes/NOTES_plateau.md` moved to `docs/NOTES_plateau_32rank_2026-09-22.md`
 (`fc35f77`, pure rename) — 374 lines of measurement record belongs beside the
 session logs, not at the repo root.
 
@@ -1080,10 +1080,10 @@ not:
 
 | worktree | uncommitted | disposition |
 |---|---|---|
-| `agent-a062e5e0` (item 32, locked) | `NOTES_item32_refinement.md`, 120 lines + 15 MB `scratch/item32` | **KEPT, and it held a finished experiment nobody had read — see below.** |
+| `agent-a062e5e0` (item 32, locked) | `docs/notes/NOTES_item32_refinement.md`, 120 lines + 15 MB `scratch/item32` | **KEPT, and it held a finished experiment nobody had read — see below.** |
 | `agent-a2731503` (scaling32, locked) | `run32.sh`, 7 lines | scratch: a wrapper whose every path points INTO the worktree, worthless once it is gone. Reproduced verbatim in the appendix; unlocked and reaped. |
-| `agent-a2dd14dd` | `NOTES_perf_ledger.md`, 20 lines | its own header says "worktree checkpoint, not for commit"; its content is fully superseded by the landed `ledger.py` + guard (`ad8c95e`, `24b47ba`). Verbatim in the appendix; reaped. |
-| `agent-a599e70` (equil-diagnostic) | `NOTES_equil_diagnostic.md`, 8 lines | landed work's checkpoint (`9083a81`, an ancestor of master); the question it served is closed. Verbatim in the appendix; reaped. |
+| `agent-a2dd14dd` | `docs/notes/NOTES_perf_ledger.md`, 20 lines | its own header says "worktree checkpoint, not for commit"; its content is fully superseded by the landed `ledger.py` + guard (`ad8c95e`, `24b47ba`). Verbatim in the appendix; reaped. |
+| `agent-a599e70` (equil-diagnostic) | `docs/notes/NOTES_equil_diagnostic.md`, 8 lines | landed work's checkpoint (`9083a81`, an ancestor of master); the question it served is closed. Verbatim in the appendix; reaped. |
 | `wt-mira-tpv30v31` | `M src/fortran/driver.f90`, +48 | **proved not to be unlanded work**: `diff <(git show master:src/fortran/driver.f90) <worktree copy>` is **EMPTY**. The uncommitted edit is byte-identical to what landed as `9083a81`. Reaped, with its 113 MB of `scratch` — TPV30's equilibrium question is closed, so under rule 8 that raw output no longer supports a pending decision. Flagged here in case the owner disagrees, because it is gone. |
 
 ### What the hygiene pass actually found: a completed P1 experiment, unread
