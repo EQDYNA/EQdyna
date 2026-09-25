@@ -107,7 +107,7 @@ RANGES = [
     (61, 69, 'Numerics and runtime state'),
     (71, 79, 'External libraries'),
 ]
-README = os.path.join(ROOT, 'README.md')
+TROUBLESHOOTING = os.path.join(ROOT, 'docs', 'user', 'troubleshooting.md')
 BEGIN = '<!-- BEGIN EXIT CODES (generated from src/fortran/errorCodes.f90; do not edit by hand) -->'
 END = '<!-- END EXIT CODES -->'
 
@@ -126,7 +126,8 @@ def parse_codes():
 
 
 def render_table(codes):
-    """The README section, derived entirely from the registry's own comments."""
+    """The docs/user/troubleshooting.md section, derived entirely from the
+    registry's own comments."""
     L = [BEGIN, '',
          'When a run is refused or fails, EQdyna prints a `FATAL` block naming the code',
          'and the reason, and exits with that code. Codes are kept in 1-125 so the number',
@@ -153,11 +154,12 @@ def render_table(codes):
     return '\n'.join(L)
 
 
-def check_or_update_readme(update=False):
-    """The README table is generated, so it cannot drift from the registry."""
-    s = open(README, errors='replace').read()
+def check_or_update_docs(update=False):
+    """The docs/user/troubleshooting.md table is generated, so it cannot
+    drift from the registry."""
+    s = open(TROUBLESHOOTING, errors='replace').read()
     if BEGIN not in s or END not in s:
-        return ["README.md has no generated exit-code section"
+        return ["docs/user/troubleshooting.md has no generated exit-code section"
                 " (run this test with --update to insert one)"]
     head, rest = s.split(BEGIN, 1)
     _, tail = rest.split(END, 1)
@@ -166,11 +168,11 @@ def check_or_update_readme(update=False):
     if current == wanted:
         return []
     if update:
-        open(README, 'w').write(head + wanted + tail)
-        print('  README.md exit-code table regenerated')
+        open(TROUBLESHOOTING, 'w').write(head + wanted + tail)
+        print('  docs/user/troubleshooting.md exit-code table regenerated')
         return []
-    return ["README.md's exit-code table no longer matches src/fortran/errorCodes.f90"
-            " -- rerun this test with --update"]
+    return ["docs/user/troubleshooting.md's exit-code table no longer matches "
+            "src/fortran/errorCodes.f90 -- rerun this test with --update"]
 
 
 def self_check():
@@ -415,14 +417,14 @@ def main():
     else:
         print('  registry: %d codes, all unique and within 1-125' % ncodes)
 
-    drift = check_or_update_readme(update='--update' in sys.argv)
+    drift = check_or_update_docs(update='--update' in sys.argv)
     if drift:
         print('\nFAIL: documentation drift:')
         for d in drift:
             print('  ' + d)
         rc = 1
     else:
-        print('  README.md exit-code table matches the registry')
+        print('  docs/user/troubleshooting.md exit-code table matches the registry')
 
     offenders = scan_sources()
     if offenders:
