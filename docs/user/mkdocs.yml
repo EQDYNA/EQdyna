@@ -1,0 +1,49 @@
+site_name: EQdyna
+site_url: https://eqdyna.github.io/EQdyna/
+repo_url: https://github.com/EQDYNA/EQdyna
+repo_name: EQDYNA/EQdyna
+edit_uri: ''
+
+# This file lives at docs/user/mkdocs.yml so the repo root stays clean
+# (PROJECT_RULES.md rule 1a); docs_dir therefore has to point back at this
+# same directory (mkdocs' own default, "docs/" relative to the config
+# file, would otherwise look for docs/user/docs/, which does not exist).
+# site_dir is likewise kept inside docs/user/ rather than at the repo root.
+docs_dir: .
+# Must be OUTSIDE docs_dir (mkdocs refuses a site_dir nested inside
+# docs_dir); built into docs/user-site, a sibling of docs/user/, which is
+# gitignored -- the build output is a byproduct, not a tracked file
+# (PROJECT_RULES.md rule 12).
+site_dir: ../user-site
+
+theme:
+  name: material
+  palette:
+    scheme: default
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Running a case: running-a-case.md
+  - Parameters: parameters.md
+  - Output files: outputs.md
+  - Benchmarks: benchmarks.md
+  - Performance: performance.md
+  - Troubleshooting: troubleshooting.md
+  - Citing: citing.md
+
+# strict: not set here -- `mkdocs build --strict` (the CI/local gate
+# command) passes it on the command line so a plain `mkdocs build` (e.g. a
+# quick local preview) is never accidentally blocked by a warning.
+markdown_extensions:
+  - tables
+  - fenced_code
+
+# gen_params.py itself and this file's requirements.txt are tooling, not
+# documentation pages or page assets -- excluded so the built site does not
+# ship them as static downloads. assets/ (the benchmark plot images) is
+# deliberately NOT excluded: those files are not markdown, but mkdocs still
+# needs to copy them into site_dir for benchmarks.md's image to resolve.
+exclude_docs: |
+  gen_params.py
+  requirements.txt
