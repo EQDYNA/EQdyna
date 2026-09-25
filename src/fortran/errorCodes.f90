@@ -82,6 +82,7 @@ MODULE errorCodes
     integer, parameter :: ERR_MESH_BAD_WEDGE         = 46  ! degenerate wedge built with unequal node ids
     integer, parameter :: ERR_MESH_BAD_JACOBIAN      = 47  ! non-positive Jacobian determinant (inverted element)
     integer, parameter :: ERR_MESH_MATERIAL_UNSET    = 48  ! an element has no material property assigned
+    integer, parameter :: ERR_MESH_GRID_TOO_LARGE    = 49  ! a 1D grid line (or its per-rank slice) exceeds the fixed-size 10000 buffer
 
     ! --- 51-59 MPI and domain decomposition ---------------------------
     integer, parameter :: ERR_MPI_FAULT_ALIGNMENT    = 51  ! a rank boundary in y coincides with the fault plane (not raised as of v5.8.2; downgraded to a NOTICE, see syncArnBoundary)

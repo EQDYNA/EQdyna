@@ -1508,7 +1508,8 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
     return un, us, ud, arn
 
 
-def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
+def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
+                            pml_zmin, z_free_surface):
     """Milestone 5: port of meshgen.f90's `setSurfaceStation` (off-fault
     nearest-grid-node matching, called once per regular node, BEFORE
     `createMasterNode` in the main ix/iz/iy loop) and the on-fault station
@@ -1530,6 +1531,27 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
     rematching a station once found, exactly reproducing Fortran's `exit`
     -after-first-match / do-loop-order semantics.
 
+    Row 94 (owner ruling 2026-09-24): the DEPTH test in each branch used to
+    require `zcoor == x4nds[2,i-1]` exactly (within `tol`), so a station
+    whose requested depth was not itself a grid z-plane matched no node at
+    all. It now tests against `z_snap[i-1]`, the requested depth clamped to
+    the nearest node of `zline` (computed once, above, before the loop) --
+    x and y are unchanged, they already snap to the nearest interior node.
+
+    Row 94 audit finding 1 (2026-09-25): "nearest node" must mean nearest
+    node INSIDE the physical (non-PML) mesh, not nearest node of the raw
+    array -- `zline` includes the PML absorbing layer, and
+    `build_elements`/Fortran's `setNumDof` mark a node non-physical by
+    testing `z < PMLb(5)` (12-dof absorbing formulation). The valid clamp
+    band is therefore `[pml_zmin, z_free_surface]` (`pml_zmin` ==
+    Fortran's `PMLb(5)`, `z_free_surface` == `modelBoundCoor(3,2)`), exactly
+    mirroring meshgen.f90's `x4ndsZValid` gate. A requested depth outside
+    that band gets `z_valid[i]=False`: it is excluded from the nearest-node
+    search below (candidate z-nodes are also restricted to the same band,
+    redundant given the request-band check but kept explicit like the
+    Fortran) and then gated out of every match branch, so it stays a
+    genuine, named DROP instead of snapping into PML territory.
+
     On-fault matching is a single exact-coordinate (within `tol`) test
     against `xonfs(1,:,1)` (along-strike x) and `xonfs(2,:,1)` (along-dip
     z), tried once per fault node in fault-encounter order (same order as
@@ -1549,14 +1571,22 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
         1 fault only (ntotft==1).
     x4nds: (3, n_off) float array, rows [x, y, z] in meters, off-fault
         station coordinates.
+    pml_zmin: Fortran's `PMLb(5)` -- `build_grid_lines`'s `pmlb['zmin0']`.
+    z_free_surface: Fortran's `modelBoundCoor(3,2)` -- `build_grid_lines`'s
+        `bounds[2][1]` (zbound's upper element).
 
-    Returns (anonfs, off_fault_matches): anonfs is a list of (fault_seq,
-    station_col, iFault=1) tuples, 1-indexed fault_seq/station_col, in
-    match order; off_fault_matches is a list of (station_col, node_id)
-    tuples, 1-indexed, in match order (node_id is the regular/slave grid
-    node id, matching Fortran's `nodeCount` -- off-fault stations never
-    match a master/split node since setSurfaceStation runs on the slave
-    node before createMasterNode replaces anything).
+    Returns (anonfs, off_fault_matches, z_valid): anonfs is a list of
+    (fault_seq, station_col, iFault=1) tuples, 1-indexed fault_seq/
+    station_col, in match order; off_fault_matches is a list of
+    (station_col, node_id) tuples, 1-indexed, in match order (node_id is
+    the regular/slave grid node id, matching Fortran's `nodeCount` --
+    off-fault stations never match a master/split node since
+    setSurfaceStation runs on the slave node before createMasterNode
+    replaces anything); z_valid is a (n_off,) bool array, 0-indexed by
+    station_col-1, True iff that station's requested depth fell inside the
+    physical (non-PML) clamp band -- the one CHECKED cause
+    report_dropped_stations (eqdyna3d.py) can name for a drop, mirroring
+    Fortran's x4ndsZValidPersist (row 94 audit finding 6).
     """
     p = params
     tol = p['tol']
@@ -1564,6 +1594,23 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
     n_off = x4nds.shape[1]
     n_onf = xonfs.shape[1]
     matched = np.zeros(n_off + 1, dtype=bool)  # 1-indexed
+
+    # Row 94 (owner ruling 2026-09-24): clamp each requested off-fault
+    # station's depth to the nearest node of `zline` -- here the FULL
+    # global z grid already (this port's serial builder holds the whole
+    # domain, not a per-rank slice, unlike meshgen.f90's MPI-partitioned
+    # zline), so this is a plain nearest-value search, no cross-rank
+    # reduction needed. x and y are unchanged: they already snap to the
+    # nearest interior node in the branches below.
+    zline_arr = np.asarray(zline)
+    # Finding 1 (row 94 audit, 2026-09-25): restrict both the request and
+    # the candidate nodes to the physical (non-PML) band, mirroring
+    # meshgen.f90's x4ndsZValid / zGridFull(k) < PMLb(5)-tol guards exactly.
+    z_valid = (x4nds[2, :] >= pml_zmin - tol) & (x4nds[2, :] <= z_free_surface + tol)
+    in_band = zline_arr >= pml_zmin - tol
+    dist = np.abs(zline_arr[None, :] - x4nds[2, :][:, None])
+    dist[:, ~in_band] = np.inf
+    z_snap = zline_arr[np.argmin(dist, axis=1)]
 
     anonfs = []
     off_fault_matches = []
@@ -1590,7 +1637,7 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
                         if matched[i]:
                             continue
                         xs = x4nds[0, i - 1]
-                        if abs(zcoor - x4nds[2, i - 1]) >= tol:
+                        if not z_valid[i - 1] or abs(zcoor - z_snap[i - 1]) >= tol:
                             continue
                         if not (abs(xcoor - xs) < tol or
                                 (xs > xline[ix - 1] and xs < xcoor and
@@ -1607,7 +1654,7 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
                         if matched[i]:
                             continue
                         xs = x4nds[0, i - 1]
-                        if abs(zcoor - x4nds[2, i - 1]) >= tol:
+                        if not z_valid[i - 1] or abs(zcoor - z_snap[i - 1]) >= tol:
                             continue
                         if not (abs(xcoor - xs) < tol or
                                 (xs > xcoor and xs < xline[ix + 1] and
@@ -1622,7 +1669,7 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
                         if matched[i]:
                             continue
                         xs = x4nds[0, i - 1]
-                        if abs(zcoor - x4nds[2, i - 1]) >= tol:
+                        if not z_valid[i - 1] or abs(zcoor - z_snap[i - 1]) >= tol:
                             continue
                         if not (xs > xline[ix - 1] and xs < xcoor and
                                 (xcoor - xs) < (xs - xline[ix - 1])):
@@ -1655,7 +1702,7 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds):
                                 abs(zcoor - xonfs[1, i - 1]) < tol):
                             anonfs.append((fault_seq, i, 1))
                             break
-    return anonfs, off_fault_matches
+    return anonfs, off_fault_matches, z_valid
 
 
 # ---- TODO for the next milestones (explicitly not done here) ----

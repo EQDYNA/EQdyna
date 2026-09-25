@@ -98,6 +98,11 @@ program library_output_item93_driver
     x4nds(:,1) = (/ 0.0d0, 1990.0d0, 0.0d0 /)
     allocate(OffFaultStNodeIdIndex(2,1))
     OffFaultStNodeIdIndex(1,1) = 1; OffFaultStNodeIdIndex(2,1) = 1
+    ! Row 94: output_offfault_st's header stamp now reads meshCoor(:,
+    ! OffFaultStNodeIdIndex(2,i)), the ACTUAL matched node -- exact match
+    ! here (this test is about the column count/filename, not the stamp).
+    allocate(meshCoor(3,1))
+    meshCoor(:,1) = x4nds(:,1)
     allocate(OffFaultStGramSCEC(7,1))
     OffFaultStGramSCEC = 1.0d0
 
