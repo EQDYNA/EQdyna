@@ -1617,6 +1617,25 @@ still run whatever binary happens to be present, unchecked; CI shards call
 `ci_shard.py`, not `run.py`, so this guard governs the binary CI downloads,
 not those other paths. Extending the stamp check to them is unscheduled.
 
+**Third incident, 2026-09-25 (pathway item 127, PR #38, `18c5740`).** A
+regression test that drives a real MPI launch is itself part of what has to
+port across environments, not only the code under test. The row-127
+station-ownership test recovered its own rank inside the launched job by
+reading `OMPI_COMM_WORLD_RANK` — a variable Open MPI sets and mpich does
+not. It passed on this development box (Open MPI) and failed on CI's mpich
+runner with no such variable present: the same "green here, red on CI's
+different environment" shape rule 16 already names for scipy (v5.6.0) and
+the 7 GB runner ceiling (v5.7.0), this time in the test harness rather than
+in `src/`. Fixed by reading whichever of `OMPI_COMM_WORLD_RANK`, `PMI_RANK`,
+or `SLURM_PROCID` is actually set, in that order; the test passed 21/21 on
+CI's mpich runner afterward.
+
+**How to apply, extended**: a regression test that launches or introspects
+a real MPI job must not assume one MPI implementation's rank-reporting
+environment variable. Read whichever of `OMPI_COMM_WORLD_RANK`, `PMI_RANK`,
+or `SLURM_PROCID` is set, and treat CI's mpich runner — not this box's Open
+MPI — as the portability target this rule exists to gate against.
+
 ---
 
 ## 17. Reviving or adding a TPV benchmark
@@ -2974,15 +2993,22 @@ cites a PR, a SHA, a rule, an agent, or a `file:line`, it belongs in
 internal-reference content out the same way, in the same change that trims
 it.
 
-**Tier**: mixed. The FORMAT half is MECHANICAL since 2026-09-25:
+**Tier: mechanical, both halves, corrected 2026-09-25.** The FORMAT half:
 `testsys/regression/test_user_docs_style.py` (PR #31, pathway item 124,
 closed) checks, per covered file, heading shape (one `H1`), an
 internal-reference pattern list (SHA regex, `#\d+` PR-number pattern,
 `file\.\w+:\d+`, known agent names), and `README.md`'s line count. The
-ACCURACY/FOLLOWABILITY half added above is UNENFORCEABLE today: it needs
-`testsys/regression/test_readme_executes.py` (pathway item 128, not yet
-built) — a test that executes the README verbatim, in order, in a fresh
-clone, as non-root, with no pre-set `PYTHONPATH`/`EQDYNAROOT`, through
-install, quick start (one case at the gate term) and viewing a result;
-documented root/apt and hours-long exceptions aside, mutation-tested so an
-erroring README step fails it.
+ACCURACY/FOLLOWABILITY half, previously recorded here as UNENFORCEABLE, is
+now MECHANICAL too: `testsys/regression/test_readme_executes.py` (PR #36,
+`2cbb6d9`, pathway item 128, closed) executes the README verbatim, in
+order, in a fresh clone, as non-root, with no pre-set
+`PYTHONPATH`/`EQDYNAROOT`, through install, quick start (one case at the
+gate term) and viewing a result; documented root/apt and hours-long
+exceptions aside, mutation-tested so an erroring README step fails it. A
+FAST subset of it runs inside `python3 testsys/run.py unit regression`; the
+FULL gate is `EQDYNA_README_GATE=full python3 testsys/run.py readme`,
+which `python3 testsys/run.py release` also runs. This line was itself
+stale for the length of pathway item 130 (2026-09-25): it kept calling this
+half unenforceable and citing item 128 as "not yet built" after PR #36 had
+already landed it — a reminder that this Tier line has to be re-read, not
+assumed, every time the test it cites changes state.
