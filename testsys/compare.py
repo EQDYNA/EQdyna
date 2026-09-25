@@ -334,7 +334,7 @@ def compare_nc(case, run_dir):
     if not os.path.isfile(run):
         return False, ['nc: FAIL missing %s -- plotRuptureDynamics did not run '
                        'or did not write it' % run]
-    bound = matrix.CASE_BOUND.get(case)
+    bound = matrix.CASE_BOUND[case]   # KeyError, not a silent loose fallback, for an unregistered case
     verdict = compare_nc_files(ref, run, bound=bound)
     how = ('max|diff| <= CASE_BOUND %.0e' % bound if bound is not None
            else 'allclose threshold=%.0e (no scalar case bound)' % matrix.THRESHOLD)

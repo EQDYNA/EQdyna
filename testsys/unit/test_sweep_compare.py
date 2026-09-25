@@ -331,3 +331,28 @@ def test_compare_nc_files_case_bound_nan_positions_must_match(tmp_path):
     assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('FAIL')
     xr.Dataset({'slip': (('node',), np.array([1.0, np.nan, 1.0]))}).to_netcdf(fn2)
     assert compare.compare_nc_files(fn1, fn2, bound=1e-6).startswith('SUCCESS')
+
+
+def test_compare_nc_uses_the_case_bound_end_to_end(tmp_path):
+    """compare_nc(case, run_dir) itself, not compare_nc_files with a
+    hand-picked bound (PR #25 audit): on tpv8's real committed nc, a 2x
+    CASE_BOUND perturbation of one variable must FAIL. The old
+    allclose(1e-3) would pass it. The unperturbed copy must pass, and the
+    printed line must name the rule that applied."""
+    import shutil
+    from netCDF4 import Dataset
+    case = 'test.tpv8'
+    bound = matrix.CASE_BOUND[case]
+    ref = compare.reference_path(case, compare.NC_NAME)
+    run = tmp_path / compare.NC_NAME
+    shutil.copy(ref, run)
+    ok, lines = compare.compare_nc(case, str(tmp_path))
+    assert ok and 'CASE_BOUND' in lines[0], lines
+    with Dataset(str(run), 'a') as d:
+        var = next(v for v in d.variables.values()
+                   if v.dtype.kind == 'f' and v.size > 0)
+        a = var[:]
+        a.flat[0] = a.flat[0] + 2 * bound
+        var[:] = a
+    ok, lines = compare.compare_nc(case, str(tmp_path))
+    assert not ok, lines
