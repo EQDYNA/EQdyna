@@ -3,11 +3,37 @@
 import xml.etree.ElementTree as ET
 import shutil, sys, os
 
+def _is_unmaterialised_symlink(src, srcf):
+    """True for a small regular .py file whose only content is a relative path
+    to an existing file: how git writes a tracked symlink when core.symlinks
+    is false."""
+    if not (srcf.endswith('.py') and os.path.isfile(srcf) and not os.path.islink(srcf)):
+        return False
+    if os.path.getsize(srcf) > 4096:
+        return False
+    with open(srcf) as fh:
+        text = fh.read()
+    target = text.strip()
+    return ('\n' not in target and target.endswith('.py')
+            and os.path.isfile(os.path.join(src, target)))
+
 def case_copy(src, dst):
     # copy files from src to dst
     filenames = os.listdir(src)
     for f in filenames:
         srcf = src + '/' + f
+        # A dangling symlink is not a file, so the isfile() test below would
+        # skip it SILENTLY and case.setup would fail later without saying why
+        # (board item 44: test.tpv37's tpv36_37_common.py links into test.tpv36).
+        if os.path.islink(srcf) and not os.path.exists(srcf):
+            sys.exit('create.newcase: %s is a symlink to %s, which does not '
+                     'exist -- refusing to build a case without it'
+                     % (srcf, os.readlink(srcf)))
+        if _is_unmaterialised_symlink(src, srcf):
+            sys.exit('create.newcase: %s is a plain file whose whole content is '
+                     'the path of another file -- this checkout stored a tracked '
+                     'symlink as text (git core.symlinks=false?). Re-clone with '
+                     'symlink support.' % srcf)
         if os.path.isfile(srcf):  # skip subdirectories (e.g., tool collections under scripts/)
             shutil.copy(srcf, dst)
 

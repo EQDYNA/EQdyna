@@ -110,6 +110,7 @@ program EQdyna
     call readstations1
 
     allocate(OffFaultStNodeIdIndex(2,totalNumOfOffSt), xonfs(2,maxval(nonfs),ntotft), x4nds(3,totalNumOfOffSt))
+    allocate(x4ndsZValidPersist(totalNumOfOffSt))
 
     call readstations2
     if (insertFaultType > 0) call read_fault_rough_geometry
@@ -431,30 +432,59 @@ subroutine checkFaultMPIAlignment
 end subroutine checkFaultMPIAlignment
 
 subroutine checkOffFaultStationCoverage
-    ! pathway_forward.md item 94: name every requested off-fault station that
-    ! no rank matched to a grid node (report_dropped_offfault_st,
-    ! library_output.f90). n4yn is per-rank, so reduce it first with a
-    ! logical OR (a station two ranks both matched still counts once).
-    ! mpif.h declares no interfaces, and gfortran refuses two MPI_Allreduce
-    ! calls in one file whose buffers differ in type or rank
-    ! (checkFaultMPIAlignment's is a LOGICAL scalar). So the buffer is
-    ! LOGICAL, and it is passed by its first element: sequence association
-    ! hands MPI the whole contiguous array, as with any implicit interface.
-    ! totalNumOfOffSt is read from bStations.txt identically on every rank, so
-    ! the early return is taken by all ranks or by none.
+    ! pathway_forward.md item 94 (owner ruling 2026-09-24): depth now snaps
+    ! to the nearest grid node (meshgen.f90's setSurfaceStation), so this no
+    ! longer just names dropped stations -- it reports every station whose
+    ! matched node differs from the request (a SNAP), and separately any
+    ! station still matched on no rank at all (a true DROP: x or y outside
+    ! the mesh; report_dropped_offfault_st, library_output.f90). n4yn is
+    ! per-rank, so reduce it first with a logical OR (a station two ranks
+    ! both matched still counts once). mpif.h declares no interfaces, and
+    ! gfortran refuses two MPI_Allreduce calls in one file whose buffers
+    ! differ in type or rank (checkFaultMPIAlignment's is a LOGICAL scalar).
+    ! So the buffer is LOGICAL, and it is passed by its first element:
+    ! sequence association hands MPI the whole contiguous array, as with any
+    ! implicit interface. totalNumOfOffSt is read from bStations.txt
+    ! identically on every rank, so the early return is taken by all ranks or
+    ! by none.
+    !
+    ! actualCoorHere/actualCoorGlobal carry the ACTUAL matched node's (x,y,z)
+    ! per station, reduced with MPI_MAX against a very-negative sentinel on
+    ! every rank that did not match that station -- safe because no real
+    ! model coordinate is anywhere near -1e30, and because a station matched
+    ! by more than one rank (the documented MPI-boundary caveat,
+    ! testsys/matrix.py) lands on the identical bit value on each of them, so
+    ! MAX picks it either way.
     use globalvar
     implicit none
     include 'mpif.h'
-    integer (kind = 4) :: iMPIerr
+    real (kind = dp), parameter :: UNMATCHED_SENTINEL = -1.0d30
+    integer (kind = 4) :: iMPIerr, iSt3, kSt3, nodeIdSt3
     logical, allocatable :: matchedHere(:), matchedAnyRank(:)
+    real (kind = dp), allocatable :: actualCoorHere(:,:), actualCoorGlobal(:,:)
 
     if (totalNumOfOffSt <= 0) return
     allocate(matchedHere(totalNumOfOffSt), matchedAnyRank(totalNumOfOffSt))
+    allocate(actualCoorHere(3,totalNumOfOffSt), actualCoorGlobal(3,totalNumOfOffSt))
     matchedHere = (n4yn /= 0)
+    actualCoorHere = UNMATCHED_SENTINEL
+    do kSt3 = 1, numOfOffFaultStCount
+        iSt3 = OffFaultStNodeIdIndex(1,kSt3)
+        nodeIdSt3 = OffFaultStNodeIdIndex(2,kSt3)
+        actualCoorHere(1:3,iSt3) = meshCoor(1:3,nodeIdSt3)
+    enddo
     call MPI_Allreduce(matchedHere(1), matchedAnyRank(1), totalNumOfOffSt, MPI_LOGICAL, MPI_LOR, &
         MPI_COMM_WORLD, iMPIerr)
-    if (me == masterProcsId) call report_dropped_offfault_st(matchedAnyRank)
-    deallocate(matchedHere, matchedAnyRank)
+    ! reduceOffFaultStationCoor (library_output.f90) does the REAL(dp)
+    ! MPI_Allreduce -- kept out of THIS file deliberately: gfortran's
+    ! no-explicit-interface argument check is per COMPILATION UNIT (one
+    ! file), and this file's other MPI_Allreduce calls are all LOGICAL (see
+    ! this subroutine's own header comment and checkFaultMPIAlignment); a
+    ! REAL(dp) buffer at the same call in the same file hits the identical
+    ! TKR-mismatch class that comment already documents.
+    call reduceOffFaultStationCoor(actualCoorHere, actualCoorGlobal)
+    if (me == masterProcsId) call report_dropped_offfault_st(matchedAnyRank, actualCoorGlobal)
+    deallocate(matchedHere, matchedAnyRank, actualCoorHere, actualCoorGlobal)
 end subroutine checkOffFaultStationCoverage
 
 subroutine checkOnFaultStationCoverage

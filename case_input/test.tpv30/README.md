@@ -27,10 +27,11 @@ rule, and regeneration commands, which apply unchanged here.
 the 100 m file, needed for the dx=500 m gate below). Running the recorded
 `full_specs.py` 50 m tier for this case first needs
 `bFault_Rough_Geometry.tpv29.50m.txt` copied in from `case_input/test.tpv29/`
-(or regenerated via `tpv29GeometryTools.py --official ... --dx 50`) -- deferred
-per rule 17 step 5 ("record the spec-resolution tier without running it").
+(or regenerated via `tpv29GeometryTools.py --official ... --dx 50`) -- that copy is
+made only when the 50 m spec-resolution run is scheduled, since the run itself
+is recorded but not executed by default.
 
-## The swtwNucleation branch (rule 17 step 3)
+## The swtwNucleation branch
 
 TPV30's spec (p.16) states "Benchmarks TPV29 and TPV30 use linear
 slip-weakening friction", and Part 6 (the smoothed forced-rupture nucleation
@@ -40,8 +41,7 @@ declares `par.tpv = 30`, which requires `TPV==30` in
 `faulting.f90:swtwNucleation`'s branch list (and the matching tuple in
 `eqdyna/faulting.py`) -- added as part of landing this case, rather than
 having `test.tpv30` impersonate `par.tpv = 36` to reach the formula (the
-anti-pattern that hid test.tpv29's own nucleation gap for months; see
-PROJECT_RULES.md rule 17 step 3).
+anti-pattern that hid test.tpv29's own nucleation gap for months).
 
 ## Viscoplastic parameters (spec Part 7, p.19)
 
@@ -49,27 +49,27 @@ PROJECT_RULES.md rule 17 step 3).
 |---|---|---|
 | cohesion c | 1.18 MPa | `par.coheplas` |
 | bulk friction nu | 0.1680 | `par.bulk` |
-| viscoplastic relaxation time Tv | 0.05 s | `par.viscoplasticRelaxTime` (item 24(b)) |
-| deviatoric-stress depth taper | 17-22 km | `par.devStrTaperDepthStart/End` (item 24(c)) |
+| viscoplastic relaxation time Tv | 0.05 s | `par.viscoplasticRelaxTime` |
+| deviatoric-stress depth taper | 17-22 km | `par.devStrTaperDepthStart/End` |
 | fluid pressure Pf | hydrostatic | `par.gamar = 0` |
 
 `par.viscoplasticRelaxTime` and `par.devStrTaperDepthStart/End` are real case
-inputs as of item 24(b)/(c) (2026-09-17) -- before that, Tv was hardcoded as
+inputs as of 2026-09-17 -- before that, Tv was hardcoded as
 `2*dz/3464` (a mesh-resolution stand-in for a material property, landing on
 0.05 s only at dx ~ 87 m) and the off-fault deviatoric pre-stress had no depth
 taper at all. Both gaps are what blocked this case from being promoted; see
 `git log --oneline -- src/fortran/readInputFiles.f90 src/fortran/func_lib.f90`
-around commit `fa180b4` for the change that closed them.
+in the project's history for the change that closed them.
 
 ![reference result at the gate resolution](cRuptureDynamics.png)
 
-## Gate status: REGISTERED 2026-09-23 (PR #5, `567e723`), 5 s / dx=500 m, fortran + python-jax
+## Gate status: registered 2026-09-23, 5 s / dx=500 m, fortran + python-jax
 
 The owner decided to gate this case at the one 5 s gate term. The reference
 `test.reference.results/test.tpv30/` (frt.canonical.txt + fault.dyna.r.nc)
-is the 5 s Fortran run committed as `51b7649`, which retired the 20 s scoping
-reference `642f119`. The bound is 1e-10 (abs-max); python-jax was observed at
-1.909216e-14. With the fix `e1888e7` reverted, the 5 s cell reads
+is the 5 s Fortran run, which retired the earlier 20 s scoping
+reference. The bound is 1e-10 (abs-max); python-jax was observed at
+1.909216e-14. With the underlying fix reverted, the 5 s cell reads
 1.202240e+08, so the gate catches the defect described below.
 `cRuptureDynamics.png` beside the reference is still the 20 s image (it is not
 compared). The account below is kept as the history of the finding.
@@ -96,7 +96,7 @@ Binary-searched to a time window, not yet to a line:
     3321 nodes, including the hypocenter's slip/traction. This means the
     STATIC wiring -- `par.viscoplasticRelaxTime`, `par.devStrTaperDepthStart/
     End`, the b11/b33/theta initial-stress resolution, the Drucker-Prager
-    return map itself -- is correctly ported; none of item 24(b)/(c)'s new
+    return map itself -- is correctly ported; none of the new
     plumbing is the defect.
   - **t=6.0 s (144 steps): already diverged.** Max diff across all 22
     columns is 1.6e8 Pa (col 11, normal stress) and column 3 (fnft) already
@@ -108,7 +108,7 @@ Binary-searched to a time window, not yet to a line:
   - The window between 24 and 144 steps (roughly 1-6 s of simulated time)
     is where the first real divergence happens and has NOT been isolated
     further (would need per-step or per-element dumps on both sides, i.e.
-    a debug Fortran build -- out of scope for this pass; see docs/notes/NOTES_tpv30_gate.md).
+    a debug Fortran build -- out of scope for this pass; details are kept with the developer notes in `docs/notes/`).
 
 **What this is not:** not the G6 half-traction blocker (that measured ratio
 was exactly 0.5, depth-independent, from the very first output step;
@@ -122,7 +122,7 @@ combines C_elastic=0 with a rough fault, and it needed a dedicated
 flip-budget gate (not abs-max) for exactly this kind of reason. TPV30 may
 need the same treatment, or a real fix; neither has been attempted here.
 
-`testsys/parity/evidence_tpv30_vs_tpv29_contrast.py` (rule 17 step 6) is
+`testsys/parity/evidence_tpv30_vs_tpv29_contrast.py` is
 written and report-only-correct, but was not run against a genuinely
 completed pair of directories as part of closing this finding -- run it
 once the divergence above is resolved and a real reference is frozen.
@@ -135,8 +135,8 @@ regeneration commands (`tpv29GeometryTools.py`).
 
 | tier | dx (m) | term (s) | ranks (decomp) | status |
 |---|---|---|---|---|
-| fast (gate candidate) | 500 | 20 | 4 (2,1,2) | Fortran verified correct; NOT gated (see finding above) |
-| full (spec) | 50 | 20 | not yet run (rule 17 step 5: recorded in `testsys/e2e/full_specs.py`, not executed) | -- |
+| fast (gate) | 500 | 5 | 4 (2,1,2) | gated on fortran and python-jax since 2026-09-23 |
+| full (spec) | 50 | 20 | not yet run (recorded in `testsys/e2e/full_specs.py`, not executed) | -- |
 
 Spec: 50 m preferred / 100 m acceptable, 0-20 s
 (https://strike.scec.org/cvws/tpv29_30docs.html). Downloaded copy at
@@ -156,5 +156,5 @@ against test.tpv29's identical physics minus plasticity, same as every other
 gated case.
 
 Provenance: reference frozen from EQdyna after landing the `TPV==30`
-swtwNucleation branch and the item 24(b)/(c) viscoplastic input wiring,
+swtwNucleation branch and the viscoplastic input wiring,
 2026-09-17.

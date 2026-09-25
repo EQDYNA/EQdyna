@@ -96,8 +96,11 @@ SHARDS = {
         "test_station_header_column_count.py",
         "test_offfault_station_dropped_report.py",  # added 2026-09-24 (wei-lin, item 94): 2 tiny gfortran builds, <2 s
         "test_onfault_station_dropped_report.py",  # added 2026-09-24 (wei-lin, item 116): 2 tiny gfortran builds, <2 s
+        "test_offfault_station_header_actual_node.py",  # added 2026-09-25 (mira-volkov, row 94 audit finding 4): 1 tiny gfortran build, <1 s
+        "test_offfault_station_header_actual_node_python.py",  # added 2026-09-25 (mira-volkov, row 94 audit finding 4): pure Python, <1 s
         "test_stop_exit_status.py",
         "test_symlink_integrity.py",
+        "test_shared_compset_file_loud.py",  # added 2026-09-24 (wei-lin, item 44): 3 create.newcase/case.setup subprocesses, ~3 s
         "test_term_axis.py",
         "test_station_gate.py",  # added 2026-09-24 (wei-lin, owner gate design): tempdir copies of committed refs, 10 scenarios, ~1 s
         "test_nstress_sign_convention.py",  # added 2026-09-24 (wei-lin, row 22a): 11 case-param subprocesses + tempdir gate checks, ~1 s
@@ -109,6 +112,13 @@ SHARDS = {
                                  # 2 tiny 1-rank runs each on Fortran and
                                  # python-numpy, well under shard 2's other
                                  # subprocess-heavy scripts.
+        "test_offfault_station_depth_selection.py",  # added 2026-09-25
+                                 # (mira-volkov, row 94 audit finding 3): one
+                                 # serial case.setup + one 3-step 1-rank
+                                 # mpirun eqdyna run + one direct Python
+                                 # build_station_matching call on the same
+                                 # case dir -- comparable cost to
+                                 # test_check_input_consistency.py above.
         "test_ci_board_separation_step.py",
         "test_dev_str_depth_taper.py",
         "test_e2e_run_tree_lock.py",
@@ -130,6 +140,7 @@ SHARDS = {
                                  # subprocess-heavy scripts.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
+        "test_user_docs_style.py",  # added 2026-09-24 (wei-lin, user-facing docs rule): pure text checks, <1 s
         "test_sweep_core_budget.py",
         "test_sweep_tenancy_budget_2026_09_23.py",
     ],
