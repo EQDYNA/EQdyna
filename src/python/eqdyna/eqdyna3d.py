@@ -419,28 +419,37 @@ def build_solver_state(case_dir, part=None):
         model_bound = bounds
         zline_global = glines[2]
 
-    # Row 120: build_station_matching, on THIS rank's (xline, yline, zline)
-    # for the MPI path (== the global lines for the serial path, part is
-    # None) -- reproducing Fortran's own per-rank setSurfaceStation/
-    # createMasterNode bit for bit, INCLUDING its two pre-existing gaps
-    # (rule 23: Fortran is the reference for numerics, warts included, and
-    # this mission does not fix either in Fortran):
-    #   - off-fault: no y-partition-boundary branch exists (only x has
-    #     ix==1/ix==nx edge branches), so a station whose y coordinate lands
-    #     exactly on a shared rank-boundary plane is dropped by EVERY rank
-    #     that shares it, not just this one (measured, test.tpv8 at (2,2,1):
-    #     station 11 [0, 0.5, -0.3] km sits exactly at y=500 m, the mey=0/
-    #     mey=1 boundary -- see docs/notes/NOTES_row120.md).
-    #   - both on- and off-fault: a station sitting on a SHARED x/y plane
-    #     that DOES have an edge branch (x) can match on more than one rank,
-    #     each of which then writes the same faultst*/body* filename -- the
-    #     same "last rank to call wins" shape GATE_STATIONS' docstring
-    #     already documents for the Fortran multi-rank case (drv.a6/tpv104/
-    #     tpv1053d's spurious 14th file), not a new hazard this port
-    #     introduces.
+    # Row 120/127: build_station_matching, on THIS rank's (xline, yline,
+    # zline) for the MPI path (== the global lines for the serial path,
+    # part is None) -- reproducing Fortran's own per-rank
+    # setSurfaceStation/createMasterNode bit for bit. Row 120 found two
+    # gaps here (docs/notes/NOTES_row120.md); row 127 closes both,
+    # identically in Fortran (meshgen.f90's setSurfaceStation) and here,
+    # by adding the missing y-edge branches and gating every axis's low
+    # edge on "no lower-coordinate neighbour" (docs/notes/NOTES_row127.md):
+    #   - off-fault DROP: no y-partition-boundary branch existed at all
+    #     (only x had ix==1/ix==nx edge branches), so a station whose y
+    #     coordinate landed exactly on a shared rank-boundary plane was
+    #     dropped by EVERY rank that shared it (measured, test.tpv8 at
+    #     (2,2,1): station 11 [0, 0.5, -0.3] km sits exactly at y=500 m,
+    #     the mey=0/mey=1 boundary).
+    #   - off-fault DUPLICATE: a station on a shared x (or z, npz>1)
+    #     boundary could match on both ranks sharing it, each writing the
+    #     same faultst*/body* filename -- the "last rank to call wins"
+    #     shape GATE_STATIONS' docstring documents for the Fortran
+    #     multi-rank case. mex/mey/mez (this rank's MPI coordinate, 0 for
+    #     the serial path where `part is None`) make each seam node a
+    #     candidate on exactly one rank: the lower-coordinate one.
+    # On-fault matching (anonfs, below) has no index-based edge branch at
+    # all (it matches x/z by value against xonfs directly), so it never had
+    # row 127's DROP gap -- it is left unchanged; its own duplicate-match
+    # exposure at a shared x/z fault node is a separate, pre-existing,
+    # out-of-scope hazard (docs/notes/NOTES_row127.md).
+    mex, mey, mez = part.mexyz if part is not None else (0, 0, 0)
     anonfs, off_matches, off_z_valid = meshgen.build_station_matching(
         xline, yline, zline, params, xonfs, x4nds,
-        pmlb['zmin0'], bounds[2][1], zline_global=zline_global)
+        pmlb['zmin0'], bounds[2][1], zline_global=zline_global,
+        mex=mex, mey=mey, mez=mez)
     st_on_idx = np.array([fs - 1 for fs, sc, ift in anonfs], dtype=np.int64)
     st_on_strike_m = np.array([xonfs[0, sc - 1] for fs, sc, ift in anonfs])
     st_on_depth_m = np.array([xonfs[1, sc - 1] for fs, sc, ift in anonfs])

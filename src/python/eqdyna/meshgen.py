@@ -1509,27 +1509,39 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
 
 
 def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
-                            pml_zmin, z_free_surface, zline_global=None):
+                            pml_zmin, z_free_surface, zline_global=None,
+                            mex=0, mey=0, mez=0):
     """Milestone 5: port of meshgen.f90's `setSurfaceStation` (off-fault
     nearest-grid-node matching, called once per regular node, BEFORE
     `createMasterNode` in the main ix/iz/iy loop) and the on-fault station
     match embedded in `createMasterNode` ("setOnFaultStation", ntotft==1
     only -- matching this milestone's scope).
 
-    `setSurfaceStation` has three mutually exclusive branches keyed on the
-    node's position along x (`ix>1 and ix<nx` interior, `ix==1` left edge,
-    `ix==nx` right edge) -- despite the "at surface only" comment in the
-    Fortran, the branch guard is actually `iy` strictly interior (`iy>1 and
-    iy<ny`), not a z/surface test; ported verbatim, not "fixed", per this
-    discipline's rule against silently changing behavior it doesn't fully
-    understand. Each branch does a nearest-node-in-x test (equality, OR
-    strictly-closer-than-the-opposite-neighbor on whichever side(s) that
-    branch has), then (independently) the same nearest-node-in-y test
-    (always both-sided, since y is never a boundary edge case in this
-    subroutine) -- ordered `if` cascades, first match wins, `n4yn` (a
-    module-level "already matched" flag in Fortran, `matched` here) blocks
-    rematching a station once found, exactly reproducing Fortran's `exit`
-    -after-first-match / do-loop-order semantics.
+    Row 127 (owner ruling): `setSurfaceStation` has nine (x-category x
+    y-category) branches, category in {low edge, interior, high edge} on
+    each axis; it used to have only three (x-category, with y forced
+    interior), so a station on a y-partition seam matched on NO rank
+    (test.tpv8 station 11 at (2,2,1): 14 body files instead of 15) --
+    ported bug-for-bug until this fix per this discipline's rule against
+    silently changing behavior it doesn't fully understand, now fixed
+    identically in both languages (docs/notes/NOTES_row127.md). Ownership
+    of a seam node shared by two ranks along an axis goes to the
+    LOWER-MPI-coordinate rank: this rank's local index 0 on an axis is a
+    match candidate only if it has no lower neighbour there (`mex`/`mey`/
+    `mez` == 0); local index n-1 (the high edge) is always a candidate --
+    either the true global edge, or the seam with a higher-coordinate
+    neighbour, owned by this rank as the lower of the pair. `mex`/`mey`/
+    `mez` default to 0 (serial, or any rank the caller doesn't identify),
+    matching a single-rank decomposition where every axis is entirely
+    owned by that one rank. Each branch does a nearest-node test (equality,
+    OR strictly-closer-than-the-opposite-neighbor on whichever side(s) that
+    branch has) on x and (independently) the same shape of test on y --
+    first match wins, `n4yn` (a module-level "already matched" flag in
+    Fortran, `matched` here) blocks rematching a station once found,
+    exactly reproducing Fortran's `exit`-after-first-match / do-loop-order
+    semantics. z has no index-based branch (depth is matched by value
+    against `z_snap`, not by `iz`), so its ownership gate is a single
+    skip covering the whole iz==0 row when this rank is not the z-owner.
 
     Row 94 (owner ruling 2026-09-24): the DEPTH test in each branch used to
     require `zcoor == x4nds[2,i-1]` exactly (within `tol`), so a station
@@ -1624,6 +1636,53 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
     dist[:, ~in_band] = np.inf
     z_snap = zline_arr[np.argmin(dist, axis=1)]
 
+    def x_matches(i, ix, xcoor):
+        xs = x4nds[0, i - 1]
+        if 1 <= ix <= nx - 2:
+            return (abs(xcoor - xs) < tol or
+                    (xs > xline[ix - 1] and xs < xcoor and
+                     (xcoor - xs) < (xs - xline[ix - 1])) or
+                    (xs > xcoor and xs < xline[ix + 1] and
+                     (xs - xcoor) < (xline[ix + 1] - xs)))
+        elif ix == 0:
+            # Row 127: this rank owns the low-x edge only if it has no
+            # lower-mex neighbour; otherwise that neighbour's high-x branch
+            # (ix == nx-1, always a candidate) owns the shared seam node.
+            if mex != 0:
+                return False
+            return (abs(xcoor - xs) < tol or
+                    (xs > xcoor and xs < xline[ix + 1] and
+                     (xs - xcoor) < (xline[ix + 1] - xs)))
+        elif ix == nx - 1:
+            return (abs(xcoor - xs) < tol or
+                    (xs > xline[ix - 1] and xs < xcoor and
+                     (xcoor - xs) < (xs - xline[ix - 1])))
+        return False
+
+    def y_matches(i, iy, ycoor):
+        xs = x4nds[1, i - 1]
+        if 1 <= iy <= ny - 2:
+            return (abs(ycoor - xs) < tol or
+                    (xs > yline[iy - 1] and xs < ycoor and
+                     (ycoor - xs) < (xs - yline[iy - 1])) or
+                    (xs > ycoor and xs < yline[iy + 1] and
+                     (xs - ycoor) < (yline[iy + 1] - xs)))
+        elif iy == 0:
+            # Row 127 fix: this branch did not exist at all before -- a
+            # station on a y-partition seam matched on NO rank. Same
+            # ownership rule as x: owns the low-y edge only with no lower
+            # -mey neighbour.
+            if mey != 0:
+                return False
+            return (abs(ycoor - xs) < tol or
+                    (xs > ycoor and xs < yline[iy + 1] and
+                     (xs - ycoor) < (yline[iy + 1] - xs)))
+        elif iy == ny - 1:
+            return (abs(ycoor - xs) < tol or
+                    (xs > yline[iy - 1] and xs < ycoor and
+                     (ycoor - xs) < (xs - yline[iy - 1])))
+        return False
+
     anonfs = []
     off_fault_matches = []
     node_count = 0
@@ -1632,64 +1691,29 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
         xcoor = xline[ix]
         for iz in range(nz):
             zcoor = zline[iz]
+            # Row 127: z-axis ownership gate. z has no per-index branch
+            # (depth is matched by value against z_snap, not by iz), so the
+            # whole iz==0 row is skipped by every rank except the one with
+            # no lower-mez neighbour (mez==0); the lower rank of a z-seam
+            # pair always owns its own iz==nz-1 row (no gate needed there).
+            z_row_owned = (iz != 0) or (mez == 0)
             for iy in range(ny):
                 ycoor = yline[iy]
                 node_count += 1
 
-                def y_matches(i):
-                    xs = x4nds[1, i - 1]
-                    return (abs(ycoor - xs) < tol or
-                            (iy >= 1 and xs > yline[iy - 1] and xs < ycoor and
-                             (ycoor - xs) < (xs - yline[iy - 1])) or
-                            (iy <= ny - 2 and xs > ycoor and xs < yline[iy + 1] and
-                             (xs - ycoor) < (yline[iy + 1] - xs)))
-
-                if 1 <= ix <= nx - 2 and 1 <= iy <= ny - 2:
+                if z_row_owned:
                     for i in range(1, n_off + 1):
                         if matched[i]:
                             continue
-                        xs = x4nds[0, i - 1]
                         if not z_valid[i - 1] or abs(zcoor - z_snap[i - 1]) >= tol:
                             continue
-                        if not (abs(xcoor - xs) < tol or
-                                (xs > xline[ix - 1] and xs < xcoor and
-                                 (xcoor - xs) < (xs - xline[ix - 1])) or
-                                (xs > xcoor and xs < xline[ix + 1] and
-                                 (xs - xcoor) < (xline[ix + 1] - xs))):
+                        if not x_matches(i, ix, xcoor):
                             continue
-                        if y_matches(i):
-                            matched[i] = True
-                            off_fault_matches.append((i, node_count))
-                            break
-                elif ix == 0 and 1 <= iy <= ny - 2:
-                    for i in range(1, n_off + 1):
-                        if matched[i]:
+                        if not y_matches(i, iy, ycoor):
                             continue
-                        xs = x4nds[0, i - 1]
-                        if not z_valid[i - 1] or abs(zcoor - z_snap[i - 1]) >= tol:
-                            continue
-                        if not (abs(xcoor - xs) < tol or
-                                (xs > xcoor and xs < xline[ix + 1] and
-                                 (xs - xcoor) < (xline[ix + 1] - xs))):
-                            continue
-                        if y_matches(i):
-                            matched[i] = True
-                            off_fault_matches.append((i, node_count))
-                            break
-                elif ix == nx - 1 and 1 <= iy <= ny - 2:
-                    for i in range(1, n_off + 1):
-                        if matched[i]:
-                            continue
-                        xs = x4nds[0, i - 1]
-                        if not z_valid[i - 1] or abs(zcoor - z_snap[i - 1]) >= tol:
-                            continue
-                        if not (xs > xline[ix - 1] and xs < xcoor and
-                                (xcoor - xs) < (xs - xline[ix - 1])):
-                            continue
-                        if y_matches(i):
-                            matched[i] = True
-                            off_fault_matches.append((i, node_count))
-                            break
+                        matched[i] = True
+                        off_fault_matches.append((i, node_count))
+                        break
 
                 # row 114 fix: this call used to omit c_degen/dx entirely,
                 # silently defaulting is_on_fault's c_degen=0.0 -- for

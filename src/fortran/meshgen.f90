@@ -729,92 +729,106 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount, x4
     ! station x4ndsSnapZ(i) was never assigned a meaningful value, so the
     ! depth test below is gated on x4ndsZValid(i) first (short-circuit
     ! .and.): it can never match, and the station stays a genuine DROP.
+    !
+    ! Row 127 (this ruling): getLocalOneDimCoorArrAndSize overlaps every
+    ! rank's local grid with its neighbour by exactly one node on EVERY axis
+    ! (local index 1 of rank r == local index n of rank r-1, for x, y, and,
+    ! when npz>1, z too -- confirmed algebraically from that subroutine's
+    ! index formula). Two defects follow from treating that shared node
+    ! asymmetrically:
+    !   (a) DROP: the old Part1/2/3 below required "iy>1 .and. iy<ny" in
+    !       ALL THREE x-branches -- there was no branch at all for iy==1 or
+    !       iy==ny, so a station on a y-partition seam matched on NO rank
+    !       (tpv8 station 11 at (2,2,1): 14 body files instead of 15).
+    !   (b) DUPLICATE: ix==1/ix==nx already had branches, but neither
+    !       excluded the case where the OTHER rank sharing that seam node
+    !       also matches -- two ranks writing the same station file.
+    ! Fix, applied identically on x, y and z: the rank with the LOWER MPI
+    ! coordinate along an axis owns a station that lands on the seam it
+    ! shares with its higher-coordinate neighbour. Concretely: this rank's
+    ! local index 1 on an axis is a candidate only when this rank has no
+    ! lower neighbour on that axis (its MPI coordinate is 0); this rank's
+    ! local index n (nx/ny/nz) is ALWAYS a candidate -- it is either the
+    ! true global high edge, or the seam with a higher-coordinate neighbour,
+    ! which this rank owns as the lower of the pair. Interior nodes (1<idx<n)
+    ! are never shared and need no gate. z has no separate index branch
+    ! (depth is matched by value against x4ndsSnapZ, not by iz), so its
+    ! ownership gate is a single early return covering the whole node.
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: nodeXyzIndex(10), ix, iy, nodeCount, i
+    integer (kind = 4) :: nodeXyzIndex(10), ix, iy, iz, nx, ny, nodeCount, i
+    integer (kind = 4) :: mex, mey, mez
     real (kind = dp) :: nodeCoor(10), xline(nodeXyzIndex(4)), yline(nodeXyzIndex(5))
     real (kind = dp) :: x4ndsSnapZ(max(1,totalNumOfOffSt))
     logical :: x4ndsZValid(max(1,totalNumOfOffSt))
+    logical :: xMatch, yMatch
 
     ix = nodeXyzIndex(1)
     iy = nodeXyzIndex(2)
-    !Part1. Stations inside the region.
-    if(ix>1.and.ix<nodeXyzIndex(4) .and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
-        do i=1,totalNumOfOffSt
-            if(n4yn(i)==0) then
-                if (x4ndsZValid(i) .and. abs(nodeCoor(3)-x4ndsSnapZ(i))<tol) then
-                    if(abs(nodeCoor(1)-x4nds(1,i))<tol .or.&
-                    (x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<nodeCoor(1).and. &
-                    (nodeCoor(1)-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
-                    (x4nds(1,i)>nodeCoor(1).and.x4nds(1,i)<xline(ix+1).and. &
-                    (x4nds(1,i)-nodeCoor(1))<(xline(ix+1)-x4nds(1,i)))) then
-                        if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
-                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<nodeCoor(2).and. &
-                        (nodeCoor(2)-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-                        (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
-                        (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) then
-                            n4yn(i) = 1
-                            numOfOffFaultStCount = numOfOffFaultStCount + 1
-                            OffFaultStNodeIdIndex(1,numOfOffFaultStCount) = i
-                            OffFaultStNodeIdIndex(2,numOfOffFaultStCount) = nodeCount
-                            exit     !if node found, jump out the loop
-                        endif
-                    endif
-                endif
+    iz = nodeXyzIndex(3)
+    nx = nodeXyzIndex(4)
+    ny = nodeXyzIndex(5)
+
+    call calcXyzMPIId(mex, mey, mez)
+
+    ! z-axis ownership gate (see header comment): skip this whole node if a
+    ! lower-mez neighbour owns the z-seam it sits on.
+    if (iz==1 .and. mez/=0) return
+
+    do i=1,totalNumOfOffSt
+        if(n4yn(i)/=0) cycle
+        if (.not. (x4ndsZValid(i) .and. abs(nodeCoor(3)-x4ndsSnapZ(i))<tol)) cycle
+
+        !x-axis match, mirroring the old Part1/2/3, gated on x-ownership.
+        xMatch = .false.
+        if (ix>1 .and. ix<nx) then
+            if(abs(nodeCoor(1)-x4nds(1,i))<tol .or.&
+            (x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<nodeCoor(1).and. &
+            (nodeCoor(1)-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) .or. &
+            (x4nds(1,i)>nodeCoor(1).and.x4nds(1,i)<xline(ix+1).and. &
+            (x4nds(1,i)-nodeCoor(1))<(xline(ix+1)-x4nds(1,i)))) xMatch = .true.
+        elseif (ix==1) then
+            if (mex==0) then
+                if(abs(nodeCoor(1)-x4nds(1,i))<tol .or. &
+                (x4nds(1,i)>nodeCoor(1).and.x4nds(1,i)<xline(ix+1).and. &
+                (x4nds(1,i)-nodeCoor(1))<(xline(ix+1)-x4nds(1,i)))) xMatch = .true.
             endif
-        enddo
-    endif
-    !...identify output nodes (off-fault)
-    !Part2. Stations along ix==1
-    !Big Bug!!!iz==nz is no valid for 3D MPI.
-    if(ix==1.and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
-        do i=1,totalNumOfOffSt
-            if(n4yn(i)==0) then
-                if (x4ndsZValid(i) .and. abs(nodeCoor(3)-x4ndsSnapZ(i))<tol) then
-                    if(abs(nodeCoor(1)-x4nds(1,i))<tol .or. &
-                    (x4nds(1,i)>nodeCoor(1).and.x4nds(1,i)<xline(ix+1).and. &
-                    (x4nds(1,i)-nodeCoor(1))<(xline(ix+1)-x4nds(1,i)))) then
-                        if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
-                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<nodeCoor(2).and. &
-                        (nodeCoor(2)-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-                        (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
-                        (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) then
-                            n4yn(i) = 1
-                            numOfOffFaultStCount = numOfOffFaultStCount + 1
-                            OffFaultStNodeIdIndex(1,numOfOffFaultStCount) = i
-                            OffFaultStNodeIdIndex(2,numOfOffFaultStCount) = nodeCount
-                            exit     !if node found, jump out the loop
-                        endif
-                    endif
-                endif
+        elseif (ix==nx) then
+            if(abs(nodeCoor(1)-x4nds(1,i))<tol .or. &
+            (x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<nodeCoor(1).and. &
+            (nodeCoor(1)-x4nds(1,i))<(x4nds(1,i)-xline(ix-1)))) xMatch = .true.
+        endif
+        if (.not. xMatch) cycle
+
+        !y-axis match: same structure as x, the row-127 fix (was missing
+        !entirely for iy==1/iy==ny), gated on y-ownership.
+        yMatch = .false.
+        if (iy>1 .and. iy<ny) then
+            if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
+            (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<nodeCoor(2).and. &
+            (nodeCoor(2)-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
+            (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
+            (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) yMatch = .true.
+        elseif (iy==1) then
+            if (mey==0) then
+                if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
+                (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
+                (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) yMatch = .true.
             endif
-        enddo
-    endif
-    !...identify output nodes (off-fault)
-    !Part3. Stations along ix==nx
-    if(ix==nodeXyzIndex(4) .and. iy>1.and.iy<nodeXyzIndex(5)) then  !at surface only
-        do i=1,totalNumOfOffSt
-            if(n4yn(i)==0) then
-                if (x4ndsZValid(i) .and. abs(nodeCoor(3)-x4ndsSnapZ(i))<tol) then
-                    if(x4nds(1,i)>xline(ix-1).and.x4nds(1,i)<nodeCoor(1).and. &
-                    (nodeCoor(1)-x4nds(1,i))<(x4nds(1,i)-xline(ix-1))) then
-                        if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
-                        (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<nodeCoor(2).and. &
-                        (nodeCoor(2)-x4nds(2,i))<(x4nds(2,i)-yline(iy-1))) .or. &
-                        (x4nds(2,i)>nodeCoor(2).and.x4nds(2,i)<yline(iy+1).and. &
-                        (x4nds(2,i)-nodeCoor(2))<(yline(iy+1)-x4nds(2,i)))) then
-                            n4yn(i) = 1
-                            numOfOffFaultStCount = numOfOffFaultStCount + 1
-                            OffFaultStNodeIdIndex(1,numOfOffFaultStCount) = i
-                            OffFaultStNodeIdIndex(2,numOfOffFaultStCount) = nodeCount
-                            exit     !if node found, jump out the loop
-                        endif
-                    endif
-                endif
-            endif
-        enddo
-    endif    
+        elseif (iy==ny) then
+            if(abs(nodeCoor(2)-x4nds(2,i))<tol .or. &
+            (x4nds(2,i)>yline(iy-1).and.x4nds(2,i)<nodeCoor(2).and. &
+            (nodeCoor(2)-x4nds(2,i))<(x4nds(2,i)-yline(iy-1)))) yMatch = .true.
+        endif
+        if (.not. yMatch) cycle
+
+        n4yn(i) = 1
+        numOfOffFaultStCount = numOfOffFaultStCount + 1
+        OffFaultStNodeIdIndex(1,numOfOffFaultStCount) = i
+        OffFaultStNodeIdIndex(2,numOfOffFaultStCount) = nodeCount
+        exit     !if node found, jump out the loop
+    enddo
 end subroutine setSurfaceStation
 
 subroutine reduceOffFaultStationCoor(actualCoorHere, actualCoorGlobal)
