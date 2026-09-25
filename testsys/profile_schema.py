@@ -37,7 +37,8 @@ summed that bucket against anything. Two checks close that gap:
      should be. A profiler whose `unaccounted_s` field is stale, mis-summed,
      or copy-pasted from the wrong run fails this immediately, even if the
      numbers involved are individually plausible.
-  2. `|total_s - sum(buckets_s.values())| <= SUM_TOLERANCE * total_s`. The
+  2. `|total_s - sum(buckets_s.values())| <= max(SUM_TOLERANCE * total_s,
+     SUM_FLOOR_S)`. The
      wide check, and the one a x511 bucket error cannot survive: it bounds
      how much of `total_s` is allowed to sit in that gap at all.
 
@@ -53,6 +54,17 @@ omitted, moves the gap by orders of magnitude past 5%, not by a fraction of
 it. It is a named module constant, not a magic number, so a future
 measurement of the real jitter floor can widen it deliberately, in one place,
 with the justification updated here.
+
+SUM_FLOOR_S = 2.0 s, added 2026-09-24 because the 5% alone was a FLAKY gate
+on short runs. The gap is mostly a FIXED per-run overhead (import, output,
+the code around the timed sections), not a proportional one. Measured over
+409 committed `docs/run_profiles.jsonl` rows: the largest absolute gap is
+2.73 s, on a 188 s fortran tpv36 run (1.4%). But test.tpv8 x python-jax, the
+shortest cell (~15 s), reads up to 4.8% locally, and on the 2-core CI runner
+it read 0.80 s of 15.40 s = 5.2% and failed master (run 36082084976) with physics
+well inside its bound. A 2 s floor admits that fixed overhead on a short run.
+It changes nothing for runs of 40 s and longer, where 5% already exceeds 2 s.
+A x511 bucket still moves the gap by orders of magnitude past either limit.
 """
 import json
 import math
@@ -69,6 +81,7 @@ REQUIRED = ('schema', 'backend', 'rank', 'nranks', 'host', 'pid',
 
 # See module docstring for the justification of both constants.
 SUM_TOLERANCE = 0.05
+SUM_FLOOR_S = 2.0
 FLOAT_TOL = 1e-9
 
 _RANK_FILE_RE = re.compile(r'^profile\.rank(\d+)\.json$')
@@ -129,13 +142,16 @@ def check_buckets(context, total_s, buckets_s, unaccounted_s,
             'bug in the unaccounted timer goes undetected exactly like the '
             '511x compTimeInSeconds(2) error this check exists to catch'
             % (context, unaccounted_s, gap, FLOAT_TOL))
-    if abs(gap) > SUM_TOLERANCE * total_s:
+    allowed = max(SUM_TOLERANCE * total_s, SUM_FLOOR_S)
+    if abs(gap) > allowed:
         raise ValueError(
-            '%s: |total_s - sum(buckets_s)| = %.6g exceeds %.0f%% of total_s '
-            '(%.6g) -- buckets_s + unaccounted_s must account for essentially '
+            '%s: |total_s - sum(buckets_s)| = %.6g exceeds max(%.0f%% of total_s, '
+            '%.1f s) = %.6g (total_s %.6g) -- buckets_s + unaccounted_s must '
+            'account for essentially '
             'all of total_s; a bucket inflated or deflated by orders of '
             'magnitude (the 511x compTimeInSeconds(2) incident) is exactly '
-            'what this catches' % (context, abs(gap), SUM_TOLERANCE * 100, total_s))
+            'what this catches' % (context, abs(gap), SUM_TOLERANCE * 100,
+                                   SUM_FLOOR_S, allowed, total_s))
 
 
 def validate(path_or_dict):
