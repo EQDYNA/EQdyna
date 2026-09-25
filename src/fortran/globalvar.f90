@@ -266,6 +266,15 @@ MODULE globalvar
     integer (kind = 4), allocatable, dimension(:,:) :: nodeElemIdRelation,     &
         anonfs, idhist, OffFaultStNodeIdIndex
     integer (kind = 4), allocatable, dimension(:,:,:) :: nsmp
+    ! Row 94 audit finding 6 (2026-09-25): whether each requested off-fault
+    ! station's DEPTH fell inside the physical (non-PML) clamp band -- set
+    ! once per rank by meshgen (identical on every rank, no MPI needed),
+    ! read by report_dropped_offfault_st (library_output.f90) so a true drop
+    ! can say honestly whether depth-out-of-band is the CHECKED cause, or
+    ! whether the cause is unconfirmed (x/y outside the mesh, or the
+    ! pre-existing y-partition-boundary gap in setSurfaceStation -- neither
+    ! of those is checked here, so the wording must not claim either one).
+    logical, allocatable, dimension(:) :: x4ndsZValidPersist
 
     integer (kind = 4) :: np = 1000000              ! legacy default array-sizing hint (see individual allocate() calls for actual sizes)
 

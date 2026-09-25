@@ -51,7 +51,10 @@ FSRC = os.path.join(ROOT, 'src', 'fortran')
 FORTRAN_DEPS = ('globalvar.f90', 'library_output.f90')
 
 # Station 1: exact match (actual == requested) -> silent.
-# Station 2: matched == .false. (truly outside the mesh) -> DROP.
+# Station 2: matched == .false. -> DROP. x4ndsZValidPersist(2) ({zvalid2})
+#   selects which of the two DROP wordings (finding 6, row 94 audit):
+#   .true. => depth was in-band, cause not checked here; .false. => the
+#   CONFIRMED cause is the requested depth is outside the physical mesh band.
 # Station 3: matched == .true. but actual z differs by 500 m -> SNAP.
 _DRIVER_SRC = r'''
 program item94_driver
@@ -62,9 +65,11 @@ program item94_driver
 
     totalNumOfOffSt = 3
     allocate(x4nds(3,3))
+    allocate(x4ndsZValidPersist(3))
     x4nds(:,1) = (/    0.0d0,  1000.0d0,     0.0d0 /)
     x4nds(:,2) = (/    0.0d0,  -500.0d0,  -300.0d0 /)
     x4nds(:,3) = (/ 12000.0d0, 3000.0d0, -12000.0d0 /)
+    x4ndsZValidPersist = (/ .true., {zvalid2}, .true. /)
     matched = (/ {m1}, {m2}, {m3} /)
     actual(:,1) = x4nds(:,1)
     ! actual(:,2) is never read when matched(2) is .false. (the dropped
@@ -77,7 +82,7 @@ end program item94_driver
 '''
 
 
-def build_and_run(tmp, tag, flags, z3):
+def build_and_run(tmp, tag, flags, z3, zvalid2='.true.'):
     objs = []
     for fname in FORTRAN_DEPS:
         obj = os.path.join(tmp, fname.replace('.f90', f'.{tag}.o'))
@@ -90,7 +95,7 @@ def build_and_run(tmp, tag, flags, z3):
         objs.append(obj)
     src = os.path.join(tmp, f'driver.{tag}.f90')
     with open(src, 'w') as fh:
-        fh.write(_DRIVER_SRC.format(m1=flags[0], m2=flags[1], m3=flags[2], z3=z3))
+        fh.write(_DRIVER_SRC.format(m1=flags[0], m2=flags[1], m3=flags[2], z3=z3, zvalid2=zvalid2))
     binary = os.path.join(tmp, f'driver.{tag}')
     r = subprocess.run(
         ['gfortran', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp]
@@ -113,8 +118,13 @@ def main():
     fails = []
     try:
         try:
-            out = build_and_run(tmp, 'one', ('.true.', '.false.', '.true.'), '-12500.0d0')
+            out = build_and_run(tmp, 'one', ('.true.', '.false.', '.true.'), '-12500.0d0',
+                                 zvalid2='.true.')
             quiet = build_and_run(tmp, 'none', ('.true.', '.true.', '.true.'), '-12000.0d0')
+            # Finding 6 (row 94 audit): station 2 dropped with x4ndsZValidPersist
+            # .false. -- the CONFIRMED cause (depth out of the physical band).
+            confirmed = build_and_run(tmp, 'confirmed', ('.true.', '.false.', '.true.'),
+                                       '-12500.0d0', zvalid2='.false.')
         except RuntimeError as e:
             print('FAIL test_offfault_station_dropped_report')
             print(' -', e)
@@ -150,6 +160,26 @@ def main():
         fails.append(f'station 1 (exact match) named as dropped or snapped; stdout was:\n{out}')
     if quiet.strip():
         fails.append(f'all stations at their exact requested node but the reporter printed:\n{quiet}')
+
+    # Finding 6 (row 94 audit): the DROP wording must distinguish a CHECKED
+    # cause (depth outside the physical mesh band, x4ndsZValidPersist
+    # .false.) from an unconfirmed one (x4ndsZValidPersist .true. -- depth
+    # was fine, cause not further diagnosed), and must not claim "outside
+    # the mesh" as if every drop's cause were checked.
+    if 'match no grid node (outside the mesh)' in out or 'match no grid node (outside the mesh)' in confirmed:
+        fails.append(f'summary line still claims every drop is confirmed outside the mesh; stdout:\n{out}\n{confirmed}')
+    if 'cause not checked here' not in out:
+        fails.append(f'station 2 (depth in-band, x4ndsZValidPersist=.true.) does not say its '
+                     f'cause is unconfirmed; stdout was:\n{out}')
+    if 'checked cause' in out:
+        fails.append(f'station 2 (x4ndsZValidPersist=.true.) wrongly claims a checked cause; '
+                     f'stdout was:\n{out}')
+    if 'checked cause: requested depth is outside the physical, non-PML mesh band' not in confirmed:
+        fails.append(f'station 2 (x4ndsZValidPersist=.false.) does not report the confirmed '
+                     f'depth-out-of-band cause; stdout was:\n{confirmed}')
+    if 'cause not checked here' in confirmed:
+        fails.append(f'station 2 (x4ndsZValidPersist=.false.) wrongly says its cause is '
+                     f'unconfirmed; stdout was:\n{confirmed}')
 
     if fails:
         print('FAIL test_offfault_station_dropped_report')

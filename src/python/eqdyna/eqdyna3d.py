@@ -196,7 +196,8 @@ def active_device(backend):
     return '%s:%d (%s)' % (d.platform, d.id, getattr(d, 'device_kind', '?'))
 
 
-def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor):
+def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
+                             off_z_valid, tol):
     """Port of report_dropped_onfault_st / report_dropped_offfault_st
     (library_output.f90; board rows 116 and 94). On-fault stations: unchanged
     -- name, on stdout, every requested station that matched no fault node and
@@ -213,19 +214,36 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor):
         off-fault station" (and "...would otherwise be a dropped off-fault
         station", so the line stays equally loud and equally grep-able as
         the true-drop case below).
-      - matched on no node at all (x or y outside the mesh -- snapping depth
-        cannot fix that): a true DROP, "dropped off-fault station", unchanged.
+      - matched on no node at all: a true DROP, "dropped off-fault station",
+        unchanged.
 
-    SNAP is gated on the DEPTH difference alone (|actual z - requested z|),
-    not the full 3-axis distance -- x and y already snapped to the nearest
-    node before this fix (silently, forever) and that is unchanged and out
-    of scope; gating broadly would flood this NOTICE with stations that were
-    never at risk of being dropped (measured: it would have reported 19 for
-    test.tpv36/test.tpv37, 0 of them depth-caused, and 6 for test.tpv10
-    instead of the 2 this fix actually recovers). Still prints the full
-    (x,y,z) requested vs actual and full 3-axis distance for each reported
-    station, since a depth-snapped station can shift in x/y too (test.tpv10
-    stations 9/10).
+    SNAP is gated on the DEPTH difference alone (|actual z - requested z| >
+    `tol`), not the full 3-axis distance -- x and y already snapped to the
+    nearest node before this fix (silently, forever) and that is unchanged
+    and out of scope; gating broadly would flood this NOTICE with stations
+    that were never at risk of being dropped (measured: it would have
+    reported 19 for test.tpv36/test.tpv37, 0 of them depth-caused, and 6 for
+    test.tpv10 instead of the 2 this fix actually recovers). Still prints the
+    full (x,y,z) requested vs actual and full 3-axis distance for each
+    reported station, since a depth-snapped station can shift in x/y too
+    (test.tpv10 stations 9/10). `tol` is the caller's `params['tol']` --
+    finding 5 (row 94 audit, 2026-09-25): this used to hardcode a second
+    `1.0e-5` literal here instead of reading the one place this port already
+    reproduces Fortran globalvar.f90:209's `tol = 1.0d-5` PARAMETER
+    (readInputFiles.build_params).
+
+    Finding 6 (row 94 audit, 2026-09-25): a true DROP used to say "match no
+    grid node (outside the mesh)" unconditionally -- not always true (the
+    Fortran side's tpv8 station 11 is dropped by a pre-existing y-partition-
+    boundary gap in setSurfaceStation, not by being outside the mesh; the
+    serial Python port carries the identical un-gated iy==0/iy==ny-1 case in
+    principle, just unmasked at different domain sizes than that MPI split).
+    `off_z_valid[i-1]` (build_station_matching's return, mirroring Fortran's
+    x4ndsZValidPersist) is the one cause this function HAS checked, so a
+    drop's message says either "requested depth is outside the physical mesh
+    band" (a CONFIRMED cause) or that the cause is not further diagnosed here
+    (depth was in-band; x, y, or the y-boundary gap above are candidates, but
+    none is checked by this function, so none is named).
 
     Coordinates arrive in metres. `meshCoor` is build_node_coordinates'
     1-indexed (row 0 unused) array; `nc` (off_matches' second element) is
@@ -239,7 +257,7 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor):
         if i in off_matched:
             actual = meshCoor[off_matched[i]]
             requested = x4nds[:, i - 1]
-            if abs(float(actual[2]) - float(requested[2])) > 1.0e-5:
+            if abs(float(actual[2]) - float(requested[2])) > tol:
                 dist = float(np.linalg.norm(actual - requested))
                 off_snapped.append((i, requested, actual, dist))
     if off_snapped:
@@ -257,12 +275,19 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor):
                      dist / 1000.0))
     if off_dropped:
         print(' WARNING: %d of %d requested off-fault stations match no grid '
-              'node (outside the mesh) and get NO body* file'
+              'node and get NO body* file'
               % (len(off_dropped), x4nds.shape[1]))
         for i in off_dropped:
-            print('   dropped off-fault station %d at x,y,z =%10.3f%10.3f%10.3f km'
+            if off_z_valid[i - 1]:
+                cause = ('cause not checked here -- requested depth is within the physical '
+                          'mesh band; the miss may be x or y outside the mesh, or a known '
+                          'y-partition-boundary gap in setSurfaceStation')
+            else:
+                cause = ('checked cause: requested depth is outside the physical, non-PML '
+                          'mesh band')
+            print('   dropped off-fault station %d at x,y,z =%10.3f%10.3f%10.3f km (%s)'
                   % (i, x4nds[0, i - 1] / 1000.0, x4nds[1, i - 1] / 1000.0,
-                     x4nds[2, i - 1] / 1000.0))
+                     x4nds[2, i - 1] / 1000.0, cause))
     on_matched = {sc for fs, sc, ift in anonfs}
     on_dropped = [i for i in range(1, xonfs.shape[1] + 1) if i not in on_matched]
     if on_dropped:
@@ -371,8 +396,9 @@ def build_solver_state(case_dir, part=None):
 
     xline, yline, zline, pmlb, bounds = meshgen.build_grid_lines(params)
     if part is None:
-        anonfs, off_matches = meshgen.build_station_matching(
-            xline, yline, zline, params, xonfs, x4nds)
+        anonfs, off_matches, off_z_valid = meshgen.build_station_matching(
+            xline, yline, zline, params, xonfs, x4nds,
+            pmlb['zmin0'], bounds[2][1])
         st_on_idx = np.array([fs - 1 for fs, sc, ift in anonfs], dtype=np.int64)
         st_on_strike_m = np.array([xonfs[0, sc - 1] for fs, sc, ift in anonfs])
         st_on_depth_m = np.array([xonfs[1, sc - 1] for fs, sc, ift in anonfs])
@@ -418,7 +444,8 @@ def build_solver_state(case_dir, part=None):
         # that case from off_matched/off_dropped directly, not from this array.
         st_off_actual_m = (meshCoor[np.array([nc for sc, nc in off_matches], dtype=np.int64)]
                             if off_matches else np.zeros((0, 3)))
-        report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor)
+        report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
+                                 off_z_valid, params['tol'])
     else:
         st_off_actual_m = np.zeros((0, 3))
     conn, elem_type, mat, elem_depth = meshgen.build_elements(

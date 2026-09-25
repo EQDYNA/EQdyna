@@ -85,6 +85,12 @@ subroutine meshgen
         x4ndsSnapZ(iSt2) = zGridFull(kNearest)
         x4ndsZValid(iSt2) = .true.
     enddo
+    ! Finding 6 (row 94 audit): persist the band check so
+    ! report_dropped_offfault_st (library_output.f90) can distinguish a
+    ! CHECKED depth-out-of-band drop from an unconfirmed one. Identical on
+    ! every rank (x4ndsZValid depends only on the global z grid and the
+    ! request), so a plain overwrite each call is fine -- no reduction needed.
+    x4ndsZValidPersist = x4ndsZValid
     xmin = modelBoundCoor(1,1)
     xmax = modelBoundCoor(1,2)
     ymin = modelBoundCoor(2,1)
