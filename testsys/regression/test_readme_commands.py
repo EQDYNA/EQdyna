@@ -90,6 +90,16 @@ def check_python_module_invocations_import(text=None, label='README.md'):
     """
     text = readme() if text is None else text
     mods = set(re.findall(r'python3?\s+-m\s+([\w.]+)', text))
+    # `pip` is the installer itself, and a module the SAME document installs
+    # with `pip install` (e.g. virtualenv) cannot import before its own
+    # install step runs -- test_readme_executes proves those by running them.
+    # Every other module must import here.
+    installed = set()
+    for line in re.findall(r'pip3?\s+install\s+([^\n#]+)', text):
+        for tok in line.split():
+            if not tok.startswith('-'):
+                installed.add(re.split(r'[\[<>=]', tok.strip('"\''))[0].lower())
+    mods = {m for m in mods if m != 'pip' and m.split('.')[0].lower() not in installed}
     if not mods:
         print('  PASS  %s: invokes no python -m module (nothing to check)' % label)
         return
