@@ -1,0 +1,80 @@
+name: Build and publish the EQdyna docs site
+
+# board row 126: a MkDocs Material site built from docs/user/, published to
+# GitHub Pages on a tag push so each release publishes docs matching its
+# own code. On a pull request this workflow only BUILDS (--strict), the
+# same command a human runs locally before committing (see this repo's
+# CLAUDE.md gate) -- nothing is deployed until a tag actually lands.
+#
+# Deliberately separate from .github/workflows/test.yml, which a pending
+# branch owns (this workflow does not touch it), and from
+# .github/workflows/publish.yml, which also triggers on `push: tags: v*`
+# but publishes the Docker image to a different destination (GHCR) with
+# its own permissions (`packages: write`) -- the two jobs share a trigger,
+# not a target, and neither depends on or blocks the other.
+on:
+  pull_request:
+    paths:
+      - 'docs/user/**'
+      - '.github/workflows/docs.yml'
+  push:
+    tags:
+      - 'v*'
+
+# A push to a branch with an open PR fires both `pull_request` and (for a
+# tag) never `push` at the same time (tags are not branches), so unlike
+# test.yml's concurrency group this one only needs to de-duplicate within
+# each event kind.
+concurrency:
+  group: docs-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install MkDocs and the Material theme
+        run: pip install -r docs/user/requirements.txt
+
+      - name: Build the docs site (strict -- any warning fails the build)
+        run: mkdocs build --strict -f docs/user/mkdocs.yml
+
+      # PR runs stop here: build only, nothing deployed.
+      - name: Upload the built site as a workflow artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eqdyna-docs-site
+          path: docs/user-site
+          retention-days: 7
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/user-site
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v4
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

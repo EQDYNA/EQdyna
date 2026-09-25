@@ -60,3 +60,6 @@ relnotes_v*.md
 # testsys/perf/elem_scaling_last.json tracked: raw evidence behind measured_runs.md
 # (its harness was removed 2026-09-15 -- see that file's header)
 *.provenance
+# mkdocs build output (docs/user/mkdocs.yml's site_dir) -- a byproduct, never
+# tracked (rule 12).
+docs/user-site/
