@@ -216,8 +216,14 @@ def run_fortran_per_rank(binpath, case_dir, nranks):
                 os.symlink(src, dst)
     wrapper = os.path.join(case_dir, 'wrapper.sh')
     with open(wrapper, 'w') as f:
+        # Launcher-portable rank id: Open MPI sets OMPI_COMM_WORLD_RANK,
+        # mpich/hydra (the CI runner's MPI) sets PMI_RANK, Slurm SLURM_PROCID.
+        # No rank variable is a hard failure, never a shared directory.
         f.write('#!/bin/bash\n'
-                'cd %s/rank${OMPI_COMM_WORLD_RANK}\n'
+                'r=${OMPI_COMM_WORLD_RANK:-${PMI_RANK:-${SLURM_PROCID:-}}}\n'
+                'if [ -z "$r" ]; then echo "wrapper: no MPI rank variable '
+                '(OMPI_COMM_WORLD_RANK/PMI_RANK/SLURM_PROCID)" >&2; exit 97; fi\n'
+                'cd %s/rank$r || exit 98\n'
                 'exec %s\n' % (case_dir, binpath))
     os.chmod(wrapper, 0o755)
     r = subprocess.run([MPIRUN, '-np', str(nranks), wrapper], cwd=case_dir,
