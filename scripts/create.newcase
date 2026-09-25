@@ -46,7 +46,7 @@ def _main_func(description):
     env_var = os.environ
 
     shutil.rmtree(str(case_path), ignore_errors=True)
-    os.mkdir(str(case_path))
+    os.makedirs(str(case_path))   # parents too: `create.newcase ~/runs/tpv8` works in a fresh HOME
     
     eqdyna_root = env_var['EQDYNAROOT']
     input_path = eqdyna_root + '/case_input/' + str(compset) 
