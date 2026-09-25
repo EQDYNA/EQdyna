@@ -247,12 +247,49 @@ H6. The commit message's claim ("only the timestamp header differs") is
   H2 CONFIRMED for Fortran, field named as required: the `# date =`
   header line, nothing else.
 
-- 2026-09-25 T7: about to (a) write the formal regression test encoding
-  T4/T5/T6's harness + assertions, (b) register it in `testsys/ci_shard.py`,
-  (c) fix `test_row120_mpi_station_output.py`'s now-stale "station 11 is
-  dropped" assertion (T2) to assert the NEW behaviour (found by exactly
-  one rank) instead, (d) run the full required gate, (e) check
-  `test.reference.results/` stays clean (mission point 5), (f) commit.
+- 2026-09-25 T6d: wrote `testsys/regression/test_row127_station_ownership.py`
+  encoding T4/T5's harness (per-rank symlinked output dirs + `mpirun`
+  wrapper keyed on `OMPI_COMM_WORLD_RANK`) as a real, committed regression
+  test. Ran it fresh against THIS branch: **21/21 checks PASS** (file
+  counts 15/16, zero off-fault ownership violations both languages both
+  cases, Fortran per-rank map == Python per-rank map exactly, boundary
+  station owned by the same single rank in both languages, on-fault
+  duplicate hazard reproduces identically -- named, not a violation --
+  plus 3 mutation-shape sanity checks on synthetic data).
+
+  Then re-ran the test's OWN functions (`make_case`/`python_per_rank`/
+  `_run_one_case`/`_off_fault_only`/`_ownership_violations` -- imported
+  from the committed module, not reimplemented) against origin/master's
+  code, both languages (the T6 master Fortran binary; `sys.path`
+  rearranged so `from eqdyna import ...` resolves to a fresh
+  `git archive origin/master -- src/python` checkout instead of this
+  branch's). This is the actual "mutation-check against origin/master"
+  deliverable, done with the TEST'S OWN CODE rather than a hand replica:
+    - tpv8 (2,2,1): fortran AND python(master) both give 14 off-fault
+      files (expected 15) -- the file-count assertion FAILS; the
+      boundary-station-owner-count assertion FAILS (0 owners, not 1) on
+      both languages.
+    - synthetic corner (2,1,2): file count happens to still read 16 on
+      both languages, but `_ownership_violations` finds THREE files with
+      2 owners each on both languages -- `body005st000dp120.txt` (the
+      corner station under test) AND, newly discovered, its neighbours
+      `body030st120dp120.txt`/`body-030st120dp120.txt` (also on the same
+      shared x/z seam) -- so master's pre-fix code duplicates every
+      off-fault station on that seam, not just the one this mission
+      named. The "zero violations" and "single owner" assertions FAIL on
+      both languages.
+  CONFIRMED: this exact committed test, run against unfixed code, fails
+  in both the DROP shape and the DUPLICATE shape, in BOTH languages, using
+  the SAME functions the passing run above exercises -- not a
+  hypothetical, not a hand-argued case.
+
+- 2026-09-25 T7: remaining before the final gate: (a) register the new
+  test in `testsys/ci_shard.py`, (b) fix
+  `test_row120_mpi_station_output.py`'s now-stale "station 11 is dropped"
+  assertion (T2) to assert the NEW behaviour (found by exactly one rank)
+  instead, (c) run the full required gate, (d) check
+  `test.reference.results/` stays clean (mission point 5), (e) commit +
+  push.
 
 ## Findings summary (for the final report)
 
