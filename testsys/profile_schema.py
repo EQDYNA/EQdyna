@@ -65,6 +65,11 @@ it read 0.80 s of 15.40 s = 5.2% and failed master (run 36082084976) with physic
 well inside its bound. A 2 s floor admits that fixed overhead on a short run.
 It changes nothing for runs of 40 s and longer, where 5% already exceeds 2 s.
 A x511 bucket still moves the gap by orders of magnitude past either limit.
+Caveat (PR #28 audit): the 409 rows show the floor flips no committed verdict;
+they do not prove 2 s is the true overhead size. On a run of ~8-30 s it also
+masks a PARTIAL bucket error of 1-2 s that 5% alone would catch. No gated cell
+is that short today; a short fixture (1-step probe, reduced-term smoke) should
+not rely on this check to catch a partial accounting error.
 """
 import json
 import math
