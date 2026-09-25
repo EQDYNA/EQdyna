@@ -373,8 +373,45 @@ def check_91g_baseline_labelling():
           % (blabel, (note or '')[:80]))
 
 
+def check_91a_backfill_detects_shard_schema():
+    """Audit finding (PR #34): _rows_from_snapshot_file sent a shard-shaped
+    snapshot to rows_from_scaling_snapshot with the default tool, filing its
+    points as run_scaling. It must detect the shard schema."""
+    import json, tempfile
+    snapdir = os.path.join(ROOT, 'docs', 'perf_snapshots')
+    meta = dict(case='test.tpv8', sha='0000000', host='h', date='2026-09-25 00:00',
+                n_lo=5, n_hi=10, busy_ceiling=0.5, overridden=False,
+                fortran_quoted={}, element_baseline_n=1, skipped=[],
+                rows=[dict(n=1, mode='element', ms_per_step=10.0, n_lo=5, n_hi=10,
+                           cpus=[0], busy={'0': 0.0})])
+    fd, path = tempfile.mkstemp(suffix='.json', prefix='shard_test_', dir=snapdir)
+    try:
+        with os.fdopen(fd, 'w') as fh:
+            json.dump(meta, fh)
+        rows, _ = ledger._rows_from_snapshot_file(path)
+    finally:
+        os.remove(path)
+    tools = {r['tool'] for r in rows}
+    if tools != {'run_shard_scaling'}:
+        FAILURES.append('91a-backfill: shard snapshot backfilled as %r' % tools)
+        print('FAIL -- 91a-backfill: shard snapshot backfilled as %r, want run_shard_scaling' % tools)
+        return
+    bad = dict(meta['rows'][0]); bad.pop('mode')
+    try:
+        ledger.rows_from_scaling_snapshot(dict(meta, rows=[dict(bad, engine='python-jax')]),
+                                          'x', None, tool='run_shard_scaling')
+        FAILURES.append('91a-backfill: a shard row carrying engine was accepted')
+        print('FAIL -- 91a-backfill: a shard row carrying engine was accepted')
+        return
+    except ValueError:
+        pass
+    print('PASS -- 91a-backfill: a shard-schema snapshot backfills as tool=run_shard_scaling; '
+          'a shard row carrying engine is refused')
+
+
 CHECKS = [
     ('91a', check_91a_snapshot_naming_and_ledger),
+    ('91a-backfill', check_91a_backfill_detects_shard_schema),
     ('91-wall-clock', check_91_wall_clock_guard),
     ('91b', check_91b_nonpositive_raises),
     ('91c', check_91c_membind),
@@ -400,4 +437,5 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
 

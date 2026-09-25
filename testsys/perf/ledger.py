@@ -66,12 +66,14 @@ Row schema (one measurement = one line):
                     the equivalent per-tool busy read) the tool already
                     performed to decide whether to run the point at all
                     (row 92's busy_probe sampler), so the number on the row is
-                    the exact one the run was gated on. For a tool that pins
-                    no cpu set at all (run_e2e: unpinned cells), `cpus` is the
-                    whole-box cpu list box_tenancy already read and `busy`/
-                    `total` equal tenancy_busy/tenancy_total exactly -- for an
-                    unpinned process "the cpus the measurement used" IS the
-                    whole box, by construction, not a default.
+                    the exact one the run was gated on. It is always sampled
+                    BEFORE the measurement, never during it. Exceptions:
+                    run_mpi_scaling's fortran sub-row reuses its jax point's
+                    sample; run_jaxmpi_ab reuses one sample per rank count
+                    across arms. For run_e2e (unpinned cells) `cpus` is the
+                    whole-box list and the sample is box_tenancy read AFTER
+                    the sweep ends, so it describes the box at capture time,
+                    not the conditions any one cell ran under.
                     THIS RECORDS CONTENTION, IT DOES NOT CERTIFY COMPARABILITY
                     (rule 6a): a low `busy` count is not proof that two
                     absolute ms/step numbers from different repetitions are
@@ -798,10 +800,22 @@ def rows_from_scaling_snapshot(meta, snapshot, tenancy, backfilled_from=None,
                'python-jax': '%s pins JAX_PLATFORMS=cpu; jax cannot land on '
                              'a GPU under that pin' % tool}
     out = []
+    if tool not in ('run_scaling', 'run_shard_scaling'):
+        raise ValueError('rows_from_scaling_snapshot: tool %r is neither '
+                         'run_scaling nor run_shard_scaling' % tool)
     for r in meta['rows']:
         row = _base(meta, tool, snapshot, tenancy, backfilled_from)
-        engine = r.get('engine', 'python-jax')
-        policy = r.get('policy', r.get('mode'))
+        if tool == 'run_scaling':
+            # run_scaling always writes both; a missing one is a malformed
+            # snapshot, never defaulted (rule 2).
+            engine, policy = r['engine'], r['policy']
+        else:
+            # run_shard_scaling: every point is jax BY CONSTRUCTION of that
+            # tool, and its varying axis is `mode`; it has no placement policy.
+            if 'engine' in r or 'policy' in r:
+                raise ValueError('rows_from_scaling_snapshot: a run_shard_scaling '
+                                 'row carries engine/policy keys -- wrong tool?')
+            engine, policy = 'python-jax', None
         row.update(backend=engine, ranks=r['n'],
                    ms_per_step=r['ms_per_step'],
                    parallelism=_SCALING_PARALLELISM(engine),
@@ -1015,8 +1029,13 @@ def _rows_from_snapshot_file(snapshot_path):
         return rows_from_mpi_scaling_snapshot(meta, rel, None,
                                               backfilled_from=rel), rel
     if 'busy_ceiling' in meta and 'max_busy' not in meta:
-        return rows_from_scaling_snapshot(meta, rel, None,
-                                          backfilled_from=rel), rel
+        # run_shard_scaling's meta carries these two keys and run_scaling's
+        # never does (run_shard_scaling.py's `meta = dict(...)`); without this
+        # a backfill/reissue filed shard points as tool=run_scaling.
+        shard = 'element_baseline_n' in meta or 'fortran_quoted' in meta
+        return rows_from_scaling_snapshot(
+            meta, rel, None, backfilled_from=rel,
+            tool='run_shard_scaling' if shard else 'run_scaling'), rel
     raise SystemExit('FAIL: cannot tell which tool wrote %s (looked for '
                      'exactly one of max_busy/busy_ceiling); refusing to '
                      'guess a schema.' % snapshot_path)
