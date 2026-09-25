@@ -65,6 +65,7 @@ SHARDS = {
     "1": [
         "test_ci_dependencies.py",
         "test_ci_pr_policy_step.py",  # added 2026-09-23 (Iris, pr-enforce): parses test.yml, one subprocess, <1 s
+        "test_ci_push_trigger_filter.py",  # added 2026-09-24 (wei-lin, row 87): parses test.yml, <1 s
         "test_pr_policy_guard.py",  # added 2026-09-23 (Iris, pr-enforce): scratch git repo, no network, <1 s
         "test_prepush_pr_policy_guard.py",  # added 2026-09-23 (Iris, pr-enforce): bare remote + real pushes, ~1-2 s
         "test_dipping_fault_y_split.py",
@@ -152,6 +153,14 @@ SHARDS = {
                                  # subprocess-heavy scripts.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
+        "test_user_docs_commands.py",  # added 2026-09-25 (board row 126, docs
+                                 # site): reuses test_readme_commands.py's own
+                                 # checks over docs/user/**/*.md, filesystem
+                                 # and import checks only, well under 1 s.
+        "test_params_reference_freshness.py",  # added 2026-09-25 (board row
+                                 # 126, docs site): one AST parse of
+                                 # scripts/defaultParameters.py plus a string
+                                 # compare, well under 1 s.
         "test_user_docs_style.py",  # added 2026-09-24 (wei-lin, user-facing docs rule): pure text checks, <1 s
         "test_sweep_core_budget.py",
         "test_sweep_tenancy_budget_2026_09_23.py",

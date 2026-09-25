@@ -42,9 +42,13 @@ def readme():
     return open(README, errors='replace').read()
 
 
-def check_referenced_scripts_exist():
-    """Every repo-relative path README shows in a command must be present."""
-    text = readme()
+def check_referenced_scripts_exist(text=None, label='README.md'):
+    """Every repo-relative path README shows in a command must be present.
+
+    Parameterized (text/label) so a second guard covering docs/user/**/*.md
+    can call this same resolution logic against a different document instead
+    of re-implementing it; `text=None` (README.md's own use) is unchanged."""
+    text = readme() if text is None else text
     # paths that look like a script or module invocation in a command position
     paths = set(re.findall(r'(?:python3?\s+|bash\s+|\./)([\w./-]+\.(?:py|sh))', text))
     paths |= set(re.findall(r'`(testsys/[\w./-]+\.py)`', text))
@@ -54,14 +58,14 @@ def check_referenced_scripts_exist():
     missing = [p for p in sorted(paths)
                if not os.path.exists(os.path.join(ROOT, p))]
     if missing:
-        raise AssertionError('README names script(s) that do not exist: %r' % missing)
-    print('  PASS  %d referenced script path(s) all exist' % len(paths))
+        raise AssertionError('%s names script(s) that do not exist: %r' % (label, missing))
+    print('  PASS  %s: %d referenced script path(s) all exist' % (label, len(paths)))
 
 
-def check_tier_names_are_real():
-    """`testsys/run.py <tier>` -- every tier README names must be known to
-    run.py, or the user gets 'unknown tier'."""
-    text = readme()
+def check_tier_names_are_real(text=None, label='README.md'):
+    """`testsys/run.py <tier>` -- every tier a document names must be known
+    to run.py, or the user gets 'unknown tier'."""
+    text = readme() if text is None else text
     named = set(re.findall(r'run\.py\s+([a-z0-9\-]+)', text))
     named.discard('py')
     sys.path.insert(0, os.path.join(ROOT, 'testsys'))
@@ -73,21 +77,21 @@ def check_tier_names_are_real():
     unknown = sorted(named - known)
     if unknown:
         raise AssertionError(
-            'README names tier(s) run.py does not know: %r (known: %s)'
-            % (unknown, ', '.join(sorted(known))))
-    print('  PASS  %d tier name(s) named by README all exist: %s'
-          % (len(named), ', '.join(sorted(named))))
+            '%s names tier(s) run.py does not know: %r (known: %s)'
+            % (label, unknown, ', '.join(sorted(known))))
+    print('  PASS  %s: %d tier name(s) all exist: %s'
+          % (label, len(named), ', '.join(sorted(named))))
 
 
-def check_python_module_invocations_import():
+def check_python_module_invocations_import(text=None, label='README.md'):
     """`python3 -m <mod>` must be importable with src/python on the path.
 
     This is the check that would have caught `python -m eqdyna.standalone`.
     """
-    text = readme()
+    text = readme() if text is None else text
     mods = set(re.findall(r'python3?\s+-m\s+([\w.]+)', text))
     if not mods:
-        print('  PASS  README invokes no python -m module (nothing to check)')
+        print('  PASS  %s: invokes no python -m module (nothing to check)' % label)
         return
     env = dict(os.environ)
     env['PYTHONPATH'] = os.pathsep.join(
@@ -100,15 +104,20 @@ def check_python_module_invocations_import():
             bad.append((m, r.stderr.strip().splitlines()[-1] if r.stderr else '?'))
     if bad:
         raise AssertionError(
-            'README invokes python -m on module(s) that do not import: %s'
-            % '; '.join('%s (%s)' % b for b in bad))
-    print('  PASS  python -m module(s) importable: %s' % ', '.join(sorted(mods)))
+            '%s invokes python -m on module(s) that do not import: %s'
+            % (label, '; '.join('%s (%s)' % b for b in bad)))
+    print('  PASS  %s: python -m module(s) importable: %s' % (label, ', '.join(sorted(mods))))
 
 
-def check_optin_env_vars_are_documented():
-    """A tier that refuses without an env var must have that var in README
-    beside it, or the documented command simply fails."""
-    text = readme()
+def check_optin_env_vars_are_documented(text=None, label='README.md'):
+    """A tier that refuses without an env var must have that var documented
+    beside it, or the documented command simply fails.
+
+    Only enforced on a document that actually invokes the gated script (its
+    basename) or names its opt-in tier ('e2e-full') -- reused across many
+    docs/user pages, most of which never mention e2e-full at all, and a page
+    that never tells a user to run the script has nothing to fail here."""
+    text = readme() if text is None else text
     problems = []
     for script, var in (('testsys/e2e/run_e2e_full.py', 'EQDYNA_FULL_LAUNCH'),):
         p = os.path.join(ROOT, script)
@@ -116,24 +125,26 @@ def check_optin_env_vars_are_documented():
             continue
         if var not in open(p, errors='replace').read():
             continue                       # the script no longer gates on it
+        if os.path.basename(script) not in text and 'e2e-full' not in text:
+            continue                       # this doc never invokes it
         if var not in text:
             problems.append(
-                '%s refuses to run without %s, and README never mentions it'
-                % (script, var))
+                '%s refuses to run without %s, and %s never mentions it'
+                % (script, var, label))
     if problems:
         raise AssertionError('; '.join(problems))
-    print('  PASS  opt-in environment variables are documented in README')
+    print('  PASS  %s: opt-in environment variables are documented' % label)
 
 
-def check_compsets_named_by_readme_exist():
-    text = readme()
+def check_compsets_named_by_readme_exist(text=None, label='README.md'):
+    text = readme() if text is None else text
     names = set(re.findall(r'case_input/(test\.[\w.]+)', text))
     names |= set(re.findall(r'^\* (test\.[\w.]+)', text, re.M))
     missing = [n for n in sorted(names)
                if not os.path.isdir(os.path.join(ROOT, 'case_input', n))]
     if missing:
-        raise AssertionError('README names compset(s) that do not exist: %r' % missing)
-    print('  PASS  %d compset(s) named by README all exist' % len(names))
+        raise AssertionError('%s names compset(s) that do not exist: %r' % (label, missing))
+    print('  PASS  %s: %d compset(s) named all exist' % (label, len(names)))
 
 
 def main():
