@@ -243,7 +243,12 @@ STATION_ZERO_FLOOR = 1e-6
 # gated backends. Set from the MEASURED fortran-vs-python-jax spread under
 # this normalization with CASE_BOUND's headroom convention: the worst
 # observation times ~121.5x, rounded UP to the nearest bound already in use
-# (1e-10, 1e-8, 1e-6, 1e-5). Measured 2026-09-24 by the conductor on branch
+# (1e-10, 1e-8, 1e-6, 1e-5; 1e-7 is now also in use, see below). TIGHTENED 2026-09-24 (owner) for tpv8, tpv10,
+# tpv36 and tpv37, which that rounding had left ~10^4 above observed: those
+# four are now the next power of ten at or above 100x the worst spread seen
+# on ANY platform (tpv8's CI-runner jax cell reads 1.72e-10, run 36079252531,
+# vs 1.0e-10 locally), i.e. 1e-7. 1e-8 would leave only ~58x over what CI
+# already shows. Measured 2026-09-24 by the conductor on branch
 # wei/row114-station-output (the port rebased onto master 9444d9a, 22a sign
 # wired), `python3 testsys/run.py e2e` at load ~35, jax cells scored by
 # compare.station_gate itself against the fortran cells' own files -- the
@@ -252,16 +257,16 @@ STATION_ZERO_FLOOR = 1e-6
 # every-column spread: docs/perf_snapshots/station_spread_2026-09-24_
 # fortran_vs_jax.json. "floor" = the scale was STATION_ZERO_FLOOR-clamped.
 STATION_BOUND = {
-    'test.tpv8': 1e-6,       # 1.00e-10 (on v-slip-rate, dp120, floor) -> 1.2e-8
-    'test.tpv10': 1e-6,      # 1.98e-10 (on h-slip-rate, dp104, floor) -> 2.4e-8
+    'test.tpv8': 1e-7,       # 1.00e-10 local, 1.72e-10 CI runner (on v-slip-rate, dp120, floor)
+    'test.tpv10': 1e-7,      # 1.98e-10 (on h-slip-rate, dp104, floor)
     'test.tpv104': 1e-5,     # 3.25e-08 (on v-slip-rate, dp030, floor) -> 4.0e-6
     'test.tpv1053d': 1e-10,  # 3.06e-16 (on v-slip-rate, dp075, floor) -> 3.7e-14
     'test.meng2023a': 1e-8,  # 1.12e-11 (on v-slip-rate, dp036, floor) -> 1.4e-9
     'test.meng2023cb': 1e-8, # 9.53e-12 (on v-slip-rate, dp036, floor) -> 1.2e-9
     'test.tpv29': 1e-10,     # 4.06e-14 (on v-slip-rate, 170dp045) -> 4.9e-12
     'test.tpv30': 1e-10,     # 2.44e-13 (on v-slip-rate, 170dp045) -> 3.0e-11
-    'test.tpv36': 1e-6,      # 1.16e-10 (off h-vel, body010st000dp000) -> 1.4e-8
-    'test.tpv37': 1e-6,      # 1.16e-10 (off h-vel, body010st000dp000) -> 1.4e-8
+    'test.tpv36': 1e-7,      # 1.16e-10 (off h-vel, body010st000dp000)
+    'test.tpv37': 1e-7,      # 1.16e-10 (off h-vel, body010st000dp000)
     # drv.a6: the FORTRAN cell only (python-jax is STATION_UNSUPPORTED,
     # chaotic). Observed 0.0 -- 4-rank Fortran is deterministic against its
     # own reference -- so the smallest bound in use, 1e-10.
