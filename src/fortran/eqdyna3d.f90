@@ -80,7 +80,7 @@ program EQdyna
 
     if (me == masterProcsId) then 
         write(*,*) '====================================================================='
-        write(*,*) '==================   Welcome to EQdyna 5.18.0 ======================='
+        write(*,*) '==================   Welcome to EQdyna 5.18.1 ======================='
         write(*,*) '==================   (src ', srcStampTag(18:29), ')   =========================='
         write(*,*) '===== Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>           ====' 
         write(*,*) '====    & Dunyu Liu <dliu@ig.utexas.edu> under MIT License.      ===='
