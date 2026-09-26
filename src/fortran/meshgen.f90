@@ -1111,10 +1111,14 @@ do iFault = 1, ntotft
         endif             
 
         ! setOnFaultStation -- gated (row 131) so a fault node on a shared
-        ! x or z seam is claimed for STATION OUTPUT by exactly one rank
+        ! x, y or z seam is claimed for STATION OUTPUT by exactly one rank
         ! (the lower-MPI-coordinate side), while still creating its own
         ! full split-node pair above, unconditionally, on both ranks.
+        ! The y term matters when an npy boundary lands ON the fault plane
+        ! (checkFaultMPIAlignment's DUPLICATE case): both ranks then hold
+        ! every fault node, and without it both write every faultst* file.
         isOnFaultStationOwner = .not. ((nodeXyzIndex(1)==1 .and. mex/=0) .or. &
+                                        (nodeXyzIndex(2)==1 .and. mey/=0) .or. &
                                         (nodeXyzIndex(3)==1 .and. mez/=0))
         if (isOnFaultStationOwner) then
         do i = 1, nonfs(iFault)

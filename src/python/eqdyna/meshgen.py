@@ -1745,8 +1745,11 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
                     # STATION record. Same ownership rule as the off-fault
                     # x/z gates above: the lower-MPI-coordinate rank of a
                     # seam pair owns it.
+                    # y too (row 131 audit): an npy boundary ON the fault
+                    # plane gives both ranks every fault node.
                     is_onfault_station_owner = not (
-                        (ix == 0 and mex != 0) or (iz == 0 and mez != 0))
+                        (ix == 0 and mex != 0) or (iy == 0 and mey != 0) or
+                        (iz == 0 and mez != 0))
                     if is_onfault_station_owner:
                         for i in range(1, n_onf + 1):
                             if (abs(xcoor - xonfs[0, i - 1]) < tol and

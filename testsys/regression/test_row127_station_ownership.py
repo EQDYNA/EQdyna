@@ -387,6 +387,49 @@ def main():
             if python_on_violations:
                 print('  python  on-fault violations:', python_on_violations)
 
+        # Row 131 audit (PR #41): an npy boundary ON the fault plane
+        # (checkFaultMPIAlignment's DUPLICATE case) gives BOTH ranks every
+        # fault node. With an x/z-only gate both wrote every faultst* file.
+        # Reuse test_fault_mpi_boundary_arn's hand-built symmetric-y case at
+        # (1,2,1), and check against the serial run's file set via
+        # `expected`, so a station written by ZERO ranks is caught as well
+        # as a duplicate.
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location(
+            'arn_case', os.path.join(ROOT, 'testsys', 'regression',
+                                     'test_fault_mpi_boundary_arn.py'))
+        _arn = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_arn)
+        yseam = {}
+        for dims in ((1, 1, 1), (1, 2, 1)):
+            d = os.path.join(tmp, 'yseam-%dx%dx%d' % dims)
+            make_case(d, 'test.tpv8', dims, None)
+            with open(os.path.join(d, 'user_defined_params.py'), 'w') as f:
+                f.write(_arn.USER_PARAMS.replace('__NX__', str(dims[0]))
+                        .replace('__NY__', str(dims[1]))
+                        .replace('__NZ__', str(dims[2])))
+            r = subprocess.run([sys.executable, 'case.setup'], cwd=d,
+                               env=_env(), capture_output=True, text=True)
+            if r.returncode != 0:
+                raise RuntimeError('y-seam case.setup failed: %s'
+                                   % (r.stderr or '')[-800:])
+            n = dims[0] * dims[1] * dims[2]
+            on = lambda m: {k: {f for f in v if f.startswith('faultst')}
+                            for k, v in m.items()}
+            yseam[dims] = (on(run_fortran_per_rank(binpath, d, n)),
+                           on(python_per_rank(d, n, dims)))
+        serial_names = set().union(*yseam[(1, 1, 1)][0].values())
+        checks.append(('y-seam on fault: serial run writes on-fault files',
+                       len(serial_names) > 0, True))
+        for lang, idx in (('fortran', 0), ('python', 1)):
+            v = _ownership_violations(yseam[(1, 2, 1)][idx], expected=serial_names)
+            checks.append(('y-seam on fault (1,2,1): every serial on-fault file '
+                           'has exactly one owner (%s)' % lang, len(v) == 0, True))
+            if v:
+                print('  y-seam %s on-fault violations:' % lang, v)
+        checks.append(('y-seam on fault (1,2,1): fortran per-rank map == python',
+                       yseam[(1, 2, 1)][0] == yseam[(1, 2, 1)][1], True))
+
         # MUTATION CHECK (rule 10a): corrupt real data two ways and assert
         # the checker catches both shapes origin/master fails in (recorded
         # by hand, docs/notes/NOTES_row127.md "T6"): a DROP (the boundary

@@ -270,3 +270,24 @@ H7. Full gate (unit+regression, e2e fortran+python-jax on 4 cases,
    the SAME function real callers use, not a hand-rolled set difference.
 4. Full gate green: unit+regression, 8/8 e2e cells (fortran+python-jax x
    4 cases), 1/1 python-jax-mpi cell, `test.reference.results/` untouched.
+
+## Correction (PR #41 audit, 2026-09-25)
+
+The "No y-gate" reasoning above was wrong. y is constant ON the fault, but
+what causes the hazard is which RANKS hold the node. When an npy boundary
+lands on the fault plane (checkFaultMPIAlignment's DUPLICATE case, and
+test_fault_mpi_boundary_arn's symmetric-y (1,2,1) case), both ranks build
+every fault node, and with an x/z-only gate both wrote every `faultst*`
+file.
+
+Reproduced before the fix: `faultst000dp000.txt` written by ranks 0 and 1,
+in both languages. The gate now also has `(nodeXyzIndex(2)==1 .and. mey/=0)`
+in Fortran and `(iy == 0 and mey != 0)` in Python. After the fix, rank 0
+alone writes it, and Fortran == Python.
+
+`test_row127_station_ownership.py` now runs that y-seam case against the
+serial run's file set. Because it passes `expected=`, a station written by
+zero ranks fails too. The mutation check (drop the y term in both languages)
+turns both "exactly one owner" checks red.
+
+Scope of "FIXED" in item 1 below: x, y and z seams.
