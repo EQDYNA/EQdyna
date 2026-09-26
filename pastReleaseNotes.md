@@ -1,6 +1,18 @@
 # Past release notes\
 
 # News in 2026
+* 20260925 v5.18.0 release notes
+  * Change - **`--device auto` removed from the CLI** (PR #33). The default device is CPU; pass `--device cuda` for a GPU. `auto` and `gpu` are refused by name, with a hint. Migration: drop `--device auto` for CPU, or pass `--device cuda`.
+  * Fix - **off-fault station depth now snaps to the nearest mesh node inside the physical, non-PML band** (PR #30): a station previously dropped at coarse resolution is now written, up to half a cell from the requested depth (measured <=200 m at the 500 m gate grid). The station header records the ACTUAL node location. The same change adds a new exit code for a mesh grid line that exceeds its fixed-size buffer.
+  * Fix - **every off-fault station now has exactly one owner rank across MPI seams** (PR #38): a y-seam drop and an x/z-seam duplicate write are both fixed, in Fortran and Python.
+  * New - **python-jax-mpi now writes station files** (PR #37).
+  * Fix - **station n-stress sign now follows each case's own SCEC spec convention rather than a single global sign** (PR #20). The Python solver now exits with a distinct code on an invalid station n-stress sign, matching Fortran; FATAL error messages point to `docs/user/troubleshooting.md` for what each exit code means (PR #39).
+  * New - **python-jax-mpi uses a 3D box decomposition with a rank-local mesh** (PR #19).
+  * New - **a user documentation site is published on every tagged release**, at https://eqdyna.github.io/EQdyna/ (PR #35).
+  * Change - **README rewritten to one page**; detail moved to `docs/user/` (PRs #31, #36).
+  * Fix - **`create.newcase` creates parent directories** when the target run directory's parent does not yet exist (PR #36).
+  * Known limitation - **on-fault station files can still be written by two ranks on a shared x/z fault seam**; the fix is pending.
+
 * 20260924 v5.17.0 release notes
   * New - **test.tpv30 gated** at the one 5 s term, dx=500 m, fortran + python-jax (owner decision; PR #5 -> `567e723`). Reference `51b7649` (rule 7), byte-identical to an independent 5 s Fortran run (sha256 `74196027...`), retiring the 20 s reference `642f119`. Bound 1e-10; observed python-jax 1.909216e-14 at 5 s (~5200x headroom).
   * Fix - **the port never gave a PML node its own elements' gravity** (`e1888e7`): at the full 20 s term the divergence from Fortran was 4.0e+08 Pa before the fix and 5.2e-14 after. At the 5 s gate term, with the fix reverted, the test.tpv30 cell reads 1.202240e+08 against the 1e-10 bound, so today's gate would catch this defect.
