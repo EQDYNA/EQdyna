@@ -57,14 +57,15 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 24. A release tag requires a committed local sweep at the exact SHA, not only green CI.
 25. `src/`, `testsys/`, and `.github/` reach master only through a merged pull request; everything else may still push direct.
 26. User-facing docs are written for users.
+27. Release cadence: ship within a week or 10 PRs of a physics or output change, whichever comes first.
 
 Count, stated so a heading-shape grep does not undercount it again (that
-undercount happened twice in one night, 2026-09-21/22): 26 numbered rules
-(1-26) plus twenty-nine lettered sub-rules (1a, 2a, 3a, 3b, 3c, 4a, 4b, 4c,
+undercount happened twice in one night, 2026-09-21/22): 27 numbered rules
+(1-27) plus twenty-nine lettered sub-rules (1a, 2a, 3a, 3b, 3c, 4a, 4b, 4c,
 4d, 4e, 5a, 5b, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 15f, 20a, 20b, 20c,
-21a, 21b, 21c, 21d, 21e) — 55 `## ` headings total. Verify:
-`grep -c '^## ' PROJECT_RULES.md` reads 55; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
-(numbered rules only, no letter suffix) reads 26.
+21a, 21b, 21c, 21d, 21e) — 56 `## ` headings total. Verify:
+`grep -c '^## ' PROJECT_RULES.md` reads 56; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
+(numbered rules only, no letter suffix) reads 27.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
 the count from heading shape alone.
@@ -1617,6 +1618,25 @@ still run whatever binary happens to be present, unchecked; CI shards call
 `ci_shard.py`, not `run.py`, so this guard governs the binary CI downloads,
 not those other paths. Extending the stamp check to them is unscheduled.
 
+**Third incident, 2026-09-25 (pathway item 127, PR #38, `18c5740`).** A
+regression test that drives a real MPI launch is itself part of what has to
+port across environments, not only the code under test. The row-127
+station-ownership test recovered its own rank inside the launched job by
+reading `OMPI_COMM_WORLD_RANK` — a variable Open MPI sets and mpich does
+not. It passed on this development box (Open MPI) and failed on CI's mpich
+runner with no such variable present: the same "green here, red on CI's
+different environment" shape rule 16 already names for scipy (v5.6.0) and
+the 7 GB runner ceiling (v5.7.0), this time in the test harness rather than
+in `src/`. Fixed by reading whichever of `OMPI_COMM_WORLD_RANK`, `PMI_RANK`,
+or `SLURM_PROCID` is actually set, in that order; the test passed 21/21 on
+CI's mpich runner afterward.
+
+**How to apply, extended**: a regression test that launches or introspects
+a real MPI job must not assume one MPI implementation's rank-reporting
+environment variable. Read whichever of `OMPI_COMM_WORLD_RANK`, `PMI_RANK`,
+or `SLURM_PROCID` is set, and treat CI's mpich runner — not this box's Open
+MPI — as the portability target this rule exists to gate against.
+
 ---
 
 ## 17. Reviving or adding a TPV benchmark
@@ -2974,15 +2994,99 @@ cites a PR, a SHA, a rule, an agent, or a `file:line`, it belongs in
 internal-reference content out the same way, in the same change that trims
 it.
 
-**Tier**: mixed. The FORMAT half is MECHANICAL since 2026-09-25:
+**Tier: mechanical, both halves, corrected 2026-09-25.** The FORMAT half:
 `testsys/regression/test_user_docs_style.py` (PR #31, pathway item 124,
 closed) checks, per covered file, heading shape (one `H1`), an
 internal-reference pattern list (SHA regex, `#\d+` PR-number pattern,
 `file\.\w+:\d+`, known agent names), and `README.md`'s line count. The
-ACCURACY/FOLLOWABILITY half added above is UNENFORCEABLE today: it needs
-`testsys/regression/test_readme_executes.py` (pathway item 128, not yet
-built) — a test that executes the README verbatim, in order, in a fresh
-clone, as non-root, with no pre-set `PYTHONPATH`/`EQDYNAROOT`, through
-install, quick start (one case at the gate term) and viewing a result;
-documented root/apt and hours-long exceptions aside, mutation-tested so an
-erroring README step fails it.
+ACCURACY/FOLLOWABILITY half, previously recorded here as UNENFORCEABLE, is
+now MECHANICAL too: `testsys/regression/test_readme_executes.py` (PR #36,
+`2cbb6d9`, pathway item 128, closed) executes the README verbatim, in
+order, in a fresh clone, as non-root, with no pre-set
+`PYTHONPATH`/`EQDYNAROOT`, through install, quick start (one case at the
+gate term) and viewing a result; documented root/apt and hours-long
+exceptions aside, mutation-tested so an erroring README step fails it. A
+FAST subset of it runs inside `python3 testsys/run.py unit regression`; the
+FULL gate is `EQDYNA_README_GATE=full python3 testsys/run.py readme`,
+which `python3 testsys/run.py release` also runs. This line was itself
+stale for the length of pathway item 130 (2026-09-25): it kept calling this
+half unenforceable and citing item 128 as "not yet built" after PR #36 had
+already landed it — a reminder that this Tier line has to be re-read, not
+assumed, every time the test it cites changes state.
+
+---
+
+## 27. Release cadence: ship within a week or 10 PRs of a physics or output change, whichever comes first
+
+Owner, 2026-09-25: *"release as soon as a physics or output change lands, or
+at the latest after a week or ~10 PRs, whichever comes first."* A release is
+DUE the moment a physics-or-output change (defined below) has landed since
+the last tag, AND either 7 days have passed since that tag or 10 PRs have
+merged since it — whichever trips first. Below that trigger nothing is
+owed: a docs-only, board-only, or perf-only stretch never forces a release,
+however long it runs or however many PRs it takes.
+
+**A "physics or output change", checkably, is any of:**
+
+1. A merged commit whose diff touches `src/fortran/` or
+   `src/python/eqdyna/`, EXCLUDING a file whose entire diff is comment lines
+   (Fortran `!`-lines, Python `#`-lines or docstring text) or blank-line-only
+   changes — and a diff the exclusion cannot classify counts IN, never out
+   (rule 2: a check that cannot tell fails toward "yes", not toward silence).
+2. Any change to an output writer or its format: `src/fortran/library_output.f90`,
+   `src/python/eqdyna/library_output.py`, or any file defining the `frt`/
+   station/`nc` file layout.
+3. Any change under `test.reference.results/` — a reference only moves when
+   the physics or the format it encodes moved (rule 7), so its own movement
+   is evidence of exactly the change this rule watches for.
+
+**The guard, `testsys/regression/check_release_due.py`** (spec; not yet
+built — see `pathway_forward.md` item 133): reads the last tag
+(`git describe --tags --abbrev=0`), that tag's date (`git log -1
+--format=%cI <tag>`), the number of merged PRs since it (unique `(#NNN)`
+trailers over `git log --oneline <tag>..HEAD`), and whether criterion 1/2/3
+above matches any file changed since that tag. It prints exactly one of two
+lines — `RELEASE DUE: <reason>, <n> PRs / <d> days since <tag>` or `release
+not due: <n> PRs / <d> days since <tag>, physics/output change since tag:
+<yes/no>` — and always exits 0: it is advisory, never a gate, the same
+contract rule 4d's blocking-precondition probe uses for a claim nobody
+should be able to silently trust past its own re-measurement.
+
+**It runs as a board-row Command (rule 14), never as a regression-tier
+check.** Rule 15b/24 already settled this shape once, for a different
+signal: duplicating a project-wide check into the fast tier so it fires on
+every `src/` PR is the mistake CI's old full sweep made, and this guard
+would read DUE on most ordinary days under this project's current PR
+rate — a standing red that trains a reader to stop looking at it, exactly
+rule 3a's own argument turned against itself. Cutting a release is a human
+act (rule 15); "owed" is a standing claim to re-check on a schedule, which
+is what the board, not the tier, is for. The board row's `Command` is this
+script, re-checked whenever anyone reads the board's Open Work section, at
+least weekly — never on every commit, and never something that blocks a
+merge.
+
+**Rationale**: between v5.17.0 (2026-09-24) and this rule's writing
+(2026-09-25) — about one calendar day — 31 PRs merged (#8–#38), at least
+five of them physics- or output-changing by the definition above: #19
+(jax-MPI 3D box decomposition), #20 (station n-stress sign convention), #30
+(off-fault station depth clamp), #37/#38 (jax-MPI and Fortran/Python station
+ownership). Both thresholds this rule states — 10 PRs, 7 days — were
+already exceeded before this rule existed to notice either, because nothing
+counted.
+
+**How to apply**: when the board's Command reads `RELEASE DUE`, the next
+action is rule 15's release workflow (rule 24's sweep, rule 25's PR
+sequencing, rule 15f's four-push order) — not a further deferral, unless the
+owner explicitly holds it, written down the way rule 4d requires a blocking
+precondition to be written down rather than assumed. A `RELEASE DUE` reading
+never blocks a merge and never makes an in-flight PR non-compliant with
+anything; it is read by whoever is about to open the next PR or looks at the
+board, the same as any other row.
+
+**Tier: mechanical for the count and the physics/output detection once
+`check_release_due.py` lands; a norm for what happens after it reports.**
+Each of its three numbers (PR count, days, physics/output yes/no) is
+independently scriptable off `git log`/`git describe` and will carry its own
+guard when built. Whether anyone actually reads the board and starts the
+release is not something a check in this repository can see — the same
+limit rule 21d and 21e already state for a dispatch.

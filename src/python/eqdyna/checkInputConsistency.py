@@ -51,6 +51,7 @@ class InputConsistencyError(RuntimeError):
 ERR_CFG_Q_NEEDS_ELASTIC = 11   # C_Q=1 requires C_elastic=1
 ERR_CFG_Q_NEEDS_UNIFORM = 12   # C_Q=1 requires rat=1.0 (uniform elements)
 ERR_CFG_PLASTIC_OUTPUT = 13    # output_plastic=1 requires C_elastic=0
+ERR_CFG_NSTRESS_SIGN_INVALID = 15  # bGlobal.txt's station n-stress sign is neither +1 nor -1 (raised by readInputFiles.read_bglobal)
 
 # C_Q is never a case-input field (see module docstring) -- hardcoded here
 # exactly as globalvar.f90:104 hardcodes its default, never overridden by
