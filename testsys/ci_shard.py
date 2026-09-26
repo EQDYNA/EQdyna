@@ -176,6 +176,12 @@ SHARDS = {
                                  # per-rank output directories, plus 8
                                  # in-process build_solver_state calls --
                                  # measured ~9.5 s total.
+        "test_row132_axis_too_thin.py",  # added 2026-09-25 (mira-volkov, row
+                                 # 132(1) axis-too-thin guard): shares
+                                 # test_row127's incremental src/fortran
+                                 # build; one ~20-line standalone program
+                                 # compile+link (no mpirun) + one Python
+                                 # call -- sub-second beyond the shared build.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
         "test_user_docs_commands.py",  # added 2026-09-25 (board row 126, docs

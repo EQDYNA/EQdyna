@@ -1733,11 +1733,29 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
                                 p['fymin'], p['fymax'], p['fzmin'], p['fzmax'],
                                 tol, p['C_degen'], dx_for_fault):
                     fault_seq += 1
-                    for i in range(1, n_onf + 1):
-                        if (abs(xcoor - xonfs[0, i - 1]) < tol and
-                                abs(zcoor - xonfs[1, i - 1]) < tol):
-                            anonfs.append((fault_seq, i, 1))
-                            break
+                    # Row 131: on-fault station matching is a single exact-
+                    # value test with no ix/iz gate at all, so a fault node
+                    # sitting exactly on a shared x seam (npx>1) or z seam
+                    # (npz>1) -- present on BOTH ranks via the one-node
+                    # overlap every axis has (same fact row 127 used) -- is
+                    # matched, and its faultst* file written, by both. This
+                    # does not touch fault_seq (every rank still needs its
+                    # own local split-node numbering for the solve/frt
+                    # output); it only gates who additionally claims the
+                    # STATION record. Same ownership rule as the off-fault
+                    # x/z gates above: the lower-MPI-coordinate rank of a
+                    # seam pair owns it.
+                    # y too (row 131 audit): an npy boundary ON the fault
+                    # plane gives both ranks every fault node.
+                    is_onfault_station_owner = not (
+                        (ix == 0 and mex != 0) or (iy == 0 and mey != 0) or
+                        (iz == 0 and mez != 0))
+                    if is_onfault_station_owner:
+                        for i in range(1, n_onf + 1):
+                            if (abs(xcoor - xonfs[0, i - 1]) < tol and
+                                    abs(zcoor - xonfs[1, i - 1]) < tol):
+                                anonfs.append((fault_seq, i, 1))
+                                break
     return anonfs, off_fault_matches, z_valid
 
 

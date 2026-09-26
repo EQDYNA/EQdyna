@@ -271,19 +271,29 @@ def _off_fault_only(rank_files):
             for r, files in rank_files.items()}
 
 
-def _ownership_violations(rank_files):
+def _ownership_violations(rank_files, expected=None):
     """The ONE check this guard is built on: every filename across every
     rank's set must appear in EXACTLY ONE rank. Returns a dict
     {filename: [owning ranks]} for every filename that appears 0 or >1
-    times (0 is impossible to observe this way -- a name that appears
-    nowhere is simply absent -- so in practice this reports >1; the
-    MUTATION check below exercises the 0-owner shape by comparing
-    EXPECTED names against the observed set instead)."""
+    times. Without `expected`, a 0-owner name is invisible (a name that
+    appears nowhere is simply absent from `rank_files`) -- so the real
+    per-case checks below, which have no independent "expected" list, only
+    ever see the >1 (DUPLICATE) shape through this function, by
+    construction. When `expected` (a set of filenames the caller knows
+    SHOULD have been produced) is given, any name in it that owns zero
+    ranks is ALSO reported here, as `name: []` -- this is what lets the
+    0-owner (DROP) shape be observed through this SAME function instead of
+    a separate hand-rolled set-difference (row 132(2))."""
     owners = {}
     for r, files in rank_files.items():
         for f in files:
             owners.setdefault(f, []).append(r)
-    return {f: rs for f, rs in owners.items() if len(rs) != 1}
+    violations = {f: rs for f, rs in owners.items() if len(rs) != 1}
+    if expected is not None:
+        for f in expected:
+            if f not in owners:
+                violations[f] = []
+    return violations
 
 
 def _run_one_case(spec, binpath, tmp):
@@ -350,21 +360,75 @@ def main():
             checks.append(('%s: boundary station owned by the SAME rank in both languages'
                            % label, f_owner == p_owner, True))
 
-            # Point 4: on-fault has NO drop gap but DOES carry a pre-existing,
-            # untouched duplicate hazard -- assert it happens, identically,
-            # in both languages (a KNOWN fact, like test_row120's own DROP
-            # assertion), so a future accidental fix to setOnFaultStation
-            # is noticed here rather than silently changing this test's
-            # meaning.
-            fortran_on_violations = _ownership_violations(
-                {r: {f for f in files if f.startswith('faultst')}
-                 for r, files in fortran_ranks.items()})
-            python_on_violations = _ownership_violations(
-                {r: {f for f in files if f.startswith('faultst')}
-                 for r, files in python_ranks.items()})
-            checks.append(('%s: on-fault duplicate hazard reproduces IDENTICALLY '
-                           'in both languages (point 4, pre-existing, not fixed here)'
-                           % label, fortran_on_violations == python_on_violations, True))
+            # Row 131: on-fault matching now carries the SAME x/z ownership
+            # gate as off-fault (row 127) -- assert EXACTLY ONE owner per
+            # faultst* file, in both languages, not merely "both languages
+            # agree" (that equality would pass vacuously if both sides
+            # still duplicated the SAME way, which is exactly the shape
+            # this row closes -- before the fix this assertion read "on-
+            # fault duplicate hazard reproduces IDENTICALLY in both
+            # languages" and PASSED on the hazard; a fix that broke only
+            # one language would have shown up there only as an inequality,
+            # not as a violation count).
+            fortran_on = {r: {f for f in files if f.startswith('faultst')}
+                          for r, files in fortran_ranks.items()}
+            python_on = {r: {f for f in files if f.startswith('faultst')}
+                         for r, files in python_ranks.items()}
+            fortran_on_violations = _ownership_violations(fortran_on)
+            python_on_violations = _ownership_violations(python_on)
+            checks.append(('%s: zero on-fault ownership violations (fortran)'
+                           % label, len(fortran_on_violations) == 0, True))
+            checks.append(('%s: zero on-fault ownership violations (python)'
+                           % label, len(python_on_violations) == 0, True))
+            checks.append(('%s: fortran per-rank map == python per-rank map (on-fault)'
+                           % label, fortran_on == python_on, True))
+            if fortran_on_violations:
+                print('  fortran on-fault violations:', fortran_on_violations)
+            if python_on_violations:
+                print('  python  on-fault violations:', python_on_violations)
+
+        # Row 131 audit (PR #41): an npy boundary ON the fault plane
+        # (checkFaultMPIAlignment's DUPLICATE case) gives BOTH ranks every
+        # fault node. With an x/z-only gate both wrote every faultst* file.
+        # Reuse test_fault_mpi_boundary_arn's hand-built symmetric-y case at
+        # (1,2,1), and check against the serial run's file set via
+        # `expected`, so a station written by ZERO ranks is caught as well
+        # as a duplicate.
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location(
+            'arn_case', os.path.join(ROOT, 'testsys', 'regression',
+                                     'test_fault_mpi_boundary_arn.py'))
+        _arn = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_arn)
+        yseam = {}
+        for dims in ((1, 1, 1), (1, 2, 1)):
+            d = os.path.join(tmp, 'yseam-%dx%dx%d' % dims)
+            make_case(d, 'test.tpv8', dims, None)
+            with open(os.path.join(d, 'user_defined_params.py'), 'w') as f:
+                f.write(_arn.USER_PARAMS.replace('__NX__', str(dims[0]))
+                        .replace('__NY__', str(dims[1]))
+                        .replace('__NZ__', str(dims[2])))
+            r = subprocess.run([sys.executable, 'case.setup'], cwd=d,
+                               env=_env(), capture_output=True, text=True)
+            if r.returncode != 0:
+                raise RuntimeError('y-seam case.setup failed: %s'
+                                   % (r.stderr or '')[-800:])
+            n = dims[0] * dims[1] * dims[2]
+            on = lambda m: {k: {f for f in v if f.startswith('faultst')}
+                            for k, v in m.items()}
+            yseam[dims] = (on(run_fortran_per_rank(binpath, d, n)),
+                           on(python_per_rank(d, n, dims)))
+        serial_names = set().union(*yseam[(1, 1, 1)][0].values())
+        checks.append(('y-seam on fault: serial run writes on-fault files',
+                       len(serial_names) > 0, True))
+        for lang, idx in (('fortran', 0), ('python', 1)):
+            v = _ownership_violations(yseam[(1, 2, 1)][idx], expected=serial_names)
+            checks.append(('y-seam on fault (1,2,1): every serial on-fault file '
+                           'has exactly one owner (%s)' % lang, len(v) == 0, True))
+            if v:
+                print('  y-seam %s on-fault violations:' % lang, v)
+        checks.append(('y-seam on fault (1,2,1): fortran per-rank map == python',
+                       yseam[(1, 2, 1)][0] == yseam[(1, 2, 1)][1], True))
 
         # MUTATION CHECK (rule 10a): corrupt real data two ways and assert
         # the checker catches both shapes origin/master fails in (recorded
@@ -379,9 +443,15 @@ def main():
                        'a.txt' in _ownership_violations(dup), True))
         dropped = {0: {'b.txt'}, 1: {'c.txt'}}  # 'a.txt' vanished from every rank
         expected_names = {'a.txt', 'b.txt', 'c.txt'}
-        observed_names = set().union(*dropped.values())
-        checks.append(('MUTATION: drop is CAUGHT (expected-vs-observed name set)',
-                       expected_names - observed_names == {'a.txt'}, True))
+        # Row 132(2): this used to compute `expected_names - observed_names`
+        # by hand, never calling `_ownership_violations` at all -- tautological,
+        # it proved python set arithmetic works, not that the guard function
+        # can see a drop. Now it calls the SAME function real callers use,
+        # with `expected` supplied so the 0-owner name is observable through
+        # it (see that function's docstring).
+        drop_violations = _ownership_violations(dropped, expected=expected_names)
+        checks.append(('MUTATION: drop is CAUGHT (via _ownership_violations)',
+                       drop_violations.get('a.txt') == [], True))
 
         for label, got, expect_pass in checks:
             ok = (got is True) == expect_pass
