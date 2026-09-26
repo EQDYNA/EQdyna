@@ -92,7 +92,9 @@ def main():
         git('log', '-1', '--format=%cI', tag).strip())
     days = (datetime.datetime.now(datetime.timezone.utc) - tag_date).days
     subjects = git('log', '--format=%s', '%s..HEAD' % tag)
-    prs = len(set(re.findall(r'\(#(\d+)\)', subjects)))
+    # squash subjects end '(#NN)'; a real merge commit says 'Merge pull request #NN'
+    prs = len(set(re.findall(r'\(#(\d+)\)', subjects))
+              | set(re.findall(r'Merge pull request #(\d+)', subjects)))
 
     reasons = []
     for path in [p for p in git('diff', '--name-only', '%s..HEAD' % tag).splitlines() if p]:

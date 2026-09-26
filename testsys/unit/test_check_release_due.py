@@ -70,3 +70,37 @@ def test_script_prints_one_line_and_exits_zero():
     lines = [l for l in r.stdout.splitlines() if l.strip()]
     assert len(lines) == 1, r.stdout
     assert lines[0].startswith(('RELEASE DUE:', 'release not due:')), lines[0]
+
+
+def _run_main(monkeypatch, capsys, days, subjects, files):
+    import datetime
+    tag_date = (datetime.datetime.now(datetime.timezone.utc)
+                - datetime.timedelta(days=days)).isoformat()
+    def fake_git(*a):
+        if a[0] == 'describe':
+            return 'vX\n'
+        if a[0] == 'log' and '--format=%cI' in a:
+            return tag_date + '\n'
+        if a[0] == 'log':
+            return subjects
+        if a[0] == 'diff' and '--name-only' in a:
+            return '\n'.join(files) + '\n'
+        return _diff(['x = 1'], ['x = 2'])
+    monkeypatch.setattr(crd, 'git', fake_git)
+    assert crd.main() == 0
+    return capsys.readouterr().out.strip()
+
+
+def test_due_needs_a_physics_change_and_a_tripped_threshold(monkeypatch, capsys):
+    code = ['src/fortran/fric.f90']
+    ten = ''.join('fix (#%d)\n' % n for n in range(10))
+    assert _run_main(monkeypatch, capsys, 0, ten, code).startswith('RELEASE DUE')
+    assert _run_main(monkeypatch, capsys, 7, 'x (#1)\n', code).startswith('RELEASE DUE')
+    assert _run_main(monkeypatch, capsys, 6, 'x (#1)\n', code).startswith('release not due')
+    assert _run_main(monkeypatch, capsys, 30, ten, ['docs/a.md']).startswith('release not due')
+
+
+def test_merge_commit_subjects_count_as_prs(monkeypatch, capsys):
+    subs = ''.join('Merge pull request #%d from x/y\n' % n for n in range(10))
+    assert _run_main(monkeypatch, capsys, 0, subs,
+                     ['src/fortran/fric.f90']).startswith('RELEASE DUE')
