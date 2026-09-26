@@ -6,7 +6,7 @@
   * Fix - **off-fault station depth now snaps to the nearest mesh node inside the physical, non-PML band** (PR #30): a station previously dropped at coarse resolution is now written, up to half a cell from the requested depth (measured <=200 m at the 500 m gate grid). The station header records the ACTUAL node location. The same change adds a new exit code for a mesh grid line that exceeds its fixed-size buffer.
   * Fix - **every off-fault station now has exactly one owner rank across MPI seams** (PR #38): a y-seam drop and an x/z-seam duplicate write are both fixed, in Fortran and Python.
   * New - **python-jax-mpi now writes station files** (PR #37).
-  * Fix - **station n-stress sign now follows each case's own SCEC spec convention rather than a single global sign** (PR #20). The Python solver now exits with a distinct code on an invalid station n-stress sign, matching Fortran. FATAL error messages point to `docs/user/troubleshooting.md` for what each exit code means.
+  * Fix - **station n-stress sign now follows each case's own SCEC spec convention rather than a single global sign** (PR #20). The Python solver now exits with a distinct code on an invalid station n-stress sign, matching Fortran; FATAL error messages point to `docs/user/troubleshooting.md` for what each exit code means (PR #39).
   * New - **python-jax-mpi uses a 3D box decomposition with a rank-local mesh** (PR #19).
   * New - **a user documentation site is published on every tagged release**, at https://eqdyna.github.io/EQdyna/ (PR #35).
   * Change - **README rewritten to one page**; detail moved to `docs/user/` (PRs #31, #36).
