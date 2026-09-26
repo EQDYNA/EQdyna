@@ -640,6 +640,28 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
     else
         localOneDimCoorArrSize = numOfNodesPerMPI + 1
     endif
+    ! Row 132(1): a rank whose local axis holds fewer than 2 nodes owns no
+    ! element on that axis (a 1-node slab sits on both of its own faces at
+    ! once) and, separately, breaks setSurfaceStation's elseif chain (ix==1/
+    ! ix==nx, iy==1/iy==ny are mutually exclusive branches -- when nx==1 (or
+    ! ny==1) `ix==1` is tested first and always wins, so the `ix==nx` branch,
+    ! which is ALWAYS an ownership candidate per row 127's rule, becomes
+    ! unreachable and any station this rank was supposed to own as the lower
+    ! side of a seam is silently dropped, on no rank). The python port
+    ! refuses this same shape loudly already (`check_partition_1d`,
+    ! src/python/eqdyna/meshgen.py) -- Fortran did not. Every rank computes
+    ! its own local size here, so whichever rank(s) are too thin abort (and
+    ! MPI_Abort tears down the whole communicator), which is equivalent to a
+    ! global check.
+    if (localOneDimCoorArrSize < 2) then
+        write(reasonMsg,'(a,i0,a,i0,a,i0,a,i0,a)') &
+            'getLocalOneDimCoorArrAndSize: dimId=', dimId, ', MPIXyzId=', MPIXyzId, &
+            ' of ', numOfMPIXyz, ' holds a local 1D slice of only ', localOneDimCoorArrSize, &
+            ' node(s); every rank needs >=2 nodes on each axis to own at least one element ' // &
+            'and for setSurfaceStation''s ownership branches to be reachable -- reduce ' // &
+            'npx/npy/npz for this axis, or use a finer grid (dx/dy/dz).'
+        call abortRun(ERR_MPI_AXIS_TOO_THIN, trim(reasonMsg))
+    endif
     ! Finding 2: the per-rank local slice is copied into localOneDimCoorArr,
     ! also fixed-size(10000), by the loops just below -- this used to only
     ! PRINT a warning and continue straight into the overflowing write.
@@ -1006,7 +1028,26 @@ use errorCodes
 implicit none
 integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nodeCount, msnode, nftnd0(ntotft), equationNumCount, i, nxuni, nzuni, eqNumIndexArrLocTag
 integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft), nodeXyzIndex(10)
+integer (kind = 4) :: mex, mey, mez
+logical :: isOnFaultStationOwner
 real (kind = dp) :: nodeCoor(10), ycoort, pfx, pfz
+
+! Row 131: setOnFaultStation (below) matches a fault node by VALUE only,
+! with no ix/iz-keyed gate at all. getLocalOneDimCoorArrAndSize overlaps
+! every rank's local grid with its neighbour by exactly one node on every
+! axis (same fact row 127 used for setSurfaceStation), so a fault node
+! sitting exactly on a shared x seam (npx>1) or z seam (npz>1) is
+! physically present, and isOnFault==1, on BOTH ranks -- and both write
+! the same faultst* file (last-writer-wins race; live on tpv8 at (2,2,1),
+! ranks 0 and 2 both write rank 0's four faultst files). This must NOT
+! change which rank owns the split-node PAIR itself (nsmp/nftnd0/msnode/
+! fltgm/un/us/ud below are untouched -- every rank still builds its own
+! local copy for the solve/frt output); it only gates who additionally
+! counts/writes the STATION record for a shared-seam node. Same ownership
+! rule as row 127: the lower-MPI-coordinate rank of a seam pair owns it
+! (local index 1 on an axis is owned only when this rank has no lower
+! neighbour there; local index n is always owned).
+call calcXyzMPIId(mex, mey, mez)
 
 do iFault = 1, ntotft
 
@@ -1069,7 +1110,17 @@ do iFault = 1, ntotft
             fltnum(6) = fltnum(6) + 1
         endif             
 
-        ! setOnFaultStation
+        ! setOnFaultStation -- gated (row 131) so a fault node on a shared
+        ! x, y or z seam is claimed for STATION OUTPUT by exactly one rank
+        ! (the lower-MPI-coordinate side), while still creating its own
+        ! full split-node pair above, unconditionally, on both ranks.
+        ! The y term matters when an npy boundary lands ON the fault plane
+        ! (checkFaultMPIAlignment's DUPLICATE case): both ranks then hold
+        ! every fault node, and without it both write every faultst* file.
+        isOnFaultStationOwner = .not. ((nodeXyzIndex(1)==1 .and. mex/=0) .or. &
+                                        (nodeXyzIndex(2)==1 .and. mey/=0) .or. &
+                                        (nodeXyzIndex(3)==1 .and. mez/=0))
+        if (isOnFaultStationOwner) then
         do i = 1, nonfs(iFault)
             if(abs(nodeCoor(1)-xonfs(1,i,iFault))<tol .and. &
                 abs(nodeCoor(3)-xonfs(2,i,iFault))<tol) then
@@ -1079,7 +1130,8 @@ do iFault = 1, ntotft
                 anonfs(3,numOfOnFaultStCount) = iFault
                 exit
             endif
-        enddo  
+        enddo
+        endif  
 
         ! set unit vectors to split-node pair    
         un(1,nftnd0(iFault),iFault) = dcos(fltxyz(1,4,iFault))*dsin(fltxyz(2,4,iFault))

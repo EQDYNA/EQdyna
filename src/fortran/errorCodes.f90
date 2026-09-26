@@ -87,6 +87,7 @@ MODULE errorCodes
     ! --- 51-59 MPI and domain decomposition ---------------------------
     integer, parameter :: ERR_MPI_FAULT_ALIGNMENT    = 51  ! a rank boundary in y coincides with the fault plane (not raised as of v5.8.2; downgraded to a NOTICE, see syncArnBoundary)
     integer, parameter :: ERR_MPI_BAD_NEIGHBOR       = 52  ! point-to-point exchange with a rank outside 0..npx*npy*npz-1
+    integer, parameter :: ERR_MPI_AXIS_TOO_THIN      = 53  ! a rank's local 1D slice on x/y/z has fewer than 2 nodes (npx/npy/npz too large for this grid)
 
     ! --- 61-69 numerics and runtime state -----------------------------
     integer, parameter :: ERR_NUM_PML_ALIGNMENT      = 61  ! element centre lies exactly on a PML bound
