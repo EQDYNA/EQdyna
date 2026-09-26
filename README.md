@@ -11,7 +11,7 @@ the multicycle earthquake simulator EQsimu
 
 ## Latest release
 
-* 20260925 v5.18.0 release notes. See the [GitHub Release](https://github.com/EQDYNA/EQdyna/releases/tag/v5.18.0) for the full notes.
+* 20260925 v5.18.1 release notes. See the [GitHub Release](https://github.com/EQDYNA/EQdyna/releases/tag/v5.18.1) for the full notes.
 Past releases are archived in `pastReleaseNotes.md`.
 
 ## Requirements

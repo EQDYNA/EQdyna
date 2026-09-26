@@ -1,6 +1,18 @@
 # Past release notes\
 
 # News in 2026
+* 20260925 v5.18.1 release notes
+  * Fix - **every on-fault station now has exactly one owner rank across MPI rank boundaries in x, y and z**, in Fortran and Python. A fault station on a shared boundary was previously written by two ranks, and which copy survived depended on write order. This closes the known limitation listed for v5.18.0; serial output is unchanged.
+  * Change - **Fortran now stops with exit code 53 (`ERR_MPI_AXIS_TOO_THIN`) when a rank would hold fewer than 2 grid nodes along x, y or z**, instead of silently dropping that rank's stations. Use fewer ranks along that axis; the Python solver already refused this layout.
+  * Also changed in v5.18.0 (omitted from its notes)
+    * New - the serial Python solver (numpy and jax) now writes on-fault and off-fault station files in the same format as Fortran.
+    * Change - off-fault station file names now round the station position to the nearest 0.1 km instead of truncating it (a station at y = 1.99 km is now `body020...`, not `body019...`), and the file header gains a line stating the column count and number format.
+    * Change - the build stamps `bin/eqdyna` with a hash of its Fortran source, printed under the welcome banner. The bundled test runner refuses a missing, unstamped or out-of-date binary; rebuild with `./install-eqdyna.sh` after changing the source.
+    * Fix - the Python solver now runs Fortran's input-consistency checks and refuses the same invalid settings with the same exit code (for example, plastic output requested for an elastic run exits 13 on both).
+    * Fix - `create.newcase` and `case.setup` now stop with a message naming a missing shared case file (such as the settings file `test.tpv37` shares with `test.tpv36`), instead of copying an incomplete case or printing a bare traceback.
+    * Fix - a requested station that matches no mesh node is now listed in a start-up WARNING with its index and coordinates, for both off-fault and on-fault stations, instead of being silently missing from the output.
+    * Fix - Fortran no longer writes a spurious all-zero `faultst000dp000.txt` from a rank that holds no on-fault station.
+
 * 20260925 v5.18.0 release notes
   * Change - **`--device auto` removed from the CLI** (PR #33). The default device is CPU; pass `--device cuda` for a GPU. `auto` and `gpu` are refused by name, with a hint. Migration: drop `--device auto` for CPU, or pass `--device cuda`.
   * Fix - **off-fault station depth now snaps to the nearest mesh node inside the physical, non-PML band** (PR #30): a station previously dropped at coarse resolution is now written, up to half a cell from the requested depth (measured <=200 m at the 500 m gate grid). The station header records the ACTUAL node location. The same change adds a new exit code for a mesh grid line that exceeds its fixed-size buffer.
