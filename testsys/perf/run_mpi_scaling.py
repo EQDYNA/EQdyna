@@ -77,6 +77,13 @@ import run_numa_scaling as numa      # noqa: E402
 import run_scaling as rs             # noqa: E402
 import profile_record                # noqa: E402  (append-only per-rank profile totals)
 
+# ONE default set of cpus the perf tools never place work on, shared by
+# run_mpi_scaling, run_jaxmpi_ab and run_setup_probe (owner ruling on board
+# row 91d, 2026-09-26). It comes from measurement, not preference: cpus 0 and
+# 1 read busy 0.00 and then delivered 0.39 effective cores (1859 vs 605
+# ms/step on identical work), and cpus 16-19 read idle and delivered about
+# 0.25 effective cores. Re-measure on a quiet box before changing it.
+DEFAULT_EXCLUDE_CPUS = '0,1,16,17,18,19'
 RANK_RE = re.compile(r'rank (\d+)/(\d+) wrote (\S+)\s+(.*)')
 
 
@@ -518,7 +525,7 @@ def main():
                          '96.0/56.0 = 1.71x in the very same session -- see '
                          '--placement. The busy ceiling still applies to the '
                          'cpus named here.')
-    ap.add_argument('--exclude-cpus', default='',
+    ap.add_argument('--exclude-cpus', default=DEFAULT_EXCLUDE_CPUS,
                     help='comma-separated cpus never to place a rank on. See '
                          'least_loaded_cpus: cpu 0 and cpu 1 read busy 0.00 '
                          'and then delivered 0.39 effective cores (1859 vs '

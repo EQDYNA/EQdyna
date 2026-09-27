@@ -217,7 +217,7 @@ def main():
     ap.add_argument('--n-hi', type=int, default=60)
     ap.add_argument('--max-busy', type=float, default=0.5)
     ap.add_argument('--min-eff', type=float, default=0.95)
-    ap.add_argument('--exclude-cpus', default='0,1')
+    ap.add_argument('--exclude-cpus', default=ms.DEFAULT_EXCLUDE_CPUS)
     ap.add_argument('--merged-ref', default='HEAD')
     ap.add_argument('--notes', default=os.path.join(
         ROOT, 'docs/NOTES_jaxmpi_ab_2026-09-22.md'))
