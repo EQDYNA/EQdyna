@@ -469,7 +469,8 @@ def main():
     ap.add_argument('--n-lo', type=int, default=20)
     ap.add_argument('--n-hi', type=int, default=60)
     ap.add_argument('--max-busy', type=float, default=0.5)
-    ap.add_argument('--repeats', type=int, default=1)
+    ap.add_argument('--repeats', type=int, default=1,
+                    help='runs per point for BOTH backends; each reports its best (lowest) ms/step')
     ap.add_argument('--syncs', default='halo',
                     help='nodal-sync modes to measure, in order. `halo` '
                          '(O(boundary), MPI4NodalQuant\'s own pattern) is the '
@@ -659,11 +660,20 @@ def main():
                       % (best['platform'], best['device_peak_gb'],
                          g['peak'], g['base']), flush=True)
         if not a.skip_fortran and n in rs.DECOMP:
-            ps, fixed, lo, hi, _o1, _o2 = rs.per_step_fortran(
-                work, n, 'leastloaded', cpus, nodes, dt, a.n_lo, a.n_hi)
+            # Same --repeats and the same best-of-N rule as the jax loop
+            # above. Before 2026-09-27 Fortran ran once while jax took its
+            # best of N, which biased jax/fortran toward jax (16 ranks:
+            # 0.80x best-of-3 vs 0.95x median of fair single passes).
+            fbest = None
+            for _ in range(a.repeats):
+                ps, fixed, lo, hi, _o1, _o2 = rs.per_step_fortran(
+                    work, n, 'leastloaded', cpus, nodes, dt, a.n_lo, a.n_hi)
+                if fbest is None or ps < fbest[0]:
+                    fbest = (ps, fixed, lo, hi)
+            ps, fixed, lo, hi = fbest
             row['fortran'] = dict(ms_per_step=ps * 1e3, fixed_s=fixed,
                                   wall_lo_s=lo, wall_hi_s=hi,
-                                  decomp=rs.DECOMP[n])
+                                  decomp=rs.DECOMP[n], repeats=a.repeats)
             print('  fortran    %9.2f ms/step (by difference)  fixed %6.2fs  '
                   'wall %.1f/%.1fs  decomp %s'
                   % (ps * 1e3, fixed, lo, hi, rs.DECOMP[n]), flush=True)
