@@ -43,6 +43,7 @@ TESTSYS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.environ.get('EQDYNAROOT') or os.path.dirname(TESTSYS)
 PKG = os.path.join(ROOT, 'src', 'python')
 sys.path.insert(0, os.path.join(TESTSYS, 'perf'))
+import run_mpi_scaling as _ms   # noqa: E402  (the shared DEFAULT_EXCLUDE_CPUS)
 
 CHILD = r'''
 import json, os, resource, sys, time
@@ -133,7 +134,7 @@ def main():
     ap.add_argument('--case', default='test.tpv104')
     ap.add_argument('--procs', default='1,32')
     ap.add_argument('--reps', type=int, default=3)
-    ap.add_argument('--exclude-cpus', default='0,1,16,17,18,19')
+    ap.add_argument('--exclude-cpus', default=_ms.DEFAULT_EXCLUDE_CPUS)
     ap.add_argument('--case-dir', default='',
                     help='reuse an already-built serial case dir instead of '
                          'building one (build_solver_state only READS it)')
