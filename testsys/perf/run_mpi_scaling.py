@@ -280,16 +280,12 @@ def jax_mpi_once(case_dir, nsteps, cpus, ranks, sync, platform='cpu'):
     because the HOST side of a GPU rank is real work -- the serial mesh build,
     the per-step device_get of the halo, and XLA dispatch -- and leaving it
     unpinned puts it on whatever the box's foreign tenancy leaves free.
-    EQDYNA_JAX_DEVICES stays unset either way: it would pin JAX_PLATFORMS=cpu
-    (backend._configure_host_devices) and silently turn a GPU point into a CPU
-    one under a GPU label.
     """
     env = dict(os.environ)
     env['JAX_PLATFORMS'] = platform
     env['EQDYNA_MPI_SYNC'] = sync
     env['PYTHONPATH'] = PYTHON_PKG + os.pathsep + env.get('PYTHONPATH', '')
-    for key in ('XLA_FLAGS', 'OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
-                'EQDYNA_JAX_DEVICES'):
+    for key in ('XLA_FLAGS', 'OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
         env.pop(key, None)
     launch = [sys.executable, '-m', 'eqdyna', case_dir, str(nsteps),
               '--backend', 'jax', '--mpi']
