@@ -72,35 +72,111 @@ def test_script_prints_one_line_and_exits_zero():
     assert lines[0].startswith(('RELEASE DUE:', 'release not due:')), lines[0]
 
 
-def _run_main(monkeypatch, capsys, days, subjects, files):
+def _run_main(monkeypatch, capsys, days, subjects, files, tmp_path=None,
+              exempt_lines=()):
+    """`files` is the list of paths changed by ONE commit since the tag
+    (sha c0ffee1...); `exempt_lines` are written to a temp exemption file."""
     import datetime
     tag_date = (datetime.datetime.now(datetime.timezone.utc)
                 - datetime.timedelta(days=days)).isoformat()
+    sha = 'c0ffee1' + '0' * 33
+
     def fake_git(*a):
         if a[0] == 'describe':
             return 'vX\n'
         if a[0] == 'log' and '--format=%cI' in a:
             return tag_date + '\n'
+        if a[0] == 'log' and '--format=%H' in a:
+            return (sha + '\n') if files else ''
         if a[0] == 'log':
             return subjects
-        if a[0] == 'diff' and '--name-only' in a:
+        if a[0] == 'diff-tree':
             return '\n'.join(files) + '\n'
         return _diff(['x = 1'], ['x = 2'])
     monkeypatch.setattr(crd, 'git', fake_git)
+    path = os.path.join(str(tmp_path or '/nonexistent-dir'), 'exempt.txt')
+    if tmp_path is not None:
+        open(path, 'w').write(''.join(l + '\n' for l in exempt_lines))
+    monkeypatch.setattr(crd, 'EXEMPT_PATH', path)
     assert crd.main() == 0
     return capsys.readouterr().out.strip()
 
 
-def test_due_needs_a_physics_change_and_a_tripped_threshold(monkeypatch, capsys):
-    code = ['src/fortran/fric.f90']
-    ten = ''.join('fix (#%d)\n' % n for n in range(10))
-    assert _run_main(monkeypatch, capsys, 0, ten, code).startswith('RELEASE DUE')
-    assert _run_main(monkeypatch, capsys, 7, 'x (#1)\n', code).startswith('RELEASE DUE')
-    assert _run_main(monkeypatch, capsys, 6, 'x (#1)\n', code).startswith('release not due')
-    assert _run_main(monkeypatch, capsys, 30, ten, ['docs/a.md']).startswith('release not due')
+CODE = ['src/fortran/fric.f90']
+TEN = ''.join('fix (#%d)\n' % n for n in range(10))
+
+
+def test_physics_change_is_due_at_once(monkeypatch, capsys):
+    """Owner's wording: 'as soon as a physics or output change lands' --
+    0 days, 1 PR is already due."""
+    out = _run_main(monkeypatch, capsys, 0, 'x (#1)\n', CODE)
+    assert out.startswith('RELEASE DUE: physics/output change'), out
+
+
+def test_threshold_is_due_without_a_physics_change(monkeypatch, capsys):
+    """'or at the latest after a week or ~10 PRs': PRs that are not physics
+    still make a release due once 7 days or 10 PRs have passed."""
+    assert _run_main(monkeypatch, capsys, 7, 'x (#1)\n',
+                     ['docs/a.md']).startswith('RELEASE DUE: the days threshold')
+    assert _run_main(monkeypatch, capsys, 0, TEN,
+                     ['docs/a.md']).startswith('RELEASE DUE: the PRs threshold')
+    assert _run_main(monkeypatch, capsys, 6, 'x (#1)\n',
+                     ['docs/a.md']).startswith('release not due')
+
+
+def test_docs_only_stretch_with_no_pr_never_forces(monkeypatch, capsys):
+    assert _run_main(monkeypatch, capsys, 30, 'board: x\n',
+                     ['docs/a.md']).startswith('release not due')
+
+
+def test_exempt_commit_does_not_trigger_but_counts_as_pr(monkeypatch, capsys, tmp_path):
+    ev = ['c0ffee1 bit-identical: run.py all 23/23']
+    out = _run_main(monkeypatch, capsys, 0, 'x (#1)\n', CODE, tmp_path, ev)
+    assert out.startswith('release not due') and '1 exempt' in out, out
+    out = _run_main(monkeypatch, capsys, 7, 'x (#1)\n', CODE, tmp_path, ev)
+    assert out.startswith('RELEASE DUE: the days threshold'), out
+
+
+def test_exemption_without_evidence_exempts_nothing(monkeypatch, capsys, tmp_path):
+    for bad in (['c0ffee1'], ['c0ffee1   '], ['zzzzzzz evidence'], ['c0ff evidence']):
+        out = _run_main(monkeypatch, capsys, 0, 'x (#1)\n', CODE, tmp_path, bad)
+        assert out.startswith('RELEASE DUE: physics/output change'), (bad, out)
 
 
 def test_merge_commit_subjects_count_as_prs(monkeypatch, capsys):
     subs = ''.join('Merge pull request #%d from x/y\n' % n for n in range(10))
     assert _run_main(monkeypatch, capsys, 0, subs,
-                     ['src/fortran/fric.f90']).startswith('RELEASE DUE')
+                     ['docs/a.md']).startswith('RELEASE DUE: the PRs threshold')
+
+
+def test_git_error_prints_one_due_line_and_exits_zero(monkeypatch, capsys):
+    def boom(*a):
+        if a[0] == 'describe':
+            return 'vX\n'
+        raise subprocess.CalledProcessError(128, ['git'] + list(a),
+                                            stderr='fatal: bad object')
+    monkeypatch.setattr(crd, 'git', boom)
+    assert crd.main() == 0
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 1 and out[0].startswith('RELEASE DUE: checker error'), out
+
+
+def test_non_utf8_fortran_comment_does_not_crash(monkeypatch, capsys, tmp_path):
+    """A Latin-1 comment with no NUL byte is not 'Binary' to git but is not
+    UTF-8: decoding it strictly used to raise (PR #49 audit, measured). A
+    real throwaway repo, so the real git() decode path runs."""
+    def g(*a):
+        subprocess.run(['git', *a], cwd=tmp_path, check=True,
+                       capture_output=True)
+    g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't')
+    (tmp_path / 'README').write_text('x\n'); g('add', '.'); g('commit', '-qm', 'root')
+    g('tag', 'v0')
+    f = tmp_path / 'src' / 'fortran'; f.mkdir(parents=True)
+    (f / 'fric.f90').write_bytes(b'! caf\xe9 note\nx = 1\n')
+    g('add', '.'); g('commit', '-qm', 'latin1 fortran (#1)')
+    monkeypatch.setattr(crd, 'ROOT', str(tmp_path))
+    monkeypatch.setattr(crd, 'EXEMPT_PATH', str(tmp_path / 'none.txt'))
+    assert crd.main() == 0
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 1, out
+    assert out[0].startswith('RELEASE DUE: physics/output change'), out
