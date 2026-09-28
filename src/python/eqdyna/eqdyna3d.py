@@ -839,30 +839,13 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     fnft_1idx = np.zeros(nftnd + 1)
     fnft_1idx[1:] = out['fnft']
 
-    # A run made under one of backend.py's timing-only sharding knobs computes
-    # the wrong answer by construction, so it must not be able to land on the
-    # path every comparison tool reads. It is still written (the measurement
-    # wants a completed run, and a silently skipped write is its own defect),
-    # under a name nothing gates on.
-    name = ('frt.txt0.TIMING-ONLY-INVALID' if _backend.timing_only()
-            else 'frt.txt0')
-    frt_path = os.path.join(case_dir, name)
+    frt_path = os.path.join(case_dir, 'frt.txt0')
     with prof.phase('write frt'):
         library_output.write_frt(frt_path, mesh['meshCoor'], mesh['nsmp'],
                              fnft_1idx, fric_1idx)
     with prof.phase('write stations'):
-        # Same TIMING-ONLY guard as frt_path above: a run made under one of
-        # backend.py's timing-only sharding knobs computes the wrong answer
-        # by construction and must not silently overwrite the real
-        # faultst*/body* files (which carry no distinguishing suffix the way
-        # frt.txt0.TIMING-ONLY-INVALID does).
-        if _backend.timing_only():
-            print('run_case: *** TIMING-ONLY RUN -- NOT writing faultst*/body* '
-                  '(would overwrite valid station files under their real names) ***',
-                  file=sys.stderr)
-        else:
-            library_output.write_onfault_stations(case_dir, S, out['on_st_hist'])
-            library_output.write_offfault_stations(case_dir, S, out['off_st_hist'])
+        library_output.write_onfault_stations(case_dir, S, out['on_st_hist'])
+        library_output.write_offfault_stations(case_dir, S, out['off_st_hist'])
     prof.nelem = S.get('totalNumOfElements') or 0
 
     # ALWAYS-ON profile.rank0.json (nranks=1: this path is serial by
