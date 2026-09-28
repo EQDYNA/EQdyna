@@ -57,7 +57,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 24. A release tag requires a committed local sweep at the exact SHA, not only green CI.
 25. `src/`, `testsys/`, and `.github/` reach master only through a merged pull request; everything else may still push direct.
 26. User-facing docs are written for users.
-27. Release cadence: ship within a week or 10 PRs of a physics or output change, whichever comes first.
+27. Release cadence: release as soon as a physics or output change lands, or at the latest after a week or ~10 PRs, whichever comes first.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 27 numbered rules
@@ -3016,41 +3016,56 @@ assumed, every time the test it cites changes state.
 
 ---
 
-## 27. Release cadence: ship within a week or 10 PRs of a physics or output change, whichever comes first
+## 27. Release cadence: release as soon as a physics or output change lands, or at the latest after a week or ~10 PRs, whichever comes first
 
 Owner, 2026-09-25: *"release as soon as a physics or output change lands, or
 at the latest after a week or ~10 PRs, whichever comes first."* A release is
-DUE the moment a physics-or-output change (defined below) has landed since
-the last tag, AND either 7 days have passed since that tag or 10 PRs have
-merged since it — whichever trips first. Below that trigger nothing is
-owed: a docs-only, board-only, or perf-only stretch never forces a release,
-however long it runs or however many PRs it takes.
+DUE when EITHER (a) a physics-or-output change (defined below) has landed
+since the last tag -- at once, no threshold -- OR (b) at least one PR has
+merged since the tag AND 7 days have passed since it or 10 PRs have merged
+since it. A docs-only or board-only stretch (no PR) never forces a release.
 
-**A "physics or output change", checkably, is any of:**
+**Corrected 2026-09-28 (owner: "1").** This rule's first text (2026-09-25)
+quoted the owner's words and then required a physics change AND a tripped
+threshold, which is weaker on both halves: a physics change waited up to a
+week, and a week of non-physics PRs never came due. The checker implemented
+that AND; both now follow the owner's OR.
 
-1. A merged commit whose diff touches `src/fortran/` or
-   `src/python/eqdyna/`, EXCLUDING a file whose entire diff is comment lines
-   (Fortran `!`-lines, Python `#`-lines or docstring text) or blank-line-only
-   changes — and a diff the exclusion cannot classify counts IN, never out
-   (rule 2: a check that cannot tell fails toward "yes", not toward silence).
+**A "physics or output change", checkably, is, per merged commit since the
+tag, any of:**
+
+1. A diff touching `src/fortran/` or `src/python/eqdyna/`, EXCLUDING a file
+   whose entire diff in that commit is comment lines (Fortran `!`-lines,
+   Python `#`-lines) or blank-line-only changes -- and a diff the exclusion
+   cannot classify counts IN, never out (rule 2: a check that cannot tell
+   fails toward "yes", not toward silence). Docstring text is not separated
+   out, so a docstring-only change counts IN.
 2. Any change to an output writer or its format: `src/fortran/library_output.f90`,
-   `src/python/eqdyna/library_output.py`, or any file defining the `frt`/
-   station/`nc` file layout.
-3. Any change under `test.reference.results/` — a reference only moves when
+   `src/python/eqdyna/library_output.py`, `scripts/plotRuptureDynamics`.
+3. Any change under `test.reference.results/` -- a reference only moves when
    the physics or the format it encodes moved (rule 7), so its own movement
    is evidence of exactly the change this rule watches for.
 
-**The guard, `testsys/regression/check_release_due.py`** (spec; not yet
-built — see `pathway_forward.md` item 133): reads the last tag
-(`git describe --tags --abbrev=0`), that tag's date (`git log -1
---format=%cI <tag>`), the number of merged PRs since it (unique `(#NNN)`
-trailers over `git log --oneline <tag>..HEAD`), and whether criterion 1/2/3
-above matches any file changed since that tag. It prints exactly one of two
-lines — `RELEASE DUE: <reason>, <n> PRs / <d> days since <tag>` or `release
-not due: <n> PRs / <d> days since <tag>, physics/output change since tag:
-<yes/no>` — and always exits 0: it is advisory, never a gate, the same
-contract rule 4d's blocking-precondition probe uses for a claim nobody
-should be able to silently trust past its own re-measurement.
+**EXCEPT an output-neutral commit listed in `docs/release_exempt.txt`**, one
+line `<sha> <evidence>`: a refactor, a retirement or a perf change whose
+gated outputs are shown unchanged (bit-identical sha256 or array_equal, and
+`run.py all` green on the committed tree). The exemption is a written,
+reviewable claim, not a judgement the checker makes: a line with no
+evidence, or a sha that names no commit since the tag, exempts nothing, and
+the list is read as COMMITTED at HEAD (an uncommitted edit exempts nothing). An
+exempt commit still counts toward (b)'s PR total, so it ships at the latest
+after a week or 10 PRs. Without this list criterion 1 would make every
+`src/` PR a release trigger, which is not what "physics or output change"
+means.
+
+**The guard, `testsys/regression/check_release_due.py`** (PR #43, corrected
+by PR #49, `9e87388`): reads the last tag (`git describe --tags --abbrev=0`), that
+tag's date, the merged PRs since it (unique `(#NNN)` / `Merge pull request
+#NNN` subjects over `<tag>..HEAD`), and classifies each commit since the tag
+against criteria 1-3 minus the exemptions. It prints exactly one line --
+`RELEASE DUE: physics/output change since tag (...)`, `RELEASE DUE: the
+<days|PRs> threshold tripped with no physics/output change, ...`, or
+`release not due: ...` -- and always exits 0: it is advisory, never a gate.
 
 **It runs as a board-row Command (rule 14), never as a regression-tier
 check.** Rule 15b/24 already settled this shape once, for a different
