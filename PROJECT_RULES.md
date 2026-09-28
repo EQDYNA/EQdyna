@@ -57,7 +57,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 24. A release tag requires a committed local sweep at the exact SHA, not only green CI.
 25. `src/`, `testsys/`, and `.github/` reach master only through a merged pull request; everything else may still push direct.
 26. User-facing docs are written for users.
-27. Release cadence: release as soon as a physics or output change lands, or at the latest after a week or ~10 PRs, whichever comes first.
+27. Release cadence: release as soon as a physics or output change lands, or at the latest after a week or ~5 PRs, whichever comes first.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 27 numbered rules
@@ -3016,14 +3016,15 @@ assumed, every time the test it cites changes state.
 
 ---
 
-## 27. Release cadence: release as soon as a physics or output change lands, or at the latest after a week or ~10 PRs, whichever comes first
+## 27. Release cadence: release as soon as a physics or output change lands, or at the latest after a week or ~5 PRs, whichever comes first
 
 Owner, 2026-09-25: *"release as soon as a physics or output change lands, or
 at the latest after a week or ~10 PRs, whichever comes first."* A release is
 DUE when EITHER (a) a physics-or-output change (defined below) has landed
 since the last tag -- at once, no threshold -- OR (b) at least one PR has
-merged since the tag AND 7 days have passed since it or 10 PRs have merged
-since it. A docs-only or board-only stretch (no PR) never forces a release.
+merged since the tag AND 7 days have passed since it or 5 PRs have merged
+since it (owner lowered the quoted ~10 to 5 on 2026-09-28: "I think 5 PR is
+good enough to warrant a release?" -> "Yes"; PR #51). A docs-only or board-only stretch (no PR) never forces a release.
 
 **Corrected 2026-09-28 (owner: "1").** This rule's first text (2026-09-25)
 quoted the owner's words and then required a physics change AND a tripped
@@ -3054,7 +3055,7 @@ reviewable claim, not a judgement the checker makes: a line with no
 evidence, or a sha that names no commit since the tag, exempts nothing, and
 the list is read as COMMITTED at HEAD (an uncommitted edit exempts nothing). An
 exempt commit still counts toward (b)'s PR total, so it ships at the latest
-after a week or 10 PRs. Without this list criterion 1 would make every
+after a week or 5 PRs. Without this list criterion 1 would make every
 `src/` PR a release trigger, which is not what "physics or output change"
 means.
 
@@ -3085,7 +3086,7 @@ merge.
 five of them physics- or output-changing by the definition above: #19
 (jax-MPI 3D box decomposition), #20 (station n-stress sign convention), #30
 (off-fault station depth clamp), #37/#38 (jax-MPI and Fortran/Python station
-ownership). Both thresholds this rule states — 10 PRs, 7 days — were
+ownership). Both thresholds this rule then stated — 10 PRs, 7 days — were
 already exceeded before this rule existed to notice either, because nothing
 counted.
 
