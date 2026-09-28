@@ -2211,7 +2211,7 @@ at that landing, 17 since `f4718e5` extended it over the two builders below.
 and `run_numa_scaling.build_case` (`:223-245` → `testsys/perf/numa_case/<case>`)
 acquire inside the BUILDER, not `main()`: `build_py_case` has five direct
 callers (`run_mpi_scaling.py:408`, `run_jaxmpi_ab.py:169`,
-`run_setup_probe.py:142`, `run_shard_scaling.py:195`), so a lock placed in any
+`run_setup_probe.py:142`, `run_shard_scaling.py:195` -- that tool retired 2026-09-28 with the shard_map route, PR #47), so a lock placed in any
 one `main()` leaves four entry points unguarded — and that also closes the
 third hole, since `run_jaxmpi_ab.py` reaches the case tree through that same
 builder. Two details worth carrying: `run_scaling.py` derives `REPO_ROOT` from
