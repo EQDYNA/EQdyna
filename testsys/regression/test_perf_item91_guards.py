@@ -137,32 +137,19 @@ def check_91a_snapshot_naming_and_ledger():
 
 
 def check_91_wall_clock_guard():
-    """Row 91, second half (2026-09-24): run_mpi_scaling.per_step_jax_mpi's
-    ms_per_step_wall difference (line ~409) must raise on a non-positive
-    result, the SAME pattern PR #15 already applied to the rank-solve-time
-    difference two lines below it (`ps_solve <= 0`) and to
-    run_numa_scaling.per_step_and_fixed / probe_scatter_bandwidth.per_iter /
-    run_perf.steady_state_per_step (check_91b above). Driven with
-    jax_mpi_once faked to return a DECREASING wall clock as nsteps grows --
-    every other dependency (profile_record.capture_run) fails past a
-    nonexistent case_dir and is caught by per_step_jax_mpi's own
-    warn-only try/except, so no real MPI/jax ever runs."""
+    """Row 91, second half (2026-09-24), REVISED 2026-09-27:
+    run_mpi_scaling.per_step_jax_mpi refuses a non-positive per-step figure
+    over the RANKS' OWN SOLVE TIME -- the number it reports -- the same
+    pattern PR #15 applied and run_numa_scaling.per_step_and_fixed /
+    probe_scatter_bandwidth.per_iter / run_perf.steady_state_per_step follow
+    (check_91b below). The mpirun WALL-clock difference used to raise too; it
+    is now recorded as None instead, because it is a side column the tool's
+    own docstring calls fixed-cost noise, and raising on it refused a valid
+    measurement (2026-09-27, 2 ranks: wall 54.00 s at 20 steps, 46.10 s at
+    60, sane solve times). Driven with jax_mpi_once faked, so no real
+    MPI/jax ever runs; profile_record.capture_run fails past a nonexistent
+    case_dir and is caught by per_step_jax_mpi's own warn-only try/except."""
     import run_mpi_scaling as rms
-
-    def fake_decreasing(case_dir, n, cpus, ranks, sync, platform):
-        return (15.0, []) if n == 20 else (5.0, [])
-
-    orig = rms.jax_mpi_once
-    try:
-        rms.jax_mpi_once = fake_decreasing
-        raises(lambda: rms.per_step_jax_mpi('/does/not/exist', [0], 1, 20,
-                                            60, 'halo'),
-               (RuntimeError,),
-               '91 run_mpi_scaling.per_step_jax_mpi: wall clock DECREASED '
-               'from n_lo=20 to n_hi=60',
-               must_contain=('per-step', 'wall clock'))
-    finally:
-        rms.jax_mpi_once = orig
 
     def _rank(ms):
         return dict(ms_per_step=ms, mpi_ms_per_step=0.1, wait_ms_per_step=0.05,
@@ -170,19 +157,40 @@ def check_91_wall_clock_guard():
                    carry_bytes_total=100, N_local=50, NEQ_local=30,
                    threads=1, cpus_allowed=1)
 
+    def run_with(fake):
+        orig = rms.jax_mpi_once
+        try:
+            rms.jax_mpi_once = fake
+            return rms.per_step_jax_mpi('/does/not/exist', [0], 1, 20, 60,
+                                        'halo')
+        finally:
+            rms.jax_mpi_once = orig
+
+    # solve time 20 x 1000 ms = 20 s at n_lo, 60 x 100 ms = 6 s at n_hi
+    def fake_solve_decreasing(case_dir, n, cpus, ranks, sync, platform):
+        return (5.0, [_rank(1000.0)]) if n == 20 else (15.0, [_rank(100.0)])
+    raises(lambda: run_with(fake_solve_decreasing), (RuntimeError,),
+           '91 run_mpi_scaling.per_step_jax_mpi: rank solve time DECREASED '
+           'from n_lo=20 to n_hi=60',
+           must_contain=('per-step', 'solve time'))
+
+    def fake_wall_decreasing(case_dir, n, cpus, ranks, sync, platform):
+        return ((15.0, [_rank(1.0)]) if n == 20 else (5.0, [_rank(2.0)]))
+    r = run_with(fake_wall_decreasing)
+    check(r is not None and r['ms_per_step_wall'] is None
+          and r['fixed_s'] is None and r['ms_per_step'] > 0,
+          '91 run_mpi_scaling.per_step_jax_mpi: a DECREASING wall clock with '
+          'sane solve times returns the solve-time figure and records the '
+          'wall column as None (got ms_per_step=%r ms_per_step_wall=%r)'
+          % ((r or {}).get('ms_per_step'), (r or {}).get('ms_per_step_wall')))
+
     def fake_increasing(case_dir, n, cpus, ranks, sync, platform):
         return ((5.0, [_rank(1.0)]) if n == 20 else (15.0, [_rank(2.0)]))
-
-    orig = rms.jax_mpi_once
-    try:
-        rms.jax_mpi_once = fake_increasing
-        r = rms.per_step_jax_mpi('/does/not/exist', [0], 1, 20, 60, 'halo')
-        check(r is not None and r['ms_per_step_wall'] > 0,
-              '91 run_mpi_scaling.per_step_jax_mpi: a genuine increasing-wall '
-              'case still returns (ms_per_step_wall=%r)'
-              % (r or {}).get('ms_per_step_wall'))
-    finally:
-        rms.jax_mpi_once = orig
+    r = run_with(fake_increasing)
+    check(r is not None and r['ms_per_step_wall'] > 0,
+          '91 run_mpi_scaling.per_step_jax_mpi: a genuine increasing-wall '
+          'case still returns (ms_per_step_wall=%r)'
+          % (r or {}).get('ms_per_step_wall'))
 
 
 # ---------------------------------------------------------------- (b) ----
