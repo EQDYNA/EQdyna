@@ -1,6 +1,11 @@
 # Past release notes\
 
 # News in 2026
+* 20260928 v5.19.0 release notes
+  * Change - **`run_mpi_scaling`'s `--repeats` now applies to both backends** (PR #45): before, jax kept its best of N repeats while Fortran ran once, biasing every jax/Fortran ratio toward jax.
+  * Change - **`run_mpi_scaling` no longer drops a refused measurement point from the pass**; a non-positive wall-clock difference is recorded as `None` (fixed-cost noise) rather than raised, and a failed `mpirun` is recorded as a refusal instead of silently vanishing from the report (PR #46).
+  * Change - **removed: `EQDYNA_JAX_DEVICES`, `EQDYNA_SHARD_MODE`, `EQDYNA_SHARD_SYNC`** and the in-process multi-device `shard_map` decomposition they configured (PR #47). The parallel path for the Python/JAX backend is `python3 -m eqdyna ... --mpi` under `mpirun` (one process per rank); serial jax and jax-MPI are unaffected. A run that set any of these three variables now stops with a clear error instead of being silently ignored.
+  * Change - **jax PML kernel ~1.06-1.12x faster, full element-assembly kernel ~1.05x faster** on the real `test.tpv104` mesh, bit-identical output (PR #48): roughly a quarter of the PML scatter's index/value entries were being routed to a discarded no-equation sink and are no longer scattered at all.
 * 20260925 v5.18.1 release notes
   * Fix - **every on-fault station now has exactly one owner rank across MPI rank boundaries in x, y and z**, in Fortran and Python. A fault station on a shared boundary was previously written by two ranks, and which copy survived depended on write order. This closes the known limitation listed for v5.18.0; serial output is unchanged.
   * Change - **Fortran now stops with exit code 53 (`ERR_MPI_AXIS_TOO_THIN`) when a rank would hold fewer than 2 grid nodes along x, y or z**, instead of silently dropping that rank's stations. Use fewer ranks along that axis; the Python solver already refused this layout.
