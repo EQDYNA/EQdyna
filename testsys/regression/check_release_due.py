@@ -1,21 +1,34 @@
 #!/usr/bin/env python3
 """Rule 27's release-cadence check (pathway_forward.md item 133).
 
-A release is DUE when a physics-or-output change has landed since the last
-tag AND either 7 days have passed since that tag or 10 PRs have merged since
-it. This prints exactly one line and ALWAYS exits 0. It is an advisory board
-Command (rule 14), never a regression-tier check. The file is named check_*,
-not test_*, so `testsys/run.py regression` never picks it up.
+Owner, 2026-09-25: "release as soon as a physics or output change lands, or
+at the latest after a week or ~10 PRs, whichever comes first." So a release
+is DUE when EITHER
+  (a) a physics-or-output change has landed since the last tag -- at once,
+      no threshold; OR
+  (b) at least one PR has merged since the tag AND 7 days have passed since
+      it or 10 PRs have merged since it.
+A docs/board-only stretch (no PR) never forces a release. This prints
+exactly one line and ALWAYS exits 0. It is an advisory board Command
+(rule 14), never a regression-tier check. The file is named check_*, not
+test_*, so `testsys/run.py regression` never picks it up.
 
-A "physics or output change" is any of (rule 27):
-  1. a file under src/fortran/ or src/python/eqdyna/ whose diff since the tag
-     is not entirely comment or blank lines. A diff this cannot classify
-     counts IN (rule 2: fail toward "yes"). In Python only `#` lines and
-     blank lines count as comments; docstring text is not separated out, so
-     a docstring-only change counts IN, the conservative side.
+A "physics or output change" is, per commit since the tag, any of (rule 27):
+  1. a file under src/fortran/ or src/python/eqdyna/ whose diff in that
+     commit is not entirely comment or blank lines. A diff this cannot
+     classify counts IN (rule 2: fail toward "yes"). In Python only `#`
+     lines and blank lines count as comments; docstring text is not
+     separated out, so a docstring-only change counts IN, the conservative
+     side.
   2. any change to an output writer: library_output.f90 / library_output.py,
      or scripts/plotRuptureDynamics (writes fault.dyna.r.nc);
   3. any change under test.reference.results/.
+EXCEPT a commit listed in docs/release_exempt.txt with its evidence that
+the change is output-neutral (bit-identical gates -- a refactor, a
+retirement, a perf change). An exemption is a written claim, one line
+`<sha> <evidence>`; a line without evidence, or a sha that does not name a
+commit since the tag, exempts nothing (fail toward "yes"). An exempt commit
+still counts toward (b)'s PR count.
 
 Usage:  python3 testsys/regression/check_release_due.py
 """
@@ -33,6 +46,7 @@ OUTPUT_FILES = ('src/fortran/library_output.f90',
                 'src/python/eqdyna/library_output.py',
                 'scripts/plotRuptureDynamics')
 REFERENCE_DIR = 'test.reference.results/'
+EXEMPT_PATH = os.path.join(ROOT, 'docs', 'release_exempt.txt')
 
 
 def git(*args):
@@ -82,6 +96,23 @@ def classify(path, diff_text):
     return None
 
 
+def load_exemptions(path):
+    """{sha_prefix: evidence} from `<sha> <evidence>` lines; '#' comments and
+    blanks ignored. A line with no evidence, or a non-hex/short sha, is not
+    an exemption -- dropped here, so the commit counts IN."""
+    out = {}
+    if not os.path.exists(path):
+        return out
+    for line in open(path):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        sha, _, evidence = line.partition(' ')
+        if re.fullmatch(r'[0-9a-f]{7,40}', sha) and evidence.strip():
+            out[sha] = evidence.strip()
+    return out
+
+
 def main():
     try:
         tag = git('describe', '--tags', '--abbrev=0').strip()
@@ -96,21 +127,32 @@ def main():
     prs = len(set(re.findall(r'\(#(\d+)\)', subjects))
               | set(re.findall(r'Merge pull request #(\d+)', subjects)))
 
-    reasons = []
-    for path in [p for p in git('diff', '--name-only', '%s..HEAD' % tag).splitlines() if p]:
-        why = classify(path, git('diff', '-U0', '%s..HEAD' % tag, '--', path))
-        if why:
-            reasons.append(why)
+    exempt = load_exemptions(EXEMPT_PATH)
+    reasons, n_exempt = [], 0
+    for sha in git('log', '--format=%H', '%s..HEAD' % tag).split():
+        if any(sha.startswith(e) for e in exempt):
+            n_exempt += 1
+            continue
+        files = git('diff-tree', '--no-commit-id', '--name-only', '-r', '-m',
+                    '--first-parent', sha).split('\n')
+        for path in sorted(set(p for p in files if p)):
+            why = classify(path, git('show', '-U0', '--format=',
+                                     '--first-parent', '-m', sha, '--', path))
+            if why:
+                reasons.append('%s in %s' % (why, sha[:7]))
 
     counts = '%d PRs / %d days since %s' % (prs, days, tag)
-    if reasons and (days >= DAYS_DUE or prs >= PRS_DUE):
+    ex = ' (%d exempt commit(s), docs/release_exempt.txt)' % n_exempt if n_exempt else ''
+    if reasons:
+        print('RELEASE DUE: physics/output change since tag (%s; %d file(s)), '
+              '%s%s' % (reasons[0], len(reasons), counts, ex))
+    elif prs >= 1 and (days >= DAYS_DUE or prs >= PRS_DUE):
         trip = 'days' if days >= DAYS_DUE else 'PRs'
-        print('RELEASE DUE: physics/output change since tag (%s; %d file(s)) '
-              'and the %s threshold tripped, %s'
-              % (reasons[0], len(reasons), trip, counts))
+        print('RELEASE DUE: the %s threshold tripped with no physics/output '
+              'change, %s%s' % (trip, counts, ex))
     else:
-        print('release not due: %s, physics/output change since tag: %s'
-              % (counts, 'yes (%d file(s))' % len(reasons) if reasons else 'no'))
+        print('release not due: %s, physics/output change since tag: no%s'
+              % (counts, ex))
     return 0
 
 
