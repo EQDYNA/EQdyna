@@ -290,6 +290,15 @@ def time_one(case_dir, nsteps, cpus, node_map):
     return None
 
 
+class NonPositiveMeasurement(RuntimeError):
+    """A per-step-by-difference figure came out <= 0: an invalid measurement,
+    raised rather than reported. Its own class so a caller that keeps going
+    past ONE refused point (run_mpi_scaling.main) catches exactly this and
+    not every RuntimeError -- a wrong-device or missing-rank guard must still
+    stop the run at once. A RuntimeError subclass, so existing
+    `except RuntimeError` callers and tests are unchanged."""
+
+
 def per_step_and_fixed(t_lo, t_hi, n_lo, n_hi):
     """(seconds per step, fixed seconds) from two wall times over two step
     counts -- the family's per-step-by-difference arithmetic, in ONE place.
@@ -316,7 +325,7 @@ def per_step_and_fixed(t_lo, t_hi, n_lo, n_hi):
     """
     ps = (t_hi - t_lo) / float(n_hi - n_lo)
     if ps <= 0:
-        raise RuntimeError(
+        raise NonPositiveMeasurement(
             'per-step by difference came out %.6f s/step (t_lo=%.3fs at '
             'n_lo=%d, t_hi=%.3fs at n_hi=%d). That is not a slow '
             'measurement, it is an invalid one -- treat a non-positive '

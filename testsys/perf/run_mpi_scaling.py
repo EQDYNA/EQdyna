@@ -413,36 +413,62 @@ def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync,
         print('WARNING: profile-record capture failed for python-jax-mpi '
              '(%s: %s) -- the scaling measurement above is unaffected.'
              % (type(exc).__name__, exc))
+    # The WALL-clock difference is a side column, not the measurement: this
+    # function's own docstring is the reason (fixed cost dominates mpirun's
+    # wall clock and fluctuates by more than the step delta). It used to
+    # RAISE when non-positive, which refused a valid solve-time figure over a
+    # number the tool does not report as ms/step -- measured 2026-09-27 at 2
+    # ranks: wall 54.00 s at 20 steps, 46.10 s at 60 (-197.7 ms), while the
+    # ranks' own solve times were sane. A non-positive wall difference is now
+    # recorded as None (and printed), and only the solve-time figure below,
+    # the one that IS the result, is refused when non-positive.
     ps = (hi[0] - lo[0]) / float(n_hi - n_lo)
     if ps <= 0:
-        raise RuntimeError(
-            'per-step by difference over mpirun wall clock came out %.3f ms '
-            'at %d ranks (wall %.2f s at %d steps, %.2f s at %d steps). That '
-            'is not a slow measurement, it is an invalid one -- refusing to '
-            'record it.' % (ps * 1e3, ranks, lo[0], n_lo, hi[0], n_hi))
+        print('  NOTE: wall-clock per-step came out %.3f ms at %d ranks (wall '
+              '%.2f s at %d steps, %.2f s at %d steps) -- fixed-cost noise; '
+              'recorded as None, the solve-time figure is unaffected.'
+              % (ps * 1e3, ranks, lo[0], n_lo, hi[0], n_hi), flush=True)
+        ps = None
     ms = [d['ms_per_step'] for d in hi[1]]
     ms_lo = [d['ms_per_step'] for d in lo[1]]
     solve_lo = max(ms_lo) * n_lo / 1e3
     solve_hi = max(ms) * n_hi / 1e3
     ps_solve = (solve_hi - solve_lo) / float(n_hi - n_lo)
     if ps_solve <= 0:
-        raise RuntimeError(
+        raise numa.NonPositiveMeasurement(
             'per-step by difference over rank solve time came out %.3f ms at '
             '%d ranks (solve %.2f s at %d steps, %.2f s at %d steps). That is '
             'not a slow measurement, it is an invalid one -- refusing to '
             'record it.' % (ps_solve * 1e3, ranks, solve_lo, n_lo,
                             solve_hi, n_hi))
+    mpi_ms = [d['mpi_ms_per_step'] for d in hi[1]]
     return dict(ms_per_step=ps_solve * 1e3,
-                ms_per_step_wall=ps * 1e3,
+                ms_per_step_wall=None if ps is None else ps * 1e3,
                 compile_s=solve_lo - n_lo * ps_solve,
                 solve_lo_s=solve_lo, solve_hi_s=solve_hi,
                 rank_ms_lo=ms_lo,
-                fixed_s=lo[0] - n_lo * ps,
+                fixed_s=None if ps is None else lo[0] - n_lo * ps,
                 wall_lo_s=lo[0], wall_hi_s=hi[0],
                 rank_ms=ms, rank_ms_max=max(ms), rank_ms_mean=sum(ms) / len(ms),
                 straggler=max(ms) / (sum(ms) / len(ms)),
                 sync=sync,
-                mpi_ms=[d['mpi_ms_per_step'] for d in hi[1]],
+                mpi_ms=mpi_ms,
+                # The production step has no barrier, so a rank's `exchange`
+                # is transfer PLUS waiting on its slowest neighbour
+                # (profile_emit.py's docstring). A no-sync ESTIMATE of the
+                # split, not a bound: the smallest exchange across ranks is
+                # that rank's own transfer plus any wait it still had, and
+                # halo sizes differ per rank, so each rank's excess over it
+                # approximates that rank's wait in either direction. What it
+                # is for: telling imbalance from MPI cost. Measured
+                # 2026-09-27, 8 ranks, rank->cpu order reversed: the excess
+                # followed the RANK (the PML-heavy boxes), not the cpu, while
+                # EQDYNA_MPI_STEP_PROFILE's barrier put pure MPI at 1.0-1.7
+                # ms/step -- the min here read 1.2-5.2 in the same session.
+                # (`wait_ms` below is the different, barrier-measured
+                # quantity, 0.0 unless that profile knob is set.)
+                exchange_ms_min=min(mpi_ms),
+                exchange_excess_ms_est=[x - min(mpi_ms) for x in mpi_ms],
                 wait_ms=[d['wait_ms_per_step'] for d in hi[1]],
                 eff=[d['effective_cores'] for d in hi[1]],
                 Ei=[int(d['Ei']) for d in hi[1]],
@@ -460,6 +486,18 @@ def per_step_jax_mpi(case_dir, cpus, ranks, n_lo, n_hi, sync,
                 device_peak_gb=[d.get('device_peak_gb') for d in hi[1]],
                 threads=[int(d['threads']) for d in hi[1]],
                 cpus_allowed=[int(d['cpus_allowed']) for d in hi[1]])
+
+
+def _refuse(row, key, exc):
+    """Record one refused repeat on its row and keep going. A refusal (a
+    non-positive per-step figure -- numa.NonPositiveMeasurement, nothing
+    broader -- or a failed mpirun; rule-wise a bug, not a number) used to
+    propagate out of main() and drop EVERY point of the pass, measured and
+    unmeasured alike: 2026-09-27 lost 2 of 3 passes to one refused 8-rank
+    point. Now the refused repeat is kept on the row, printed, never turned
+    into a number, and the run exits non-zero at the end (see main)."""
+    row.setdefault('refused', []).append(dict(backend=key, reason=str(exc)))
+    print('  %-10s REFUSED: %s' % (key, exc), flush=True)
 
 
 def main():
@@ -624,22 +662,37 @@ def main():
                    placement=placement_label, ranks_per_node=rpn)
         for sync in syncs:
             best = None
+            counted = 0
             for _ in range(a.repeats):
-                r = per_step_jax_mpi(case_dir, cpus, n, a.n_lo, a.n_hi, sync,
-                                     a.platform, a.warmup)
-                if r is not None and (best is None
-                                      or r['ms_per_step'] < best['ms_per_step']):
+                try:
+                    r = per_step_jax_mpi(case_dir, cpus, n, a.n_lo, a.n_hi,
+                                         sync, a.platform, a.warmup)
+                except numa.NonPositiveMeasurement as exc:
+                    _refuse(row, 'jax_' + sync, exc)
+                    continue
+                if r is None:
+                    # mpirun itself failed (jax_mpi_once printed its output).
+                    # Recorded like a refusal so the run cannot exit 0 with
+                    # this point silently missing.
+                    _refuse(row, 'jax_' + sync, 'mpirun returned non-zero')
+                    continue
+                counted += 1
+                if best is None or r['ms_per_step'] < best['ms_per_step']:
                     best = r
             if best is None:
-                print('  jax-mpi/%-9s FAILED' % sync, flush=True)
+                print('  jax-mpi/%-9s REFUSED on every repeat' % sync,
+                      flush=True)
                 continue
+            best = dict(best, repeats=a.repeats, repeats_counted=counted)
             row['jax_' + sync] = best
             if sync == syncs[0]:
                 row['jax'] = best
             print('  jax-mpi/%-9s %9.2f ms/step (by difference over rank '
-                  'solve time; wall-based %9.2f)  compile %5.2fs  solve '
+                  'solve time; wall-based %9s)  compile %5.2fs  solve '
                   '%.1f/%.1fs  wall %.1f/%.1fs'
-                  % (sync, best['ms_per_step'], best['ms_per_step_wall'],
+                  % (sync, best['ms_per_step'],
+                     'None' if best['ms_per_step_wall'] is None
+                     else '%.2f' % best['ms_per_step_wall'],
                      best['compile_s'], best['solve_lo_s'], best['solve_hi_s'],
                      best['wall_lo_s'], best['wall_hi_s']), flush=True)
             print('             per-rank ms/step %s' % [round(x, 2) for x in best['rank_ms']],
@@ -648,6 +701,11 @@ def main():
                   'wait %s ms/step'
                   % (best['straggler'], [round(x, 3) for x in best['mpi_ms']],
                      [round(x, 2) for x in best['wait_ms']]), flush=True)
+            print('             exchange min %.2f ms/step; per-rank excess '
+                  'over it (estimated wait on neighbours, not MPI cost) %s'
+                  % (best['exchange_ms_min'],
+                     [round(x, 2) for x in best['exchange_excess_ms_est']]),
+                  flush=True)
             print('             EFFECTIVE_CORES %s  threads %s  cpus_allowed %s'
                   % ([round(x, 2) for x in best['eff']], best['threads'],
                      best['cpus_allowed']), flush=True)
@@ -665,15 +723,27 @@ def main():
             # best of N, which biased jax/fortran toward jax (16 ranks:
             # 0.80x best-of-3 vs 0.95x median of fair single passes).
             fbest = None
+            fcounted = 0
             for _ in range(a.repeats):
-                ps, fixed, lo, hi, _o1, _o2 = rs.per_step_fortran(
-                    work, n, 'leastloaded', cpus, nodes, dt, a.n_lo, a.n_hi)
+                try:
+                    ps, fixed, lo, hi, _o1, _o2 = rs.per_step_fortran(
+                        work, n, 'leastloaded', cpus, nodes, dt, a.n_lo,
+                        a.n_hi)
+                except numa.NonPositiveMeasurement as exc:
+                    _refuse(row, 'fortran', exc)
+                    continue
+                fcounted += 1
                 if fbest is None or ps < fbest[0]:
                     fbest = (ps, fixed, lo, hi)
+            if fbest is None:
+                print('  fortran    REFUSED on every repeat', flush=True)
+                rows.append(row)
+                continue
             ps, fixed, lo, hi = fbest
             row['fortran'] = dict(ms_per_step=ps * 1e3, fixed_s=fixed,
                                   wall_lo_s=lo, wall_hi_s=hi,
-                                  decomp=rs.DECOMP[n], repeats=a.repeats)
+                                  decomp=rs.DECOMP[n], repeats=a.repeats,
+                                  repeats_counted=fcounted)
             print('  fortran    %9.2f ms/step (by difference)  fixed %6.2fs  '
                   'wall %.1f/%.1fs  decomp %s'
                   % (ps * 1e3, fixed, lo, hi, rs.DECOMP[n]), flush=True)
@@ -719,6 +789,13 @@ def main():
           % (nledger, ledger.LEDGER_RELPATH, tenancy['busy'],
              tenancy['total'], a.max_busy))
     shutil.rmtree(work, ignore_errors=True)
+    refused = [(r['ranks'], x['backend']) for r in rows
+               for x in r.get('refused', [])]
+    if refused:
+        raise SystemExit('FAIL: %d repeat(s) refused (ranks, backend): %s -- '
+                         'the measured points above are saved; the refused '
+                         'ones are recorded on their rows, not as numbers.'
+                         % (len(refused), refused))
 
 
 if __name__ == '__main__':
