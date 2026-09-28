@@ -117,8 +117,8 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
 
     ONE body, split rather than copied, because the two callers need the seam
     in a different place in the STACK, not in the code: make_step closes the
-    seam with backend.nodal_sync (identity when serial, a device-mesh
-    collective under shard_map) and keeps ONE jitted time loop, while run_mpi
+    seam with backend.nodal_sync (identity: one subdomain) and keeps ONE
+    jitted time loop, while run_mpi
     must leave the jit at the seam to make an MPI call and therefore jits the
     two halves separately. Both perform the same operations, in the same
     order, on the same operands.
