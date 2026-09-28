@@ -2,12 +2,14 @@
 """Rule 27's release-cadence check (pathway_forward.md item 133).
 
 Owner, 2026-09-25: "release as soon as a physics or output change lands, or
-at the latest after a week or ~10 PRs, whichever comes first." So a release
+at the latest after a week or ~10 PRs, whichever comes first"; the PR
+threshold lowered to 5 by the owner on 2026-09-28 ("I think 5 PR is good
+enough to warrant a release" -> "Yes"). So a release
 is DUE when EITHER
   (a) a physics-or-output change has landed since the last tag -- at once,
       no threshold; OR
   (b) at least one PR has merged since the tag AND 7 days have passed since
-      it or 10 PRs have merged since it.
+      it or 5 PRs have merged since it.
 A docs/board-only stretch (no PR) never forces a release. This prints
 exactly one line and ALWAYS exits 0. It is an advisory board Command
 (rule 14), never a regression-tier check. The file is named check_*, not
@@ -40,7 +42,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DAYS_DUE = 7
-PRS_DUE = 10
+PRS_DUE = 5
 CODE_DIRS = ('src/fortran/', 'src/python/eqdyna/')
 OUTPUT_FILES = ('src/fortran/library_output.f90',
                 'src/python/eqdyna/library_output.py',

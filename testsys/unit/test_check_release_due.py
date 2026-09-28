@@ -103,7 +103,8 @@ def _run_main(monkeypatch, capsys, days, subjects, files, tmp_path=None,
 
 
 CODE = ['src/fortran/fric.f90']
-TEN = ''.join('fix (#%d)\n' % n for n in range(10))
+FIVE = ''.join('fix (#%d)\n' % n for n in range(5))
+FOUR = ''.join('fix (#%d)\n' % n for n in range(4))
 
 
 def test_physics_change_is_due_at_once(monkeypatch, capsys):
@@ -114,11 +115,14 @@ def test_physics_change_is_due_at_once(monkeypatch, capsys):
 
 
 def test_threshold_is_due_without_a_physics_change(monkeypatch, capsys):
-    """'or at the latest after a week or ~10 PRs': PRs that are not physics
-    still make a release due once 7 days or 10 PRs have passed."""
+    """'or at the latest after a week or ~5 PRs' (owner lowered 10 -> 5,
+    2026-09-28): PRs that are not physics still make a release due once 7
+    days or 5 PRs have passed, and 4 PRs inside a week does not."""
     assert _run_main(monkeypatch, capsys, 7, 'x (#1)\n',
                      ['docs/a.md']).startswith('RELEASE DUE: the days threshold')
-    assert _run_main(monkeypatch, capsys, 0, TEN,
+    assert _run_main(monkeypatch, capsys, 0, FOUR,
+                     ['docs/a.md']).startswith('release not due')
+    assert _run_main(monkeypatch, capsys, 0, FIVE,
                      ['docs/a.md']).startswith('RELEASE DUE: the PRs threshold')
     assert _run_main(monkeypatch, capsys, 6, 'x (#1)\n',
                      ['docs/a.md']).startswith('release not due')
@@ -144,7 +148,7 @@ def test_exemption_without_evidence_exempts_nothing(monkeypatch, capsys, tmp_pat
 
 
 def test_merge_commit_subjects_count_as_prs(monkeypatch, capsys):
-    subs = ''.join('Merge pull request #%d from x/y\n' % n for n in range(10))
+    subs = ''.join('Merge pull request #%d from x/y\n' % n for n in range(5))
     assert _run_main(monkeypatch, capsys, 0, subs,
                      ['docs/a.md']).startswith('RELEASE DUE: the PRs threshold')
 
