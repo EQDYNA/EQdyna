@@ -25,7 +25,6 @@ That is a scope limit, not an omission that could silently mislead -- a
 multi-rank case is refused before it reaches here.
 """
 import os
-import sys
 import time
 
 import numpy as np
@@ -118,8 +117,8 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
 
     ONE body, split rather than copied, because the two callers need the seam
     in a different place in the STACK, not in the code: make_step closes the
-    seam with backend.nodal_sync (identity when serial, a device-mesh
-    collective under shard_map) and keeps ONE jitted time loop, while run_mpi
+    seam with backend.nodal_sync (identity: one subdomain) and keeps ONE
+    jitted time loop, while run_mpi
     must leave the jit at the seam to make an MPI call and therefore jits the
     two halves separately. Both perform the same operations, in the same
     order, on the same operands.
@@ -316,13 +315,11 @@ def make_step(xp, inv, finv, tp, mass, scratch, fault_timer=None):
 
     def step(carry, nt):
         carry = part_a(carry, nt)
-        # driver.f90:27 -- MPI4NodalQuant(nodalForceArr, 3). Identity when the
-        # run is serial (one subdomain, nothing to exchange); an all-reduce
-        # over the device mesh when backend.run_time_loop_sharded has cut the
-        # element arrays across devices. Its POSITION is the Fortran's: after
-        # both element kernels, before faulting, which is what lets faulting
-        # and the mass divide be plain local work on a force array that is
-        # already complete.
+        # driver.f90:27 -- MPI4NodalQuant(nodalForceArr, 3). Identity on this
+        # serial path (one subdomain, nothing to exchange). Its POSITION is
+        # the Fortran's: after both element kernels, before faulting, which
+        # is what lets faulting and the mass divide be plain local work on a
+        # force array that is already complete.
         force = B.nodal_sync(xp, inv, carry[FORCE])
         carry = carry[:FORCE] + (force,) + carry[FORCE + 1:]
         return part_b(carry, nt)
@@ -382,52 +379,25 @@ def run(S, nsteps=None, verbose=True, xp=np):
               z((nftnd, hist_w)), z((nftnd, hist_w)),
               z((n_on_st, st_ncols_on, nsteps)), z((n_off_st, 7, nsteps)))
 
-    # Which carry entries live on the ELEMENT axis, and therefore get cut
-    # across devices under explicit decomposition. Stated here, beside
-    # carry0, because this is where the shapes are; backend must not infer it
-    # from a shape (Ei == Ep is possible on a small mesh).
-    carry_shard = (None, None, None, None, 'Ei', 'Ep',
-                   None, None, None, None, None, None, None)
-
-    ndev = B.jax_device_count()
-    if ndev > 1 and not B.is_jax(xp):
-        raise RuntimeError(
-            'EQDYNA_JAX_DEVICES=%d requests explicit domain decomposition, which '
-            'exists only on the jax backend, but this run is numpy. Refusing '
-            'rather than running serial under a %d-device label.' % (ndev, ndev))
-
-    if ndev > 1 and B.timing_only():
-        # Loud, on stderr, EVERY run -- one of the measurement knobs is set
-        # and the answer this run produces is not the physics. eqdyna3d.run_case
-        # additionally refuses to write it to the normal frt path.
-        print('driver.run: *** TIMING-ONLY RUN, RESULT IS NOT VALID PHYSICS *** '
-              '(%s=%s, %s=%s)' % (B.MODE_ENV, B.shard_mode(),
-                                  B.SYNC_ENV, B.shard_sync()), file=sys.stderr)
     if verbose:
-        print('driver.run: %d steps, backend=%s, friclaw=%d, devices=%d, mode=%s/%s'
-              % (nsteps, xp.__name__, S['friclaw'], ndev,
-                 B.shard_mode(), B.shard_sync()))
+        print('driver.run: %d steps, backend=%s, friclaw=%d'
+              % (nsteps, xp.__name__, S['friclaw']))
     t0 = time.perf_counter()
     scratch = KU.alloc_scratch(xp, inv)
     # EQDYNA_PROFILE read ONCE here, before the loop is built -- never per
     # step, never via getenv inside a traced function. `fault_timer` lives
     # HERE, outside `mk`, so it survives regardless of how many times `mk`
-    # is invoked underneath `run_time_loop`/`run_time_loop_sharded` -- every
-    # `make_step` call closes over this SAME dict. None on jax (unaffected
-    # by the flag: see make_step_parts's docstring for why a timer must not
-    # exist on that path, not just go unread) AND None when
-    # EQDYNA_PROFILE=0 -- the per-step perf_counter() pair inside
-    # make_step_parts's part_b is a profiler addition and must not run when
-    # the switch is off.
+    # is invoked underneath `run_time_loop` -- every `make_step` call closes
+    # over this SAME dict. None on jax (unaffected by the flag: see
+    # make_step_parts's docstring for why a timer must not exist on that
+    # path, not just go unread) AND None when EQDYNA_PROFILE=0 -- the
+    # per-step perf_counter() pair inside make_step_parts's part_b is a
+    # profiler addition and must not run when the switch is off.
     profile_on = _profile_emit.enabled()
     fault_timer = {'s': 0.0} if (profile_on and not B.is_jax(xp)) else None
     mk = lambda i: make_step(xp, i, finv, tp, mass, scratch,   # noqa: E731
                              fault_timer=fault_timer)
-    if ndev > 1:
-        carry = B.run_time_loop_sharded(xp, mk, inv, carry0, nsteps, ndev,
-                                        carry_shard)
-    else:
-        carry = B.run_time_loop(xp, mk, inv, carry0, nsteps)
+    carry = B.run_time_loop(xp, mk, inv, carry0, nsteps)
     elapsed = time.perf_counter() - t0
     if verbose:
         print('driver.run: %.3f s, %.3f ms/step' % (elapsed, elapsed / nsteps * 1e3))

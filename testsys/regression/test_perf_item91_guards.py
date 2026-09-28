@@ -1,9 +1,11 @@
 #! /usr/bin/env python3
-"""Behavioural regression guards for pathway item 91's six perf-tool
-defects (testsys/perf/run_shard_scaling.py, run_numa_scaling.py,
-run_perf.py, probe_scatter_bandwidth.py, run_setup_probe.py,
-run_jaxmpi_ab.py -- sub-item e only). Full defect text: docs/BOARD_HISTORY.md
-section "### Item 91".
+"""Behavioural regression guards for pathway item 91's perf-tool
+defects (testsys/perf/run_numa_scaling.py, run_perf.py,
+probe_scatter_bandwidth.py, run_setup_probe.py, run_jaxmpi_ab.py -- sub-item
+e only), plus ledger's continued validation of historical tool=run_shard_scaling
+rows (that producer was retired 2026-09-28 with the shard_map route; its
+past ledger rows are read-only evidence ledger must still accept). Full
+defect text: docs/BOARD_HISTORY.md section "### Item 91".
 
 Every check drives the real function with inputs that produce the bad case
 and asserts it raises or labels -- never a grep over source text (rule 10a).
@@ -11,9 +13,10 @@ No MPI, no box-state dependence, no jax/numactl/git subprocess actually
 runs: every subprocess boundary is monkeypatched so this guard is seconds
 and machine-independent.
 
-  (a) run_shard_scaling snapshot filename carries seconds, not just the
-      date, and its rows carry the engine/policy keys the shared ledger
-      reader (ledger.rows_from_scaling_snapshot) requires.
+  (a) ledger.rows_from_scaling_snapshot still files a historical
+      tool=run_shard_scaling snapshot under its own tool name with the
+      engine/policy keys the shared ledger reader requires -- the producer
+      is gone, the validation of its past rows is not.
   (b) three per-step-by-difference sites (run_numa_scaling.per_step_and_fixed,
       probe_scatter_bandwidth.per_iter, run_perf.steady_state_per_step)
       raise on a non-positive result instead of recording it.
@@ -23,16 +26,15 @@ and machine-independent.
       on a git failure instead of returning ''.
   (f) run_perf.require_affinity_pinned raises when the pin did not take
       effect, instead of warning and proceeding.
-  (g) run_shard_scaling.record_point / run_numa_scaling.record_baseline
-      label the speedup baseline explicitly and never silently swap it
-      when the intended first point was skipped.
+  (g) run_numa_scaling.record_baseline labels the speedup baseline
+      explicitly and never silently swaps it when the intended first point
+      was skipped.
 
 Anti-vacuous-green discipline (papercuts): every verdict prints the content
 property it asserted on.
 """
 import os
 import sys
-import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -40,7 +42,6 @@ PERF = os.path.join(ROOT, 'testsys', 'perf')
 sys.path.insert(0, PERF)
 sys.path.insert(0, ROOT)
 
-import run_shard_scaling as rss    # noqa: E402
 import run_numa_scaling as rns     # noqa: E402
 import run_perf as rp              # noqa: E402
 import probe_scatter_bandwidth as psb  # noqa: E402
@@ -76,41 +77,13 @@ def raises(fn, exc_types, what, must_contain=()):
 # ---------------------------------------------------------------- (a) ----
 
 def check_91a_snapshot_naming_and_ledger():
-    """Reloads the REAL run_shard_scaling module twice, under two faked wall
-    times 5 minutes apart on the same calendar day, and compares its own
-    module-level OUT global -- not a re-implementation of the naming
-    expression. This is what actually catches the pre-fix `%Y-%m-%d`-only
-    defect: with only the date, out1 == out2 here."""
-    import importlib
-    real_strftime = time.strftime
-
-    def fake(t):
-        def f(fmt, *a):
-            return real_strftime(fmt, *a) if a else real_strftime(fmt, t)
-        return f
-
-    t1 = time.localtime(1_800_000_000)          # some day, some HH:MM:SS
-    t2 = time.localtime(1_800_000_000 + 300)     # same day, 5 min later
-    try:
-        time.strftime = fake(t1)
-        importlib.reload(rss)
-        out1 = rss.OUT
-        time.strftime = fake(t2)
-        importlib.reload(rss)
-        out2 = rss.OUT
-    finally:
-        time.strftime = real_strftime
-        importlib.reload(rss)   # leave the module in its normal state
-    check(out1 != out2,
-          '91a: run_shard_scaling.OUT, reloaded at two wall times 5 min '
-          'apart on the SAME calendar day, differ (%r vs %r)'
-          % (out1, out2))
-
-    # 91a's ledger half (2026-09-24): rows_from_scaling_snapshot(tool=...)
-    # must file a run_shard_scaling point under its OWN tool name and the
-    # EXISTING 'threads' parallelism value, never mislabelled as a
-    # run_scaling row -- driven with a synthetic shard-shaped meta, no jax
-    # or box-state dependence.
+    """91a's ledger half (2026-09-24): rows_from_scaling_snapshot(tool=...)
+    must file a run_shard_scaling point under its OWN tool name and the
+    EXISTING 'threads' parallelism value, never mislabelled as a
+    run_scaling row -- driven with a synthetic shard-shaped meta, no jax
+    or box-state dependence. The producer (run_shard_scaling.py) was
+    retired 2026-09-28 with the shard_map route; this only proves ledger
+    still validates the historical rows it left in docs/perf_ledger.jsonl."""
     meta = dict(sha='abc1234', host='h', date='2026-09-24 00:00',
                case='test.tpv104', busy_ceiling=0.2,
                rows=[dict(mode='element', n=2, ms_per_step=12.5,
@@ -128,12 +101,6 @@ def check_91a_snapshot_naming_and_ledger():
           'threads/element)'
           % (rows[0].get('tool'), rows[0].get('backend'),
              rows[0].get('parallelism'), rows[0].get('mode')))
-    check('run_shard_scaling' in open(os.path.join(
-            PERF, 'run_shard_scaling.py')).read()
-          and 'ledger.append_rows' in open(os.path.join(
-              PERF, 'run_shard_scaling.py')).read(),
-          '91a: run_shard_scaling.py itself calls ledger.append_rows (the '
-          'wiring this check above proves the SHAPE of)')
 
 
 def check_91_wall_clock_guard():
@@ -353,24 +320,6 @@ def check_91g_run_scaling_loop_labels_baseline():
 
 
 def check_91g_baseline_labelling():
-    base, base_n = {}, {}
-    _, bn1, note1 = rss.record_point(base, base_n, 'element', 2, 100.0, 1)
-    check(bn1 == 2 and note1 is not None and '1' in note1 and '2' in note1,
-          '91g run_shard_scaling.record_point: n=1 was skipped, n=2 sets '
-          'the baseline and gets a non-None NOTE naming both n=%r vs the '
-          'devices[0]=1 it silently used to be read against (note=%r)'
-          % (bn1, note1))
-    speedup2, bn2, note2 = rss.record_point(base, base_n, 'element', 2, 100.0, 1)
-    check(speedup2 == 1.0 and note2 is None,
-          '91g: the already-set baseline point itself gets no repeat NOTE '
-          '(speedup=%.2f, note=%r)' % (speedup2, note2))
-
-    base2, base_n2 = {}, {}
-    _, bn3, note3 = rss.record_point(base2, base_n2, 'element', 1, 100.0, 1)
-    check(bn3 == 1 and note3 is None,
-          '91g: when n=1 (devices[0]) DOES set the baseline, no NOTE fires '
-          '(bn=%r note=%r)' % (bn3, note3))
-
     state = {}
     speedup, blabel, note = rns.record_baseline(state, 'spread-8', 50.0,
                                                  'within-node-8')

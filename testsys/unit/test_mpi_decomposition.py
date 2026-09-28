@@ -1,8 +1,9 @@
-"""Tests for the PY-ONLY parallel paths: the shard_map split
-(EQDYNA_JAX_DEVICES > 1) and the rank bookkeeping of the python-jax-mpi
-decomposition (driver.run_mpi under mpirun).
+"""Tests for the PY-ONLY parallel path: the rank bookkeeping of the
+python-jax-mpi decomposition (driver.run_mpi under mpirun). (The shard_map
+explicit-decomposition path this file used to also cover was retired
+2026-09-28 -- owner decision: jax-MPI is the parallel path now.)
 
-Neither path is reached by the serial sweep columns, so they are tested here.
+This path is not reached by the serial sweep columns, so it is tested here.
 
 WHAT IS AND IS NOT COVERED HERE. Pure index algebra and arithmetic: the
 Fortran partition formulas (meshgen.partition_1d / calc_xyz_mpi_id against
@@ -26,135 +27,11 @@ from eqdyna import backend as B           # noqa: E402
 from eqdyna import meshgen                 # noqa: E402
 
 
-def synthetic(nx=6, ny=3, nz=3, npml=1):
-    """A structured brick mesh with a PML shell and a two-sided fault, as the
-    index arrays the partition consumes. NOT a physics case: every float is a
-    placeholder, because the shard_map split only ever SELECTS rows and never
-    reads a value. The shapes and the connectivity are what is under test."""
-    nnx, nny, nnz = nx + 1, ny + 1, nz + 1
-    N = nnx * nny * nnz
-    nid = np.arange(N).reshape(nnx, nny, nnz)
-    conn = []
-    etype = []
-    for i in range(nx):
-        for j in range(ny):
-            for k in range(nz):
-                conn.append([nid[i, j, k], nid[i + 1, j, k], nid[i + 1, j + 1, k],
-                             nid[i, j + 1, k], nid[i, j, k + 1], nid[i + 1, j, k + 1],
-                             nid[i + 1, j + 1, k + 1], nid[i, j + 1, k + 1]])
-                edge = (i < npml or i >= nx - npml or j < npml or j >= ny - npml)
-                etype.append(2 if edge else 1)
-    conn = np.array(conn)
-    elemType = np.array(etype)
-    E = conn.shape[0]
-    # 3 dof everywhere except PML nodes (12) -- the shape velDispUpdate branches on
-    ndof = np.full(N, 3)
-    pml_nodes = np.unique(conn[elemType == 2])
-    ndof[pml_nodes] = 12
-    eq_ids = np.zeros((N, 12), dtype=np.int64)
-    nxt = 1
-    for n in range(N):
-        for d in range(ndof[n]):
-            eq_ids[n, d] = nxt
-            nxt += 1
-    NEQ = nxt - 1
-    Ei = int((elemType != 2).sum()); Ep = int((elemType == 2).sum())
-    S = dict(N=N, NEQ=NEQ, conn=conn, elemType=elemType, eq_ids=eq_ids, ndof=ndof)
-
-    def col(n, *shape):
-        return np.arange(n * int(np.prod(shape or (1,)))).reshape((n,) + shape) * 1.0
-
-    inv = {}
-    for k, g in B._ELEM_GROUP.items():
-        n = {'Ei': Ei, 'Ep': Ep, 'E': E}[g]
-        if k in B._RAVELLED:
-            # BUILT FROM eq_ids AND conn, exactly as assembleGlobalKU.build
-            # does it -- NOT `arange % (NEQ+1)`, which is what these were.
-            # An arbitrary equation number is not merely unrealistic: it
-            # addresses an equation the rank does not hold, so it cannot be
-            # renumbered into the local set at all, and decompose refuses it
-            # (correctly). The fixture has to satisfy the same postcondition
-            # the real mesh does: every index a rank's elements produce
-            # belongs to a node that rank's elements touch.
-            ci = conn[elemType != 2]
-            cp = conn[elemType == 2]
-            if k == 'idxP12':
-                is12 = ndof[cp] == 12
-                inv[k] = [np.where(is12, eq_ids[cp, jj], 0).ravel()
-                          for jj in range(12)]
-            elif k == 'idxP3':
-                is3 = ndof[cp] == 3
-                inv[k] = [np.where(is3, eq_ids[cp, gg], 0).ravel()
-                          for gg in range(3)]
-            elif k in ('idxIx', 'idxIy', 'idxIz'):
-                inv[k] = eq_ids[ci, 'xyz'.index(k[-1])].ravel()
-            else:                                   # idxH0 / idxH1 / idxH2
-                d = int(k[-1])
-                slot = np.where(ndof[conn] == 3, d, 9 + d)
-                inv[k] = np.take_along_axis(eq_ids[conn], slot[:, :, None],
-                                            axis=2)[:, :, 0].ravel()
-        elif k in ('conn', 'conn_i', 'conn_p'):
-            inv[k] = conn if g == 'E' else conn[elemType != 2] if g == 'Ei' \
-                else conn[elemType == 2]
-        elif k == 'phi':
-            inv[k] = col(n, 4, 8)
-        elif k == 'ss':
-            inv[k] = col(n, 6)
-        elif k in ('stress_i0', 'pml_init6'):
-            inv[k] = col(n, 6)
-        elif k in ('dNx_i', 'dNy_i', 'dNz_i', 'dNx_p', 'dNy_p', 'dNz_p',
-                   'wx_p', 'wy_p', 'wz_p', 'neg_det_w_p'):
-            inv[k] = col(n, 8) if not k.startswith('neg') else col(n, 1)
-        else:
-            inv[k] = col(n)
-    inv.update(Ei=Ei, Ep=Ep, E=E,
-               int_nodes_idx=np.nonzero(ndof == 3)[0],
-               pml_nodes_idx=np.nonzero(ndof == 12)[0])
-    inv['idx3_v'] = eq_ids[inv['int_nodes_idx'], 0:3]
-    inv['idx12_v'] = eq_ids[inv['pml_nodes_idx'], :]
-    inv['a9'] = col(inv['pml_nodes_idx'].shape[0], 9)
-    inv['b9'] = col(inv['pml_nodes_idx'].shape[0], 9) + 1.0
-
-    # a fault: every node on the i == nx//2 plane, paired with its neighbour
-    m = nid[nx // 2].ravel()
-    s = nid[nx // 2 + 1].ravel()
-    finv = dict(nftnd=m.shape[0], nsmp1=s, nsmp2=m,
-                un=col(m.shape[0], 3), arn=col(m.shape[0]),
-                nuc_radius=col(m.shape[0]), friclaw=1, tr=col(m.shape[0]),
-                idxF_s=[eq_ids[s, d] for d in range(3)],
-                idxF_m=[eq_ids[m, d] for d in range(3)])
-    return S, inv, finv
-
-
-def test_unclassified_invariant_raises():
-    """A new array in assembleGlobalKU.build's dict must be classified
-    element-axis or replicated deliberately. Defaulting either way is a
-    silent wrong answer, so the shard_map split refuses instead."""
-    S, inv, finv = synthetic()
-    bad = dict(inv, something_new=np.zeros(3))
-    with pytest.raises(KeyError, match='classified neither'):
-        B._split_sharded(bad, 2, B.pad_counts(bad, 2), B._ELEM_GROUP)
-
-
 @pytest.mark.parametrize('bad', ['', 'psum', 'ring'])
 def test_bad_sync_mode_raises(bad, monkeypatch):
     monkeypatch.setenv(MQ.SYNC_ENV, bad)
     with pytest.raises(ValueError, match='must be one of'):
         MQ.sync_mode()
-
-
-@pytest.mark.parametrize('bad', ['', 'nodal', 'element+halo'])
-def test_bad_shard_mode_raises(bad, monkeypatch):
-    monkeypatch.setenv(B.MODE_ENV, bad)
-    with pytest.raises(ValueError, match='must be one of'):
-        B.shard_mode()
-
-
-@pytest.mark.parametrize('bad', ['0', '-1', 'two'])
-def test_bad_device_count_raises(bad, monkeypatch):
-    monkeypatch.setenv(B._DEVICES_ENV, bad)
-    with pytest.raises((ValueError, TypeError)):
-        B.jax_device_count()
 
 
 def test_per_rank_cache_dir_is_distinct_per_rank(tmp_path, monkeypatch):
@@ -191,22 +68,6 @@ def test_second_different_cache_request_raises(tmp_path, monkeypatch):
     B.enable_compilation_cache('rank0')          # same request: no-op
     with pytest.raises(RuntimeError, match='already pointed at'):
         B.enable_compilation_cache('rank1')
-
-
-def test_shard_padding_is_exact_multiple_and_pads_divisors_with_one():
-    """Padded element rows must contribute EXACTLY 0.0, which needs every
-    pad value to be 0 -- except the three PML divisors, where 0 would make
-    calcPMLElemKU divide 0/0 and scatter a NaN into the sink."""
-    S, inv, finv = synthetic()
-    counts = B.pad_counts(inv, 7)
-    for g in ('Ei', 'Ep', 'E'):
-        assert counts[g] % 7 == 0 and counts[g] >= int(inv[g])
-        assert counts[g] - int(inv[g]) < 7
-    p = B._prep('b1', np.zeros(inv['Ep']), 7, counts, B._ELEM_GROUP)
-    assert p.shape[0] == counts['Ep']
-    assert np.all(p[inv['Ep']:] == 1.0)
-    q = B._prep('lam_p', np.ones(inv['Ep']), 7, counts, B._ELEM_GROUP)
-    assert np.all(q[inv['Ep']:] == 0.0)
 
 
 def test_allreduce_sync_is_refused_by_name(monkeypatch):

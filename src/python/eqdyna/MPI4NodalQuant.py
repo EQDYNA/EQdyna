@@ -11,8 +11,10 @@ Fortran entity it ports.
 WHAT THIS IS FOR. python-jax-mpi is the Fortran decomposition, one OS PROCESS
 per rank, with jax owning only the local element kernel. XLA automatic
 partitioning and explicit shard_map were both measured first and both lose to
-it (0 of 38 HLO scatters partitioned; the shard_map route replicates the nodal
-stages and all-reduces O(NEQ)); see backend.run_time_loop_sharded.
+it (0 of 38 HLO scatters partitioned; the shard_map route replicated the nodal
+stages and all-reduced O(NEQ)). The shard_map route was retired 2026-09-28
+(owner decision: jax-MPI is the parallel path now); it lived in
+backend.run_time_loop_sharded and its supporting machinery.
 
 THE DECOMPOSITION IS FORTRAN'S (pathway item 64, owner decisions 2026-09-24:
 "follow Fortran"). Each rank builds ONLY its own (x,y,z) box, with rank-local
