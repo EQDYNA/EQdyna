@@ -33,6 +33,8 @@ scatter-add to atomics, so jax-gpu is already nondeterministic run-to-run
 (measured 8.9e-08 on unmodified code). Any claim of bit-identity in this
 port is a claim about CPU.
 """
+import os
+
 import numpy as np
 
 
@@ -379,6 +381,18 @@ def array_module(name):
     explicit single-device (`--device cuda`/`cpu`) pin, the only device
     control this port makes.
     """
+    # RETIRED KNOBS ARE REFUSED, not ignored. EQDYNA_JAX_DEVICES (and the
+    # EQDYNA_SHARD_* timing knobs) selected the shard_map decomposition,
+    # retired 2026-09-28; a leftover setting would otherwise run serial under
+    # a multi-device label -- a mislabelled scaling point, not an error.
+    stale = sorted(k for k in os.environ
+                   if k == 'EQDYNA_JAX_DEVICES' or k.startswith('EQDYNA_SHARD_'))
+    if stale:
+        raise RuntimeError(
+            'backend.array_module: %s set, but the shard_map decomposition it '
+            'selected was retired 2026-09-28. Unset it; for parallel jax use '
+            'the MPI path (`python3 -m eqdyna <case> --backend jax --mpi` '
+            'under mpirun).' % ', '.join(stale))
     if name == 'numpy':
         return np
     if name != 'jax':
