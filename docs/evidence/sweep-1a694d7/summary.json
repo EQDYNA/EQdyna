@@ -1,0 +1,173 @@
+{
+  "sha": "1a694d7ed9fa51a63e05745b813e97b67e10d3fa",
+  "tree_clean": true,
+  "dirty_at_start": [],
+  "term": 5.0,
+  "n_runnable": 23,
+  "n_success": 23,
+  "cells": [
+    {
+      "case": "test.drv.a6",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": null,
+      "wall_s": 118.15792107582092
+    },
+    {
+      "case": "test.drv.a6",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": null,
+      "wall_s": 367.6347498893738
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 3.05176e-11,
+      "wall_s": 19.179197788238525
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 1.983643e-10,
+      "wall_s": 53.66914367675781
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "python-jax-mpi",
+      "verdict": "SUCCESS",
+      "max_diff": 1.220703e-10,
+      "wall_s": 22.546409368515015
+    },
+    {
+      "case": "test.tpv10",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 2.87823e-08,
+      "wall_s": 57.75069308280945
+    },
+    {
+      "case": "test.tpv10",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 3.03525e-08,
+      "wall_s": 143.3972189426422
+    },
+    {
+      "case": "test.tpv104",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 51.09076809883118
+    },
+    {
+      "case": "test.tpv104",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 4.9819e-07,
+      "wall_s": 135.52222061157227
+    },
+    {
+      "case": "test.tpv1053d",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 57.387797832489014
+    },
+    {
+      "case": "test.tpv1053d",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 1.360451e-06,
+      "wall_s": 154.23689937591553
+    },
+    {
+      "case": "test.meng2023a",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 64.53805780410767
+    },
+    {
+      "case": "test.meng2023a",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 2.735853e-09,
+      "wall_s": 161.06588983535767
+    },
+    {
+      "case": "test.meng2023cb",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 67.22410726547241
+    },
+    {
+      "case": "test.meng2023cb",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 4.631281e-09,
+      "wall_s": 160.1740505695343
+    },
+    {
+      "case": "test.tpv29",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 58.22057867050171
+    },
+    {
+      "case": "test.tpv29",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 1.792826e-14,
+      "wall_s": 164.766508102417
+    },
+    {
+      "case": "test.tpv36",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 199.92302584648132
+    },
+    {
+      "case": "test.tpv36",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 3.999404e-09,
+      "wall_s": 363.3421280384064
+    },
+    {
+      "case": "test.tpv37",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 201.58004784584045
+    },
+    {
+      "case": "test.tpv37",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 4.066276e-09,
+      "wall_s": 357.08693075180054
+    },
+    {
+      "case": "test.tpv30",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "max_diff": 0.0,
+      "wall_s": 59.19678974151611
+    },
+    {
+      "case": "test.tpv30",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "max_diff": 1.909216e-14,
+      "wall_s": 181.48011898994446
+    }
+  ],
+  "started_utc": "2026-09-28T22:04:50.720752+00:00",
+  "finished_utc": "2026-09-28T22:11:00.457502+00:00"
+}
