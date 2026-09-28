@@ -46,12 +46,23 @@ OUTPUT_FILES = ('src/fortran/library_output.f90',
                 'src/python/eqdyna/library_output.py',
                 'scripts/plotRuptureDynamics')
 REFERENCE_DIR = 'test.reference.results/'
-EXEMPT_PATH = os.path.join(ROOT, 'docs', 'release_exempt.txt')
+DEFAULT_EXEMPT_PATH = os.path.join(ROOT, 'docs', 'release_exempt.txt')
+EXEMPT_PATH = DEFAULT_EXEMPT_PATH
 
 
 def git(*args):
+    # errors='replace': a blob with a Latin-1 comment and no NUL byte is not
+    # "Binary" to git but is not UTF-8 either; decoding it strictly crashed
+    # the one-line/exit-0 contract (PR #49 audit, measured).
     return subprocess.run(['git', *args], cwd=ROOT, capture_output=True,
-                          text=True, check=True).stdout
+                          text=True, errors='replace', check=True).stdout
+
+
+def watched(path):
+    """True if classify() could return a reason for `path` -- so only these
+    paths are diffed per commit."""
+    return (path.startswith(REFERENCE_DIR) or path in OUTPUT_FILES
+            or path.startswith(CODE_DIRS))
 
 
 def is_comment_or_blank(line, path):
@@ -96,24 +107,48 @@ def classify(path, diff_text):
     return None
 
 
-def load_exemptions(path):
-    """{sha_prefix: evidence} from `<sha> <evidence>` lines; '#' comments and
-    blanks ignored. A line with no evidence, or a non-hex/short sha, is not
-    an exemption -- dropped here, so the commit counts IN."""
-    out = {}
-    if not os.path.exists(path):
-        return out
-    for line in open(path):
+def load_exemptions(text):
+    """({sha_prefix: evidence}, n_ignored) from `<sha> <evidence>` lines;
+    '#' comments and blanks skipped. A line with no evidence, or a
+    non-hex/short sha, is not an exemption -- counted as ignored, so the
+    commit counts IN and the output says a line was dropped."""
+    out, ignored = {}, 0
+    for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith('#'):
             continue
         sha, _, evidence = line.partition(' ')
         if re.fullmatch(r'[0-9a-f]{7,40}', sha) and evidence.strip():
             out[sha] = evidence.strip()
-    return out
+        else:
+            ignored += 1
+    return out, ignored
+
+
+def exemptions_text():
+    """The exemption list AS COMMITTED at HEAD, not the working tree: an
+    uncommitted local edit must not already exempt a commit. Tests patch
+    EXEMPT_PATH to a file instead."""
+    if EXEMPT_PATH != DEFAULT_EXEMPT_PATH:
+        return open(EXEMPT_PATH).read() if os.path.exists(EXEMPT_PATH) else ''
+    try:
+        return git('show', 'HEAD:' + os.path.relpath(EXEMPT_PATH, ROOT))
+    except subprocess.CalledProcessError:
+        return ''
 
 
 def main():
+    """One line, exit 0, whatever happens: an unexpected error prints a DUE
+    line naming it (rule 2: fail toward "yes") instead of a traceback."""
+    try:
+        return _main()
+    except Exception as exc:                      # noqa: BLE001
+        print('RELEASE DUE: checker error, failing toward due (%s: %s)'
+              % (type(exc).__name__, str(exc).splitlines()[0] if str(exc) else ''))
+        return 0
+
+
+def _main():
     try:
         tag = git('describe', '--tags', '--abbrev=0').strip()
     except subprocess.CalledProcessError:
@@ -127,7 +162,7 @@ def main():
     prs = len(set(re.findall(r'\(#(\d+)\)', subjects))
               | set(re.findall(r'Merge pull request #(\d+)', subjects)))
 
-    exempt = load_exemptions(EXEMPT_PATH)
+    exempt, n_ignored = load_exemptions(exemptions_text())
     reasons, n_exempt = [], 0
     for sha in git('log', '--format=%H', '%s..HEAD' % tag).split():
         if any(sha.startswith(e) for e in exempt):
@@ -135,7 +170,7 @@ def main():
             continue
         files = git('diff-tree', '--no-commit-id', '--name-only', '-r', '-m',
                     '--first-parent', sha).split('\n')
-        for path in sorted(set(p for p in files if p)):
+        for path in sorted(set(p for p in files if p and watched(p))):
             why = classify(path, git('show', '-U0', '--format=',
                                      '--first-parent', '-m', sha, '--', path))
             if why:
@@ -143,6 +178,8 @@ def main():
 
     counts = '%d PRs / %d days since %s' % (prs, days, tag)
     ex = ' (%d exempt commit(s), docs/release_exempt.txt)' % n_exempt if n_exempt else ''
+    if n_ignored:
+        ex += ' (%d malformed exemption line(s) ignored)' % n_ignored
     if reasons:
         print('RELEASE DUE: physics/output change since tag (%s; %d file(s)), '
               '%s%s' % (reasons[0], len(reasons), counts, ex))

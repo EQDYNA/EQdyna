@@ -147,3 +147,36 @@ def test_merge_commit_subjects_count_as_prs(monkeypatch, capsys):
     subs = ''.join('Merge pull request #%d from x/y\n' % n for n in range(10))
     assert _run_main(monkeypatch, capsys, 0, subs,
                      ['docs/a.md']).startswith('RELEASE DUE: the PRs threshold')
+
+
+def test_git_error_prints_one_due_line_and_exits_zero(monkeypatch, capsys):
+    def boom(*a):
+        if a[0] == 'describe':
+            return 'vX\n'
+        raise subprocess.CalledProcessError(128, ['git'] + list(a),
+                                            stderr='fatal: bad object')
+    monkeypatch.setattr(crd, 'git', boom)
+    assert crd.main() == 0
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 1 and out[0].startswith('RELEASE DUE: checker error'), out
+
+
+def test_non_utf8_fortran_comment_does_not_crash(monkeypatch, capsys, tmp_path):
+    """A Latin-1 comment with no NUL byte is not 'Binary' to git but is not
+    UTF-8: decoding it strictly used to raise (PR #49 audit, measured). A
+    real throwaway repo, so the real git() decode path runs."""
+    def g(*a):
+        subprocess.run(['git', *a], cwd=tmp_path, check=True,
+                       capture_output=True)
+    g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't')
+    (tmp_path / 'README').write_text('x\n'); g('add', '.'); g('commit', '-qm', 'root')
+    g('tag', 'v0')
+    f = tmp_path / 'src' / 'fortran'; f.mkdir(parents=True)
+    (f / 'fric.f90').write_bytes(b'! caf\xe9 note\nx = 1\n')
+    g('add', '.'); g('commit', '-qm', 'latin1 fortran (#1)')
+    monkeypatch.setattr(crd, 'ROOT', str(tmp_path))
+    monkeypatch.setattr(crd, 'EXEMPT_PATH', str(tmp_path / 'none.txt'))
+    assert crd.main() == 0
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 1, out
+    assert out[0].startswith('RELEASE DUE: physics/output change'), out
