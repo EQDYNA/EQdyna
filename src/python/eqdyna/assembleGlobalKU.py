@@ -174,8 +174,42 @@ def build(S):
     a2 = 1.0 / dt - d2p / 2.0; b2 = 1.0 / dt + d2p / 2.0
     a3 = 1.0 / dt - d3p / 2.0; b3 = 1.0 / dt + d3p / 2.0
     nd_p = ndof[conn_p]; is12_p = nd_p == 12; is3_p = nd_p == 3
-    idxP12 = [np.where(is12_p, eq_ids[conn_p, jj], 0).ravel() for jj in range(12)]
-    idxP3 = [np.where(is3_p, eq_ids[conn_p, gg], 0).ravel() for gg in range(3)]
+    # SINK-LANE COMPACTION (board row 135, unblocked by the shard_map
+    # retirement -- idxP12/idxP3 no longer need to keep shape (Ep*8,) for
+    # a device-mesh split that no longer exists).
+    #
+    # is12_p/is3_p are the SAME per-(element,node) mask shared by every
+    # column of their family (is3_p is exactly ~is12_p: a PML-region node is
+    # either 3-dof or 12-dof, never both), so `pos12_p`/`pos3_p` -- the flat
+    # positions where each family's mask is True -- are ALSO shared across
+    # all 12/3 columns. Gathering eq_ids at exactly those positions is the
+    # same values `np.where(mask, eq_ids[...], 0)` used to produce at the
+    # True positions; the difference is that the False positions (~24.5% of
+    # the 15*Ep*8 entries on test.tpv104, measured) are DROPPED instead of
+    # routed to the sink (equation index 0) and scattered anyway.
+    #
+    # This is bit-identical, not an approximation: force[0] is the
+    # no-equation sink and calcHourglassResist's last line scrubs it to 0.0
+    # unconditionally, so those dropped entries' contribution was ALWAYS
+    # discarded -- dropping them earlier changes nothing except how much
+    # work the scatter does to get there. And it cannot reorder any
+    # surviving accumulation: pos12_p/pos3_p preserve ravel() order, so the
+    # relative sequence of entries landing on any REAL equation index is
+    # exactly what it was before removing the fake ones interleaved with
+    # them (float addition order, not just the set of addends, is what
+    # bit-identity depends on here -- see module docstring).
+    #
+    # _pml gathers each block's value array at these same positions (with
+    # `pos12_p`/`pos3_p`, carried in `inv`) before scatter-adding the
+    # compacted `idxP12`/`idxP3` -- so the scatter's index AND value arrays
+    # shrink together. Measured end to end on the real serial test.tpv104
+    # mesh (scratchpad bench, sha of this session): PML kernel 1.06-1.12x,
+    # full assembleGlobalKU (interior+PML) ~1.05x, bit-identical
+    # (jnp.array_equal on force[1:] and s_p, both backends).
+    pos12_p = np.flatnonzero(is12_p.ravel())
+    pos3_p = np.flatnonzero(is3_p.ravel())
+    idxP12 = [eq_ids[conn_p, jj].ravel()[pos12_p] for jj in range(12)]
+    idxP3 = [eq_ids[conn_p, gg].ravel()[pos3_p] for gg in range(3)]
 
     nd_all = ndof[conn]
     slot0 = np.where(nd_all == 3, 0, 9)
@@ -223,7 +257,8 @@ def build(S):
         det_w_p=det_w_p, wx_p=wx_p, wy_p=wy_p, wz_p=wz_p,
         neg_det_w_p=neg_det_w_p, conn_p=conn_p,
         a1=a1, b1=b1, a2=a2, b2=b2, a3=a3, b3=b3,
-        idxP12=idxP12, idxP3=idxP3, idxH0=idxH0, idxH1=idxH1, idxH2=idxH2,
+        idxP12=idxP12, idxP3=idxP3, pos12_p=pos12_p, pos3_p=pos3_p,
+        idxH0=idxH0, idxH1=idxH1, idxH2=idxH2,
         C_elastic=C_elastic, grav_const=grav_const,
         m_e_i=m_e_all[E_int], m_e_p=m_e_all[E_pml],
         stress_i0=stress_i0, pml_init6=pml_init6,
@@ -425,6 +460,13 @@ def _pml(xp, inv, velArr, force, s_p, rdampk, scratch):
     wx_p, wy_p, wz_p = inv['wx_p'], inv['wy_p'], inv['wz_p']
     ndw = inv['neg_det_w_p']
     ip12 = inv['idxP12']; ip3 = inv['idxP3']
+    # SINK-LANE COMPACTION: ip12/ip3 are already the compacted (real-only)
+    # index arrays build() produced (see build()'s comment by pos12_p/
+    # pos3_p). Each full (Ep,8) block must therefore be gathered at the
+    # SAME flat positions before it is scattered, to line the value array
+    # up with the compacted index array -- the group sums below stay on the
+    # FULL (Ep,8) block (they are never scattered against idxP12).
+    pos12 = inv['pos12_p']; pos3 = inv['pos3_p']
 
     sp_ = (None, None, None, None) if scratch is None else scratch['stage_p']
     groups = [None, None, None]
@@ -436,7 +478,7 @@ def _pml(xp, inv, velArr, force, s_p, rdampk, scratch):
                (wx_p, sxz, 2), (wy_p, syz, 2), (wz_p, szz, 2))
     for jj, (wgt, sv, grp) in enumerate(blocks9):
         t = B.mul_into(xp, sp_[3], wgt, sv[:, None])
-        force = B.scatter_add(xp, force, ip12[jj], t.ravel())
+        force = B.scatter_add(xp, force, ip12[jj], t.ravel()[pos12])
         # A group is SEEDED with a copy, not an alias: `t` is the shared
         # in-flight buffer on numpy, and the next block overwrites it.
         groups[grp] = (B.store_into(xp, sp_[grp], t) if groups[grp] is None
@@ -481,11 +523,11 @@ def _pml(xp, inv, velArr, force, s_p, rdampk, scratch):
         t = B.mul_into(xp, sp_[3], t, ndw)
         if grp == 2:
             t = B.iadd(xp, t, grav_p)
-        force = B.scatter_add(xp, force, ip12[9 + jj], t.ravel())
+        force = B.scatter_add(xp, force, ip12[9 + jj], t.ravel()[pos12])
         groups[grp] = B.iadd(xp, groups[grp], t)
 
     for g in range(3):
-        force = B.scatter_add(xp, force, ip3[g], groups[g].ravel())
+        force = B.scatter_add(xp, force, ip3[g], groups[g].ravel()[pos3])
     return force, s_p
 
 
