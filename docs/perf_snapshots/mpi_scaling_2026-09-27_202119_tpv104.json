@@ -1,0 +1,168 @@
+{
+ "case": "test.tpv104",
+ "sha": "34c680a",
+ "host": "cotopaxi",
+ "date": "2026-09-27 20:26",
+ "n_lo": 20,
+ "n_hi": 60,
+ "max_busy": 0.5,
+ "excluded_cpus": [
+  0,
+  1,
+  16,
+  17,
+  18,
+  19
+ ],
+ "placement": "spread",
+ "rows": [
+  {
+   "ranks": 1,
+   "cpus": [
+    6
+   ],
+   "busy": {
+    "6": 0.0
+   },
+   "loadavg": [
+    50.71630859375,
+    32.109375,
+    27.04638671875
+   ],
+   "n_lo": 20,
+   "n_hi": 60,
+   "placement": "spread",
+   "ranks_per_node": [
+    1
+   ],
+   "jax_halo": {
+    "ms_per_step": 821.1479258781765,
+    "ms_per_step_wall": 251.0236620903015,
+    "compile_s": 2.405700875329785,
+    "solve_lo_s": 18.828659392893314,
+    "solve_hi_s": 51.67457642802037,
+    "rank_ms_lo": [
+     941.4329696446657
+    ],
+    "fixed_s": 76.21043109893799,
+    "wall_lo_s": 81.23090434074402,
+    "wall_hi_s": 91.27185082435608,
+    "rank_ms": [
+     861.2429404670062
+    ],
+    "rank_ms_max": 861.2429404670062,
+    "rank_ms_mean": 861.2429404670062,
+    "straggler": 1.0,
+    "sync": "halo",
+    "mpi_ms": [
+     0.19218002368385592
+    ],
+    "wait_ms": [
+     0.0
+    ],
+    "eff": [
+     0.99
+    ],
+    "Ei": [
+     516096
+    ],
+    "Ep": [
+     218904
+    ],
+    "halo": [
+     0
+    ],
+    "carry_bytes": [
+     181608096
+    ],
+    "N_local": [
+     763537
+    ],
+    "NEQ_local": [
+     3818583
+    ],
+    "platform": "cpu",
+    "gpu_mem": null,
+    "device_peak_gb": [
+     -1.0
+    ],
+    "threads": [
+     9
+    ],
+    "cpus_allowed": [
+     1
+    ]
+   },
+   "jax": {
+    "ms_per_step": 821.1479258781765,
+    "ms_per_step_wall": 251.0236620903015,
+    "compile_s": 2.405700875329785,
+    "solve_lo_s": 18.828659392893314,
+    "solve_hi_s": 51.67457642802037,
+    "rank_ms_lo": [
+     941.4329696446657
+    ],
+    "fixed_s": 76.21043109893799,
+    "wall_lo_s": 81.23090434074402,
+    "wall_hi_s": 91.27185082435608,
+    "rank_ms": [
+     861.2429404670062
+    ],
+    "rank_ms_max": 861.2429404670062,
+    "rank_ms_mean": 861.2429404670062,
+    "straggler": 1.0,
+    "sync": "halo",
+    "mpi_ms": [
+     0.19218002368385592
+    ],
+    "wait_ms": [
+     0.0
+    ],
+    "eff": [
+     0.99
+    ],
+    "Ei": [
+     516096
+    ],
+    "Ep": [
+     218904
+    ],
+    "halo": [
+     0
+    ],
+    "carry_bytes": [
+     181608096
+    ],
+    "N_local": [
+     763537
+    ],
+    "NEQ_local": [
+     3818583
+    ],
+    "platform": "cpu",
+    "gpu_mem": null,
+    "device_peak_gb": [
+     -1.0
+    ],
+    "threads": [
+     9
+    ],
+    "cpus_allowed": [
+     1
+    ]
+   },
+   "fortran": {
+    "ms_per_step": 953.3888876438141,
+    "fixed_s": 1.5975278615951538,
+    "wall_lo_s": 20.665305614471436,
+    "wall_hi_s": 58.800861120224,
+    "decomp": [
+     1,
+     1,
+     1
+    ],
+    "repeats": 1
+   }
+  }
+ ]
+}
