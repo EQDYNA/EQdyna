@@ -3,7 +3,7 @@
 # News in 2026
 * 20260928 v5.19.0 release notes
   * Change - **`run_mpi_scaling`'s `--repeats` now applies to both backends** (PR #45): before, jax kept its best of N repeats while Fortran ran once, biasing every jax/Fortran ratio toward jax.
-  * Change - **`run_mpi_scaling` no longer drops a refused measurement point from the pass**; a non-positive wall-clock difference is recorded as an estimate rather than raised, and a failed `mpirun` is recorded as a refusal instead of silently vanishing from the report (PR #46).
+  * Change - **`run_mpi_scaling` no longer drops a refused measurement point from the pass**; a non-positive wall-clock difference is recorded as `None` (fixed-cost noise) rather than raised, and a failed `mpirun` is recorded as a refusal instead of silently vanishing from the report (PR #46).
   * Change - **removed: `EQDYNA_JAX_DEVICES`, `EQDYNA_SHARD_MODE`, `EQDYNA_SHARD_SYNC`** and the in-process multi-device `shard_map` decomposition they configured (PR #47). The parallel path for the Python/JAX backend is `python3 -m eqdyna ... --mpi` under `mpirun` (one process per rank); serial jax and jax-MPI are unaffected. A run that set any of these three variables now stops with a clear error instead of being silently ignored.
   * Change - **jax PML kernel ~1.06-1.12x faster, full element-assembly kernel ~1.05x faster** on the real `test.tpv104` mesh, bit-identical output (PR #48): roughly a quarter of the PML scatter's index/value entries were being routed to a discarded no-equation sink and are no longer scattered at all.
 * 20260925 v5.18.1 release notes
