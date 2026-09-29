@@ -21,6 +21,7 @@ except ModuleNotFoundError as e:
                  'that file exists.' % (e.name, e.name, SHARED_COMPSET_FILES[e.name]))
     raise
 from lib import ensureFaultRoughGeometryForCase, resolveNormalStressSign, resolveViscoplasticParams
+from machines import write_slurm_header
 import netCDF4 as nc
 import numpy as np
 import os
@@ -252,18 +253,14 @@ def _write_slurm_header(f):
     # Common SBATCH header shared by every batch script this module writes
     # (create_LS6batch_script, create_batch_script_cycle_old,
     # create_batch_script_cycle) -- was written out three times, byte for
-    # byte, with only the target filename differing.
-    f.write("#! /bin/bash" + "\n")
-    f.write("#SBATCH -J " + str(par.casename) + "\n")
-    f.write("#SBATCH -o a.eqdyna.log%j" + "\n")
-    f.write("#SBATCH -N " + str(par.HPC_nnode) + "\n")
-    f.write("#SBATCH -n " + str(par.HPC_ncpu) + "\n")
-    f.write("#SBATCH -p " + str(par.HPC_queue) + "\n")
-    f.write("#SBATCH -t " + str(par.HPC_time) + "\n")
-    f.write("#SBATCH -A " + str(par.HPC_account) + "\n")
-    f.write("#SBATCH --mail-user=" + str(par.HPC_email) + "\n")
-    f.write("#SBATCH --mail-type=begin" + "\n")
-    f.write("#SBATCH --mail-type=end" + "\n")
+    # byte, with only the target filename differing. The writer itself now
+    # lives in machines.py (the one HPC-machine registry) so
+    # testsys/run.py's --submit sweep job can reuse the exact same header
+    # instead of a second copy.
+    write_slurm_header(f, jobname=par.casename, nnode=par.HPC_nnode,
+                        ncpu=par.HPC_ncpu, queue=par.HPC_queue,
+                        walltime=par.HPC_time, account=par.HPC_account,
+                        email=par.HPC_email)
 
 def create_LS6batch_script():
     # Function to create batch script used by HPC system.
