@@ -156,7 +156,7 @@ def build_eqdyna():
 def make_case(tmp, name, nx, ny, nz):
     case = os.path.join(tmp, f'case_{name}')
     os.makedirs(case)
-    for f in ('case.setup', 'defaultParameters.py', 'lib.py'):
+    for f in ('case.setup', 'defaultParameters.py', 'lib.py', 'machines.py'):
         shutil.copy(os.path.join(ROOT, 'scripts', f), case)
     params = USER_PARAMS.replace('__NX__', str(nx)).replace('__NY__', str(ny)).replace('__NZ__', str(nz))
     with open(os.path.join(case, 'user_defined_params.py'), 'w') as fh:

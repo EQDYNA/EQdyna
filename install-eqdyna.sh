@@ -40,6 +40,12 @@ if [ -n "$MACH" ]; then
             if [ -f "$VENV/bin/activate" ]; then
                 module load python
                 source "$VENV/bin/activate"
+            else
+                echo "install-eqdyna.sh: $VENV/bin/activate not found -- the" \
+                     "Python venv (jax, mpi4py) was never created here;" \
+                     "run '$0 -e ls6' first, or set EQDYNA_VENV to point at" \
+                     "one. Continuing with the module's bare python3, which" \
+                     "lacks jax/mpi4py/netCDF4." >&2
             fi ;;
         grace)
             module load netCDF

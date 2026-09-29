@@ -192,7 +192,7 @@ def makeCase(tmp, name):
     import numpy as np
     case = os.path.join(tmp, f'case_{name}')
     os.makedirs(case)
-    for f in ('case.setup', 'defaultParameters.py', 'lib.py'):
+    for f in ('case.setup', 'defaultParameters.py', 'lib.py', 'machines.py'):
         shutil.copy(os.path.join(ROOT, 'scripts', f), case)
     with open(os.path.join(case, 'user_defined_params.py'), 'w') as fh:
         fh.write(USER_PARAMS)

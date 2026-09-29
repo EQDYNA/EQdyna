@@ -63,4 +63,4 @@ relnotes_v*.md
 # mkdocs build output (docs/user/mkdocs.yml's site_dir) -- a byproduct, never
 # tracked (rule 12).
 docs/user-site/
-ls6_sweep_*
+eqdyna_sweep_*
