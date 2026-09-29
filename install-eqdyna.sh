@@ -1,157 +1,91 @@
-#! /bin/bash 
-
-# The shell script is to set up environments for EQdyna and 
-#	install it. It will call the makefile inside src/fortran/ and generate 
-#	an executable eqdyna and move it to bin/.
-
-# Currently, the machines supported are:
-#	ls6:	Lonestar6 at TACC
-#	ubuntu: Ubuntu 22.04
-
-# Usage: install-eqdyna.sh [-h] [-m Machine_name] [-c Machine_name]
+#! /bin/bash
+# Build EQdyna (src/fortran -> bin/eqdyna) and set its environment.
+#
+# Machines: ls6 (TACC Lonestar6), grace (TAMU Grace), ubuntu (22.04), macos.
+#
+#   ./install-eqdyna.sh -m <machine>   build
+#   ./install-eqdyna.sh -e <machine>   install dependencies, then build (ubuntu, macos, ls6)
+#   ./install-eqdyna.sh -c <machine>   set up the environment only, no build
+#   source install-eqdyna.sh -c <m>    set modules, venv, EQDYNAROOT and PATH in this shell
 
 while getopts "m:e:c:h" OPTION; do
-    case $OPTION in 
-        m)
-            MACH=$OPTARG
-            ;;
-        e)
-            MACH=$OPTARG
-            ENV="True"
-            ;;
-        c)
-            MACH=$OPTARG
-            CONFIG="True"
-            ;;
-        h)
-            echo "Usage: ./install-eqdyna.sh [-h] [-m Machine_name] [-c Machine_name] "
-            echo "                                                                     "
-            echo "Examples:                                                            "
-            echo "                                                                     "
-            echo "./install-eqdyna.sh -h                                               "
-            echo " -----Display this help message                                      "
-            echo "                                                                     "
-            echo "./install-eqdyna.sh -m ls6                                           "
-            echo " -----Install EQdyna on Lonestar6 at TACC                            "
-            echo "                                                                     "
-            echo "./install-eqdyna.sh -c ubuntu                                        "
-            echo " -----Simply set up envs for EQdyna without installation             "
-            echo " -----on ubuntu                                                      "
-            echo "                                                                     "
-            echo "source install-eqdyna.sh                                             "
-            echo " -----Activate ENV VAR EQQUASIROOT and add exes to PATH              "
-            echo "                                                                     "
-            echo "Currently supported machines include:                                "
-            echo " ls6/ubuntu/grace                                                    "
-            ;;
+    case $OPTION in
+        m) MACH=$OPTARG ;;
+        e) MACH=$OPTARG; ENV="True" ;;
+        c) MACH=$OPTARG; CONFIG="True" ;;
+        h) sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
     esac
-done 
+done
 
-if [ -n "$MACH" ]; then 
+if [ -n "$MACH" ]; then
     export MACHINE=$MACH
-    if [ $MACHINE == "ls6" ]; then 
-        echo "Installing EQdyna on Lonestar6 at TACC ... ..."
-        
-        echo "Loading netcdf/4.6.2 module ... ..."
-        module load netcdf/4.6.2 
-        ml
-        
-        echo "NETCDF INC and LIB PATH"
-        echo $TACC_NETCDF_INC
-        echo $TACC_NETCDF_LIB
-        
-    elif [ $MACHINE == "ubuntu" ]; then 
-        echo "Installing EQdyna on Ubuntu 22.04 ... ..."
-        export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-        if [ -n "$ENV" ]; then
-            # It uses MPICH MPI. gfortran is the actual Fortran compiler
-            # mpif90 shells out to -- mpich's package only pulls in
-            # libgfortran5 (the runtime .so), not the gfortran compiler
-            # itself, so `make` failed with "gfortran: command not found"
-            # on a bare ubuntu:22.04 with nothing else pre-installed. Every
-            # environment this branch had run in before (this dev box,
-            # GitHub Actions' ubuntu-22.04 runner image) already had
-            # gfortran present for unrelated reasons, so this gap was never
-            # exposed until the Dockerfile -- which transcribes this exact
-            # list -- tried a truly minimal base image (found 2026-09-16).
-            apt-get install git vim make mpich gfortran
-            apt-get install libnetcdf-dev libnetcdff-dev
-            apt-get install python3 python3-pip
-            pip install numpy netCDF4 matplotlib xarray
-            pip install --upgrade numpy
-        fi
-    elif [ $MACHINE == "grace" ]; then 
-        echo "Installing EQdyna on Grace at TAMU ... ..."
-        echo "Loading netcdf module ... ..."
-        module load netCDF
-        ml
-        
-        echo "NETCDF INC and LIB PATH"
-        echo ${EBROOTNETCDF}/include
-        echo ${EBROOTNETCDF}/lib64
-    
-    elif [ $MACHINE == "macos" ]; then 
-        echo "Installing EQdyna on MacOS ... ..."
-        export MACOS_NETCDF_INC=$(brew --prefix netcdf-fortran)/include
-        export MACOS_NETCDF_LIB=$(brew --prefix netcdf)/lib
-        export MACOS_NETCDFF_LIB=$(brew --prefix netcdf-fortran)/lib       
-        if [ -n "$ENV" ]; then
-            brew install mpich python
-            pip3 install --break-system-packages numpy netCDF4 matplotlib xarray
-        fi    
-    fi 
-    
-    if [ -n "$CONFIG" ]; then 
-        echo "Simply configure EQdyna without installation ... ..."
-    else
-        # cd back by NAME, not `cd ..`: the sources moved one level deeper
-        # (src/ -> src/fortran/) and a relative `cd ..` silently landed in
-        # src/, so every path after this block -- EQDYNAROOT, the PATH
-        # exports, the chmods -- was resolved against the wrong directory.
-        EQDYNA_TOP=$(pwd)
-        cd src/fortran
-        make
-        cd "$EQDYNA_TOP"
+    case $MACHINE in
+        ls6)
+            module load netcdf/4.6.2
+            echo "netCDF: $TACC_NETCDF_INC $TACC_NETCDF_LIB"
+            # Python (jax, mpi4py) lives in a venv on $WORK; -e creates it.
+            VENV=${EQDYNA_VENV:-$WORK/eqdyna-venv}
+            if [ -n "$ENV" ]; then
+                module load python3
+                if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))'; then
+                    echo "install-eqdyna.sh: $(python3 -V) is too old; jax needs 3.10+ (module spider python3)" >&2
+                    return 1 2>/dev/null || exit 1
+                fi
+                python3 -m venv "$VENV"
+                "$VENV/bin/pip" install --upgrade pip
+                "$VENV/bin/pip" install numpy scipy netCDF4 matplotlib xarray pytest jax
+                # mpi4py must be built against the loaded MPI (Intel MPI), not a wheel's.
+                MPICC=mpicc "$VENV/bin/pip" install --no-binary=mpi4py --no-cache-dir mpi4py
+            fi
+            if [ -f "$VENV/bin/activate" ]; then
+                module load python3
+                source "$VENV/bin/activate"
+            fi ;;
+        grace)
+            module load netCDF
+            echo "netCDF: ${EBROOTNETCDF}/include ${EBROOTNETCDF}/lib64" ;;
+        ubuntu)
+            export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+            if [ -n "$ENV" ]; then
+                # gfortran is listed explicitly: mpich pulls in only its
+                # runtime, and a bare ubuntu:22.04 has no compiler (2026-09-16).
+                apt-get install git vim make mpich gfortran
+                apt-get install libnetcdf-dev libnetcdff-dev
+                apt-get install python3 python3-pip
+                pip install numpy netCDF4 matplotlib xarray
+                pip install --upgrade numpy
+            fi ;;
+        macos)
+            export MACOS_NETCDF_INC=$(brew --prefix netcdf-fortran)/include
+            export MACOS_NETCDF_LIB=$(brew --prefix netcdf)/lib
+            export MACOS_NETCDFF_LIB=$(brew --prefix netcdf-fortran)/lib
+            if [ -n "$ENV" ]; then
+                brew install mpich python
+                pip3 install --break-system-packages numpy netCDF4 matplotlib xarray
+            fi ;;
+        *)
+            echo "install-eqdyna.sh: unknown machine '$MACHINE' (ls6, grace, ubuntu, macos)" >&2
+            return 1 2>/dev/null || exit 1 ;;
+    esac
+
+    if [ -z "$CONFIG" ]; then
+        (cd src/fortran && make) || { echo "install-eqdyna.sh: make failed" >&2; return 1 2>/dev/null || exit 1; }
         mkdir -p bin
         mv src/fortran/eqdyna bin
     fi
 
-    export EQDYNAROOT=$(pwd)
-    export PATH=$(pwd)/bin:$PATH
-    export PATH=$(pwd)/scripts:$PATH
-    
-    # PROJECT_RULES.md rules 21/21b (pathway item 68): git installs NO hooks
-    # on clone, so the tracked pre-commit guard is inert until core.hooksPath
-    # points at it. It refuses a commit made from the MAIN CHECKOUT (where
-    # --git-dir equals --git-common-dir), which no session is permitted to do.
-    # The value is RELATIVE on purpose: git runs hooks from the top level of
-    # the working tree, so every linked worktree uses its OWN checked-out copy
-    # of testsys/hooks/, and this one config covers every worktree, present
-    # and future. Idempotent -- `git config` rewrites the same key with the
-    # same value, so re-running the installer changes nothing.
+    # Activate the tracked git hooks (rules 21/21b). Relative, so every
+    # worktree uses its own copy; idempotent.
     if git rev-parse --git-dir > /dev/null 2>&1; then
         git config core.hooksPath testsys/hooks
-        echo "core.hooksPath = $(git config core.hooksPath) (rules 21/21b guard active)"
-    else
-        echo "NOTE: not a git checkout -- core.hooksPath NOT set, and the"
-        echo "      rules 21/21b pre-commit guard is therefore inactive here."
-        echo "      Nothing can be committed from a non-git tree anyway."
     fi
 
-    # PROJECT_RULES.md rule 13: chmod only the specific entry-point scripts
-    # that are invoked directly (as `./name` or bare `name` on PATH), never
-    # the whole directory -- `chmod -R 755 scripts` previously flipped the
-    # mode bit on every tracked file under scripts/ (29+ files in one
-    # incident, including data files like *.m, *.txt, *.mat that were never
-    # meant to be executable), on every single build.
+    # Only the entry points run directly, never the whole directory (rule 13).
     chmod 755 scripts/case.setup scripts/clean.py scripts/create.newcase \
         scripts/generateFaultInterface scripts/plotRuptureDynamics \
         scripts/plotSlipAndRPT
 fi
 
 export EQDYNAROOT=$(pwd)
-export PATH=$(pwd)/bin:$PATH
-export PATH=$(pwd)/scripts:$PATH
-
-echo EQDYNAROOT
-echo PATH 
+export PATH=$(pwd)/bin:$(pwd)/scripts:$PATH
+echo "EQDYNAROOT=$EQDYNAROOT"

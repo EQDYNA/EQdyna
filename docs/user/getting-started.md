@@ -22,8 +22,13 @@ install the system and Python dependencies listed above.
 
 * **Ubuntu 22.04**: `bash ubuntu.env.sh` installs the dependencies through
   `apt-get` and `pip`, then `./install-eqdyna.sh -m ubuntu` builds.
-* **TACC Lonestar6**: `./install-eqdyna.sh -m ls6` loads the cluster's
-  `netcdf` module and builds; no separate dependency install is needed.
+* **TACC Lonestar6**: `./install-eqdyna.sh -e ls6` loads the cluster's
+  `netcdf` module, builds the solver, and creates a Python venv on `$WORK`
+  (jax, mpi4py built against Intel MPI) for the Python backend; later
+  sessions use `source install-eqdyna.sh -c ls6`. To check an install, run
+  the full test sweep on a compute node with
+  `sbatch -A <allocation> scripts/ls6_sweep.sbatch`; its results land in
+  `ls6_sweep_<jobid>.tgz`.
 * **Texas A&M Grace**: `./install-eqdyna.sh -m grace` loads the cluster's
   netCDF module and builds.
 * **macOS**: `./install-eqdyna.sh -e macos` installs `mpich` and `python`
