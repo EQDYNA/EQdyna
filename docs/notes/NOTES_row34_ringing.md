@@ -161,3 +161,118 @@ python3 testsys/perf/measure_ringing.py --case test.tpv37 --max-p2p 0.2
 Variant binaries: copy `src/fortran` beside a `scripts/` symlink (the
 makefile's `srcStamp` step runs `../../scripts/src_hash.py`), edit
 `globalvar.f90:105` (`C_hg`) and `:191` (`kapa_hg`), `MACHINE=ubuntu make`.
+
+## Follow-up 2026-09-29 (owner: "it seems to be related to wedge elements") -- controlled wedge vs hex A/B
+
+**Verdict: the wedges are not the cause. Replacing tpv37's degenerate-wedge
+mesh by the code's only hex alternative (planar dipping fault inserted into
+hexes, `C_degen=0, insertFaultType=1`) at the same dip, dx, friction,
+nucleation, stations and term makes the dp180 zigzag LARGER (rms 0.150 ->
+0.197 MPa, p2p 0.673 -> 0.995) and moves the rupture-time field further from
+the 50 m archive. Same picture at 30 deg. The mesh-scale ringing is a
+property of the 500 m discretisation, not of the element type.**
+
+### What had to change to make the hex meshing run at 15 deg
+
+- tpv37 sets `dy = dx*cos(dip)` (483 m), which is exactly the fault's
+  y-climb per down-dip node, so `case.setup` REFUSED the inserted geometry
+  (`lib.FaultGeometryError: the fault surface climbs by 1 of a fault-normal
+  cell ... >= 1.0 ... the elements inserted by insertFaultInterface tangle`)
+  and the Fortran refused the same file with exit code 31. The comment in
+  `tpv36_37_common.py` ("don't insert planar dipping fault because of the
+  low dipping angle") is this refusal. With `dy = dx` (500 m) the ratio is
+  cos(15) = 0.966 and the validator passes with its WARNING (|dy/dz| =
+  3.73 > 0.2). Same at 30 deg (cos 30 = 0.866).
+- At the case's `dt = 0.5*dz/vp` the inserted meshes went NaN at the fault's
+  bottom edge (15 deg: node (500, 27046, -7247) m at step 215; 30 deg: node
+  (500, 24249, -14000) m at step 208). The blend `ycoort = y*(ymax-peak)/ymax
+  + peak` compresses the +y cells at the fault bottom to (1 - 27.0/37.0) =
+  0.27 of dy; fault-normal thickness of fault-adjacent elements measured
+  (Python port `meshgen.build_elements`, serial copy) min 48 m at 15 deg,
+  94 m at 30 deg, against dz = 129 / 250 m. Runs completed at dt = 0.0025 s
+  (15 deg, 2000 steps) and 0.005 s (30 deg, 1000 steps) -- 4.3x / 4.2x the
+  wedge meshes' step count for the same 5 s.
+- On-fault station FILES on the inserted mesh are named by VERTICAL depth
+  (`library_output.f90:48-68`: with `C_degen==0` `fltxyz(2,4,1)` is 90 deg,
+  so `dp180` (18 km down-dip) is written as `faultst000dp047`). Mapped by
+  symlink for the comparison below; the station coordinates in
+  `bStations.txt` are identical between the two meshings (diff clean).
+
+### Element quality near the fault (Python port mesh, serial, fault-adjacent elements = any node in nsmp)
+
+| mesh | dx, dy, dz (m) | fault-adjacent elems | of which wedges | scaled Jacobian at non-collapsed corners min / median | fault-normal thickness min / median / max (m) | edge-length ratio median |
+|---|---|---|---|---|---|---|
+| wedge 15 deg (tpv37 as committed) | 500, 483, 129 | 13900 | 6720 | 0.966 / 1.000 | 125 / 250 / 253 | 3.9 |
+| hex-insert 15 deg, dy=dx | 500, 500, 129 | 7068 | 0 | 0.259 / 0.259 (= sin 15) | 48 / 132 / 494 | 1.7 (interior region max 16) |
+| wedge 30 deg | 500, 433, 250 | 13900 | 6720 | 0.866 / 1.000 | 217 / 433 / 438 | 2.0 |
+| hex-insert 30 deg, dy=dx | 500, 500, 250 | 7068 | 0 | 0.500 / 0.500 (= sin 30) | 94 / 254 / 882 | 1.7 |
+
+The wedge mesh's own anisotropy is dz/dx = sin(dip) = 0.26 (129 m vertical
+cells); the inserted hexes trade the collapsed corners for a 15 deg
+parallelogram cross-section (scaled Jacobian sin(dip)) and an asymmetric
+fault-normal thickness (48 m on +y, 494 m on -y at the fault bottom).
+Neither meshing gives isotropic 500 m cells at the fault; an isotropic
+control would need dx = dz along strike too (16x elements) and was not run.
+
+### A/B at dip 15 (tpv37 physics), Fortran 4 ranks, 5 s, `v-shear-stress`
+
+| station | metric | wedge (committed reference) | hex-insert (dy=dx, dt 0.0025) | 50 m archive |
+|---|---|---|---|---|
+| faultst000dp180 | ringing rms / p2p (MPa) | 0.150 / 0.673 | 0.197 / 0.995 | 0.0018 / 0.016 |
+| | max\|run - archive\| (MPa) | 1.246 | 1.617 | -- |
+| | t_arr (s) / peak slip rate (m/s) | 0.313 / 0.52 | 0.305 / 0.62 | 0.302 / 0.64 |
+| faultst000dp120 | ringing rms / p2p | 0.061 / 0.247 | 0.155 / 0.691 | 0.024 / 0.123 |
+| | t_arr | 3.127 | 2.635 | 3.087 |
+| faultst040dp180 | ringing rms / p2p | 0.112 / 0.519 | 0.174 / 0.710 | 0.008 / 0.042 |
+| | t_arr | 2.685 | 3.185 | 2.435 |
+| faultst000dp240 | ringing rms / p2p | 0.161 / 0.900 | 0.495 / 2.030 | 0.009 / 0.041 |
+| | t_arr | 3.354 | 2.920 | 3.045 |
+| faultst080dp180 | t_arr | 4.918 | not reached by 5 s | 4.311 |
+| whole fault (3477 nodes, matched to 1 m) | ruptured at 5 s / flips vs wedge | 1288 / -- | 1227 / 203 | -- |
+| | \|d rupture time\| vs wedge mean / max (s) | -- | 0.330 / 1.017 | -- |
+| | fault peak slip rate (m/s) | 5.01 | 6.61 (1.32x) | -- |
+
+The inserted mesh is faster down-dip (dp120 2.64 vs archive 3.09 s) and
+slower along strike (st040dp180 3.19 vs 2.44 s) -- a direction-dependent
+distortion the wedge mesh does not have (its arrival errors vs the archive
+are +0.04 / +0.25 / +0.31 s at dp120 / st040dp180 / dp240; the inserted
+mesh's are -0.45 / +0.75 / -0.13 s).
+
+### Mechanism control at dip 30 (NOT tpv37's physics; only the dip and hence dz change)
+
+| station | wedge 30 rms / p2p (MPa), t_arr | hex-insert 30 rms / p2p, t_arr |
+|---|---|---|
+| faultst000dp180 | 0.114 / 0.556, 0.333 s | 0.183 / 0.837, 0.310 s |
+| faultst000dp120 | 0.037 / 0.165, 3.271 s | 0.123 / 0.473, 2.740 s |
+| faultst040dp180 | 0.048 / 0.255, 2.458 s | 0.136 / 0.574, 2.880 s |
+| faultst000dp240 | 0.123 / 0.511, 3.354 s | 0.444 / 1.972, 2.965 s |
+| whole fault | 1241 ruptured | 1226 ruptured, 157 flips, \|d rt\| mean 0.293 s, peak slip rate 1.34x |
+
+Both dips, every station: the hex-only mesh rings 1.3-3x MORE than the wedge
+mesh. Going from dip 15 to 30 (dz 129 -> 250 m, less anisotropic) lowers the
+wedge mesh's dp180 rms by 24% (0.150 -> 0.114) -- consistent with the
+resolution/anisotropy reading, and much smaller than the 3x from halving dx.
+
+### What a fix would be
+
+- Switching tpv36/37 to `insertFaultType=1` is not a fix: it needs `dy=dx`
+  and a 4x smaller dt to run, rings more, and distorts the rupture-time
+  field more than the wedges do. It would also change both cases' meshes and
+  every committed reference (rule 7, owner's call) for a worse result.
+- A wedge-specific hourglass treatment (Fortran + port, rule 23) has no
+  target: the ringing survives, larger, on a mesh with zero wedges.
+- What does move it is dx (3x per halving; 50 m is flat). Fault-normal
+  anisotropy (dz = dx sin dip) is the remaining untested suspect; the
+  controlled test is a wedge mesh with dx = dz along strike (~16x cost at
+  dip 15) and was not run.
+
+### Reproduce (scratch, this branch)
+
+Case copies were made with `create.newcase <name> test.tpv37` and `sed` on
+the copied `tpv36_37_common.py`: `par.C_degen = 0`, `par.insertFaultType =
+1`, `par.fymin, par.fymax = 0.0, 0.0`, `par.dy = par.dx`, `par.dt = 0.0025`
+(15 deg) / `0.005` (30 deg); `par.dip = 30` for the 30 deg pair; `par.nx =
+par.nz = 1` copies for the Python-port mesh-quality read. Ringing via
+`testsys/perf/measure_ringing.py --stations ...` on a directory of symlinks
+mapping `faultst000dp047 -> faultst000dp180` etc.; rupture fields matched
+node-by-node (rounded to 1 m) between canonicalised frt sets.
