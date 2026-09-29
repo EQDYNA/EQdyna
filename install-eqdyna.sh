@@ -26,9 +26,9 @@ if [ -n "$MACH" ]; then
             # Python (jax, mpi4py) lives in a venv on $WORK; -e creates it.
             VENV=${EQDYNA_VENV:-$WORK/eqdyna-venv}
             if [ -n "$ENV" ]; then
-                module load python3
+                module load python
                 if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))'; then
-                    echo "install-eqdyna.sh: $(python3 -V) is too old; jax needs 3.10+ (module spider python3)" >&2
+                    echo "install-eqdyna.sh: $(python3 -V) is too old; jax needs 3.10+ (module spider python)" >&2
                     return 1 2>/dev/null || exit 1
                 fi
                 python3 -m venv "$VENV"
@@ -38,7 +38,7 @@ if [ -n "$MACH" ]; then
                 MPICC=mpicc "$VENV/bin/pip" install --no-binary=mpi4py --no-cache-dir mpi4py
             fi
             if [ -f "$VENV/bin/activate" ]; then
-                module load python3
+                module load python
                 source "$VENV/bin/activate"
             fi ;;
         grace)
