@@ -4,7 +4,7 @@
 # ghcr.io/eqdyna/eqdyna:<tag> and :latest. See Docker.guide.md.
 #
 # Dependencies below are transcribed from install-eqdyna.sh's ubuntu branch
-# (install-eqdyna.sh:68-70,91): MPICH, not OpenMPI, matching what
+# (its `-e ubuntu` apt-get/pip lines): MPICH, not OpenMPI, matching what
 # install-eqdyna.sh actually invokes on ubuntu.
 FROM ubuntu:22.04
 
