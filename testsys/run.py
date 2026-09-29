@@ -14,6 +14,19 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
     python3 testsys/run.py readme        # the README-executes stranger-clone gate, FULL mode: clones this commit, runs README.md's fenced blocks for real (~2-4 min)
     python3 testsys/run.py all           # unit + regression + e2e, in that order (default; perf is opt-in, not in "all" -- it needs a Fortran build a fresh checkout does not have yet)
 
+    python3 testsys/run.py all --machine ls6              # sets EQDYNA_TEST_MACHINE/EQDYNA_MPIRUN
+                                                            # from scripts/machines.py and runs IN
+                                                            # PLACE (e.g. inside an interactive
+                                                            # allocation) -- ubuntu behaviour is
+                                                            # unchanged when --machine is absent.
+    python3 testsys/run.py all --machine ls6 --submit --account <alloc>
+                                          # writes an sbatch script -- case.setup's shared SBATCH-header
+                                          # writer (scripts/machines.write_slurm_header), body
+                                          # `source install-eqdyna.sh -c ls6` + this same `run.py all
+                                          # --machine ls6` -- submits it, and prints the job id and the
+                                          # tarball name its own run.py invocation will produce. Refuses
+                                          # on a machine with no scheduler (scripts/machines.py).
+
 There is ONE test here -- e2e -- and backend is an axis of it, not a tier.
 There is also ONE term (2026-09-23 owner decision, superseding a same-day
 earlier two-term design): every cell of every selection -- `e2e`, `e2e-ci`,
@@ -49,7 +62,9 @@ anything in the requested scope failed. "The script ran" and "the script
 passed" are always two different questions here (rule 3).
 """
 import glob
+import io
 import os
+import re
 import subprocess
 import sys
 
@@ -57,15 +72,116 @@ TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(TESTSYS)
 
 
-def _load_src_hash():
-    """scripts/src_hash.py -- the ONE source-stamp implementation -- loaded by
-    path, so putting scripts/ on sys.path cannot shadow any other module."""
+def _load_by_path(name, relpath):
+    """Load a scripts/ module by path, so putting scripts/ on sys.path
+    cannot shadow any other module (same reasoning as the old
+    _load_src_hash, generalised to the second caller: scripts/machines.py)."""
     import importlib.util
-    path = os.path.join(REPO_ROOT, 'scripts', 'src_hash.py')
-    spec = importlib.util.spec_from_file_location('src_hash', path)
+    path = os.path.join(REPO_ROOT, relpath)
+    spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def _load_src_hash():
+    """scripts/src_hash.py -- the ONE source-stamp implementation."""
+    return _load_by_path('src_hash', os.path.join('scripts', 'src_hash.py'))
+
+
+def _load_machines():
+    """scripts/machines.py -- the ONE HPC-machine registry and the shared
+    SBATCH-header writer case.setup also uses."""
+    return _load_by_path('machines', os.path.join('scripts', 'machines.py'))
+
+
+def build_submit_script(machines_mod, machine_name, tiers, account,
+                         partition=None, walltime=None):
+    """The sbatch script for `--submit`: case.setup's shared SBATCH header
+    (scripts/machines.write_slurm_header) followed by a body that sources
+    this machine's install-eqdyna.sh branch (the build/env source of truth --
+    module loads and venv setup are NOT duplicated here) and re-invokes this
+    exact `run.py <tiers> --machine <machine_name>`, then packs the run's log
+    and the perf/profile rows it appended into one tarball. Replaces
+    scripts/ls6_sweep.sbatch's hard-coded, LS6-only copy of this same shape.
+
+    Raises ValueError -- never guesses -- when the machine has no scheduler,
+    no account is given (this charges someone's allocation; no default -- rule
+    2), or the registry is missing a value (e.g. grace's cores_per_node) that
+    --partition/--time cannot supply."""
+    m = machines_mod.machine(machine_name)
+    if m['scheduler'] != 'slurm':
+        raise ValueError(
+            "machine %r has no scheduler (scripts/machines.py: scheduler=%r) "
+            "-- --submit only applies to a slurm machine; drop --submit and "
+            "run `testsys/run.py %s --machine %s` in place"
+            % (machine_name, m['scheduler'], ' '.join(tiers), machine_name))
+    if not account:
+        raise ValueError(
+            "--submit needs --account <allocation> -- an sbatch job charges "
+            "an allocation and this refuses to guess one (PROJECT_RULES rule 2)")
+    queue = partition or m['partition']
+    if not queue:
+        raise ValueError(
+            "machine %r has no default partition in scripts/machines.py -- "
+            "pass --partition explicitly" % machine_name)
+    wt = walltime or m['walltime']
+    if not wt:
+        raise ValueError(
+            "machine %r has no default walltime in scripts/machines.py -- "
+            "pass --time explicitly" % machine_name)
+    if m['cores_per_node'] is None:
+        raise ValueError(
+            "machine %r has no cores_per_node in scripts/machines.py yet -- "
+            "fill it in before submitting a job there (rule 2: no guessed "
+            "core count)" % machine_name)
+
+    tier_str = ' '.join(tiers)
+    buf = io.StringIO()
+    machines_mod.write_slurm_header(
+        buf, jobname='eqdyna-sweep', nnode=1, ncpu=m['cores_per_node'],
+        queue=queue, walltime=wt, account=account, email='',
+        output='eqdyna_sweep_%j.log')
+    buf.write('\n')
+    buf.write('cd "$SLURM_SUBMIT_DIR"\n')
+    buf.write('source ./install-eqdyna.sh -c %s\n' % machine_name)
+    buf.write('git rev-parse HEAD; module list 2>&1\n')
+    buf.write('L0=$(wc -l < docs/perf_ledger.jsonl); '
+              'P0=$(wc -l < docs/run_profiles.jsonl)\n')
+    buf.write('python3 testsys/run.py %s --machine %s\n'
+              % (tier_str, machine_name))
+    buf.write('rc=$?\n')
+    buf.write('echo "run.py %s --machine %s exit $rc"\n'
+              % (tier_str, machine_name))
+    buf.write('tail -n +$((L0 + 1)) docs/perf_ledger.jsonl '
+              '> eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl\n')
+    buf.write('tail -n +$((P0 + 1)) docs/run_profiles.jsonl '
+              '> eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl\n')
+    buf.write('tar czf eqdyna_sweep_$SLURM_JOB_ID.tgz '
+              'eqdyna_sweep_$SLURM_JOB_ID.log '
+              'eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl '
+              'eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl\n')
+    buf.write('exit $rc\n')
+    return buf.getvalue()
+
+
+def submit(machine_name, tiers, account, partition=None, walltime=None):
+    """Write the submit script (under scratch/, gitignored -- it is a
+    generated artifact, not source, and SLURM_SUBMIT_DIR is set from sbatch's
+    OWN cwd, not the script's location, so it need not live at repo root),
+    then `sbatch` it. Returns (returncode, stdout, stderr, script_path)."""
+    machines_mod = _load_machines()
+    script = build_submit_script(machines_mod, machine_name, tiers, account,
+                                  partition, walltime)
+    scratch = os.path.join(REPO_ROOT, 'scratch')
+    os.makedirs(scratch, exist_ok=True)
+    script_path = os.path.join(scratch, 'submit_eqdyna_sweep_%s.sh' % machine_name)
+    with open(script_path, 'w') as f:
+        f.write(script)
+    os.chmod(script_path, 0o755)
+    r = subprocess.run(['sbatch', script_path], cwd=REPO_ROOT,
+                       capture_output=True, text=True)
+    return r.returncode, r.stdout, r.stderr, script_path
 
 
 def require_fresh_fortran_binary(binary=None, fsrc=None):
@@ -299,16 +415,91 @@ OPTIONAL_TIERS = ('e2e-ci', 'release', 'perf', 'gpu', 'scaling', 'e2e-full',
 RELEASE_EXPANDS = ('release', 'readme')
 
 
+def parse_argv(argv):
+    """Split argv into (tiers, machine, submit, account, partition, walltime).
+    Manual, not argparse: the existing contract is a bare list of tier names,
+    and this only adds a handful of `--flag value` pairs ahead of or after
+    them -- argparse's positional/optional interleaving would change how an
+    unknown tier is reported (tested by callers today)."""
+    tiers = []
+    machine = None
+    submit_flag = False
+    account = None
+    partition = None
+    walltime = None
+    flags_with_value = {
+        '--machine': 'machine', '--account': 'account',
+        '--partition': 'partition', '--time': 'walltime',
+    }
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a in flags_with_value:
+            if i + 1 >= len(argv):
+                raise SystemExit('testsys/run.py: %s needs a value' % a)
+            value = argv[i + 1]
+            if a == '--machine':
+                machine = value
+            elif a == '--account':
+                account = value
+            elif a == '--partition':
+                partition = value
+            elif a == '--time':
+                walltime = value
+            i += 2
+        elif a == '--submit':
+            submit_flag = True
+            i += 1
+        else:
+            tiers.append(a)
+            i += 1
+    return tiers, machine, submit_flag, account, partition, walltime
+
+
 def main(argv):
     # Several tiers may be named in one invocation, in the order given --
     # that is how CI asks for "unit regression e2e-ci" without a second
     # entry point and without an env var deciding coverage behind its back.
-    requested = argv[1:] or ['all']
+    tiers, machine_name, submit_flag, account, partition, walltime = parse_argv(argv)
+    requested = tiers or ['all']
     unknown = [t for t in requested if t not in TIERS + OPTIONAL_TIERS + ('all',)]
     if unknown:
         print(f'unknown tier(s) {unknown}')
-        print(f'usage: python3 testsys/run.py [{"|".join(TIERS + OPTIONAL_TIERS)}|all] ...')
+        print(f'usage: python3 testsys/run.py [{"|".join(TIERS + OPTIONAL_TIERS)}|all] '
+              f'[--machine <m>] [--submit --account <alloc> [--partition <p>] [--time <hh:mm:ss>]]')
         return 2
+
+    if submit_flag:
+        if not machine_name:
+            print('testsys/run.py: --submit requires --machine <m>')
+            return 2
+        try:
+            rc, out, err, script_path = submit(machine_name, requested, account,
+                                                partition, walltime)
+        except ValueError as exc:
+            print('testsys/run.py: %s' % exc)
+            return 2
+        sys.stdout.write(out)
+        if rc != 0:
+            print('testsys/run.py: sbatch failed (exit %d): %s' % (rc, err.strip()))
+            return 1
+        jobid_match = re.search(r'(\d+)\s*$', out.strip())
+        jobid = jobid_match.group(1) if jobid_match else '<jobid>'
+        print('testsys/run.py: submitted %s (job %s); results will land in '
+              'eqdyna_sweep_%s.tgz (see %s)' % (script_path, jobid, jobid, script_path))
+        return 0
+
+    if machine_name:
+        machines_mod = _load_machines()
+        try:
+            m = machines_mod.machine(machine_name)
+        except ValueError as exc:
+            print('testsys/run.py: %s' % exc)
+            return 2
+        os.environ['EQDYNA_TEST_MACHINE'] = machine_name
+        os.environ['EQDYNA_MPIRUN'] = m['mpirun']
+        print('testsys/run.py: --machine %s -> EQDYNA_TEST_MACHINE=%s EQDYNA_MPIRUN=%s'
+              % (machine_name, machine_name, m['mpirun']))
 
     selected = []
     for tier in requested:

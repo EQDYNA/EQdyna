@@ -25,10 +25,14 @@ install the system and Python dependencies listed above.
 * **TACC Lonestar6**: `./install-eqdyna.sh -e ls6` loads the cluster's
   `netcdf` module, builds the solver, and creates a Python venv on `$WORK`
   (jax, mpi4py built against Intel MPI) for the Python backend; later
-  sessions use `source install-eqdyna.sh -c ls6`. To check an install, run
-  the full test sweep on a compute node with
-  `sbatch -A <allocation> scripts/ls6_sweep.sbatch`; its results land in
-  `ls6_sweep_<jobid>.tgz`.
+  sessions use `source install-eqdyna.sh -c ls6`. To check an install, submit
+  the full test sweep as one job with
+  `python3 testsys/run.py all --machine ls6 --submit --account <allocation>`
+  (`scripts/machines.py` is the one machine registry this reads; the same
+  `--machine ls6` flag also runs the sweep in place, e.g. inside an
+  interactive allocation, without `--submit`). Its results land in
+  `scratch/submit_eqdyna_sweep_ls6.sh` (the generated job script) and
+  `eqdyna_sweep_<jobid>.tgz` (log plus the perf/profile rows it appended).
 * **Texas A&M Grace**: `./install-eqdyna.sh -m grace` loads the cluster's
   netCDF module and builds.
 * **macOS**: `./install-eqdyna.sh -e macos` installs `mpich` and `python`
