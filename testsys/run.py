@@ -135,6 +135,11 @@ def build_submit_script(machines_mod, machine_name, tiers, account,
             "machine %r has no cores_per_node in scripts/machines.py yet -- "
             "fill it in before submitting a job there (rule 2: no guessed "
             "core count)" % machine_name)
+    if not m['mpirun']:
+        raise ValueError(
+            "machine %r has no verified mpirun launcher in scripts/machines.py "
+            "yet -- fill it in (see ls6's ibrun-vs-mpirun note) before "
+            "submitting a job there (rule 2: no guessed launcher)" % machine_name)
 
     tier_str = ' '.join(tiers)
     buf = io.StringIO()
@@ -146,6 +151,21 @@ def build_submit_script(machines_mod, machine_name, tiers, account,
     buf.write('cd "$SLURM_SUBMIT_DIR"\n')
     buf.write('source ./install-eqdyna.sh -c %s\n' % machine_name)
     buf.write('git rev-parse HEAD; module list 2>&1\n')
+    # Refuse EARLY, before the (potentially hours-long) sweep, if the
+    # sourced environment is missing a dependency the sweep needs -- this is
+    # exactly what bit the owner on 2026-09-29: a bare `python3` with none of
+    # jax/netCDF4/mpi4py, discovered only mid-regression via "No module named
+    # netCDF4". Explicit check, not `set -e` (rule 2: no silent fallback).
+    env_check_msg = (
+        "eqdyna-sweep: environment check failed after "
+        "source ./install-eqdyna.sh -c %s -- jax/netCDF4/mpi4py not all "
+        "importable by this python3. Check that the venv activated (see "
+        "install-eqdyna.sh own warning above if it did not) and EQDYNA_VENV."
+        % machine_name)
+    buf.write("python3 -c 'import jax, netCDF4, mpi4py' || {\n")
+    buf.write('  echo "%s" >&2\n' % env_check_msg)
+    buf.write('  exit 1\n')
+    buf.write('}\n')
     buf.write('L0=$(wc -l < docs/perf_ledger.jsonl); '
               'P0=$(wc -l < docs/run_profiles.jsonl)\n')
     buf.write('python3 testsys/run.py %s --machine %s\n'
@@ -495,6 +515,11 @@ def main(argv):
             m = machines_mod.machine(machine_name)
         except ValueError as exc:
             print('testsys/run.py: %s' % exc)
+            return 2
+        if not m['mpirun']:
+            print('testsys/run.py: machine %r has no verified mpirun launcher '
+                  'in scripts/machines.py yet -- refusing to guess one '
+                  '(rule 2); fill it in first' % machine_name)
             return 2
         os.environ['EQDYNA_TEST_MACHINE'] = machine_name
         os.environ['EQDYNA_MPIRUN'] = m['mpirun']

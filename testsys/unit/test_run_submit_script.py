@@ -49,7 +49,7 @@ def test_build_submit_script_header_and_body_for_ls6():
     assert '#SBATCH -o eqdyna_sweep_%j.log' in lines
     assert '#SBATCH -N 1' in lines
     assert '#SBATCH -n 128' in lines          # ls6 cores_per_node
-    assert '#SBATCH -p normal' in lines       # ls6 default partition
+    assert '#SBATCH -p development' in lines  # ls6 default partition (dev queue for a quick check)
     assert '#SBATCH -A ACCT-1' in lines
     assert 'source ./install-eqdyna.sh -c ls6' in script
     assert 'python3 testsys/run.py unit regression --machine ls6' in script
@@ -58,6 +58,16 @@ def test_build_submit_script_header_and_body_for_ls6():
     # is the one place that happens.
     assert 'module load' not in script
     assert 'pip install' not in script
+    # Refuses EARLY (before the sweep) if the sourced environment lacks a
+    # dependency the sweep needs -- checked as a property (a guarded
+    # `python3 -c 'import ...'` before the run.py invocation), not pinned to
+    # exact wording.
+    body = script.split('source ./install-eqdyna.sh -c ls6\n', 1)[1]
+    env_check_pos = body.find("python3 -c 'import jax, netCDF4, mpi4py'")
+    sweep_pos = body.find('python3 testsys/run.py unit regression --machine ls6')
+    assert env_check_pos != -1 and sweep_pos != -1
+    assert env_check_pos < sweep_pos
+    assert 'exit 1' in body[:sweep_pos]
 
 
 def test_build_submit_script_partition_and_time_overrides():
@@ -95,6 +105,23 @@ def test_build_submit_script_refuses_when_cores_per_node_unknown():
         assert False, 'expected ValueError'
     except ValueError as exc:
         assert 'cores_per_node' in str(exc)
+
+
+def test_build_submit_script_refuses_when_mpirun_unverified(monkeypatch):
+    """Isolate the mpirun check from the cores_per_node one above: even with
+    a core count supplied, an unverified (None) launcher must still refuse
+    (rule 2) -- this is what BLOCKER 1/2 of the PR #52 audit asked to fix:
+    ls6/grace must never guess 'ibrun' for testsys' own -np-style launcher."""
+    patched = dict(machines.MACHINES['grace'])
+    patched['cores_per_node'] = 48
+    monkeypatch.setitem(machines.MACHINES, 'grace', patched)
+    assert machines.MACHINES['grace']['mpirun'] is None  # still unverified
+    try:
+        run.build_submit_script(machines, 'grace', ['unit'], account='A',
+                                partition='sn4')
+        assert False, 'expected ValueError'
+    except ValueError as exc:
+        assert 'mpirun' in str(exc)
 
 
 def test_main_submit_writes_script_and_calls_sbatch(monkeypatch):
@@ -158,7 +185,22 @@ def test_main_machine_flag_sets_env_without_submit(monkeypatch):
     monkeypatch.setitem(run.RUNNERS, 'unit', fake_unit)
     rc = run.main(['run.py', 'unit', '--machine', 'ls6'])
     assert rc == 0
-    assert seen_env == {'EQDYNA_TEST_MACHINE': 'ls6', 'EQDYNA_MPIRUN': 'ibrun'}
+    assert seen_env == {'EQDYNA_TEST_MACHINE': 'ls6', 'EQDYNA_MPIRUN': 'mpirun'}
+
+
+def test_main_machine_flag_refuses_for_grace_unverified_mpirun(monkeypatch):
+    """grace's mpirun is None (unverified) -- --machine grace must refuse
+    rather than export EQDYNA_MPIRUN=None-as-string or similar (rule 2), and
+    must never reach RUNNERS."""
+    monkeypatch.delenv('EQDYNA_TEST_MACHINE', raising=False)
+    monkeypatch.delenv('EQDYNA_MPIRUN', raising=False)
+    monkeypatch.setitem(run.RUNNERS, 'unit',
+                        lambda: (_ for _ in ()).throw(AssertionError(
+                            'RUNNERS must not run when --machine refused')))
+    rc = run.main(['run.py', 'unit', '--machine', 'grace'])
+    assert rc == 2
+    assert 'EQDYNA_TEST_MACHINE' not in os.environ
+    assert 'EQDYNA_MPIRUN' not in os.environ
 
 
 def test_main_without_machine_leaves_env_untouched(monkeypatch):

@@ -17,9 +17,15 @@ Fields per machine:
                    machine (submit then refuses rather than guessing -- rule
                    2: no placeholder data).
   walltime        default `#SBATCH -t` value (hh:mm:ss), or None.
-  mpirun          the MPI launcher this machine's test harness uses, i.e.
-                   EQDYNA_MPIRUN (docs/user/troubleshooting.md: "on ls6 and
-                   grace the launcher is ibrun -> srun").
+  mpirun          the launcher testsys' own `<launcher> -np N ...` invocation
+                   (EQDYNA_MPIRUN) uses, or None if unverified (submit/
+                   --machine then refuse rather than guess -- rule 2). NOT
+                   necessarily the launcher a case's own batch.hpc uses --
+                   TACC's `ibrun` takes `-n`/`-o`, not `-np` (no `-n` runs on
+                   the WHOLE allocation), so it cannot serve run_e2e's
+                   `-np N` calls; measured on LS6 2026-09-29 (idev node,
+                   Intel MPI): plain `mpirun -np N` runs every cell
+                   (fortran and python-jax-mpi) to completion.
   notes           one line, for humans reading this table.
 
 This module also owns `write_slurm_header`, the SBATCH header shared by
@@ -32,16 +38,23 @@ consolidated them (see case.setup's own comment on `_write_slurm_header`).
 
 MACHINES = {
     'ls6': dict(
-        scheduler='slurm', partition='normal', cores_per_node=128,
-        walltime='02:00:00', mpirun='ibrun',
+        scheduler='slurm', partition='development', cores_per_node=128,
+        walltime='02:00:00', mpirun='mpirun',
         notes='TACC Lonestar6; install-eqdyna.sh -e ls6 builds the venv '
-              '(jax, mpi4py against Intel MPI) on $WORK'),
+              '(jax, mpi4py against Intel MPI) on $WORK. mpirun measured '
+              '2026-09-29 (idev node, EQDYNA_MPIRUN unset -> Intel mpirun): '
+              'every fortran and python-jax-mpi cell ran to completion '
+              'under `mpirun -np N`. Pass --partition normal for a '
+              'production-queue submission (development is the default '
+              'here for a quick check).'),
     'grace': dict(
         scheduler='slurm', partition=None, cores_per_node=None,
-        walltime='02:00:00', mpirun='ibrun',
-        notes='Texas A&M Grace; partition/cores-per-node not yet verified '
-              'here -- pass --partition explicitly and fill in '
-              'cores_per_node before relying on --submit on this machine'),
+        walltime='02:00:00', mpirun=None,
+        notes='Texas A&M Grace; partition/cores-per-node/mpirun not yet '
+              'verified here -- pass --partition explicitly, fill in '
+              'cores_per_node, and confirm the launcher (see ls6\'s '
+              'ibrun-vs-mpirun note) before relying on --submit or '
+              '--machine grace'),
     'ubuntu': dict(
         scheduler=None, partition=None, cores_per_node=None,
         walltime=None, mpirun='mpirun',
@@ -77,6 +90,12 @@ def write_slurm_header(f, *, jobname, nnode, ncpu, queue, walltime, account,
     f.write("#SBATCH -p " + str(queue) + "\n")
     f.write("#SBATCH -t " + str(walltime) + "\n")
     f.write("#SBATCH -A " + str(account) + "\n")
-    f.write("#SBATCH --mail-user=" + str(email) + "\n")
-    f.write("#SBATCH --mail-type=begin" + "\n")
-    f.write("#SBATCH --mail-type=end" + "\n")
+    # An empty email means "no one to notify" (case.setup's own default,
+    # defaultParameters.py's HPC_email = ""), not "notify the empty string" --
+    # emitting `--mail-user=` with nothing after the `=` is a directive with
+    # no recipient, and `--mail-type` with no `--mail-user` at all is equally
+    # meaningless, so both are skipped together.
+    if email:
+        f.write("#SBATCH --mail-user=" + str(email) + "\n")
+        f.write("#SBATCH --mail-type=begin" + "\n")
+        f.write("#SBATCH --mail-type=end" + "\n")

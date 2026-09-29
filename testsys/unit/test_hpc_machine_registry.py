@@ -18,7 +18,11 @@ def test_known_machines_present_with_required_shape():
                     'mpirun', 'notes'):
             assert key in m, (name, key)
         assert m['scheduler'] in (None, 'slurm'), (name, m['scheduler'])
-        assert m['mpirun'], name
+        # mpirun is None where unverified (e.g. grace) -- refuse rather than
+        # guess (rule 2) -- so this only requires it be a string or None,
+        # never something falsy-but-not-None like '' that would silently
+        # become EQDYNA_MPIRUN=''.
+        assert m['mpirun'] is None or isinstance(m['mpirun'], str), name
 
 
 def test_unknown_machine_raises_naming_known_machines():
@@ -32,13 +36,26 @@ def test_unknown_machine_raises_naming_known_machines():
             assert name in msg
 
 
-def test_ls6_and_grace_are_slurm_with_ibrun_launcher():
+def test_ls6_and_grace_are_slurm():
     for name in ('ls6', 'grace'):
         m = machines.machine(name)
         assert m['scheduler'] == 'slurm', name
-        # docs/user/troubleshooting.md: "on ls6 and grace the launcher is
-        # ibrun -> srun".
-        assert m['mpirun'] == 'ibrun', name
+
+
+def test_ls6_mpirun_is_measured_plain_mpirun_not_ibrun():
+    """Measured on LS6 2026-09-29 (idev node, EQDYNA_MPIRUN unset -> Intel
+    mpirun): every fortran and python-jax-mpi cell ran to completion under
+    `mpirun -np N`. TACC's `ibrun` takes `-n`/`-o`, not run_e2e's `-np`, and
+    running with no `-n` uses the WHOLE allocation -- it cannot serve
+    run_e2e's `[launcher, '-np', str(ranks), ...]` call shape."""
+    assert machines.machine('ls6')['mpirun'] == 'mpirun'
+
+
+def test_grace_mpirun_is_unverified():
+    """Not measured on grace -- None, not a guessed value (rule 2); callers
+    (testsys/run.py's --machine/--submit) must refuse rather than treat
+    None as a launcher string."""
+    assert machines.machine('grace')['mpirun'] is None
 
 
 def test_ubuntu_and_macos_have_no_scheduler_and_use_mpirun():
@@ -63,6 +80,24 @@ def test_write_slurm_header_emits_every_required_directive():
     assert '#SBATCH -t 01:00:00' in lines
     assert '#SBATCH -A ACCT-1' in lines
     assert '#SBATCH --mail-user=a@b.c' in lines
+
+
+def test_write_slurm_header_omits_mail_block_when_email_empty():
+    buf = io.StringIO()
+    machines.write_slurm_header(buf, jobname='j', nnode=1, ncpu=1, queue='q',
+                                walltime='00:01:00', account='A', email='')
+    out = buf.getvalue()
+    assert '--mail-user' not in out
+    assert '--mail-type' not in out
+
+    buf2 = io.StringIO()
+    machines.write_slurm_header(buf2, jobname='j', nnode=1, ncpu=1, queue='q',
+                                walltime='00:01:00', account='A',
+                                email='a@b.c')
+    out2 = buf2.getvalue()
+    assert '#SBATCH --mail-user=a@b.c' in out2.splitlines()
+    assert '#SBATCH --mail-type=begin' in out2.splitlines()
+    assert '#SBATCH --mail-type=end' in out2.splitlines()
 
 
 def test_write_slurm_header_output_defaults_and_overrides():
