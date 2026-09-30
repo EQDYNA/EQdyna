@@ -22,7 +22,9 @@ rather than folding the paths-ignore case into a generic "no evidence yet".
 
 Everything network-touching here can fail to mean either PASS or FAIL --
 `gh` missing, unauthenticated, or the network down. Per the precedent in
-test_release_complete.py's check_network_side/check_tag_is_annotated,
+test_release_complete.py's check_tag_pushed_to_remote (split, along with its
+sibling `check_github_release_published`, out of what was one function,
+`check_network_side`, 2026-09-30),
 "I could not check this" gets its own outcome (UNVERIFIED), never PASS and
 never FAIL by default.
 
@@ -262,8 +264,9 @@ def is_tag_ref(name):
     actually decided; `git ls-remote --exit-code origin refs/tags/<name>`
     exits 0 if it is, 2 if it is not, and anything else means the network
     call itself failed (raised as GhUnavailable, not treated as "not a
-    tag" -- the same reasoning check_network_side already applies to a
-    failed remote round-trip).
+    tag" -- the same reasoning test_release_complete.py's
+    check_tag_pushed_to_remote already applies to a failed remote
+    round-trip).
     """
     if name in _TAG_REF_CACHE:
         return _TAG_REF_CACHE[name]
@@ -284,10 +287,10 @@ def is_tag_ref(name):
 def drop_tag_triggered_runs(runs):
     """Runs whose headBranch is actually a tag ref, not a branch, removed.
 
-    A tag push fires its own `push`-triggered run (test_release_complete.py's
-    check_tag_is_annotated docstring documents the same mechanism from a
-    different angle: v5.8.2's tag push produced run 35122388271, twelve
-    minutes after and independent of the branch-push run). Pre-tag evidence
+    A tag push fires its own `push`-triggered run (v5.8.2's tag push produced
+    run 35122388271, twelve minutes after and independent of the branch-push
+    run -- see `test_release_complete.py`'s module docstring for that
+    incident). Pre-tag evidence
     that a SHA is safe to tag can never legitimately come from the run the
     tagging itself produced -- that run cannot exist yet at the moment this
     check needs to answer. Counting it anyway is precisely how `b3697f8` read

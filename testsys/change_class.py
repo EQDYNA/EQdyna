@@ -102,6 +102,7 @@ classifier's answer (see pr_policy.py's docstring) -- INTERNAL here means
 "no sweep needed", not "no PR needed".
 """
 import os
+import re
 
 PHYSICS = 'PHYSICS'
 USER_FACING = 'USER_FACING'
@@ -157,6 +158,77 @@ INTERNAL_EXACT = frozenset({
 DEFAULT_PHYSICS_REVIEWED_PREFIXES = ('src/', 'testsys/', 'case_input/',
                                      'test.reference.results/', 'scripts/')
 DEFAULT_PHYSICS_REVIEWED_EXACT = frozenset({'testNameList.py', 'install-eqdyna.sh'})
+
+
+# --- ITEM 3 (owner, 2026-09-30, "fewer full sweeps and fewer releases"): a
+# THIRD question, again answered by its own function (see "TWO SEPARATE
+# QUESTIONS" above -- now three): not "does a PR need review" (classify_path
+# / PHYSICS, which fails toward the expensive answer for anything testsys/
+# or scripts/ has not been explicitly carved out of) and not "did rule 27's
+# release-due-at-once trigger fire" (is_output_change), but "does the LOCAL
+# RELEASE SWEEP need to run again before this exact tree can be tagged, or
+# can the last swept release's evidence carry forward" -- consumed by
+# testsys/content_key.py's compute_release_physics,
+# testsys/regression/check_pretag_ci.py's release_physics_key fallback, and
+# testsys/run.py's run_release(). This is the owner's OWN closed, exact
+# list, deliberately NARROWER than classify_path's PHYSICS bucket: it is not
+# "everything under testsys/ or scripts/ classify_path would call PHYSICS",
+# it is exactly the set the owner named -- solver source, case inputs,
+# reference oracles, the case name list, the three pass/fail-judging
+# modules, and the case-pipeline scripts that shape what a run computes.
+# Do not add to or remove from this list without the owner's sign-off: too
+# WIDE defeats item 3's whole point (fewer full sweeps); too NARROW ships a
+# stale sweep for a tree that actually changed physics.
+RELEASE_PHYSICS_PREFIXES = ('src/', 'case_input/', 'test.reference.results/')
+RELEASE_PHYSICS_EXACT = frozenset({
+    'testNameList.py',
+    'testsys/matrix.py', 'testsys/compare.py', 'testsys/frt_canonical.py',
+    # The case-pipeline inputs (owner's own phrase): case.setup and
+    # create.newcase THEMSELVES, plus every scripts/ file either one
+    # actually `import`s or reads FOR ITS OWN LOGIC -- not the *.m /
+    # plotting/analysis utilities create.newcase merely byte-copies
+    # alongside them into every new case directory (those are already
+    # INTERNAL above via _is_legacy_scripts_asset, same "shapes nothing a
+    # run computes" reasoning). scripts/lib.py and scripts/machines.py are
+    # case.setup's own direct imports (case.setup:23-24, `from lib import
+    # ensureFaultRoughGeometryForCase, resolveNormalStressSign,
+    # resolveViscoplasticParams` / `from machines import
+    # write_slurm_header`); scripts/defaultParameters.py is not imported by
+    # case.setup directly but by every case's own user_defined_params.py,
+    # and is named explicitly by the owner.
+    'scripts/case.setup', 'scripts/create.newcase',
+    'scripts/lib.py', 'scripts/machines.py', 'scripts/defaultParameters.py',
+})
+
+# The one line item 3 carves back OUT of `src/`: a version-only bump to
+# this exact runtime banner must not, by itself, demand a fresh release
+# sweep -- the banner never changes what the solver computes (rule 11 keeps
+# it in sync with VERSION precisely because it is otherwise inert). An
+# exact-shape regex, not a loose one: a banner line that changes SHAPE (not
+# just the version token) is exactly the case that must NOT be silently
+# swallowed by too loose a pattern.
+VERSION_BANNER_FILE = 'src/fortran/eqdyna3d.f90'
+VERSION_BANNER_RE = re.compile(
+    r"^\s*write\(\*,\*\)\s*'=+\s*Welcome to EQdyna\s+\S+\s+=+'\s*$")
+
+
+def is_release_physics_path(path):
+    """True for a path in item 3's closed, owner-named release-physics set
+    (RELEASE_PHYSICS_PREFIXES/EXACT above) -- narrower than classify_path's
+    PHYSICS bucket by design; see the block comment above for why the two
+    must not be conflated or one derived from the other."""
+    path = path.replace(os.sep, '/')
+    return path in RELEASE_PHYSICS_EXACT or path.startswith(RELEASE_PHYSICS_PREFIXES)
+
+
+def is_release_physics_line(path, line):
+    """False only for a line of VERSION_BANNER_FILE that IS the version
+    banner (item 3's one named exclusion); True for every other line of
+    every other release-physics path, so a caller filtering line-by-line
+    counts everything else IN (rule 2)."""
+    if path.replace(os.sep, '/') != VERSION_BANNER_FILE:
+        return True
+    return not VERSION_BANNER_RE.match(line)
 
 
 def _is_check_star(path):

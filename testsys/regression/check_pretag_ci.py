@@ -61,10 +61,29 @@ the reader has to open the log to find out which):
                       everyday + RELEASE_ONLY, all at the ONE GATE_TERM_S --
                       becomes the science gate and a tag must be refused
                       without one). See `evaluate_sweep_evidence` below.
+                      Since item 3 (2026-09-30), a PRIOR release's sweep
+                      also justifies tagging THIS sha if no path in
+                      change_class's release-physics set differs between
+                      the two trees (release_physics_key fallback below) --
+                      "no committed sweep" is now the only way to land
+                      here, not "the committed sweep is for an older sha".
+  6  RELEASE_DOCS_NOT_READY   CI is green and the sweep is sufficient, but
+                      the CANDIDATE COMMIT'S OWN TREE does not yet carry
+                      what a post-tag check will read: a dated Tasks-done
+                      row in pathway_forward.md naming its own VERSION, and
+                      a README News block that already leads with it. Added
+                      2026-09-30 (owner requirement (b)/(d), the v5.20.2
+                      sequencing-mistake fix): "everything a post-tag check
+                      reads lands before the tag" and "the tag's own CI must
+                      be a re-run of checks already green, never a first
+                      run". See `evaluate_release_docs_ready` below.
 
 Only checked when the CI check above is PASS -- CI-not-green and
 sweep-not-found are different situations (rule 2), and the CI check is more
-fundamental, so it is reported alone first.
+fundamental, so it is reported alone first. RELEASE_DOCS_NOT_READY is
+checked last, after the sweep-evidence check, for the same reason: three
+different situations, three different exit codes, reported in the order
+each becomes relevant.
 """
 import argparse
 import glob
@@ -77,7 +96,7 @@ import sys
 TESTSYS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(TESTSYS)
 sys.path.insert(0, ROOT)
-from testsys import ci_status, content_key, matrix  # noqa: E402
+from testsys import ci_status, content_key, matrix, release_docs  # noqa: E402
 
 EXIT_CODES = {
     ci_status.PASS: 0,
@@ -87,6 +106,7 @@ EXIT_CODES = {
     ci_status.UNVERIFIED: 4,
 }
 SWEEP_INSUFFICIENT_EXIT = 5
+RELEASE_DOCS_NOT_READY_EXIT = 6
 
 # --- release-path guard: a committed local RELEASE sweep -- every supported
 # cell (everyday cells + matrix.RELEASE_ONLY), all at the ONE GATE_TERM_S --
@@ -247,13 +267,42 @@ def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count
         except Exception as exc:  # pragma: no cover - defensive, git itself failing
             return reasons + ['%s: could not recompute content_key for %s: %s'
                               % (path, tag_sha, exc)]
-        if recomputed != content_key_val:
+        if recomputed == content_key_val:
+            return reasons
+        # content_key differs -- item 3 (owner, 2026-09-30, "fewer full
+        # sweeps and fewer releases"): that alone no longer requires a fresh
+        # sweep. Fall back to the narrower release_physics_key: if no path
+        # in change_class's closed, owner-named release-physics set differs
+        # between the swept tree and the tag tree, the swept evidence still
+        # applies -- accept it as carried forward rather than demanding a
+        # re-sweep for a docs/README/board-only change. Older evidence
+        # (written before this field existed) has no release_physics_key to
+        # fall back on and keeps the original, stricter behaviour: a
+        # content_key mismatch alone fails it (rule 2 -- no fallback for a
+        # gap this check cannot itself fill in).
+        release_key_val = data.get('release_physics_key')
+        if release_key_val is None:
             reasons.append(
                 '%s: content_key %s (recorded for swept sha %s) does not match '
-                'the tagged tree\'s own content_key %s recomputed at %s -- some '
-                'tracked path outside the evidence/ledger allow-list differs '
-                'between the swept tree and the tagged tree'
+                'the tagged tree\'s own content_key %s recomputed at %s, and '
+                'this evidence has no release_physics_key to fall back on '
+                '(written before item 3) -- re-run the release sweep'
                 % (path, content_key_val, sha, recomputed, tag_sha))
+            return reasons
+        try:
+            recomputed_rp = content_key.compute_release_physics(repo_root, tag_sha)
+        except Exception as exc:  # pragma: no cover - defensive, git itself failing
+            return reasons + ['%s: could not recompute release_physics_key for %s: %s'
+                              % (path, tag_sha, exc)]
+        if recomputed_rp == release_key_val:
+            return reasons  # carried forward: no release-physics path changed
+        reasons.append(
+            '%s: content_key %s (swept sha %s) != tag content_key %s, AND '
+            'release_physics_key %s (swept) != recomputed %s at %s -- a '
+            'release-physics path changed since the swept sha; a fresh '
+            'release sweep is required'
+            % (path, content_key_val, sha, recomputed, release_key_val,
+               recomputed_rp, tag_sha))
         return reasons
     try:
         if not _sweep_is_ancestor(repo_root, sha, tag_sha):
@@ -308,6 +357,72 @@ def evaluate_sweep_evidence(tag_sha, repo_root=None, full_runnable_count=None,
                    % (tag_sha, '\n  '.join(all_reasons)))
 
 
+def _git_show(repo_root, sha, path):
+    """(text_or_None, error_or_None) for `path` as it exists AT `sha` --
+    never the live working tree, which may be a LATER commit than the one
+    about to be tagged. A candidate commit's own git object is always
+    readable (it is the commit under test, not a possibly-rewritten
+    ancestor the way a swept sha in evaluate_sweep_evidence can be), so
+    this has no ancestor-may-be-gone caveat to document."""
+    r = subprocess.run(['git', '-C', repo_root, 'show', '%s:%s' % (sha, path)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return None, r.stderr.strip()
+    return r.stdout, None
+
+
+def evaluate_release_docs_ready(tag_sha, repo_root=None):
+    """(ok, message) -- owner requirement (b)/(d): before `tag_sha` may be
+    tagged, ITS OWN TREE (read via `git show`, never the live working copy
+    or a later commit) must already carry everything a post-hoc check will
+    read afterward: a dated Tasks-done row in pathway_forward.md naming its
+    own VERSION, and a README News block that already leads with it. This
+    is what turns "wait for CI to go green, then tag" into a check that
+    never runs for the first time inside the tag's own CI -- by the time
+    `git tag` happens, this function has already confirmed both documents
+    are in their final, post-release shape.
+
+    Reuses testsys.release_docs' shared regex/logic (imported at module
+    level above) -- the exact functions test_release_complete.py's
+    check_pathway_tasks_done_row / check_readme_news_leads_with_this_version
+    also call, so the pre-hoc and post-hoc halves cannot silently drift
+    apart on what counts as "ready".
+
+    VERSION itself is read from `tag_sha`'s own tree, never from the live
+    checkout's VERSION file: the candidate commit's OWN version is the one
+    both documents must already name."""
+    if repo_root is None:
+        repo_root = ROOT
+    version_text, err = _git_show(repo_root, tag_sha, 'VERSION')
+    if err is not None:
+        return False, ('could not read VERSION at %s: %s -- cannot check '
+                       'release-doc readiness without knowing what version '
+                       'this commit is' % (tag_sha, err))
+    v = version_text.strip()
+
+    pathway_text, err = _git_show(repo_root, tag_sha, 'pathway_forward.md')
+    if err is not None:
+        return False, ('could not read pathway_forward.md at %s: %s'
+                       % (tag_sha, err))
+    ok, msg = release_docs.tasks_done_row_present(pathway_text, v)
+    if not ok:
+        return False, ('%s: pathway_forward.md %s -- land the Tasks-done row '
+                       'row in THIS commit (or an ancestor of it), not after '
+                       'the tag (owner requirement (b))' % (tag_sha, msg))
+
+    readme_text, err = _git_show(repo_root, tag_sha, 'README.md')
+    if err is not None:
+        return False, ('could not read README.md at %s: %s' % (tag_sha, err))
+    ok, msg = release_docs.readme_news_leads_with(readme_text, v)
+    if not ok:
+        return False, ('%s: README.md %s -- land the News-block update in '
+                       'THIS commit (or an ancestor of it), not after the tag '
+                       '(owner requirement (b))' % (tag_sha, msg))
+
+    return True, ('v%s: pathway_forward.md and README.md are both already in '
+                 'their post-release shape in %s\'s own tree' % (v, tag_sha))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -343,6 +458,16 @@ def main():
     print('%s  %s' % ('PASS' if ok else 'SWEEP_INSUFFICIENT', sweep_msg))
     if not ok:
         return SWEEP_INSUFFICIENT_EXIT
+
+    # Owner requirement (b)/(d), added 2026-09-30: the candidate commit's OWN
+    # tree must already carry what a post-tag check will read, so the tag's
+    # own CI run is a re-run of checks already green, never a first run.
+    # Different situation from the two above (rule 2) -- reported last,
+    # its own exit code.
+    ok, docs_msg = evaluate_release_docs_ready(requested_full_sha)
+    print('%s  %s' % ('PASS' if ok else 'RELEASE_DOCS_NOT_READY', docs_msg))
+    if not ok:
+        return RELEASE_DOCS_NOT_READY_EXIT
     return 0
 
 

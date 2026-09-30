@@ -89,6 +89,7 @@ env-check failure still packs whatever ran.
 """
 import glob
 import io
+import json
 import os
 import re
 import shutil
@@ -327,9 +328,26 @@ def run_regression():
     """Each regression/test_*.py is a standalone script with its own
     SUCCESS/FAIL banner and sys.exit (matching the shape of the incident
     it guards) rather than pytest functions -- run each one and gate on
-    its exit code."""
+    its exit code.
+
+    EXCLUDES testsys.regression_sweep_exclusions.EXCLUDED_FROM_SWEEP
+    (2026-09-30, owner requirement (c)): test_release_complete.py evaluates
+    its assertions against a tag that already exists -- meaningful only at
+    the moment of auditing a just-cut release, never at an arbitrary later
+    commit. Sweeping it in here unconditionally meant it ran on EVERY
+    commit and PR (and, via this exact command, inside
+    .github/workflows/publish.yml's build-and-push gate too), and once a
+    release's post-tag board/Release steps land after its tag (rule 8: a
+    pushed tag's tree is immutable), two of its checks fail FOREVER for
+    that tag's own CI run -- which then poisoned every commit after it.
+    It stays a real, directly-runnable test_*.py file; it is simply not
+    part of THIS sweep. Paired with check_pretag_ci.py (rule 15/25) as the
+    explicit release-time check instead."""
+    from testsys import regression_sweep_exclusions
     print('\n==== testsys: regression ====')
-    scripts = sorted(glob.glob(os.path.join(TESTSYS, 'regression', 'test_*.py')))
+    scripts = sorted(
+        p for p in glob.glob(os.path.join(TESTSYS, 'regression', 'test_*.py'))
+        if os.path.basename(p) not in regression_sweep_exclusions.EXCLUDED_FROM_SWEEP)
     if not scripts:
         print('regression: FAIL - no regression scripts found (misconfigured testsys/)')
         return 1
@@ -388,6 +406,77 @@ def run_e2e_ci():
     return _e2e('--ci')
 
 
+def _release_sweep_carry_forward():
+    """(skip, message) -- item 3 (owner, 2026-09-30, "fewer full sweeps and
+    fewer releases"): does the most recently committed
+    docs/evidence/sweep-*/summary.json already cover this tree's
+    release-physics content (testsys.content_key.compute_release_physics,
+    over testsys.change_class.is_release_physics_path's closed, owner-named
+    set)? If so, skip=True -- no release-physics path has changed since
+    that sweep, and it can be carried forward instead of re-run.
+
+    Fails toward running the full sweep (skip=False) on ANY doubt: no
+    evidence found, an unreadable summary.json, evidence with no
+    release_physics_key recorded (written before this field existed), or a
+    git/HEAD resolution error -- rule 2, same posture as needs_sweep.py and
+    check_pretag_ci.py's own error handling.
+
+    Advisory only for THIS function's caller (run_release, deciding whether
+    to spend the minutes-to-hours re-running run_e2e.py): the actual GATE
+    enforced at tag time is testsys/regression/check_pretag_ci.py's
+    evaluate_sweep_candidate, which independently re-derives the same
+    answer against whatever sha is about to be tagged. A bug here can only
+    cost an unnecessary sweep, never let a stale one through -- that
+    guarantee lives entirely in check_pretag_ci.py, unchanged by this
+    function's verdict.
+
+    Imports testsys.content_key lazily, on purpose (test_src_stamp.py check
+    B runs a sandboxed `testsys/run.py` with only run.py itself and no
+    sibling testsys/*.py present, to prove the stale-binary refusal fires
+    before anything heavier loads; a module-level import here would break
+    that gate with an ImportError instead of the REFUSED it expects, for a
+    tier -- `release` -- that sandboxed run never even selects)."""
+    from testsys import content_key
+    found = sorted(glob.glob(os.path.join(REPO_ROOT, 'docs', 'evidence',
+                                          'sweep-*', 'summary.json')))
+    if not found:
+        return False, ('no docs/evidence/sweep-*/summary.json found -- '
+                       'running the full sweep')
+    head_r = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', 'HEAD'],
+                            capture_output=True, text=True)
+    head_sha = head_r.stdout.strip()
+    if head_r.returncode != 0 or len(head_sha) != 40:
+        return False, 'could not resolve HEAD -- running the full sweep'
+    try:
+        head_key = content_key.compute_release_physics(REPO_ROOT, head_sha)
+    except Exception as exc:  # pragma: no cover - defensive, git itself failing
+        return False, ('could not compute this tree\'s release_physics_key '
+                       '(%s) -- running the full sweep' % exc)
+    reasons = []
+    for p in found:
+        try:
+            with open(p) as fh:
+                data = json.load(fh)
+        except (OSError, ValueError) as exc:
+            reasons.append('%s: unreadable (%s)' % (p, exc))
+            continue
+        swept_key = data.get('release_physics_key')
+        swept_sha = data.get('sha')
+        if swept_key is None:
+            reasons.append('%s: no release_physics_key recorded (older evidence)' % p)
+            continue
+        if swept_key == head_key:
+            return True, ('%s (swept sha %s) already covers this tree\'s '
+                         'release-physics content (release_physics_key %s) '
+                         '-- carrying that evidence forward, not re-running '
+                         'the sweep' % (p, swept_sha, head_key))
+        reasons.append('%s: release_physics_key %s != this tree\'s %s'
+                       % (p, swept_key, head_key))
+    return False, ('no committed sweep evidence has a matching '
+                   'release_physics_key -- running the full sweep:\n  %s'
+                   % '\n  '.join(reasons))
+
+
 def run_release():
     """THE sweep, RELEASE selection (run_e2e.py --release): every supported
     cell, at the SAME matrix.GATE_TERM_S as every other selection. This is the
@@ -401,6 +490,13 @@ def run_release():
     filter. Run over the full default selection (no --cases/--backends), it
     also writes docs/evidence/sweep-<shortsha>/summary.json
     (run_e2e.write_release_evidence).
+
+    Item 3 (owner, 2026-09-30): before running anything, checks
+    `_release_sweep_carry_forward()` -- if the most recent committed
+    release evidence already covers this tree's release-physics content, it
+    SKIPS the sweep and reports the carried-forward evidence instead of
+    invoking run_e2e.py again. Any doubt runs the full sweep (rule 2); see
+    that function's own docstring for why this is safe even if it is wrong.
 
     `run.py unit regression release` in ONE invocation is SAFE: checked
     2026-09-23 (rule-24 tree_clean fix) that no regression script under
@@ -418,6 +514,10 @@ def run_release():
     is known to dirty the tree, and if that ever changes the release
     evidence will say so rather than silently passing."""
     print('\n==== testsys: release ====')
+    skip, msg = _release_sweep_carry_forward()
+    print('testsys: release: %s' % msg)
+    if skip:
+        return 0
     return _e2e('--release')
 
 

@@ -1041,6 +1041,14 @@ def write_release_evidence(results, is_release, explicit, started_utc,
     checkout -- see testsys/content_key.py's module docstring for why a
     reader compares this recorded string rather than recomputing it from a
     (possibly squashed-away or rewritten) swept sha.
+
+    `release_physics_key` (item 3, 2026-09-30) extends the schema again,
+    same rule: the sha256 over only change_class.is_release_physics_path's
+    closed, owner-named release-physics set (content_key.compute_release_
+    physics), computed here for the same reason `content_key` is -- so a
+    later reader (check_pretag_ci.py) can accept THIS evidence for a tag
+    whose tree differs from this one only outside that narrower set,
+    without re-running the sweep.
     """
     if not is_release or explicit:
         return
@@ -1073,7 +1081,8 @@ def write_release_evidence(results, is_release, explicit, started_utc,
                   term=matrix.GATE_TERM_S,
                   n_runnable=len(results), n_success=n_success, cells=cells,
                   started_utc=started_utc, finished_utc=finished_utc,
-                  content_key=content_key.compute(REPO_ROOT, sha))
+                  content_key=content_key.compute(REPO_ROOT, sha),
+                  release_physics_key=content_key.compute_release_physics(REPO_ROOT, sha))
     out_dir = os.path.join(REPO_ROOT, 'docs', 'evidence', 'sweep-%s' % sha[:7])
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, 'summary.json')
