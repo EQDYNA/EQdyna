@@ -208,6 +208,10 @@ def test_main_machine_flag_sets_env_without_submit(monkeypatch, tmp_path):
         return 0
 
     monkeypatch.setitem(run.RUNNERS, 'unit', fake_unit)
+    # The in-place environment check (REQUIRED_MODULES) is tested on its own;
+    # here it must not depend on the host having mpi4py -- the published
+    # Docker image does not, and this test failed its gate (v5.20.1).
+    monkeypatch.setattr(run, 'REQUIRED_MODULES', ())
     rc = run.main(['run.py', 'unit', '--machine', 'ls6'])
     assert rc == 0
     assert seen_env == {'EQDYNA_TEST_MACHINE': 'ls6', 'EQDYNA_MPIRUN': 'mpirun'}
