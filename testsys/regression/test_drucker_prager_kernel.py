@@ -71,7 +71,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FSRC = os.path.join(ROOT, 'src', 'fortran')
 
 sys.path.insert(0, ROOT)
-from testsys.common import stage, make_var  # noqa: E402
+from testsys.common import stage  # noqa: E402
 PYSRC = os.path.join(ROOT, 'src', 'python')
 
 sys.path.insert(0, PYSRC)
