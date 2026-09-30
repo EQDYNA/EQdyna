@@ -343,14 +343,20 @@ def run_regression():
     return overall
 
 
-# Env vars for the e2e subprocess ONLY (PR #56 audit M2) -- set by main()
-# right after _prepare_test_tree() returns, read by _e2e() when it builds
-# that ONE subprocess's env. Never written into os.environ: every OTHER
-# subprocess in the same run.py invocation (unit's pytest, every
+# Env vars for the e2e subprocess ONLY (currently just EQDYNA_RUN_LOG_PATH)
+# -- set by main() right after _prepare_test_tree() returns, read by _e2e()
+# when it builds that ONE subprocess's env. Never written into os.environ:
+# every OTHER subprocess in the same run.py invocation (unit's pytest, every
 # regression/test_*.py script -- some of which, e.g. test_src_stamp.py,
 # themselves launch run_e2e.py "directly" to test ITS OWN standalone
-# behaviour) would otherwise inherit EQDYNA_TEST_LOCK_HELD=1 and wrongly
-# skip run_e2e.py's own lock/rotation, exactly the leak the audit found.
+# behaviour) would otherwise inherit it for no reason (PR #56 audit M2).
+# An EARLIER version of this dict also carried EQDYNA_TEST_LOCK_HELD, a
+# "the caller already holds the lock" claim -- removed entirely (M2, second
+# finding, 2026-09-30): run.py never legitimately holds this lock itself
+# (see _prepare_test_tree's docstring), so the flag could only ever be
+# leaked or hand-set, and even a "verified" claim was unsafe (see
+# run_e2e.acquire_test_lock's docstring). run_e2e.py now always takes the
+# lock itself, unconditionally.
 _E2E_EXTRA_ENV = {}
 
 

@@ -89,20 +89,22 @@ sys.stdout.reconfigure(line_buffering=True)
 MACHINE = common.MACHINE
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 BIN_OVERRIDE = os.environ.get('EQDYNA_E2E_BIN')
-# Set ONLY in the env of the subprocess testsys/run.py itself launches (PR
-# #56 audit M2 -- NEVER in os.environ, which every OTHER subprocess in that
-# same run.py invocation would inherit and wrongly trust, e.g.
-# test_src_stamp.py launching this script "directly" to test ITS OWN
-# standalone behaviour under an ambient `run.py all`). EQDYNA_TEST_LOCK_HELD
-# claims the caller (testsys/run.py) already holds REPO_ROOT/test's lock for
-# the whole invocation; this is VERIFIED below (an actual acquire attempt),
-# never trusted blindly, because a leaked or hand-set flag must not disable
-# the one thing standing between a real second invocation and rule 21a's
-# incident. EQDYNA_RUN_LOG_PATH is the caller's own staged console log
-# (staged OUTSIDE test/, precisely so a refusal here never touches test/ or
-# test.prev/ -- PR #56 audit blocker B1), moved into test/run.log once this
-# script actually rotates.
-TEST_LOCK_HELD_CLAIMED = os.environ.get('EQDYNA_TEST_LOCK_HELD') == '1'
+# EQDYNA_RUN_LOG_PATH is the caller's own staged console log (staged OUTSIDE
+# test/, precisely so a refusal here never touches test/ or test.prev/ --
+# PR #56 audit blocker B1), moved into test/run.log once this script
+# actually rotates. There is deliberately no "the caller already holds the
+# lock, don't re-acquire" flag any more (PR #56 audit M2, second finding,
+# 2026-09-30): testsys/run.py never legitimately holds REPO_ROOT/test's lock
+# itself (see run.py._prepare_test_tree's own docstring for why -- an
+# EARLIER version of this fix that DID hold it collided with regression
+# scripts invoking this file directly), so a claimed-holder flag could only
+# ever be a leaked or hand-set '1' with NOTHING real behind it -- and
+# trusting even a "verified" claim (a failed acquire attempt) was itself
+# unsafe: a failed acquire proves SOME process holds the lock, not that it
+# is safe to proceed unprotected, since that process could be a completely
+# unrelated concurrent sweep (exactly the rule-21a collision this lock
+# exists to prevent). This script now ALWAYS takes the lock itself,
+# unconditionally, regardless of any env var.
 RUN_LOG_PATH = os.environ.get('EQDYNA_RUN_LOG_PATH')
 
 
@@ -1059,42 +1061,32 @@ def write_release_evidence(results, is_release, explicit, started_utc,
           'tree_clean=%s)' % (path, len(cells), n_success, sha, tree_clean))
 
 
-def acquire_test_lock(repo_root, claimed_held):
+def acquire_test_lock(repo_root):
     """Gate 0 -- ONE live invocation per run tree (rule 21a, pathway item
-    70), factored out of main() so PR #56 audit M2's verification behaviour
-    (never trust EQDYNA_TEST_LOCK_HELD blindly) is unit-testable without a
-    real subprocess invocation.
+    70), factored out of main() so it is unit-testable without a real
+    subprocess invocation.
 
-    `claimed_held` is TEST_LOCK_HELD_CLAIMED -- the caller (testsys/run.py)
-    says it already holds repo_root/test's lock. That claim is VERIFIED,
-    never trusted: this always attempts the real acquire. If it fails,
-    something really does hold the lock (the calling run.py, in the
-    intended case) and this returns (None, None) -- no lock of our own, no
-    refusal, riding on the caller's protection. If it succeeds, either the
-    claim was true and vacuous (nothing else was contending) or -- the
-    unverified-flag case M2 exists to catch -- the flag was stale/leaked
-    and nobody actually held it, so this becomes the REAL holder itself,
-    identically to `claimed_held=False`.
+    ALWAYS takes the lock itself, unconditionally (PR #56 audit M2, second
+    finding, 2026-09-30): an earlier version of this function accepted a
+    `claimed_held` flag (from EQDYNA_TEST_LOCK_HELD) that let it skip its
+    own acquire when a caller claimed to already hold the lock, "verifying"
+    the claim by attempting a real acquire and trusting a FAILURE of that
+    attempt as proof the claim was genuine. That verification was not
+    enough: a failed acquire proves only that SOME process holds the lock,
+    not that it is the claiming caller specifically -- it could just as
+    easily be a completely unrelated concurrent sweep, i.e. exactly the
+    rule-21a collision this lock exists to prevent, and the claimed_held
+    path would then return (None, None) (no lock, no refusal) and let this
+    invocation proceed to rotate test/ out from under that unrelated
+    sweep. Since testsys/run.py never legitimately holds this lock itself
+    any more (see run.py._prepare_test_tree's docstring), there was no
+    remaining legitimate reason for the flag to exist, so it -- and the
+    EQDYNA_TEST_LOCK_HELD env var -- are gone. A second concurrent
+    invocation refuses here every time, unconditionally, regardless of
+    what any env var claims.
 
-    When `claimed_held` is False, the ordinary path: a failed acquire is a
-    real refusal, returned as (None, message) for the caller to print and
-    exit non-zero on.
-
-    Returns (lock_or_None, refusal_message_or_None)."""
-    if claimed_held:
-        try:
-            lock = runlock.acquire(repo_root, 'test', announce=False)
-        except runlock.RunTreeLocked:
-            print('e2e: test/ lock verified already held (claimed via '
-                  'EQDYNA_TEST_LOCK_HELD=1, confirmed by a real acquire '
-                  'attempt) -- not re-acquiring')
-            return None, None
-        print('e2e: EQDYNA_TEST_LOCK_HELD=1 was set but no real holder was '
-              'found (stale or leaked env var) -- acquiring for real '
-              'instead of trusting it blindly; holding %s (pid %d)'
-              % (lock.path, lock.pid))
-        return lock, None
-
+    Returns (lock_or_None, refusal_message_or_None) -- a failed acquire is
+    a real refusal, for the caller to print and exit non-zero on."""
     try:
         lock = runlock.acquire(repo_root, 'test')
     except runlock.RunTreeLocked as exc:
@@ -1185,7 +1177,7 @@ def main(argv=None):
     # lock then covers bin/ for the same price. It is released by the kernel
     # when this process exits, however it exits (testsys/runlock.py explains
     # why that is flock and not an O_EXCL lockfile).
-    lock, refusal = acquire_test_lock(REPO_ROOT, TEST_LOCK_HELD_CLAIMED)
+    lock, refusal = acquire_test_lock(REPO_ROOT)
     if refusal is not None:
         print('\ne2e: FAIL - %s' % refusal)
         return 1

@@ -163,65 +163,45 @@ def _refuses_without_rotating(tool, tool_argv, resource, extra_env=None,
     """Fakes a concurrent holder of REPO_ROOT/<resource>'s lock, then asserts
     `tool` refuses instead of rotating.
 
-    One legitimate case now collides with that setup, and is not a broken
-    guard (owner, 2026-09-29, item: run.py hoists the test/ lock to ITS OWN
-    start whenever the selection touches TOUCHES_TEST_TREE): when THIS
-    script runs as part of `testsys/run.py`'s `regression` tier inside a
-    selection that also runs `e2e` (`all`, `release`, ...), the ENCLOSING
-    run.py invocation already holds resource='test' for the whole run, and
-    this function's own `runlock.acquire` attempt correctly fails -- there
-    really IS a holder, it is just the parent process rather than a
-    deliberately-faked one. That is exactly the precondition this check
-    wants (a real holder + a tool invocation that must see it and refuse),
-    so it is used as-is: the existing holder's pid is read out of the
-    refusal message rather than manufactured, and nothing here releases a
-    lock this function never acquired.
+    A FAILURE to take that lock here is ALWAYS a real, foreign collision, and
+    is a hard test failure, not a fallback (PR #56 audit m5, 2026-09-30):
+    testsys/run.py does not, and must not, ever hold this lock itself (see
+    run.py._prepare_test_tree's docstring -- an earlier version of this
+    file's own fix DID tolerate a pre-existing holder here, reasoning it was
+    "likely the enclosing run.py invocation", but that reasoning is no
+    longer even possible to be true now that run.py never acquires the
+    lock at all; a genuine "already locked" here means some OTHER,
+    unrelated process holds it, and this check cannot safely proceed under
+    that process's protection instead of its own -- it must say so loudly
+    and stop, exactly as rule 21a demands).
     """
     tree = os.path.join(ROOT, resource)
     prev = tree + '.prev'
     sentinel = 'item70_lock_guard_%d.marker' % os.getpid()
-    held = None
-    holder_pid = None
     try:
         held = runlock.acquire(ROOT, resource,
                                argv=['test_e2e_run_tree_lock.py', resource],
                                announce=False)
-        holder_pid = held.pid
     except runlock.RunTreeLocked as exc:
-        m = re.search(r'holder pid\s*:\s*(\d+)', str(exc))
-        if not m:
-            raise AssertionError(
-                'could not take the lock on %s to run this check, and the '
-                'refusal names no holder pid to fall back on -- something '
-                'unexpected in THIS checkout holds it. Holder:\n%s'
-                % (tree, exc))
-        holder_pid = int(m.group(1))
-        print('  NOTE  %s is already locked (holder pid %d, likely the '
-              'enclosing testsys/run.py invocation that hoists this lock '
-              'to its own start -- see run.py._prepare_test_tree) -- using '
-              'that existing holder instead of faking a new one'
-              % (tree, holder_pid))
+        raise AssertionError(
+            'could not take the lock on %s to run this check -- something '
+            'else in THIS checkout holds it. That is the collision rule 21a '
+            'forbids, not a broken guard: run your sweep in its own '
+            'worktree. Holder:\n%s' % (tree, exc))
+    holder_pid = held.pid
     created = not os.path.isdir(tree)
     try:
         os.makedirs(tree, exist_ok=True)
         with open(os.path.join(tree, sentinel), 'w') as fh:
             fh.write('pathway item 70 guard -- delete me if you find me\n')
-        # This check is specifically the "invoked DIRECTLY, no caller
-        # already holding the lock" scenario -- strip testsys/run.py's own
-        # coordination vars even if the ambient environment carries them
-        # (e.g. this very script running inside testsys/run.py's own
-        # `regression` tier, itself part of a selection that also runs
-        # `e2e` and so holds resource='test' via _prepare_test_tree, which
-        # since PR #56 passes them only to the e2e subprocess's OWN env --
-        # never os.environ -- but this guard strips them anyway as a second
-        # line of defence). EQDYNA_TEST_LOCK_HELD=1 no longer disables the
-        # lock outright (M2: acquire_test_lock VERIFIES a claimed holder
-        # rather than trusting it), so leaving it set here would no longer
-        # cause a silent, unprotected proceed -- but EQDYNA_RUN_LOG_PATH
-        # pointing at a real run.py invocation's staged log could still
-        # make this "direct" invocation move someone else's log file.
+        # This check is specifically the "invoked DIRECTLY" scenario -- strip
+        # testsys/run.py's own coordination var even if the ambient
+        # environment carries it (e.g. a stray hand-set EQDYNA_RUN_LOG_PATH),
+        # since a real run.py invocation would otherwise never be running
+        # concurrently with this test at all (it never holds the lock, so
+        # THIS acquire above would never have failed if one legitimately
+        # were).
         env = dict(os.environ)
-        env.pop('EQDYNA_TEST_LOCK_HELD', None)
         env.pop('EQDYNA_RUN_LOG_PATH', None)
         env.update(extra_env or {})
         proc = subprocess.run([sys.executable, tool] + tool_argv, cwd=ROOT,
@@ -255,8 +235,7 @@ def _refuses_without_rotating(tool, tool_argv, resource, extra_env=None,
             pass
         if created and os.path.isdir(tree) and not os.listdir(tree):
             shutil.rmtree(tree)
-        if held is not None:
-            held.release()
+        held.release()
 
 
 def check_run_e2e_refuses_and_does_not_rotate():
@@ -278,6 +257,20 @@ def check_run_e2e_full_refuses_and_does_not_rotate():
                'and left test.full/ in place')
 
 
+def check_run_e2e_refuses_even_with_stale_lock_held_flag_set():
+    """PR #56 audit M2's second finding: EQDYNA_TEST_LOCK_HELD is deleted
+    entirely, so setting it by hand (or via a leaked/foreign environment)
+    must change NOTHING -- a second concurrent invocation still refuses.
+    Deliberately injects the flag into the CHILD's env (undoing the
+    EQDYNA_RUN_LOG_PATH-only stripping `_refuses_without_rotating` does by
+    default) to prove run_e2e.py no longer reads it at all."""
+    _refuses_without_rotating(
+        RUN_E2E, ['--cases', 'test.tpv8', '--backends', 'fortran'], 'test',
+        extra_env={'EQDYNA_TEST_LOCK_HELD': '1'},
+        banner='run_e2e.py refused a second invocation even with a stale '
+               'EQDYNA_TEST_LOCK_HELD=1 in its own environment')
+
+
 # --------------------------------------------------------------------------
 # shape of the sources (rule 2a: assert the shape, not a substring elsewhere)
 # --------------------------------------------------------------------------
@@ -297,14 +290,14 @@ def check_the_lock_is_taken_before_the_rotation_in_both_tools():
     """Ordering, at the source level. A lock acquired AFTER `shutil.move` is
     not a lock -- the damage is already done by the time it is asked for.
 
-    run_e2e.py's needle is the CALL SITE (`acquire_test_lock(REPO_ROOT,`),
+    run_e2e.py's needle is the CALL SITE (`acquire_test_lock(REPO_ROOT)`),
     not the raw `runlock.acquire(...)` line, since PR #56 audit M2 factored
     the actual acquire (VERIFY, don't trust a claimed holder) out into
     that function -- rule 10a: assert the property (a lock-acquisition call
     precedes rotation, in source order), not the exact spelling of a
     refactor-able implementation detail."""
     for path, needle, mover in (
-        (RUN_E2E, 'acquire_test_lock(REPO_ROOT,', 'shutil.move(test_dir, prev_dir)'),
+        (RUN_E2E, 'acquire_test_lock(REPO_ROOT)', 'shutil.move(test_dir, prev_dir)'),
         (RUN_E2E_FULL, "runlock.acquire(REPO_ROOT, 'test.full')",
          'shutil.move(test_dir, prev_dir)')):
         lines = _code_lines(path)
@@ -350,6 +343,7 @@ def main():
               check_release_lets_the_next_invocation_in,
               check_a_dead_holder_is_taken_over_with_an_explicit_message,
               check_run_e2e_refuses_and_does_not_rotate,
+              check_run_e2e_refuses_even_with_stale_lock_held_flag_set,
               check_run_e2e_full_refuses_and_does_not_rotate,
               check_the_lock_is_taken_before_the_rotation_in_both_tools,
               check_the_rotation_itself_survived,
