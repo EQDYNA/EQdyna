@@ -10,6 +10,8 @@ import importlib.util
 import io
 import os
 
+import pytest
+
 from conftest import REPO_ROOT
 
 _spec = importlib.util.spec_from_file_location(
@@ -18,6 +20,18 @@ run = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(run)
 
 machines = run._load_machines()
+
+
+@pytest.fixture(autouse=True)
+def _clean_environ():
+    """Restores os.environ after EVERY test in this file (PR #56 audit M3):
+    run.main()'s --machine handling mutates os.environ directly
+    (EQDYNA_TEST_MACHINE, EQDYNA_MPIRUN), which monkeypatch cannot undo on
+    its own since it never made that change itself."""
+    saved = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
 
 
 def test_parse_argv_extracts_flags_and_leaves_tiers():
@@ -46,7 +60,10 @@ def test_build_submit_script_header_and_body_for_ls6():
     lines = script.splitlines()
     assert lines[0] == '#! /bin/bash'
     assert '#SBATCH -J eqdyna-sweep' in lines
-    assert '#SBATCH -o eqdyna_sweep_%j.log' in lines
+    # scratch/ (gitignored), never test/ -- test_run_test_tree_logging.py's
+    # test_build_submit_script_packing_stays_in_scratch_and_traps_exit owns
+    # the full packing-placement/EXIT-trap check.
+    assert '#SBATCH -o scratch/eqdyna_sweep_%j.log' in lines
     assert '#SBATCH -N 1' in lines
     assert '#SBATCH -n 128' in lines          # ls6 cores_per_node
     assert '#SBATCH -p development' in lines  # ls6 default partition (dev queue for a quick check)
@@ -63,7 +80,7 @@ def test_build_submit_script_header_and_body_for_ls6():
     # `python3 -c 'import ...'` before the run.py invocation), not pinned to
     # exact wording.
     body = script.split('source ./install-eqdyna.sh -c ls6\n', 1)[1]
-    env_check_pos = body.find("python3 -c 'import jax, netCDF4, mpi4py'")
+    env_check_pos = body.find("python3 -c 'import jax, netCDF4, xarray, mpi4py'")
     sweep_pos = body.find('python3 testsys/run.py unit regression --machine ls6')
     assert env_check_pos != -1 and sweep_pos != -1
     assert env_check_pos < sweep_pos
@@ -172,9 +189,17 @@ def test_main_submit_on_non_slurm_machine_refuses_without_calling_sbatch(monkeyp
     assert not called
 
 
-def test_main_machine_flag_sets_env_without_submit(monkeypatch):
+def test_main_machine_flag_sets_env_without_submit(monkeypatch, tmp_path):
     monkeypatch.delenv('EQDYNA_TEST_MACHINE', raising=False)
     monkeypatch.delenv('EQDYNA_MPIRUN', raising=False)
+    # 'unit' is not e2e-family, so _prepare_test_tree would otherwise write
+    # test/run.unit.log into the REAL REPO_ROOT (PR #56 audit M3). Stub it
+    # rather than sandboxing REPO_ROOT wholesale -- _load_machines() (called
+    # first, for --machine ls6) needs the REAL REPO_ROOT to find the real
+    # scripts/machines.py.
+    log_path = str(tmp_path / 'test' / 'run.unit.log')
+    monkeypatch.setattr(run, '_prepare_test_tree',
+                        lambda selected: (log_path, True, {}))
     seen_env = {}
 
     def fake_unit():
@@ -186,6 +211,7 @@ def test_main_machine_flag_sets_env_without_submit(monkeypatch):
     rc = run.main(['run.py', 'unit', '--machine', 'ls6'])
     assert rc == 0
     assert seen_env == {'EQDYNA_TEST_MACHINE': 'ls6', 'EQDYNA_MPIRUN': 'mpirun'}
+    assert os.path.isfile(log_path)
 
 
 def test_main_machine_flag_refuses_for_grace_unverified_mpirun(monkeypatch):
@@ -203,9 +229,10 @@ def test_main_machine_flag_refuses_for_grace_unverified_mpirun(monkeypatch):
     assert 'EQDYNA_MPIRUN' not in os.environ
 
 
-def test_main_without_machine_leaves_env_untouched(monkeypatch):
+def test_main_without_machine_leaves_env_untouched(monkeypatch, tmp_path):
     monkeypatch.delenv('EQDYNA_TEST_MACHINE', raising=False)
     monkeypatch.delenv('EQDYNA_MPIRUN', raising=False)
+    monkeypatch.setattr(run, 'REPO_ROOT', str(tmp_path))
     monkeypatch.setitem(run.RUNNERS, 'unit', lambda: 0)
     rc = run.main(['run.py', 'unit'])
     assert rc == 0

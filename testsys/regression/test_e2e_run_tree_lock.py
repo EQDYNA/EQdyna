@@ -160,6 +160,21 @@ def check_a_dead_holder_is_taken_over_with_an_explicit_message():
 # --------------------------------------------------------------------------
 def _refuses_without_rotating(tool, tool_argv, resource, extra_env=None,
                               banner=None):
+    """Fakes a concurrent holder of REPO_ROOT/<resource>'s lock, then asserts
+    `tool` refuses instead of rotating.
+
+    A FAILURE to take that lock here is ALWAYS a real, foreign collision, and
+    is a hard test failure, not a fallback (PR #56 audit m5, 2026-09-30):
+    testsys/run.py does not, and must not, ever hold this lock itself (see
+    run.py._prepare_test_tree's docstring -- an earlier version of this
+    file's own fix DID tolerate a pre-existing holder here, reasoning it was
+    "likely the enclosing run.py invocation", but that reasoning is no
+    longer even possible to be true now that run.py never acquires the
+    lock at all; a genuine "already locked" here means some OTHER,
+    unrelated process holds it, and this check cannot safely proceed under
+    that process's protection instead of its own -- it must say so loudly
+    and stop, exactly as rule 21a demands).
+    """
     tree = os.path.join(ROOT, resource)
     prev = tree + '.prev'
     sentinel = 'item70_lock_guard_%d.marker' % os.getpid()
@@ -171,14 +186,23 @@ def _refuses_without_rotating(tool, tool_argv, resource, extra_env=None,
         raise AssertionError(
             'could not take the lock on %s to run this check -- something '
             'else in THIS checkout holds it. That is the collision rule 21a '
-            'forbids, not a broken guard: run your sweep in its own worktree. '
-            'Holder:\n%s' % (tree, exc))
+            'forbids, not a broken guard: run your sweep in its own '
+            'worktree. Holder:\n%s' % (tree, exc))
+    holder_pid = held.pid
     created = not os.path.isdir(tree)
     try:
         os.makedirs(tree, exist_ok=True)
         with open(os.path.join(tree, sentinel), 'w') as fh:
             fh.write('pathway item 70 guard -- delete me if you find me\n')
+        # This check is specifically the "invoked DIRECTLY" scenario -- strip
+        # testsys/run.py's own coordination var even if the ambient
+        # environment carries it (e.g. a stray hand-set EQDYNA_RUN_LOG_PATH),
+        # since a real run.py invocation would otherwise never be running
+        # concurrently with this test at all (it never holds the lock, so
+        # THIS acquire above would never have failed if one legitimately
+        # were).
         env = dict(os.environ)
+        env.pop('EQDYNA_RUN_LOG_PATH', None)
         env.update(extra_env or {})
         proc = subprocess.run([sys.executable, tool] + tool_argv, cwd=ROOT,
                               env=env, capture_output=True, text=True,
@@ -192,9 +216,9 @@ def _refuses_without_rotating(tool, tool_argv, resource, extra_env=None,
             '%s exited %d but printed no refusal naming the lock holder; its '
             'output was:\n%s'
             % (os.path.basename(tool), proc.returncode, out[-2000:]))
-        assert 'holder pid   : %d' % held.pid in out, (
+        assert 'holder pid   : %d' % holder_pid in out, (
             '%s refused without naming the holder pid %d:\n%s'
-            % (os.path.basename(tool), held.pid, out[-2000:]))
+            % (os.path.basename(tool), holder_pid, out[-2000:]))
         assert os.path.isfile(os.path.join(tree, sentinel)), (
             'THE DEFECT ITSELF: %s rotated %s away despite refusing -- the '
             'sentinel is gone from the live tree. Refusing AFTER rotating is '
@@ -233,6 +257,20 @@ def check_run_e2e_full_refuses_and_does_not_rotate():
                'and left test.full/ in place')
 
 
+def check_run_e2e_refuses_even_with_stale_lock_held_flag_set():
+    """PR #56 audit M2's second finding: EQDYNA_TEST_LOCK_HELD is deleted
+    entirely, so setting it by hand (or via a leaked/foreign environment)
+    must change NOTHING -- a second concurrent invocation still refuses.
+    Deliberately injects the flag into the CHILD's env (undoing the
+    EQDYNA_RUN_LOG_PATH-only stripping `_refuses_without_rotating` does by
+    default) to prove run_e2e.py no longer reads it at all."""
+    _refuses_without_rotating(
+        RUN_E2E, ['--cases', 'test.tpv8', '--backends', 'fortran'], 'test',
+        extra_env={'EQDYNA_TEST_LOCK_HELD': '1'},
+        banner='run_e2e.py refused a second invocation even with a stale '
+               'EQDYNA_TEST_LOCK_HELD=1 in its own environment')
+
+
 # --------------------------------------------------------------------------
 # shape of the sources (rule 2a: assert the shape, not a substring elsewhere)
 # --------------------------------------------------------------------------
@@ -250,13 +288,20 @@ def _first_index(lines, needle, path):
 
 def check_the_lock_is_taken_before_the_rotation_in_both_tools():
     """Ordering, at the source level. A lock acquired AFTER `shutil.move` is
-    not a lock -- the damage is already done by the time it is asked for."""
-    for path, resource, mover in ((RUN_E2E, "'test'",
-                                   'shutil.move(test_dir, prev_dir)'),
-                                  (RUN_E2E_FULL, "'test.full'",
-                                   'shutil.move(test_dir, prev_dir)')):
+    not a lock -- the damage is already done by the time it is asked for.
+
+    run_e2e.py's needle is the CALL SITE (`acquire_test_lock(REPO_ROOT)`),
+    not the raw `runlock.acquire(...)` line, since PR #56 audit M2 factored
+    the actual acquire (VERIFY, don't trust a claimed holder) out into
+    that function -- rule 10a: assert the property (a lock-acquisition call
+    precedes rotation, in source order), not the exact spelling of a
+    refactor-able implementation detail."""
+    for path, needle, mover in (
+        (RUN_E2E, 'acquire_test_lock(REPO_ROOT)', 'shutil.move(test_dir, prev_dir)'),
+        (RUN_E2E_FULL, "runlock.acquire(REPO_ROOT, 'test.full')",
+         'shutil.move(test_dir, prev_dir)')):
         lines = _code_lines(path)
-        acq = _first_index(lines, 'runlock.acquire(REPO_ROOT, %s)' % resource, path)
+        acq = _first_index(lines, needle, path)
         mov = _first_index(lines, mover, path)
         assert acq < mov, (
             '%s acquires the lock at line %d but rotates at line %d -- the '
@@ -298,6 +343,7 @@ def main():
               check_release_lets_the_next_invocation_in,
               check_a_dead_holder_is_taken_over_with_an_explicit_message,
               check_run_e2e_refuses_and_does_not_rotate,
+              check_run_e2e_refuses_even_with_stale_lock_held_flag_set,
               check_run_e2e_full_refuses_and_does_not_rotate,
               check_the_lock_is_taken_before_the_rotation_in_both_tools,
               check_the_rotation_itself_survived,
