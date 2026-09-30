@@ -57,10 +57,29 @@ import urllib.error
 import urllib.request
 from collections import namedtuple
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+from testsys import change_class  # noqa: E402
+
 # '.github/' added 2026-09-23 by the conductor, loudly: without it one direct
 # push could delete the pr-policy-gate job itself, so the owner's "mechanical"
 # enforcement would be deletable. The owner named src/ and testsys/; this is
 # the one constant to edit to reverse it.
+#
+# WIDENED, never narrowed, 2026-09-30 (change-classifier work, review item 1
+# CRITICAL): a path classified PHYSICS by testsys/change_class.py (e.g.
+# case_input/, scripts/lib.py, testNameList.py, install-eqdyna.sh,
+# test.reference.results/) is gated TOO now, even outside these three
+# prefixes -- it was pushing direct before. See is_gated_path/
+# touches_gated_paths below for the union; GATED_PREFIXES itself is
+# unchanged and still independently gates all of testsys/ (including its
+# INTERNAL-classified subdirectories, e.g. testsys/unit/, testsys/
+# regression/) and all of .github/ (INTERNAL-classified by change_class,
+# for CI-config reasons that have nothing to do with this repo's own PR
+# self-protection) -- the classifier answers "does this need a sweep", not
+# "does this need a PR"; GATED_PREFIXES is rule 25's own, separate answer to
+# the second question, and this union only ever ADDS to it.
 GATED_PREFIXES = ('src/', 'testsys/', '.github/')
 MASTER_REF = 'master'
 ZERO_SHA = '0' * 40
@@ -101,11 +120,18 @@ def commit_files(sha, cwd=None):
     return [p for p in (x.strip() for x in out.split('\0')) if p]
 
 
+def is_gated_path(f, gated_prefixes=GATED_PREFIXES):
+    """A path is gated if it starts with a historical GATED_PREFIXES entry
+    OR change_class classifies it PHYSICS (the union review item 1 asks
+    for -- see the module-level comment on GATED_PREFIXES)."""
+    return (any(f.startswith(prefix) for prefix in gated_prefixes)
+            or change_class.classify_path(f) == change_class.PHYSICS)
+
+
 def touches_gated_paths(files, gated_prefixes=GATED_PREFIXES):
-    """Sorted subset of files that starts with a gated prefix. Empty means
-    the commit is not gated at all (docs, board, evidence, ...)."""
-    return sorted({f for f in files
-                  for prefix in gated_prefixes if f.startswith(prefix)})
+    """Sorted subset of files that are gated (see is_gated_path). Empty
+    means the commit is not gated at all (docs, board, evidence, ...)."""
+    return sorted({f for f in files if is_gated_path(f, gated_prefixes)})
 
 
 def resolve_push_range(before, head, have_commit):
@@ -286,15 +312,16 @@ def main(argv, cwd=None, fetcher_factory=github_commits_pulls_fetcher):
         return 1
 
     gated = [d for d in decisions if d.gated_files]
-    print('pr_policy %s: %d commit(s) in range, %d touching a gated path %s'
+    print('pr_policy %s: %d commit(s) in range, %d touching a gated path '
+         '(%s, or PHYSICS per testsys/change_class.py)'
          % (mode, len(decisions), len(gated), GATED_PREFIXES))
     for d in gated:
         print('  %s %s -- %s' % ('OK ' if d.ok else 'RED', d.sha[:12], d.reason))
 
     if not ok:
         bad = [d for d in decisions if not d.ok]
-        print('\nFAIL pr_policy %s: %d commit(s) touch %s without an '
-             'associated merged PR:' % (mode, len(bad), GATED_PREFIXES))
+        print('\nFAIL pr_policy %s: %d commit(s) touch a gated path (%s, or '
+             'PHYSICS) without an associated merged PR:' % (mode, len(bad), GATED_PREFIXES))
         for d in bad:
             print('  %s  %s' % (d.sha[:12], d.reason))
         if mode == 'push-guard':

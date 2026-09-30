@@ -46,6 +46,14 @@ HOOK_RELPATH = 'testsys/hooks/pre-push'
 HOOK_PATH = os.path.join(ROOT, *HOOK_RELPATH.split('/'))
 POLICY_RELPATH = 'testsys/pr_policy.py'
 POLICY_PATH = os.path.join(ROOT, *POLICY_RELPATH.split('/'))
+# pr_policy.py imports `from testsys import change_class` (2026-09-30
+# classifier work) -- the sandbox is a from-scratch repo, not a checkout, so
+# it needs its own copy of both the classifier module and the package marker
+# for that import to resolve, exactly like POLICY_PATH below.
+CLASSIFIER_RELPATH = 'testsys/change_class.py'
+CLASSIFIER_PATH = os.path.join(ROOT, *CLASSIFIER_RELPATH.split('/'))
+INIT_RELPATH = 'testsys/__init__.py'
+INIT_PATH = os.path.join(ROOT, *INIT_RELPATH.split('/'))
 HOOKS_DIRNAME = 'testsys/hooks'
 
 SANDBOX_ENV = dict(
@@ -109,6 +117,8 @@ def build_sandbox(tmp):
     os.chmod(os.path.join(local, *HOOK_RELPATH.split('/')), 0o755)
     os.makedirs(os.path.join(local, 'testsys'), exist_ok=True)
     shutil.copyfile(POLICY_PATH, os.path.join(local, *POLICY_RELPATH.split('/')))
+    shutil.copyfile(CLASSIFIER_PATH, os.path.join(local, *CLASSIFIER_RELPATH.split('/')))
+    shutil.copyfile(INIT_PATH, os.path.join(local, *INIT_RELPATH.split('/')))
     sh(['config', 'core.hooksPath', HOOKS_DIRNAME], cwd=local)
     sh(['remote', 'add', 'origin', bare], cwd=local)
 
