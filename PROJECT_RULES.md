@@ -1057,20 +1057,81 @@ The release workflow, in order:
 4. Add a Tasks-done row to `pathway_forward.md` (rule 14).
 5. Commit everything above together.
 6. Push the COMMIT and wait for CI to go green. Do not tag yet.
-7. Tag `vX.Y.Z`, push the tag, and publish the GitHub Release as ONE
-   uninterrupted action, only after CI is green on the commit (formerly two
-   separate steps, 7 and 9 — merged 2026-09-16, see rationale below). Run all
-   three with no pause in between, and do not stop to watch CI between the
-   tag push and `gh release create`:
+7. Create the tag and the Release in one step, with no separate `git push`
+   of the tag, only after every pre-tag gate is green on `<sha>` — CI (rule
+   15a), and the board Tasks-done row and README News block already present
+   in `<sha>`'s own tree (`check_pretag_ci.py`'s `evaluate_release_docs_ready`,
+   rule 15a):
 
-       git tag -a vX.Y.Z -m "<release summary>" <sha>
-       git push origin vX.Y.Z
-       gh release create vX.Y.Z --notes-file <notes-file> --latest --verify-tag
+       gh release create vX.Y.Z --target <sha> --notes-file <notes-file> --latest
 
-   `--verify-tag` makes `gh release create` use the tag just pushed instead of
-   minting its own from the branch tip, which would be a lightweight tag and
-   fail `check_tag_is_annotated`
-   (`testsys/regression/test_release_complete.py:106-113`).
+   One command. No `git tag -a`, no `git push origin vX.Y.Z`, no
+   `--verify-tag`. `gh release create --target <sha>` mints the tag itself,
+   server-side, pointed at `<sha>`, in the same call that publishes the
+   Release — this is documented `gh` behaviour ("If a matching git tag does
+   not yet exist, one will automatically get created ... Use `--target` to
+   point to a different branch or commit for the automatic tag creation"),
+   not a workaround.
+
+   **Why `--verify-tag` and `check_tag_is_annotated` are both gone, and why a
+   lightweight tag is now correct rather than a defect.** The old sequence
+   pushed an annotated tag first (`git tag -a vX.Y.Z -m "<release summary>"
+   <sha>`, then `git push origin vX.Y.Z`) specifically so `gh release create
+   --verify-tag` would refuse to mint its own tag and use that pre-existing
+   one instead; `check_tag_is_annotated` (removed commit `6f80a1c`, formerly
+   `testsys/regression/test_release_complete.py:106-113`) existed to catch a
+   releaser who skipped the manual annotated tag and let `gh` default-create
+   a lightweight one in its place. Under the one-command process there is no
+   local tag left for `--verify-tag` to check against — it would simply fail
+   "tag not found" on every release — and the tag `gh release create
+   --target` mints is unavoidably lightweight: an annotated tag can only be
+   produced by a local `git tag -a`, a command this process no longer runs.
+   `check_tag_is_annotated` was removed entirely, not loosened: there is no
+   replacement check, because a lightweight tag is now the correct, intended
+   output of every release, not something a guard needs to catch.
+
+   **Why the tag and the GitHub Release can no longer land as two separate
+   steps — because there is structurally only one.** The previous version of
+   this rule chained three commands (`git tag -a`, `git push origin`, `gh
+   release create --verify-tag`) and relied on a releaser running them with
+   "no pause in between" (rule 15c) to avoid a window where the tag existed
+   on the remote but the Release did not. `v5.8.2`'s release commit
+   `bccfb845` shows exactly that window opening in practice: pushing the tag
+   fired its own `push`-triggered CI run (`35122388271`, created 16:30:56Z,
+   twelve minutes after the branch-push run `35121095979` had already gone
+   green) which failed, because `gh release create` — the old, separate step
+   9 — had been skipped, the same way it was skipped on `v5.8.0` and
+   `v5.8.1`. Discipline ("don't pause between the two commands") was the only
+   thing enforcing the ordering, and discipline is exactly what a releaser
+   under a deadline forgets. The one-command process does not ask for more
+   discipline; it removes the second event that discipline was needed to
+   chain onto: there is no `git push origin vX.Y.Z` left to fire its own CI
+   run, because there is no local tag to push in the first place — the tag
+   and the Release are created by the one `gh release create --target <sha>`
+   API call, so there is no interval during which the tag exists without the
+   Release behind it, and nothing left to remember to do immediately
+   afterward. This also covers correcting an already-cut release that was
+   sequenced wrong: delete the old Release and the old tag, then run this
+   same one command again, once, on the corrected SHA — there is no separate
+   "fix" path, just this step run a second time.
+
+   **Post-publication verification now covers ONLY external state.**
+   Everything that determines whether the tag SHOULD be cut — CI, the image
+   gate, the board row, the notes — was already checked before `gh release
+   create` ran (rule 15a). What is left to verify afterward is only what
+   becomes true by virtue of the outside world having now seen the release:
+   - the GitHub Release itself is published and readable —
+     `python3 testsys/regression/test_release_complete.py --post-publish`,
+     whose `check_github_release_published` is exactly this one piece;
+   - the Docker image pulls anonymously (`docker pull
+     ghcr.io/eqdyna/eqdyna:vX.Y.Z`, and confirm `:latest` moved);
+   - the docs site answers 200 for the new version;
+   - a clean clone of the tag installs (`git clone`, checkout the tag, run
+     `./install-eqdyna.sh -m ubuntu`).
+
+   No single script runs all four yet — only the first is automated. The
+   other three are the release checklist's remaining by-hand steps, run once,
+   right after the one `gh release create` command, never before.
 
    **Why the tag comes after CI, not before.** A local gate cannot model the
    runner. v5.7.0 was gated green locally through CI's own entry point, tagged,
@@ -1087,29 +1148,14 @@ The release workflow, in order:
    A released tag that points at a red commit is worse than a late tag: the
    Releases page becomes the authoritative wrong answer.
 
-   **Why the tag push and the GitHub Release cannot be two separate steps
-   (2026-09-16, formerly step 9).** Tags are pushed refs, so pushing one fires
-   its own `push`-triggered workflow run, independent of the branch push that
-   already went green. v5.8.2's release commit `bccfb845` has two: run
-   `35121095979` (created 16:18:56Z, the branch push) concluded SUCCESS; run
-   `35122388271` (created 16:30:56Z, twelve minutes later, the TAG push,
-   identical commit) concluded FAILURE. Its only failing check was
-   `test_release_complete.py`'s `check_network_side`
-   (`testsys/regression/test_release_complete.py:132-139`), which SKIPS while
-   no tag exists for `VERSION` and fires the instant one does — the guard
-   exists specifically because `gh release create` (old step 9) was skipped on
-   both v5.8.0 and v5.8.1, so it correctly refuses to pass a tag with no
-   Release behind it. The old ordering (tag at step 7, `gh release create` as
-   a separate, manually-remembered step 9) guaranteed a window between the two
-   where exactly that condition holds, and the tag push itself schedules a CI
-   run that lands inside it. Collapsing the two into one chained command
-   removes the window: the guard's network check runs late enough in CI
-   (after checkout, build, unit and regression tiers) that the immediately
-   following `gh release create` has already landed by the time it executes.
-   (Three older release commits — `335e21d`, `238f1ac`, `9950ae1` — each show
-   two push-triggered runs one second apart, both FAILURE; that is a separate,
-   unexplained duplicate-push artifact, not this mechanism, and was not
-   investigated further.)
+   (The two-separate-steps failure mode this step used to guard against by
+   discipline alone — 2026-09-16 through 2026-09-30 — is described above,
+   under "Why the tag and the GitHub Release can no longer land as two
+   separate steps", together with the `v5.8.2` incident that motivated the
+   discipline in the first place. Three older release commits — `335e21d`,
+   `238f1ac`, `9950ae1` — each show two push-triggered runs one second apart,
+   both FAILURE; that was a separate, unexplained duplicate-push artifact,
+   never investigated, not this mechanism.)
 8. Push only on explicit approval from the maintainer.
 
 **Corrected 2026-09-24 (rule 15f)**: steps 5-6 above ("commit everything
@@ -1126,8 +1172,11 @@ convention existed only in the files' shape, not as a rule — the release
 agent followed the wrong precedent and nothing could catch it.
 
 README notes are USER-FACING: terse one-line bullets (the v5.3.2-era
-style); the full technical detail belongs in the GitHub Release body,
-the annotated tag message, and `pathway_forward.md`.
+style); the full technical detail belongs in the GitHub Release body and
+`pathway_forward.md`. (Step 7's tag is lightweight, not annotated — a
+lightweight tag carries no message — so the Release body, not a tag message,
+is the only per-tag home for that detail; see step 7's "Why `--verify-tag`
+and `check_tag_is_annotated` are both gone" note.)
 
 **How to apply**: at release time, `head README.md` must show the version
 being released; `pastReleaseNotes.md` must contain every prior version and
@@ -1347,27 +1396,44 @@ intervene, treat the resulting red exactly per rule 3a: stop, finish the
 Release immediately, then resume.
 
 **Corrected 2026-09-30 (owner course correction, `v5.20.2`'s own sequencing
-mistake).** The paragraph above still describes the right behaviour to
-practice, but its MECHANISM changed: `test_release_complete.py` is no
-longer part of `testsys/run.py unit regression` at all (see
+mistake; second note same day below, rule 15 step 7 itself rewritten).**
+
+First, the check. `test_release_complete.py` is no longer part of
+`testsys/run.py unit regression` at all (see
 `testsys/regression_sweep_exclusions.py`'s module docstring for the
-incident this fixes — `v5.20.2`'s tag-triggered CI, and
-`publish.yml`'s build-and-push image gate, both failed on this file's
-GitHub-Release check before the Release could possibly exist, which is why
-that tag shipped with no published Docker image). So the tier no longer
-goes red automatically at tag-push time as a way of *catching* a split
-step 7 — it goes red never, for this reason, because the check that could
+incident this fixes — `v5.20.2`'s tag-triggered CI, and `publish.yml`'s
+build-and-push image gate, both failed on this file's GitHub-Release check
+before the Release could possibly exist, which is why that tag shipped with
+no published Docker image). So the regression tier no longer goes red
+automatically at tag-creation time as a way of *catching* a split release
+sequence — it goes red never, for this reason, because the check that could
 never pass automatically is no longer invoked automatically. What used to
-be one function, `check_network_side`, is now two:
-`check_tag_pushed_to_remote` (kept in `test_release_complete.py`'s normal
-check list — true by definition any time after the tag push) and
+be one function, `check_network_side`, is now two: `check_tag_pushed_to_remote`
+(kept in `test_release_complete.py`'s normal check list — true by definition
+any time after `gh release create` has landed on the remote) and
 `check_github_release_published` (removed from that list; run ONLY via
-`python3 testsys/regression/test_release_complete.py --post-publish`,
-by hand or by a scripted step, immediately after `gh release create`
-completes — never automatically on tag push, and never folded into the
-image gate). A releaser verifies step 7 was followed as one action by
-running that command with `--post-publish` right after `gh release
-create`, not by watching whether CI happened to go red.
+`python3 testsys/regression/test_release_complete.py --post-publish`, by hand
+or by a scripted step, immediately after `gh release create` completes —
+never automatically on tag creation, and never folded into the image gate).
+
+Second, and separately: rule 15 step 7 itself was rewritten the same day to
+one `gh release create --target <sha> ... --latest` command, with no local
+`git tag` and no `git push origin vX.Y.Z` at all. That makes this sub-rule's
+own framing above — "Step 7 already runs the tag push and the GitHub Release
+creation as one uninterrupted command sequence", "After `git push origin
+vX.Y.Z`, the very next command is `gh release create ... --verify-tag`" — a
+description of the 2026-09-16-through-2026-09-30 process, not the current
+one: there is no longer a separate tag-push command for a releaser to fail to
+immediately follow with `gh release create`, because there is only the one
+command left to run. The discipline failure this sub-rule exists to catch (a
+lapse between two chained commands) cannot recur under the rewritten step 7.
+What `check_tag_pushed_to_remote` / `check_github_release_published` still
+verify is the OUTCOME — a tag exists on the remote; a Release is published
+for it — which stays worth checking even though the specific two-command
+race this sub-rule was written against no longer exists by construction. A
+releaser verifies the release landed correctly by running
+`test_release_complete.py --post-publish` right after `gh release create`,
+not by watching whether CI happened to go red.
 
 ---
 
