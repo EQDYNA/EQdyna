@@ -2,6 +2,7 @@
 
 # News in 2026
 * 20260930 v5.20.2 release notes
+  * Fix - **retagged, same day.** The tag originally pointed at `30ae29e` (a docs-only, paths-ignored commit whose own tag-push CI run failed at `test_term_axis.py`, and whose Docker image never published -- 404 on the GHCR manifest). Root cause and fix: PR #69 (`ff06534`) hardens the release gate so a tag only goes on a SHA with its OWN green CI run and its OWN green image-workflow run (no ancestor substitute); PR #70 (`4b5da1c`) fixes a squash-merge blind spot that PR #69's own landing exposed. `v5.20.2` now points at `4b5da1c` -- green `test.yml`, green `publish.yml`, `check_pretag_ci.py --pre-tag` PASS on all four checks. See `docs/notes/NOTES_v5202_retag_2026-09-30.md`. `VERSION` stays `5.20.2`; there is no `v5.20.3`.
   * Fix - the Docker image publishes again (v5.20.1 has none); the image is public: `docker pull ghcr.io/eqdyna/eqdyna:v5.20.2` (PR #60).
   * Fix - `case.submit` refuses a batch job with no project account; LS6 batch-job steps added to Running a case (PR #61).
   * New - `testsys/needs_sweep.py` and one shared change classifier; sweep evidence keyed by content (PRs #62, #63).
