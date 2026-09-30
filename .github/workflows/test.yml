@@ -311,7 +311,8 @@ jobs:
         # already-tagged release, not on every commit/PR -- see that module's
         # docstring for the incident (v5.20.2 shipped with no Docker image
         # because this job used to run it here and its GitHub-Release check
-        # can never pass at tag-push time by construction).
+        # is not safe to treat as pass/fail this early -- no guaranteed
+        # ordering against the Release object becoming queryable).
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         export EQDYNAROOT=$(pwd)
