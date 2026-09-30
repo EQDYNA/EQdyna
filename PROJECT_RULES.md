@@ -38,6 +38,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 15d. Step 5's single release commit does not cover the two files 21c owns; those split out.
 15e. A release commit is gated on itself before it is pushed, not carried on step 1's earlier green.
 15f. Under rule 25, a release is four pushes — PR merge, sweep evidence, board row, tag — never step 5's one commit.
+15g. A CI trigger exemption (`paths-ignore`) is a claim that no test reads that path as data, and it must be true.
 16. Test what you commit, not what is in your working tree.
 17. Reviving or adding a TPV benchmark.
 18. A refactor that couples two previously-independent artifacts must say so.
@@ -55,16 +56,17 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 22. A scope restriction is itself a rule, and it can conflict with another rule.
 23. Fortran is the reference implementation; the port follows its NUMERICS, not its file layout.
 24. A release tag requires a committed local sweep at the exact SHA, not only green CI.
+24a. A release tag also requires the image-publish workflow's own green run for the exact SHA.
 25. `src/`, `testsys/`, and `.github/` reach master only through a merged pull request; everything else may still push direct.
 26. User-facing docs are written for users.
 27. Release cadence: release as soon as a physics or output change lands, or at the latest after a week or ~5 PRs, whichever comes first.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 27 numbered rules
-(1-27) plus twenty-nine lettered sub-rules (1a, 2a, 3a, 3b, 3c, 4a, 4b, 4c,
-4d, 4e, 5a, 5b, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 15f, 20a, 20b, 20c,
-21a, 21b, 21c, 21d, 21e) — 56 `## ` headings total. Verify:
-`grep -c '^## ' PROJECT_RULES.md` reads 56; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
+(1-27) plus thirty-one lettered sub-rules (1a, 2a, 3a, 3b, 3c, 4a, 4b, 4c,
+4d, 4e, 5a, 5b, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 15f, 15g, 20a, 20b,
+20c, 21a, 21b, 21c, 21d, 21e, 24a) — 58 `## ` headings total. Verify:
+`grep -c '^## ' PROJECT_RULES.md` reads 58; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
 (numbered rules only, no letter suffix) reads 27.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
@@ -1275,6 +1277,35 @@ Docker image' (run 35819232914) — recorded, not backfilled, as pathway item
 78's owner-accepted exception; v5.16.1 and v5.17.0 both PASS (2 workflows
 each).
 
+**Corrected 2026-09-30, closing the v5.20.2 incident — the "How to apply"
+paragraph above, where it describes `--ack-paths-ignored-parent` as the
+"sanctioned form" of accepting the nearest ancestor's green run as the tag's
+own evidence, is now obsolete and must not be followed.** `v5.20.2` was
+tagged at `30ae29e`, a commit touching only `docs/evidence/**`,
+`docs/perf_ledger.jsonl`, `docs/perf_snapshots/**` and `docs/run_profiles.jsonl`
+— all `paths-ignore`'d at the time, so `30ae29e` could never trigger its own
+push-run, and `check_pretag_ci.py --ack-paths-ignored-parent` accepted its
+parent `e0c407f`'s green run as the evidence instead. Pushing the tag DID
+trigger a real CI run for `30ae29e` itself — `test.yml`'s own comment already
+says paths-ignore is not evaluated for tag pushes — and that run failed at
+`test_term_axis.py` (fixed later, `850ce6a`), because the tree at `30ae29e`
+was genuinely test-relevant content, not inert documentation (rule 15g).
+`ci_status.evaluate_pretag` no longer grants PASS from ancestor evidence
+under any circumstance: a paths-ignore-only SHA is `PATHS_IGNORED` regardless
+of the flag. `--ack-paths-ignored-parent` still walks the ancestor chain
+(`_diagnose_paths_ignored_ancestor`) and folds the nearest ancestor's CI
+status into the refusal message, purely as a diagnostic for the human
+reading it, never to decide the outcome. The only ways left to tag a commit
+that cannot trigger its own CI run are: retarget the tag at the last
+ancestor that DID get a real pre-tag run of its own; or push a further
+commit that also touches a non-ignored path so the exact SHA being tagged
+can earn a real run. Rule 15f's step 7, and its whole E1/E2 sequence,
+depended on the escape hatch this paragraph closes; see rule 15f's own
+correction and `pathway_forward.md` item 139 — the next release needs a new
+tag-target sequence, not decided here. Rule 24(ii)'s matching ancestor
+clause is corrected the same way; see rule 24's own 2026-09-30 note and rule
+24a for the image-workflow gate landed alongside this fix.
+
 ---
 
 ## 15b. The local sweep and CI gate different failure classes; CI never re-verifies physics, at release or otherwise
@@ -1609,6 +1640,60 @@ commit, and never sweep evidence riding inside the PR.
 `testsys/pr_policy.py` (rule 25) and `check_pretag_ci.py`'s
 `evaluate_sweep_evidence` (rule 24) acting together; this sub-rule adds no
 new check, it names the order the two already jointly require.
+
+**Corrected 2026-09-30 (v5.20.2 incident) — step 7 above no longer works.**
+It relied on `--ack-paths-ignored-parent` turning E2's (or E1's)
+`PATHS_IGNORED` status into a PASS using M's CI as the evidence; rule 15a's
+2026-09-30 hardening removes that outcome entirely; a paths-ignore-only
+commit is `PATHS_IGNORED`, full stop, no ancestor substitute. The
+sweep-evidence half of step 7 (`evaluate_sweep_evidence` accepting E1 as
+E2's evidence) is unaffected — that is rule 24's carry-forward provision,
+untouched by this fix — only the CI half is closed. This rule's own
+E1-then-E2-then-tag order is therefore not currently executable as written:
+which SHA the tag ends up targeting, and whether E1/E2 fold into M or gain
+a triggering commit of their own, is an open design question, tracked as
+`pathway_forward.md` item 139 and left for whoever next cuts a release —
+not decided here.
+
+---
+
+## 15g. A CI trigger exemption (`paths-ignore`) is a claim that no test reads that path as data, and it must be true
+
+`.github/workflows/test.yml`'s `paths-ignore` list is not a statement about
+what a path is named — it is a claim that none of this project's tests read
+anything under it as input. The two claims come apart exactly where a path
+looks like documentation by directory name but is written and read by the
+suite itself: `docs/evidence/`, `docs/perf_ledger.jsonl`,
+`docs/perf_snapshots/`, and `docs/run_profiles.jsonl` all sit under `docs/`
+by rule 1's root layout, but they are release-sweep OUTPUT that
+`testsys/regression/test_term_axis.py`'s release-sweep-carry-forward logic
+READS. Before adding a path to `paths-ignore`, or leaving a blanket glob
+like the old `docs/**` in place, grep `testsys/` for a reference to it — a
+path no test opens is safe to ignore; a path any test opens as data is not,
+regardless of what directory it lives in.
+
+**Rationale / Incident (2026-09-30, v5.20.2, `30ae29e`)**: `docs/**` was
+ignored as a whole on the standing assumption that everything under `docs/`
+is inert prose. `test_term_axis.py` reading `docs/evidence/.../summary.json`
+broke that assumption silently: a commit touching only those paths could
+never trigger its own CI run, which is what let rule 15a's ancestor-evidence
+escape hatch be exercised in the first place, and let a tag ship on evidence
+for a tree CI had never actually run against — closed in rule 15a's own
+2026-09-30 correction.
+
+**How to apply**: `paths-ignore` in `.github/workflows/test.yml` is now an
+explicit list of named subpaths (session logs, design notes, the board
+history render, `notes/`, `figures/`, `docs/user/`), not a blanket `docs/**`
+— a new path under `docs/` defaults to NOT ignored (the safer direction,
+rule 2) until someone deliberately adds it, and adding it means first
+checking it is never read as data anywhere under `testsys/`.
+
+**Tier: judgment, with one mechanical proxy.** No guard mechanically proves
+"nothing in `testsys/` reads path X" before X is added to `paths-ignore` —
+that check is a manual review step at the moment the list is edited. The
+proxy this incident leaves behind is `test_term_axis.py` itself, which now
+runs on every push touching the four evidence/ledger paths (since they are
+no longer ignored) rather than depending on a human noticing the read.
 
 ---
 
@@ -2880,6 +2965,76 @@ exits 5 (`SWEEP_INSUFFICIENT`) otherwise. Guarded itself by
 `testsys/regression/test_pretag_sweep_negative.py`,
 `test_release_complete.py`, and `testsys/regression/test_term_axis.py` (the
 guard against the retired two-term design reappearing).
+
+**Corrected 2026-09-30 (v5.20.2 incident) — the ancestor-diff exception
+above ("or for an ancestor whose diff from that SHA lands entirely inside
+`docs/evidence/`, the perf ledger, or `pathway_forward.md`") no longer
+covers part (ii), the CI run.** `v5.20.2` (`30ae29e`) is exactly that
+ancestor shape — its diff from parent `e0c407f` lands entirely inside
+`docs/evidence/`, `docs/perf_ledger.jsonl`, `docs/perf_snapshots/` and
+`docs/run_profiles.jsonl` — and rule 15a's `--ack-paths-ignored-parent` used
+this exception to accept `e0c407f`'s CI as `30ae29e`'s, which then failed
+for real once the tag push exercised `30ae29e` on its own CI (see rule
+15a's own 2026-09-30 correction, which is where this is actually enforced).
+The exception still stands, unchanged, for part (i), the sweep evidence:
+`evaluate_sweep_evidence`'s ancestor check, and the separate
+`_release_sweep_carry_forward` logic that skips a full release sweep when
+no physics-bearing path changed since the last swept release (item 3, PR
+#66), remain valid — a sweep run on a physics-identical ancestor tree is
+still evidence for a later SHA that only adds evidence/ledger/board rows on
+top of it. What changed is CI only: part (ii) now requires a completed,
+successful CI run for the EXACT SHA being tagged, with no ancestor
+substitute, full stop.
+
+---
+
+## 24a. A release tag also requires the image-publish workflow's own green run for the exact SHA
+
+Rule 15a's post-tag half already refuses a SHA where
+`.github/workflows/publish.yml` ran and finished without success (item 78's
+`check_every_workflow_for_tagged_sha`). It did not refuse a SHA where that
+workflow never ran at all — and `publish.yml` triggers only on a tag push
+or `workflow_dispatch`, so before this rule nothing required it to have run,
+green, for a candidate SHA before that SHA was tagged. `v5.20.2` shipped
+with no Docker image published at all (confirmed 404 on the GHCR manifest)
+because the gate was silent about a workflow that had simply never been
+asked to run.
+
+`ci_status.evaluate_image_workflow` closes this: it asks, for the exact SHA
+about to be tagged, whether `publish.yml` (read by its own `name:`, the same
+way `parse_workflow_name` already reads `test.yml`'s) has a completed,
+successful run. "Never ran" is refused exactly like "ran and failed" — there
+is no silent pass for "not yet scheduled." `check_pretag_ci.py` reports this
+as exit code 7, `IMAGE_WORKFLOW_NOT_READY`, checked after the CI check
+(rule 15a) and the sweep check (rule 24) both pass, per rule 2's "three
+different situations, three different exit codes" convention extended here
+to a fourth.
+
+**Rationale**: item 78 already established that a workflow which DID run
+and failed must block the tag; this rule is the same principle applied to
+the case item 78 left open — a workflow that never ran carries exactly as
+little assurance as one that failed, and must be refused the same way, not
+treated as neutral.
+
+**Incident (2026-09-30, v5.20.2)**: the release gate required a green
+`test.yml` run for the exact SHA (rule 15a) and a committed local sweep
+(rule 24), and both were satisfied; nothing in the gate asked whether
+`publish.yml` had ever run for that SHA, so the tag shipped with an image
+that was never built. Closed the same day as the `30ae29e` incident, as
+part of the same hardening pass.
+
+**How to apply**: before `git tag`, if `evaluate_image_workflow` reports no
+run for the candidate SHA, dispatch one by hand
+(`gh workflow run publish.yml --ref <sha>`, since pre-tag this is the only
+trigger available) and wait for it to go green before tagging. A SHA whose
+image workflow is still running is `PENDING`; one that ran and failed is
+`FAIL`, unchanged from item 78.
+
+**Tier: mechanical, landed** (`d8f6230`). `check_pretag_ci.py` exit code 7
+(`IMAGE_WORKFLOW_NOT_READY`); guarded by
+`testsys/regression/test_pretag_ci_negative.py` cases N/O/P/Q (never-run SHA
+refused, ran-and-failed SHA deferred to item 78's existing FAIL, green SHA
+passes, and the gate is shown load-bearing).
 
 ---
 
