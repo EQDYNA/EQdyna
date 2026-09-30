@@ -77,13 +77,27 @@ the reader has to open the log to find out which):
                       reads lands before the tag" and "the tag's own CI must
                       be a re-run of checks already green, never a first
                       run". See `evaluate_release_docs_ready` below.
+  7  IMAGE_WORKFLOW_NOT_READY   test.yml is green for the exact sha (the CI
+                      check above passed), but the Docker image workflow
+                      (.github/workflows/publish.yml) does NOT have its own
+                      completed, green run for that same exact sha -- either
+                      it never ran (that workflow triggers only on a tag
+                      push or workflow_dispatch, so nothing runs it pre-tag
+                      unless dispatched by hand), it is still running, or it
+                      ran and failed. Added 2026-09-30 (owner requirement
+                      (b), the SAME v5.20.2 incident: that tag's image was
+                      never published -- confirmed 404 on the GHCR manifest
+                      -- and nothing in this gate said so beforehand). Item
+                      78's `classify_every_workflow` (folded into the CI
+                      check above) only refuses a workflow that DID run and
+                      failed; this refuses the stronger, previously-silent
+                      case of "never ran at all" too. See
+                      `ci_status.evaluate_image_workflow`.
 
-Only checked when the CI check above is PASS -- CI-not-green and
-sweep-not-found are different situations (rule 2), and the CI check is more
-fundamental, so it is reported alone first. RELEASE_DOCS_NOT_READY is
-checked last, after the sweep-evidence check, for the same reason: three
-different situations, three different exit codes, reported in the order
-each becomes relevant.
+Checked in the order each becomes relevant (rule 2: different situations,
+different exit codes): the CI check first (most fundamental), then the
+image-workflow check (still a CI-completeness question, just about a
+second workflow), then sweep evidence, then release-docs readiness.
 """
 import argparse
 import glob
@@ -107,6 +121,7 @@ EXIT_CODES = {
 }
 SWEEP_INSUFFICIENT_EXIT = 5
 RELEASE_DOCS_NOT_READY_EXIT = 6
+IMAGE_WORKFLOW_NOT_READY_EXIT = 7
 
 # --- release-path guard: a committed local RELEASE sweep -- every supported
 # cell (everyday cells + matrix.RELEASE_ONLY), all at the ONE GATE_TERM_S --
@@ -429,9 +444,13 @@ def main():
     p.add_argument('--pre-tag', metavar='SHA', required=True,
                    help='the commit you are about to `git tag`')
     p.add_argument('--ack-paths-ignored-parent', action='store_true',
-                   help='if SHA cannot trigger its own CI run, accept the '
-                        'nearest ancestor commit\'s green run as evidence '
-                        'instead (prints exactly which SHA that is)')
+                   help='DOES NOT authorize a tag (removed 2026-09-30, the '
+                        'v5.20.2 incident): if SHA cannot trigger its own CI '
+                        'run, this still walks to the nearest ancestor '
+                        'commit with a run of its own and reports its '
+                        'status as a diagnostic, but the result stays '
+                        'PATHS_IGNORED either way -- push a commit that '
+                        'also touches a non-ignored path instead')
     args = p.parse_args()
 
     try:
@@ -445,13 +464,30 @@ def main():
 
     print('%s  %s' % (result.status, result.message))
     if result.evidence_sha and result.evidence_sha != requested_full_sha:
-        print('  (evidence sha: %s -- NOT %s itself)'
-              % (result.evidence_sha, requested_full_sha))
+        print('  (evidence sha: %s -- NOT %s itself; diagnostic only, does '
+              'not authorize tagging %s)'
+              % (result.evidence_sha, requested_full_sha, requested_full_sha))
     if result.status != ci_status.PASS:
         return EXIT_CODES[result.status]
 
-    # CI is green for this exact SHA. Additionally required (release-path
-    # guard, 2026-09-23): a committed local release sweep (matrix.GATE_TERM_S) for this SHA or a
+    # Owner requirement (b), added 2026-09-30 (v5.20.2 incident: the image
+    # was never published and nothing here said so beforehand). test.yml
+    # green for this exact sha is necessary but not sufficient -- the image
+    # workflow (.github/workflows/publish.yml) must have its OWN completed,
+    # green run for the SAME exact sha too. Different situation from the CI
+    # check above (rule 2): that one asks "is test.yml green", this one asks
+    # "has the image workflow even run, and is IT green" -- reported and
+    # exit-coded separately.
+    img_result = ci_status.evaluate_image_workflow(requested_full_sha)
+    print('%s  %s' % (img_result.status, img_result.message))
+    if img_result.status == ci_status.UNVERIFIED:
+        return EXIT_CODES[ci_status.UNVERIFIED]
+    if img_result.status != ci_status.PASS:
+        return IMAGE_WORKFLOW_NOT_READY_EXIT
+
+    # CI is green for this exact SHA, on both workflows. Additionally
+    # required (release-path guard, 2026-09-23): a committed local release
+    # sweep (matrix.GATE_TERM_S) for this SHA or a
     # permitted ancestor (rule 15d). Different situation, different code
     # (rule 2) -- do not fold this into the CI outcome above.
     ok, sweep_msg = evaluate_sweep_evidence(requested_full_sha)

@@ -33,6 +33,41 @@ history on gh 2.91.0 and returned `[]` for SHAs (`b3697f8`, `8f6ff07`) that
 demonstrably have runs (confirmed via `gh run view <id>`). So this module
 never uses `--commit`: it lists runs per workflow name and filters on
 `headSha` itself.
+
+THE v5.20.2 INCIDENT (2026-09-30), closed by this module's second hardening
+pass. `v5.20.2` was tagged at `30ae29e`, a commit touching ONLY
+`docs/evidence/**`, `docs/perf_ledger.jsonl`, `docs/perf_snapshots/**` and
+`docs/run_profiles.jsonl` -- every one of them then covered by test.yml's
+blanket `docs/**` paths-ignore entry, so the commit could never trigger its
+own push-run. `check_pretag_ci.py --ack-paths-ignored-parent` walked up to
+`30ae29e`'s parent (`e0c407f`), found ITS green run, and let the tag land on
+that ancestor's evidence. `.github/workflows/test.yml`'s own comment already
+said "paths-ignore is not evaluated for tag pushes" -- true GitHub Actions
+semantics -- so pushing the `v5.20.2` tag DID trigger a real, full CI run for
+`30ae29e` itself, which then failed at `test_term_axis.py` (a fix for it
+landed later, `850ce6a`). The docs-evidence commit was genuinely
+test-relevant content (test_term_axis.py reads the evidence JSON its
+release-sweep-carry-forward logic writes), misclassified as inert
+"docs-only", and tagged on the strength of an ancestor's run that never
+exercised its own tree.
+
+Two changes close this permanently: (1) `.github/workflows/test.yml`'s
+`paths-ignore` no longer blanket-ignores `docs/**` -- the exact evidence/
+ledger paths above are narrowed OUT of it, so a commit touching only them
+now triggers its own push-run, same as any other commit; and (2)
+`evaluate_pretag`'s `--ack-paths-ignored-parent` no longer authorizes a
+PASS under any circumstance -- an ancestor's green run is never evidence for
+the SHA being tagged, full stop. The flag still walks ancestors and reports
+what it finds, purely as a diagnostic for the human reading the refusal
+message; see `_diagnose_paths_ignored_ancestor` and `evaluate_pretag` below.
+`evaluate_image_workflow` is the OTHER half of the hardening: even with (1)
+and (2), a completed green `test.yml` run for the exact SHA does not by
+itself prove the Docker image workflow (`publish.yml`) has ever run for
+it -- that workflow triggers only on a tag push or `workflow_dispatch`, so
+nothing before this ran it pre-tag at all. Item 78's `classify_every_workflow`
+already refuses a SHA where a workflow that DID run finished unsuccessfully;
+`evaluate_image_workflow` refuses the stronger, previously-silent case of a
+SHA where it never ran in the first place.
 """
 import fnmatch
 import os
@@ -41,6 +76,10 @@ import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKFLOW_PATH = os.path.join(ROOT, '.github', 'workflows', 'test.yml')
+# The Docker image build-and-push workflow -- item (b)'s gate reads ITS
+# `name:` the same way parse_workflow_name reads test.yml's, never a second,
+# hardcoded copy of the literal string.
+PUBLISH_WORKFLOW_PATH = os.path.join(ROOT, '.github', 'workflows', 'publish.yml')
 
 # The five outcomes a caller can get. PASS/UNVERIFIED are shared with the
 # regression tier's PASS/UNVERIFIED convention; the other three are the
@@ -134,16 +173,23 @@ def parse_paths_ignore(workflow_text=None):
     return patterns
 
 
-def parse_workflow_name(workflow_text=None):
+def parse_workflow_name(workflow_text=None, path=None):
     """The workflow's own `name:` -- used to ask `gh` for only this
     workflow's runs, so a push-triggered run of some OTHER workflow (this
     repo also has 'Publish EQdyna Docker image' on the same push event)
-    never gets counted as CI evidence."""
+    never gets counted as CI evidence.
+
+    `path` (default WORKFLOW_PATH, i.e. test.yml): which workflow file to
+    read `name:` out of when `workflow_text` is not supplied directly --
+    `evaluate_image_workflow` below passes PUBLISH_WORKFLOW_PATH so the two
+    callers share this one regex rather than keeping a second copy."""
+    if path is None:
+        path = WORKFLOW_PATH
     if workflow_text is None:
-        workflow_text = open(WORKFLOW_PATH, errors='replace').read()
+        workflow_text = open(path, errors='replace').read()
     m = re.search(r'^name:\s*(.+?)\s*$', workflow_text, re.M)
     if not m:
-        raise ValueError('no top-level `name:` found in %s' % WORKFLOW_PATH)
+        raise ValueError('no top-level `name:` found in %s' % path)
     return m.group(1)
 
 
@@ -321,25 +367,74 @@ def classify_runs(runs, exclude_run_id=None):
     return 'NONE'
 
 
+def _diagnose_paths_ignored_ancestor(full_sha, workflow_name, patterns, max_hops):
+    """Walk up parents from `full_sha` PURELY TO REPORT what the nearest
+    ancestor's CI status is -- this NEVER authorizes anything; see the
+    v5.20.2 incident in this module's docstring. Returns (ancestor_sha or
+    None, human-readable note, hops), where `hops` is the ordered list of
+    (sha, changed_paths) pairs walked over, oldest-asked-about first.
+
+    Kept as a real, callable mechanism (not deleted) because
+    --ack-paths-ignored-parent is still useful for a human deciding what to
+    do next -- it is only the AUTHORIZING effect that is gone.
+    """
+    current = full_sha
+    hops = []
+    for _ in range(max_hops):
+        parent = commit_parent(current)
+        if parent is None:
+            return None, ('%s is a root commit -- no ancestor to check' % current), hops
+        try:
+            ignored, changed = commit_is_paths_ignore_only(current, patterns)
+        except ValueError as exc:
+            return None, ('could not determine %s\'s paths-ignore status: %s'
+                          % (current, exc)), hops
+        hops.append((current, changed))
+        current = parent
+        try:
+            runs = drop_tag_triggered_runs(find_ci_runs(current, workflow_name))
+        except GhUnavailable as exc:
+            return None, ('could not query CI runs for ancestor %s: %s'
+                          % (current, exc)), hops
+        status = classify_runs(runs)
+        if status in ('PASS', 'FAIL', 'IN_PROGRESS'):
+            return current, ('nearest ancestor with CI evidence is %s (%s)'
+                             % (current, status)), hops
+        # status == 'NONE': keep walking only if this ancestor is ALSO
+        # paths-ignore-only; otherwise it could have its own run (just
+        # hasn't yet) and is not itself part of the paths-ignore chain.
+        try:
+            ignored, _changed = commit_is_paths_ignore_only(current, patterns)
+        except ValueError:
+            return None, ('ancestor %s has no run and its paths-ignore '
+                          'status could not be determined' % current), hops
+        if not ignored:
+            return None, ('ancestor %s has no run yet, but it CAN trigger '
+                          'its own (it is not paths-ignore-only)' % current), hops
+    return None, ('walked %d paths-ignore-only ancestors from %s without '
+                 'finding one with CI evidence' % (max_hops, full_sha)), hops
+
+
 def evaluate_pretag(sha, ack_paths_ignored_parent=False, max_hops=10):
     """The pre-`git tag` gate. Returns a Result whose .status is one of
     PASS / FAIL / PENDING / PATHS_IGNORED / UNVERIFIED (never anything
-    else -- rule 2: three genuinely different situations, three outcomes).
+    else -- rule 2: five genuinely different situations, five outcomes).
 
-    Default (ack_paths_ignored_parent=False): a SHA that cannot trigger its
-    own CI run is PATHS_IGNORED, full stop -- it does not silently fall back
-    to the parent's evidence. Passing ack_paths_ignored_parent=True walks up
-    parents (each one required to ALSO be paths-ignore-only, capped at
-    max_hops) until it finds a commit with runs of its own, and reports
-    PASS/FAIL/PENDING against THAT ancestor -- with evidence_sha naming
-    exactly which commit the evidence came from, never the SHA that was
-    asked about.
+    HARDENED 2026-09-30 (the v5.20.2 incident -- see module docstring):
+    ancestor evidence NEVER authorizes a PASS for `sha`, under any
+    circumstance. A completed, successful workflow run must exist FOR THE
+    EXACT SHA being asked about, full stop. `ack_paths_ignored_parent` no
+    longer changes the outcome of this function at all when `sha` is itself
+    paths-ignore-only: the result is PATHS_IGNORED either way. What the flag
+    still does is walk the ancestor chain and fold a diagnostic note about
+    the nearest ancestor's own CI status into the message -- for a human
+    deciding what to do next, never for the check to decide FOR them.
 
     Runs triggered by pushing a TAG at this SHA are excluded from evidence
     (see drop_tag_triggered_runs) -- that run is the one the tag creation
     itself produces and cannot exist yet at the moment this check needs to
     answer "is it safe to create the tag". Counting it is the exact defect
-    this module exists to close.
+    this module exists to close (the ORIGINAL incident, `b3697f8`/v5.13.1).
     """
     try:
         full_sha = resolve_sha(sha)
@@ -352,104 +447,160 @@ def evaluate_pretag(sha, ack_paths_ignored_parent=False, max_hops=10):
     except (GhUnavailable, ValueError) as exc:
         return Result(UNVERIFIED, 'could not read %s: %s' % (WORKFLOW_PATH, exc))
 
-    current = full_sha
-    hops = []
-    for _ in range(max_hops + 1):
+    try:
+        runs = find_ci_runs(full_sha, workflow_name)
+        runs = drop_tag_triggered_runs(runs)
+    except GhUnavailable as exc:
+        return Result(UNVERIFIED,
+                      'could not query CI runs for %s: %s' % (full_sha, exc))
+
+    status = classify_runs(runs)
+    if status == 'PASS':
+        # Item 78: every OTHER workflow with a non-tag run at this exact sha
+        # must be green too. Tag-triggered runs stay excluded here for the
+        # same reason as above (they cannot exist before the tag);
+        # test_release_complete.py reads those after the tag.
         try:
-            runs = find_ci_runs(current, workflow_name)
-            runs = drop_tag_triggered_runs(runs)
+            every = drop_tag_triggered_runs(find_all_workflow_runs(full_sha))
+            failed, pending, names = classify_every_workflow(every, workflow_name)
         except GhUnavailable as exc:
             return Result(UNVERIFIED,
-                          'could not query CI runs for %s: %s' % (current, exc))
-        status = classify_runs(runs)
-        if status == 'PASS':
-            # Item 78: every OTHER workflow with a non-tag run at this sha
-            # must be green too. Tag-triggered runs stay excluded here for
-            # the same reason as above (they cannot exist before the tag);
-            # test_release_complete.py reads those after the tag.
-            try:
-                every = drop_tag_triggered_runs(find_all_workflow_runs(current))
-                failed, pending, names = classify_every_workflow(every, workflow_name)
-            except GhUnavailable as exc:
-                return Result(UNVERIFIED,
-                              'could not check every workflow for %s: %s'
-                              % (current, exc))
-            if failed:
-                return Result(
-                    FAIL,
-                    '%s is green for %s, but workflow(s) %s also ran for that '
-                    'sha and finished WITHOUT success -- every workflow '
-                    'triggered for the sha must be green (item 78)'
-                    % (workflow_name, current, ', '.join(repr(n) for n in failed)),
-                    evidence_sha=current, hops=hops)
-            if pending:
-                return Result(
-                    PENDING,
-                    '%s is green for %s, but workflow(s) %s for that sha have '
-                    'not completed yet -- wait' % (
-                        workflow_name, current, ', '.join(repr(n) for n in pending)),
-                    evidence_sha=current, hops=hops)
-            return Result(
-                PASS,
-                'a completed, successful %s run exists for %s, and every '
-                'workflow with a non-tag run at that sha is green (%d: %s)'
-                % (workflow_name, current, len(names), ', '.join(names)) +
-                ('' if not hops else ' (evidence for %s, reached by walking '
-                                     'up %d paths-ignore-only commit(s): %s)'
-                                     % (full_sha, len(hops),
-                                        ' -> '.join(h[0] for h in hops))),
-                evidence_sha=current, hops=hops)
-        if status == 'FAIL':
+                          'could not check every workflow for %s: %s'
+                          % (full_sha, exc))
+        if failed:
             return Result(
                 FAIL,
-                'a completed %s run for %s finished WITHOUT success '
-                '(conclusion != success) -- CI ran and failed'
-                % (workflow_name, current),
-                evidence_sha=current, hops=hops)
-        if status == 'IN_PROGRESS':
+                '%s is green for %s, but workflow(s) %s also ran for that '
+                'sha and finished WITHOUT success -- every workflow '
+                'triggered for the sha must be green (item 78)'
+                % (workflow_name, full_sha, ', '.join(repr(n) for n in failed)),
+                evidence_sha=full_sha)
+        if pending:
             return Result(
                 PENDING,
-                'a %s run for %s exists but has not completed yet -- CI has '
-                'not finished' % (workflow_name, current),
-                evidence_sha=current, hops=hops)
-        # status == 'NONE': no run at all for `current`.
-        try:
-            ignored, changed = commit_is_paths_ignore_only(current, patterns)
-        except ValueError as exc:
-            return Result(
-                PENDING,
-                'no %s run found yet for %s, and its paths-ignore status '
-                'could not be determined (%s) -- push it and wait'
-                % (workflow_name, current, exc))
-        if not ignored:
-            return Result(
-                PENDING,
-                'no %s run found yet for %s, which DOES touch non-ignored '
-                'paths and so can trigger its own run -- push it and wait, '
-                'do not tag' % (workflow_name, current))
-        # This commit cannot trigger CI by design.
-        if current == full_sha and not ack_paths_ignored_parent:
-            return Result(
-                PATHS_IGNORED,
-                '%s touches ONLY paths-ignore\'d files (%s) and so could '
-                'NEVER have its own CI run -- the workflow\'s paths-ignore '
-                'list is %s. Tagging it would rest on its PARENT\'s run, '
-                'which this check does not do by default. Re-run with '
-                '--ack-paths-ignored-parent to accept the nearest ancestor '
-                'commit\'s green run as the evidence instead.'
-                % (current, ', '.join(changed), patterns))
-        hops.append((current, changed))
-        parent = commit_parent(current)
-        if parent is None:
-            return Result(
-                FAIL,
-                '%s is a root commit with no parent to fall back to, and it '
-                'is itself paths-ignore-only -- there is no CI evidence '
-                'this chain can ever produce' % current)
-        current = parent
+                '%s is green for %s, but workflow(s) %s for that sha have '
+                'not completed yet -- wait' % (
+                    workflow_name, full_sha, ', '.join(repr(n) for n in pending)),
+                evidence_sha=full_sha)
+        return Result(
+            PASS,
+            'a completed, successful %s run exists for %s, and every '
+            'workflow with a non-tag run at that sha is green (%d: %s)'
+            % (workflow_name, full_sha, len(names), ', '.join(names)),
+            evidence_sha=full_sha)
+    if status == 'FAIL':
+        return Result(
+            FAIL,
+            'a completed %s run for %s finished WITHOUT success '
+            '(conclusion != success) -- CI ran and failed'
+            % (workflow_name, full_sha),
+            evidence_sha=full_sha)
+    if status == 'IN_PROGRESS':
+        return Result(
+            PENDING,
+            'a %s run for %s exists but has not completed yet -- CI has '
+            'not finished' % (workflow_name, full_sha),
+            evidence_sha=full_sha)
+
+    # status == 'NONE': no run at all for `full_sha` itself.
+    try:
+        ignored, changed = commit_is_paths_ignore_only(full_sha, patterns)
+    except ValueError as exc:
+        return Result(
+            PENDING,
+            'no %s run found yet for %s, and its paths-ignore status '
+            'could not be determined (%s) -- push it and wait'
+            % (workflow_name, full_sha, exc))
+    if not ignored:
+        return Result(
+            PENDING,
+            'no %s run found yet for %s, which DOES touch non-ignored '
+            'paths and so can trigger its own run -- push it and wait, '
+            'do not tag' % (workflow_name, full_sha))
+
+    # full_sha cannot trigger its own CI run by design. This is PATHS_IGNORED
+    # no matter what ack_paths_ignored_parent says -- an ancestor's evidence
+    # is NEVER a substitute for this sha's own (the v5.20.2 fix).
+    base_msg = (
+        '%s touches ONLY paths-ignore\'d files (%s) and so could NEVER have '
+        'its own CI run -- the workflow\'s paths-ignore list is %s. A real '
+        'CI run at this EXACT sha is mandatory; there is no escape hatch '
+        'that lets an ancestor\'s run stand in for it (owner decision, '
+        '2026-09-30, closing the v5.20.2 incident: %s was tagged on its '
+        'parent\'s green run and then failed CI for real on the tag push, '
+        'because a tag push is NOT subject to paths-ignore). Push a commit '
+        'that also touches a non-ignored path, or narrow the workflow\'s '
+        'paths-ignore list so this one can trigger its own run.'
+        % (full_sha, ', '.join(changed), patterns, full_sha))
+    if not ack_paths_ignored_parent:
+        return Result(PATHS_IGNORED, base_msg)
+
+    ancestor_sha, note, hops = _diagnose_paths_ignored_ancestor(
+        full_sha, workflow_name, patterns, max_hops)
+    return Result(
+        PATHS_IGNORED,
+        base_msg + ' --ack-paths-ignored-parent no longer grants a PASS; it '
+        'only reports a diagnostic: %s.' % note,
+        evidence_sha=ancestor_sha, hops=hops)
+
+
+def evaluate_image_workflow(sha, workflow_name=None):
+    """Owner requirement (b), 2026-09-30 (v5.20.2 incident hardening): does
+    the Docker image-publish workflow (.github/workflows/publish.yml) have a
+    completed, GREEN run for the EXACT `sha` -- not "if it ran, is it green"
+    (item 78's `classify_every_workflow`, which only judges workflows that
+    DID run for a sha), but the stronger, previously-unchecked question: HAS
+    it run at all. A sha where it never ran is refused exactly as if it had
+    failed; there is no silent pass for "never scheduled".
+
+    `publish.yml` triggers only on a tag push or `workflow_dispatch` (see
+    that file's own `on:` block) -- it never fires on an ordinary push to
+    master. So before any tag exists, the ONLY way a completed green run of
+    this workflow can exist for a given sha is a `workflow_dispatch` run
+    against it, done by hand ahead of time. This function does not care HOW
+    the run got triggered, only that one exists and is green; tag-triggered
+    runs are not excluded here (unlike evaluate_pretag's test.yml check)
+    because pre-tag there cannot be one yet for this sha -- if one somehow
+    already exists (re-verifying a sha that was tagged before), it is real
+    evidence, not the same self-referential trap drop_tag_triggered_runs
+    exists to close for test.yml.
+
+    Returns a Result whose .status is PASS / FAIL / PENDING / UNVERIFIED
+    (never PATHS_IGNORED -- publish.yml carries no paths-ignore filter of
+    its own to trip)."""
+    if workflow_name is None:
+        workflow_name = parse_workflow_name(path=PUBLISH_WORKFLOW_PATH)
+    try:
+        runs = find_ci_runs(sha, workflow_name)
+    except GhUnavailable as exc:
+        return Result(UNVERIFIED,
+                      'could not query %s runs for %s: %s' % (workflow_name, sha, exc))
+    status = classify_runs(runs)
+    if status == 'PASS':
+        return Result(PASS,
+                      'a completed, successful %s run exists for %s'
+                      % (workflow_name, sha), evidence_sha=sha)
+    if status == 'FAIL':
+        return Result(
+            FAIL,
+            'a completed %s run for %s finished WITHOUT success -- the image '
+            'build, its gate (the repo\'s own test tiers run INSIDE the '
+            'built image), or the push to the registry failed'
+            % (workflow_name, sha), evidence_sha=sha)
+    if status == 'IN_PROGRESS':
+        return Result(
+            PENDING,
+            'a %s run for %s exists but has not completed yet -- wait'
+            % (workflow_name, sha), evidence_sha=sha)
+    # status == 'NONE': the workflow has never run for this sha at all.
     return Result(
         FAIL,
-        'walked %d paths-ignore-only ancestors from %s without finding a '
-        'commit that could have its own CI run -- max_hops exceeded, this '
-        'is almost certainly a workflow paths-ignore list that is too broad'
-        % (max_hops, full_sha))
+        'no %s run exists for %s at all -- this workflow triggers only on a '
+        'tag push or workflow_dispatch, so a sha that has never been '
+        'dispatched has no evidence it can even build the image, let alone '
+        'that the image passes its own gate. Run '
+        '`gh workflow run %r --ref %s` and wait for it to go green before '
+        'tagging -- a sha where the image workflow never ran is refused, '
+        'not silently passed (the v5.20.2 gap this closes: that tag shipped '
+        'with a 404 GHCR manifest and nothing here said so beforehand).'
+        % (workflow_name, sha, workflow_name, sha))
