@@ -2568,7 +2568,10 @@ of this rule being read. `testsys/hooks/pre-commit` (installed via
 `core.hooksPath` by `install-eqdyna.sh`, rule 21) refuses any commit whose
 staged set includes `PROJECT_RULES.md` or `pathway_forward.md` together with
 any other path: `pre-commit: REFUSED -- this commit MIXES the rule book /
-board with other files`, exit 1. Guard:
+board with other files`, exit 1. **Superseded 2026-09-30 for `PROJECT_RULES.md`
+only** — see the correction below: a staged set of `PROJECT_RULES.md` plus
+other files no longer triggers this refusal; a staged `pathway_forward.md`
+plus any other file still refuses exactly as described here. Guard:
 `testsys/regression/test_precommit_board_separation_guard.py`;
 `test_precommit_main_checkout_guard.py` is unmodified and green. Verified
 fresh by the conductor in a linked worktree 2026-09-23 — mixed commit exit 1,
@@ -2603,6 +2606,63 @@ this tier as wider than it is:**
    as rule 21's own mechanical claim is.
 
 Pathway item 75 is closed by this landing.
+
+**Corrected 2026-09-30 (PR #69's squash-merge, commit `ff06534`; fixed in
+`ac731aa`).** PR #69 bundled a code fix with its own matching
+`PROJECT_RULES.md` rule text and a `pathway_forward.md` board row, split
+across four individually-clean commits (rule-text-only, code-only,
+rule-text-only, code-only). Each commit, and the whole PR's commit range,
+passed `check_board_separation.py`'s then-only check mode (per-commit,
+`pull_request` event) — nothing in the check looked at what squash-merging
+the PR would actually put on master. Squash-merging it (this repo's only
+merge mode, rule 25) flattened all four into ONE commit on master, `ff06534`,
+whose single diff mixes `PROJECT_RULES.md` AND `pathway_forward.md` with code
+— which the next `push`-triggered run of the SAME script correctly caught,
+turning master red for a reason that had nothing to do with any code under
+test. Four changes, landed together in `ac731aa`:
+
+1. `PROJECT_RULES.md` may now share a commit with non-board files —
+   specifically, with the code that enforces the rule text just added ("a
+   rule ships with its refusing check in the same change"). This section's
+   separation exists to protect revertability and single-writer discipline,
+   not to forbid a rule and its own enforcing check landing together.
+   `pathway_forward.md` gets NO such exception: the board stays solo,
+   unconditionally — mixing it with ANY other file, `PROJECT_RULES.md`
+   included, is still refused. `check_board_separation.py`'s
+   `improper_mix()` and `testsys/hooks/pre-commit`'s staged-set check were
+   changed identically.
+2. `ff06534` is recorded in `EXEMPT_SHAS` as a ONE-TIME, NAMED historical
+   exemption — it still mixes `pathway_forward.md` even under the
+   corrected rule (it predates the fix and history cannot be un-mixed), so
+   it prints as `EXEMPT`, never `SUCCESS`.
+3. **Generalized the same day** (a second owner course-correction, after 1
+   and 2 above had already landed): the actual defect was broader than
+   "this one check is blind" — ANY check judging a PR's shape by its
+   individual commits, rather than by the ONE diff a squash-merge will
+   actually produce, can pass a PR whose landed result it never inspected.
+   So `check_board_separation.py --squash-check` (which unions the whole
+   `base...head` range into one diff — exactly what squash-merge produces)
+   is now the SOLE gating result for `pull_request` CI events; the
+   per-commit result still prints, but only as a diagnostic, because a
+   squash-merged PR's individual commits never reach master at all. `push`
+   events (never squashed by this repo's settings) keep the plain
+   per-commit check as sole and gating, because for them the individual
+   commits genuinely are what lands. This is what makes "green PR" and
+   "green master" the SAME claim rather than two claims that can disagree.
+4. Two sibling PR/commit-shape checks in this repo were read against this
+   same principle and needed NO change: `testsys/pr_policy.py` (the
+   `pr-policy-gate` CI job) only ever runs on `push` to master, never
+   `pull_request`, so it was never exposed to this failure mode;
+   `testsys/change_class.py` classifies a single path/diff-line pair, not a
+   commit range, so there is no per-commit-vs-aggregate distinction for it
+   to get wrong.
+
+Guard: `testsys/unit/test_check_board_separation.py` (new, 14 cases
+including the PR #69 reproduction and its mirror — a messy intermediate
+commit with a clean aggregate now passes);
+`testsys/regression/test_precommit_board_separation_guard.py` extended with
+the PROJECT_RULES.md+code-allowed case; `test_ci_board_separation_step.py`
+unchanged and green.
 
 ---
 
