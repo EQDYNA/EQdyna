@@ -26,11 +26,13 @@ REFERENCE_DIR) -- moved here so there is exactly one copy, never two.
 
 REUSED BY (no second copy of any of this):
   - testsys/regression/check_release_due.py -- rule 27's DUE-at-once test
-    is is_output_change(); rule 27 (b)'s PR-count now counts only
-    classify_path(path) == USER_FACING paths per PR (review item 6: an
-    INTERNAL-only PR never counts, and PHYSICS alone -- a matrix.py-only
-    PR, say -- needs a sweep but does not itself count toward (b) either;
-    see check_release_due.py's own docstring for the exact rule).
+    is is_output_change(); rule 27 (b)'s PR-count excludes only a PR whose
+    EVERY changed path classifies INTERNAL (review item 6, corrected from
+    an earlier draft that narrowed the count to USER_FACING-only): a
+    PHYSICS-only PR -- a matrix.py-only PR, say -- needs a sweep AND still
+    counts toward (b)'s threshold; classify_path == PHYSICS on its own just
+    does not trip the AT-ONCE trigger (is_output_change is narrower than
+    that); see check_release_due.py's own docstring for the exact rule.
   - testsys/needs_sweep.py -- the advisory "does this range need
     testsys/run.py e2e" tool (classify_path == PHYSICS on any changed path).
   - testsys/pr_policy.py -- rule 25's gated-path set is WIDENED (never
@@ -75,8 +77,12 @@ WHY EACH NON-OBVIOUS CALL, review items 2 and 8:
     what a user reads to install and run a case); the REST of docs/ is
     INTERNAL (notes, evidence, session logs, the perf ledger/snapshots,
     board history).
-  - Any `check_*` file (by basename, wherever it lives) is INTERNAL: it is
-    a checker ABOUT the release/board process, not part of what it checks.
+  - Any `check_*` file, by basename, under `testsys/` (root or any
+    subdirectory) is INTERNAL: it is a checker ABOUT the release/board
+    process, not part of what it checks. Scoped to `testsys/` (victor-reyes
+    audit of PR #62, finding 4, corrected from "wherever it lives"): a
+    `check_*` name outside `testsys/` is not this repo's release-process
+    tooling and must not be exempted from review just by that name.
   - This file itself is PHYSICS (review's explicit instruction): it drives
     pr_policy's gate and needs_sweep's verdict, so a bug in IT is exactly
     as dangerous as a bug in the gate it feeds.
@@ -112,15 +118,20 @@ OUTPUT_FILES = ('src/fortran/library_output.f90',
 REFERENCE_DIR = 'test.reference.results/'
 
 # --- USER_FACING: a short, explicit list, checked FIRST (docs/user/ must
-# win over the broader docs/ -> INTERNAL rule below).
+# win over the broader docs/ -> INTERNAL rule below). `Docker.guide.md`
+# added 2026-09-30 (victor-reyes audit of PR #62, finding 2): a root-level
+# user install guide, sibling to Dockerfile/README.md/VERSION, not physics.
 USER_FACING_EXACT = frozenset({
     'VERSION', 'README.md', 'Dockerfile', '.dockerignore', 'ubuntu.env.sh',
-    '.github/workflows/publish.yml',
+    '.github/workflows/publish.yml', 'Docker.guide.md',
 })
 USER_FACING_PREFIXES = ('docs/user/',)
 
 # --- INTERNAL: a short, explicit list, checked SECOND. Everything else is
-# PHYSICS by default (see module docstring).
+# PHYSICS by default (see module docstring). `LICENSE`, `pastReleaseNotes.md`,
+# `.gitignore` added 2026-09-30 (victor-reyes audit of PR #62, finding 2):
+# plain doc/meta files outside src/testsys/.github that the PHYSICS-default
+# was newly gating for a PR with no physics content to review at all.
 INTERNAL_PREFIXES = ('testsys/unit/', 'testsys/regression/', 'testsys/hooks/',
                      'docs/', '.github/')
 INTERNAL_EXACT = frozenset({
@@ -128,11 +139,34 @@ INTERNAL_EXACT = frozenset({
     'testsys/check_board_separation.py',
     'testsys/check_git_config_no_credential.py',
     'pathway_forward.md', 'PROJECT_RULES.md', 'CLAUDE.md',
+    'LICENSE', 'pastReleaseNotes.md', '.gitignore',
 })
+
+# --- default-PHYSICS, but not UNREVIEWED (victor-reyes audit of PR #62,
+# finding on the totality test): every path that falls all the way through
+# to the bare `return PHYSICS` at the end of classify_path is expected to
+# live under one of these prefixes or be one of these exact scripts --
+# reviewed, deliberately, same day as the classifier itself. A tracked path
+# that classifies PHYSICS WITHOUT matching one of these (or the USER_FACING/
+# INTERNAL lists above) is a review gap: some brand-new top-level file or
+# directory nobody has looked at yet, not something this module already
+# reasoned about. `explicit_bucket` below is what a totality test asserts
+# against -- classify_path's own return value never depends on it, so this
+# list growing narrower cannot silently change any gate's answer, only the
+# totality test's opinion of whether the answer was reviewed.
+DEFAULT_PHYSICS_REVIEWED_PREFIXES = ('src/', 'testsys/', 'case_input/',
+                                     'test.reference.results/', 'scripts/')
+DEFAULT_PHYSICS_REVIEWED_EXACT = frozenset({'testNameList.py', 'install-eqdyna.sh'})
 
 
 def _is_check_star(path):
-    return os.path.basename(path).startswith('check_')
+    """A `check_*` basename is INTERNAL only under `testsys/` (root or any
+    subdirectory, e.g. `testsys/regression/`) -- victor-reyes audit of PR
+    #62, finding 4: scoped down from "wherever it lives", which would have
+    silently swallowed a hypothetical `scripts/check_something.py` or
+    `case_input/.../check_whatever.py` that is not a checker ABOUT this
+    repo's release/board process at all."""
+    return path.startswith('testsys/') and os.path.basename(path).startswith('check_')
 
 
 def _is_legacy_scripts_asset(path):
@@ -144,11 +178,32 @@ def _is_legacy_scripts_asset(path):
     return path.endswith('.m') or path == 'scripts/figures' or path.startswith('scripts/figures/')
 
 
+def explicit_bucket(path):
+    """Which bucket `path` matches EXPLICITLY -- USER_FACING, INTERNAL, or a
+    REVIEWED default-PHYSICS prefix/exact name -- or None if it falls
+    through to the bare, UNREVIEWED PHYSICS default. Exists only so a
+    totality test can assert every tracked path was actually thought about
+    once; classify_path below never consults this and its answer for a
+    given path never changes because of it (rule 2: fail toward the
+    expensive gating answer regardless of review status)."""
+    path = path.replace(os.sep, '/')
+    if path in USER_FACING_EXACT or path.startswith(USER_FACING_PREFIXES):
+        return USER_FACING
+    if (path in INTERNAL_EXACT or path.startswith(INTERNAL_PREFIXES)
+            or _is_check_star(path) or _is_legacy_scripts_asset(path)):
+        return INTERNAL
+    if (path in DEFAULT_PHYSICS_REVIEWED_EXACT
+            or path.startswith(DEFAULT_PHYSICS_REVIEWED_PREFIXES)):
+        return PHYSICS
+    return None
+
+
 def classify_path(path):
     """PHYSICS, USER_FACING, or INTERNAL for `path` (repo-relative, forward
     slashes, no leading './'). See the module docstring for precedence and
     reasoning; unclassifiable -> PHYSICS by construction (the final
-    `return PHYSICS` below, not a special case)."""
+    `return PHYSICS` below, not a special case -- see explicit_bucket above
+    for the separate question of whether that default was ever reviewed)."""
     path = path.replace(os.sep, '/')
     if path in USER_FACING_EXACT or path.startswith(USER_FACING_PREFIXES):
         return USER_FACING

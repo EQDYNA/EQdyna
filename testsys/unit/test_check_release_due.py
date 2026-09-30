@@ -46,6 +46,16 @@ def test_docstring_change_counts_in_conservatively():
                         _diff(['    """Old words."""'], ['    """New words."""']))
 
 
+def test_openmp_sentinel_counts_as_code_not_comment():
+    """Review item 7: `!$`/`!$OMP` is a Fortran comment CHARACTER but an
+    OpenMP DIRECTIVE semantically -- it can add or remove parallelism, so
+    it must count as code even though every line starts with '!'."""
+    assert crd.classify('src/fortran/fric.f90',
+                        _diff(['! plain comment'], ['!$omp parallel do']))
+    assert crd.classify('src/fortran/fric.f90',
+                        _diff(['!$OMP parallel do'], ['! plain comment']))
+
+
 def test_output_writer_counts_even_if_comment_only():
     assert crd.classify('src/fortran/library_output.f90', _diff(['! a'], ['! b']))
 
@@ -74,22 +84,26 @@ def test_script_prints_one_line_and_exits_zero():
 
 def _run_main(monkeypatch, capsys, days, subjects, files, tmp_path=None,
               exempt_lines=()):
-    """`files` is the list of paths changed by ONE commit since the tag
-    (sha c0ffee1...); `exempt_lines` are written to a temp exemption file."""
+    """`files` is the list of paths changed by EVERY simulated commit since
+    the tag (one commit per non-blank line of `subjects`, all sharing one
+    fake sha -- PR counting dedupes by PR NUMBER, parsed from each line's
+    OWN subject, never by sha, so a shared sha is a harmless simplification);
+    `exempt_lines` are written to a temp exemption file."""
     import datetime
     tag_date = (datetime.datetime.now(datetime.timezone.utc)
                 - datetime.timedelta(days=days)).isoformat()
     sha = 'c0ffee1' + '0' * 33
+    subject_lines = [l for l in subjects.splitlines() if l.strip()] or ['x']
 
     def fake_git(*a):
         if a[0] == 'describe':
             return 'vX\n'
         if a[0] == 'log' and '--format=%cI' in a:
             return tag_date + '\n'
-        if a[0] == 'log' and '--format=%H' in a:
-            return (sha + '\n') if files else ''
         if a[0] == 'log':
-            return subjects
+            if not files:
+                return ''
+            return ''.join('%s\x1f%s\n' % (sha, l) for l in subject_lines)
         if a[0] == 'diff-tree':
             return '\n'.join(files) + '\n'
         return _diff(['x = 1'], ['x = 2'])
@@ -102,43 +116,75 @@ def _run_main(monkeypatch, capsys, days, subjects, files, tmp_path=None,
     return capsys.readouterr().out.strip()
 
 
-CODE = ['src/fortran/fric.f90']
+CODE = ['src/fortran/fric.f90']                    # PHYSICS + is_output_change
+MATRIX_ONLY = ['testsys/matrix.py']                 # PHYSICS, NOT is_output_change
+USER_FACING = ['README.md']                         # USER_FACING, not internal
+INTERNAL_ONLY = ['docs/a.md']                       # INTERNAL -- never counts
 FIVE = ''.join('fix (#%d)\n' % n for n in range(5))
 FOUR = ''.join('fix (#%d)\n' % n for n in range(4))
 
 
 def test_physics_change_is_due_at_once(monkeypatch, capsys):
     """Owner's wording: 'as soon as a physics or output change lands' --
-    0 days, 1 PR is already due."""
+    0 days, 1 PR is already due. (Victor review fixture: "src code due at
+    once".)"""
     out = _run_main(monkeypatch, capsys, 0, 'x (#1)\n', CODE)
     assert out.startswith('RELEASE DUE: physics/output change'), out
 
 
+def test_matrix_py_only_needs_a_sweep_but_is_not_due(monkeypatch, capsys):
+    """Victor review fixture: "matrix.py only -> sweep yes, not due" --
+    testsys/needs_sweep.py's OWN test file proves the "sweep yes" half;
+    this proves matrix.py is PHYSICS-but-not-output-change, so ONE such PR
+    at day 0 never trips rule 27 at all."""
+    out = _run_main(monkeypatch, capsys, 0, 'x (#1)\n', MATRIX_ONLY)
+    assert out.startswith('release not due'), out
+
+
 def test_threshold_is_due_without_a_physics_change(monkeypatch, capsys):
     """'or at the latest after a week or ~5 PRs' (owner lowered 10 -> 5,
-    2026-09-28): PRs that are not physics still make a release due once 7
-    days or 5 PRs have passed, and 4 PRs inside a week does not."""
+    2026-09-28): PRs that are not physics/output still make a release due
+    once 7 days or 5 PRs have passed (Victor review fixture: "5 USER-FACING
+    due"), and 4 PRs inside a week does not."""
     assert _run_main(monkeypatch, capsys, 7, 'x (#1)\n',
-                     ['docs/a.md']).startswith('RELEASE DUE: the days threshold')
+                     USER_FACING).startswith('RELEASE DUE: the days threshold')
     assert _run_main(monkeypatch, capsys, 0, FOUR,
-                     ['docs/a.md']).startswith('release not due')
+                     USER_FACING).startswith('release not due')
     assert _run_main(monkeypatch, capsys, 0, FIVE,
-                     ['docs/a.md']).startswith('RELEASE DUE: the PRs threshold')
+                     USER_FACING).startswith('RELEASE DUE: the PRs threshold')
     assert _run_main(monkeypatch, capsys, 6, 'x (#1)\n',
-                     ['docs/a.md']).startswith('release not due')
+                     USER_FACING).startswith('release not due')
+
+
+def test_internal_only_prs_never_trigger_however_many_or_however_long(monkeypatch, capsys):
+    """Victor review fixture: "5 INTERNAL PRs not due" -- docs/board/test-
+    suite-only PRs ride along, never counted, at any day count."""
+    assert _run_main(monkeypatch, capsys, 7, 'x (#1)\n',
+                     INTERNAL_ONLY).startswith('release not due')
+    assert _run_main(monkeypatch, capsys, 0, FIVE,
+                     INTERNAL_ONLY).startswith('release not due')
+    assert _run_main(monkeypatch, capsys, 30, FIVE,
+                     INTERNAL_ONLY).startswith('release not due')
 
 
 def test_docs_only_stretch_with_no_pr_never_forces(monkeypatch, capsys):
     assert _run_main(monkeypatch, capsys, 30, 'board: x\n',
-                     ['docs/a.md']).startswith('release not due')
+                     INTERNAL_ONLY).startswith('release not due')
 
 
 def test_exempt_commit_does_not_trigger_but_counts_as_pr(monkeypatch, capsys, tmp_path):
+    """Victor review fixture: "exempt src counts toward 5" -- an exemption
+    waives the AT-ONCE trigger, never the PR count: fric.f90 (PHYSICS) is
+    NOT internal, so an exempted commit touching it still counts."""
     ev = ['c0ffee1 bit-identical: run.py all 23/23']
     out = _run_main(monkeypatch, capsys, 0, 'x (#1)\n', CODE, tmp_path, ev)
     assert out.startswith('release not due') and '1 exempt' in out, out
     out = _run_main(monkeypatch, capsys, 7, 'x (#1)\n', CODE, tmp_path, ev)
     assert out.startswith('RELEASE DUE: the days threshold'), out
+    # the SAME exempted-src commit, repeated as 5 distinct PRs, trips the
+    # PR threshold too -- not just the days one.
+    out = _run_main(monkeypatch, capsys, 0, FIVE, CODE, tmp_path, ev)
+    assert out.startswith('RELEASE DUE: the PRs threshold'), out
 
 
 def test_exemption_without_evidence_exempts_nothing(monkeypatch, capsys, tmp_path):
@@ -150,7 +196,7 @@ def test_exemption_without_evidence_exempts_nothing(monkeypatch, capsys, tmp_pat
 def test_merge_commit_subjects_count_as_prs(monkeypatch, capsys):
     subs = ''.join('Merge pull request #%d from x/y\n' % n for n in range(5))
     assert _run_main(monkeypatch, capsys, 0, subs,
-                     ['docs/a.md']).startswith('RELEASE DUE: the PRs threshold')
+                     USER_FACING).startswith('RELEASE DUE: the PRs threshold')
 
 
 def test_git_error_prints_one_due_line_and_exits_zero(monkeypatch, capsys):
