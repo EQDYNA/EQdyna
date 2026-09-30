@@ -1,6 +1,12 @@
 # Past release notes\
 
 # News in 2026
+* 20260930 v5.20.2 release notes
+  * Fix - the Docker image publishes again (v5.20.1 has none); the image is public: `docker pull ghcr.io/eqdyna/eqdyna:v5.20.2` (PR #60).
+  * Fix - `case.submit` refuses a batch job with no project account; LS6 batch-job steps added to Running a case (PR #61).
+  * New - `testsys/needs_sweep.py` and one shared change classifier; sweep evidence keyed by content (PRs #62, #63).
+  * Note - patch release: no solver physics or reference results changed.
+
 * 20260930 v5.20.1 release notes
   * Fix - **`v5.20.0`'s tag is permanently red and cannot be re-pointed (rule 8); this release exists to give master a green-CI tag.** A one-time, owner-approved history rewrite on 2026-09-30 (`git filter-repo --path scec_archive/ --invert-paths`, dropping 233 MB of a since-removed directory from every commit; clone size 305 -> 74 MB, all 101 branch/tag tips unchanged in tree) changed every commit SHA from 2026-09-16 on, and 57 hard-coded pre-rewrite SHAs across 19 files in `testsys/` still referred to the OLD history, so CI failed on every commit after the rewrite, including `v5.20.0`'s own tagged commit (`0c0cf5a`). See `docs/notes/NOTES_history_rewrite_2026-09-30.md` and the old->new commit map `docs/notes/COMMIT_MAP_2026-09-30.txt`.
   * Fix - **all 57 hard-coded SHAs translated through the commit map** (PR #58): every reference in `testsys/` that named a pre-rewrite commit now names its post-rewrite equivalent. This is the fix that turns CI green again.
