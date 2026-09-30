@@ -242,10 +242,26 @@ subroutine allocInit
 
     allocate(nsmp(2,nftmx,ntotft), fnft(nftmx,ntotft), un(3,nftmx,ntotft), &
                 us(3,nftmx,ntotft), ud(3,nftmx,ntotft), fric(100,nftmx,ntotft), &
-                arn(nftmx,ntotft),  anonfs(3,nonmx), fltgm(nftmx), &
+                arn(nftmx,ntotft),  anonfs(3,nonmx), &
                 Tatnode(nftmx,ntotft), patnode(nftmx,ntotft))
-    fltgm   = 0  
-    nsmp    = 0    
+    ! Row 17 (multi-fault): fltgm/fltl/fltr/fltf/fltb/fltd/fltu/fltnum are
+    ! now (nftmx or 6, ntotft) -- one column per fault -- instead of being
+    ! reallocated (and each other fault's data lost) on every MPI4arn call.
+    ! See globalvar.f90's declaration comment. nftmx bounds a per-fault
+    ! boundary-node list because that list is a subset of that fault's own
+    ! nftnd(ift) <= nftmx.
+    allocate(fltgm(nftmx,ntotft), fltl(nftmx,ntotft), fltr(nftmx,ntotft), &
+                fltf(nftmx,ntotft), fltb(nftmx,ntotft), fltd(nftmx,ntotft), &
+                fltu(nftmx,ntotft), fltnum(6,ntotft))
+    fltgm   = 0
+    fltl    = 0
+    fltr    = 0
+    fltf    = 0
+    fltb    = 0
+    fltd    = 0
+    fltu    = 0
+    fltnum  = 0
+    nsmp    = 0
     fnft    = 99999.0d0 
     fric    = 0.0d0
     un      = 0.0d0
@@ -372,11 +388,21 @@ subroutine checkFaultMPIAlignment
     use errorCodes
     implicit none
     include 'mpif.h'
-    integer (kind = 4) :: iMPIerr
+    integer (kind = 4) :: iMPIerr, ift
     logical :: hitHere, hitAnywhere
 
-    hitHere = (fltnum(3) > 0 .or. fltnum(4) > 0) &
-        .and. (fltxyz(2,2,ntotft) /= fltxyz(1,2,ntotft))
+    ! Row 17 (multi-fault): this used to test only fltnum(3)/fltnum(4) and
+    ! fltxyz(:,2,ntotft) -- the LAST fault's boundary count paired with the
+    ! LAST fault's y-extent, because fltnum used to be overwritten by every
+    ! MPI4arn call and only the last survived to this point. Now fltnum and
+    ! fltxyz both carry every fault, so check each fault against ITS OWN
+    ! fltnum/fltxyz pair and OR the result -- reduces to the old single-fault
+    ! check at ntotft==1.
+    hitHere = .false.
+    do ift = 1, ntotft
+        if ((fltnum(3,ift) > 0 .or. fltnum(4,ift) > 0) &
+            .and. (fltxyz(2,2,ift) /= fltxyz(1,2,ift))) hitHere = .true.
+    enddo
     call MPI_Allreduce(hitHere, hitAnywhere, 1, MPI_LOGICAL, MPI_LOR, MPI_COMM_WORLD, iMPIerr)
 
       ! NOTICE, not an abort. This was a hard stop (exit 51) until 2026-09-16,
@@ -426,7 +452,12 @@ subroutine checkFaultMPIAlignment
           write(*,'(1X,A)') '  case and is handled; audited 2026-09-16, tractions identical to an unsplit run to 1.0e-08.'
           write(*,'(1X,A)') '  NOTE: a fault built by insertion (insertFaultType>0) has ZERO nominal y-extent even when'
           write(*,'(1X,A)') '  it dips steeply, and takes the DUPLICATE path instead -- the dip is not the discriminator.'
-          write(*,*) '  fltxyz(1,2)=', fltxyz(1,2,ntotft), ' fltxyz(2,2)=', fltxyz(2,2,ntotft)
+          do ift = 1, ntotft
+              if ((fltnum(3,ift) > 0 .or. fltnum(4,ift) > 0) &
+                  .and. (fltxyz(2,2,ift) /= fltxyz(1,2,ift))) then
+                  write(*,*) '  ift=', ift, ' fltxyz(1,2)=', fltxyz(1,2,ift), ' fltxyz(2,2)=', fltxyz(2,2,ift)
+              endif
+          enddo
           write(*,*) '  npx,npy,npz =', npx, npy, npz
       endif
 end subroutine checkFaultMPIAlignment

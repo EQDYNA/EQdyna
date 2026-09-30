@@ -92,6 +92,116 @@ def linear1(x,ww,w):
 NUC_VS_FIXED = 3464.0
 
 
+def faultTag(ift, ntotft):
+    """The per-fault filename/variable-name tag, matching eqquasi's and
+    EQdyna's Fortran faultTag() (library_output.f90) verbatim: '' for fault 1,
+    'ft<N>_' for fault N>=2 -- but only when ntotft > 1, so a single-fault
+    case's file/variable names are untouched (bit-for-bit backward
+    compatible). ift is 1-indexed, matching the Fortran convention."""
+    if ntotft > 1 and ift > 1:
+        return 'ft%d_' % ift
+    return ''
+
+
+def resolveFaultGeom(par):
+    """Row 17 (multi-fault): the list of per-fault (fxmin, fxmax, fymin,
+    fymax, fzmin, fzmax) boxes bFaultGeometry.txt needs, one tuple per fault.
+
+    par.faultgeom is the eqquasi-style list-of-boxes override. When absent
+    (the default), every existing single- or multi-fault compset falls back
+    to par.fxmin/fxmax/fymin/fymax/fzmin/fzmax repeated ntotft times -- EXACTLY
+    today's behaviour (case.setup used to write that one box for every fault
+    unconditionally), so this is a no-op refactor at ntotft==1.
+
+    At ntotft > 1 without an explicit par.faultgeom, the repeated-box fallback
+    would give every fault the SAME box -- indistinguishable fault planes at
+    the same y, not two parallel faults -- so that combination is refused
+    instead of silently building a case that only looks like it has two
+    faults. par.faultgeom must then supply ntotft distinct boxes."""
+    geom = getattr(par, 'faultgeom', None)
+    if geom is None:
+        if par.ntotft > 1:
+            raise NotImplementedError(
+                'case.setup: par.ntotft = %d but par.faultgeom is not set.\n'
+                '  With no per-fault geometry, every fault would get the same '
+                'box (par.fxmin/fxmax/fymin/fymax/fzmin/fzmax), which is not '
+                'two distinct faults.\n'
+                '  Set par.faultgeom to a list of %d (fxmin, fxmax, fymin, '
+                'fymax, fzmin, fzmax) tuples, one per fault.' % (par.ntotft, par.ntotft))
+        geom = [(par.fxmin, par.fxmax, par.fymin, par.fymax, par.fzmin, par.fzmax)]
+    if len(geom) != par.ntotft:
+        raise ValueError(
+            'case.setup: par.faultgeom has %d entries but par.ntotft = %d; '
+            'they must match.' % (len(geom), par.ntotft))
+    return geom
+
+
+def resolveOnFaultStationsPerFault(par):
+    """Row 17 (multi-fault): the list of ntotft (x, z) on-fault station lists
+    bStations.txt needs, one list per fault, in the exact fault order
+    readInputFiles.f90's readstations2 reads them back (`do i = 1, ntotft; do
+    j = 1, nonfs(i)`).
+
+    par.st_coor_on_fault_per_fault is the per-fault override. When absent (the
+    default) and ntotft==1, par.st_coor_on_fault -- the existing flat list --
+    is used as fault 1's list unchanged: bit-for-bit today's behaviour.
+
+    At ntotft > 1 with no override, par.st_coor_on_fault is a flat list with
+    no per-fault assignment (pathway_forward item 17's original reasoning),
+    so this refuses rather than guessing which station belongs to which
+    fault -- the same failure mode case.setup's old blanket ntotft>1 refusal
+    was protecting against, now scoped to exactly the ambiguous case instead
+    of every multi-fault case."""
+    per_fault = getattr(par, 'st_coor_on_fault_per_fault', None)
+    if per_fault is None:
+        if par.ntotft > 1:
+            raise NotImplementedError(
+                'case.setup: par.ntotft = %d but par.st_coor_on_fault_per_fault '
+                'is not set.\n'
+                '  par.st_coor_on_fault is a flat list with no per-fault '
+                'assignment, so on-fault station ownership cannot be derived.\n'
+                '  Set par.st_coor_on_fault_per_fault to a list of %d station '
+                'lists (one per fault, each a list of (x, z) km tuples); use '
+                '[] for a fault with no on-fault stations.' % (par.ntotft, par.ntotft))
+        per_fault = [list(par.st_coor_on_fault)]
+    if len(per_fault) != par.ntotft:
+        raise ValueError(
+            'case.setup: par.st_coor_on_fault_per_fault has %d entries but '
+            'par.ntotft = %d; they must match.' % (len(per_fault), par.ntotft))
+    return per_fault
+
+
+def resolveOnFaultVarsPerFault(par):
+    """Row 17 (multi-fault): the list of ntotft on_fault_vars arrays
+    (shape (nfz_i, nfx_i, N), the existing per-node friction/stress layout)
+    netcdf_write_on_fault_vars needs, one per fault.
+
+    par.onFaultVarsPerFault is the per-fault override. When absent (the
+    default) and ntotft==1, par.on_fault_vars -- the existing single array --
+    is used as fault 1's array unchanged: bit-for-bit today's behaviour.
+
+    At ntotft > 1 with no override, refuses rather than reusing fault 1's
+    array for every fault -- eqquasi's own documented failure mode (accumulator
+    arrays sized for fault 1 silently aliased fault 2)."""
+    per_fault = getattr(par, 'onFaultVarsPerFault', None)
+    if per_fault is None:
+        if par.ntotft > 1:
+            raise NotImplementedError(
+                'case.setup: par.ntotft = %d but par.onFaultVarsPerFault is '
+                'not set.\n'
+                '  With no per-fault array, every fault would reuse fault 1''s '
+                'on_fault_vars (par.on_fault_vars) -- exactly the aliasing bug '
+                'multi-fault support exists to avoid.\n'
+                '  Set par.onFaultVarsPerFault to a list of %d on_fault_vars '
+                'arrays, one per fault.' % (par.ntotft, par.ntotft))
+        per_fault = [par.on_fault_vars]
+    if len(per_fault) != par.ntotft:
+        raise ValueError(
+            'case.setup: par.onFaultVarsPerFault has %d entries but '
+            'par.ntotft = %d; they must match.' % (len(per_fault), par.ntotft))
+    return per_fault
+
+
 def resolveNormalStressSign(par):
     """The integer case.setup writes as bGlobal.txt's last line: +1 when the
     case's station files report n-stress positive in extension, -1 when

@@ -174,6 +174,11 @@ subroutine meshgen
     
     call meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, eqNumIndexArrLocTag, nftnd0)
     
+    ! Row 17 (multi-fault): fltMPI reset ONCE here, before the per-fault
+    ! MPI4arn loop below -- not inside MPI4arn itself any more (see that
+    ! subroutine's header comment). No-op at ntotft==1.
+    fltMPI = .false.
+
     ! compute on-fault area associated with each fault node pair and distance from source
     do ift=1,ntotft
         if(nftnd0(ift)>0) then
@@ -280,74 +285,48 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
     
     integer (kind = 4) :: bndl,bndr,bndf,bndb,bndd,bndu, nx, ny, nz, mex, mey, mez
     integer (kind = 4) :: totalNumFaultNode, iFault, i
-    integer (kind = 4) :: newFltnum(6)
-    ! Initialize fltMPI(6) to .false.
-    fltMPI=.false.
 
-    ! FIX (pathway_forward.md item 10): fltnum(1:6) coming INTO this call is
-    ! stale -- either the PREVIOUS fault's own per-boundary counts (this
-    ! subroutine is called once per fault, from meshgen's `do ift=1,ntotft`
-    ! loop, and used to leave fltnum holding fault ift-1's counts on exit) or,
-    ! on the very first call, createMasterNode's running tally across every
-    ! fault. Allocating fltl..fltu sized off that stale value -- and without
-    ! deallocating an array a previous call to this subroutine already
-    ! allocated -- aborts on the second and subsequent faults (Fortran
-    ! `allocate` on an already-allocated object is a runtime error). Count
-    ! THIS fault's own per-boundary membership first, from fltgm (which the
-    ! fill loop below also reads, over the same 1..totalNumFaultNode range),
-    ! then deallocate any previous allocation and (re)allocate to that size.
-    ! No-op for ntotft==1: there is only ever one call, fltl..fltu start
-    ! unallocated, and newFltnum here is identical to the fltnum this block
-    ! used to read (both counted from the same fltgm entries).
-    newFltnum = 0
+    ! Row 17 (multi-fault): fltMPI is reset ONCE by the caller (meshgen.f90,
+    ! before its `do ift=1,ntotft` loop that calls this subroutine once per
+    ! fault) -- NOT here any more. Resetting it on every call, as before,
+    ! wiped out a direction flag an EARLIER fault had already set whenever a
+    ! LATER fault did not touch that same boundary direction. fltMPI(k) is
+    ! still only ever set to .true. (never back to .false.) below, in
+    ! syncArnBoundary, so it correctly accumulates an OR across every fault's
+    ! calls. No-op at ntotft==1 (one call either way).
+    !
+    ! fltgm/fltl/fltr/fltf/fltb/fltd/fltu/fltnum are all (.., ntotft) now,
+    ! pre-allocated once in allocInit (eqdyna3d.f90) -- this subroutine fills
+    ! column iFault in place instead of deallocating/reallocating a
+    ! single-fault-sized array every call (which is what used to make every
+    ! fault but the last invisible to assembleGlobalMass.f90's
+    ! MPI4NodalQuant/addFaultBoundaryTerm downstream). Reduces to the old
+    ! single-fault fill at ntotft==1 (column 1 only, same values).
+    fltnum(:,iFault) = 0
     do i = 1, totalNumFaultNode
-        if(mod(fltgm(i),10)==1 ) newFltnum(1) = newFltnum(1) + 1
-        if(mod(fltgm(i),10)==2 ) newFltnum(2) = newFltnum(2) + 1
-        if(mod(fltgm(i),100)-mod(fltgm(i),10)==10 ) newFltnum(3) = newFltnum(3) + 1
-        if(mod(fltgm(i),100)-mod(fltgm(i),10)==20 ) newFltnum(4) = newFltnum(4) + 1
-        if(fltgm(i)-mod(fltgm(i),100)==100 ) newFltnum(5) = newFltnum(5) + 1
-        if(fltgm(i)-mod(fltgm(i),100)==200 ) newFltnum(6) = newFltnum(6) + 1
-    enddo
-
-    if (allocated(fltl)) deallocate(fltl)
-    if (allocated(fltr)) deallocate(fltr)
-    if (allocated(fltf)) deallocate(fltf)
-    if (allocated(fltb)) deallocate(fltb)
-    if (allocated(fltd)) deallocate(fltd)
-    if (allocated(fltu)) deallocate(fltu)
-
-    if(newFltnum(1) /= 0) allocate(fltl(newFltnum(1)))
-    if(newFltnum(2) /= 0) allocate(fltr(newFltnum(2)))
-    if(newFltnum(3) /= 0) allocate(fltf(newFltnum(3)))
-    if(newFltnum(4) /= 0) allocate(fltb(newFltnum(4)))
-    if(newFltnum(5) /= 0) allocate(fltd(newFltnum(5)))
-    if(newFltnum(6) /= 0) allocate(fltu(newFltnum(6)))
-
-    fltnum = 0
-    do i = 1, totalNumFaultNode
-        if(mod(fltgm(i),10)==1 ) then 
-            fltnum(1) = fltnum(1) + 1
-            fltl(fltnum(1)) = i
+        if(mod(fltgm(i,iFault),10)==1 ) then
+            fltnum(1,iFault) = fltnum(1,iFault) + 1
+            fltl(fltnum(1,iFault),iFault) = i
         endif
-        if(mod(fltgm(i),10)==2 ) then 
-            fltnum(2) = fltnum(2) + 1
-            fltr(fltnum(2)) = i
+        if(mod(fltgm(i,iFault),10)==2 ) then
+            fltnum(2,iFault) = fltnum(2,iFault) + 1
+            fltr(fltnum(2,iFault),iFault) = i
         endif
-        if(mod(fltgm(i),100)-mod(fltgm(i),10)==10 ) then
-            fltnum(3) = fltnum(3) + 1
-            fltf(fltnum(3)) = i
+        if(mod(fltgm(i,iFault),100)-mod(fltgm(i,iFault),10)==10 ) then
+            fltnum(3,iFault) = fltnum(3,iFault) + 1
+            fltf(fltnum(3,iFault),iFault) = i
         endif
-        if(mod(fltgm(i),100)-mod(fltgm(i),10)==20 ) then
-            fltnum(4) = fltnum(4) + 1
-            fltb(fltnum(4)) = i
+        if(mod(fltgm(i,iFault),100)-mod(fltgm(i,iFault),10)==20 ) then
+            fltnum(4,iFault) = fltnum(4,iFault) + 1
+            fltb(fltnum(4,iFault),iFault) = i
         endif
-        if(fltgm(i)-mod(fltgm(i),100)==100 ) then
-            fltnum(5) = fltnum(5) + 1
-            fltd(fltnum(5)) = i
+        if(fltgm(i,iFault)-mod(fltgm(i,iFault),100)==100 ) then
+            fltnum(5,iFault) = fltnum(5,iFault) + 1
+            fltd(fltnum(5,iFault),iFault) = i
         endif
-        if(fltgm(i)-mod(fltgm(i),100)==200 ) then
-            fltnum(6) = fltnum(6) + 1
-            fltu(fltnum(6)) = i
+        if(fltgm(i,iFault)-mod(fltgm(i,iFault),100)==200 ) then
+            fltnum(6,iFault) = fltnum(6,iFault) + 1
+            fltu(fltnum(6,iFault),iFault) = i
         endif
     enddo
     ! FIX (pathway_forward.md, "fault-plane-on-MPI-boundary halving"): arn is
@@ -390,11 +369,11 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif
 
         if (bndl/=0) then
-            if(fltnum(1)>0 ) call syncArnBoundary(fltl, fltnum(1), 1, me-npy*npz, 1000, iFault, 1)
+            if(fltnum(1,iFault)>0 ) call syncArnBoundary(fltl(:,iFault), fltnum(1,iFault), 1, me-npy*npz, 1000, iFault, 1)
         endif !if bhdl/=0
 
         if (bndr/=0) then
-            if(fltnum(2)>0 ) call syncArnBoundary(fltr, fltnum(2), 2, me+npy*npz, 1000, iFault, 1)
+            if(fltnum(2,iFault)>0 ) call syncArnBoundary(fltr(:,iFault), fltnum(2,iFault), 2, me+npy*npz, 1000, iFault, 1)
         endif !bndr/=0
     endif !npx>1
 !*****************************************************************************************
@@ -408,11 +387,11 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
         endif
 
         if (bndf/=0) then
-            if(fltnum(3)>0) call syncArnBoundary(fltf, fltnum(3), 3, me-npz, 2000, iFault, 2)
+            if(fltnum(3,iFault)>0) call syncArnBoundary(fltf(:,iFault), fltnum(3,iFault), 3, me-npz, 2000, iFault, 2)
         endif !bhdf/=0
 
         if (bndb/=0) then
-            if(fltnum(4)>0) call syncArnBoundary(fltb, fltnum(4), 4, me+npz, 2000, iFault, 2)
+            if(fltnum(4,iFault)>0) call syncArnBoundary(fltb(:,iFault), fltnum(4,iFault), 4, me+npz, 2000, iFault, 2)
         endif !bndb/=0
      endif !npy>1
 !*****************************************************************************************
@@ -425,11 +404,11 @@ subroutine MPI4arn(nx, ny, nz, mex, mey, mez, totalNumFaultNode, iFault)
             bndu=0
         endif
         if (bndd/=0) then
-            if(fltnum(5)>0) call syncArnBoundary(fltd, fltnum(5), 5, me-1, 3000, iFault, 3)
+            if(fltnum(5,iFault)>0) call syncArnBoundary(fltd(:,iFault), fltnum(5,iFault), 5, me-1, 3000, iFault, 3)
         endif !bhdd/=0
 
         if (bndu/=0) then
-            if(fltnum(6)>0) call syncArnBoundary(fltu, fltnum(6), 6, me+1, 3000, iFault, 3)
+            if(fltnum(6,iFault)>0) call syncArnBoundary(fltu(:,iFault), fltnum(6,iFault), 6, me+1, 3000, iFault, 3)
         endif !bndu/=0
     endif !npz>1
 contains
@@ -982,9 +961,22 @@ end subroutine createElement
     ! The default grids only contain slave nodes. 
     ! This subroutine will replace slave nodes with corresponding master nodes.
     
+    ! Row 17 (multi-fault): the y-test used to be `nodeCoor(2)>0.0d0 .and.
+    ! abs(nodeCoor(2)-dy)<tol` -- one cell above fault 1's plane (y=0) alone.
+    ! For ntotft>1 an element one cell above fault 2's plane (or any fault's)
+    ! never matched, so its slave-node references were never swapped for
+    ! master-node ones -- the mesh stayed disconnected across fault 2's
+    ! split, which showed up downstream as a zero/singular mass entry and a
+    ! NaN velocity at a fault-2 node within the first 2 steps (measured on
+    ! test.multifault2, rank 1/3, nodes at fault 2's z-edges). Generalized to
+    ! ANY fault's plane-plus-one-cell -- x/z bounds stay keyed to fault 1's
+    ! box (checkInputConsistency.f90 already requires every fault share it).
+    ! Reduces to the old test bit-for-bit at ntotft==1 (a one-element array,
+    ! fltxyz(1,2,1)+dy = 0+dy = dy).
     if ((elemTypeArr(elemCount) == 1 .and. &
         (nodeCoor(1)>(fltxyz(1,1,1)-tol) .and. nodeCoor(1)<(fltxyz(2,1,1)+dx+tol) .and. &
-         nodeCoor(3)>(fltxyz(1,3,1)-tol) .and. nodeCoor(2)>0.0d0 .and. abs(nodeCoor(2)-dy)<tol)) &
+         nodeCoor(3)>(fltxyz(1,3,1)-tol) .and. &
+         any(abs(nodeCoor(2) - (fltxyz(1,2,1:ntotft) + dy)) < tol))) &
          .or. elemTypeArr(elemCount)==12 .or. elemTypeArr(elemCount)==13 ) then
         do iFault = 1, ntotft
             do iFaultNodePair = 1, nftnd0(iFault)
@@ -1010,7 +1002,17 @@ subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
     if(nodeCoor(1)>=(fltxyz(1,1,iFault)-tol).and.nodeCoor(1)<=(fltxyz(2,1,iFault)+tol).and. &
         nodeCoor(2)>=(fltxyz(1,2,iFault)-tol).and.nodeCoor(2)<=(fltxyz(2,2,iFault)+tol).and. &
         nodeCoor(3)>=(fltxyz(1,3,iFault)-tol) .and. nodeCoor(3)<=(fltxyz(2,3,iFault)+tol)) then
-        if (C_degen==0.0d0 .and. nodeCoor(2)==0.0d0) then 
+        ! Row 17 (multi-fault): this used to test nodeCoor(2)==0.0d0 by EXACT
+        ! float equality -- correct only for a single fault pinned at the
+        ! global y=0 plane. Generalized to the SAME test against this
+        ! fault's own y-plane (fltxyz(1,2,iFault), which is fymin(iFault);
+        ! a planar vertical fault has fymin==fymax so either bound names the
+        ! same plane). abs(...)<tol is a superset of the old exact test (0 is
+        ! trivially within tol of itself) and tol=1e-5 is far smaller than any
+        ! dy in use, so this is bit-identical at ntotft=1, fault 1 at y=0.
+        ! The rough-fault y-blend (ycoort/meshCoor) is untouched -- this test
+        ! runs against the UNBLENDED nodeCoor(2), exactly as before.
+        if (C_degen==0.0d0 .and. abs(nodeCoor(2) - fltxyz(1,2,iFault)) < tol) then
             isOnFault = 1
         elseif (C_degen>3.) then
             if (fltxyz(1,2,iFault)>=fltxyz(2,2,iFault)) write(*,*) 'ymax should be > ymin. Wrong geo, exit'
@@ -1056,14 +1058,39 @@ do iFault = 1, ntotft
 
     if (isOnFault == 1) then
         nftnd0(iFault)                = nftnd0(iFault) + 1 ! # of split-node pairs + 1
-        nsmp(1,nftnd0(iFault),iFault) = nodeCount              ! set Slave node nodeID to nsmp  
-        msnode                        = nodeXyzIndex(4)*nodeXyzIndex(5)*nodeXyzIndex(6) + nftnd0(iFault) ! create Master node at the end of regular grids
-        if (iFault>1) then
-            write(*,*) 'meshgen: got iFault =', iFault
-            call abortRun(ERR_MESH_MULTIFAULT_MSNODE, &
-                'master-node construction cannot handle more than one fault (ntotft>1).')
-        endif
-        
+        nsmp(1,nftnd0(iFault),iFault) = nodeCount              ! set Slave node nodeID to nsmp
+        ! Row 17 (multi-fault): msnode used to be
+        ! nx*ny*nz + nftnd0(iFault) -- a PER-FAULT sequence number reused as
+        ! a GLOBAL node id. At ntotft>1 fault 2's msnode range (1..nftnd0(2))
+        ! collided with fault 1's (1..nftnd0(1)) whenever nftnd0(2) <=
+        ! nftnd0(1), aliasing two different physical master nodes onto one
+        ! id (ERR 45, exit 45, previously a hard refusal below).
+        !
+        ! A per-fault BLOCK offset of a FIXED size (e.g. (iFault-1)*nftmx,
+        ! tried and reverted here) does not work: nftmx is this RANK's max
+        ! fault-node count over ALL faults, so whichever fault has the most
+        ! nodes ON THIS RANK sets the block size for every fault's block --
+        ! including faults that come before it. When a LATER fault has MORE
+        ! local nodes than an EARLIER one, the earlier fault's block is
+        ! oversized and the later fault's range overruns totalNumOfNodes
+        ! (measured: SIGSEGV on test.multifault2 rank 1, msnode 66749 vs
+        ! totalNumOfNodes 65788 -- fault 2 locally outnumbered fault 1).
+        !
+        ! Fixed with a running total across every fault's split-node pairs
+        ! created SO FAR (sum(nftnd0), which already includes THIS
+        ! increment): strictly increasing by exactly 1 per master node
+        ! created, in MESH-SCAN order (which interleaves faults, since faults
+        ! differ only in y and the scan visits all y for each x,z), and so
+        ! never exceeds totalNumOfNodes - nx*ny*nz (= sum of every fault's
+        ! FINAL local count). The one consumer that needs to invert this back
+        ! to a fault+local-index pair -- addFaultBoundaryTerm,
+        ! assembleGlobalMass.f90 -- does not reconstruct the formula; it
+        ! looks the already-recorded id up from nsmp(2,i,ift) instead (the
+        ! same mapping this line writes to nsmp two lines below), so the
+        ! interleaving is invisible to it. Reduces to the old formula
+        ! bit-for-bit at ntotft==1 (sum over a length-1 array).
+        msnode                        = nodeXyzIndex(4)*nodeXyzIndex(5)*nodeXyzIndex(6) + sum(nftnd0) ! create Master node at the end of regular grids
+
         eqNumStartIndexLoc(msnode) = eqNumIndexArrLocTag
         numOfDofPerNodeArr(msnode) = 3         
         nsmp(2,nftnd0(iFault),iFault) = msnode !set Master node nodeID to nsmp
@@ -1083,32 +1110,36 @@ do iFault = 1, ntotft
             eqNumIndexArr(eqNumIndexArrLocTag) = equationNumCount
         enddo
         
-        ! Count split-node pair # for MPI
-        ! fltgm, fltnum are global vars.
+        ! Count split-node pair # for MPI. fltgm is a global var, now
+        ! per-fault (Row 17: fltgm(nftnd0(iFault)) alone collided across
+        ! faults whenever nftnd0(iFault) ran over the same range for two
+        ! faults -- indexed by (localFaultNode, iFault) instead).
+        !
+        ! The fltnum(1..6) accumulation that used to run here in parallel is
+        ! REMOVED, not just re-indexed: MPI4arn (below, called once per fault
+        ! right after this loop finishes) unconditionally resets fltnum and
+        ! recomputes it from fltgm over the same nodes, so this running
+        ! total was never read before being overwritten -- true before this
+        ! change too (see MPI4arn's own header comment) and unaffected by
+        ! moving to a per-fault fltgm.
         if(nodeXyzIndex(1) == 1) then
-            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 1
-            fltnum(1) = fltnum(1) + 1
+            fltgm(nftnd0(iFault),iFault) = fltgm(nftnd0(iFault),iFault) + 1
         endif
         if(nodeXyzIndex(1) == nodeXyzIndex(4)) then
-            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 2
-            fltnum(2) = fltnum(2) + 1
+            fltgm(nftnd0(iFault),iFault) = fltgm(nftnd0(iFault),iFault) + 2
         endif
         if(nodeXyzIndex(2) == 1) then
-            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 10
-            fltnum(3) = fltnum(3) + 1
+            fltgm(nftnd0(iFault),iFault) = fltgm(nftnd0(iFault),iFault) + 10
         endif
         if(nodeXyzIndex(2) == nodeXyzIndex(5)) then
-            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 20
-            fltnum(4) = fltnum(4) + 1
+            fltgm(nftnd0(iFault),iFault) = fltgm(nftnd0(iFault),iFault) + 20
         endif
         if(nodeXyzIndex(3) == 1) then
-            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 100
-            fltnum(5) = fltnum(5) + 1
+            fltgm(nftnd0(iFault),iFault) = fltgm(nftnd0(iFault),iFault) + 100
         endif
         if(nodeXyzIndex(3) == nodeXyzIndex(6)) then
-            fltgm(nftnd0(iFault)) = fltgm(nftnd0(iFault)) + 200
-            fltnum(6) = fltnum(6) + 1
-        endif             
+            fltgm(nftnd0(iFault),iFault) = fltgm(nftnd0(iFault),iFault) + 200
+        endif
 
         ! setOnFaultStation -- gated (row 131) so a fault node on a shared
         ! x, y or z seam is claimed for STATION OUTPUT by exactly one rank

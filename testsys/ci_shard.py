@@ -95,6 +95,8 @@ SHARDS = {
         "test_multifault_item10_fix.py",
         "test_multifault_item9_fix.py",
         "test_multifault_refused.py",
+        "test_multifault_no_ntotft1_specialcase.py",  # added row 17: pure text scan, sub-second
+        "test_multifault_two_fault_smoke.py",  # added row 17: builds+runs eqdyna twice (serial + 4-rank), heaviest new addition here
         "test_perf_parallelism_discriminator.py",
         "test_perf_item91_guards.py",  # added 2026-09-24 (Iris, item 91 perf-
                                  # tool defects): pure monkeypatched

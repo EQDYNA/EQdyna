@@ -21,53 +21,66 @@
 subroutine netcdf_read_on_fault_eqdyna
     use netcdf
     use globalvar
-    implicit none 
+    implicit none
     character (len = 50 ) :: infile
     integer (kind = 4) :: ncid,  var_id(40), i, j, nvar, ii, jj, fnx, fnz, ift
     real (kind = dp), allocatable, dimension(:,:,:) :: on_fault_vars
     real (kind = dp)   :: xcord, zcord
-    
-    fnx  = nint((fxmax(1) - fxmin(1))/dx)+1
-    fnz  = nint((fzmax(1) - fzmin(1))/dz)+1
-    infile = "on_fault_vars_input.nc"
-    
-    nvar = 24
-    allocate(on_fault_vars(fnx,fnz,nvar))
-    
-    ! Open the file. NF90_NOWRITE tells netCDF we want read-only access to the file. 
-    call check( nf90_open(infile, NF90_NOWRITE, ncid))
-    
-    ! Get the varid of the data variables, based on their names.
-    call check( nf90_inq_varid(ncid, "sw_fs",    var_id(1)))
-    call check( nf90_inq_varid(ncid, "sw_fd",    var_id(2)))
-    call check( nf90_inq_varid(ncid, "sw_D0",    var_id(3)))
-    call check( nf90_inq_varid(ncid, "rsf_a",    var_id(4)))
-    call check( nf90_inq_varid(ncid, "rsf_b",    var_id(5)))
-    call check( nf90_inq_varid(ncid, "rsf_Dc",   var_id(6)))
-    call check( nf90_inq_varid(ncid, "rsf_v0",   var_id(7)))
-    call check( nf90_inq_varid(ncid, "rsf_r0",   var_id(8)))
-    call check( nf90_inq_varid(ncid, "rsf_fw",   var_id(9)))
-    call check( nf90_inq_varid(ncid, "rsf_vw",   var_id(10)))
-    call check( nf90_inq_varid(ncid, "tp_a_hy",  var_id(11)))
-    call check( nf90_inq_varid(ncid, "tp_a_th",  var_id(12)))
-    call check( nf90_inq_varid(ncid, "tp_rouc",  var_id(13)))
-    call check( nf90_inq_varid(ncid, "tp_lambda",var_id(14)))
-    call check( nf90_inq_varid(ncid, "tp_h",     var_id(15)))
-    call check( nf90_inq_varid(ncid, "tp_Tini",  var_id(16)))
-    call check( nf90_inq_varid(ncid, "tp_pini",  var_id(17)))
-    call check( nf90_inq_varid(ncid, "init_slip_rate",     var_id(18)))
-    call check( nf90_inq_varid(ncid, "init_strike_shear",  var_id(19)))
-    call check( nf90_inq_varid(ncid, "init_normal_stress", var_id(20)))
-    call check( nf90_inq_varid(ncid, "init_state",         var_id(21)))
-    call check( nf90_inq_varid(ncid, "tw_t0",          var_id(22)))
-    call check( nf90_inq_varid(ncid, "cohesion",       var_id(23)))
-    call check( nf90_inq_varid(ncid, "init_dip_shear", var_id(24)))
-    ! Read the data
-    do i = 1, nvar
-        call check( nf90_get_var(ncid, var_id(i), on_fault_vars(:,:,i)))
-    enddo        
+    character (len = 8) :: tag, faultTag
 
+    infile = "on_fault_vars_input.nc"
+    nvar = 24
+
+    ! Open the file. NF90_NOWRITE tells netCDF we want read-only access to the file.
+    call check( nf90_open(infile, NF90_NOWRITE, ncid))
+
+    ! Row 17 (multi-fault): case.setup's netcdf_write_on_fault_vars writes
+    ! ONE FULL SET of these 24 variables PER FAULT, named with faultTag() --
+    ! '' for fault 1, 'ft<N>_' for fault 2+ -- each sized to that fault's OWN
+    ! (fxmin/fxmax/fzmin/fzmax) box. This used to allocate on_fault_vars ONCE,
+    ! sized from fault 1's box alone (fxmin(1)/fxmax(1)/fzmin(1)/fzmax(1)),
+    ! and reuse it for every fault -- for ntotft>1 that both indexed a
+    ! too-small array with fault 2+'s own (ii,jj) and read fault 1's values
+    ! for every fault. Re-sized and re-read INSIDE the ift loop instead, one
+    ! fault at a time. Bit-identical at ntotft==1 (one iteration, tag='',
+    ! same variable names, same fnx/fnz).
     do ift = 1, ntotft
+        tag = faultTag(ift)
+        fnx  = nint((fxmax(ift) - fxmin(ift))/dx)+1
+        fnz  = nint((fzmax(ift) - fzmin(ift))/dz)+1
+        if (allocated(on_fault_vars)) deallocate(on_fault_vars)
+        allocate(on_fault_vars(fnx,fnz,nvar))
+
+        ! Get the varid of the data variables, based on their names.
+        call check( nf90_inq_varid(ncid, trim(tag)//"sw_fs",    var_id(1)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"sw_fd",    var_id(2)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"sw_D0",    var_id(3)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"rsf_a",    var_id(4)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"rsf_b",    var_id(5)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"rsf_Dc",   var_id(6)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"rsf_v0",   var_id(7)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"rsf_r0",   var_id(8)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"rsf_fw",   var_id(9)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"rsf_vw",   var_id(10)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"tp_a_hy",  var_id(11)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"tp_a_th",  var_id(12)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"tp_rouc",  var_id(13)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"tp_lambda",var_id(14)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"tp_h",     var_id(15)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"tp_Tini",  var_id(16)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"tp_pini",  var_id(17)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"init_slip_rate",     var_id(18)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"init_strike_shear",  var_id(19)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"init_normal_stress", var_id(20)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"init_state",         var_id(21)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"tw_t0",          var_id(22)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"cohesion",       var_id(23)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"init_dip_shear", var_id(24)))
+        ! Read the data
+        do i = 1, nvar
+            call check( nf90_get_var(ncid, var_id(i), on_fault_vars(:,:,i)))
+        enddo
+
         do i = 1, nftnd(ift)
             xcord          = meshCoor(1, nsmp(1,i,ift))
             zcord          = meshCoor(3, nsmp(1,i,ift))
@@ -121,42 +134,46 @@ subroutine netcdf_read_on_fault_eqdyna_restart
     integer (kind = 4) :: ncid,  var_id(20), i, j, nvar, fnx, fnz, ii, jj, ift
     real (kind = dp), allocatable, dimension(:,:,:) :: on_fault_vars
     real (kind = dp)   :: xcord, zcord
-    
+    character (len = 8) :: tag, faultTag
+
     infile = "fault.r.nc"
-    
-    fnx  = nint((fxmax(1) - fxmin(1))/dx)+1
-    fnz  = nint((fzmax(1) - fzmin(1))/dz)+1
-    ! Read in initial conditions from restart files fault.r.nc spun off by EQquasi. 
     nvar = 12
-    allocate(on_fault_vars(fnx,fnz,nvar))    
-    
+
     ! NOTE. the array structure is different than loading python generated nc file.
     ! here we follow the structure of subroutine netcdf_write_on_fault.
     ! on_fault_vars is now nxt by nzt!!!
-    ! allocate(on_fault_vars(nxt,nzt,nvar))
-    ! Open the file. NF90_NOWRITE tells netCDF we want read-only access to the file. 
+    ! Open the file. NF90_NOWRITE tells netCDF we want read-only access to the file.
     call check( nf90_open(infile, NF90_NOWRITE, ncid))
 
-    ! Get the varid of the data variables, based on their names.
-    ! 'shear_strike', 'shear_dip', 'effective_normal', 'slip_rate' , 'state_variable', 'vxm', 'vym', 'vzm', 'vxs', 'vys', 'vzs'
-    call check( nf90_inq_varid(ncid, "shear_strike",     var_id(1)))
-    call check( nf90_inq_varid(ncid, "shear_dip",        var_id(2)))
-    call check( nf90_inq_varid(ncid, "effective_normal", var_id(3)))
-    call check( nf90_inq_varid(ncid, "slip_rate",        var_id(4)))
-    call check( nf90_inq_varid(ncid, "state_variable",   var_id(5)))
-    call check( nf90_inq_varid(ncid, "state_normal",     var_id(6)))
-    call check( nf90_inq_varid(ncid, "vxm",              var_id(7)))
-    call check( nf90_inq_varid(ncid, "vym",              var_id(8)))
-    call check( nf90_inq_varid(ncid, "vzm",              var_id(9)))
-    call check( nf90_inq_varid(ncid, "vxs",              var_id(10)))
-    call check( nf90_inq_varid(ncid, "vys",              var_id(11)))
-    call check( nf90_inq_varid(ncid, "vzs",              var_id(12)))
-    ! Read the data
-    do i = 1, nvar
-        call check( nf90_get_var(ncid, var_id(i), on_fault_vars(:,:,i)))
-    enddo         
-    
+    ! Row 17 (multi-fault): same fix and same reasoning as
+    ! netcdf_read_on_fault_eqdyna above -- re-size and re-read per fault,
+    ! faultTag()-prefixed variable names, bit-identical at ntotft==1.
     do ift = 1, ntotft
+        tag = faultTag(ift)
+        fnx  = nint((fxmax(ift) - fxmin(ift))/dx)+1
+        fnz  = nint((fzmax(ift) - fzmin(ift))/dz)+1
+        if (allocated(on_fault_vars)) deallocate(on_fault_vars)
+        allocate(on_fault_vars(fnx,fnz,nvar))
+
+        ! Get the varid of the data variables, based on their names.
+        ! 'shear_strike', 'shear_dip', 'effective_normal', 'slip_rate' , 'state_variable', 'vxm', 'vym', 'vzm', 'vxs', 'vys', 'vzs'
+        call check( nf90_inq_varid(ncid, trim(tag)//"shear_strike",     var_id(1)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"shear_dip",        var_id(2)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"effective_normal", var_id(3)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"slip_rate",        var_id(4)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"state_variable",   var_id(5)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"state_normal",     var_id(6)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"vxm",              var_id(7)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"vym",              var_id(8)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"vzm",              var_id(9)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"vxs",              var_id(10)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"vys",              var_id(11)))
+        call check( nf90_inq_varid(ncid, trim(tag)//"vzs",              var_id(12)))
+        ! Read the data
+        do i = 1, nvar
+            call check( nf90_get_var(ncid, var_id(i), on_fault_vars(:,:,i)))
+        enddo
+
         do i = 1, nftnd(ift)
             xcord            = meshCoor(1, nsmp(1,i,ift))
             zcord            = meshCoor(3, nsmp(1,i,ift))

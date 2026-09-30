@@ -139,11 +139,16 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                         recvtag = 20000*numDof + me - iSign
                     endif 
                     
-                    if (numDof == 1) then 
-                        rrr = abc(ixyz) + fltnum(2*(ixyz-1)+ib)
+                    ! Row 17 (multi-fault): fltnum is (6, ntotft) now -- sum
+                    ! every fault's boundary-node count for this direction,
+                    ! not just fault 1's (or, before the fltnum fix, whichever
+                    ! fault MPI4arn processed last). Reduces to the old single
+                    ! value at ntotft==1.
+                    if (numDof == 1) then
+                        rrr = abc(ixyz) + sum(fltnum(2*(ixyz-1)+ib,1:ntotft))
                     elseif (numDof == 3) then
-                        rrr = numcount(3+2*(ixyz-1)+ib) + fltnum(2*(ixyz-1)+ib)*3
-                    endif 
+                        rrr = numcount(3+2*(ixyz-1)+ib) + sum(fltnum(2*(ixyz-1)+ib,1:ntotft))*3
+                    endif
                     allocate(btmp(rrr),btmp1(rrr))
                     
                     dofCount4MPI = 0
@@ -233,29 +238,49 @@ contains
     subroutine addFaultBoundaryTerm(ixyzArg, ibArg, modeArg, arr, rrrArg, quantArr, dofCount)
     ! Fetch (modeArg=1) or add (modeArg=2) the fault-boundary-node contribution
     ! for the (ixyzArg, ibArg) MPI interface, shared by the pre- and post-sendrecv passes.
+    !
+    ! Row 17 (multi-fault): loops over every fault now -- fltnum/fltl.. are
+    ! (.., ntotft), one column per fault (meshgen.f90's MPI4arn). fltl(j,ift)
+    ! etc hold a LOCAL fault-node index (1..nftnd(ift)) local to fault ift's
+    ! own numbering -- NOT a node id. The master-node id for that (fault,
+    ! local index) pair is already recorded, once, at mesh-gen time: it is
+    ! exactly nsmp(2,fltl(j,ift),ift) (createMasterNode, meshgen.f90, sets
+    ! both nsmp(2,i,ift)=msnode and fltgm(i,ift) from the SAME local index i
+    ! in the same node-creation event). Looking it up here -- rather than
+    ! re-deriving msnode from a formula -- is correct regardless of what
+    ! order or numbering scheme createMasterNode used to assign msnode,
+    ! including the actual one (a running total across faults in MESH-SCAN,
+    ! not per-fault, order -- see that formula's own comment for why a
+    ! fixed-size offset formula does not work). Reduces to the old
+    ! single-fault loop body at ntotft==1 (nsmp(2,fltl(j,1),1) ==
+    ! numxyz(1)*numxyz(2)*numxyz(3)+fltl(j,1) there, since msnode was exactly
+    ! that sum when it was created).
         integer (kind = 4), intent(in) :: ixyzArg, ibArg, modeArg, rrrArg
         real (kind = dp), intent(inout) :: arr(rrrArg)
         real (kind = dp), intent(inout) :: quantArr(totalNumOfEquations)
         integer (kind = 4), intent(inout) :: dofCount
-        integer (kind = 4) :: j, nodeId, k
+        integer (kind = 4) :: j, nodeId, k, ift, localIdx
 
         k = 2*(ixyzArg-1)+ibArg
         if (.not. fltMPI(k)) return
-        do j = 1, fltnum(k)
+        do ift = 1, ntotft
+        do j = 1, fltnum(k,ift)
             if (ixyzArg == 1 .and. ibArg==1) then
-                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltl(j)
+                localIdx = fltl(j,ift)
             elseif (ixyzArg == 1 .and. ibArg==2) then
-                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltr(j)
+                localIdx = fltr(j,ift)
             elseif (ixyzArg == 2 .and. ibArg == 1) then
-                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltf(j)
+                localIdx = fltf(j,ift)
             elseif (ixyzArg == 2 .and. ibArg == 2) then
-                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltb(j)
+                localIdx = fltb(j,ift)
             elseif (ixyzArg == 3 .and. ibArg == 1) then
-                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltd(j)
+                localIdx = fltd(j,ift)
             elseif (ixyzArg == 3 .and. ibArg == 2) then
-                nodeId = numxyz(1)*numxyz(2)*numxyz(3)+fltu(j)
+                localIdx = fltu(j,ift)
             endif
+            nodeId = nsmp(2,localIdx,ift)
             call processNodalQuantArr(nodeId, numDof, modeArg, arr, rrrArg, quantArr, dofCount)
+        enddo
         enddo
     end subroutine addFaultBoundaryTerm
 end subroutine MPI4NodalQuant
