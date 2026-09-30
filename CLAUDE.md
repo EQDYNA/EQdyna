@@ -20,8 +20,9 @@ commands that could never go red.
 only through a merged pull request (branch, CI + `victor-reyes` audit in
 parallel, squash-merge only — repo settings disable merge-commit and
 rebase-merge — serial). Everything else — docs, board, evidence, session
-logs, rule text, reference artifacts — pushes directly to master after the
-local fast suite. Live as of `bf4d451` (PR #3); the rule's own text carries
+logs, rule text — pushes directly to master with no local test run (README
+and docs/user/ run their three content guards first; reference artifacts go
+through their own reviewed change, rule 7). Live as of `bf4d451` (PR #3); the rule's own text carries
 the enforcement detail, the repo-settings rationale, and its known limits.
 
 **Rule 21e, for whoever is conducting**: a dispatch is for a port, a
