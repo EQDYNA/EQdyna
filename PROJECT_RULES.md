@@ -2801,8 +2801,17 @@ Owner-approved hybrid PR workflow (relayed 2026-09-23; merged as PR #3,
   itself, and the "mechanical" enforcement below would be deletable by the
   thing it is supposed to gate. The three prefixes live in exactly one
   place — `GATED_PREFIXES` in `testsys/pr_policy.py` — and widening or
-  narrowing the gated set is an owner decision made by editing that one
-  constant, never by editing the two callers separately. Branch off
+  narrowing that PREFIX set is an owner decision made by editing that one
+  constant. Separately (2026-09-30, PR #62), `pr_policy.is_gated_path` also
+  gates any path the ONE shared classifier, `testsys/change_class.py`,
+  calls PHYSICS, even outside the three prefixes — e.g. `case_input/`,
+  `scripts/*.py` (except the legacy `*.m`/`figures/` scripts),
+  `test.reference.results/`, `testNameList.py`, `install-eqdyna.sh` —
+  never by editing `GATED_PREFIXES` itself, and never narrower than the
+  classifier's default-PHYSICS answer for a path nobody has reviewed yet.
+  `python3 testsys/needs_sweep.py <range>` says whether a change needs a
+  full sweep; `python3 -c "from testsys import change_class as c;
+  print(c.classify_path('<path>'))"` classifies one path. Branch off
   master, or an isolated worktree for anything that builds (rule 21). Run
   the local fast suite (`python3 testsys/run.py unit regression`); for a
   `src/` change ALSO run the everyday e2e sweep covering every backend of
@@ -2837,8 +2846,8 @@ a PR, a parallel CI-and-audit gate, and a serial merge order is how this
 project already recovers from that kind of miss without letting a second one
 land while the first is still being fixed.
 
-**How to apply**: before touching `src/`, `testsys/`, or `.github/`, open (or
-confirm) a branch or worktree off master; do not commit such a change
+**How to apply**: before touching `src/`, `testsys/`, `.github/`, or any other path
+`change_class` calls PHYSICS, open (or confirm) a branch or worktree off master; do not commit such a change
 directly to master even with a passing local gate. Before touching only docs, board,
 evidence, session logs, rule text, or a reference artifact, push directly
 — do not route it through a code PR only to keep one workflow. **No local
