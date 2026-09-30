@@ -1346,6 +1346,29 @@ tag push and `gh release create` in step 7's sequence. If something must
 intervene, treat the resulting red exactly per rule 3a: stop, finish the
 Release immediately, then resume.
 
+**Corrected 2026-09-30 (owner course correction, `v5.20.2`'s own sequencing
+mistake).** The paragraph above still describes the right behaviour to
+practice, but its MECHANISM changed: `test_release_complete.py` is no
+longer part of `testsys/run.py unit regression` at all (see
+`testsys/regression_sweep_exclusions.py`'s module docstring for the
+incident this fixes — `v5.20.2`'s tag-triggered CI, and
+`publish.yml`'s build-and-push image gate, both failed on this file's
+GitHub-Release check before the Release could possibly exist, which is why
+that tag shipped with no published Docker image). So the tier no longer
+goes red automatically at tag-push time as a way of *catching* a split
+step 7 — it goes red never, for this reason, because the check that could
+never pass automatically is no longer invoked automatically. What used to
+be one function, `check_network_side`, is now two:
+`check_tag_pushed_to_remote` (kept in `test_release_complete.py`'s normal
+check list — true by definition any time after the tag push) and
+`check_github_release_published` (removed from that list; run ONLY via
+`python3 testsys/regression/test_release_complete.py --post-publish`,
+by hand or by a scripted step, immediately after `gh release create`
+completes — never automatically on tag push, and never folded into the
+image gate). A releaser verifies step 7 was followed as one action by
+running that command with `--post-publish` right after `gh release
+create`, not by watching whether CI happened to go red.
+
 ---
 
 ## 15d. Step 5's single release commit does not cover the two files 21c owns; those split out
