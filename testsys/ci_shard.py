@@ -90,6 +90,7 @@ SHARDS = {
                                  # guard): pure monkeypatched matrix table,
                                  # no case build/solver run, <1 s.
         "test_release_evidence_tree_clean.py",  # added 2026-09-23 (Iris, rule-24 tree_clean fix): 2 sandbox git-init scenarios, well under 1 s
+        "test_content_key_sweep_evidence.py",  # added 2026-09-30 (PR #63): content-key evidence, 6 sandbox scenarios + mutation, ~1 s
         "test_profile_guard.py",  # added 2026-09-23 (item 3, profile-guard
                                  # testsys half); ~0.03 s, pure fixture/schema
                                  # checks, no subprocess -- negligible to
