@@ -63,4 +63,7 @@ relnotes_v*.md
 # mkdocs build output (docs/user/mkdocs.yml's site_dir) -- a byproduct, never
 # tracked (rule 12).
 docs/user-site/
-eqdyna_sweep_*
+# eqdyna_sweep_* used to land at repo root (PR #52); it and run.py's own
+# console log now land under test/ or test.prev/ instead (owner, 2026-09-29:
+# logs live with the run, same place on every machine), both already
+# ignored wholesale above.

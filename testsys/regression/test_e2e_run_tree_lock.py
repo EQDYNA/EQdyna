@@ -160,25 +160,64 @@ def check_a_dead_holder_is_taken_over_with_an_explicit_message():
 # --------------------------------------------------------------------------
 def _refuses_without_rotating(tool, tool_argv, resource, extra_env=None,
                               banner=None):
+    """Fakes a concurrent holder of REPO_ROOT/<resource>'s lock, then asserts
+    `tool` refuses instead of rotating.
+
+    One legitimate case now collides with that setup, and is not a broken
+    guard (owner, 2026-09-29, item: run.py hoists the test/ lock to ITS OWN
+    start whenever the selection touches TOUCHES_TEST_TREE): when THIS
+    script runs as part of `testsys/run.py`'s `regression` tier inside a
+    selection that also runs `e2e` (`all`, `release`, ...), the ENCLOSING
+    run.py invocation already holds resource='test' for the whole run, and
+    this function's own `runlock.acquire` attempt correctly fails -- there
+    really IS a holder, it is just the parent process rather than a
+    deliberately-faked one. That is exactly the precondition this check
+    wants (a real holder + a tool invocation that must see it and refuse),
+    so it is used as-is: the existing holder's pid is read out of the
+    refusal message rather than manufactured, and nothing here releases a
+    lock this function never acquired.
+    """
     tree = os.path.join(ROOT, resource)
     prev = tree + '.prev'
     sentinel = 'item70_lock_guard_%d.marker' % os.getpid()
+    held = None
+    holder_pid = None
     try:
         held = runlock.acquire(ROOT, resource,
                                argv=['test_e2e_run_tree_lock.py', resource],
                                announce=False)
+        holder_pid = held.pid
     except runlock.RunTreeLocked as exc:
-        raise AssertionError(
-            'could not take the lock on %s to run this check -- something '
-            'else in THIS checkout holds it. That is the collision rule 21a '
-            'forbids, not a broken guard: run your sweep in its own worktree. '
-            'Holder:\n%s' % (tree, exc))
+        m = re.search(r'holder pid\s*:\s*(\d+)', str(exc))
+        if not m:
+            raise AssertionError(
+                'could not take the lock on %s to run this check, and the '
+                'refusal names no holder pid to fall back on -- something '
+                'unexpected in THIS checkout holds it. Holder:\n%s'
+                % (tree, exc))
+        holder_pid = int(m.group(1))
+        print('  NOTE  %s is already locked (holder pid %d, likely the '
+              'enclosing testsys/run.py invocation that hoists this lock '
+              'to its own start -- see run.py._prepare_test_tree) -- using '
+              'that existing holder instead of faking a new one'
+              % (tree, holder_pid))
     created = not os.path.isdir(tree)
     try:
         os.makedirs(tree, exist_ok=True)
         with open(os.path.join(tree, sentinel), 'w') as fh:
             fh.write('pathway item 70 guard -- delete me if you find me\n')
+        # This check is specifically the "invoked DIRECTLY, no caller
+        # already holding the lock" scenario -- strip the two hoisting
+        # flags even if the ambient environment carries them (e.g. this
+        # very script running inside testsys/run.py's own `regression`
+        # tier, itself part of a selection that also runs `e2e` and so
+        # holds resource='test' via _prepare_test_tree): inheriting them
+        # here would make the child SKIP its own lock/rotation entirely
+        # and silently proceed instead of refusing, which is exactly the
+        # regression this guard exists to catch.
         env = dict(os.environ)
+        env.pop('EQDYNA_TEST_LOCK_HELD', None)
+        env.pop('EQDYNA_TEST_ALREADY_ROTATED', None)
         env.update(extra_env or {})
         proc = subprocess.run([sys.executable, tool] + tool_argv, cwd=ROOT,
                               env=env, capture_output=True, text=True,
@@ -192,9 +231,9 @@ def _refuses_without_rotating(tool, tool_argv, resource, extra_env=None,
             '%s exited %d but printed no refusal naming the lock holder; its '
             'output was:\n%s'
             % (os.path.basename(tool), proc.returncode, out[-2000:]))
-        assert 'holder pid   : %d' % held.pid in out, (
+        assert 'holder pid   : %d' % holder_pid in out, (
             '%s refused without naming the holder pid %d:\n%s'
-            % (os.path.basename(tool), held.pid, out[-2000:]))
+            % (os.path.basename(tool), holder_pid, out[-2000:]))
         assert os.path.isfile(os.path.join(tree, sentinel)), (
             'THE DEFECT ITSELF: %s rotated %s away despite refusing -- the '
             'sentinel is gone from the live tree. Refusing AFTER rotating is '
@@ -211,7 +250,8 @@ def _refuses_without_rotating(tool, tool_argv, resource, extra_env=None,
             pass
         if created and os.path.isdir(tree) and not os.listdir(tree):
             shutil.rmtree(tree)
-        held.release()
+        if held is not None:
+            held.release()
 
 
 def check_run_e2e_refuses_and_does_not_rotate():

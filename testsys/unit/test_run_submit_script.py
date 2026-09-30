@@ -46,7 +46,9 @@ def test_build_submit_script_header_and_body_for_ls6():
     lines = script.splitlines()
     assert lines[0] == '#! /bin/bash'
     assert '#SBATCH -J eqdyna-sweep' in lines
-    assert '#SBATCH -o eqdyna_sweep_%j.log' in lines
+    # scratch/ (gitignored), not the repo root -- moved into test/ at the end
+    # of the job (see test_run_test_tree_logging.py, which owns that check).
+    assert '#SBATCH -o scratch/eqdyna_sweep_%j.log' in lines
     assert '#SBATCH -N 1' in lines
     assert '#SBATCH -n 128' in lines          # ls6 cores_per_node
     assert '#SBATCH -p development' in lines  # ls6 default partition (dev queue for a quick check)
@@ -63,7 +65,7 @@ def test_build_submit_script_header_and_body_for_ls6():
     # `python3 -c 'import ...'` before the run.py invocation), not pinned to
     # exact wording.
     body = script.split('source ./install-eqdyna.sh -c ls6\n', 1)[1]
-    env_check_pos = body.find("python3 -c 'import jax, netCDF4, mpi4py'")
+    env_check_pos = body.find("python3 -c 'import jax, netCDF4, xarray, mpi4py'")
     sweep_pos = body.find('python3 testsys/run.py unit regression --machine ls6')
     assert env_check_pos != -1 and sweep_pos != -1
     assert env_check_pos < sweep_pos

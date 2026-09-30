@@ -60,16 +60,44 @@ Prints a per-test SUCCESS/FAIL line (from pytest or from each regression
 script's own banner), a per-tier SUMMARY line, and exits non-zero if
 anything in the requested scope failed. "The script ran" and "the script
 passed" are always two different questions here (rule 3).
+
+LOGS LIVE WITH THE RUN, the same place on every machine (owner, 2026-09-29):
+every invocation's own full console output -- including every subprocess's
+output, via a real `tee` -- is ALSO written under `<repo>/test/`. A
+selection touching the e2e run tree (`e2e`, `e2e-ci`, `release`, `gpu`) gets
+that tree's rotation (`test/` -> `test.prev/`, rule 8) hoisted to HERE, run.py's
+own start, ahead of unit/regression, and the log is `test/run.log`; a
+selection that never touches it (e.g. bare `unit`/`regression`) never
+rotates and appends to `test/run.<tiers>.log` instead. `--submit`'s job puts
+its SLURM log and packed perf/profile deltas there too
+(`test/eqdyna_sweep_<jobid>.*`), not at the repo root.
 """
 import glob
 import io
 import os
 import re
+import shutil
 import subprocess
 import sys
 
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(TESTSYS)
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+# `testsys.runlock` is NOT imported here at module level, deliberately:
+# testsys/regression/test_src_stamp.py copies ONLY this file into an
+# isolated tree to test the fresh-binary refusal, and that tree has no
+# testsys/__init__.py or testsys/runlock.py. It is imported lazily, inside
+# _prepare_test_tree, in the one branch that actually needs it (a selection
+# touching TOUCHES_TEST_TREE) -- exactly the branch that scenario never
+# reaches (its selection is always ['regression']).
+
+
+class TestTreeLocked(RuntimeError):
+    """Raised by _prepare_test_tree, wrapping testsys.runlock.RunTreeLocked,
+    so main()'s except clause names an exception ALWAYS defined in this
+    module -- not one from a lazily-imported package that the isolated
+    tree_b scenario above does not have."""
 
 
 def _load_by_path(name, relpath):
@@ -93,6 +121,31 @@ def _load_machines():
     """scripts/machines.py -- the ONE HPC-machine registry and the shared
     SBATCH-header writer case.setup also uses."""
     return _load_by_path('machines', os.path.join('scripts', 'machines.py'))
+
+
+# The modules every RUNNER below needs from whatever python3 is currently
+# active -- checked in TWO places, both citing this same tuple so they
+# cannot drift apart: here, in-process, for `--machine <m>` run IN PLACE
+# (main()'s machine_name branch); and as a `python3 -c 'import ...'` line in
+# the generated --submit job body (build_submit_script), right after
+# `source ./install-eqdyna.sh -c <m>` and before the sweep. Owner hit this
+# twice on 2026-09-29 running in place with the venv not activated: first
+# "No module named netCDF4", then (after xarray was still missing from the
+# checked set) "No module named xarray".
+REQUIRED_MODULES = ('jax', 'netCDF4', 'xarray', 'mpi4py')
+
+
+def missing_required_modules():
+    """Which of REQUIRED_MODULES this SAME python3 (sys.executable -- every
+    RUNNER below invokes it via subprocess) cannot import. Empty means all
+    present."""
+    missing = []
+    for mod in REQUIRED_MODULES:
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(mod)
+    return missing
 
 
 def build_submit_script(machines_mod, machine_name, tiers, account,
@@ -142,11 +195,25 @@ def build_submit_script(machines_mod, machine_name, tiers, account,
             "submitting a job there (rule 2: no guessed launcher)" % machine_name)
 
     tier_str = ' '.join(tiers)
+    import_list = ', '.join(REQUIRED_MODULES)
     buf = io.StringIO()
+    # The SLURM stdout/stderr capture (`#SBATCH -o`) is opened by sbatch
+    # BEFORE this script's first line runs -- long before the inner run.py
+    # invocation below rotates test/ -> test.prev/ -- so it cannot point
+    # INTO test/ from the start (rule 8's rotation would carry the still-
+    # open, still-being-written log away into test.prev/ along with
+    # whatever else was already there, orphaning the current run's own
+    # top-level log in the PREVIOUS run's folder). It is written to
+    # scratch/ (gitignored, and already created by submit() before this
+    # script is even written) and `mv`'d into test/ -- the freshly rotated
+    # one -- at the end; `mv` only changes the directory entry, so the
+    # still-open fd this whole script keeps writing to (including the
+    # lines printed AFTER the `mv`) keeps landing in the same inode at its
+    # new path, same trick rule 8's own rotation relies on.
     machines_mod.write_slurm_header(
         buf, jobname='eqdyna-sweep', nnode=1, ncpu=m['cores_per_node'],
         queue=queue, walltime=wt, account=account, email='',
-        output='eqdyna_sweep_%j.log')
+        output='scratch/eqdyna_sweep_%j.log')
     buf.write('\n')
     buf.write('cd "$SLURM_SUBMIT_DIR"\n')
     buf.write('source ./install-eqdyna.sh -c %s\n' % machine_name)
@@ -154,15 +221,16 @@ def build_submit_script(machines_mod, machine_name, tiers, account,
     # Refuse EARLY, before the (potentially hours-long) sweep, if the
     # sourced environment is missing a dependency the sweep needs -- this is
     # exactly what bit the owner on 2026-09-29: a bare `python3` with none of
-    # jax/netCDF4/mpi4py, discovered only mid-regression via "No module named
-    # netCDF4". Explicit check, not `set -e` (rule 2: no silent fallback).
+    # jax/netCDF4/mpi4py (and, found the same day, xarray) importable,
+    # discovered only mid-regression as "No module named netCDF4"/"xarray".
+    # Explicit check, not `set -e` (rule 2: no silent fallback).
     env_check_msg = (
         "eqdyna-sweep: environment check failed after "
-        "source ./install-eqdyna.sh -c %s -- jax/netCDF4/mpi4py not all "
-        "importable by this python3. Check that the venv activated (see "
-        "install-eqdyna.sh own warning above if it did not) and EQDYNA_VENV."
-        % machine_name)
-    buf.write("python3 -c 'import jax, netCDF4, mpi4py' || {\n")
+        "source ./install-eqdyna.sh -c %s -- %s not all importable by this "
+        "python3. Check that the venv activated (see install-eqdyna.sh's "
+        "own warning above if it did not) and EQDYNA_VENV."
+        % (machine_name, import_list))
+    buf.write("python3 -c 'import %s' || {\n" % import_list)
     buf.write('  echo "%s" >&2\n' % env_check_msg)
     buf.write('  exit 1\n')
     buf.write('}\n')
@@ -173,14 +241,26 @@ def build_submit_script(machines_mod, machine_name, tiers, account,
     buf.write('rc=$?\n')
     buf.write('echo "run.py %s --machine %s exit $rc"\n'
               % (tier_str, machine_name))
+    # test/ (rotated by the inner run.py invocation above, or created fresh
+    # if this selection never touches the e2e run tree -- either way it
+    # exists by now) is where every run's evidence lives, one place on
+    # every machine (owner, 2026-09-29): the SLURM log, and the
+    # perf/profile deltas this job appended, land there too.
+    buf.write('mkdir -p test\n')
+    buf.write('mv "scratch/eqdyna_sweep_$SLURM_JOB_ID.log" '
+              '"test/eqdyna_sweep_$SLURM_JOB_ID.log"\n')
     buf.write('tail -n +$((L0 + 1)) docs/perf_ledger.jsonl '
-              '> eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl\n')
+              '> "test/eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl"\n')
     buf.write('tail -n +$((P0 + 1)) docs/run_profiles.jsonl '
-              '> eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl\n')
-    buf.write('tar czf eqdyna_sweep_$SLURM_JOB_ID.tgz '
-              'eqdyna_sweep_$SLURM_JOB_ID.log '
-              'eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl '
-              'eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl\n')
+              '> "test/eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl"\n')
+    buf.write('tar czf "test/eqdyna_sweep_$SLURM_JOB_ID.tgz" -C test '
+              '"eqdyna_sweep_$SLURM_JOB_ID.log" '
+              '"eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl" '
+              '"eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl"\n')
+    buf.write('echo "eqdyna-sweep: results in test/ -- run.log or '
+              'run.<tiers>.log (this run\'s own console output), '
+              'eqdyna_sweep_$SLURM_JOB_ID.tgz (SLURM log + perf/profile '
+              'deltas)"\n')
     buf.write('exit $rc\n')
     return buf.getvalue()
 
@@ -434,6 +514,93 @@ OPTIONAL_TIERS = ('e2e-ci', 'release', 'perf', 'gpu', 'scaling', 'e2e-full',
 # minus the one artifact every new user reads first. See RELEASE_EXPANDS.
 RELEASE_EXPANDS = ('release', 'readme')
 
+# Tiers whose RUNNER ends up invoking testsys/e2e/run_e2e.py (via _e2e
+# above), i.e. touches the shared, rule-8-rotated `test/` run tree.
+# `e2e-full` is excluded: it rotates `test.full/`, a SEPARATE tree, and is
+# opt-in/hours-long, never part of an everyday selection.
+TOUCHES_TEST_TREE = frozenset({'e2e', 'e2e-ci', 'release', 'gpu'})
+
+
+class _Tee:
+    """Duplicate this process's stdout/stderr -- including every
+    subprocess.call'd child's inherited fd, which a Python-level
+    sys.stdout wrapper cannot reach -- to `path` as well as the terminal,
+    via a real `tee` child. Same place on every machine (owner, 2026-09-29):
+    ubuntu, Docker, and ls6 all have coreutils' `tee`."""
+
+    def __init__(self, path, append=False):
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        self._saved_out = os.dup(1)
+        self._saved_err = os.dup(2)
+        self._proc = subprocess.Popen(['tee', '-a', path] if append
+                                      else ['tee', path], stdin=subprocess.PIPE)
+        os.dup2(self._proc.stdin.fileno(), 1)
+        os.dup2(self._proc.stdin.fileno(), 2)
+
+    def close(self):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.dup2(self._saved_out, 1)
+        os.dup2(self._saved_err, 2)
+        os.close(self._saved_out)
+        os.close(self._saved_err)
+        self._proc.stdin.close()
+        self._proc.wait()
+
+
+def _tiers_slug(selected):
+    return '-'.join(selected)
+
+
+def _prepare_test_tree(selected):
+    """Where this invocation's own console log goes, and whether `test/`
+    needs rotating first -- rule 8 (preserve, never delete) and rule 21a
+    (one live writer) applied to `test/` the moment ANYTHING writes into it,
+    which is now every run.py invocation, not only an e2e-family one,
+    because the console log lands under test/ too (owner, 2026-09-29: logs
+    live with the run, the SAME place on every machine).
+
+    A selection touching TOUCHES_TEST_TREE gets the rotation and the
+    exclusive lock HOISTED here, to run.py's own START -- ahead of
+    unit/regression, not after them, so their console output lands in the
+    SAME freshly-rotated tree the e2e sweep (invoked later, as a
+    subprocess) will use, rather than in the tree about to be rotated out
+    from under it. EQDYNA_TEST_ALREADY_ROTATED/EQDYNA_TEST_LOCK_HELD tell
+    that subprocess this already happened; run_e2e.py invoked directly
+    (not through run.py) rotates and locks exactly as before.
+
+    A selection that never touches the shared tree (e.g. `unit`,
+    `regression`) does not rotate -- there is no e2e run to protect -- and
+    writes its own log to `test/run.<tiers>.log`, APPENDED rather than
+    truncated, so repeated bare `run.py unit` invocations accumulate
+    evidence instead of each one silently erasing the last.
+
+    Returns (log_path, append). Raises TestTreeLocked if another invocation
+    already holds the lock.
+    """
+    test_dir = os.path.join(REPO_ROOT, 'test')
+    if not any(t in TOUCHES_TEST_TREE for t in selected):
+        os.makedirs(test_dir, exist_ok=True)
+        return os.path.join(test_dir, 'run.%s.log' % _tiers_slug(selected)), True
+
+    from testsys import runlock  # local: see the module-level note on why
+    try:
+        lock = runlock.acquire(REPO_ROOT, 'test', argv=sys.argv)
+    except runlock.RunTreeLocked as exc:
+        raise TestTreeLocked(str(exc)) from exc
+    os.environ['EQDYNA_TEST_LOCK_HELD'] = '1'
+    print('testsys: holding %s (pid %d) for this whole invocation'
+          % (lock.path, lock.pid))
+    prev_dir = os.path.join(REPO_ROOT, 'test.prev')
+    if os.path.isdir(test_dir):
+        if os.path.isdir(prev_dir):
+            shutil.rmtree(prev_dir)
+        shutil.move(test_dir, prev_dir)
+        print('testsys: preserved previous run as %s' % prev_dir)
+    os.makedirs(test_dir, exist_ok=True)
+    os.environ['EQDYNA_TEST_ALREADY_ROTATED'] = '1'
+    return os.path.join(test_dir, 'run.log'), False
+
 
 def parse_argv(argv):
     """Split argv into (tiers, machine, submit, account, partition, walltime).
@@ -506,7 +673,9 @@ def main(argv):
         jobid_match = re.search(r'(\d+)\s*$', out.strip())
         jobid = jobid_match.group(1) if jobid_match else '<jobid>'
         print('testsys/run.py: submitted %s (job %s); results will land in '
-              'eqdyna_sweep_%s.tgz (see %s)' % (script_path, jobid, jobid, script_path))
+              '<repo>/test/ once the job completes -- run.log or '
+              'run.<tiers>.log, and test/eqdyna_sweep_%s.tgz (SLURM log + '
+              'perf/profile deltas)' % (script_path, jobid, jobid))
         return 0
 
     if machine_name:
@@ -525,6 +694,20 @@ def main(argv):
         os.environ['EQDYNA_MPIRUN'] = m['mpirun']
         print('testsys/run.py: --machine %s -> EQDYNA_TEST_MACHINE=%s EQDYNA_MPIRUN=%s'
               % (machine_name, machine_name, m['mpirun']))
+        # Same early refusal as the --submit job body, for the run-IN-PLACE
+        # path (e.g. inside an interactive allocation): the owner hit this
+        # today running --machine ls6 without --submit and without having
+        # activated the venv -- "No module named xarray" mid-regression.
+        missing = missing_required_modules()
+        if missing:
+            print('testsys/run.py: REFUSED - %s not importable by %s -- the '
+                  'venv for %s is not active (see install-eqdyna.sh -c %s\'s '
+                  'own warning if it printed one) or EQDYNA_VENV points '
+                  'elsewhere. Activate it (`source install-eqdyna.sh -c %s`), '
+                  'or use --submit so the sbatch job does it for you.'
+                  % (', '.join(missing), sys.executable, machine_name,
+                     machine_name, machine_name))
+            return 2
 
     selected = []
     for tier in requested:
@@ -538,20 +721,32 @@ def main(argv):
             if t not in selected:
                 selected.append(t)
 
-    if 'regression' in selected and require_fresh_fortran_binary() is not None:
+    try:
+        log_path, append = _prepare_test_tree(selected)
+    except TestTreeLocked as exc:
+        print('testsys: %s' % exc)
         return 1
 
-    results = {tier: RUNNERS[tier]() for tier in selected}
+    tee = _Tee(log_path, append=append)
+    try:
+        print('testsys: console output also written to %s' % log_path)
 
-    print('\n==== testsys: SUMMARY ====')
-    print('tiers run: %s' % ', '.join(selected))
-    overall = 0
-    for tier in selected:
-        rc = results[tier]
-        print(f'{"SUCCESS" if rc == 0 else "FAIL"} {tier} (exit {rc})')
-        overall = overall or rc
+        if 'regression' in selected and require_fresh_fortran_binary() is not None:
+            return 1
 
-    return 1 if overall else 0
+        results = {tier: RUNNERS[tier]() for tier in selected}
+
+        print('\n==== testsys: SUMMARY ====')
+        print('tiers run: %s' % ', '.join(selected))
+        overall = 0
+        for tier in selected:
+            rc = results[tier]
+            print(f'{"SUCCESS" if rc == 0 else "FAIL"} {tier} (exit {rc})')
+            overall = overall or rc
+
+        return 1 if overall else 0
+    finally:
+        tee.close()
 
 
 if __name__ == '__main__':

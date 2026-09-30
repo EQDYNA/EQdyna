@@ -63,6 +63,12 @@ This needs `pip install pytest` in the same environment. It takes about 4
 minutes (246 s measured on 2026-09-25 on a shared 64-core workstation) and must
 end with `SUCCESS unit` and `SUCCESS regression`.
 
+Every `testsys/run.py` invocation's own console log, and the sweep's run
+output, land in `<repo>/test/` (previous run preserved in `test.prev/`) --
+the same place on every machine: Ubuntu, LS6, and Docker alike. In Docker
+(`WORKDIR /opt/eqdyna`), mount a host directory there to keep results after
+the container exits: `docker run -v $PWD/runs:/opt/eqdyna/test ...`.
+
 ## Running a first case
 
 The quickest way to see EQdyna run end to end is the SCEC TPV8 benchmark, a

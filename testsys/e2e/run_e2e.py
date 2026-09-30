@@ -89,6 +89,15 @@ sys.stdout.reconfigure(line_buffering=True)
 MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 BIN_OVERRIDE = os.environ.get('EQDYNA_E2E_BIN')
+# Set by testsys/run.py (owner, 2026-09-29: logs live with the run, same
+# place on every machine) when IT already took the test/ lock and did the
+# rule-8 rotation at ITS OWN start, ahead of unit/regression, so their
+# console output lands in the SAME freshly-rotated tree this sweep uses
+# rather than in the tree about to be rotated out from under it. Invoked
+# directly (not through run.py), this script locks and rotates exactly as
+# before -- these read '0' (falsy) when unset.
+TEST_LOCK_HELD = os.environ.get('EQDYNA_TEST_LOCK_HELD') == '1'
+TEST_ALREADY_ROTATED = os.environ.get('EQDYNA_TEST_ALREADY_ROTATED') == '1'
 
 
 # GPU cells (--device cuda). XLA PREALLOCATES a fraction of the card at
@@ -1125,13 +1134,17 @@ def main(argv=None):
     # lock then covers bin/ for the same price. It is released by the kernel
     # when this process exits, however it exits (testsys/runlock.py explains
     # why that is flock and not an O_EXCL lockfile).
-    try:
-        lock = runlock.acquire(REPO_ROOT, 'test')
-    except runlock.RunTreeLocked as exc:
-        print('\ne2e: FAIL - %s' % exc)
-        return 1
-    print('e2e: holding %s (pid %d) - the test/ rotation below is serialised '
-          'against every other invocation in this checkout' % (lock.path, lock.pid))
+    if TEST_LOCK_HELD:
+        print('e2e: test/ lock already held by the calling testsys/run.py '
+              'invocation (EQDYNA_TEST_LOCK_HELD=1) -- not re-acquiring')
+    else:
+        try:
+            lock = runlock.acquire(REPO_ROOT, 'test')
+        except runlock.RunTreeLocked as exc:
+            print('\ne2e: FAIL - %s' % exc)
+            return 1
+        print('e2e: holding %s (pid %d) - the test/ rotation below is serialised '
+              'against every other invocation in this checkout' % (lock.path, lock.pid))
 
     # Gate 1 - cheap check before the expensive runs (rule 9).
     guard = os.path.join(REPO_ROOT, 'testsys', 'regression', 'test_create_newcase.py')
@@ -1177,13 +1190,18 @@ def main(argv=None):
 
     # Rule 8 - preserve, never delete, the previous run's evidence.
     test_dir = os.path.join(REPO_ROOT, 'test')
-    prev_dir = os.path.join(REPO_ROOT, 'test.prev')
-    if os.path.isdir(test_dir):
-        if os.path.isdir(prev_dir):
-            shutil.rmtree(prev_dir)
-        shutil.move(test_dir, prev_dir)
-        print('e2e: preserved previous run as %s' % prev_dir)
-    os.makedirs(test_dir)
+    if TEST_ALREADY_ROTATED:
+        print('e2e: test/ already rotated by the calling testsys/run.py '
+              'invocation (EQDYNA_TEST_ALREADY_ROTATED=1) -- not rotating again')
+        os.makedirs(test_dir, exist_ok=True)
+    else:
+        prev_dir = os.path.join(REPO_ROOT, 'test.prev')
+        if os.path.isdir(test_dir):
+            if os.path.isdir(prev_dir):
+                shutil.rmtree(prev_dir)
+            shutil.move(test_dir, prev_dir)
+            print('e2e: preserved previous run as %s' % prev_dir)
+        os.makedirs(test_dir)
 
     env = base_env()
     start = time.time()
