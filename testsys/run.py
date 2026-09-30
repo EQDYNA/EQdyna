@@ -63,14 +63,29 @@ passed" are always two different questions here (rule 3).
 
 LOGS LIVE WITH THE RUN, the same place on every machine (owner, 2026-09-29):
 every invocation's own full console output -- including every subprocess's
-output, via a real `tee` -- is ALSO written under `<repo>/test/`. A
-selection touching the e2e run tree (`e2e`, `e2e-ci`, `release`, `gpu`) gets
-that tree's rotation (`test/` -> `test.prev/`, rule 8) hoisted to HERE, run.py's
-own start, ahead of unit/regression, and the log is `test/run.log`; a
-selection that never touches it (e.g. bare `unit`/`regression`) never
-rotates and appends to `test/run.<tiers>.log` instead. `--submit`'s job puts
-its SLURM log and packed perf/profile deltas there too
-(`test/eqdyna_sweep_<jobid>.*`), not at the repo root.
+output, via a real `tee` -- is ALSO written under `<repo>/test/`. Rotation
+(`test/` -> `test.prev/`, rule 8) happens exactly where it always did --
+inside testsys/e2e/run_e2e.py, immediately before the e2e cells actually
+run, once every one of ITS OWN refusal gates (create.newcase, the build, a
+stale binary stamp) has passed (PR #56 audit, blocker B1: hoisting the
+rotation any earlier meant a refused or Ctrl-C'd run -- a stale binary, a
+bad build, a SECOND run.py's own require_fresh_fortran_binary check -- still
+destroyed the PREVIOUS real sweep's evidence). A selection touching the e2e
+run tree (`e2e`, `e2e-ci`, `release`, `gpu` -- never more than one of them in
+the same invocation, which would rotate twice and destroy the first result)
+stages its console log OUTSIDE test/ (`scratch/run.<pid>.log`); the
+exclusive test/ lock stays entirely inside run_e2e.py's own Gate 0, taken
+unconditionally every time it runs (a same-day follow-up finding: holding
+it any earlier, from run.py itself, collided with regression scripts that
+invoke run_e2e.py directly against this same repo as part of their OWN
+testing). run_e2e.py moves the staged log into the freshly-rotated
+`test/run.log` once it actually rotates. A selection that
+never touches that tree (e.g. bare `unit`/`regression`) never rotates and
+appends straight to `test/run.<tiers>.log` instead. `--submit`'s job keeps
+its SLURM log and packed perf/profile deltas in `scratch/` (never inside the
+rotating tree, where a jobid-named file would be destroyed after two more
+rotations) and packs them via an EXIT trap so a walltime kill or an
+env-check failure still packs whatever ran.
 """
 import glob
 import io
@@ -84,20 +99,14 @@ TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(TESTSYS)
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
-# `testsys.runlock` is NOT imported here at module level, deliberately:
-# testsys/regression/test_src_stamp.py copies ONLY this file into an
-# isolated tree to test the fresh-binary refusal, and that tree has no
-# testsys/__init__.py or testsys/runlock.py. It is imported lazily, inside
-# _prepare_test_tree, in the one branch that actually needs it (a selection
-# touching TOUCHES_TEST_TREE) -- exactly the branch that scenario never
-# reaches (its selection is always ['regression']).
-
-
-class TestTreeLocked(RuntimeError):
-    """Raised by _prepare_test_tree, wrapping testsys.runlock.RunTreeLocked,
-    so main()'s except clause names an exception ALWAYS defined in this
-    module -- not one from a lazily-imported package that the isolated
-    tree_b scenario above does not have."""
+# run.py never acquires testsys.runlock itself (PR #56 audit follow-up: an
+# earlier version of this file held the test/ lock for its own whole
+# invocation, which collided with regression scripts -- e.g.
+# test_src_stamp.py -- that invoke testsys/e2e/run_e2e.py directly against
+# this SAME real repo_root as part of the 'regression' tier itself. Locking
+# is left entirely to run_e2e.py's own Gate 0, taken unconditionally, every
+# time it runs, exactly as before this whole feature existed). Nothing here
+# needs testsys.runlock at all any more.
 
 
 def _load_by_path(name, relpath):
@@ -197,19 +206,17 @@ def build_submit_script(machines_mod, machine_name, tiers, account,
     tier_str = ' '.join(tiers)
     import_list = ', '.join(REQUIRED_MODULES)
     buf = io.StringIO()
-    # The SLURM stdout/stderr capture (`#SBATCH -o`) is opened by sbatch
-    # BEFORE this script's first line runs -- long before the inner run.py
-    # invocation below rotates test/ -> test.prev/ -- so it cannot point
-    # INTO test/ from the start (rule 8's rotation would carry the still-
-    # open, still-being-written log away into test.prev/ along with
-    # whatever else was already there, orphaning the current run's own
-    # top-level log in the PREVIOUS run's folder). It is written to
-    # scratch/ (gitignored, and already created by submit() before this
-    # script is even written) and `mv`'d into test/ -- the freshly rotated
-    # one -- at the end; `mv` only changes the directory entry, so the
-    # still-open fd this whole script keeps writing to (including the
-    # lines printed AFTER the `mv`) keeps landing in the same inode at its
-    # new path, same trick rule 8's own rotation relies on.
+    # The SLURM stdout/stderr capture (`#SBATCH -o`), and everything this
+    # job packs alongside it (perf/profile-ledger deltas, the tarball), all
+    # live in scratch/ (gitignored) -- NEVER inside test/ (PR #56 audit m2).
+    # Each is named by $SLURM_JOB_ID, so it would otherwise accumulate
+    # inside the ROTATING test/ tree across many separate job submissions;
+    # rule 8 keeps only ONE level of history (test.prev/), so the second
+    # rotation after any given job would delete that job's own artifacts
+    # for good. Only test/run.log (or test/run.<tiers>.log) -- the SAME
+    # filename every run, by design meant to track "this run vs the last
+    # one" -- belongs inside the rotating tree, and testsys/run.py's own
+    # inner invocation below already handles that by itself.
     machines_mod.write_slurm_header(
         buf, jobname='eqdyna-sweep', nnode=1, ncpu=m['cores_per_node'],
         queue=queue, walltime=wt, account=account, email='',
@@ -218,6 +225,31 @@ def build_submit_script(machines_mod, machine_name, tiers, account,
     buf.write('cd "$SLURM_SUBMIT_DIR"\n')
     buf.write('source ./install-eqdyna.sh -c %s\n' % machine_name)
     buf.write('git rev-parse HEAD; module list 2>&1\n')
+    # Registered BEFORE the env-check below (PR #56 audit m1): a walltime
+    # kill (SLURM sends SIGTERM before SIGKILL) or the env-check's own
+    # `exit 1` must still pack whatever ran, not lose it because the script
+    # died before reaching what used to be unconditional packing lines at
+    # the very bottom. `pack` is defensive about what actually exists --
+    # L0/P0 are unset if the env-check failed before they were computed.
+    buf.write('pack() {\n')
+    buf.write('  rc=$?\n')
+    buf.write('  files="eqdyna_sweep_$SLURM_JOB_ID.log"\n')
+    buf.write('  if [ -n "$L0" ] && [ -n "$P0" ]; then\n')
+    buf.write('    tail -n +$((L0 + 1)) docs/perf_ledger.jsonl '
+              '> "scratch/eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl"\n')
+    buf.write('    tail -n +$((P0 + 1)) docs/run_profiles.jsonl '
+              '> "scratch/eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl"\n')
+    buf.write('    files="$files eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl '
+              'eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl"\n')
+    buf.write('  fi\n')
+    buf.write('  ( cd scratch && tar czf "eqdyna_sweep_$SLURM_JOB_ID.tgz" $files )\n')
+    buf.write('  echo "eqdyna-sweep: packed scratch/eqdyna_sweep_'
+              '$SLURM_JOB_ID.tgz ($files) -- kept outside test/, which '
+              'rotates; this run'"'"'s own console output is in <repo>/test/ '
+              '(test/run.log or test/run.<tiers>.log), rotated with the run"\n')
+    buf.write('  exit $rc\n')
+    buf.write('}\n')
+    buf.write('trap pack EXIT\n')
     # Refuse EARLY, before the (potentially hours-long) sweep, if the
     # sourced environment is missing a dependency the sweep needs -- this is
     # exactly what bit the owner on 2026-09-29: a bare `python3` with none of
@@ -241,26 +273,6 @@ def build_submit_script(machines_mod, machine_name, tiers, account,
     buf.write('rc=$?\n')
     buf.write('echo "run.py %s --machine %s exit $rc"\n'
               % (tier_str, machine_name))
-    # test/ (rotated by the inner run.py invocation above, or created fresh
-    # if this selection never touches the e2e run tree -- either way it
-    # exists by now) is where every run's evidence lives, one place on
-    # every machine (owner, 2026-09-29): the SLURM log, and the
-    # perf/profile deltas this job appended, land there too.
-    buf.write('mkdir -p test\n')
-    buf.write('mv "scratch/eqdyna_sweep_$SLURM_JOB_ID.log" '
-              '"test/eqdyna_sweep_$SLURM_JOB_ID.log"\n')
-    buf.write('tail -n +$((L0 + 1)) docs/perf_ledger.jsonl '
-              '> "test/eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl"\n')
-    buf.write('tail -n +$((P0 + 1)) docs/run_profiles.jsonl '
-              '> "test/eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl"\n')
-    buf.write('tar czf "test/eqdyna_sweep_$SLURM_JOB_ID.tgz" -C test '
-              '"eqdyna_sweep_$SLURM_JOB_ID.log" '
-              '"eqdyna_sweep_$SLURM_JOB_ID.ledger.jsonl" '
-              '"eqdyna_sweep_$SLURM_JOB_ID.profiles.jsonl"\n')
-    buf.write('echo "eqdyna-sweep: results in test/ -- run.log or '
-              'run.<tiers>.log (this run\'s own console output), '
-              'eqdyna_sweep_$SLURM_JOB_ID.tgz (SLURM log + perf/profile '
-              'deltas)"\n')
     buf.write('exit $rc\n')
     return buf.getvalue()
 
@@ -331,9 +343,22 @@ def run_regression():
     return overall
 
 
+# Env vars for the e2e subprocess ONLY (PR #56 audit M2) -- set by main()
+# right after _prepare_test_tree() returns, read by _e2e() when it builds
+# that ONE subprocess's env. Never written into os.environ: every OTHER
+# subprocess in the same run.py invocation (unit's pytest, every
+# regression/test_*.py script -- some of which, e.g. test_src_stamp.py,
+# themselves launch run_e2e.py "directly" to test ITS OWN standalone
+# behaviour) would otherwise inherit EQDYNA_TEST_LOCK_HELD=1 and wrongly
+# skip run_e2e.py's own lock/rotation, exactly the leak the audit found.
+_E2E_EXTRA_ENV = {}
+
+
 def _e2e(*args):
+    env = dict(os.environ)
+    env.update(_E2E_EXTRA_ENV)
     return subprocess.call([sys.executable, os.path.join(TESTSYS, 'e2e', 'run_e2e.py')]
-                           + list(args), cwd=REPO_ROOT)
+                           + list(args), cwd=REPO_ROOT, env=env)
 
 
 def run_e2e():
@@ -538,14 +563,28 @@ class _Tee:
         os.dup2(self._proc.stdin.fileno(), 2)
 
     def close(self):
-        sys.stdout.flush()
-        sys.stderr.flush()
+        # flush()/write() below can raise BrokenPipeError if the tee child
+        # already died (m3, PR #56 audit); restore the real fds FIRST, in a
+        # nested try, so a dead tee never leaves this process's own
+        # stdout/stderr pointed at a closed pipe.
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except (BrokenPipeError, OSError):
+            pass
         os.dup2(self._saved_out, 1)
         os.dup2(self._saved_err, 2)
         os.close(self._saved_out)
         os.close(self._saved_err)
-        self._proc.stdin.close()
-        self._proc.wait()
+        try:
+            self._proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
+        rc = self._proc.wait()
+        if rc != 0:
+            print('testsys: WARNING - the tee child that mirrors console '
+                  'output to the log exited %d -- the log may be truncated '
+                  'or missing lines' % rc, file=sys.stderr)
 
 
 def _tiers_slug(selected):
@@ -553,53 +592,57 @@ def _tiers_slug(selected):
 
 
 def _prepare_test_tree(selected):
-    """Where this invocation's own console log goes, and whether `test/`
-    needs rotating first -- rule 8 (preserve, never delete) and rule 21a
-    (one live writer) applied to `test/` the moment ANYTHING writes into it,
-    which is now every run.py invocation, not only an e2e-family one,
-    because the console log lands under test/ too (owner, 2026-09-29: logs
-    live with the run, the SAME place on every machine).
+    """Where this invocation's own console log goes, and the env vars (if
+    any) to pass to the e2e subprocess -- rule 8 (preserve, never delete)
+    applied to `test/`.
 
-    A selection touching TOUCHES_TEST_TREE gets the rotation and the
-    exclusive lock HOISTED here, to run.py's own START -- ahead of
-    unit/regression, not after them, so their console output lands in the
-    SAME freshly-rotated tree the e2e sweep (invoked later, as a
-    subprocess) will use, rather than in the tree about to be rotated out
-    from under it. EQDYNA_TEST_ALREADY_ROTATED/EQDYNA_TEST_LOCK_HELD tell
-    that subprocess this already happened; run_e2e.py invoked directly
-    (not through run.py) rotates and locks exactly as before.
+    NEITHER ROTATION NOR THE LOCK IS TAKEN HERE (PR #56 audit, blocker B1
+    and a same-day follow-up finding). The FIRST attempt at this fix hoisted
+    BOTH to run.py's own start for an e2e-family selection -- rotation was
+    always wrong that early (a refused or Ctrl-C'd invocation would still
+    rotate the PREVIOUS real sweep's evidence into test.prev/, rule 8's one
+    level of history, and the NEXT run's rotation would then delete it for
+    good), and holding the lock that early turned out to be wrong TOO: it
+    collided with regression scripts that invoke testsys/e2e/run_e2e.py
+    directly, against this SAME real repo_root, as part of the 'regression'
+    tier ITSELF (test_src_stamp.py's stale-EQDYNA_E2E_BIN check, among
+    others) -- their child run_e2e.py inherited no claim, tried a REAL
+    acquire, and correctly refused, but for the WRONG reason (the ancestor
+    run.py's own held lock, not the stale binary the test was checking for).
+    Before PR #56 this collision could not happen: nothing held the lock
+    until run_e2e.py's OWN invocation, which runs LAST (the `e2e` tier,
+    after `unit`/`regression`). Locking, like rotation, is now left exactly
+    where it always was: inside run_e2e.py's own Gate 0, taken
+    unconditionally, every time it runs -- whether invoked as run.py's `e2e`
+    subprocess or by a regression script testing it directly.
 
-    A selection that never touches the shared tree (e.g. `unit`,
-    `regression`) does not rotate -- there is no e2e run to protect -- and
-    writes its own log to `test/run.<tiers>.log`, APPENDED rather than
-    truncated, so repeated bare `run.py unit` invocations accumulate
-    evidence instead of each one silently erasing the last.
+    What IS done here, for a selection touching TOUCHES_TEST_TREE: the
+    console log is staged OUTSIDE test/, at scratch/run.<pid>.log, so this
+    process never touches test/ or test.prev/ at all, and the staged path
+    is returned in e2e_env (EQDYNA_RUN_LOG_PATH) for the CALLER to pass
+    ONLY to the e2e subprocess's own environment (see _E2E_EXTRA_ENV /
+    _e2e), never into os.environ, which every OTHER subprocess in this same
+    invocation would otherwise inherit for no reason. run_e2e.py moves that
+    staged log into test/run.log once its OWN gates pass and it rotates.
 
-    Returns (log_path, append). Raises TestTreeLocked if another invocation
-    already holds the lock.
+    A selection that never touches TOUCHES_TEST_TREE never rotates, and
+    appends to test/run.<tiers>.log directly (no staging needed: there is
+    no rotation to protect against; PR #56 audit m6 notes this path is
+    unlocked -- two concurrent bare `unit`-only invocations can interleave
+    lines in that shared append-mode file -- accepted as a follow-up, not
+    fixed here).
+
+    Returns (log_path, append, e2e_env).
     """
     test_dir = os.path.join(REPO_ROOT, 'test')
     if not any(t in TOUCHES_TEST_TREE for t in selected):
         os.makedirs(test_dir, exist_ok=True)
-        return os.path.join(test_dir, 'run.%s.log' % _tiers_slug(selected)), True
+        return os.path.join(test_dir, 'run.%s.log' % _tiers_slug(selected)), True, {}
 
-    from testsys import runlock  # local: see the module-level note on why
-    try:
-        lock = runlock.acquire(REPO_ROOT, 'test', argv=sys.argv)
-    except runlock.RunTreeLocked as exc:
-        raise TestTreeLocked(str(exc)) from exc
-    os.environ['EQDYNA_TEST_LOCK_HELD'] = '1'
-    print('testsys: holding %s (pid %d) for this whole invocation'
-          % (lock.path, lock.pid))
-    prev_dir = os.path.join(REPO_ROOT, 'test.prev')
-    if os.path.isdir(test_dir):
-        if os.path.isdir(prev_dir):
-            shutil.rmtree(prev_dir)
-        shutil.move(test_dir, prev_dir)
-        print('testsys: preserved previous run as %s' % prev_dir)
-    os.makedirs(test_dir, exist_ok=True)
-    os.environ['EQDYNA_TEST_ALREADY_ROTATED'] = '1'
-    return os.path.join(test_dir, 'run.log'), False
+    scratch = os.path.join(REPO_ROOT, 'scratch')
+    os.makedirs(scratch, exist_ok=True)
+    staged_log = os.path.join(scratch, 'run.%d.log' % os.getpid())
+    return staged_log, False, {'EQDYNA_RUN_LOG_PATH': staged_log}
 
 
 def parse_argv(argv):
@@ -672,10 +715,14 @@ def main(argv):
             return 1
         jobid_match = re.search(r'(\d+)\s*$', out.strip())
         jobid = jobid_match.group(1) if jobid_match else '<jobid>'
-        print('testsys/run.py: submitted %s (job %s); results will land in '
-              '<repo>/test/ once the job completes -- run.log or '
-              'run.<tiers>.log, and test/eqdyna_sweep_%s.tgz (SLURM log + '
-              'perf/profile deltas)' % (script_path, jobid, jobid))
+        print('testsys/run.py: submitted %s (job %s); once the job '
+              'completes, this run\'s own console output lands in '
+              '<repo>/test/ (test/run.log or test/run.<tiers>.log, rotated '
+              'with the run), and scratch/eqdyna_sweep_%s.tgz holds the '
+              'SLURM log plus perf/profile deltas (kept outside test/ so '
+              'rotation never deletes it -- packed via an EXIT trap even on '
+              'a walltime kill or an env-check failure)'
+              % (script_path, jobid, jobid))
         return 0
 
     if machine_name:
@@ -721,11 +768,22 @@ def main(argv):
             if t not in selected:
                 selected.append(t)
 
-    try:
-        log_path, append = _prepare_test_tree(selected)
-    except TestTreeLocked as exc:
-        print('testsys: %s' % exc)
-        return 1
+    # PR #56 audit m4: two e2e-family tiers in ONE invocation would each
+    # rotate test/ -> test.prev/ in turn, the second one destroying the
+    # first's fresh results (rule 8 keeps only one level of history).
+    touching = [t for t in selected if t in TOUCHES_TEST_TREE]
+    if len(touching) > 1:
+        print('testsys/run.py: selection runs more than one e2e-family tier '
+              'in a single invocation (%s) -- each rotates test/ again, '
+              'destroying the previous one\'s results within this SAME run. '
+              'Run them separately (two invocations, or two worktrees).'
+              % ', '.join(touching))
+        return 2
+
+    log_path, append, e2e_env = _prepare_test_tree(selected)
+
+    global _E2E_EXTRA_ENV
+    _E2E_EXTRA_ENV = e2e_env
 
     tee = _Tee(log_path, append=append)
     try:

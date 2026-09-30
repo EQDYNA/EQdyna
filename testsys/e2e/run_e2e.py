@@ -89,15 +89,21 @@ sys.stdout.reconfigure(line_buffering=True)
 MACHINE = common.MACHINE
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 BIN_OVERRIDE = os.environ.get('EQDYNA_E2E_BIN')
-# Set by testsys/run.py (owner, 2026-09-29: logs live with the run, same
-# place on every machine) when IT already took the test/ lock and did the
-# rule-8 rotation at ITS OWN start, ahead of unit/regression, so their
-# console output lands in the SAME freshly-rotated tree this sweep uses
-# rather than in the tree about to be rotated out from under it. Invoked
-# directly (not through run.py), this script locks and rotates exactly as
-# before -- these read '0' (falsy) when unset.
-TEST_LOCK_HELD = os.environ.get('EQDYNA_TEST_LOCK_HELD') == '1'
-TEST_ALREADY_ROTATED = os.environ.get('EQDYNA_TEST_ALREADY_ROTATED') == '1'
+# Set ONLY in the env of the subprocess testsys/run.py itself launches (PR
+# #56 audit M2 -- NEVER in os.environ, which every OTHER subprocess in that
+# same run.py invocation would inherit and wrongly trust, e.g.
+# test_src_stamp.py launching this script "directly" to test ITS OWN
+# standalone behaviour under an ambient `run.py all`). EQDYNA_TEST_LOCK_HELD
+# claims the caller (testsys/run.py) already holds REPO_ROOT/test's lock for
+# the whole invocation; this is VERIFIED below (an actual acquire attempt),
+# never trusted blindly, because a leaked or hand-set flag must not disable
+# the one thing standing between a real second invocation and rule 21a's
+# incident. EQDYNA_RUN_LOG_PATH is the caller's own staged console log
+# (staged OUTSIDE test/, precisely so a refusal here never touches test/ or
+# test.prev/ -- PR #56 audit blocker B1), moved into test/run.log once this
+# script actually rotates.
+TEST_LOCK_HELD_CLAIMED = os.environ.get('EQDYNA_TEST_LOCK_HELD') == '1'
+RUN_LOG_PATH = os.environ.get('EQDYNA_RUN_LOG_PATH')
 
 
 # GPU cells (--device cuda). XLA PREALLOCATES a fraction of the card at
@@ -1053,6 +1059,51 @@ def write_release_evidence(results, is_release, explicit, started_utc,
           'tree_clean=%s)' % (path, len(cells), n_success, sha, tree_clean))
 
 
+def acquire_test_lock(repo_root, claimed_held):
+    """Gate 0 -- ONE live invocation per run tree (rule 21a, pathway item
+    70), factored out of main() so PR #56 audit M2's verification behaviour
+    (never trust EQDYNA_TEST_LOCK_HELD blindly) is unit-testable without a
+    real subprocess invocation.
+
+    `claimed_held` is TEST_LOCK_HELD_CLAIMED -- the caller (testsys/run.py)
+    says it already holds repo_root/test's lock. That claim is VERIFIED,
+    never trusted: this always attempts the real acquire. If it fails,
+    something really does hold the lock (the calling run.py, in the
+    intended case) and this returns (None, None) -- no lock of our own, no
+    refusal, riding on the caller's protection. If it succeeds, either the
+    claim was true and vacuous (nothing else was contending) or -- the
+    unverified-flag case M2 exists to catch -- the flag was stale/leaked
+    and nobody actually held it, so this becomes the REAL holder itself,
+    identically to `claimed_held=False`.
+
+    When `claimed_held` is False, the ordinary path: a failed acquire is a
+    real refusal, returned as (None, message) for the caller to print and
+    exit non-zero on.
+
+    Returns (lock_or_None, refusal_message_or_None)."""
+    if claimed_held:
+        try:
+            lock = runlock.acquire(repo_root, 'test', announce=False)
+        except runlock.RunTreeLocked:
+            print('e2e: test/ lock verified already held (claimed via '
+                  'EQDYNA_TEST_LOCK_HELD=1, confirmed by a real acquire '
+                  'attempt) -- not re-acquiring')
+            return None, None
+        print('e2e: EQDYNA_TEST_LOCK_HELD=1 was set but no real holder was '
+              'found (stale or leaked env var) -- acquiring for real '
+              'instead of trusting it blindly; holding %s (pid %d)'
+              % (lock.path, lock.pid))
+        return lock, None
+
+    try:
+        lock = runlock.acquire(repo_root, 'test')
+    except runlock.RunTreeLocked as exc:
+        return None, str(exc)
+    print('e2e: holding %s (pid %d) - the test/ rotation below is serialised '
+          'against every other invocation in this checkout' % (lock.path, lock.pid))
+    return lock, None
+
+
 # --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
@@ -1134,17 +1185,10 @@ def main(argv=None):
     # lock then covers bin/ for the same price. It is released by the kernel
     # when this process exits, however it exits (testsys/runlock.py explains
     # why that is flock and not an O_EXCL lockfile).
-    if TEST_LOCK_HELD:
-        print('e2e: test/ lock already held by the calling testsys/run.py '
-              'invocation (EQDYNA_TEST_LOCK_HELD=1) -- not re-acquiring')
-    else:
-        try:
-            lock = runlock.acquire(REPO_ROOT, 'test')
-        except runlock.RunTreeLocked as exc:
-            print('\ne2e: FAIL - %s' % exc)
-            return 1
-        print('e2e: holding %s (pid %d) - the test/ rotation below is serialised '
-              'against every other invocation in this checkout' % (lock.path, lock.pid))
+    lock, refusal = acquire_test_lock(REPO_ROOT, TEST_LOCK_HELD_CLAIMED)
+    if refusal is not None:
+        print('\ne2e: FAIL - %s' % refusal)
+        return 1
 
     # Gate 1 - cheap check before the expensive runs (rule 9).
     guard = os.path.join(REPO_ROOT, 'testsys', 'regression', 'test_create_newcase.py')
@@ -1188,20 +1232,29 @@ def main(argv=None):
     else:
         print('e2e: no fortran cell in this selection - no Fortran build needed')
 
-    # Rule 8 - preserve, never delete, the previous run's evidence.
+    # Rule 8 - preserve, never delete, the previous run's evidence. ALWAYS
+    # done here, unconditionally, once every gate above has passed (PR #56
+    # audit blocker B1: no "already rotated" branch -- run.py itself never
+    # rotates test/ any more, precisely so a refusal at any gate above, or
+    # at require_fresh_fortran_binary in run.py's OWN regression tier, never
+    # touches test/ or test.prev/ at all).
     test_dir = os.path.join(REPO_ROOT, 'test')
-    if TEST_ALREADY_ROTATED:
-        print('e2e: test/ already rotated by the calling testsys/run.py '
-              'invocation (EQDYNA_TEST_ALREADY_ROTATED=1) -- not rotating again')
-        os.makedirs(test_dir, exist_ok=True)
-    else:
-        prev_dir = os.path.join(REPO_ROOT, 'test.prev')
-        if os.path.isdir(test_dir):
-            if os.path.isdir(prev_dir):
-                shutil.rmtree(prev_dir)
-            shutil.move(test_dir, prev_dir)
-            print('e2e: preserved previous run as %s' % prev_dir)
-        os.makedirs(test_dir)
+    prev_dir = os.path.join(REPO_ROOT, 'test.prev')
+    if os.path.isdir(test_dir):
+        if os.path.isdir(prev_dir):
+            shutil.rmtree(prev_dir)
+        shutil.move(test_dir, prev_dir)
+        print('e2e: preserved previous run as %s' % prev_dir)
+    os.makedirs(test_dir, exist_ok=True)
+    # The calling testsys/run.py's own staged console log (see the
+    # RUN_LOG_PATH docstring note above) moves into the freshly-rotated
+    # tree now, under its usual name -- a bare rename, so the still-open fd
+    # run.py keeps writing to (including everything printed after this
+    # point) keeps landing in the same inode at its new path.
+    if RUN_LOG_PATH and os.path.isfile(RUN_LOG_PATH):
+        shutil.move(RUN_LOG_PATH, os.path.join(test_dir, 'run.log'))
+        print('e2e: moved the calling run.py invocation\'s staged console '
+              'log (%s) into %s/run.log' % (RUN_LOG_PATH, test_dir))
 
     env = base_env()
     start = time.time()

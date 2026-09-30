@@ -207,17 +207,22 @@ def _refuses_without_rotating(tool, tool_argv, resource, extra_env=None,
         with open(os.path.join(tree, sentinel), 'w') as fh:
             fh.write('pathway item 70 guard -- delete me if you find me\n')
         # This check is specifically the "invoked DIRECTLY, no caller
-        # already holding the lock" scenario -- strip the two hoisting
-        # flags even if the ambient environment carries them (e.g. this
-        # very script running inside testsys/run.py's own `regression`
-        # tier, itself part of a selection that also runs `e2e` and so
-        # holds resource='test' via _prepare_test_tree): inheriting them
-        # here would make the child SKIP its own lock/rotation entirely
-        # and silently proceed instead of refusing, which is exactly the
-        # regression this guard exists to catch.
+        # already holding the lock" scenario -- strip testsys/run.py's own
+        # coordination vars even if the ambient environment carries them
+        # (e.g. this very script running inside testsys/run.py's own
+        # `regression` tier, itself part of a selection that also runs
+        # `e2e` and so holds resource='test' via _prepare_test_tree, which
+        # since PR #56 passes them only to the e2e subprocess's OWN env --
+        # never os.environ -- but this guard strips them anyway as a second
+        # line of defence). EQDYNA_TEST_LOCK_HELD=1 no longer disables the
+        # lock outright (M2: acquire_test_lock VERIFIES a claimed holder
+        # rather than trusting it), so leaving it set here would no longer
+        # cause a silent, unprotected proceed -- but EQDYNA_RUN_LOG_PATH
+        # pointing at a real run.py invocation's staged log could still
+        # make this "direct" invocation move someone else's log file.
         env = dict(os.environ)
         env.pop('EQDYNA_TEST_LOCK_HELD', None)
-        env.pop('EQDYNA_TEST_ALREADY_ROTATED', None)
+        env.pop('EQDYNA_RUN_LOG_PATH', None)
         env.update(extra_env or {})
         proc = subprocess.run([sys.executable, tool] + tool_argv, cwd=ROOT,
                               env=env, capture_output=True, text=True,
@@ -290,13 +295,20 @@ def _first_index(lines, needle, path):
 
 def check_the_lock_is_taken_before_the_rotation_in_both_tools():
     """Ordering, at the source level. A lock acquired AFTER `shutil.move` is
-    not a lock -- the damage is already done by the time it is asked for."""
-    for path, resource, mover in ((RUN_E2E, "'test'",
-                                   'shutil.move(test_dir, prev_dir)'),
-                                  (RUN_E2E_FULL, "'test.full'",
-                                   'shutil.move(test_dir, prev_dir)')):
+    not a lock -- the damage is already done by the time it is asked for.
+
+    run_e2e.py's needle is the CALL SITE (`acquire_test_lock(REPO_ROOT,`),
+    not the raw `runlock.acquire(...)` line, since PR #56 audit M2 factored
+    the actual acquire (VERIFY, don't trust a claimed holder) out into
+    that function -- rule 10a: assert the property (a lock-acquisition call
+    precedes rotation, in source order), not the exact spelling of a
+    refactor-able implementation detail."""
+    for path, needle, mover in (
+        (RUN_E2E, 'acquire_test_lock(REPO_ROOT,', 'shutil.move(test_dir, prev_dir)'),
+        (RUN_E2E_FULL, "runlock.acquire(REPO_ROOT, 'test.full')",
+         'shutil.move(test_dir, prev_dir)')):
         lines = _code_lines(path)
-        acq = _first_index(lines, 'runlock.acquire(REPO_ROOT, %s)' % resource, path)
+        acq = _first_index(lines, needle, path)
         mov = _first_index(lines, mover, path)
         assert acq < mov, (
             '%s acquires the lock at line %d but rotates at line %d -- the '
