@@ -2626,17 +2626,23 @@ test. Four changes, landed together in `ac731aa`:
    rule ships with its refusing check in the same change"). This section's
    separation exists to protect revertability and single-writer discipline,
    not to forbid a rule and its own enforcing check landing together.
-   `pathway_forward.md` gets NO such exception: the board stays solo,
-   unconditionally — mixing it with ANY other file, `PROJECT_RULES.md`
-   included, is still refused. `check_board_separation.py`'s
+   `pathway_forward.md` gets NO such exception: the board stays solo when
+   paired with any NON-board file — mixing it with code or any other path
+   is still refused exactly as before. (Victor-reyes audit, PR #70,
+   2026-09-30, corrected a wrong claim here: `PROJECT_RULES.md` and
+   `pathway_forward.md` staged TOGETHER, with nothing else, is unaffected
+   and remains fine, as it always was — this correction is only about
+   `PROJECT_RULES.md` plus NON-board files.) `check_board_separation.py`'s
    `improper_mix()` and `testsys/hooks/pre-commit`'s staged-set check were
    changed identically.
 2. `ff06534` is recorded in `EXEMPT_SHAS` as a ONE-TIME, NAMED historical
    exemption — it still mixes `pathway_forward.md` even under the
    corrected rule (it predates the fix and history cannot be un-mixed), so
    it prints as `EXEMPT`, never `SUCCESS`.
-3. **Generalized the same day** (a second owner course-correction, after 1
-   and 2 above had already landed): the actual defect was broader than
+3. **Generalized the same session** (a second owner course-correction,
+   given after 1 and 2 above were already drafted, folded into the same
+   `ac731aa` commit before it was pushed): the actual defect was broader
+   than
    "this one check is blind" — ANY check judging a PR's shape by its
    individual commits, rather than by the ONE diff a squash-merge will
    actually produce, can pass a PR whose landed result it never inspected.
