@@ -356,9 +356,10 @@ def test_import_trace_goes_red_on_a_real_added_internal_import(tmp_path):
                 os.symlink(os.path.join(REPO_ROOT, name), root / name)
         f = root / 'testsys' / 'e2e' / 'run_e2e.py'
         src = f.read_text()
-        marker = 'from testsys import common, compare, frt_canonical, matrix, runlock'
-        assert marker in src, 'run_e2e.py import line moved -- update the insertion point'
-        f.write_text(src.replace(marker, marker + '\n' + line + '  # MUTATION', 1))
+        import re
+        m = re.search(r'^from testsys import .*$', src, re.M)
+        assert m, 'run_e2e.py has no top-level `from testsys import` line to insert after'
+        f.write_text(src[:m.end()] + '\n' + line + '  # MUTATION' + src[m.end():])
         loaded = _loaded_in_fresh_interpreter(str(root))
         assert 'testsys/regression/check_release_due.py' in loaded.values(), (line, loaded)
         try:
