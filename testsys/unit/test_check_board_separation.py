@@ -238,3 +238,39 @@ def test_squash_check_passes_despite_a_messy_intermediate_commit(repo):
         'its original content and touches only src/solver.txt net -- '
         '--squash-check must pass, matching what squash-merging this PR '
         'would actually put on master: %s' % (squashed.stdout + squashed.stderr))
+
+
+def test_squash_check_ignores_board_only_pushes_landed_on_base_after_branch(repo):
+    """BLOCKER found by victor-reyes, PR #70 audit, 2026-09-30: CI passes
+    `lo` = `github.event.pull_request.base.sha`, which is MASTER'S CURRENT
+    TIP at CI-run time -- not the commit this PR branched from. It moves
+    every time something else lands on master while the PR sits open. A
+    two-dot diff (`git diff lo hi`) compares the two TREES directly, so a
+    board-only push that reaches master AFTER this PR branched (routine,
+    rule 25 lets board files push straight to master) would falsely show up
+    as part of THIS PR's union. Three-dot (`git merge-base lo hi` diff)
+    fixes it: it is exactly this PR's own changes, regardless of what has
+    since landed on the base branch.
+    """
+    branch_point = git(['rev-parse', 'HEAD'], cwd=repo).stdout.strip()
+    # This PR's own branch: code-only.
+    git(['checkout', '-q', '-b', 'pr-branch'], cwd=repo)
+    commit(repo, {'src/solver.txt': 'pr code change\n'}, 'code: the PR itself')
+    pr_head = git(['rev-parse', 'HEAD'], cwd=repo).stdout.strip()
+
+    # Meanwhile, master moves forward with a board-only push (allowed
+    # directly under rule 25) that the PR branch never saw.
+    git(['checkout', '-q', 'master'], cwd=repo)
+    commit(repo, {'pathway_forward.md': 'an unrelated board row\n'},
+          'board: unrelated row, pushed straight to master')
+    new_base_tip = git(['rev-parse', 'HEAD'], cwd=repo).stdout.strip()
+    assert new_base_tip != branch_point
+
+    # CI's "base.sha" for this (now-stale) PR is master's CURRENT tip.
+    r = run_checker(['%s..%s' % (new_base_tip, pr_head), '--squash-check'], cwd=repo)
+    assert r.returncode == 0, (
+        'a code-only PR was falsely refused because master moved forward '
+        'with an unrelated board-only push after the PR branched -- the '
+        'diff must be taken from the MERGE BASE, not the base ref\'s '
+        'current tip: %s' % (r.stdout + r.stderr))
+    assert 'FAIL' not in r.stdout

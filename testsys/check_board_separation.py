@@ -133,8 +133,22 @@ def range_files(lo, hi):
     """The UNION of paths changed across lo..hi as ONE diff -- what a
     squash-merge of this range into a single commit will actually produce.
     Distinct from the per-commit check: a range whose individual commits are
-    each clean can still union to a mixed set (PR #69 / `ff06534`)."""
-    out = git(['diff', '--name-only', lo, hi])
+    each clean can still union to a mixed set (PR #69 / `ff06534`).
+
+    THREE-DOT (`lo...hi`, merge-base diff), never two-dot (victor-reyes
+    audit, PR #70, 2026-09-30): for a `pull_request` event, CI passes `lo` =
+    `github.event.pull_request.base.sha`, which is MASTER'S CURRENT TIP at
+    CI-run time, not the commit the PR branched from -- it moves every time
+    something else lands on master while this PR is open. A two-dot diff
+    (`git diff lo hi`) compares the two TREES directly, so it would include
+    every board-only push that reaches master after the branch point,
+    re-appearing as a false "board file in this PR's union". Three-dot
+    diffs from `git merge-base lo hi` instead, which is exactly this PR's
+    OWN changes regardless of what has since landed on master. Confirmed:
+    a code-only branch behind a master-only board push showed
+    `pathway_forward.md` in the two-dot union and did NOT in the three-dot
+    one."""
+    out = git(['diff', '--name-only', '%s...%s' % (lo, hi)])
     return [p for p in (line.strip() for line in out.splitlines()) if p]
 
 
