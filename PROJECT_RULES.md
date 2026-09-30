@@ -2841,8 +2841,17 @@ land while the first is still being fixed.
 confirm) a branch or worktree off master; do not commit such a change
 directly to master even with a passing local gate. Before touching only docs, board,
 evidence, session logs, rule text, or a reference artifact, push directly
-after the local fast suite — do not route it through a code PR only to keep
-one workflow. When both a code PR and a direct docs push are ready at once,
+— do not route it through a code PR only to keep one workflow. **No local
+test run is needed for a docs/board/evidence/notes-only push** (owner,
+2026-09-30: "Just doc change"): no test reads those files as code, the
+pre-push hook still enforces this rule's PR policy, and CI runs the full
+unit+regression tiers on the next code PR. The one narrow exception: a
+change to `README.md` or `docs/user/` runs their three content guards
+first (~30 s): `python3 testsys/regression/test_readme_commands.py &&
+python3 testsys/regression/test_user_docs_style.py && python3
+testsys/regression/test_params_reference_freshness.py`. A reference
+artifact (`test.reference.results/`) is not "just docs": it needs its own
+reviewed change (rule 7). When both a code PR and a direct docs push are ready at once,
 land the direct push on its own; it does not wait for the PR's serial slot,
 because rule 21c/15d's separation means it never shared a commit with the
 code in the first place.
