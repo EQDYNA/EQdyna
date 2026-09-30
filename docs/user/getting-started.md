@@ -83,4 +83,5 @@ bash run.sh
 
 `run.sh` runs the solver under MPI and then produces a rupture-dynamics
 plot, `cRuptureDynamics.png`, in the same directory. See Running a Case for
-what each step does and how to configure your own case.
+what each step does and how to configure your own case, and its "On an HPC
+cluster (LS6)" section to submit the same case as a batch job.
