@@ -22,9 +22,9 @@ rather than folding the paths-ignore case into a generic "no evidence yet".
 
 Everything network-touching here can fail to mean either PASS or FAIL --
 `gh` missing, unauthenticated, or the network down. Per the precedent in
-test_release_complete.py's check_tag_pushed_to_remote/check_tag_is_annotated
-(the former, `check_github_release_published`'s sibling, split out of what
-was one function, `check_network_side`, 2026-09-30),
+test_release_complete.py's check_tag_pushed_to_remote (split, along with its
+sibling `check_github_release_published`, out of what was one function,
+`check_network_side`, 2026-09-30),
 "I could not check this" gets its own outcome (UNVERIFIED), never PASS and
 never FAIL by default.
 
@@ -287,10 +287,10 @@ def is_tag_ref(name):
 def drop_tag_triggered_runs(runs):
     """Runs whose headBranch is actually a tag ref, not a branch, removed.
 
-    A tag push fires its own `push`-triggered run (test_release_complete.py's
-    check_tag_is_annotated docstring documents the same mechanism from a
-    different angle: v5.8.2's tag push produced run 35122388271, twelve
-    minutes after and independent of the branch-push run). Pre-tag evidence
+    A tag push fires its own `push`-triggered run (v5.8.2's tag push produced
+    run 35122388271, twelve minutes after and independent of the branch-push
+    run -- see `test_release_complete.py`'s module docstring for that
+    incident). Pre-tag evidence
     that a SHA is safe to tag can never legitimately come from the run the
     tagging itself produced -- that run cannot exist yet at the moment this
     check needs to answer. Counting it anyway is precisely how `b3697f8` read

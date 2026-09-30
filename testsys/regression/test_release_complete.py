@@ -13,20 +13,26 @@ WHAT THIS PINS, for the version currently in VERSION:
      two can drift);
   2. README.md's leading `# News` block is THIS version, not a previous one;
   3. pathway_forward.md has a Tasks-done row naming it;
-  4. an annotated git tag `vX.Y.Z` exists locally;
-  5. a completed, SUCCESSFUL CI run exists for the exact SHA the tag points
+  4. a completed, SUCCESSFUL CI run exists for the exact SHA the tag points
      at (added 2026-09-21, see check_ci_green_for_tagged_sha below -- this is
      the post-hoc half of the pre-tag gate in
      testsys/regression/check_pretag_ci.py; that one runs BEFORE `git tag`
      and blocks it, this one runs AFTER and catches a tag that landed on an
      un-green or never-run SHA anyway);
-  6. a committed full-term local sweep (docs/evidence/sweep-*/summary.json)
+  5. a committed full-term local sweep (docs/evidence/sweep-*/summary.json)
      justifies the exact tagged SHA (added 2026-09-23, see
      check_sweep_evidence_for_tagged_sha below -- the release-path guard:
      CI stopped running the e2e sweep, so this is now the only mechanical
-     physics check at release time, required IN ADDITION to #5, not instead
+     physics check at release time, required IN ADDITION to #4, not instead
      of it; post-hoc half of check_pretag_ci.py's --pre-tag guard, exit code
      5, SWEEP_INSUFFICIENT).
+
+Dropped 2026-09-30 (owner): "an annotated git tag exists" was a pinned check
+(`check_tag_is_annotated`) but `gh release create --target <sha>` -- the new
+one-step tag+Release command (rule 15 step 7) -- mints a LIGHTWEIGHT tag, not
+an annotated one, so the old check would fail by construction under the new
+process. Removed entirely, not loosened: there is no replacement check for
+tag annotation.
 
 Steps that need the network -- the tag being pushed, CI being green on it, and
 the GitHub Release existing -- are checked ONLY when `gh` is available and
@@ -215,63 +221,6 @@ def check_pathway_tasks_done_row(v):
     if not ok:
         raise AssertionError('pathway_forward.md %s' % msg)
     print('  PASS  pathway_forward.md %s' % msg)
-
-
-def check_tag_is_annotated(v):
-    """Local cat-file first (works on a normal developer clone). Falls back
-    to a remote peel check when that says 'commit' -- confirmed 2026-09-16
-    (v5.8.2's tag-triggered Actions run, id 35122388271) that this is NOT
-    always a real lightweight tag: actions/checkout fetches a tag-triggered
-    event via `git fetch --no-tags ... +<sha>:refs/tags/vX.Y.Z` (its own log
-    line), which creates a LOCAL ref pointing straight at the commit
-    regardless of what the tag object on the remote actually is. v5.8.2 was
-    verified annotated on the remote (`git ls-remote --tags origin` shows
-    both `refs/tags/v5.8.2` -> tag object and `refs/tags/v5.8.2^{}` -> its
-    peeled commit) at the exact moment this local check said 'commit'. So
-    the local answer is checkout-mechanics-dependent, not authoritative;
-    the remote's peeled-ref count is what an annotated tag actually is."""
-    rc, out = _git('cat-file', '-t', 'v' + v)
-    if rc == 0 and out == 'tag':
-        print('  PASS  v%s is an annotated tag' % v)
-        return
-    if rc == 0 and out == 'commit':
-        rc2, out2 = _git('ls-remote', '--tags', 'origin',
-                         'refs/tags/v' + v, 'refs/tags/v' + v + '^{}')
-        if rc2 != 0:
-            # NOT the same as "confirmed lightweight" -- rc2!=0 means the
-            # remote round-trip itself failed (found 2026-09-16, v5.8.6's
-            # verify-published-image run: a container built via `docker
-            # build` then run on a LATER, separate job/runner has whatever
-            # git credential state got baked into its .git config at build
-            # time, which is not guaranteed valid for that later job's
-            # network context -- `git ls-remote origin` errored outright,
-            # rc=128, not "0 lines" from a real answer). Treating a failed
-            # network call as proof of "not annotated" was the bug: this
-            # is exactly the class of check check_tag_pushed_to_remote
-            # already handles below with UNVERIFIED, not FAIL, for the identical
-            # reason (rule 2: "I could not check this" and "this is fine"
-            # must not share an exit code, but an unreachable network is
-            # not evidence of failure either).
-            print('  UNVERIFIED  v%s tag-annotation status (git ls-remote failed, '
-                  'rc=%d -- local cat-file said "commit", ambiguous without the '
-                  'remote peel; not a pass, not a fail) -- re-run where the '
-                  'remote is reachable with valid credentials' % (v, rc2))
-            return
-        lines = [l for l in out2.splitlines() if l.strip()]
-        if len(lines) == 2:
-            print('  PASS  v%s is an annotated tag (local checkout fetched it as '
-                  'a bare ref -- confirmed via remote peel instead)' % v)
-            return
-        raise AssertionError(
-            'v%s is not an ANNOTATED tag -- confirmed via the remote: '
-            '`git ls-remote --tags origin` returned %d line(s) for it, not the 2 '
-            'an annotated tag always shows (the ref plus its peeled `^{}` '
-            'commit). Release notes live in the tag body; a lightweight '
-            'tag carries none.' % (v, len(lines)))
-    raise AssertionError(
-        'v%s is not an ANNOTATED tag (git cat-file -t says %r). Release '
-        'notes live in the tag body; a lightweight tag carries none.'
-        % (v, out))
 
 
 SWEEP_EVIDENCE_FIRST_VERSION = (5, 17, 0)
@@ -498,7 +447,7 @@ def main():
     else:
         for c in (check_banner_matches,
                   check_readme_news_leads_with_this_version,
-                  check_pathway_tasks_done_row, check_tag_is_annotated,
+                  check_pathway_tasks_done_row,
                   check_ci_green_for_tagged_sha,
                   check_sweep_evidence_for_tagged_sha,
                   check_tag_pushed_to_remote):
