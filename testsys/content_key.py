@@ -60,8 +60,11 @@ def path_allowed(path):
 
 
 def compute(repo_root, sha):
-    """sha256 hex digest over every tracked (path, blob-sha) pair at `sha`
-    NOT covered by `path_allowed`, sorted so the result depends only on
+    """sha256 hex digest over every tracked (path, mode, object-sha) triple
+    at `sha`
+    NOT covered by `path_allowed` (mode included so a mode-only change,
+    e.g. a lost exec bit on a script, moves the key exactly as it shows up
+    in the ancestor rule's `git diff --name-only`), sorted so the result depends only on
     CONTENT, never on `git ls-tree`'s own (already-sorted, but not
     guaranteed stable across git versions for every locale) output order.
 
@@ -79,9 +82,9 @@ def compute(repo_root, sha):
         if not line.strip():
             continue
         meta, path = line.split('\t', 1)
-        blob = meta.split()[2]
+        mode, _otype, blob = meta.split()
         if not path_allowed(path):
-            entries.append('%s\0%s' % (path, blob))
+            entries.append('%s\0%s\0%s' % (path, mode, blob))
     entries.sort()
     h = hashlib.sha256()
     for entry in entries:

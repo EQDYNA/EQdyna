@@ -102,9 +102,10 @@ EVIDENCE_GLOB = os.path.join('docs', 'evidence', 'sweep-*', 'summary.json')
 # per-rank profile rows there (profile_record.py, PR #6), exactly as it appends
 # docs/perf_ledger.jsonl; without it the v5.17.0 sweep's own rows could not
 # land before the tag. It is a run record, not physics input.
-SWEEP_ALLOWED_EXACT_PATHS = ('docs/perf_ledger.jsonl', 'docs/run_profiles.jsonl',
-                             'pathway_forward.md')
-SWEEP_ALLOWED_PATH_PREFIXES = ('docs/evidence/', 'docs/perf_snapshots/')
+# ONE copy (item 2b): the ancestor rule and the content-key rule must never
+# disagree on what the allow-list is, so these alias testsys/content_key.py's.
+SWEEP_ALLOWED_EXACT_PATHS = content_key.ALLOWED_EXACT_PATHS
+SWEEP_ALLOWED_PATH_PREFIXES = content_key.ALLOWED_PATH_PREFIXES
 SWEEP_REQUIRED_FIELDS = ('sha', 'tree_clean', 'term', 'n_runnable', 'n_success',
                          'cells', 'started_utc', 'finished_utc')
 

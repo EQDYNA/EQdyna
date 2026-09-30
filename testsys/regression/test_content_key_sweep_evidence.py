@@ -17,7 +17,7 @@ ancestor-based rule, unchanged. This file is the dedicated coverage for the
 new field; the two partition the guard's two evidence-acceptance paths
 instead of one file re-deriving the other's fixtures.
 
-Five scenarios (mutation-tested; see `mutation_self_check`):
+Six scenarios (mutation-tested; see `mutation_self_check`):
   1. same content_key; swept sha is NOT an ancestor of the tag sha (two
      sibling commits with independently-identical tracked content)  -> ACCEPT
   2. swept sha IS an ancestor; only docs/evidence/ added afterward   -> ACCEPT
@@ -30,6 +30,9 @@ Five scenarios (mutation-tested; see `mutation_self_check`):
      this sandbox's store at all -- content-key evidence is decided
      from the recorded string alone, never by trying to read the
      swept commit, so this is still a clean ACCEPT, never a crash    -> ACCEPT
+  6. mode-only change (exec bit) on a tracked script after the swept
+     sha -- the ancestor rule's `git diff --name-only` lists it, so
+     the content key must move too                                  -> REFUSE
 
 Every case drives a REAL `git commit` in a throwaway `tempfile.mkdtemp()`
 sandbox repo (same technique as test_pretag_sweep_negative.py) -- never this
@@ -241,6 +244,26 @@ def check_swept_sha_absent_from_object_store(guard, tmp, fails, log):
                      'still refused: %r' % reasons)
 
 
+def check_mode_only_change_refused(guard, tmp, fails, log):
+    d = new_repo(tmp, 'case6_mode_only')
+    write(d, 'scripts/run.sh', 'echo hi\n')
+    swept_sha = commit_all(d, 'swept: scripts/run.sh, not executable')
+    swept_key = guard.content_key.compute(d, swept_sha)
+    write_summary(d, swept_sha, base_summary(swept_sha, swept_key))
+    commit_all(d, 'evidence: record the sweep')
+    os.chmod(os.path.join(d, 'scripts/run.sh'), 0o755)
+    tag_sha = commit_all(d, 'mode: chmod +x scripts/run.sh after the sweep')
+    ok, msg = guard.evaluate_sweep_evidence(tag_sha, repo_root=d,
+                                            full_runnable_count=fixed_count,
+                                            runnable_cells=fixed_cells)
+    log.append(('6 mode-only change after the swept sha', ok, msg))
+    if ok:
+        fails.append('6: a mode-only change to scripts/run.sh after the swept '
+                     'sha was ACCEPTED (content_key ignores file mode)')
+    if 'content_key' not in msg:
+        fails.append('6: refusal does not name content_key: %r' % msg)
+
+
 def mutation_self_check(guard, tmp, fails, log):
     """Rule 6: prove the content_key equality check is load-bearing by
     neutering it (a `content_key.compute` stand-in that always agrees with
@@ -282,7 +305,7 @@ def mutation_self_check(guard, tmp, fails, log):
 
 
 def main():
-    print('Negative test: check_pretag_ci content_key sweep evidence, 5 scenarios')
+    print('Negative test: check_pretag_ci content_key sweep evidence, 6 scenarios')
     guard = load_guard()
     fails = []
     log = []
@@ -293,6 +316,7 @@ def main():
         check_machines_py_byte_change_refused(guard, tmp, fails, log)
         check_github_edit_refused(guard, tmp, fails, log)
         check_swept_sha_absent_from_object_store(guard, tmp, fails, log)
+        check_mode_only_change_refused(guard, tmp, fails, log)
         mutation_self_check(guard, tmp, fails, log)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -310,8 +334,8 @@ def main():
         return 1
     print('\nSUCCESS test_content_key_sweep_evidence: 2 acceptances (same '
           'content_key from a non-ancestor swept sha; a docs/evidence/-only '
-          'commit after the swept sha), 2 refusals (scripts/machines.py '
-          'changed; .github/ edited), and one clean accept for a swept sha '
+          'commit after the swept sha), 3 refusals (scripts/machines.py '
+          'changed; .github/ edited; mode-only chmod), and one clean accept for a swept sha '
           'absent from the object store; mutation check confirmed the '
           'content_key comparison is load-bearing')
     return 0
