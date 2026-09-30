@@ -276,3 +276,253 @@ par.nz = 1` copies for the Python-port mesh-quality read. Ringing via
 `testsys/perf/measure_ringing.py --stations ...` on a directory of symlinks
 mapping `faultst000dp047 -> faultst000dp180` etc.; rupture fields matched
 node-by-node (rounded to 1 m) between canonicalised frt sets.
+
+## C_hg=3: KF78 + Flanagan-Belytschko viscous hourglass control (owner: "make FB chg=3", 2026-09-29)
+
+Implemented on this branch, entirely inside `src/fortran/calcHourglassResist.f90`
+(no change to `assembleGlobalMass.f90` / `calcSSPhi4Hrgls`; `globalvar.f90:105`
+comment only). C_hg=1 and 2 arithmetically untouched: C_hg=3 with kapa_hg=0
+reproduces the committed tpv37 reference at max|diff| = 0.0 over all 22 frt
+columns and 0.0000 MPa at dp180; unit + regression tiers green.
+
+- Vectors: `calcFBHourglassVectors` (end of file) computes, per element,
+  gamma_aI = Gamma_aI - sum_i (sum_J Gamma_aJ x_iJ) dN_I/dx_i (FB 1981, IJNME
+  17:679-706, eq. 3.44) from `meshCoor` and the stored one-point gradients
+  `eleshp(1:3,:,nel)`, then RMS-normalises each gamma_a so sum_I gamma_aI^2 = 8
+  = sum_I Gamma_aI^2 (the normalisation calcSSPhi4Hrgls applies to KF78's phi;
+  it gives gamma the raw Gamma's norm so the C_hg=2 coefficient applies
+  unchanged). On a rectangular brick gamma == Gamma.
+- Force (C_hg==3 block): q_ia = sum_I v_iI gamma_aI, f_iI = -c sum_a q_ia
+  gamma_aI, c = kapa_hg*rho*Vp*V^(2/3)/4 with V = eledet*w (LS-DYNA hourglass
+  type 2 / Goudreau-Hallquist 1982 coefficient), applied to the velocity `vl`,
+  assembled with the same sign convention as the C_hg=2 branch.
+- Exposure: C_hg and kapa_hg remain compile-time defaults in `globalvar.f90`;
+  runs below used scratch copies with the two lines edited.
+
+### tpv37, 500 m, Fortran 4 ranks, 5 s, down-dip shear (rms / p2p MPa; ref = committed C_hg=1 reference)
+
+| kapa_hg | dp180 | dp120 | dp240 | st040dp180 | max\|dp180 - 50 m archive\| | ruptured (ref 1288) / flips | mean / max \|d rt\| s | peak slip rate ratio |
+|---|---|---|---|---|---|---|---|---|
+| 0 (= C_hg=1) | 0.150 / 0.673 | 0.061 / 0.247 | 0.161 / 0.900 | 0.112 / 0.519 | 1.246 | 1288 / 0 | 0 / 0 | 1.000 |
+| 0.03 | 0.082 / 0.531 | 0.041 / 0.155 | 0.130 / 0.649 | 0.093 / 0.525 | 1.254 | 1270 / 18 | 0.014 / 0.205 | 0.897 |
+| 0.05 | 0.065 / 0.449 | 0.038 / 0.147 | 0.122 / 0.574 | 0.090 / 0.496 | 1.258 | 1258 / 30 | 0.022 / 0.205 | 0.852 |
+| 0.07 | 0.053 / 0.377 | 0.035 / 0.142 | 0.115 / 0.521 | 0.086 / 0.470 | 1.259 | 1256 / 32 | 0.029 / 0.216 | 0.814 |
+| 0.10 | unstable (46 Hz, 55 MPa p2p at dp120, peak slip rate 5.7e4 m/s) | | | | | 3477 / 2189 | | 1.1e4 |
+| 0.15 | blows up (1e10 MPa) | | | | | | | |
+| 50 m archive | 0.0018 / 0.016 | 0.024 / 0.123 | 0.009 / 0.041 | 0.008 / 0.042 | 0 | | | |
+
+The geometry-corrected gamma changes essentially nothing relative to the
+earlier scratch raw-Gamma "KF78+viscous" run: at kapa 0.03, rms 0.0822 vs
+0.0828, 18 flips both, peak-slip-rate ratio 0.897 vs 0.886; at kapa 0.1 the
+same 46 Hz instability at the same amplitude. Stable range on this mesh at
+its CFL 0.5: kapa_hg <= 0.07 (0.1 unstable). Corrected vectors do not move
+the stability limit.
+
+### Clean-case control: test.tpv8 (hex, vertical) at C_hg=3, kapa_hg=0.05, vs its committed reference
+
+1891 nodes: ruptured 830 -> 767, **63 flips**, mean |d rupture time| 0.103 s
+(max 0.35 s), fault peak slip rate ratio 0.987; frt max|diff| 2.7e7 against
+CASE_BOUND 1e-8 (i.e. the gate would fail, as any physics change must).
+faultst000dp075 h-shear detrended rms 0.723 -> 0.217 MPa over [0.59, 2.59] s:
+the term damps post-front content on a clean hex case too, and shifts its
+rupture arrivals by 0.1 s on average.
+
+### Verdict
+
+C_hg=3 works as designed and is stable to kapa_hg 0.07, but it does NOT kill
+the zigzag and it DOES move the rupture: at the largest stable coefficient
+the dp180 ringing rms is still 29x the 50 m archive's, the archive error at
+dp180 is unchanged (1.25 -> 1.26 MPa: it is front-shape, not ringing), and
+the price is 32 rupture-flag flips, -19% fault peak slip rate on tpv37 and
+63 flips / 0.10 s mean arrival shift on tpv8. In the time series
+(archive / default / kapa 0.05 at four stations, plot not kept) the damped
+curve is the default one at ~60% amplitude, same frequency, not the flat
+archive curve.
+
+### What a PR would need, if the owner still wants the option landed
+
+- Fortran: this file as is (`calcHourglassResist.f90`), plus reading
+  `C_hg`/`kapa_hg` from input (`readInputFiles.f90`, `bGlobal.txt` line
+  order), `scripts/case.setup` writer and `scripts/defaultParameters.py`
+  defaults (C_hg=1, kapa_hg=0.1 today are compile-time).
+- Python port (rule 23): `src/python/eqdyna/assembleGlobalKU.py::
+  calcHourglassResist` is KF78-only; needs the gamma computation (vectorised
+  over elements from `meshCoor[conn]` and `eleshp`) and the viscous scatter
+  as a second contribution in the fused loop, with the correspondence table
+  entry updated; parity gate = C_hg=3 fortran vs python-jax on tpv37.
+- A regression guard that C_hg=3 with kapa_hg=0 is bit-identical to C_hg=1
+  (the check done by hand above), and one that C_hg=1/2 outputs are unchanged.
+- Adoption is the owner's call; every adopting case changes physics and needs
+  a new committed reference (rule 7). On this evidence no gated case should
+  adopt it.
+
+## Closed 2026-09-30 (owner: "just use 500 m as regression as it is")
+
+Row 34 closed: tpv36/37 stay gated at 500 m with the ringing accepted;
+refinement is what removes it (table above). The local research branch
+`research/ringing-36-37` (tip `515db32`, never pushed) was deleted after this
+record was written. Its only code not on master is C_hg=3, kept here verbatim
+so it can be re-applied with `git apply` from a checkout of `5647889`:
+
+```diff
+diff --git a/src/fortran/calcHourglassResist.f90 b/src/fortran/calcHourglassResist.f90
+index 1a2a62f..409863f 100644
+--- a/src/fortran/calcHourglassResist.f90
++++ b/src/fortran/calcHourglassResist.f90
+@@ -7,7 +7,7 @@ subroutine calcHourglassResist
+     include 'mpif.h'
+ 
+     integer (kind = 4) :: nel, i , j, k, itmp, itag, fi(4,8)
+-    real (kind = dp) :: phid(ned), dl(ned,nen), vl(ned,nen), fhr(ned,nen), f(24), det, coef, q(3,4)
++    real (kind = dp) :: phid(ned), dl(ned,nen), vl(ned,nen), fhr(ned,nen), f(24), det, coef, q(3,4), fvis, gam(nen,4)
+     
+     ! LOCAL stage timer. The shared global startTimeStamp was written by
+     ! eight sites across six files, each pairing it with a different
+@@ -21,7 +21,11 @@ subroutine calcHourglassResist
+                 dl(j,i) = dispArr(j,nodeElemIdRelation(i,nel)) + rdampk* vl(j,i)
+             enddo
+         enddo
+-        if (C_hg == 1) then
++        ! C_hg == 3 (Flanagan-Belytschko viscous, 2026-09-29, row 34) runs the
++        ! KF78 stiffness branch below UNCHANGED and then adds the viscous
++        ! block at the end of this element loop. C_hg == 1 and 2 are
++        ! arithmetically untouched by this addition.
++        if (C_hg == 1 .or. C_hg == 3) then
+             do itmp = 1, 4
+                 fhr = 0.0d0
+                 !... calculate sum(phi*dl)
+@@ -60,6 +64,15 @@ subroutine calcHourglassResist
+ 
+         elseif (C_hg==2) then
+             !viscous hourglass control
++            ! MEASURED 2026-09-29 (docs/notes/NOTES_row34_ringing.md): NOT
++            ! recommended for test.tpv36/test.tpv37 or any distorted or
++            ! degenerate-wedge mesh. This branch REPLACES the KF78 stiffness
++            ! control and uses the uncorrected +-1 Gamma vectors; on tpv37 at
++            ! 500 m it collapses the rupture at every kapa_hg tried,
++            ! including kapa_hg = 0 (1288 -> 614/541/520/436 ruptured nodes
++            ! at kapa 0/0.01/0.03/0.1), and rings MORE than C_hg=1 at
++            ! kapa_hg <= 0.03. Use C_hg = 3 for a viscous term that keeps
++            ! KF78 and uses the geometry-corrected vectors.
+             coef = 0.25d0*kapa_hg*mat(nel,3)*mat(nel,1)*(eledet(nel)*w)**(2.0d0/3.0d0)
+             fi(1,1)=1;fi(1,2)=1;fi(1,3)=-1;fi(1,4)=-1;fi(1,5)=-1;fi(1,6)=-1;fi(1,7)=1;fi(1,8)=1
+             fi(2,1)=1;fi(2,2)=-1;fi(2,3)=-1;fi(2,4)=1;fi(2,5)=-1;fi(2,6)=1;fi(2,7)=1;fi(2,8)=-1
+@@ -95,6 +108,104 @@ subroutine calcHourglassResist
+                 enddo
+             enddo
+         endif
++
++        if (C_hg == 3) then
++            ! Flanagan & Belytschko (1981, IJNME 17:679-706) viscous hourglass
++            ! control, added on top of KF78 (above). The geometry-corrected
++            ! hourglass shape vectors gamma are computed HERE, per element,
++            ! by calcFBHourglassVectors (end of this file) from the element's
++            ! node coordinates and its stored one-point shape-function
++            ! gradients eleshp -- nothing is added to assembleGlobalMass.f90
++            ! or calcSSPhi4Hrgls. Coefficient (LS-DYNA theory manual,
++            ! hourglass type 2 "Flanagan-Belytschko viscous form"; Goudreau
++            ! & Hallquist 1982), identical to the C_hg == 2 branch's:
++            !   q_ia  = sum_I v_iI gamma_aI          (hourglass velocity rates)
++            !   f_iI  = - c * sum_a q_ia gamma_aI
++            !   c     = kapa_hg * rho * Vp * V^(2/3) / 4,  V = eledet*w
++            ! Acts on the VELOCITY vl (not on dl = disp + rdampk*vel, which
++            ! is the KF78 stiffness argument). For a rectangular brick gamma
++            ! == Gamma and this block equals the C_hg == 2 force; on a
++            ! distorted or degenerate (wedge) element gamma is orthogonal to
++            ! the linear velocity field where Gamma is not, so it damps only
++            ! the zero-energy modes.
++            call calcFBHourglassVectors(nel, gam)
++            coef = 0.25d0*kapa_hg*mat(nel,3)*mat(nel,1)*(eledet(nel)*w)**(2.0d0/3.0d0)
++            q = 0.0d0
++            do itmp = 1, 4
++                do i = 1, ned
++                    do j = 1, nen
++                        q(i,itmp) = q(i,itmp) + vl(i,j)*gam(j,itmp)
++                    enddo
++                enddo
++            enddo
++            do i = 1, nen
++                do j = 1, ned
++                    fvis = 0.0d0
++                    do itmp = 1, 4
++                        fvis = fvis - coef*q(j,itmp)*gam(i,itmp)
++                    enddo
++                    if (numOfDofPerNodeArr(nodeElemIdRelation(i,nel)) == 3) then
++                        itag = eqNumStartIndexLoc(nodeElemIdRelation(i,nel))+j
++                    elseif (numOfDofPerNodeArr(nodeElemIdRelation(i,nel)) == 12) then
++                        itag = eqNumStartIndexLoc(nodeElemIdRelation(i,nel))+j+9
++                    endif
++                    k = eqNumIndexArr(itag)
++                    if(k > 0) then
++                        nodalForceArr(k) = nodalForceArr(k) + fvis
++                    endif
++                enddo
++            enddo
++        endif
+     enddo
+     compTimeInSeconds(5) = compTimeInSeconds(5) + MPI_WTIME() - tStageStart
+ end subroutine calcHourglassResist
++
++
++subroutine calcFBHourglassVectors(nel, gam)
++    ! Flanagan & Belytschko (1981, IJNME 17:679-706) hourglass shape vectors
++    ! for the one-point 8-node hexahedron:
++    !   gamma_aI = Gamma_aI - sum_i ( sum_J Gamma_aJ x_iJ ) dN_I/dx_i     (FB81 eq. 3.44)
++    ! with Gamma the four +-1 hourglass base vectors (FB81 Table 2, the same
++    ! ordering as calcSSPhi4Hrgls's `ha` and the C_hg==2 branch's `fi`), x_iJ
++    ! the element node coordinates and dN_I/dx_i the one-point shape-function
++    ! gradients this element already stores in eleshp (assembleGlobalMass.f90,
++    ! assembleElementMassDetShg). gamma is orthogonal to every linear
++    ! velocity field on the actual (distorted or degenerate) element, which
++    ! the raw Gamma is only on a parallelepiped.
++    !
++    ! NORMALISATION (stated because the viscous coefficient depends on it):
++    ! each gamma_a is RMS-normalised, gamma_a <- gamma_a / sqrt(sum_I
++    ! gamma_aI^2 / 8), so sum_I gamma_aI^2 = 8 = sum_I Gamma_aI^2. This is the
++    ! same normalisation calcSSPhi4Hrgls applies to KF78's phi, and it makes
++    ! gamma carry exactly the norm of the raw Gamma, so the Goudreau-Hallquist
++    ! coefficient c = kapa_hg*rho*Vp*V^(2/3)/4 of the C_hg==2 branch applies
++    ! unchanged. On a rectangular brick gamma == Gamma identically.
++    use globalvar
++    implicit none
++    integer (kind = 4), intent(in) :: nel
++    real (kind = dp), intent(out) :: gam(nen,4)
++    integer (kind = 4) :: a, i, j, k
++    integer (kind = 4), dimension(8,4) :: ha = reshape((/ &
++            1,1,-1,-1,-1,-1,1,1, 1,-1,-1,1,-1,1,1,-1, &
++            1,-1,1,-1,1,-1,1,-1, -1,1,-1,1,1,-1,1,-1/), &
++            (/8,4/))
++    real (kind = dp) :: gx(3), rms
++
++    do a = 1, 4
++        gx = 0.0d0
++        do j = 1, nen
++            do i = 1, 3
++                gx(i) = gx(i) + ha(j,a)*meshCoor(i,nodeElemIdRelation(j,nel))
++            enddo
++        enddo
++        rms = 0.0d0
++        do k = 1, nen
++            gam(k,a) = ha(k,a) - (gx(1)*eleshp(1,k,nel) + gx(2)*eleshp(2,k,nel) + gx(3)*eleshp(3,k,nel))
++            rms = rms + gam(k,a)**2
++        enddo
++        rms = sqrt(rms/8.0d0)
++        do k = 1, nen
++            gam(k,a) = gam(k,a)/rms
++        enddo
++    enddo
++end subroutine calcFBHourglassVectors
+diff --git a/src/fortran/globalvar.f90 b/src/fortran/globalvar.f90
+index 5962330..8860cec 100644
+--- a/src/fortran/globalvar.f90
++++ b/src/fortran/globalvar.f90
+@@ -102,7 +102,7 @@ MODULE globalvar
+     integer (kind = 4) :: C_elastic              ! 1 = elastic version; 0 = plastic version
+     integer (kind = 4) :: C_nuclea                ! 1 = allow artificial nucleation; 0 = disabled
+     integer (kind = 4) :: C_Q  = 0                ! only with C_elastic==1: 1 = allow Q attenuation; 0 = do not
+-    integer (kind = 4) :: C_hg = 1                ! hourglass control: 1 = KF78, 2 = viscous HG
++    integer (kind = 4) :: C_hg = 1                ! hourglass control: 1 = KF78, 2 = viscous HG (raw Gamma, replaces KF78), 3 = KF78 + Flanagan-Belytschko viscous (row 34)
+     integer (kind = 4) :: C_dc = 0                ! double-couple source: 1 = yes, 0 = no
+     integer (kind = 4) :: C_degen                  ! degenerate-element flag: 0 = brick, 1 = wedge, 2 = tetra
+     integer (kind = 4) :: output_plastic          ! 1 = write plastic-strain output
+```
