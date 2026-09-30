@@ -33,9 +33,9 @@ image, and two of those guards need real history:
 
 At `actions/checkout`'s DEFAULT depth of 1 neither can see its evidence and
 both FAIL -- correctly; a guard that cannot see its evidence must fail, not
-skip. That took the publish workflow red on 894cdc1, and because the gate step
+skip. That took the publish workflow red on d38cd7b, and because the gate step
 runs BEFORE the push step, `Push image` was skipped and **the v5.16.0 image
-was never published** (run 35819232914's step list). Commit a99902f added
+was never published** (run 35819232914's step list). Commit e7c3533 added
 `fetch-depth: 0`; nothing under `testsys/` referenced publish.yml at all, so
 that line could be reverted to 1, or the whole `with:` block deleted, and
 every tier would still exit 0. This file closes that.
@@ -348,7 +348,7 @@ def main():
                 "ships THIS .git (Dockerfile: `%s`), and the in-image gate "
                 "runs %s, which read real history -- at depth 1 both FAIL, the "
                 "gate step stops the job, and `Push image` is skipped, so the "
-                "tag's image is never published (this is incident 894cdc1 / "
+                "tag's image is never published (this is incident d38cd7b / "
                 "v5.16.0). Set `with: fetch-depth: 0`."
                 % (WORKFLOW_REL, job_name, co.get('uses'),
                    depth if depth is not None else 'absent',

@@ -4,15 +4,15 @@ CI-run evidence for a commit SHA -- shared by the pre-tag gate
 (testsys/regression/check_pretag_ci.py) and the post-hoc release guard
 (testsys/regression/test_release_complete.py's check_ci_green_for_tagged_sha).
 
-WHY THIS EXISTS (2026-09-21 incident): tag `v5.13.1` was pushed at `dfee14d`
+WHY THIS EXISTS (2026-09-21 incident): tag `v5.13.1` was pushed at `b3697f8`
 while the only CI run for that exact SHA was the run the tag push itself
-triggered -- at `git tag` time there was no completed run for `dfee14d` at
+triggered -- at `git tag` time there was no completed run for `b3697f8` at
 all. It happened to conclude green. Rule 15 step 6/7 says wait for CI to be
 green on the pushed COMMIT, then tag; nothing mechanical enforced that
 ordering, and nothing would have noticed had the tag-triggered run gone red,
 because a pushed tag cannot be re-pointed (rule 8).
 
-The commit that exposed this was `dfee14d`, which touches ONLY
+The commit that exposed this was `b3697f8`, which touches ONLY
 `pathway_forward.md` -- one of `.github/workflows/test.yml`'s own
 `paths-ignore` entries -- so it could never have had a pre-tag run of its
 own; waiting for one would wait forever. That is a distinct situation from
@@ -27,7 +27,7 @@ test_release_complete.py's check_network_side/check_tag_is_annotated,
 never FAIL by default.
 
 `gh run list --commit <sha> --json ...` was tested against this repo's real
-history on gh 2.91.0 and returned `[]` for SHAs (`dfee14d`, `813b952`) that
+history on gh 2.91.0 and returned `[]` for SHAs (`b3697f8`, `8f6ff07`) that
 demonstrably have runs (confirmed via `gh run view <id>`). So this module
 never uses `--commit`: it lists runs per workflow name and filters on
 `headSha` itself.
@@ -193,7 +193,7 @@ def find_ci_runs(sha, workflow_name=None, limit=300):
     """All runs of `workflow_name` (default: this repo's test workflow, read
     from test.yml) whose headSha is exactly `sha`. Deliberately NOT
     `gh run list --commit <sha>`: verified empty on gh 2.91.0 for SHAs that
-    demonstrably have runs (dfee14d, 813b952, both confirmed via `gh run
+    demonstrably have runs (b3697f8, 8f6ff07, both confirmed via `gh run
     view <id>` on 2026-09-21) -- that flag does not work on this `gh`
     version against this repo, so this function lists by workflow and
     filters on headSha itself instead.
@@ -256,7 +256,7 @@ def is_tag_ref(name):
 
     Needed because `gh run list --json headBranch` reports the same short
     ref name for a tag push and a branch push -- for the tag `v5.13.1`
-    pushed at `dfee14d`, the run's `headBranch` is literally `"v5.13.1"`,
+    pushed at `b3697f8`, the run's `headBranch` is literally `"v5.13.1"`,
     indistinguishable by name alone from a branch called that. Checked
     against the remote because that is where "is this ref a tag" is
     actually decided; `git ls-remote --exit-code origin refs/tags/<name>`
@@ -290,7 +290,7 @@ def drop_tag_triggered_runs(runs):
     minutes after and independent of the branch-push run). Pre-tag evidence
     that a SHA is safe to tag can never legitimately come from the run the
     tagging itself produced -- that run cannot exist yet at the moment this
-    check needs to answer. Counting it anyway is precisely how `dfee14d` read
+    check needs to answer. Counting it anyway is precisely how `b3697f8` read
     as green: its ONLY run has headBranch `v5.13.1`, the tag being created,
     not a branch.
     """

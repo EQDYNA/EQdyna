@@ -2,7 +2,7 @@
 """
 Regression guard for pathway_forward.md item 44 (P4).
 
-Commit 45446d0 de-duplicated the test.tpv36 / test.tpv37 compsets by turning
+Commit 044c62a de-duplicated the test.tpv36 / test.tpv37 compsets by turning
 case_input/test.tpv37/tpv36_37_common.py into a symlink (git mode 120000)
 to case_input/test.tpv36/tpv36_37_common.py -- the repo's FIRST tracked
 symlink. Item 44 records two risks it introduced, both real and previously

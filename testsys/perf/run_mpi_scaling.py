@@ -32,7 +32,7 @@ fraction, and refuses only if the chosen set's worst cpu exceeds
 rather than a filter that silently selects nothing.
 
 PER-STEP BY DIFFERENCE, both engines, two step counts, fresh processes -- the
-same technique and the same reason as run_scaling.py (`88f5227`): at 20-60
+same technique and the same reason as run_scaling.py (`f7eed4e`): at 20-60
 steps the fixed cost (mesh build, XLA compile, MPI init) is a large fraction
 of the wall time, and subtracting it from one engine only makes the verdict a
 property of the metric.

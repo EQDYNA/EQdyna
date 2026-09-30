@@ -5,7 +5,7 @@ both backends (lars-eriksson audit, 2026-09-23, item 3 follow-up): unset or
 "" -> ON, "1" -> ON, "0" -> OFF, anything else -> hard failure naming the
 variable, the bad value, and the accepted set.
 
-Guards a real defect that shipped in 100a73b: Python's
+Guards a real defect that shipped in 5349ee4: Python's
 `os.environ.get(OFF_ENV, '') != '0'` and Fortran's own startup parse
 (`trim(envval) /= '0'`) both treated EQDYNA_PROFILE=off/false/2/<any typo>
 as ON -- a silent fallback on bad input (rule 2). A mutation that reverts
@@ -151,7 +151,7 @@ def check_fortran_bogus_aborts_with_named_code():
     strict-parse guard firing, not merely some unrelated refusal."""
     binary = _find_binary()
     # A missing binary is a FAILURE in this tier's declared environment (the
-    # tier builds it first; a32c566 made the same call for the other guards).
+    # tier builds it first; 7829f0e made the same call for the other guards).
     assert binary is not None, ('no built bin/eqdyna (or src/fortran/eqdyna) '
                                 '-- build with ./install-eqdyna.sh')
     want = _err_cfg_profile_env_invalid()

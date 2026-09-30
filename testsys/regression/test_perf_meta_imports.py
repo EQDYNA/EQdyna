@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 """Regression guard: run_e2e._perf_meta must build a snapshot without raising.
 
-Incident (2026-09-23, combo branch a750698): re-applying the profile
+Incident (2026-09-23, combo branch 646cb7a): re-applying the profile
 collection hooks by hand dropped `_perf_meta`'s local `import ledger`, so
 every sweep printed "WARNING: perf-ledger capture failed (NameError: name
 'ledger' is not defined)" and appended ZERO ledger rows. `_capture_perf`

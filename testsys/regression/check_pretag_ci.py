@@ -4,13 +4,13 @@ Pre-`git tag` gate (rule 15 step 6/7): "wait for CI to go green on the
 pushed commit, then tag" is a sentence, not a mechanism. Nothing enforced it
 before. Run this BEFORE `git tag`; it exits non-zero unless it is safe to.
 
-THE INCIDENT (2026-09-21): `v5.13.1` was tagged at `dfee14d` while the only
+THE INCIDENT (2026-09-21): `v5.13.1` was tagged at `b3697f8` while the only
 CI run for that exact SHA was the run the tag push itself triggered -- at
-`git tag` time there was no completed run for `dfee14d` at all. It happened
+`git tag` time there was no completed run for `b3697f8` at all. It happened
 to conclude green (run 35667535066, 7/7); nothing would have noticed had it
 gone red, and a pushed tag cannot be re-pointed (rule 8).
 
-THE STRUCTURAL TRAP: `dfee14d` touches ONLY `pathway_forward.md`, one of
+THE STRUCTURAL TRAP: `b3697f8` touches ONLY `pathway_forward.md`, one of
 `.github/workflows/test.yml`'s own `paths-ignore` entries, so it could never
 have had a pre-tag run of its OWN -- waiting for one would wait forever. The
 workflow's comment claims "a release commit always also touches non-md files

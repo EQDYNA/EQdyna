@@ -8,7 +8,7 @@ after the sweep itself had already appended a row to
 docs/perf_ledger.jsonl, written docs/perf_snapshots/e2e_cells_*.json and
 created docs/evidence/sweep-<sha>/ -- none of which is gitignored. So
 `tree_clean` read False for EVERY real sweep: proof is
-docs/evidence/sweep-679d8ad/summary.json (committed in f9c055e), which reads
+docs/evidence/sweep-737270d/summary.json (committed in ea775df), which reads
 tree_clean: False from a run whose `git status --porcelain` was 0 lines when
 it STARTED. `testsys/regression/check_pretag_ci.py` requires tree_clean is
 True, so a real release sweep could never satisfy the pre-tag guard.
@@ -159,7 +159,7 @@ def check_clean_start_survives_sweep_writes(run_e2e, tmp, fails, log):
             '1b: THE DEFECT IS BACK -- a release sweep that started with a '
             'clean tree wrote tree_clean=%r after writing its own ledger/'
             'snapshot/evidence artifacts (dirty_at_start=%r); this is '
-            'exactly the f9c055e/sweep-679d8ad shape'
+            'exactly the ea775df/sweep-737270d shape'
             % (payload.get('tree_clean'), payload.get('dirty_at_start')))
 
     # Scenario 3 -- mutation check (rule 6): prove the guard is sensitive to
