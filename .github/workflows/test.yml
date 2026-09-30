@@ -15,6 +15,29 @@ name: Automatic Testing of EQdyna
 # run. `tags:` must be named explicitly: a push filter that names only
 # `branches:` stops tag pushes from triggering at all. (paths-ignore is not
 # evaluated for tag pushes.)
+#
+# `docs/**` was a BLANKET ignore until the v5.20.2 incident (2026-09-30):
+# that tag landed at 30ae29e, a commit touching ONLY docs/evidence/**,
+# docs/perf_ledger.jsonl, docs/perf_snapshots/** and docs/run_profiles.jsonl
+# -- all paths-ignored, so it could never trigger its own push-run, and
+# testsys/regression/check_pretag_ci.py accepted its PARENT's green run as
+# evidence instead. Those exact paths are NOT inert docs: they are evidence
+# and ledger data that testsys/regression/test_term_axis.py and others READ
+# (the release-sweep-carry-forward logic, profile/ledger row validation),
+# so classifying them paths-ignored was the root cause, not a side effect of
+# it. Listed below individually (never re-widened back to `docs/**`) so a
+# commit touching only these now DOES trigger its own CI run on push to
+# master, closing the gap that let check_pretag_ci.py's ancestor-evidence
+# fallback ever get exercised for them in the first place. Every other docs/
+# subpath (session logs, design notes, the board history render, notes/,
+# figures/, docs/user/ -- which runs its own three content guards per rule
+# 25 instead) stays ignored; a new docs/ path defaults to NOT ignored
+# (safer direction, rule 2) until someone deliberately adds it here.
+# docs/HISTORY.md is deliberately NOT in this list (rule 15g audit, PR #69
+# victor-reyes pass, 2026-09-30): testsys/regression/test_history_table.py
+# opens it as data (compares it against the commit-message-derived table),
+# so it is exactly the class of path rule 15g exists to keep OUT of this
+# ignore list, docs-sounding directory name notwithstanding.
 on:
   push:
     branches:
@@ -26,7 +49,17 @@ on:
       - 'PROJECT_RULES.md'
       - 'pastReleaseNotes.md'
       - 'Docker.guide.md'
-      - 'docs/**'
+      - 'docs/user/**'
+      - 'docs/notes/**'
+      - 'docs/figures/**'
+      - 'docs/BOARD_HISTORY.md'
+      - 'docs/cycle_ledger.jsonl'
+      - 'docs/release_exempt.txt'
+      - 'docs/run_profile.md'
+      - 'docs/fortran_python_correspondence.md'
+      - 'docs/SESSION_LOG_*.md'
+      - 'docs/NOTES_*.md'
+      - 'docs/DESIGN_*.md'
   pull_request:
 
 # Since the push filter above (master + tags only), a feature-branch push no

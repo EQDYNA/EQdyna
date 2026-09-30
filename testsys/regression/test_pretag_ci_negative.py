@@ -10,6 +10,18 @@ against this repo's REAL CI history -- a good verification, and a perishable
 one. This file is that verification made permanent, because two of the six
 outcomes are NOT reproducible from live history:
 
+UPDATED 2026-09-30 (v5.20.2 incident, second hardening pass): case G used to
+assert that `--ack-paths-ignored-parent` grants a PASS (exit 0) off an
+ancestor's green run. That is exactly the mechanism that let v5.20.2 land at
+`30ae29e` on `e0c407f`'s evidence, with `30ae29e` itself never having run its
+own CI at all until the tag push forced it to -- and it failed. Case G now
+asserts the OPPOSITE: the flag still walks to the ancestor and reports its
+status as a diagnostic, but the result stays PATHS_IGNORED (exit 3) either
+way -- see `ci_status.evaluate_pretag`'s module-level docstring and
+`check_image_workflow_gate` below for the new owner-requirement-(b) gate this
+same incident added (a green test.yml run is not enough; the image workflow
+must have its own green run for the exact sha too).
+
   * PENDING via an in-progress run: run 35676386267 was `in_progress` when the
     board drove it on 2026-09-21. It has since completed. Re-running that same
     command today returns PASS. A transient outcome cannot be a standing
@@ -175,7 +187,7 @@ def injected_ci(runs, unavailable=False, honour_tags=True):
         ci_status._gh_run_list, ci_status.is_tag_ref = saved
 
 
-def run_guard(argv, stub_sweep=True, stub_docs=True):
+def run_guard(argv, stub_sweep=True, stub_docs=True, stub_image=True):
     """(exit_code, stdout) from the real `main()`, through the real mapping.
 
     `stub_sweep`/`stub_docs`: patch the freshly-loaded module's
@@ -183,6 +195,16 @@ def run_guard(argv, stub_sweep=True, stub_docs=True):
     `(True, ...)` -- see the module docstring's "Two more things ARE
     stubbed" note. `load_guard()` builds a brand-new module object every
     call (no shared state), so this never leaks between cases.
+
+    `stub_image` (added 2026-09-30, owner requirement (b)): patches
+    `ci_status.evaluate_image_workflow` itself (not a guard-module
+    attribute -- `check_pretag_ci.py` calls it as `ci_status.
+    evaluate_image_workflow`, and `guard.ci_status` IS the same cached
+    module object this test file already imported, so patching the shared
+    module patches what the freshly-loaded guard sees too) to a fixed PASS,
+    so every CASE here that is not specifically about the image-workflow
+    gate keeps testing only the dimension it was written for. Set False in
+    `check_image_workflow_gate` below to exercise the real function.
     """
     guard = load_guard()
     if stub_sweep:
@@ -191,6 +213,11 @@ def run_guard(argv, stub_sweep=True, stub_docs=True):
     if stub_docs:
         guard.evaluate_release_docs_ready = (
             lambda *a, **k: (True, 'stubbed for CI-outcome-only case'))
+    saved_image = ci_status.evaluate_image_workflow
+    if stub_image:
+        ci_status.evaluate_image_workflow = (
+            lambda *a, **k: ci_status.Result(
+                ci_status.PASS, 'stubbed for CI-outcome-only case'))
     buf = io.StringIO()
     saved_argv = sys.argv
     sys.argv = ['check_pretag_ci.py'] + list(argv)
@@ -199,6 +226,7 @@ def run_guard(argv, stub_sweep=True, stub_docs=True):
             code = guard.main()
     finally:
         sys.argv = saved_argv
+        ci_status.evaluate_image_workflow = saved_image
     return code, buf.getvalue()
 
 
@@ -220,10 +248,10 @@ CASES = [
     ('E  PATHS_IGNORED   only run is the tag push it must not count',
      ['--pre-tag', SHA_PATHS_IGNORED], [_RUN_V5131_TAGPUSH],
      3, 'could NEVER have its own CI run'),
-    ('G  PASS (acked)    parent evidence, named, never the SHA asked about',
+    ('G  PATHS_IGNORED   ack flag diagnoses the ancestor, NEVER authorizes',
      ['--pre-tag', SHA_PATHS_IGNORED, '--ack-paths-ignored-parent'],
      [_RUN_V5131_TAGPUSH, _RUN_ACK_PARENT],
-     0, 'evidence sha: ' + SHA_ACK_EVIDENCE),
+     3, 'no longer grants a PASS'),
 ]
 
 
@@ -279,6 +307,56 @@ def check_every_workflow_cases(failures):
         failures.append('L: with classify_every_workflow neutered case I did not '
                         'flip to exit 0 (exit=%d) -- case I may be passing for the '
                         'wrong reason' % code)
+
+
+# Owner requirement (b), 2026-09-30 (v5.20.2 incident: the image was never
+# published and nothing said so beforehand). Unlike MULTI_WORKFLOW_CASES
+# above (which only judges a second workflow that DID run), these drive the
+# REAL ci_status.evaluate_image_workflow (stub_image=False) to prove a sha
+# where the image workflow never ran at all is refused, not silently passed.
+PUBLISH_NAME = 'Publish EQdyna Docker image'
+_RUN_PUBLISH_GREEN = dict(_RUN_PUBLISH_FAILED, conclusion='success',
+                          databaseId=35819232999)
+IMAGE_GATE_CASES = [
+    ('N  refused          image workflow has NEVER run for this sha',
+     [_RUN_GREEN_MASTER], 7,
+     'no %s run exists for %s at all' % (PUBLISH_NAME, SHA_GREEN)),
+    # NOTE: "ran and failed" is already refused one layer up, by item 78's
+    # classify_every_workflow INSIDE evaluate_pretag itself (a failed
+    # non-tag run for ANY workflow at this sha fails the CI check before
+    # evaluate_image_workflow is ever reached) -- exit 1, not the new exit
+    # 7. That is correct, not a gap: exit 7 exists specifically for the
+    # dimension item 78 does NOT cover ("never ran at all"), which case N
+    # above is the proof of.
+    ('O  refused (item 78, one layer up)  image workflow ran and FAILED',
+     [_RUN_GREEN_MASTER, _RUN_PUBLISH_FAILED], 1, 'finished WITHOUT success'),
+    ('P  passes through   image workflow ran and is green for this sha',
+     [_RUN_GREEN_MASTER, _RUN_PUBLISH_GREEN], 0, 'PASS'),
+]
+
+
+def check_image_workflow_gate(failures):
+    for label, runs, want_code, want_text in IMAGE_GATE_CASES:
+        with injected_ci(runs):
+            code, out = run_guard(['--pre-tag', SHA_GREEN], stub_image=False)
+        ok = (code == want_code) and (want_text in out)
+        print('  %s %-58s exit=%d (want %d)'
+              % ('.' if ok else 'X', label, code, want_code))
+        if not ok:
+            failures.append('%s: exit=%d want=%d, stdout=%r'
+                            % (label.split()[0], code, want_code, out.strip()))
+    # Load-bearing, mirroring case L above: with evaluate_image_workflow
+    # neutered to always PASS, case N (no run at all) would read as green --
+    # if this stops flipping, N is passing for some other reason.
+    with injected_ci([_RUN_GREEN_MASTER]):
+        code, out = run_guard(['--pre-tag', SHA_GREEN], stub_image=True)
+    ok = code == 0
+    print('  %s Q  image-workflow check stubbed off -> case N reads green    '
+          'exit=%d (want 0)' % ('.' if ok else 'X', code))
+    if not ok:
+        failures.append('Q: with evaluate_image_workflow stubbed PASS, case N '
+                        'did not flip to exit 0 (exit=%d) -- case N may be '
+                        'passing for the wrong reason' % code)
 
 
 # The REAL, unmodified v5.16.0 records (gh run view, 2026-09-24): test.yml's
@@ -392,10 +470,14 @@ def main():
     check_unverified_end_to_end(failures)
     check_tag_filter_is_load_bearing(failures)
     check_every_workflow_cases(failures)
+    check_image_workflow_gate(failures)
     check_post_tag_every_workflow(failures)
 
     # Anti-vacuity: the six outcomes must be six DIFFERENT exit codes, and all
     # five documented codes must be reached (4 comes from the subprocess case).
+    # Case G moved from exit 0 to exit 3 in the 2026-09-30 hardening (ancestor
+    # evidence no longer authorizes a PASS), so PASS (0) is now reached only
+    # by case A -- still covered.
     covered = set(seen_codes) | {4}
     if covered != {0, 1, 2, 3, 4}:
         failures.append('exit codes covered %s, want {0,1,2,3,4} -- an outcome '
@@ -403,17 +485,25 @@ def main():
     if len(CASES) != 6:
         failures.append('CASES has %d entries; the guard documents six outcomes'
                         % len(CASES))
+    img_codes = {c[2] for c in IMAGE_GATE_CASES}
+    if img_codes != {0, 1, 7}:
+        failures.append('IMAGE_GATE_CASES exit codes %s, want {0,1,7} -- the '
+                        'image-workflow gate is not shown both ways (rule 14a)'
+                        % sorted(img_codes))
 
     if failures:
         print('\nFAIL: %d case(s)' % len(failures))
         for f in failures:
             print('  ' + f)
         return 1
-    print('\nPASS: 6 outcomes -> exit codes {0,1,2,3,4} (0 twice: plain and '
-          'acked), the tag-run filter shown load-bearing, UNVERIFIED shown '
-          'end-to-end with no injection; item 78: a red/running second '
-          'workflow -> exit 1/2, its tag-push run not counted, the check '
-          'shown load-bearing')
+    print('\nPASS: 6 outcomes -> exit codes {0,1,2,3,4} (case G moved to '
+          'PATHS_IGNORED/ancestor evidence no longer authorizes a tag), the '
+          'tag-run filter shown load-bearing, UNVERIFIED shown end-to-end '
+          'with no injection; item 78: a red/running second workflow -> '
+          'exit 1/2, its tag-push run not counted, the check shown '
+          'load-bearing; owner requirement (b): a sha where the image '
+          'workflow never ran, or ran and failed, is refused (exit 7), a '
+          'green run passes through, shown load-bearing')
     return 0
 
 
