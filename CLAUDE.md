@@ -59,6 +59,8 @@ to the `MPI4NodalQuant` subroutine embedded in
 When you change physics, change it in BOTH or say plainly which one you
 changed and why. The port exists so a fix can be verified twice.
 
+**Cycle ledger (owner, 2026-09-30):** every landed item (PR, release, research row) appends one row to `docs/cycle_ledger.jsonl`: wall time, full sweeps, audit rounds, subagent tokens, what it fixed, what it achieved. The goal is board-clearing throughput; the ledger is how slowness becomes visible.
+
 ## Build and test
 
 ```
