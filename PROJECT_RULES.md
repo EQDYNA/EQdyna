@@ -3093,9 +3093,13 @@ Owner-approved hybrid PR workflow (relayed 2026-09-23; merged as PR #3,
   every case the change touches — not one case, not one backend. The PR body
   states what changed and why, with evidence for each removal. Two gates run
   in parallel: ALL CI checks green (`build`, `e2e-ci-smoke`, and the three
-  `unit-regression` shards — not `build` alone) AND a `victor-reyes` audit of
-  the final diff. Fix on the branch and re-audit only the new commit; loop
-  until both pass. Squash-merge and delete the branch. **Serial**: the next
+  `unit-regression` shards — not `build` alone) AND, only when the diff
+  changes gate or physics logic (a pass/fail judgement, a CI trigger, the
+  change classifier's answer, or what the solver, a case or a reference
+  computes), a `victor-reyes` audit scoped to that diff. A PR that only
+  deletes, renames, or edits comments, docs or rule text needs no audit
+  (owner, 2026-09-30). Fix on the branch and re-audit only the new commit;
+  loop until both pass. Squash-merge and delete the branch. **Serial**: the next
   PR opens only after this one merges.
 - **Everything else pushes directly to master**: docs, board, evidence,
   session logs, rule text, and reference artifacts, after the local fast

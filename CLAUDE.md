@@ -17,8 +17,8 @@ must be able to come out BOTH ways, because two rows were found carrying
 commands that could never go red.
 
 **Rule 25**: a change under `src/`, `testsys/`, or `.github/` reaches master
-only through a merged pull request (branch, CI + `victor-reyes` audit in
-parallel, squash-merge only — repo settings disable merge-commit and
+only through a merged pull request (branch, CI, plus a `victor-reyes` audit
+in parallel only when gate or physics logic changes, squash-merge only — repo settings disable merge-commit and
 rebase-merge — serial). Everything else — docs, board, evidence, session
 logs, rule text — pushes directly to master with no local test run (README
 and docs/user/ run their three content guards first; reference artifacts go
