@@ -1,11 +1,30 @@
 #! /usr/bin/env python3
 """
-Script to launch batch job for EQquasi.
+Submit this case's batch job (batch.hpc, written by case.setup) with sbatch.
+
+Refuses before submitting when batch.hpc names no project account
+(`#SBATCH -A` empty): set par.HPC_account in user_defined_params.py and
+re-run ./case.setup. Exits with sbatch's own status.
 """
 import os
+import re
+import subprocess
+import sys
 
-def _main_func(description):    
-    os.system("sbatch batch.hpc")
 
-if __name__ == "__main__":
-    _main_func(__doc__)
+def main():
+    if not os.path.exists('batch.hpc'):
+        print('case.submit: no batch.hpc here -- run ./case.setup first', file=sys.stderr)
+        return 1
+    m = re.search(r'^#SBATCH -A[ \t]*(\S*)', open('batch.hpc').read(), re.M)
+    if not m or not m.group(1):
+        print('case.submit: batch.hpc has no project account (#SBATCH -A is empty). '
+              'Set par.HPC_account in user_defined_params.py (e.g. "EAR24033"; '
+              '`/usr/local/etc/taccinfo` lists yours on TACC) and re-run ./case.setup.',
+              file=sys.stderr)
+        return 1
+    return subprocess.call(['sbatch', 'batch.hpc'])
+
+
+if __name__ == '__main__':
+    sys.exit(main())

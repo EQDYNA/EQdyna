@@ -313,7 +313,7 @@ class parameters:
     HPC_nnode = round(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, one node has 128 CPUs.
     HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
     HPC_time  = "00:10:00" # WALLTIME, in hh:mm:ss format.
-    HPC_account = "EAR22013" # Project account to be charged SUs against.
+    HPC_account = "" # Project account to be charged SUs against; set yours -- case.submit refuses an empty one.
     HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
     
     ##############################################

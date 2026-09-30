@@ -32,6 +32,25 @@ batch queue, a submittable job script) for the case's own settings.
 `run.sh` clears any previous output, runs the Fortran solver under MPI, and
 then produces `cRuptureDynamics.png`.
 
+## On an HPC cluster (LS6)
+
+`case.setup` also writes `batch.hpc`, a SLURM job script, and `./case.submit`
+submits it:
+
+```
+source install-eqdyna.sh -c ls6        # modules; sbatch passes this environment on
+create.newcase mytpv8 test.tpv8
+cd mytpv8
+# in user_defined_params.py: par.HPC_account = "<your allocation>"
+./case.setup
+./case.submit
+```
+
+`case.submit` refuses a job with no project account. Queue, wall time and
+node count come from `HPC_queue`, `HPC_time` and `HPC_ncpu` (see
+[Parameters](parameters.md)). The batch job runs the Fortran solver with
+`ibrun`, then plots; per-case batch jobs do not run the Python/JAX backend.
+
 ## MPI rank count
 
 The number of MPI ranks is `nx * ny * nz` from `user_defined_params.py`

@@ -348,9 +348,9 @@ Every entry below is an attribute of the `parameters` class in `scripts/defaultP
 
   WALLTIME, in hh:mm:ss format.
 
-* **`HPC_account`** -- default `'EAR22013'`
+* **`HPC_account`** -- default `''`
 
-  Project account to be charged SUs against.
+  Project account to be charged SUs against; set yours -- case.submit refuses an empty one.
 
 * **`HPC_email`** -- default `''`
 
