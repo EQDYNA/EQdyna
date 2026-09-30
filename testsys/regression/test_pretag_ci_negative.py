@@ -3,7 +3,7 @@
 Negative test for rule 15a's pre-tag guard: drive `check_pretag_ci.py` through
 ALL SIX of its documented outcomes and assert each one (rules 2, 3).
 
-WHY THIS EXISTS. The guard (`check_pretag_ci.py`, landed `a976ec7`) was written
+WHY THIS EXISTS. The guard (`check_pretag_ci.py`, landed `d3e9a34`) was written
 after the v5.13.1 violation, and until 2026-09-21 it had never been shown to
 FAIL where it should. It was then driven by hand across its six outcomes
 against this repo's REAL CI history -- a good verification, and a perishable
@@ -79,11 +79,11 @@ if ROOT not in sys.path:
 from testsys import ci_status  # noqa: E402
 
 # --- the real commits these outcomes are driven from -----------------------
-SHA_FAILED_CI = 'c782c2e15e0403cb03e7d4a1ece8a24fc6c63739'   # CI ran, failed
-SHA_GREEN = '813b952df8c7f78f57b7b1b21a315f37df8328b8'       # CI ran, green
-SHA_PATHS_IGNORED = 'dfee14d2eda4d16c407a9bb94ceffd52fe6544d7'  # v5.13.1's commit
-SHA_ACK_EVIDENCE = 'e9c3fa2ee337cd78fc2963b12b6db8421a16fb69'   # its parent
-SHA_CODE_NO_RUN = '01a1040'   # touches src/python -- CAN trigger CI, here has no run
+SHA_FAILED_CI = '675115b2b115748ec36a4e637d8ac94b164e5be1'   # CI ran, failed
+SHA_GREEN = '8f6ff075bf5b9ea5b88a0c4e927abded13589324'       # CI ran, green
+SHA_PATHS_IGNORED = 'b3697f8ddea84bae739317c87c0776d6b1d31e08'  # v5.13.1's commit
+SHA_ACK_EVIDENCE = '42da61e20f98d1850b9bc215fb0e64313ee78beb'   # its parent
+SHA_CODE_NO_RUN = 'dbe6bf3'   # touches src/python -- CAN trigger CI, here has no run
 
 # --- real run records, captured 2026-09-22 (see PROVENANCE above) ----------
 _RUN_FAILED = {
@@ -116,7 +116,7 @@ _RUN_ACK_PARENT = {
     'headSha': SHA_ACK_EVIDENCE, 'status': 'completed'}
 
 # Item 78 (2026-09-24): a SECOND workflow's run at the same sha. Modelled on
-# real run 35819232914 ('Publish EQdyna Docker image', failure, 894cdc1 =
+# real run 35819232914 ('Publish EQdyna Docker image', failure, d38cd7b =
 # v5.16.0) -- DISCLOSED CONSTRUCTION: that real run was triggered by the tag
 # push (headBranch 'v5.16.0'), which the pre-tag gate must exclude, so here it
 # is re-pointed to SHA_GREEN with headBranch 'master', i.e. the shape a
@@ -270,7 +270,7 @@ def check_every_workflow_cases(failures):
 
 # The REAL, unmodified v5.16.0 records (gh run view, 2026-09-24): test.yml's
 # tag-push run green, publish.yml's tag-push run red.
-SHA_V5160 = '894cdc1560f2ef3cbaa379f886c41bd60598a474'
+SHA_V5160 = 'd38cd7bfe32df7a453bc2f24073302fbca9e6062'
 _RUN_V5160_PUBLISH = {
     'workflowName': 'Publish EQdyna Docker image', 'conclusion': 'failure',
     'createdAt': '2026-09-23T04:39:47Z', 'databaseId': 35819232914,
@@ -307,7 +307,7 @@ def check_post_tag_every_workflow(failures):
 
 def check_tag_filter_is_load_bearing(failures):
     """The v5.13.1 violation, reproduced: with the tag-run filter disabled the
-    guard reads dfee14d as green off the run its own tag push created. This is
+    guard reads b3697f8 as green off the run its own tag push created. This is
     the defect rule 15a exists to close; if this case stops flipping, case E is
     passing for some other reason and has gone vacuous."""
     with injected_ci([_RUN_V5131_TAGPUSH], honour_tags=False):

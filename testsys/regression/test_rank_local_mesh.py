@@ -10,7 +10,7 @@ GENERATES its box (eqdyna3d.build_solver_state(case_dir, part=...), the
 meshgen.f90 way), and three failure classes open up that the frt gate cannot
 reliably see -- the worst being a wrong equation number or boundary
 classification far from the fault, whose effect never reaches a fault node in
-a short gated run (design 56d2401, section 1.2, class C). This test observes
+a short gated run (design 9d189d7, section 1.2, class C). This test observes
 the mesh DIRECTLY: it builds the serial mesh once and every rank's box of
 every MPI4NodalQuant.DECOMP decomposition in one process, maps each local node
 to its serial id analytically (grid offsets for regular nodes, the slave's

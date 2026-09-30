@@ -972,7 +972,7 @@ def capture_start_tree_state():
     every run) and docs/evidence/sweep-<sha>/ (a new directory every release
     run) are all tracked paths -- none is in .gitignore -- so `git status
     --porcelain` at the end of any real sweep is never empty. Proof:
-    docs/evidence/sweep-679d8ad/summary.json, committed in f9c055e, reads
+    docs/evidence/sweep-737270d/summary.json, committed in ea775df, reads
     tree_clean: False from a run whose `git status --porcelain` was 0 lines
     when it STARTED.
 

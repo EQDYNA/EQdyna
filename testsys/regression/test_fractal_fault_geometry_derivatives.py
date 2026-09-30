@@ -6,7 +6,7 @@ Regression guard (PROJECT_RULES.md rule 10) for the GENERATED fault surface:
 the surface column IT WROTE, taken at THAT SURFACE'S OWN dx and dz.
 
 WHY A SEPARATE FILE FROM test_rough_fault_normal_consistency.py. That guard is
-the incident record for the SHIPPED SCEC surface (702b56b): its fixture, its
+the incident record for the SHIPPED SCEC surface (de197cc): its fixture, its
 constants (OFFICIAL_DX, GATE_DX, TPV29/30's R, a, B11/B33/B13) and all six of
 its checks are TPV29/TPV30's, and it reaches them through `case_input/` on
 disk. This guard answers the same QUESTION -- is a derivative column the
@@ -43,7 +43,7 @@ the %f write precision of these files.
      Asserted: type 2's surface is rough, type 1's (at dip 90) is flat, and the
      two differ.
   3. THE CHECK DISCRIMINATES. The same columns compared against a gradient
-     taken at the WRONG spacing (2dx / 2dz -- the defect class 702b56b paid
+     taken at the WRONG spacing (2dx / 2dz -- the defect class de197cc paid
      for) miss by orders of magnitude more than the bound, so this guard cannot
      pass vacuously.
   4. THE PRODUCTION GATE ACCEPTS THE GENERATED FILE, without case.setup:

@@ -253,7 +253,7 @@ STATION_ZERO_FLOOR = 1e-6
 # on ANY platform (tpv8's CI-runner jax cell reads 1.72e-10, run 36079252531,
 # vs 1.0e-10 locally), i.e. 1e-7. 1e-8 would leave only ~58x over what CI
 # already shows. Measured 2026-09-24 by the conductor on branch
-# wei/row114-station-output (the port rebased onto master 9444d9a, 22a sign
+# wei/row114-station-output (the port rebased onto master 9e80372, 22a sign
 # wired), `python3 testsys/run.py e2e` at load ~35, jax cells scored by
 # compare.station_gate itself against the fortran cells' own files -- the
 # files committed as the references. Fortran against its own reference reads
@@ -284,7 +284,7 @@ STATION_BOUND = {
 STATION_UNSUPPORTED = {
     ('test.drv.a6', 'python-jax'): (
         'measured chaotic (2026-09-24, wei/row114-station-output at master '
-        '9444d9a): python-jax scores e=36.5 against the fortran reference, '
+        '9e80372): python-jax scores e=36.5 against the fortran reference, '
         "on faultst000dp075's h-slip-rate -- one backend has ruptured the "
         'station inside the 5 s window and the other has not, the same '
         'arrival bistability DRV_A6/flip-budget exists for at the frt level. '
@@ -429,12 +429,12 @@ CASE_BOUND = {
     'test.meng2023cb': 1e-6,   # worst 5.05e-09 * ~121.5 = 6.1e-7; same bound.
     'test.tpv30': 1e-10,       # registered 2026-09-23 (owner gating decision), 5 s / 500 m:
                                # observed python-jax 1.909216e-14 vs the 5 s Fortran
-                               # reference (51b7649), twice (15:34 at 95d4220, 22:27 at
-                               # 51b7649); * ~121.5 = 2.3e-12, rounded UP to tpv29's
+                               # reference (a9df42d), twice (15:34 at af26591, 22:27 at
+                               # a9df42d); * ~121.5 = 2.3e-12, rounded UP to tpv29's
                                # 1e-10: two orders above that, ~5200x headroom (tpv29
                                # carries ~780x), kept because it is the near-epsilon
                                # bound already in use. Sensitivity: with
-                               # e1888e7 (PML-node gravity) reverted the 5 s cell reads
+                               # 5b283cc (PML-node gravity) reverted the 5 s cell reads
                                # 1.202240e+08 -- caught by 18 orders of magnitude.
     'test.tpv29': 1e-10,       # worst 1.28e-13 * ~121.5 = 1.6e-11; rounded UP
                                # to 1e-10 (headroom ~780x, not the smaller
@@ -470,7 +470,7 @@ CASE_BOUND = {
 }
 # test.tpv30 was held out of the gate from 2026-09-17 to 2026-09-23 by a real
 # divergence (numpy==jax, both != Fortran by up to 4.0e8 Pa at t=20 s). It was
-# root-caused and fixed in e1888e7: a PML node never received its own
+# root-caused and fixed in 5b283cc: a PML node never received its own
 # elements' gravity. It is registered above, at 5 s, on the owner's decision.
 
 GATE = {

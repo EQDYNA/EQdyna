@@ -2,7 +2,7 @@
 """
 Strong-scaling measurement (report-only; never a red/green gate).
 pathway_forward item 33. Companion to `run_numa_scaling.py` (the JAX-only
-locality tool fixed earlier this session, commit 03ba055/0b4684c) -- this
+locality tool fixed earlier this session, commit 4d3241e/01d4f30) -- this
 tool covers BOTH python backends (numpy and jax) and Fortran MPI, over the
 full 1..32-core range, and follows the same pattern for the reasons below.
 

@@ -107,14 +107,14 @@ def negative_controls():
         'board reference': clean + '\nTracked in pathway_forward.md.\n',
         'source line': clean + '\nSee meshgen.f90:612 for details.\n',
         'agent name': clean + '\nPorted by mira.\n',
-        'sha': clean + '\nReference `51b7649`.\n',
+        'sha': clean + '\nReference `a9df42d`.\n',
         'two H1': clean + '\n# Second\n',
         'H4': clean + '\n#### Deep\n',
         'long bullet': clean + '\n* ' + 'x' * MAX_BULLET_CHARS + '\n',
         'file:line in inline code': clean + '\nSee `meshgen.f90:612`.\n',
         'md:line': clean + '\nSee README.md:40.\n',
         'notes ref': clean + '\nSee `docs/notes/NOTES_tpv30_gate.md`.\n',
-        'bare sha': clean + '\nFixed in 51b7649 last week.\n',
+        'bare sha': clean + '\nFixed in a9df42d last week.\n',
         'gate internals': clean + '\nCompared at `CASE_BOUND`.\n',
     }
     legit = clean + ('\nChecksum md5 f6df5ececc9d95d0c6db43c9ba0c3c6e.\nWaveforms can be fetched from IRIS; the run used a Mira '

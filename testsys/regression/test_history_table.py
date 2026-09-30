@@ -160,7 +160,7 @@ and both forks; item 36 decided against a history rewrite and that stands.
 (That count is a dated measurement, deliberately not regenerated: a document
 that re-derives the repo's own size goes stale on the next commit, and a
 guard that fails on every commit teaches people to ignore it. This file
-found that out the hard way at 667dba0.) `git notes` was
+found that out the hard way at 36f2874.) `git notes` was
 the other cheap option and was rejected: notes live in a ref most clones
 never fetch and most viewers never show.
 

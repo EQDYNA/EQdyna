@@ -101,7 +101,7 @@ def test_mpi_path_still_refuses_numpy():
 
 # ---------------------------------------------------------------------------
 # THE FORTRAN DECOMPOSITION (meshgen.f90 getLocalOneDimCoorArrAndSize /
-# calcXyzMPIId), U1/U2 of design 56d2401. Tables below are HAND-DERIVED from
+# calcXyzMPIId), U1/U2 of design 9d189d7. Tables below are HAND-DERIVED from
 # the Fortran formulas, not produced by the code under test.
 # ---------------------------------------------------------------------------
 # (global nodes, ranks) -> [(local size, 0-based offset) per rank]

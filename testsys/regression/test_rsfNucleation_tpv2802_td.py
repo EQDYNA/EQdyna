@@ -1,9 +1,9 @@
 #! /usr/bin/env python3
 """
-Regression guard (4465c17's retry precondition) for `rsfNucleation`'s
+Regression guard (fc91395's retry precondition) for `rsfNucleation`'s
 TPV==2802 branch (drv.a6, C_nuclea=1) losing `Td` from its call.
 
-Background: refactor round 2 (aca6979) dropped `Td` from
+Background: refactor round 2 (dae1c5a) dropped `Td` from
 `rsfNucleation`'s signature (faulting.py:333, was
 `def rsfNucleation(xp, finv, fric, Tn, Ts, Td, srS, srD, timeElapsed, nt)`)
 and from its caller in `solveRSF` (faulting.py:477) while the TPV==2802
@@ -11,8 +11,8 @@ branch's body (faulting.py:351-363, mirroring faulting.f90's `elseif
 (TPV == 2802)` arm at faulting.f90:367-379) still evaluates
 `xp.sqrt(Ts ** 2 + Td ** 2)` -- NameError on step 1 of every drv.a6 python
 cell. Nothing caught it: drv.a6's python cells are not in CI_CELLS, and the
-landing check ran a case without RSF nucleation. Commit 4465c17 reverted
-aca6979 and recorded the retry precondition this file satisfies: "a
+landing check ran a case without RSF nucleation. Commit fc91395 reverted
+dae1c5a and recorded the retry precondition this file satisfies: "a
 unit/regression test that calls rsfNucleation with TPV=2802".
 
 WHY DIRECT CALL, NOT A CALLER: `rsfNucleation`'s signature (ten plain
@@ -170,7 +170,7 @@ def _check_nt(backend_name, nt, label):
 
 
 def main():
-    print('Regression guard: rsfNucleation TPV==2802 (4465c17 retry precondition)')
+    print('Regression guard: rsfNucleation TPV==2802 (fc91395 retry precondition)')
     fails = []
     for backend_name in ('numpy', 'jax'):
         for nt, label in ((1, 'nt=1 (first step)'), (2, 'nt=2 (not first step)')):
