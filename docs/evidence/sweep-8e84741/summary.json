@@ -1,5 +1,5 @@
 {
-  "sha": "ef2f0b29b3bb41eb088c2b1072a66ecf5f6c57a1",
+  "sha": "8e84741fd90ebdb1019a06908f77c19d5fb957b7",
   "tree_clean": true,
   "dirty_at_start": [],
   "term": 5.0,
@@ -169,5 +169,6 @@
     }
   ],
   "started_utc": "2026-09-26T04:51:46.585163+00:00",
-  "finished_utc": "2026-09-26T05:01:00.921847+00:00"
+  "finished_utc": "2026-09-26T05:01:00.921847+00:00",
+  "sha_pre_rewrite": "ef2f0b29b3bb41eb088c2b1072a66ecf5f6c57a1"
 }
