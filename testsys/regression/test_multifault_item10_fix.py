@@ -65,7 +65,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FSRC = os.path.join(ROOT, 'src', 'fortran')
 
 sys.path.insert(0, ROOT)
-from testsys.common import MACHINE, stage, make_var  # noqa: E402
+from testsys.common import MACHINE, make_var  # noqa: E402
 
 # Every production object file EXCEPT eqdyna3d.o (which carries `program
 # EQdyna` -- our driver supplies its own program unit instead). Confirmed by
