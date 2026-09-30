@@ -73,7 +73,7 @@ REPO_ROOT = os.path.dirname(TESTSYS)
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from testsys import common, compare, frt_canonical, matrix, runlock  # noqa: E402
+from testsys import common, compare, content_key, frt_canonical, matrix, runlock  # noqa: E402
 sys.path.insert(0, TESTSYS)  # testsys/ itself (profile_record.py lives there)
 import profile_record  # noqa: E402  (append-only per-rank profile totals)
 
@@ -1007,8 +1007,16 @@ def capture_start_tree_state():
     return (len(dirty_lines) == 0), dirty_lines
 
 
+def head_sha():
+    """The checkout's HEAD sha, or '' if git cannot say."""
+    r = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', 'HEAD'],
+                       capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ''
+
+
 def write_release_evidence(results, is_release, explicit, started_utc,
-                           finished_utc, tree_clean, dirty_at_start):
+                           finished_utc, tree_clean, dirty_at_start,
+                           sha_at_start=None):
     """docs/evidence/sweep-<shortsha>/summary.json -- written only for a
     default `--release` selection (no --cases/--backends), i.e. the release
     tier sweeping the full runnable matrix.
@@ -1027,12 +1035,26 @@ def write_release_evidence(results, is_release, explicit, started_utc,
     GATE_TERM_S every cell in this sweep actually ran at, not a 'full'/'gate'
     mode string -- there is no second mode left to name. `dirty_at_start` is
     a new field (this fix): extending, not renaming, per that same contract.
+    `content_key` (item 2b) is another such extension: the sha256 over every
+    tracked path's blob outside content_key.ALLOWED_* at this sweep's own
+    `sha`, computed while that commit still certainly exists in this
+    checkout -- see testsys/content_key.py's module docstring for why a
+    reader compares this recorded string rather than recomputing it from a
+    (possibly squashed-away or rewritten) swept sha.
     """
     if not is_release or explicit:
         return
     sha_r = subprocess.run(['git', '-C', REPO_ROOT, 'rev-parse', 'HEAD'],
                            capture_output=True, text=True)
     sha = sha_r.stdout.strip()
+    # HEAD must not have moved during the sweep (PR #63 audit): `sha` and
+    # `content_key` are read here, at write time, so a commit made while the
+    # cells ran would otherwise be credited as swept although it never was.
+    if sha_at_start is not None and sha != sha_at_start:
+        raise RuntimeError(
+            'write_release_evidence: HEAD moved during the sweep (%s at start, '
+            '%s now) -- refusing to credit an unswept commit; re-run the '
+            'release sweep on a quiet checkout' % (sha_at_start[:12], sha[:12]))
     if sha_r.returncode != 0 or len(sha) != 40:
         raise RuntimeError(
             'write_release_evidence: `git rev-parse HEAD` did not return a '
@@ -1050,7 +1072,8 @@ def write_release_evidence(results, is_release, explicit, started_utc,
     payload = dict(sha=sha, tree_clean=tree_clean, dirty_at_start=dirty_at_start,
                   term=matrix.GATE_TERM_S,
                   n_runnable=len(results), n_success=n_success, cells=cells,
-                  started_utc=started_utc, finished_utc=finished_utc)
+                  started_utc=started_utc, finished_utc=finished_utc,
+                  content_key=content_key.compute(REPO_ROOT, sha))
     out_dir = os.path.join(REPO_ROOT, 'docs', 'evidence', 'sweep-%s' % sha[:7])
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, 'summary.json')
@@ -1137,6 +1160,7 @@ def main(argv=None):
     # it, not as this sweep leaves it. See capture_start_tree_state()'s
     # docstring for why end-of-run capture (the prior bug) always read dirty.
     tree_clean_at_start, dirty_at_start = capture_start_tree_state()
+    sha_at_start = head_sha()
     if not tree_clean_at_start:
         print('e2e: tree was NOT clean at sweep start (%d path(s)) -- a '
               '--release run from here will record tree_clean=False:'
@@ -1467,7 +1491,8 @@ def main(argv=None):
     # function's own docstring. Written before the pass/fail return below so
     # a failed release sweep still leaves its evidence on disk.
     write_release_evidence(results, args.release, explicit, started_utc,
-                           finished_utc, tree_clean_at_start, dirty_at_start)
+                           finished_utc, tree_clean_at_start, dirty_at_start,
+                           sha_at_start=sha_at_start or None)
     if len(results) != len(runnable):
         print('e2e: FAIL - %d cell(s) were selected but %d produced a verdict; '
               'a cell that produced no verdict is a failure'
