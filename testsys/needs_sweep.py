@@ -49,7 +49,10 @@ def changed_paths(range_spec, cwd=None):
     """Every path touched anywhere across `range_spec` (a two-dot
     `base..head` git range), resolved against `cwd` (default: the caller's
     own working directory -- see git() above)."""
-    out = git('diff', '--name-only', range_spec, cwd=cwd)
+    # --no-renames (same guard as pr_policy.commit_files): with rename
+    # detection on, a PHYSICS file moved to an INTERNAL path reports only
+    # its NEW name and the range would read as fast-tier-only.
+    out = git('diff', '--name-only', '--no-renames', range_spec, cwd=cwd)
     return sorted(set(p for p in out.splitlines() if p.strip()))
 
 

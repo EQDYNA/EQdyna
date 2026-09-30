@@ -106,3 +106,20 @@ def test_cli_bad_range_fails_toward_full_sweep_needed(tiny_repo):
     r = subprocess.run([sys.executable, NEEDS_SWEEP, '--strict', 'no-such-ref..HEAD'],
                        cwd=tiny_repo, capture_output=True, text=True)
     assert r.returncode == 1
+
+
+def test_cli_rename_out_of_physics_path_still_needs_sweep(tiny_repo):
+    """PR #62 audit: a src/ file renamed to docs/ must report the OLD path
+    (--no-renames); with rename detection it read as fast-tier-only."""
+    (tiny_repo / 'src').mkdir()
+    (tiny_repo / 'src' / 'a.f90').write_text('x\n')
+    _git(tiny_repo, 'add', '.')
+    _git(tiny_repo, 'commit', '-qm', 'add src')
+    _git(tiny_repo, 'branch', '-f', 'base')
+    (tiny_repo / 'docs').mkdir()
+    _git(tiny_repo, 'mv', 'src/a.f90', 'docs/a.f90')
+    _git(tiny_repo, 'commit', '-qm', 'move out')
+    r = subprocess.run([sys.executable, NEEDS_SWEEP, 'base..HEAD'],
+                       cwd=tiny_repo, capture_output=True, text=True)
+    assert r.stdout.strip().startswith('FULL SWEEP NEEDED'), r.stdout
+    assert 'src/a.f90' in r.stdout
