@@ -381,7 +381,7 @@ subroutine stopRoughGeometry(reason)
     integer (kind = 4) :: iMPIerr
 
     if (me == masterProcsId) then
-        write(*,*) 'read_fault_rough_geometry: bFault_Rough_Geometry.txt is not usable for this mesh.'
+        write(*,'(1X,A)') 'read_fault_rough_geometry: bFault_Rough_Geometry.txt is not usable for this mesh.'
         write(*,*) '  ', reason
         write(*,*) '  Regenerate it for this case (case.setup, which validates it, or'
         write(*,*) '  scripts/convertFaultGeometry for a supplied surface), or fix par so'

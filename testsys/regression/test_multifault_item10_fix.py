@@ -63,7 +63,9 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FSRC = os.path.join(ROOT, 'src', 'fortran')
-MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
+
+sys.path.insert(0, ROOT)
+from testsys.common import MACHINE, make_var  # noqa: E402
 
 # Every production object file EXCEPT eqdyna3d.o (which carries `program
 # EQdyna` -- our driver supplies its own program unit instead). Confirmed by
@@ -82,7 +84,7 @@ OBJS = [
     'library_output.o', 'netcdf_io.o',
 ]
 
-NETCDF_LIB = ['-L', '/usr/lib/x86_64-linux-gnu', '-lnetcdf', '-lnetcdff']
+NETCDF_LIB = make_var('NETCDF_LIB')
 
 # Driver: simulates meshgen's `do ift=1,ntotft: call MPI4arn(...)` loop for
 # two faults back to back. npx=npy=npz=1 so the cross-rank exchange branches

@@ -421,11 +421,11 @@ subroutine checkFaultMPIAlignment
       !             (symmetric-y case, vertical fault: serial == xsplit ==
       !             zsplit == ysplit hypocenter traction, exactly).
       if (hitAnywhere .and. me == masterProcsId) then
-          write(*,*) 'checkFaultMPIAlignment: NOTICE -- a y MPI boundary carries fault nodes for a fault whose'
-          write(*,*) '  NOMINAL GRID y-extent is non-zero (wedge degeneration, C_degen>3). That is the DIVIDE'
-          write(*,*) '  case and is handled; audited 2026-09-16, tractions identical to an unsplit run to 1.0e-08.'
-          write(*,*) '  NOTE: a fault built by insertion (insertFaultType>0) has ZERO nominal y-extent even when'
-          write(*,*) '  it dips steeply, and takes the DUPLICATE path instead -- the dip is not the discriminator.'
+          write(*,'(1X,A)') 'checkFaultMPIAlignment: NOTICE -- a y MPI boundary carries fault nodes for a fault whose'
+          write(*,'(1X,A)') '  NOMINAL GRID y-extent is non-zero (wedge degeneration, C_degen>3). That is the DIVIDE'
+          write(*,'(1X,A)') '  case and is handled; audited 2026-09-16, tractions identical to an unsplit run to 1.0e-08.'
+          write(*,'(1X,A)') '  NOTE: a fault built by insertion (insertFaultType>0) has ZERO nominal y-extent even when'
+          write(*,'(1X,A)') '  it dips steeply, and takes the DUPLICATE path instead -- the dip is not the discriminator.'
           write(*,*) '  fltxyz(1,2)=', fltxyz(1,2,ntotft), ' fltxyz(2,2)=', fltxyz(2,2,ntotft)
           write(*,*) '  npx,npy,npz =', npx, npy, npz
       endif

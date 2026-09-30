@@ -66,13 +66,15 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FSRC = os.path.join(ROOT, 'src', 'fortran')
+
+sys.path.insert(0, ROOT)
+from testsys.common import MACHINE  # noqa: E402
 PYSRC = os.path.join(ROOT, 'src', 'python')
 sys.path.insert(0, PYSRC)
 
 CASE = 'test.tpv8'
 RANKS = 4
 DECOMP = (2, 2, 1)
-MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 
 # The one requested off-fault station (1-indexed, case_input/test.tpv8's

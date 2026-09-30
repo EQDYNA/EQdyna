@@ -139,7 +139,10 @@ def check_buckets(context, total_s, buckets_s, unaccounted_s,
 
     bucket_sum = sum(buckets_s.values())
     gap = total_s - bucket_sum
-    if not math.isclose(unaccounted_s, gap, rel_tol=FLOAT_TOL, abs_tol=FLOAT_TOL):
+    # Fortran writes every value with 9 decimals (jsonNum F24.9), so the remainder recomputed
+    # from rounded parts can differ by half a unit per value: 8 * 5e-10 here, above FLOAT_TOL.
+    rounding = (len(buckets_s) + 2) * 5e-10
+    if not math.isclose(unaccounted_s, gap, rel_tol=FLOAT_TOL, abs_tol=max(FLOAT_TOL, rounding)):
         raise ValueError(
             '%s: unaccounted_s %.9g does not equal total_s - sum(buckets_s) = '
             '%.9g (to float precision, tol=%.1e) -- unaccounted_s must be the '
