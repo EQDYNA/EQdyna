@@ -328,9 +328,26 @@ def run_regression():
     """Each regression/test_*.py is a standalone script with its own
     SUCCESS/FAIL banner and sys.exit (matching the shape of the incident
     it guards) rather than pytest functions -- run each one and gate on
-    its exit code."""
+    its exit code.
+
+    EXCLUDES testsys.regression_sweep_exclusions.EXCLUDED_FROM_SWEEP
+    (2026-09-30, owner requirement (c)): test_release_complete.py evaluates
+    its assertions against a tag that already exists -- meaningful only at
+    the moment of auditing a just-cut release, never at an arbitrary later
+    commit. Sweeping it in here unconditionally meant it ran on EVERY
+    commit and PR (and, via this exact command, inside
+    .github/workflows/publish.yml's build-and-push gate too), and once a
+    release's post-tag board/Release steps land after its tag (rule 8: a
+    pushed tag's tree is immutable), two of its checks fail FOREVER for
+    that tag's own CI run -- which then poisoned every commit after it.
+    It stays a real, directly-runnable test_*.py file; it is simply not
+    part of THIS sweep. Paired with check_pretag_ci.py (rule 15/25) as the
+    explicit release-time check instead."""
+    from testsys import regression_sweep_exclusions
     print('\n==== testsys: regression ====')
-    scripts = sorted(glob.glob(os.path.join(TESTSYS, 'regression', 'test_*.py')))
+    scripts = sorted(
+        p for p in glob.glob(os.path.join(TESTSYS, 'regression', 'test_*.py'))
+        if os.path.basename(p) not in regression_sweep_exclusions.EXCLUDED_FROM_SWEEP)
     if not scripts:
         print('regression: FAIL - no regression scripts found (misconfigured testsys/)')
         return 1

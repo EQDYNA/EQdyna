@@ -22,7 +22,9 @@ rather than folding the paths-ignore case into a generic "no evidence yet".
 
 Everything network-touching here can fail to mean either PASS or FAIL --
 `gh` missing, unauthenticated, or the network down. Per the precedent in
-test_release_complete.py's check_network_side/check_tag_is_annotated,
+test_release_complete.py's check_tag_pushed_to_remote/check_tag_is_annotated
+(the former, `check_github_release_published`'s sibling, split out of what
+was one function, `check_network_side`, 2026-09-30),
 "I could not check this" gets its own outcome (UNVERIFIED), never PASS and
 never FAIL by default.
 
@@ -262,8 +264,9 @@ def is_tag_ref(name):
     actually decided; `git ls-remote --exit-code origin refs/tags/<name>`
     exits 0 if it is, 2 if it is not, and anything else means the network
     call itself failed (raised as GhUnavailable, not treated as "not a
-    tag" -- the same reasoning check_network_side already applies to a
-    failed remote round-trip).
+    tag" -- the same reasoning test_release_complete.py's
+    check_tag_pushed_to_remote already applies to a failed remote
+    round-trip).
     """
     if name in _TAG_REF_CACHE:
         return _TAG_REF_CACHE[name]

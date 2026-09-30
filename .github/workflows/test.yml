@@ -301,9 +301,17 @@ jobs:
 
     - name: Run ci_shard ${{ matrix.shard }} (unit + regression, sharded)
       env:
-        # test_release_complete.py's check_network_side calls `gh release
-        # view` to confirm rule 15 step 9 (gh release create) actually ran.
-        # Without a token it reports UNVERIFIED rather than checking anything.
+        # Several sharded regression scripts (test_pretag_ci_negative.py,
+        # test_publish_image_fetch_depth.py, check_pretag_ci.py and others --
+        # see ci_status.py) call `gh` to check CI/tag state. Without a token
+        # they report UNVERIFIED rather than checking anything.
+        # test_release_complete.py is NOT one of them: it is excluded from
+        # this sweep entirely (testsys/regression_sweep_exclusions.py,
+        # 2026-09-30) because its checks are meaningful only when auditing an
+        # already-tagged release, not on every commit/PR -- see that module's
+        # docstring for the incident (v5.20.2 shipped with no Docker image
+        # because this job used to run it here and its GitHub-Release check
+        # can never pass at tag-push time by construction).
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         export EQDYNAROOT=$(pwd)

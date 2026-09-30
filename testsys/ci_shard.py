@@ -25,11 +25,28 @@ WHAT THIS IS.
                        unit tier if this is UNIT_PYTEST_SHARD, and returns
                        the OR of every exit code.
   `verify`          -- the partition guard: every test_*.py that actually
-                       exists on disk is in EXACTLY ONE shard. Prints the
-                       counts it compared (files on disk, files assigned,
-                       files duplicated/missing/stale) -- never a bare
-                       pass/fail (this repo's own papercuts.md: "a green
-                       result that tested nothing").
+                       exists on disk, MINUS the explicit
+                       regression_sweep_exclusions.EXCLUDED_FROM_SWEEP set
+                       (see below), is in EXACTLY ONE shard, and no excluded
+                       script is assigned to any shard at all. Prints the
+                       counts it compared (files on disk, files excluded,
+                       files assigned, files duplicated/missing/stale) --
+                       never a bare pass/fail (this repo's own
+                       papercuts.md: "a green result that tested nothing").
+
+EXCLUDED_FROM_SWEEP (2026-09-30, owner requirement (c)):
+  `testsys/regression_sweep_exclusions.py`'s `EXCLUDED_FROM_SWEEP` names the
+  regression script(s) that are release-PROCESS checks, not per-commit
+  regression guards (currently just `test_release_complete.py` -- see that
+  module's own docstring for the 2026-09-30 incident this closes). Sharding
+  this file into a CI shard would put it back in a job that runs on every
+  commit and every PR, which is exactly the failure mode being fixed:
+  `test_release_complete.py`'s assertions are meaningful only at the moment
+  of auditing a release ALREADY tagged, and permanently fail between
+  releases. `verify()` therefore checks it is in NO shard, and
+  `discover_regression_scripts()` still reports it as present on disk (it
+  is a real file) so a human reading `verify`'s printed counts sees it
+  accounted for, not silently vanished.
 
 WHY STATIC RATHER THAN AUTO-BALANCED AT RUNTIME. A shard assignment that
 silently re-balances itself when a script's runtime drifts would also
@@ -53,6 +70,12 @@ import sys
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(TESTSYS)
 REGRESSION_DIR = os.path.join(TESTSYS, "regression")
+
+# Single-file import, no transitive dependency on run.py/matrix.py/run_e2e.py
+# -- see that module's own docstring and this file's module docstring above.
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+from testsys import regression_sweep_exclusions  # noqa: E402
 
 # Hand-balanced against a real timed run of every regression script on this
 # box (numactl-pinned, mpirun cells at 4 ranks), 2026-09-23. Totals: shard 1
@@ -216,8 +239,11 @@ SHARDS = {
         "test_precommit_board_separation_guard.py",
         "test_precommit_main_checkout_guard.py",
         "test_pretag_sweep_negative.py",
+        "test_pretag_release_docs_negative.py",  # added 2026-09-30 (owner
+                                 # requirement (b)/(d)): 5 sandbox git-commit
+                                 # scenarios, well under 1 s, same shape as
+                                 # test_pretag_sweep_negative.py above.
         "test_publish_image_fetch_depth.py",
-        "test_release_complete.py",
         "test_station_header_location_stamp.py",
         "test_stress_i0_carry_aliasing.py",
         "test_version_banner.py",
@@ -240,10 +266,17 @@ def discover_regression_scripts():
 
 
 def verify():
-    """Partition guard: every script on disk is in EXACTLY ONE shard.
-    Returns (ok: bool, message: str). message always states the counts
-    compared, per this repo's own papercuts.md rule."""
+    """Partition guard: every script on disk, MINUS the explicit
+    regression_sweep_exclusions.EXCLUDED_FROM_SWEEP set, is in EXACTLY ONE
+    shard -- and no excluded script is assigned to ANY shard (owner
+    requirement (c): a release-process check like test_release_complete.py
+    must not be sharded back into a per-commit CI job). Returns (ok: bool,
+    message: str). message always states the counts compared, per this
+    repo's own papercuts.md rule -- excluded=N printed explicitly, not
+    folded silently into missing/stale."""
     on_disk = set(discover_regression_scripts())
+    excluded = set(regression_sweep_exclusions.EXCLUDED_FROM_SWEEP)
+    swept_on_disk = on_disk - excluded
     assigned_lists = [name for names in SHARDS.values() for name in names]
     assigned = set(assigned_lists)
 
@@ -252,20 +285,34 @@ def verify():
         dupes = sorted({n for n in assigned_lists if assigned_lists.count(n) > 1})
         problems.append("duplicated across shards (%d): %s" % (len(dupes), dupes))
 
-    missing = sorted(on_disk - assigned)
+    missing = sorted(swept_on_disk - assigned)
     if missing:
-        problems.append("on disk but in NO shard (%d): %s" % (len(missing), missing))
+        problems.append("on disk (swept) but in NO shard (%d): %s" % (len(missing), missing))
 
-    stale = sorted(assigned - on_disk)
+    stale = sorted(assigned - swept_on_disk)
     if stale:
-        problems.append("assigned to a shard but no longer on disk (%d): %s" % (len(stale), stale))
+        problems.append("assigned to a shard but no longer on disk, or excluded from the "
+                        "sweep (%d): %s" % (len(stale), stale))
 
-    msg = ("on-disk=%d assigned=%d(across %d shards, %d unique) missing=%d stale=%d"
-           % (len(on_disk), len(assigned_lists), len(SHARDS), len(assigned),
-              len(missing), len(stale)))
+    wrongly_assigned = sorted(excluded & assigned)
+    if wrongly_assigned:
+        problems.append("EXCLUDED_FROM_SWEEP script(s) assigned to a shard anyway (%d): %s "
+                        "-- this would re-run a release-process check on every commit's CI"
+                        % (len(wrongly_assigned), wrongly_assigned))
+
+    not_on_disk_excluded = sorted(excluded - on_disk)
+    if not_on_disk_excluded:
+        problems.append("EXCLUDED_FROM_SWEEP names a file no longer on disk (%d): %s -- "
+                        "stale exclusion entry" % (len(not_on_disk_excluded), not_on_disk_excluded))
+
+    msg = ("on-disk=%d excluded=%d swept=%d assigned=%d(across %d shards, %d unique) "
+           "missing=%d stale=%d"
+           % (len(on_disk), len(excluded), len(swept_on_disk), len(assigned_lists),
+              len(SHARDS), len(assigned), len(missing), len(stale)))
     if problems:
         return False, msg + " -- " + "; ".join(problems)
-    return True, msg + " -- partition OK (every on-disk script in exactly one shard)"
+    return True, msg + (" -- partition OK (every swept on-disk script in exactly "
+                        "one shard, every excluded script in none)")
 
 
 def run_shard(shard_id):
