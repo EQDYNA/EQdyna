@@ -43,6 +43,10 @@ else ifeq ($(SYSTEM), macos)
     NETCDF_LIB = -L${MACOS_NETCDF_LIB} -lnetcdf -L${MACOS_NETCDFF_LIB} -lnetcdff 
 endif
 
+# `make print-NETCDF_LIB` etc.: lets testsys probes read this machine's settings.
+print-%:
+	@echo '$($*)'
+
 OPT  = -c ${FFLAGS}
 OPT1 = ${FFLAGS}
 

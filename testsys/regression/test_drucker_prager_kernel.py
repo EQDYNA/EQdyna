@@ -69,6 +69,9 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FSRC = os.path.join(ROOT, 'src', 'fortran')
+
+sys.path.insert(0, ROOT)
+from testsys.common import stage, make_var  # noqa: E402
 PYSRC = os.path.join(ROOT, 'src', 'python')
 
 sys.path.insert(0, PYSRC)
@@ -180,7 +183,7 @@ def build_driver(tmp):
     case, no mesh. Raises loudly on any compiler/linker failure."""
     objs = []
     for fname in FORTRAN_DEPS:
-        src = os.path.join(FSRC, fname)
+        src = stage(tmp, fname)
         obj = os.path.join(tmp, fname.replace('.f90', '.o'))
         r = subprocess.run(
             ['gfortran', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp,

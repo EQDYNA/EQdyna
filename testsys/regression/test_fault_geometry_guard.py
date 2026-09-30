@@ -55,8 +55,10 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, 'src', 'fortran')
+
+sys.path.insert(0, ROOT)
+from testsys.common import MACHINE  # noqa: E402
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
-MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mpirun_capture  # noqa: E402  (item 95: rank-owned output past MPI_Abort)

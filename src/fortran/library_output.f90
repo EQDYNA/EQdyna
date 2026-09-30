@@ -106,7 +106,10 @@ subroutine output_onfault_st
                 ! writes E21.13 for column 1 and E16.7 for the rest, never
                 ! E15.7). It now follows the branch and states this branch's
                 ! true column count and its true, non-uniform format.
-                write(51,*) '# Time series in 11 columns; column 1 in format E21.13, columns 2-11 in format E16.7'
+                ! '(1X,A)', not list-directed: these header lines exceed 80 columns, where
+                ! ifort ends a list-directed record. The orphan tail (' 6.7') has no '#',
+                ! so station readers took it for a data row (ls6, 2026-09-29).
+                write(51,'(1X,A)') '# Time series in 11 columns; column 1 in format E21.13, columns 2-11 in format E16.7'
                 write(51,*) '# The line below lists the names of the data fields:'
                 write(51,'(1X,103A)') 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress psi temperature pressure'
                 do j = 1, nstep
@@ -129,7 +132,7 @@ subroutine output_onfault_st
                 ! why "E15.7" is gone -- the write below is E21.13 then
                 ! 7x E16.7, matched here rather than the old unconditional,
                 ! wrong-for-this-branch "11 columns in format E15.7").
-                write(51,*) '# Time series in 8 columns; column 1 in format E21.13, columns 2-8 in format E16.7'
+                write(51,'(1X,A)') '# Time series in 8 columns; column 1 in format E21.13, columns 2-8 in format E16.7'
                 write(51,*) '# The line below lists the names of the data fields:'
                 write(51,'(1X,103A)') 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress'
                 do j = 1, nstep
@@ -241,7 +244,7 @@ subroutine output_offfault_st
             ! Item 93: declare the column count and format like the on-fault
             ! writer does, derived from the write(51,'( E21.13,6E16.7)')
             ! below -- item 67's class in its absent form.
-            write(51,*) '# Time series in 7 columns; column 1 in format E21.13, columns 2-7 in format E16.7'
+            write(51,'(1X,A)') '# Time series in 7 columns; column 1 in format E21.13, columns 2-7 in format E16.7'
             write(51,*) '# Column #1 = Time (s)'
             write(51,*) '# Column #2 = horizontal displacement (m)'
             write(51,*) '# Column #3 = horizontal velocity (m/s)'
