@@ -3389,17 +3389,19 @@ counted.
 
 **How to apply**: when the board's Command reads `RELEASE DUE`, the next
 action is rule 15's release workflow (rule 24's sweep, rule 25's PR
-sequencing, rule 15f's four-push order) — not a further deferral, unless the
+sequencing, rule 15f's release order) — not a further deferral, unless the
 owner explicitly holds it, written down the way rule 4d requires a blocking
 precondition to be written down rather than assumed. A `RELEASE DUE` reading
 never blocks a merge and never makes an in-flight PR non-compliant with
 anything; it is read by whoever is about to open the next PR or looks at the
 board, the same as any other row.
 
-**Tier: mechanical for the count and the physics/output detection once
-`check_release_due.py` lands; a norm for what happens after it reports.**
-Each of its three numbers (PR count, days, physics/output yes/no) is
-independently scriptable off `git log`/`git describe` and will carry its own
-guard when built. Whether anyone actually reads the board and starts the
+**Tier: advisory computation, norm for acting on it.**
+`testsys/regression/check_release_due.py` computes the three numbers (PR
+count, days, physics/output yes/no) and is unit-tested
+(`testsys/unit/test_check_release_due.py`), but it is advisory by design
+(always exit 0) and nothing runs it automatically: it is read from the
+board's standing row 133 (section C). Corrected 2026-09-30 (zofia audit):
+this line claimed "mechanical", which no caller made true. Whether anyone actually reads the board and starts the
 release is not something a check in this repository can see — the same
 limit rule 21d and 21e already state for a dispatch.
