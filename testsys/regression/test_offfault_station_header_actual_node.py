@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FSRC = os.path.join(ROOT, 'src', 'fortran')
 
 sys.path.insert(0, ROOT)
-from testsys.common import stage, make_var  # noqa: E402
+from testsys.common import stage  # noqa: E402
 FORTRAN_DEPS = ('globalvar.f90', 'library_output.f90')
 
 # Requested station: x=500 m, y=-2000 m, z=-300 m (station 1's slot in

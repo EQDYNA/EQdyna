@@ -72,7 +72,7 @@ subroutine output_onfault_st
             ! written -- pathway item 67's own evidence command looked for
             ! this exact line and found no file. Emit it as the header's
             ! first line.
-            write(51,*) trim(stLocStamp)
+            write(51,'(1X,A)') trim(stLocStamp)
             write(51,*) '# Project=',projectname
             write(51,*) '# Author=',author
             call date_and_time(values=dateTimeStamp)
@@ -213,7 +213,7 @@ subroutine output_offfault_st
             ! stLocStamp was computed every call and never written, so its
             ! value -- including the missing separator above -- was
             ! unverified. Emit it as the header's first line.
-            write(51,*) trim(stLocStamp)
+            write(51,'(1X,A)') trim(stLocStamp)
             write(51,*) '# Project=',projectname
             write(51,*) '# Author=',author
             call date_and_time(values=dateTimeStamp)

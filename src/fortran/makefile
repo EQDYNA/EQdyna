@@ -44,8 +44,11 @@ else ifeq ($(SYSTEM), macos)
 endif
 
 # `make print-NETCDF_LIB` etc.: lets testsys probes read this machine's settings.
+# $(info ...) prints at make's parse time, not via a shell -- a variable value
+# containing a quote character used to break the old `@echo '$($*)'` recipe.
 print-%:
-	@echo '$($*)'
+	$(info $($*))
+	@:
 
 OPT  = -c ${FFLAGS}
 OPT1 = ${FFLAGS}

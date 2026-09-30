@@ -50,7 +50,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FSRC = os.path.join(ROOT, 'src', 'fortran')
 
 sys.path.insert(0, ROOT)
-from testsys.common import stage, make_var  # noqa: E402
+from testsys.common import make_var  # noqa: E402
 
 FORTRAN_DEPS = ('globalvar.f90', 'errorCodes.f90', 'netcdf_io.f90')
 

@@ -39,13 +39,13 @@ import sys
 import time
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 RANKS = 16
 
 sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from testsys import runlock  # noqa: E402
+from testsys.common import MACHINE  # noqa: E402
 from full_specs import FULL_SPECS, EXCLUDED  # noqa: E402
 
 

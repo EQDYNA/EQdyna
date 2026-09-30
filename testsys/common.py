@@ -32,6 +32,13 @@ def make_var(name):
     if not out:
         raise RuntimeError('src/fortran/makefile defines no %s for MACHINE=%s'
                            % (name, MACHINE))
+    # A bare '-L' token means the makefile's ${...}-substituted path was empty
+    # (an unset machine env var, e.g. TACC_NETCDF_LIB not loaded) -- the flag
+    # would otherwise silently consume the next token (a -l flag) as its path.
+    if '-L' in out:
+        raise RuntimeError('src/fortran/makefile defines an empty -L path in %s '
+                           'for MACHINE=%s (an unset machine env var?): %r'
+                           % (name, MACHINE, out))
     return out
 
 
