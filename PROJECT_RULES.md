@@ -37,7 +37,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 15c. The tag push and `gh release create` are one action; the release-completeness guard is the check that a releaser split them.
 15d. Step 5's single release commit does not cover the two files 21c owns; those split out.
 15e. A release commit is gated on itself before it is pushed, not carried on step 1's earlier green.
-15f. Under rule 25, a release is four pushes — PR merge, sweep evidence, board row, tag — never step 5's one commit.
+15f. A release lands in this order, and the tag goes last on a SHA whose own CI and image workflow are green.
 15g. A CI trigger exemption (`paths-ignore`) is a claim that no test reads that path as data, and it must be true.
 16. Test what you commit, not what is in your working tree.
 17. Reviving or adding a TPV benchmark.
@@ -1301,8 +1301,8 @@ ancestor that DID get a real pre-tag run of its own; or push a further
 commit that also touches a non-ignored path so the exact SHA being tagged
 can earn a real run. Rule 15f's step 7, and its whole E1/E2 sequence,
 depended on the escape hatch this paragraph closes; see rule 15f's own
-correction and `pathway_forward.md` item 139 — the next release needs a new
-tag-target sequence, not decided here. Rule 24(ii)'s matching ancestor
+rewrite (2026-09-30, item 139): the tag now targets a SHA with its own CI
+run, M or the evidence commit. Rule 24(ii)'s matching ancestor
 clause is corrected the same way; see rule 24's own 2026-09-30 note and rule
 24a for the image-workflow gate landed alongside this fix.
 
@@ -1510,7 +1510,9 @@ first, as commit M. The board-only Tasks-done row now lands LAST, as E2,
 after the evidence commit E1 that rule 24's sweep produces on M. The reason
 the two files still split into separate commits (21c's `pre-commit` hook)
 is unchanged; which one comes first is not — see rule 15f for the full,
-current order.
+current order. **Corrected again 2026-09-30 (rule 15f rewrite)**: the board
+row is back to FIRST, before the release PR merges, so the tagged tree
+already carries it; E2-last is retired.
 
 **Tier**: mechanical as a consequence of 21c's own hook
 (`testsys/hooks/pre-commit`, `test_precommit_board_separation_guard.py`); this
@@ -1561,99 +1563,50 @@ calls the existing one at the right point in the sequence.
 
 ---
 
-## 15f. Under rule 25, a release is four pushes — PR merge, sweep evidence, board row, tag — never step 5's one commit
+## 15f. A release lands in this order, and the tag goes last on a SHA whose own CI and image workflow are green
 
-Rule 25 gates any `src/` change through a squash-merged PR. Step 2's
-`VERSION` bump travels with the runtime banner (rule 11), which is a `src/`
-edit, so the release notes/`VERSION`/banner change is itself a release PR,
-not a direct commit — and a squash-merge mints a brand-new SHA that rule
-24's sweep has never run against. Rule 25 also keeps evidence out of code
-PRs on principle. Together those two facts make step 5's "commit everything
-above together" and the original wording of rule 25's own release bullet
-("a release PR carries rule 24's local-sweep evidence for its exact SHA")
-both unsatisfiable as written: there is no single commit that is both the
-squash-merged PR and a commit carrying a pre-existing sweep of its own SHA.
+Rewritten 2026-09-30 (owner, row 139), replacing the four-push M/E1/E2/tag
+order, which rule 15a's same-day hardening made unexecutable (a board-only
+or `paths-ignore`-only commit never gets a CI run of its own, so it can no
+longer be tagged).
 
-The order that actually works, and that already runs under
-`testsys/pr_policy.py` (rule 25) and `check_pretag_ci.py`'s
-`evaluate_sweep_evidence` (rule 24) without either script changing:
-
-1. Open the release PR containing only `VERSION`, the runtime banner (rule
-   11), the README notes move (rule 15 step 3), and `pastReleaseNotes.md` —
-   nothing else. Because it touches `src/`, rule 25's everyday-sweep
-   requirement (every backend of every case the change touches) applies to
-   it before merge, on top of the fast unit/regression tier.
-2. Squash-merge it. Call the resulting master commit **M**.
-3. Wait for M's own push-triggered CI to go green (rule 15a, evaluated
-   against M, not the PR branch's pre-merge run — a different SHA).
-4. On a clean checkout of M, run `python3 testsys/run.py release` (rule 24's
-   sweep, every runnable cell, `GATE_TERM_S`). It writes
-   `docs/evidence/sweep-<M>/summary.json`, `tree_clean` captured at the
-   moment the sweep starts.
-5. Commit and push the evidence directly to master — rule 25's non-code
-   path (`docs/evidence/`, `docs/perf_snapshots/`, `docs/perf_ledger.jsonl`,
-   `docs/run_profiles.jsonl`, the last on this allow-list since PR #8,
-   `b39206f`). Call this **E1**.
-6. Commit and push the board-only Tasks-done row (rule 14/21c) on top of
-   E1. Call this **E2** — its own commit because 21c's hook refuses
-   `pathway_forward.md` staged alongside anything else, evidence included.
-7. `check_pretag_ci.py --pre-tag E2 --ack-paths-ignored-parent`: E2 touches
-   only `pathway_forward.md`, itself `paths-ignore`'d, so it can never
-   trigger its own CI run; the ack accepts M's CI (step 3) as E2's CI
-   evidence, and `evaluate_sweep_evidence`'s ancestor-and-disallowed-paths
-   check already permits E1 as E2's sweep evidence, because the diff from
-   E1 to E2 lands entirely inside the evidence/ledger/board allow-list.
-8. `gh release create vX.Y.Z --target E2 --notes-file <notes-file> --latest`
-   — the single command that mints the (lightweight) tag and publishes the
-   Release together (rule 15 step 7 / rule 15c, rewritten 2026-09-30).
-9. `python3 testsys/regression/test_release_complete.py --post-publish`,
+1. **Board row first.** Push the release's Tasks-done row (rule 14, rule
+   15 step 4) to master as its own board-only commit (rule 21c), BEFORE the
+   release PR merges, so the tagged tree already contains it.
+2. **Release PR.** `VERSION`, the runtime banner (rule 11), the README
+   notes move, `pastReleaseNotes.md`. Small non-physics items may batch into
+   it. Squash-merge it; call the result **M**.
+3. **Sweep only on a physics change.** If `change_class.is_release_physics_path`
+   matches nothing since the last swept release, the last evidence carries
+   forward (rule 24) and **T = M**. Otherwise run `python3 testsys/run.py
+   release` on a clean checkout of M and commit the evidence (`docs/evidence/`
+   is not `paths-ignore`'d, rule 15g, so it gets its own CI); that commit is
+   **T**.
+4. **T's own gates.** T's own push CI green (rule 15a: never an ancestor's),
+   then `gh workflow run publish.yml --ref master` with master at T, green
+   (rule 24a). Nothing else lands on master in between.
+5. `python3 testsys/regression/check_pretag_ci.py --pre-tag T` prints PASS.
+6. `gh release create vX.Y.Z --target T --notes-file <notes> --latest`: the
+   ONE command that mints the (lightweight) tag and publishes the Release.
+   Never a separate `git push` of a tag.
+7. `python3 testsys/regression/test_release_complete.py --post-publish`,
    then the stranger gate on the published tag.
 
-This does not weaken rule 24 or rule 25: the sweep still gates the exact
-tagged tree (via the ancestor check), and `src/` still never reaches master
-outside a PR. It only says which SHA plays which part, in which order.
+**Rationale**: every check the tag triggers has then already passed on the
+tag's own SHA, so the tag's CI re-runs green checks instead of running them
+for the first time (owner, 2026-09-30: "nothing gets tagged until every
+check the tag triggers has passed on that same commit").
 
-**Rationale**: rule 15 and rule 24 were each written before rule 25
-existed, so each describes a release as something a single actor commits and
-pushes in one motion. Rule 25 split `src/` off from everything else at the
-push layer; nothing had yet said what that split does to a sequence that
-used to be one commit.
+**Incident (2026-09-30, v5.20.2)**: the old order tagged `478d782` before
+the board row and the Release existed, then re-tagged `30ae29e`, an
+evidence commit with no CI run of its own; both went red. The re-tag on
+`4b5da1c` (PR #70's merge, board row already in its tree, own CI and
+`publish.yml` dispatch both green first) is this order's first use; record
+in `docs/notes/NOTES_v5202_retag_2026-09-30.md`.
 
-**Incident (2026-09-24)**: v5.17.0 (tag `6725f7c` → `6dc6702`, session log
-section VV) was the first release cut with rules 24 and 25 both live. The
-conductor followed the working order above rather than either stale text:
-release PR #7 squash-merged as `2c11fcd`; CI green on `2c11fcd` (run
-`35962062804`); the release sweep run on that checkout, 23/23; evidence
-commit `7db28d7` (E1); board commit `6dc6702` (E2); pre-tag check on
-`6dc6702`; tag `6725f7c` pushed, CI on the tag (`35962577186`) and the
-Docker publish (`35962577144`) both green; `gh release create` immediately
-after; stranger gate green. This sub-rule writes down the order actually
-followed, so the next release does not have to rediscover it against two
-texts that no longer matched it.
-
-**How to apply**: at release time, expect FOUR things landing on master in
-this order — the squash-merged release PR (M), the evidence commit (E1),
-the board commit (E2), and the tag on E2 — never one "everything together"
-commit, and never sweep evidence riding inside the PR.
-
-**Tier: mechanical**, enforced by the existing, unchanged
-`testsys/pr_policy.py` (rule 25) and `check_pretag_ci.py`'s
-`evaluate_sweep_evidence` (rule 24) acting together; this sub-rule adds no
-new check, it names the order the two already jointly require.
-
-**Corrected 2026-09-30 (v5.20.2 incident) — step 7 above no longer works.**
-It relied on `--ack-paths-ignored-parent` turning E2's (or E1's)
-`PATHS_IGNORED` status into a PASS using M's CI as the evidence; rule 15a's
-2026-09-30 hardening removes that outcome entirely; a paths-ignore-only
-commit is `PATHS_IGNORED`, full stop, no ancestor substitute. The
-sweep-evidence half of step 7 (`evaluate_sweep_evidence` accepting E1 as
-E2's evidence) is unaffected — that is rule 24's carry-forward provision,
-untouched by this fix — only the CI half is closed. This rule's own
-E1-then-E2-then-tag order is therefore not currently executable as written:
-which SHA the tag ends up targeting, and whether E1/E2 fold into M or gain
-a triggering commit of their own, is an open design question, tracked as
-`pathway_forward.md` item 139 and left for whoever next cuts a release —
-not decided here.
+**Tier: mechanical**: `check_pretag_ci.py --pre-tag` refuses a SHA without
+its own green CI (rule 15a) or a green image workflow (rule 24a, exit 7),
+and `test_release_complete.py` refuses a tagged tree without the board row.
 
 ---
 
@@ -3127,8 +3080,12 @@ Owner-approved hybrid PR workflow (relayed 2026-09-23; merged as PR #3,
   `test.reference.results/`, `testNameList.py`, `install-eqdyna.sh` —
   never by editing `GATED_PREFIXES` itself, and never narrower than the
   classifier's default-PHYSICS answer for a path nobody has reviewed yet.
-  `python3 testsys/needs_sweep.py <range>` says whether a change needs a
-  full sweep; `python3 -c "from testsys import change_class as c;
+  Whether a change needs a full sweep has ONE answer,
+  `change_class.is_release_physics_path` (the owner's closed list:
+  solver source, case inputs, references, the case list, the three
+  judging modules, the case-pipeline scripts), applied by
+  `check_pretag_ci.py --pre-tag` and `run.py release`; no sweep when no
+  physics change (owner, 2026-09-30). `python3 -c "from testsys import change_class as c;
   print(c.classify_path('<path>'))"` classifies one path. Branch off
   master, or an isolated worktree for anything that builds (rule 21). Run
   the local fast suite (`python3 testsys/run.py unit regression`); for a
@@ -3152,8 +3109,8 @@ Owner-approved hybrid PR workflow (relayed 2026-09-23; merged as PR #3,
   PR does NOT carry rule 24's local-sweep evidence — a squash-merge mints a
   new SHA the sweep has not yet run against, and this rule's own docs/board
   direct-push path is where evidence lands instead, never inside a code PR.
-  The sweep runs on the merged SHA, after merge; see rule 15f for the full
-  four-commit order. A tag names only a master commit whose own CI passed
+  The sweep runs on the merged SHA, after merge, and only on a physics
+  change; see rule 15f for the current order. A tag names only a master commit whose own CI passed
   (rule 15a) AND that has committed sweep evidence per rule 24/15f.
 
 **Rationale**: `4465c17` reverted `aca6979` because the landing check that

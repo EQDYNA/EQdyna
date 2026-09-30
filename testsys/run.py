@@ -418,8 +418,8 @@ def _release_sweep_carry_forward():
     Fails toward running the full sweep (skip=False) on ANY doubt: no
     evidence found, an unreadable summary.json, evidence with no
     release_physics_key recorded (written before this field existed), or a
-    git/HEAD resolution error -- rule 2, same posture as needs_sweep.py and
-    check_pretag_ci.py's own error handling.
+    git/HEAD resolution error -- rule 2, same posture as check_pretag_ci.py's
+    own error handling.
 
     Advisory only for THIS function's caller (run_release, deciding whether
     to spend the minutes-to-hours re-running run_e2e.py): the actual GATE
