@@ -157,6 +157,24 @@ def check_both_board_files_allowed(wt, fails, log):
             % (r.returncode, out(r)[:600]))
 
 
+def check_rulebook_plus_code_allowed(wt, fails, log):
+    """CORRECTED 2026-09-30 (PR #69 / ff06534 incident, owner-authorized):
+    PROJECT_RULES.md may now share a commit with non-board files -- "a rule
+    ships with its refusing check in the same change". pathway_forward.md
+    gets no such exception (see check_mixed_refused below, unchanged)."""
+    r = stage_and_commit(
+        wt, {'PROJECT_RULES.md': 'new rule 2026-09-30\n',
+             'src/solver.txt': 'enforcing code\n'},
+        'rules: new rule plus its enforcing code')
+    log.append(('PROJECT_RULES.md + code commit', r))
+    if r.returncode != 0:
+        fails.append(
+            'a commit mixing PROJECT_RULES.md with src/solver.txt was '
+            'REFUSED (exit %d): %r. Since the 2026-09-30 correction this '
+            'must be ALLOWED -- a rule and its own enforcing code landing '
+            'together.' % (r.returncode, out(r)[:600]))
+
+
 def check_code_only_allowed(wt, fails, log):
     r = stage_and_commit(wt, {'src/solver.txt': 'code edit\n'},
                          'code: touch the solver')
@@ -398,6 +416,7 @@ def main():
         main_ck, wt = build_sandbox(tmp)
         check_board_only_allowed(wt, fails, log)
         check_both_board_files_allowed(wt, fails, log)
+        check_rulebook_plus_code_allowed(wt, fails, log)
         check_code_only_allowed(wt, fails, log)
         check_mixed_refused(wt, fails, log)
         check_main_checkout_still_refused(main_ck, fails, log)

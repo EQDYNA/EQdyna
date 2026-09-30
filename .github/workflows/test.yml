@@ -275,7 +275,17 @@ jobs:
           fi
         fi
         echo "check_board_separation range: $LO..$HI (event=$EVENT_NAME, fallback=$FALLBACK)"
-        python3 testsys/check_board_separation.py "$LO..$HI"
+        # --squash-check (2026-09-30, PR #69 / ff06534 incident): this repo
+        # squash-merges every PR (rule 25) -- a `pull_request` range whose
+        # individual commits are each clean can still union to a mixed
+        # commit once merged, which the per-commit check alone cannot see.
+        # `push` events are never squashed by this repo's settings, so the
+        # existing per-commit check already covers them.
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          python3 testsys/check_board_separation.py "$LO..$HI" --squash-check
+        else
+          python3 testsys/check_board_separation.py "$LO..$HI"
+        fi
 
     - name: Set up Python
       uses: actions/setup-python@v4

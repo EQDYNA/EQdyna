@@ -141,6 +141,13 @@ else
     }
 fi
 
+# CORRECTED 2026-09-30 (PR #69 / ff06534 incident, owner-authorized): a rule
+# book change may now share a commit with the code that enforces it -- "a
+# rule ships with its refusing check in the same change". `pathway_forward.md`
+# gets NO such exception: the board stays solo, unconditionally. So
+# PROJECT_RULES.md is no longer part of the strict "board_files" set below;
+# only pathway_forward.md is. See testsys/check_board_separation.py's module
+# docstring for the merge-boundary half of this same correction.
 board_files=""
 other_files=""
 saved_ifs=$IFS
@@ -148,9 +155,11 @@ IFS='
 '
 for path in $staged; do
     case "$path" in
-        PROJECT_RULES.md|pathway_forward.md)
+        pathway_forward.md)
             board_files="$board_files  $path
 " ;;
+        PROJECT_RULES.md)
+            ;;  # permitted to mix with anything since 2026-09-30
         *)
             other_files="$other_files  $path
 " ;;
@@ -160,30 +169,32 @@ IFS=$saved_ifs
 
 if [ -n "$board_files" ] && [ -n "$other_files" ]; then
     echo "" >&2
-    echo "pre-commit: REFUSED -- this commit MIXES the rule book / board with" >&2
-    echo "pre-commit: other files. PROJECT_RULES.md rule 21c, pathway item 75." >&2
+    echo "pre-commit: REFUSED -- this commit MIXES the board with other" >&2
+    echo "pre-commit: files. PROJECT_RULES.md rule 21c, pathway item 75." >&2
     echo "" >&2
-    echo "  Board files staged:" >&2
+    echo "  Board file staged:" >&2
     printf '%s' "$board_files" >&2
     echo "  Other files staged (these are why it is refused):" >&2
     printf '%s' "$other_files" >&2
     echo "" >&2
-    echo "Rule 21c: PROJECT_RULES.md and pathway_forward.md have exactly one" >&2
-    echo "writer. Git cannot check WHO wrote a hunk, so this hook checks that" >&2
-    echo "a board change arrives ALONE -- as its own reviewable commit that a" >&2
-    echo "conductor can drop with one \`git revert\`." >&2
+    echo "Rule 21c: pathway_forward.md has exactly one writer. Git cannot" >&2
+    echo "check WHO wrote a hunk, so this hook checks that a board-row" >&2
+    echo "change arrives ALONE -- as its own reviewable commit that a" >&2
+    echo "conductor can drop with one \`git revert\`. (PROJECT_RULES.md may" >&2
+    echo "share a commit with its own enforcing code since 2026-09-30; only" >&2
+    echo "pathway_forward.md is still refused this way.)" >&2
     echo "" >&2
     echo "Split it into two commits:" >&2
     echo "" >&2
-    echo "  git restore --staged PROJECT_RULES.md pathway_forward.md" >&2
-    echo "  git commit -m '<your code change>'        # the other files" >&2
-    echo "  git add PROJECT_RULES.md pathway_forward.md" >&2
-    echo "  git commit -m '<board/rule update>'       # board alone" >&2
+    echo "  git restore --staged pathway_forward.md" >&2
+    echo "  git commit -m '<your code/rule change>'   # the other files" >&2
+    echo "  git add pathway_forward.md" >&2
+    echo "  git commit -m '<board-row update>'         # board alone" >&2
     echo "" >&2
     echo "If you are a MISSION agent: rule 21c says the board edit is not" >&2
     echo "yours to make at all. Drop it and report the row text you want:" >&2
     echo "" >&2
-    echo "  git restore --staged --worktree PROJECT_RULES.md pathway_forward.md" >&2
+    echo "  git restore --staged --worktree pathway_forward.md" >&2
     echo "" >&2
     exit 1
 fi
