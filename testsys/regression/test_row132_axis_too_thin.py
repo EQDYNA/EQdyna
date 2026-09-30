@@ -60,6 +60,9 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FSRC = os.path.join(ROOT, "src", "fortran")
+
+sys.path.insert(0, ROOT)
+from testsys.common import stage, make_var  # noqa: E402
 PYSRC = os.path.join(ROOT, "src", "python")
 sys.path.insert(0, PYSRC)
 
@@ -120,7 +123,7 @@ def run_fortran_probe():
             raise RuntimeError("probe link: missing %r after build_eqdyna()" % missing)
         r = subprocess.run(
             ["mpif90", "-I", FSRC, "-o", exe, src] + objs +
-            ["-L/usr/lib/x86_64-linux-gnu", "-lnetcdf", "-lnetcdff"],
+            make_var("NETCDF_LIB"),
             capture_output=True, text=True, timeout=120)
         if r.returncode != 0:
             raise RuntimeError("probe compile/link failed (exit %d):\n%s"

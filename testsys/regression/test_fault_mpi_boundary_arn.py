@@ -42,8 +42,8 @@ Asserts:
      invariance is what actually proves the fix landed, not just the gate
      staying quiet.
 
-EXACT equality (not a tolerance) is the gate here: with the fix in place,
-serial==ysplit exactly, reproduced at 8x this test's term with zero
+Equality to 1e-12 of the traction's own size is the gate (exact on gfortran; ifort
+reorders a sum): with the fix in place, serial==ysplit exactly, reproduced at 8x this test's term with zero
 difference at every duration tried (see pathway_forward.md item 26).
 
 Cheap (rule 9): ~12x12x6-cell mesh, term = 5 dt, well under a second per run
@@ -61,7 +61,9 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, 'src', 'fortran')
-MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
+
+sys.path.insert(0, ROOT)
+from testsys.common import MACHINE  # noqa: E402
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 
 USER_PARAMS = '''#! /usr/bin/env python3
@@ -224,7 +226,9 @@ def main():
     else:
         for name in ('xsplit', 'zsplit', 'ysplit'):
             tr = results.get(name)
-            if tr is not None and tr != base:
+            # relative to the traction's own size: ifort sums the dip term in another order
+            # (6.7e-20 vs 4.5e-20 beside a 3.79 MPa strike traction); arn-doubling is 2x
+            if tr is not None and any(abs(a - b) > 1e-12 * max(map(abs, base)) for a, b in zip(tr, base)):
                 fails.append(
                     f'{name} hypocenter traction {tr} != serial {base} '
                     '(decomposition-dependent result -- the arn-doubling bug is back)')

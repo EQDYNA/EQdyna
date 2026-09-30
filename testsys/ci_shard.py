@@ -221,6 +221,7 @@ SHARDS = {
         "test_stress_i0_carry_aliasing.py",
         "test_version_banner.py",
         "test_root_allowlist.py",  # added 2026-09-24 (wei-lin, root-notes move): one git ls-files, <1 s
+        "test_text_line_format.py",  # 2026-09-29: static scan of src/fortran, <1 s
     ],
 }
 UNIT_PYTEST_SHARD = "3"

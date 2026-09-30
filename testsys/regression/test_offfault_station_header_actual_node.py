@@ -27,6 +27,9 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FSRC = os.path.join(ROOT, 'src', 'fortran')
+
+sys.path.insert(0, ROOT)
+from testsys.common import stage, make_var  # noqa: E402
 FORTRAN_DEPS = ('globalvar.f90', 'library_output.f90')
 
 # Requested station: x=500 m, y=-2000 m, z=-300 m (station 1's slot in
@@ -72,7 +75,7 @@ def main():
             obj = os.path.join(tmp, fname.replace('.f90', '.o'))
             r = subprocess.run(
                 ['gfortran', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp,
-                 '-c', os.path.join(FSRC, fname), '-o', obj],
+                 '-c', stage(tmp, fname), '-o', obj],
                 capture_output=True, text=True, timeout=60)
             if r.returncode != 0:
                 print('FAIL test_offfault_station_header_actual_node')

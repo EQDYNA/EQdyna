@@ -92,13 +92,14 @@ def specOmega(depth, start, end):
 
 
 def buildDriver(tmp):
+    # ifort ignores gfortran's -J and writes .mod into the cwd (the repo root); cwd=tmp keeps them here.
     objs = []
     for fname in FORTRAN_DEPS:
         obj = os.path.join(tmp, fname.replace('.f90', '.o'))
         r = subprocess.run(
             ['mpif90', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp,
              '-c', os.path.join(FSRC, fname), '-o', obj],
-            capture_output=True, text=True, timeout=120)
+            cwd=tmp, capture_output=True, text=True, timeout=120)
         if r.returncode != 0:
             raise RuntimeError(f'compiling {fname} failed:\n{r.stdout}\n{r.stderr}')
         objs.append(obj)
@@ -110,13 +111,13 @@ def buildDriver(tmp):
     r = subprocess.run(
         ['mpif90', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp,
          '-c', src, '-o', obj],
-        capture_output=True, text=True, timeout=120)
+        cwd=tmp, capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
         raise RuntimeError(f'compiling the driver failed:\n{r.stdout}\n{r.stderr}')
 
     binary = os.path.join(tmp, 'devStrTaperDriver')
     r = subprocess.run(['mpif90', '-O0'] + objs + [obj, '-o', binary],
-                       capture_output=True, text=True, timeout=120)
+                       cwd=tmp, capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
         raise RuntimeError(f'linking the driver failed:\n{r.stdout}\n{r.stderr}')
     return binary

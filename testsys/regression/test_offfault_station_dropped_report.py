@@ -48,6 +48,9 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FSRC = os.path.join(ROOT, 'src', 'fortran')
+
+sys.path.insert(0, ROOT)
+from testsys.common import stage, make_var  # noqa: E402
 FORTRAN_DEPS = ('globalvar.f90', 'library_output.f90')
 
 # Station 1: exact match (actual == requested) -> silent.
@@ -88,7 +91,7 @@ def build_and_run(tmp, tag, flags, z3, zvalid2='.true.'):
         obj = os.path.join(tmp, fname.replace('.f90', f'.{tag}.o'))
         r = subprocess.run(
             ['gfortran', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp,
-             '-c', os.path.join(FSRC, fname), '-o', obj],
+             '-c', stage(tmp, fname), '-o', obj],
             capture_output=True, text=True, timeout=60)
         if r.returncode != 0:
             raise RuntimeError(f'compiling {fname} ({tag}) failed:\n{r.stdout}\n{r.stderr}')
