@@ -46,11 +46,14 @@ local check is mandatory.
 2026-09-30, owner course correction on top of the same day's
 regression_sweep_exclusions.py fix).** These used to be one function,
 `check_network_side`, called unconditionally by `main()`. That was already
-wrong by construction for the GitHub-Release half: `gh release create`
-(rule 15 step 9) is a separate, LATER, human/scripted step that runs only
-AFTER the tag push triggers CI -- at the moment any automatic run of this
-file could fire (the tag's own CI, or `publish.yml`'s build-and-push image
-gate), the Release cannot exist yet. Excluding this whole file from the
+wrong by construction for the GitHub-Release half: any automatic run of
+this file (the tag's own CI, or `publish.yml`'s build-and-push image gate)
+fires from the SAME `gh release create --target <sha>` command (rule 15
+step 7/8, rewritten 2026-09-30) that is what creates the Release in the
+first place -- there is no guaranteed ordering between "the Release object
+is queryable via the API" and "the ref-creation webhook fired CI" within
+that one call, so treating it as certain either way would be a guess, not
+a check. Excluding this whole file from the
 automatic sweep (`testsys/regression_sweep_exclusions.py`) already stops it
 from firing automatically at all, but the function split is kept anyway, as
 the mechanical guarantee: `check_tag_pushed_to_remote` runs in `main()`'s
@@ -274,15 +277,17 @@ def check_github_release_published(v):
     """The OTHER half of the old check_network_side (split 2026-09-30, owner
     course correction): does a GitHub Release exist for v%s.
 
-    THIS CHECK CAN NEVER PASS during the tag's own CI run, or inside
-    `.github/workflows/publish.yml`'s build-and-push image gate, BY
-    CONSTRUCTION: `gh release create` (rule 15 step 9) is a separate, later,
-    human/scripted step that runs only AFTER the tag push has already
-    triggered CI. At the instant either of those automatically fires, the
-    Release object cannot exist yet -- folding this into the same check list
-    main() always runs (the old check_network_side did exactly that) meant
-    the Release half failed every time it ran automatically at tag-push
-    time, for a reason that has nothing to do with the tagged commit's
+    THIS CHECK IS NOT SAFE to run automatically inside the tag's own CI run,
+    or inside `.github/workflows/publish.yml`'s build-and-push image gate:
+    both fire off the SAME `gh release create --target <sha>` command
+    (rule 15 step 7/8, rewritten 2026-09-30) that mints the Release, and
+    there is no guaranteed ordering between "the ref-creation webhook fired
+    this CI run" and "the Release object is queryable via the API" within
+    one API call -- folding this into the same check list main() always
+    runs (the old check_network_side did exactly that, back when a
+    separate, later `gh release create` truly could not have run yet) meant
+    the Release half failed every time it ran automatically at tag-creation
+    time, for a reason that had nothing to do with the tagged commit's
     content (this is what happened to v5.20.2, see
     testsys/regression_sweep_exclusions.py's module docstring).
 
@@ -299,10 +304,12 @@ def check_github_release_published(v):
     if r.returncode != 0:
         if 'release not found' in (r.stderr or '').lower():
             raise AssertionError(
-                'no GitHub Release for v%s. The tag exists but the Releases '
-                'page -- the thing users look at -- does not show it. '
-                'Rule 15 step 9: gh release create v%s --notes-file <notes> '
-                '--latest. This was skipped on both v5.8.0 and v5.8.1.'
+                'no GitHub Release for v%s. Rule 15 step 7/8: '
+                'gh release create v%s --target <sha> --notes-file <notes> '
+                '--latest -- this mints the tag AND the Release together; '
+                'if the tag exists but this fails, the one command never '
+                'ran (or ran against a different sha). This class of gap '
+                '(gh release create skipped) previously hit v5.8.0/v5.8.1.'
                 % (v, v))
         print('  UNVERIFIED  GitHub Release (gh call failed: %s) -- not a '
               'pass; re-run where it can be checked'
@@ -417,13 +424,14 @@ def main():
         '--post-publish', action='store_true',
         help='Also run check_github_release_published. Pass this ONLY by '
              'hand (or from a scripted step), ONCE, immediately after '
-             '`gh release create` has actually completed (rule 15 step 9). '
-             'Never pass it automatically at tag-push time: the tag\'s own '
-             'CI run and publish.yml\'s build-and-push image gate both fire '
-             'before `gh release create` can possibly have run, so the '
-             'GitHub-Release check can never pass there by construction. '
-             'Default (flag absent): that check is SKIPPED, not failed and '
-             'not passed.')
+             '`gh release create --target <sha>` has actually completed '
+             '(rule 15 step 7/8). Never pass it automatically from the '
+             'tag\'s own CI run or publish.yml\'s build-and-push image gate: '
+             'both fire off that SAME command, with no guaranteed ordering '
+             'against the Release object becoming queryable, so the '
+             'GitHub-Release check is not safe to treat as a pass or a '
+             'fail there. Default (flag absent): that check is SKIPPED, not '
+             'failed and not passed.')
     args = p.parse_args()
 
     v = version()
