@@ -218,6 +218,28 @@ def check_dirty_tracked_file_at_start(run_e2e, tmp, fails, log):
                      'dirty=[] (got %r, %r) -- something else moved' % (tc2, dirty2))
 
 
+def check_head_moved_during_sweep_is_refused(run_e2e, tmp, fails, log):
+    """Scenario 3 (PR #63 audit): a commit made while the cells ran must not
+    be credited as swept. Also the negative control: HEAD unchanged writes."""
+    d = new_repo(tmp, 'head_moved')
+    run_e2e.REPO_ROOT = d
+    tc, dirty = run_e2e.capture_start_tree_state()
+    start = run_e2e.head_sha()
+    write(d, 'src/fortran/placeholder.f90', '! changed mid-sweep\n')
+    commit_all(d, 'mid-sweep commit')
+    try:
+        run_e2e.write_release_evidence(FAKE_RESULTS, True, False, 't0', 't1',
+                                       tc, dirty, sha_at_start=start)
+    except RuntimeError as exc:
+        log.append(('3a HEAD moved -> refused', True, str(exc)[:80]))
+    else:
+        fails.append('3a: HEAD moved during the sweep but evidence was written '
+                     'for the unswept commit')
+    run_e2e.write_release_evidence(FAKE_RESULTS, True, False, 't0', 't1',
+                                   tc, dirty, sha_at_start=run_e2e.head_sha())
+    log.append(('3b HEAD unchanged -> written', True, ''))
+
+
 def main():
     print('Guard: run_e2e.capture_start_tree_state / write_release_evidence '
           'tree_clean, 2 scenarios (real sandbox git state)')
@@ -228,6 +250,7 @@ def main():
     tmp = tempfile.mkdtemp(prefix='release_evidence_tree_clean_')
     try:
         check_clean_start_survives_sweep_writes(run_e2e, tmp, fails, log)
+        check_head_moved_during_sweep_is_refused(run_e2e, tmp, fails, log)
         check_dirty_tracked_file_at_start(run_e2e, tmp, fails, log)
     finally:
         run_e2e.REPO_ROOT = real_repo_root  # never leave this pointed at a deleted sandbox
