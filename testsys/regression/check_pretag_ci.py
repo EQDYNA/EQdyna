@@ -61,6 +61,12 @@ the reader has to open the log to find out which):
                       everyday + RELEASE_ONLY, all at the ONE GATE_TERM_S --
                       becomes the science gate and a tag must be refused
                       without one). See `evaluate_sweep_evidence` below.
+                      Since item 3 (2026-09-30), a PRIOR release's sweep
+                      also justifies tagging THIS sha if no path in
+                      change_class's release-physics set differs between
+                      the two trees (release_physics_key fallback below) --
+                      "no committed sweep" is now the only way to land
+                      here, not "the committed sweep is for an older sha".
 
 Only checked when the CI check above is PASS -- CI-not-green and
 sweep-not-found are different situations (rule 2), and the CI check is more
@@ -247,13 +253,42 @@ def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count
         except Exception as exc:  # pragma: no cover - defensive, git itself failing
             return reasons + ['%s: could not recompute content_key for %s: %s'
                               % (path, tag_sha, exc)]
-        if recomputed != content_key_val:
+        if recomputed == content_key_val:
+            return reasons
+        # content_key differs -- item 3 (owner, 2026-09-30, "fewer full
+        # sweeps and fewer releases"): that alone no longer requires a fresh
+        # sweep. Fall back to the narrower release_physics_key: if no path
+        # in change_class's closed, owner-named release-physics set differs
+        # between the swept tree and the tag tree, the swept evidence still
+        # applies -- accept it as carried forward rather than demanding a
+        # re-sweep for a docs/README/board-only change. Older evidence
+        # (written before this field existed) has no release_physics_key to
+        # fall back on and keeps the original, stricter behaviour: a
+        # content_key mismatch alone fails it (rule 2 -- no fallback for a
+        # gap this check cannot itself fill in).
+        release_key_val = data.get('release_physics_key')
+        if release_key_val is None:
             reasons.append(
                 '%s: content_key %s (recorded for swept sha %s) does not match '
-                'the tagged tree\'s own content_key %s recomputed at %s -- some '
-                'tracked path outside the evidence/ledger allow-list differs '
-                'between the swept tree and the tagged tree'
+                'the tagged tree\'s own content_key %s recomputed at %s, and '
+                'this evidence has no release_physics_key to fall back on '
+                '(written before item 3) -- re-run the release sweep'
                 % (path, content_key_val, sha, recomputed, tag_sha))
+            return reasons
+        try:
+            recomputed_rp = content_key.compute_release_physics(repo_root, tag_sha)
+        except Exception as exc:  # pragma: no cover - defensive, git itself failing
+            return reasons + ['%s: could not recompute release_physics_key for %s: %s'
+                              % (path, tag_sha, exc)]
+        if recomputed_rp == release_key_val:
+            return reasons  # carried forward: no release-physics path changed
+        reasons.append(
+            '%s: content_key %s (swept sha %s) != tag content_key %s, AND '
+            'release_physics_key %s (swept) != recomputed %s at %s -- a '
+            'release-physics path changed since the swept sha; a fresh '
+            'release sweep is required'
+            % (path, content_key_val, sha, recomputed, release_key_val,
+               recomputed_rp, tag_sha))
         return reasons
     try:
         if not _sweep_is_ancestor(repo_root, sha, tag_sha):

@@ -41,9 +41,30 @@ sweep with no re-sweep required. Anything else -- including `.github/`
 different question: whether a PR is needed, not whether a sweep is still
 valid) and `scripts/machines.py` -- changing so much as one byte moves the
 key and invalidates the evidence.
+
+ITEM 3 (owner, 2026-09-30, "fewer full sweeps and fewer releases") adds a
+SECOND, narrower key alongside `compute` above: `compute_release_physics`,
+over only `change_class.is_release_physics_path`'s closed, owner-named set
+(solver source, case inputs, reference oracles, the case name list, the
+pass/fail-judging modules, the case-pipeline scripts) rather than "every
+tracked path outside the small evidence/ledger allow-list". A docs/ edit,
+a README change, or a board update moves `compute`'s key (forcing, before
+this item, a full re-sweep for content that never touched physics) but
+does NOT move `compute_release_physics`'s -- see that function's own
+docstring and testsys/regression/check_pretag_ci.py's release_physics_key
+fallback for how the two keys are used together, `compute` first (strict,
+existing behaviour unchanged) and `compute_release_physics` only as a
+fallback when `compute` no longer matches.
 """
 import hashlib
+import os
 import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+from testsys import change_class  # noqa: E402
 
 ALLOWED_EXACT_PATHS = ('docs/perf_ledger.jsonl', 'docs/run_profiles.jsonl',
                         'pathway_forward.md')
@@ -84,6 +105,57 @@ def compute(repo_root, sha):
         meta, path = line.split('\t', 1)
         mode, _otype, blob = meta.split()
         if not path_allowed(path):
+            entries.append('%s\0%s\0%s' % (path, mode, blob))
+    entries.sort()
+    h = hashlib.sha256()
+    for entry in entries:
+        h.update(entry.encode('utf-8', errors='surrogateescape'))
+        h.update(b'\n')
+    return h.hexdigest()
+
+
+def compute_release_physics(repo_root, sha):
+    """sha256 hex digest over every tracked (path, mode, blob-or-normalized-
+    content) triple at `sha` that testsys.change_class.is_release_physics_path
+    selects (item 3, owner 2026-09-30) -- the owner's narrower, closed
+    release-physics set, NOT `compute`'s broad "everything outside the
+    evidence/ledger allow-list". This is what lets check_pretag_ci.py accept
+    a PRIOR release's swept evidence for a tag whose tree differs from that
+    swept tree in only non-physics-bearing ways (a docs/ edit, a README
+    change, a board update) -- `compute`'s stricter key would already have
+    moved for any such edit and forced a needless full re-sweep.
+
+    change_class.VERSION_BANNER_FILE is special-cased: its content is read
+    with `git cat-file` and every line that is the version banner
+    (change_class.is_release_physics_line) is dropped before hashing, so a
+    version-only bump to that one line does not move this key either (item
+    3's one explicit exclusion) -- every other line of that file, and every
+    byte of every other release-physics path, still counts via its blob sha,
+    exactly as `compute` does for its own broader set.
+
+    Raises `subprocess.CalledProcessError` under the same conditions as
+    `compute` above (sha not a readable object in repo_root)."""
+    out = subprocess.run(
+        ['git', '-C', repo_root, 'ls-tree', '-r', '--full-tree', sha],
+        capture_output=True, text=True, check=True).stdout
+    entries = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        meta, path = line.split('\t', 1)
+        mode, _otype, blob = meta.split()
+        if not change_class.is_release_physics_path(path):
+            continue
+        if path.replace(os.sep, '/') == change_class.VERSION_BANNER_FILE:
+            content = subprocess.run(
+                ['git', '-C', repo_root, 'cat-file', '-p', blob],
+                capture_output=True, text=True, check=True).stdout
+            kept = [l for l in content.splitlines()
+                   if change_class.is_release_physics_line(path, l)]
+            normalized_digest = hashlib.sha256(
+                '\n'.join(kept).encode('utf-8', errors='surrogateescape')).hexdigest()
+            entries.append('%s\0%s\0N:%s' % (path, mode, normalized_digest))
+        else:
             entries.append('%s\0%s\0%s' % (path, mode, blob))
     entries.sort()
     h = hashlib.sha256()
