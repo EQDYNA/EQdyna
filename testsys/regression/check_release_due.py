@@ -41,8 +41,9 @@ the change is output-neutral (bit-identical gates -- a refactor, a
 retirement, a perf change). An exemption is a written claim, one line
 `<sha> <evidence>`; a line without evidence, or a sha that does not name a
 commit since the tag, exempts nothing (fail toward "yes"). An exemption
-waives DUE-AT-ONCE only (review item 7) -- it never waives needs_sweep.py's
-verdict, which does not consult this file at all, NOR (b)'s PR count: an
+waives DUE-AT-ONCE only (review item 7) -- it never waives the release
+sweep carry-forward (change_class.is_release_physics_path), which does not
+consult this file at all, NOR (b)'s PR count: an
 exempted src/ commit still counts (see below).
 
 (b)'s PR COUNT excludes ONLY INTERNAL-only PRs (owner's own framing:

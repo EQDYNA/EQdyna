@@ -15,7 +15,7 @@ answer).
 TWO SEPARATE QUESTIONS, TWO SEPARATE FUNCTIONS (review item 6). Editing
 testsys/matrix.py or testsys/e2e/ changes what the GATE checks -- it needs
 a fresh sweep to prove the gate itself still passes (classify_path says
-PHYSICS, so needs_sweep.py and pr_policy.py both require it) -- but it does
+PHYSICS, so pr_policy.py requires a PR for it) -- but it does
 NOT by itself mean the SOLVER'S OUTPUT changed, so it must not make rule
 27's release-due-AT-ONCE trigger fire the way an actual solver-code or
 reference change does. `classify_path` answers "does this need a sweep /a
@@ -33,8 +33,6 @@ REUSED BY (no second copy of any of this):
     counts toward (b)'s threshold; classify_path == PHYSICS on its own just
     does not trip the AT-ONCE trigger (is_output_change is narrower than
     that); see check_release_due.py's own docstring for the exact rule.
-  - testsys/needs_sweep.py -- the advisory "does this range need
-    testsys/run.py e2e" tool (classify_path == PHYSICS on any changed path).
   - testsys/pr_policy.py -- rule 25's gated-path set is WIDENED (never
     narrowed) by classify_path == PHYSICS, alongside the historical
     GATED_PREFIXES (src/, testsys/, .github/) it already enforced; see
@@ -84,7 +82,7 @@ WHY EACH NON-OBVIOUS CALL, review items 2 and 8:
     `check_*` name outside `testsys/` is not this repo's release-process
     tooling and must not be exempted from review just by that name.
   - This file itself is PHYSICS (review's explicit instruction): it drives
-    pr_policy's gate and needs_sweep's verdict, so a bug in IT is exactly
+    pr_policy's gate and the release sweep carry-forward, so a bug in IT is exactly
     as dangerous as a bug in the gate it feeds.
 
 .github/ is classified INTERNAL, decided deliberately (the owner's own
@@ -167,7 +165,9 @@ DEFAULT_PHYSICS_REVIEWED_EXACT = frozenset({'testNameList.py', 'install-eqdyna.s
 # or scripts/ has not been explicitly carved out of) and not "did rule 27's
 # release-due-at-once trigger fire" (is_output_change), but "does the LOCAL
 # RELEASE SWEEP need to run again before this exact tree can be tagged, or
-# can the last swept release's evidence carry forward" -- consumed by
+# can the last swept release's evidence carry forward" -- the ONE answer to
+# "does this change need a full sweep" (owner 2026-09-30: "no sweep when no
+# physics change"; testsys/needs_sweep.py, a second, broader answer, deleted) -- consumed by
 # testsys/content_key.py's compute_release_physics,
 # testsys/regression/check_pretag_ci.py's release_physics_key fallback, and
 # testsys/run.py's run_release(). This is the owner's OWN closed, exact

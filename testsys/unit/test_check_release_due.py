@@ -134,8 +134,8 @@ def test_physics_change_is_due_at_once(monkeypatch, capsys):
 
 def test_matrix_py_only_needs_a_sweep_but_is_not_due(monkeypatch, capsys):
     """Victor review fixture: "matrix.py only -> sweep yes, not due" --
-    testsys/needs_sweep.py's OWN test file proves the "sweep yes" half;
-    this proves matrix.py is PHYSICS-but-not-output-change, so ONE such PR
+    matrix.py is in change_class.RELEASE_PHYSICS_EXACT (the "sweep yes"
+    half); this proves matrix.py is PHYSICS-but-not-output-change, so ONE such PR
     at day 0 never trips rule 27 at all."""
     out = _run_main(monkeypatch, capsys, 0, 'x (#1)\n', MATRIX_ONLY)
     assert out.startswith('release not due'), out
