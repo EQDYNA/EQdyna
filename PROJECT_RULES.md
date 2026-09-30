@@ -3005,10 +3005,14 @@ about to be tagged, whether `publish.yml` (read by its own `name:`, the same
 way `parse_workflow_name` already reads `test.yml`'s) has a completed,
 successful run. "Never ran" is refused exactly like "ran and failed" — there
 is no silent pass for "not yet scheduled." `check_pretag_ci.py` reports this
-as exit code 7, `IMAGE_WORKFLOW_NOT_READY`, checked after the CI check
-(rule 15a) and the sweep check (rule 24) both pass, per rule 2's "three
-different situations, three different exit codes" convention extended here
-to a fourth.
+as exit code 7, `IMAGE_WORKFLOW_NOT_READY`, checked immediately after the CI
+check (rule 15a) passes and BEFORE the sweep check (rule 24) runs — both are
+CI-completeness questions (one about `test.yml`, one about `publish.yml`),
+so they are grouped together ahead of the sweep/release-docs checks, per
+rule 2's "different situations, different exit codes" convention extended
+here to a fourth. (Corrected 2026-09-30, PR #69 `victor-reyes` audit: an
+earlier draft of this paragraph said "after ... the sweep check ... both
+pass," which did not match `check_pretag_ci.py`'s `main()`'s actual order.)
 
 **Rationale**: item 78 already established that a workflow which DID run
 and failed must block the tag; this rule is the same principle applied to
