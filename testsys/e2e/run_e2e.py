@@ -73,7 +73,7 @@ REPO_ROOT = os.path.dirname(TESTSYS)
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from testsys import common, compare, frt_canonical, matrix, runlock  # noqa: E402
+from testsys import common, compare, content_key, frt_canonical, matrix, runlock  # noqa: E402
 sys.path.insert(0, TESTSYS)  # testsys/ itself (profile_record.py lives there)
 import profile_record  # noqa: E402  (append-only per-rank profile totals)
 
@@ -1027,6 +1027,12 @@ def write_release_evidence(results, is_release, explicit, started_utc,
     GATE_TERM_S every cell in this sweep actually ran at, not a 'full'/'gate'
     mode string -- there is no second mode left to name. `dirty_at_start` is
     a new field (this fix): extending, not renaming, per that same contract.
+    `content_key` (item 2b) is another such extension: the sha256 over every
+    tracked path's blob outside content_key.ALLOWED_* at this sweep's own
+    `sha`, computed while that commit still certainly exists in this
+    checkout -- see testsys/content_key.py's module docstring for why a
+    reader compares this recorded string rather than recomputing it from a
+    (possibly squashed-away or rewritten) swept sha.
     """
     if not is_release or explicit:
         return
@@ -1050,7 +1056,8 @@ def write_release_evidence(results, is_release, explicit, started_utc,
     payload = dict(sha=sha, tree_clean=tree_clean, dirty_at_start=dirty_at_start,
                   term=matrix.GATE_TERM_S,
                   n_runnable=len(results), n_success=n_success, cells=cells,
-                  started_utc=started_utc, finished_utc=finished_utc)
+                  started_utc=started_utc, finished_utc=finished_utc,
+                  content_key=content_key.compute(REPO_ROOT, sha))
     out_dir = os.path.join(REPO_ROOT, 'docs', 'evidence', 'sweep-%s' % sha[:7])
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, 'summary.json')

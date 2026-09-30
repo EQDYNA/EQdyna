@@ -77,7 +77,7 @@ import sys
 TESTSYS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(TESTSYS)
 sys.path.insert(0, ROOT)
-from testsys import ci_status, matrix  # noqa: E402
+from testsys import ci_status, content_key, matrix  # noqa: E402
 
 EXIT_CODES = {
     ci_status.PASS: 0,
@@ -228,6 +228,32 @@ def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count
         names = ['%s/%s=%s' % (c.get('case'), c.get('backend'), c.get('verdict'))
                  if isinstance(c, dict) else repr(c) for c in bad]
         reasons.append('%s: %d cell(s) not SUCCESS: %s' % (path, len(bad), ', '.join(names)))
+    # Item 2b: evidence carrying a `content_key` is judged on CONTENT alone
+    # -- does every tracked path outside content_key.ALLOWED_* have the same
+    # blob at the swept sha as at the tag commit -- recomputed from the TAG
+    # commit alone, never from the swept sha (which a squash-merge or a
+    # history rewrite may have made unreachable or gone entirely; see
+    # testsys/content_key.py's module docstring). This REPLACES the
+    # ancestor/disallowed-diff check below for such evidence, because a
+    # matching content_key already proves everything that check exists to
+    # prove, without needing the swept commit's object to exist at all.
+    # Evidence with no `content_key` field (written before item 2b) keeps
+    # the original ancestor-based rule unchanged.
+    content_key_val = data.get('content_key')
+    if content_key_val is not None:
+        try:
+            recomputed = content_key.compute(repo_root, tag_sha)
+        except Exception as exc:  # pragma: no cover - defensive, git itself failing
+            return reasons + ['%s: could not recompute content_key for %s: %s'
+                              % (path, tag_sha, exc)]
+        if recomputed != content_key_val:
+            reasons.append(
+                '%s: content_key %s (recorded for swept sha %s) does not match '
+                'the tagged tree\'s own content_key %s recomputed at %s -- some '
+                'tracked path outside the evidence/ledger allow-list differs '
+                'between the swept tree and the tagged tree'
+                % (path, content_key_val, sha, recomputed, tag_sha))
+        return reasons
     try:
         if not _sweep_is_ancestor(repo_root, sha, tag_sha):
             reasons.append(
