@@ -1,6 +1,10 @@
 # Rule 27 exemptions: commits under src/ that are OUTPUT-NEUTRAL, so they do
 # not make a release due on their own (they still count as PRs toward the
-# week / 10-PR threshold). One line per commit: `<sha> <evidence>`. The
+# week / 5-PR threshold, as any non-INTERNAL-only PR does -- 2026-09-30
+# classifier work counts a PR unless EVERY path it touches classifies
+# INTERNAL per testsys/change_class.py; an exempted src/ commit is PHYSICS,
+# not INTERNAL, so it still counts). One line per commit:
+# `<sha> <evidence>`. The
 # evidence must say what showed the gated outputs unchanged. A line without
 # evidence exempts nothing. Read by testsys/regression/check_release_due.py.
 edc9b4b PR #47 shard_map retirement: test.tpv8 x python-jax frt.txt0/fault.dyna.r.nc sha256 identical before/after; run.py all 23/23 e2e cells SUCCESS; removed path was unreachable from every gated run (EQDYNA_JAX_DEVICES never set)
