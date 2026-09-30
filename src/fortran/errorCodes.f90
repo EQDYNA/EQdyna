@@ -159,7 +159,7 @@ CONTAINS
             write(*,*) ' rank      : ', rank
         endif
         write(*,*) ' exit code : ', code
-        write(*,*) ' reason    : ', trim(reason)
+        write(*,'(1X,A)') ' reason    : '//trim(reason)   ! not list-directed: ifort wraps it at 80 columns
         write(*,*) ' See docs/user/troubleshooting.md for what this code means.'
         write(*,*) '======================================================='
         write(*,*)

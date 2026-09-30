@@ -44,6 +44,9 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FSRC = os.path.join(ROOT, 'src', 'fortran')
 
+sys.path.insert(0, ROOT)
+from testsys.common import stage, make_var  # noqa: E402
+
 FORTRAN_DEPS = ('globalvar.f90', 'library_output.f90')
 
 RE_DECLARED_NCOL = re.compile(r'[Tt]ime series in\s+(\d+)\s+columns')
@@ -119,7 +122,7 @@ def build_and_run_offfault(tmp):
         obj = os.path.join(tmp, fname.replace('.f90', '.off.o'))
         r = subprocess.run(
             ['gfortran', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp,
-             '-c', os.path.join(FSRC, fname), '-o', obj],
+             '-c', stage(tmp, fname), '-o', obj],
             capture_output=True, text=True, timeout=60)
         if r.returncode != 0:
             raise RuntimeError(f'compiling {fname} (off) failed:\n{r.stdout}\n{r.stderr}')
@@ -166,7 +169,7 @@ def build_and_run(tmp, friclaw, strike_m, tag):
     return the path of the one station file it wrote."""
     objs = []
     for fname in FORTRAN_DEPS:
-        src = os.path.join(FSRC, fname)
+        src = stage(tmp, fname)
         obj = os.path.join(tmp, fname.replace('.f90', f'.{tag}.o'))
         r = subprocess.run(
             ['gfortran', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp,

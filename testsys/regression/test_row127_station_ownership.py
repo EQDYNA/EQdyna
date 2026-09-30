@@ -115,10 +115,12 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FSRC = os.path.join(ROOT, 'src', 'fortran')
+
+sys.path.insert(0, ROOT)
+from testsys.common import MACHINE  # noqa: E402
 PYSRC = os.path.join(ROOT, 'src', 'python')
 sys.path.insert(0, PYSRC)
 
-MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 RANKS = 4
 

@@ -73,7 +73,7 @@ REPO_ROOT = os.path.dirname(TESTSYS)
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from testsys import compare, frt_canonical, matrix, runlock  # noqa: E402
+from testsys import common, compare, frt_canonical, matrix, runlock  # noqa: E402
 sys.path.insert(0, TESTSYS)  # testsys/ itself (profile_record.py lives there)
 import profile_record  # noqa: E402  (append-only per-rank profile totals)
 
@@ -86,7 +86,7 @@ import profile_record  # noqa: E402  (append-only per-rank profile totals)
 # should be lost when a run dies.
 sys.stdout.reconfigure(line_buffering=True)
 
-MACHINE = os.environ.get('EQDYNA_TEST_MACHINE', 'ubuntu')
+MACHINE = common.MACHINE
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 BIN_OVERRIDE = os.environ.get('EQDYNA_E2E_BIN')
 

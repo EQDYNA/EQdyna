@@ -49,11 +49,13 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FSRC = os.path.join(ROOT, 'src', 'fortran')
 
+sys.path.insert(0, ROOT)
+from testsys.common import stage, make_var  # noqa: E402
+
 FORTRAN_DEPS = ('globalvar.f90', 'errorCodes.f90', 'netcdf_io.f90')
 
-# NetCDF include/lib flags -- mirrors src/fortran/makefile's ubuntu branch.
-NETCDF_INC = ['-I', '/usr/include']
-NETCDF_LIB = ['-L', '/usr/lib/x86_64-linux-gnu', '-lnetcdf', '-lnetcdff']
+NETCDF_INC = make_var('NETCDF_INC')
+NETCDF_LIB = make_var('NETCDF_LIB')
 
 # The 24 on-fault variable names netcdf_read_on_fault_eqdyna reads, in the
 # EXACT order the subroutine's own nf90_inq_varid calls list them (this is
@@ -130,6 +132,7 @@ def build_netcdf_input(path):
 
 
 def build_driver(tmp):
+    # ifort ignores gfortran's -J and writes .mod into the cwd (the repo root); cwd=tmp keeps them here.
     objs = []
     for fname in FORTRAN_DEPS:
         src = os.path.join(FSRC, fname)
@@ -138,7 +141,7 @@ def build_driver(tmp):
         if fname == 'netcdf_io.f90':
             cmd += NETCDF_INC
         cmd += ['-c', src, '-o', obj]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, timeout=60)
         if r.returncode != 0:
             raise RuntimeError(f'compiling {fname} failed:\n{r.stdout}\n{r.stderr}')
         objs.append(obj)
@@ -150,14 +153,14 @@ def build_driver(tmp):
     r = subprocess.run(
         ['mpif90', '-O0', '-ffree-line-length-none', '-I', tmp, '-J', tmp,
          '-c', driver_src, '-o', driver_obj],
-        capture_output=True, text=True, timeout=60)
+        cwd=tmp, capture_output=True, text=True, timeout=60)
     if r.returncode != 0:
         raise RuntimeError(f'compiling driver failed:\n{r.stdout}\n{r.stderr}')
 
     binary = os.path.join(tmp, 'netcdf_item7_driver')
     r = subprocess.run(
         ['mpif90', '-O0'] + objs + [driver_obj, '-o', binary] + NETCDF_LIB,
-        capture_output=True, text=True, timeout=60)
+        cwd=tmp, capture_output=True, text=True, timeout=60)
     if r.returncode != 0:
         raise RuntimeError(f'linking driver failed:\n{r.stdout}\n{r.stderr}')
     return binary
