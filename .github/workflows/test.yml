@@ -33,6 +33,11 @@ name: Automatic Testing of EQdyna
 # figures/, docs/user/ -- which runs its own three content guards per rule
 # 25 instead) stays ignored; a new docs/ path defaults to NOT ignored
 # (safer direction, rule 2) until someone deliberately adds it here.
+# docs/HISTORY.md is deliberately NOT in this list (rule 15g audit, PR #69
+# victor-reyes pass, 2026-09-30): testsys/regression/test_history_table.py
+# opens it as data (compares it against the commit-message-derived table),
+# so it is exactly the class of path rule 15g exists to keep OUT of this
+# ignore list, docs-sounding directory name notwithstanding.
 on:
   push:
     branches:
@@ -48,7 +53,6 @@ on:
       - 'docs/notes/**'
       - 'docs/figures/**'
       - 'docs/BOARD_HISTORY.md'
-      - 'docs/HISTORY.md'
       - 'docs/cycle_ledger.jsonl'
       - 'docs/release_exempt.txt'
       - 'docs/run_profile.md'
