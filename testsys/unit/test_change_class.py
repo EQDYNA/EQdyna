@@ -228,6 +228,33 @@ def _collect_repo_modules_transitively(mod, seen=None):
     return seen
 
 
+_LOADED_PROBE = r"""
+import os, sys
+root = sys.argv[1]
+sys.path.insert(0, root)
+import testsys.run, testsys.e2e.run_e2e
+out = set()
+for m in list(sys.modules.values()):
+    f = getattr(m, '__file__', None)
+    if f and os.path.abspath(f).startswith(root + os.sep):
+        out.add(os.path.relpath(os.path.abspath(f), root).replace(os.sep, '/'))
+print('\n'.join(sorted(out)))
+"""
+
+
+def _loaded_in_fresh_interpreter(root):
+    """Every repo file a FRESH python has in sys.modules after importing the
+    two sweep entry points from `root` -- covers `import X`, `from X import
+    name` and anything their imports pull in, with no cache from this test
+    process (PR #62 re-audit: the namespace walk missed `from X import name`)."""
+    import subprocess
+    r = subprocess.run([sys.executable, '-c', _LOADED_PROBE, root],
+                       capture_output=True, text=True, cwd=root,
+                       env=dict(os.environ, PYTHONPATH=root))
+    assert r.returncode == 0, 'import probe failed:\n' + r.stderr[-2000:]
+    return {'loaded: ' + p: p for p in r.stdout.split()}
+
+
 def discover_sweep_dependency_paths():
     """{module_name: repo-relative path} for every repo file the everyday
     sweep path (`testsys/run.py`, `testsys/e2e/run_e2e.py`) actually loads,
@@ -247,10 +274,7 @@ def discover_sweep_dependency_paths():
          resolvable to a real scripts/<name>.py file is included.
     """
     run_mod = importlib.import_module('testsys.run')
-    run_e2e_mod = importlib.import_module('testsys.e2e.run_e2e')
-    paths = {}
-    for m in (run_mod, run_e2e_mod):
-        _collect_repo_modules_transitively(m, paths)
+    paths = _loaded_in_fresh_interpreter(REPO_ROOT)
 
     for loader_name, loader in (('scripts.machines (via run.py._load_machines)',
                                  run_mod._load_machines),
@@ -314,44 +338,32 @@ def test_import_trace_check_goes_red_if_ledger_relabeled_internal(monkeypatch):
 
 
 def test_import_trace_goes_red_on_a_real_added_internal_import(tmp_path):
-    """victor-reyes's own named mutation: adding
-    `from testsys.regression import check_release_due` to run_e2e.py must
-    make the trace fail. Proved against a TEMP COPY of run_e2e.py's actual
-    current source with that one line inserted -- the checked-in file is
-    never touched -- loaded under a throwaway module name so it cannot
-    clobber the real testsys.e2e.run_e2e already cached in sys.modules."""
-    real_path = os.path.join(REPO_ROOT, 'testsys', 'e2e', 'run_e2e.py')
-    with open(real_path) as f:
-        source = f.read()
-    marker = 'from testsys import common, compare, frt_canonical, matrix, runlock'
-    assert marker in source, ('run_e2e.py\'s import line moved or changed -- '
-                              'update this test\'s insertion point')
-    mutated = source.replace(
-        marker, marker + '\nfrom testsys.regression import check_release_due  '
-                         '# MUTATION under test, never real', 1)
-    mutated_file = tmp_path / 'run_e2e_mutated.py'
-    mutated_file.write_text(mutated)
-
-    spec = importlib.util.spec_from_file_location(
-        'run_e2e_mutated_for_test', str(mutated_file))
-    mod = importlib.util.module_from_spec(spec)
-    before = set(sys.modules)
-    try:
-        spec.loader.exec_module(mod)
-        added = _new_repo_local_modules(before)
-        assert 'testsys/regression/check_release_due.py' in added.values(), (
-            'the mutation\'s new import did not register in sys.modules '
-            'with a repo-local __file__ -- this trace mechanism cannot see '
-            'it: %r' % added)
+    """victor-reyes's named mutations, run through the SAME fresh-interpreter
+    probe the real check uses: a temp copy of the repo's python sources with
+    `from testsys.regression import check_release_due` (plain) or
+    `from testsys.regression.check_release_due import main` (from-import)
+    added to run_e2e.py must surface check_release_due.py, and
+    _assert_all_physics must refuse it. The checked-in file is never touched."""
+    import shutil
+    for k, line in enumerate(('from testsys.regression import check_release_due',
+                              'from testsys.regression.check_release_due import main as _crd_main')):
+        root = tmp_path / ('repo%d' % k)
+        shutil.copytree(os.path.join(REPO_ROOT, 'testsys'), root / 'testsys',
+                        ignore=shutil.ignore_patterns('__pycache__', '*.log', 'scaling_case',
+                                                      'numa_case', 'perf_case'))
+        for name in os.listdir(REPO_ROOT):     # everything else: read-only links
+            if name not in ('testsys', '.git') and not (root / name).exists():
+                os.symlink(os.path.join(REPO_ROOT, name), root / name)
+        f = root / 'testsys' / 'e2e' / 'run_e2e.py'
+        src = f.read_text()
+        marker = 'from testsys import common, compare, frt_canonical, matrix, runlock'
+        assert marker in src, 'run_e2e.py import line moved -- update the insertion point'
+        f.write_text(src.replace(marker, marker + '\n' + line + '  # MUTATION', 1))
+        loaded = _loaded_in_fresh_interpreter(str(root))
+        assert 'testsys/regression/check_release_due.py' in loaded.values(), (line, loaded)
         try:
-            _assert_all_physics(added)
+            _assert_all_physics(loaded)
         except AssertionError as exc:
             assert 'check_release_due.py' in str(exc)
         else:
-            raise AssertionError(
-                'a real `from testsys.regression import check_release_due` '
-                'added to run_e2e.py was NOT caught -- check_release_due.py '
-                'classifies INTERNAL and must never be a real sweep import')
-    finally:
-        for name in set(sys.modules) - before:
-            del sys.modules[name]
+            raise AssertionError('mutation %r was NOT caught by the real check' % line)
