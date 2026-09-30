@@ -237,22 +237,37 @@ def check_release_tier_requests_the_release_selection():
     """run.py's `release` tier must construct a `run_e2e.py --release`
     command -- checked BEHAVIOURALLY (rule 10a): subprocess.call is
     monkeypatched to capture the argv this tier builds, and the real
-    run_e2e.py is never invoked."""
+    run_e2e.py is never invoked.
+
+    Since item 3 (2026-09-30), `run_release()` first asks
+    `_release_sweep_carry_forward()` whether committed evidence already
+    covers this tree and, if so, skips the subprocess call entirely (by
+    design -- see that function's docstring). This check is about the
+    ARGV SHAPE of the sweep invocation, not the carry-forward decision
+    (that has its own coverage), so it forces the sweep-needed path with
+    a stub, regardless of whether real evidence happens to carry forward
+    in whatever tree this runs in."""
     mod = _load_run_module()
     if 'release' not in mod.RUNNERS:
         raise AssertionError("run.py has no 'release' tier registered in RUNNERS")
     captured = []
     orig_call = mod.subprocess.call
+    orig_carry_forward = mod._release_sweep_carry_forward
 
     def fake_call(cmd, *a, **k):
         captured.append(list(cmd))
         return 0
 
+    def force_sweep_needed():
+        return False, 'test stub: forcing the sweep-needed path'
+
     mod.subprocess.call = fake_call
+    mod._release_sweep_carry_forward = force_sweep_needed
     try:
         rc = mod.RUNNERS['release']()
     finally:
         mod.subprocess.call = orig_call
+        mod._release_sweep_carry_forward = orig_carry_forward
     if rc != 0:
         raise AssertionError('run_release() returned %r with a stubbed '
                              'subprocess.call (expected 0)' % rc)
@@ -276,6 +291,45 @@ def check_release_tier_requests_the_release_selection():
     print('  PASS  release tier invokes %r' % cmd)
 
 
+def check_release_tier_honours_carry_forward_skip():
+    """The other half of item 3 (2026-09-30): when
+    `_release_sweep_carry_forward()` says committed evidence already
+    covers this tree, `run_release()` must return 0 and make ZERO
+    subprocess calls -- not run the sweep anyway "to be safe". Forced
+    here with a stub so it does not depend on whatever evidence this
+    tree's own history happens to carry."""
+    mod = _load_run_module()
+    captured = []
+    orig_call = mod.subprocess.call
+    orig_carry_forward = mod._release_sweep_carry_forward
+
+    def fake_call(cmd, *a, **k):
+        captured.append(list(cmd))
+        return 0
+
+    def force_carry_forward():
+        return True, 'test stub: forcing the carry-forward path'
+
+    mod.subprocess.call = fake_call
+    mod._release_sweep_carry_forward = force_carry_forward
+    try:
+        rc = mod.RUNNERS['release']()
+    finally:
+        mod.subprocess.call = orig_call
+        mod._release_sweep_carry_forward = orig_carry_forward
+    if rc != 0:
+        raise AssertionError(
+            'run_release() returned %r when carry-forward applies (expected 0)'
+            % rc)
+    if captured:
+        raise AssertionError(
+            'run_release() made %d subprocess call(s) when carry-forward '
+            'applies -- it must skip the sweep entirely: %r'
+            % (len(captured), captured))
+    print('  PASS  release tier makes 0 subprocess calls when carry-forward '
+          'applies')
+
+
 def main():
     print('Regression guard: ONE term everywhere (no --term flag, no second '
           'reference file, no per-case full-term table)')
@@ -287,7 +341,8 @@ def main():
               check_run_e2e_help_lists_release_and_not_term,
               check_run_e2e_refuses_a_term_flag,
               check_ci_smoke_invocation_passes_neither_term_nor_release,
-              check_release_tier_requests_the_release_selection]
+              check_release_tier_requests_the_release_selection,
+              check_release_tier_honours_carry_forward_skip]
     failures = []
     for c in checks:
         try:
