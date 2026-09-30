@@ -1389,11 +1389,13 @@ v5.16.1 --json publishedAt` reads `2026-09-23T07:16:39Z` — a 22-minute gap
 between the tag existing and the Release being published, during which
 `check_network_side` was red at master HEAD for this reason and no other.
 
-**How to apply**: never let anything — including watching CI, including
-writing the release notes body, including this very board — sit between the
-tag push and `gh release create` in step 7's sequence. If something must
-intervene, treat the resulting red exactly per rule 3a: stop, finish the
-Release immediately, then resume.
+**How to apply, SUPERSEDED 2026-09-30** — see the correction note immediately
+below: step 7 is now the single `gh release create --target <sha> ...
+--latest` command, so there is no longer a separate tag push for anything to
+land after. The instruction above ("never let anything sit between the tag
+push and `gh release create`") described the 2026-09-16-through-2026-09-30
+two-command process; it no longer applies because there is only one command
+to run. Kept verbatim above for the historical incident it documents.
 
 **Corrected 2026-09-30 (owner course correction, `v5.20.2`'s own sequencing
 mistake; second note same day below, rule 15 step 7 itself rewritten).**
@@ -1570,9 +1572,11 @@ The order that actually works, and that already runs under
    evidence, and `evaluate_sweep_evidence`'s ancestor-and-disallowed-paths
    check already permits E1 as E2's sweep evidence, because the diff from
    E1 to E2 lands entirely inside the evidence/ledger/board allow-list.
-8. Tag E2, push the tag, and `gh release create --verify-tag --latest` as
-   one uninterrupted sequence (rule 15 step 7 / rule 15c), immediately.
-9. `test_release_complete.py`, then the stranger gate on the pushed tag.
+8. `gh release create vX.Y.Z --target E2 --notes-file <notes-file> --latest`
+   — the single command that mints the (lightweight) tag and publishes the
+   Release together (rule 15 step 7 / rule 15c, rewritten 2026-09-30).
+9. `python3 testsys/regression/test_release_complete.py --post-publish`,
+   then the stranger gate on the published tag.
 
 This does not weaken rule 24 or rule 25: the sweep still gates the exact
 tagged tree (via the ancestor check), and `src/` still never reaches master
