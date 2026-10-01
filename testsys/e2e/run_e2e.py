@@ -52,8 +52,21 @@ invocation REFUSES, names the holder's pid and start time, and exits non-zero
 rather than renaming the first one's live tree out from under it (pathway item
 70 -- the 2026-09-22 collision that killed a 1500.1 s cell and printed FAIL).
 
-No timeouts: this is a shared box and dynamic-rupture runs are slow when it is
-busy.
+PER-CELL TIMEOUT (item: 11h45m hang, test.tpv1053d x fortran, an MPI
+transport stall nobody noticed until a human killed it by hand). Every cell
+gets a deadline -- CELL_TIMEOUT_MULTIPLIER x its latest docs/perf_ledger.jsonl
+wall-clock row, or CELL_TIMEOUT_FALLBACK_S if that (case, backend) has never
+been measured (see that constant's own comment for the number and why). A
+cell that outlives its deadline is killed (its own subprocess's process
+group, verified by `ps -o pid,args -p <pid>` immediately before the signal --
+never a second, separately-computed/chained PID list), reported
+`FAIL(timeout)` -- distinct from an ordinary `FAIL` in both the per-cell
+result line and the SUMMARY tally, so a human scanning the log sees
+immediately that this cell hung rather than failed physics -- and does NOT
+block the rest of the sweep: see run_one_with_deadline below. This is a
+shared box and dynamic-rupture runs are slow when it is busy, which is
+exactly why the deadline is 3x a MEASURED cost rather than a fixed number
+tight enough to false-positive on a merely-busy box.
 """
 import argparse
 import datetime
@@ -62,6 +75,7 @@ import math
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -121,9 +135,43 @@ RUN_LOG_PATH = os.environ.get('EQDYNA_RUN_LOG_PATH')
 GPU_MEM_FRACTION = os.environ.get('EQDYNA_E2E_GPU_MEM_FRACTION', '0.75')
 
 
+# --------------------------------------------------------------------------
+# per-thread active-subprocess registry, for the timeout killer below.
+#
+# A cell runs its subprocess steps SEQUENTIALLY on ONE thread (its own worker
+# thread under the concurrent sweep, or the main thread when --jobs 1): never
+# two children alive for the same thread at once. So "the current child for
+# this thread id" is unambiguous, and last-registered-wins is correct -- no
+# list, no walked tree, just the one handle a timeout needs to act on.
+# --------------------------------------------------------------------------
+_ACTIVE_SUBPROCS_LOCK = threading.Lock()
+_ACTIVE_SUBPROCS = {}  # threading.get_ident() -> subprocess.Popen
+
+
+def _register_subproc(popen):
+    with _ACTIVE_SUBPROCS_LOCK:
+        _ACTIVE_SUBPROCS[threading.get_ident()] = popen
+
+
+def _unregister_subproc():
+    with _ACTIVE_SUBPROCS_LOCK:
+        _ACTIVE_SUBPROCS.pop(threading.get_ident(), None)
+
+
 def _run(cmd, cwd, env):
     print('+ (%s) %s' % (os.path.basename(cwd), ' '.join(cmd)))
-    return subprocess.call(cmd, cwd=cwd, env=env)
+    # start_new_session=True: this child becomes the leader of its own new
+    # process group (pgid == pid). That is what lets a timeout kill reach
+    # whatever THIS child spawns (e.g. mpirun's own ranks) by signalling the
+    # group the OS already tracks, rather than this script walking a process
+    # tree and killing a computed list of PIDs by hand -- the exact mistake
+    # that nearly killed init on this box (see _kill_cell_subprocess below).
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, start_new_session=True)
+    _register_subproc(p)
+    try:
+        return p.wait()
+    finally:
+        _unregister_subproc()
 
 
 def visible_gpu_indices():
@@ -255,6 +303,198 @@ def schedule_order(cells, cost_estimates):
     an unchanged ledger and cell list.
     """
     return sorted(cells, key=lambda cb: -cost_estimates.get(cb, float('inf')))
+
+
+# --------------------------------------------------------------------------
+# per-cell timeout (11h45m test.tpv1053d x fortran MPI-transport hang)
+# --------------------------------------------------------------------------
+CELL_TIMEOUT_MULTIPLIER = 3.0
+
+# Fallback deadline for a (case, backend) with NO docs/perf_ledger.jsonl row
+# yet (its first-ever run under this harness). Not a guessed round number:
+# 3x the slowest cell-wall-clock row for any CURRENTLY GATED backend
+# (matrix.BACKENDS = fortran, python-jax, python-jax-mpi) in the ledger as of
+# this commit is test.tpv36 x fortran, 1487.996069908142s -> 3x = 4463.99s.
+# python-numpy's rows (up to 9413.5s, test.tpv37) are EXCLUDED from that
+# measurement: that backend left the gated axis 2026-09-23 and this harness
+# never schedules it, so crediting its historical walltime would inflate
+# every first-run deadline for a case this sweep no longer even runs that
+# way. 4500s (75 minutes) is the fallback: a round number safely above the
+# 4463.99s the measured formula would already produce for the slowest cell
+# ever gated, so a brand-new cell no slower than anything measured so far
+# will not time out purely from having no history -- while still being
+# trivially smaller than the 11h45m (42300s) hang this feature exists to
+# cut short. A cell genuinely slower than this fallback times out once; its
+# SECOND run then gets a real, case-specific, ledger-derived deadline.
+CELL_TIMEOUT_FALLBACK_S = 4500.0
+
+
+def cell_deadline_s(case, backend, ledger_costs):
+    """CELL_TIMEOUT_MULTIPLIER x this (case, backend)'s latest measured
+    wall_s in `ledger_costs` (load_ledger_wall_costs()'s return value), or
+    CELL_TIMEOUT_FALLBACK_S if it has never been measured -- see that
+    constant's own comment for the number and why."""
+    wall = ledger_costs.get((case, backend))
+    if wall is None:
+        return CELL_TIMEOUT_FALLBACK_S
+    return CELL_TIMEOUT_MULTIPLIER * wall
+
+
+def _ps_one(pid):
+    """`ps -o pid,args -p <pid>` for exactly one PID, as (alive, line)."""
+    v = subprocess.run(['ps', '-o', 'pid,args', '-p', str(pid)],
+                       capture_output=True, text=True)
+    alive = str(pid) in v.stdout
+    line = v.stdout.strip().splitlines()[-1] if alive else ''
+    return alive, line
+
+
+def _direct_children(pid):
+    """[(pid, args), ...] of `pid`'s DIRECT children right now, via
+    `ps --ppid <pid>`. One level only -- see _kill_cell_subprocess."""
+    r = subprocess.run(['ps', '--ppid', str(pid), '-o', 'pid=,args='],
+                       capture_output=True, text=True)
+    out = []
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        pid_str, _, args = line.partition(' ')
+        try:
+            out.append((int(pid_str), args))
+        except ValueError:
+            continue
+    return out
+
+
+def _kill_one_verified(pid, grace_s, poll_s):
+    """Verify `pid` is alive via ps, kill ITS process group, poll until gone
+    or `grace_s` elapses. Returns (ok, note). `ok` is False only when the
+    process is still present after the grace period."""
+    alive, line = _ps_one(pid)
+    if not alive:
+        return True, 'pid %d already gone' % pid
+    try:
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        return True, 'pid %d vanished between verification and kill' % pid
+    os.killpg(pgid, signal.SIGKILL)
+    deadline = time.time() + grace_s
+    while time.time() < deadline:
+        still_alive, _ = _ps_one(pid)
+        if not still_alive:
+            return True, 'killed pid %d (verified before kill: %s)' % (pid, line)
+        time.sleep(poll_s)
+    return False, ('killed pid %d (verified before kill: %s); STILL PRESENT '
+                   'after %.1fs grace' % (pid, line, grace_s))
+
+
+def _kill_cell_subprocess(thread_ident, grace_s=10.0, poll_s=0.2):
+    """Kill the subprocess currently registered for `thread_ident` (a
+    timed-out cell's worker thread) AND whatever it spawned, verified by PID
+    immediately before each signal, then polled afterward to confirm each is
+    actually gone.
+
+    MEASURED (this box, Open MPI 4.1.1), not assumed: `mpirun -np N ...`
+    under start_new_session=True puts the launched subprocess (mpirun) in
+    its OWN new process group, but each MPI RANK gets its OWN SEPARATE
+    process group too (pgid == the rank's own pid), not mpirun's. Launch
+    `mpirun -np 2 sleep 15`, note the PGIDs via
+    `ps -eo pid,ppid,pgid,sid,args`, send SIGKILL to mpirun's pgid alone: the
+    ranks' pgid never matches, they get reparented to pid 1 and KEEP
+    RUNNING -- exactly the orphaned-rank shape this function exists to
+    close, and the reason an earlier version of this function (os.killpg on
+    the registered subprocess's own group only) didn't actually fix the
+    11h45m-hang cleanup problem.
+
+    Fix, verified empirically the same way: before signalling anything,
+    discover the registered subprocess's DIRECT children (`ps --ppid <pid>`,
+    one level -- mpirun forks ranks directly for a local run; this is NOT a
+    recursive tree walk). Kill the registered subprocess's own group first
+    (reaches mpirun itself, or a non-MPI child with no separate-pgid
+    children). Then, for each discovered child, independently: verify it is
+    still present via `ps -o pid,args -p <pid>` RIGHT BEFORE the kill
+    (never a PID computed earlier and trusted), then kill THAT pid's own
+    process group. One PID, one verify, one kill, per loop iteration --
+    never a derived/piped multi-level PID list (the shape of scripting bug
+    that nearly killed init on this box earlier).
+
+    Returns a one-line, human-readable description for the FAIL(timeout)
+    message. Never raises: a defect in the kill path must still let the
+    cell report FAIL(timeout) rather than crashing the whole sweep.
+    """
+    try:
+        with _ACTIVE_SUBPROCS_LOCK:
+            p = _ACTIVE_SUBPROCS.get(thread_ident)
+        if p is None:
+            return ('no active subprocess was registered for this cell at '
+                     'the deadline (it may have finished in the narrow '
+                     'window between the deadline firing and this check)')
+        pid = p.pid
+        alive, verified_line = _ps_one(pid)
+        if not alive:
+            return ('pid %d was already gone by the time the deadline fired' % pid)
+
+        # Discover direct children BEFORE anything is signalled -- once the
+        # registered process dies, `ps --ppid <pid>` returns nothing (its
+        # children get reparented to pid 1, not found under the old ppid).
+        children = _direct_children(pid)
+
+        ok, _note = _kill_one_verified(pid, grace_s, poll_s)
+        notes = ['killed pid %d (verified before kill: %s)' % (pid, verified_line)]
+        still_present = [] if ok else [pid]
+
+        for cpid, _cargs in children:
+            cok, cnote = _kill_one_verified(cpid, grace_s, poll_s)
+            notes.append('child %s' % cnote)
+            if not cok:
+                still_present.append(cpid)
+
+        verdict = ('confirmed gone within %.1fs' % grace_s if not still_present else
+                  'STILL PRESENT after %.1fs grace on pid(s) %s -- investigate '
+                  '(possible D-state/zombie)' % (grace_s, still_present))
+        return '; '.join(notes) + ' -- ' + verdict
+    except Exception as exc:                        # noqa: BLE001
+        return ('kill attempt itself raised %s: %s -- cell still reported '
+                 'FAIL(timeout)' % (type(exc).__name__, exc))
+
+
+def run_one_with_deadline(fn, cb, deadline_s):
+    """Runs fn(cb) (same contract as main()'s run_one closure: returns
+    (case, backend, ok, dt, lines)) on its own thread and enforces
+    `deadline_s` against it.
+
+    Finishes within the deadline: returns fn's own result, untouched.
+
+    Exceeds the deadline: kills that thread's registered subprocess (see
+    _kill_cell_subprocess) and returns a FAIL(timeout) result IMMEDIATELY --
+    it does not wait for the worker thread to actually unwind. That thread
+    keeps running in the background; once the kill lands, its blocked
+    subprocess call returns (killed), fn raises or returns normally, the
+    thread exits, and nobody reads that result -- this is what lets the
+    REST OF THE SWEEP keep going instead of waiting on a cell that already
+    proved it cannot be trusted to finish by itself. main()'s own
+    `guarded()` releases this cell's core-budget reservation in ITS
+    `finally`, wrapped around this call returning -- the cores free up
+    when THIS function returns (at the deadline), not when the killed
+    subprocess actually exits a few hundred ms later; that is a bounded,
+    accepted over-subscription window, not an indefinite one.
+    """
+    case, backend = cb
+    box = []
+
+    def runner():
+        box.append(fn(cb))
+
+    t = threading.Thread(target=runner, daemon=True)
+    t.start()
+    t.join(deadline_s)
+    if not t.is_alive():
+        return box[0]
+    kill_note = _kill_cell_subprocess(t.ident)
+    return (case, backend, False, deadline_s,
+            ['FAIL(timeout): cell exceeded its %.1fs deadline -- %s'
+             % (deadline_s, kill_note)])
 
 
 def cell_cost(case, backend):
@@ -565,8 +805,14 @@ def _call_kept(cmd, cwd, env, log_prefix):
     # past the RuntimeError below (PR #11 re-audit; CI hit exactly that).
     with open(out_path, 'wb', buffering=0) as fo, \
             open(err_path, 'wb', buffering=0) as fe:
+        # start_new_session=True -- same reason as _run above: this child
+        # leads its own process group, so a timeout kill reaches it (and
+        # anything it spawns) via os.killpg, never a separately-computed
+        # PID list.
         p = subprocess.Popen(cmd, cwd=cwd, env=env,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             start_new_session=True)
+        _register_subproc(p)
 
         errors = []
 
@@ -588,7 +834,10 @@ def _call_kept(cmd, cwd, env, log_prefix):
                  threading.Thread(target=pump, args=(p.stderr, fe, sys.stderr))]
         for t in pumps:
             t.start()
-        rc = p.wait()
+        try:
+            rc = p.wait()
+        finally:
+            _unregister_subproc()
         for t in pumps:
             t.join()
     if errors:
@@ -977,6 +1226,25 @@ def _capture_perf(results, label, device, budget, sha, tree_dirty):
 _MAX_DIFF_RE = re.compile(r'max\|diff\|=([0-9.eE+-]+)')
 
 
+def _is_timeout(lines):
+    """True iff `lines` (a cell result's own message lines) carries the
+    FAIL(timeout) marker run_one_with_deadline puts in lines[0] -- the ONE
+    place that string is produced, so this is the ONE place it is read back,
+    rather than re-deriving "did this time out" from elapsed time (a cell
+    can legitimately run long and still finish inside its deadline)."""
+    return bool(lines) and lines[0].startswith('FAIL(timeout)')
+
+
+def _verdict_label(ok, lines):
+    """'SUCCESS' / 'FAIL' / 'FAIL(timeout)' -- the timeout case kept visually
+    distinct from an ordinary FAIL everywhere a verdict is printed, so a
+    human scanning the log sees immediately that a cell hung rather than
+    failed physics (see the module docstring's PER-CELL TIMEOUT section)."""
+    if ok:
+        return 'SUCCESS'
+    return 'FAIL(timeout)' if _is_timeout(lines) else 'FAIL'
+
+
 def capture_start_tree_state():
     """git status --porcelain captured at the very start of the sweep (main(),
     before Gate 0, before the build, before the test/ rotation) -- i.e. before
@@ -1075,6 +1343,11 @@ def write_release_evidence(results, is_release, explicit, started_utc,
         m = _MAX_DIFF_RE.search(lines[0]) if lines else None
         cells.append(dict(case=case, backend=backend,
                           verdict='SUCCESS' if ok else 'FAIL',
+                          # Additive field (extend-never-rename contract,
+                          # this function's own docstring): True iff this
+                          # cell was killed for exceeding its timeout
+                          # deadline rather than failing on its own.
+                          timed_out=_is_timeout(lines),
                           max_diff=float(m.group(1)) if m else None,
                           wall_s=dt))
     payload = dict(sha=sha, tree_clean=tree_clean, dirty_at_start=dirty_at_start,
@@ -1346,13 +1619,17 @@ def main(argv=None):
     cells = schedule_order(table_cells, ledger_costs)
     print('e2e: start order (longest measured wall-clock first, '
           'docs/perf_ledger.jsonl latest cell-wall-clock row per cell; '
-          'unmeasured cells scheduled first as the conservative choice):')
+          'unmeasured cells scheduled first as the conservative choice), '
+          'with each cell\'s timeout deadline (%gx measured, fallback %gs '
+          'for a never-measured cell -- CELL_TIMEOUT_FALLBACK_S):'
+          % (CELL_TIMEOUT_MULTIPLIER, CELL_TIMEOUT_FALLBACK_S))
     for cb in cells:
         cost = ledger_costs.get(cb)
-        print('  %-16s %-13s %s'
+        print('  %-16s %-13s %-22s deadline %.1fs'
               % (cb[0], cb[1],
                  ('%.1fs (measured)' % cost) if cost is not None
-                 else 'UNMEASURED -- scheduled first'))
+                 else 'UNMEASURED -- scheduled first',
+                 cell_deadline_s(cb[0], cb[1], ledger_costs)))
 
     # One slot per visible card, created only when a GPU cell is actually
     # selected -- asking nvidia-smi on a CPU sweep would make a CPU-only box
@@ -1406,12 +1683,13 @@ def main(argv=None):
     if budget <= 1:
         for cb in cells:
             print('\n-- cell: %s x %s --' % cb)
-            r = run_one(cb)
+            r = run_one_with_deadline(run_one, cb,
+                                      cell_deadline_s(cb[0], cb[1], ledger_costs))
             results.append(r)
             for line in r[4]:
                 print('   ' + line)
             print('%s %s x %s (%.1fs)'
-                  % ('SUCCESS' if r[2] else 'FAIL', r[0], r[1], r[3]))
+                  % (_verdict_label(r[2], r[4]), r[0], r[1], r[3]))
     else:
         import concurrent.futures as _cf
         import threading
@@ -1448,7 +1726,8 @@ def main(argv=None):
             cost = min(cell_cost(*cb), budget)
             reserve(cost)
             try:
-                return run_one(cb)
+                return run_one_with_deadline(
+                    run_one, cb, cell_deadline_s(cb[0], cb[1], ledger_costs))
             finally:
                 release(cost)
 
@@ -1464,7 +1743,7 @@ def main(argv=None):
                     for line in r[4]:
                         print('   ' + line)
                     print('%s %s x %s'
-                          % ('SUCCESS' if r[2] else 'FAIL', r[0], r[1]))
+                          % (_verdict_label(r[2], r[4]), r[0], r[1]))
                     results.append(r)
         results.sort(key=lambda r: order[(r[0], r[1])])
     elapsed = time.time() - start
@@ -1475,17 +1754,19 @@ def main(argv=None):
                                         'measure'))
     for case, backend, ok, dt, lines in results:
         print('%-16s %-13s %-8s %8.1f  %s'
-              % (case, backend, 'SUCCESS' if ok else 'FAIL', dt,
+              % (case, backend, _verdict_label(ok, lines), dt,
                  lines[0] if lines else ''))
     failed = [(c, b) for c, b, ok, _, _ in results if not ok]
+    timed_out = [(c, b) for c, b, ok, _, lines in results
+                 if not ok and _is_timeout(lines)]
 
     print('\n==== e2e sweep: SUMMARY ====')
     print('selection : %s' % label)
     print('ran       : %d of %d cells in the %d case x %d backend table '
-          '(%d passed, %d failed)'
+          '(%d passed, %d failed, %d of those timed out)'
           % (len(results), len(matrix.CASES) * len(matrix.BACKENDS),
              len(matrix.CASES), len(matrix.BACKENDS),
-             len(results) - len(failed), len(failed)))
+             len(results) - len(failed), len(failed), len(timed_out)))
     print('not gated : %d declared-unsupported cell(s): %s'
           % (len(unsupported),
              ', '.join('%s x %s' % (c, b) for c, b, _ in unsupported) or 'none'))
@@ -1508,8 +1789,11 @@ def main(argv=None):
               % (len(runnable), len(results)))
         return 1
     if failed:
-        print('e2e: FAIL - %d cell(s) failed: %s'
-              % (len(failed), ', '.join('%s x %s' % cb for cb in failed)))
+        print('e2e: FAIL - %d cell(s) failed (%d timed out): %s'
+              % (len(failed), len(timed_out),
+                 ', '.join('%s x %s%s' % (c, b, ' [FAIL(timeout)]'
+                                          if (c, b) in timed_out else '')
+                           for c, b in failed)))
         return 1
     print('e2e: SUCCESS - %d/%d selected cells matched test.reference.results/ '
           '(this states its own scope; see the coverage block above)'

@@ -399,7 +399,16 @@ def _check_is_on_fault_vec(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax,
               (y >= fymin - tol) & (y <= fymax + tol) &
               (z >= fzmin - tol) & (z <= fzmax + tol))
     if c_degen == 0.0:
-        return in_box & (y == 0.0)
+        # Row 17 (multi-fault): generalized from the exact `y == 0.0` test
+        # to `abs(y - fymin) < tol` -- meshgen.f90's checkIsOnFault tests a
+        # node against THIS fault's own y-plane (fltxyz(1,2,iFault), which
+        # is fymin; a planar vertical fault has fymin==fymax so either bound
+        # names the same plane), not hardcoded global y=0. Bit-identical at
+        # fymin==0.0 (0 is trivially within tol of itself, and tol=1e-5 is
+        # far smaller than any dy in use, so no OTHER node spuriously
+        # matches) -- confirmed the same way src/fortran/meshgen.f90's own
+        # row-17 commit documents its generalization.
+        return in_box & (np.abs(y - fymin) < tol)
     if c_degen > 3.0:
         if dx is None:
             raise ValueError('_check_is_on_fault_vec: dx is required for the C_degen>3 branch')
@@ -423,6 +432,49 @@ def is_on_fault(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax, tol, c_degen=
                                         fzmin, fzmax, tol, c_degen, dx))
 
 
+def _fault_boxes(params):
+    """Row 17 (multi-fault): the list of (fxmin,fxmax,fymin,fymax,fzmin,
+    fzmax) boxes to test a grid point against -- one per fault
+    (params['faults'], readInputFiles.build_params' per-fault list) when
+    present, else the single scalar box (params['fxmin']/.../['fzmax']),
+    identical to every caller's behaviour before this function existed.
+    Order matches bFaultGeometry.txt's fault order (fault 1 first)."""
+    faults = params.get('faults')
+    if faults:
+        return [(f['fxmin'], f['fxmax'], f['fymin'], f['fymax'], f['fzmin'], f['fzmax'])
+                for f in faults]
+    return [(params['fxmin'], params['fxmax'], params['fymin'], params['fymax'],
+             params['fzmin'], params['fzmax'])]
+
+
+def on_fault_grid_mask_with_id(xline, yline, zline, params):
+    """`on_fault_grid_mask`, plus the 0-indexed fault each matched point
+    belongs to (meaningless where the mask is False). Faults are tested in
+    `_fault_boxes` order and are disjoint by construction
+    (checkInputConsistency.check_multifault's distinct-y guard), so which
+    one "wins" at a (impossible, in a valid case) overlap is just fault 0,
+    by iterating highest-index-first so index 0 is written last.
+
+    Returns (mask, fault_id), both (nx*nz*ny,) in traversal order."""
+    p = params
+    tol = p['tol']
+    c_degen = p['C_degen']
+    X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
+    Xg = X[:, None, None]
+    Yg = Y[None, None, :]
+    Zg = Z[None, :, None]
+    dx = p['dx'] if c_degen > 3.0 else None
+    boxes = _fault_boxes(p)
+    masks = [_check_is_on_fault_vec(Xg, Yg, Zg, *box, tol, c_degen, dx) for box in boxes]
+    mask = masks[0]
+    for m in masks[1:]:
+        mask = mask | m
+    fault_id = np.zeros(mask.shape, dtype=np.int64)
+    for k in range(len(masks) - 1, -1, -1):
+        fault_id = np.where(masks[k], k, fault_id)
+    return mask.ravel(), fault_id.ravel()
+
+
 def on_fault_grid_mask(xline, yline, zline, params):
     """Vectorized `is_on_fault` over the whole (ix, iz, iy) grid, in the
     traversal order every builder in this module uses (ix outer, iz middle,
@@ -442,21 +494,8 @@ def on_fault_grid_mask(xline, yline, zline, params):
 
     Returns a (nx*nz*ny,) bool array in traversal order.
     """
-    p = params
-    tol = p['tol']
-    c_degen = p['C_degen']
-    X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
-    Xg = X[:, None, None]
-    Yg = Y[None, None, :]
-    Zg = Z[None, :, None]
-    dx = p['dx'] if c_degen > 3.0 else None
-    # already the full (nx,nz,ny) shape by construction: every branch above
-    # combines an x-dependent, a y-dependent and a z-dependent boolean with
-    # `&`, and numpy broadcasts that to the full outer-product shape before
-    # this function returns.
-    mask = _check_is_on_fault_vec(Xg, Yg, Zg, p['fxmin'], p['fxmax'], p['fymin'],
-                                   p['fymax'], p['fzmin'], p['fzmax'], tol, c_degen, dx)
-    return mask.ravel()
+    mask, _fid = on_fault_grid_mask_with_id(xline, yline, zline, params)
+    return mask
 
 
 def _fortran_nint(x):
@@ -528,12 +567,43 @@ def insert_fault_interface(x, y, z, rough, dx, dz, ymin, ymax, tol):
 
 def build_node_coordinates(xline, yline, zline, params, model_bound=None):
     """Port of countMeshEntities/meshgen's node-creation loop (do ix; do iz;
-    do iy) for a SINGLE planar fault (ntotft==1, C_degen==0). Returns
-    meshCoor (N,3) in Fortran 1-indexed node-id order (row 0 unused,
-    matching the pydump dumps' 1-indexed convention read elsewhere in
-    python/eqdyna), nftnd (int), and nsmp ((nftnd,2) int64 [slave_id,
-    master_id], both 1-indexed, in fault-encounter order -- the same pairs
-    meshgen.f90's createMasterNode writes into nsmp(1,:,1)/nsmp(2,:,1)).
+    do iy), C_degen==0, for one OR MORE planar, parallel, vertical faults
+    (ntotft>=1 -- Row 17). Returns meshCoor (N,3) in Fortran 1-indexed
+    node-id order (row 0 unused, matching the pydump dumps' 1-indexed
+    convention read elsewhere in python/eqdyna), nftnd (int, TOTAL fault
+    nodes across every fault), and nsmp ((nftnd,3) int64 [slave_id,
+    master_id, fault_id], 1-indexed slave/master, 0-indexed fault_id).
+
+    Row 17: nsmp's THIRD column is new (every existing single-fault caller
+    that reads only nsmp[:,0]/nsmp[:,1] is unaffected; fault_id is always 0
+    at ntotft==1). nsmp's ROW ORDER is now GROUPED BY FAULT (fault 0's nodes
+    first, in scan order, then fault 1's, etc.) via a stable sort on
+    fault_id -- mirroring meshgen.f90's own per-fault storage
+    (nsmp(:,1:nftnd0(ift),ift) is a SEPARATE array per fault, each indexed
+    1..nftnd0(ift) in that fault's own encounter order) and matching
+    output_frt's write order (`do ift=1,ntotft: do i=1,nftnd(ift)`). This
+    reorders ROWS only -- the msnode VALUES themselves (and meshCoor's
+    master-node block, see below) are computed in the GLOBAL scan order
+    first and are completely unaffected by the later stable-sort.
+
+    Master nodes are NOT interleaved with their slave: meshgen.f90 assigns
+    master-node ids starting at `msnode = nx*ny*nz + sum(nftnd0)` (Row 17: a
+    RUNNING TOTAL across every fault created so far, not a per-fault
+    sequence number -- a fixed per-fault block SIGSEGV'd when a later
+    fault locally outnumbered an earlier one, see src/fortran/meshgen.f90's
+    own row-17 commit message), i.e. APPENDED after all nx*ny*nz
+    regular-grid nodes, in GLOBAL mesh-scan order (ix-outer, iz-middle,
+    iy-inner, since that's the loop order that reaches them, and since
+    every fault's own y sits somewhere in the SAME iy loop, scanning all
+    faults in the SAME pass naturally interleaves their creation order
+    exactly as the Fortran's `do iFault=1,ntotft` inner loop per grid point
+    does) -- NOT interleaved immediately after each slave row. (countMeshEntities.f90's
+    counting-pass loop increments its running node COUNT at the point a
+    fault node is found only to get the right TOTAL; it says nothing about
+    final array layout -- confirmed by diffing this port's first attempt,
+    which interleaved, against the golden `pydump_meshCoor.txt`: node counts
+    matched exactly, per-node coordinates did not, until switched to this
+    appended-at-end layout.)
 
     Master nodes are NOT interleaved with their slave: meshgen.f90 assigns
     master-node ids starting at `msnode = nx*ny*nz + nftnd0(iFault)`, i.e.
@@ -568,16 +638,25 @@ def build_node_coordinates(xline, yline, zline, params, model_bound=None):
         # testsys/unit/test_meshgen_vectorized.py.
         X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
         n_reg = nx * ny * nz
-        fault = on_fault_grid_mask(X, Y, Z, p)
+        fault, fid = on_fault_grid_mask_with_id(X, Y, Z, p)
         nftnd = int(fault.sum())
         meshCoor = np.zeros((n_reg + nftnd + 1, 3))  # index 0 unused
         meshCoor[1:n_reg + 1, 0] = np.repeat(X, nz * ny)
         meshCoor[1:n_reg + 1, 1] = np.tile(Y, nx * nz)
         meshCoor[1:n_reg + 1, 2] = np.tile(np.repeat(Z, ny), nx)
-        slave_ids = np.nonzero(fault)[0] + 1  # 1-indexed, fault-encounter order
-        meshCoor[n_reg + 1:] = meshCoor[slave_ids]
-        master_ids = n_reg + 1 + np.arange(nftnd, dtype=np.int64)
-        nsmp = np.stack([slave_ids.astype(np.int64), master_ids], axis=1)
+        # SCAN order (interleaved across faults): msnode = n_reg + running
+        # count of ALL fault nodes created so far, matching Fortran's
+        # `sum(nftnd0)` running total exactly -- see docstring.
+        flat_idx = np.nonzero(fault)[0]
+        slave_ids_scan = (flat_idx + 1).astype(np.int64)
+        master_ids_scan = n_reg + 1 + np.arange(nftnd, dtype=np.int64)
+        meshCoor[n_reg + 1:] = meshCoor[slave_ids_scan]
+        fault_id_scan = fid[flat_idx]
+        # FAULT-GROUPED order for the returned `nsmp` (row order only --
+        # the msnode VALUES above are already fixed and untouched by this).
+        order = np.argsort(fault_id_scan, kind='stable')
+        nsmp = np.stack([slave_ids_scan[order], master_ids_scan[order],
+                          fault_id_scan[order].astype(np.int64)], axis=1)
         return meshCoor, nftnd, nsmp
 
     regular = []
@@ -608,7 +687,9 @@ def build_node_coordinates(xline, yline, zline, params, model_bound=None):
                 if is_fault:
                     master.append((xcoor, y_store, zcoor))
                     master_id = nx * ny * nz + len(master)  # msnode = nx*ny*nz + nftnd0
-                    nsmp.append((slave_id, master_id))
+                    nsmp.append((slave_id, master_id, 0))  # fault_id 0: this scalar
+                    # path is single-fault only (insertFaultType>0 x ntotft>1
+                    # is refused by readInputFiles.build_params).
     nftnd = len(master)
     N = len(regular) + nftnd
     meshCoor = np.zeros((N + 1, 3))  # index 0 unused (1-indexed node ids)
@@ -616,7 +697,7 @@ def build_node_coordinates(xline, yline, zline, params, model_bound=None):
     # reshape: a rank-local box that never meets the fault has NO master node,
     # and np.array([]) is shape (0,), not (0, 3) / (0, 2).
     meshCoor[1 + len(regular):] = np.asarray(master, dtype=float).reshape(-1, 3)
-    nsmp = np.array(nsmp, dtype=np.int64).reshape(-1, 2)  # (nftnd, 2)
+    nsmp = np.array(nsmp, dtype=np.int64).reshape(-1, 3)  # (nftnd, 3): [slave, master, fault_id]
     return meshCoor, nftnd, nsmp
 
 def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
@@ -802,9 +883,20 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     # Fortran, and is intentionally absent from both masks below.)
     # Test uses the element's "top" node coords (this ix,iy,iz), matching
     # Fortran's `nodeCoor` at the point createElement/replaceSlave... run.
+    # Row 17 (multi-fault): generalized from a single `ycoor > 0.0 and
+    # abs(ycoor - dy) < tol` (one cell above fault 1's plane alone) to
+    # `any(abs(ycoor - (fault_y[i] + dy)) < tol)` over every fault's own
+    # y-plane -- meshgen.f90's replaceSlaveWithMasterNode guard, generalized
+    # identically (src/fortran/meshgen.f90's row-17 commit). Reduces to the
+    # old test bit-for-bit at ntotft==1, fault 1 at y=0 (fault_y=[0.0], and
+    # `ycoor > 0.0` was redundant there since a tol-match to dy>0 already
+    # implies ycoor>0).
     xcoor, ycoor, zcoor = xline[IX], yline[IY], zline[IZ]
+    fault_y = np.asarray(p.get('fault_y', [fymin]))
+    one_cell_above_any_fault = np.any(
+        np.abs(ycoor[:, None] - (fault_y[None, :] + dy)) < tol, axis=1)
     replace = (((elem_type == 1) & (xcoor > fxmin - tol) & (xcoor < fxmax + dx + tol) &
-                (zcoor > fzmin - tol) & (ycoor > 0.0) & (np.abs(ycoor - dy) < tol)) |
+                (zcoor > fzmin - tol) & one_cell_above_any_fault) |
                (elem_type == 13))
     lut = np.arange(meshCoor.shape[0], dtype=np.int64)
     lut[nsmp[:, 0]] = nsmp[:, 1]
@@ -957,7 +1049,7 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
     ymax0, ymin0 = pmlb['ymax0'], pmlb['ymin0']
     zmin0 = pmlb['zmin0']
 
-    slave2master = {int(s): int(m) for s, m in nsmp}
+    slave2master = {int(s): int(m) for s, m in nsmp[:, :2]}
     wedge12_mat_row = _wedge_material_row(material) if c_degen > 3.0 else None
 
     conn_rows = []       # dynamic: a wedge_trigger emits 2 rows per (ix,iy,iz)
@@ -1397,10 +1489,22 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
 
     params: same dict as build_grid_lines, plus 'fstrike' (degrees) and
     'C_degen' (0.0 for the planar branch this milestone ports).
-    nsmp: (nftnd,2) int64 [slave_id, master_id], from build_node_coordinates,
-    in fault-encounter (ix-outer, iz-middle, iy-inner) order -- the same
-    order `createMasterNode`'s running fault-node counter (nftnd0) assigns,
-    so row k (0-indexed) of nsmp IS fault node k+1.
+    nsmp: (nftnd,3) int64 [slave_id, master_id, fault_id], from
+    build_node_coordinates, FAULT-GROUPED (fault 0's rows first, in
+    fault-encounter (ix-outer, iz-middle, iy-inner) order, then fault 1's,
+    etc.) -- row k (0-indexed) of nsmp IS fault node k+1 of the RETURNED
+    un/us/ud/arn arrays (same row order).
+
+    Row 17 (multi-fault): createMasterNode's `fltrc(ifs,ifd,iFault)`
+    bookkeeping (src/fortran/meshgen.f90) is declared PER FAULT (ixfi,
+    izfi, fltrc all carry a `(ntotft)`/`(...,ntotft)` axis) -- each fault's
+    along-strike/along-dip (ifs,ifd) indexing resets independently, from
+    THAT fault's own first encounter, and the quadrilateral-area
+    accumulation (`arn`) is built from THAT fault's own grid alone. This is
+    therefore ported as one independent pass PER FAULT (`_fault_boxes`
+    order), each filling its own slice of the GLOBAL un/us/ud/arn arrays at
+    the row positions `nsmp`'s fault-grouping already assigned it --
+    reducing to the old single pass bit-for-bit at ntotft==1.
 
     Returns (un, us, ud, arn): un/us/ud are (nftnd+1, 3) float arrays (row 0
     unused, 1-indexed fault-node rows, matching this module's other
@@ -1409,6 +1513,7 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
     p = params
     nx, ny, nz = len(xline), len(yline), len(zline)
     tol = p['tol']
+    c_degen = p['C_degen']
     nftnd = nsmp.shape[0]
     rough = p.get('rough')
     insert_fault_type = p.get('insertFaultType', 0)
@@ -1419,92 +1524,110 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
     fstrike = p['fstrike'] * np.pi / 180.0
     fdip = (p['C_degen'] * np.pi / 180.0) if p['C_degen'] > 3.0 else (90.0 * np.pi / 180.0)
 
+    # un/us/ud's angle-based default depends only on fstrike/fdip -- global
+    # bGlobal.txt scalars, the SAME for every fault in this release's scope
+    # (readInputFiles.py has no per-fault strike/dip reader) -- so the
+    # broadcast default is correct for every fault node regardless of which
+    # fault it belongs to, unconditionally.
     un = np.zeros((nftnd + 1, 3))
     us = np.zeros((nftnd + 1, 3))
     ud = np.zeros((nftnd + 1, 3))
     un[1:] = (np.cos(fstrike) * np.sin(fdip), -np.sin(fstrike) * np.sin(fdip), np.cos(fdip))
     us[1:] = (-np.sin(fstrike), -np.cos(fstrike), 0.0)
     ud[1:] = (np.cos(fstrike) * np.cos(fdip), np.sin(fstrike) * np.cos(fdip), np.sin(fdip))
-
-    # Reproduce createMasterNode's fltrc(ifs,ifd) bookkeeping: ixfi/izfi are
-    # each set ONCE, on the very first fault-node encounter across the whole
-    # traversal (not reset per ix), then ifs/ifd are offsets from those --
-    # same traversal order as build_node_coordinates, so `seq` here lines up
-    # 1:1 with nsmp's row order.
-    # PERFORMANCE: the original walked all nx*ny*nz grid points calling the
-    # scalar `is_on_fault` just to reach the ~1e3 fault nodes. The mask gives
-    # the same nodes in the same traversal order (ix outer, iz middle, iy
-    # inner -- the flat index IS that order), so `seq` still lines up 1:1
-    # with nsmp's rows; the per-fault-node body below is unchanged.
-    fault_flat = np.nonzero(on_fault_grid_mask(xline, yline, zline, p))[0]
-    ix_of = fault_flat // (nz * ny)
-    iz_of = (fault_flat % (nz * ny)) // ny
-    iy_of = fault_flat % ny
-
-    grid = {}
-    ixfi = izfi = None
-    seq = 0
-    for _f in range(fault_flat.size):
-        ix, iz, iy = int(ix_of[_f]), int(iz_of[_f]), int(iy_of[_f])
-        xcoor, zcoor, ycoor = xline[ix], zline[iz], yline[iy]
-        seq += 1
-        ix_f, iz_f = ix + 1, iz + 1
-        if ixfi is None:
-            ixfi = ix_f
-        if izfi is None:
-            izfi = iz_f
-        ifs = ix_f - ixfi + 1
-        ifd = iz_f - izfi + 1
-        y_geo = ycoor  # planar branch: the fault's actual y IS 0 here.
-        if insert_fault_type > 0:
-            # insertFaultType>0: createMasterNode's un/us/ud branch
-            # (meshgen.f90:925-938) OVERWRITES the angle-based un/us/ud
-            # above with pfx/pfz-derived values, per fault node -- and the
-            # fault's actual (warped) y-coordinate is `peak`, not 0, which
-            # matters for arn's corner-distance formula below (meshCoor
-            # already stores this same `peak` value, per
-            # build_node_coordinates' y-morph of fault nodes -- recomputed
-            # here rather than re-reading meshCoor, since the fault-node
-            # traversal order is independently re-walked in every M-builder).
-            y_geo, pfx, pfz = insert_fault_interface(
-                xcoor, ycoor, zcoor, rough, p['dx'], p['dz'],
-                ymin_m, ymax_m, tol)
-            denom = (pfx ** 2 + 1.0 + pfz ** 2) ** 0.5
-            un[seq] = (-pfx / denom, 1.0 / denom, -pfz / denom)
-            us_denom = (1.0 + pfx ** 2) ** 0.5
-            us[seq] = (1.0 / us_denom, pfx / us_denom, 0.0)
-            ud[seq] = np.cross(us[seq], un[seq])
-        grid[(ifs, ifd)] = (seq, (xcoor, y_geo, zcoor))
-    assert seq == nftnd, (seq, nftnd)
-    if nftnd == 0:
-        # meshgen.f90:115 `if(nftnd0(ift)>0)`: a rank whose box never meets
-        # the fault has no quad grid and no area to accumulate.
-        return un, us, ud, np.zeros(1)
-    ns = max(k[0] for k in grid)
-    nd = max(k[1] for k in grid)
-    if len(grid) != ns * nd:
-        raise NotImplementedError('build_fault_geometry: only a fully '
-                                   'rectangular planar fault grid is ported')
-
     arn = np.zeros(nftnd + 1)
-    for i in range(2, nd + 1):
-        for j in range(2, ns + 1):
-            m1, c1 = grid[(j, i)]
-            m2, c2 = grid[(j - 1, i)]
-            m3, c3 = grid[(j - 1, i - 1)]
-            m4, c4 = grid[(j, i - 1)]
-            c1, c2, c3, c4 = (np.array(c1), np.array(c2), np.array(c3), np.array(c4))
-            aa1 = np.linalg.norm(c2 - c1)
-            bb1 = np.linalg.norm(c3 - c2)
-            cc1 = np.linalg.norm(c4 - c3)
-            dd1 = np.linalg.norm(c1 - c4)
-            p1 = np.linalg.norm(c4 - c2)
-            q1 = np.linalg.norm(c3 - c1)
-            area = 0.25 * np.sqrt(4 * p1 * p1 * q1 * q1 -
-                                   (bb1 * bb1 + dd1 * dd1 - aa1 * aa1 - cc1 * cc1) ** 2)
-            area = 0.25 * area
-            for m in (m1, m2, m3, m4):
-                arn[m] += area
+
+    X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
+    Xg, Yg, Zg = X[:, None, None], Y[None, None, :], Z[None, :, None]
+    dx_for_fault = p['dx'] if c_degen > 3.0 else None
+
+    seq_base = 0  # running row offset into the GLOBAL (grouped) arrays
+    for box in _fault_boxes(p):
+        fxmin, fxmax, fymin, fymax, fzmin, fzmax = box
+        # Reproduce createMasterNode's fltrc(ifs,ifd) bookkeeping: ixfi/izfi
+        # are each set ONCE, on this FAULT's very first node encounter
+        # across the whole traversal (not reset per ix), then ifs/ifd are
+        # offsets from those.
+        fault_mask = _check_is_on_fault_vec(Xg, Yg, Zg, fxmin, fxmax, fymin, fymax,
+                                             fzmin, fzmax, tol, c_degen, dx_for_fault)
+        fault_flat = np.nonzero(fault_mask.ravel())[0]
+        ix_of = fault_flat // (nz * ny)
+        iz_of = (fault_flat % (nz * ny)) // ny
+        iy_of = fault_flat % ny
+
+        grid = {}
+        ixfi = izfi = None
+        local_seq = 0
+        for _f in range(fault_flat.size):
+            ix, iz, iy = int(ix_of[_f]), int(iz_of[_f]), int(iy_of[_f])
+            xcoor, zcoor, ycoor = xline[ix], zline[iz], yline[iy]
+            local_seq += 1
+            seq = seq_base + local_seq
+            ix_f, iz_f = ix + 1, iz + 1
+            if ixfi is None:
+                ixfi = ix_f
+            if izfi is None:
+                izfi = iz_f
+            ifs = ix_f - ixfi + 1
+            ifd = iz_f - izfi + 1
+            y_geo = ycoor  # planar branch: the fault's actual y IS its own plane here.
+            if insert_fault_type > 0:
+                # insertFaultType>0: createMasterNode's un/us/ud branch
+                # (meshgen.f90:925-938) OVERWRITES the angle-based un/us/ud
+                # above with pfx/pfz-derived values, per fault node -- and the
+                # fault's actual (warped) y-coordinate is `peak`, not 0, which
+                # matters for arn's corner-distance formula below (meshCoor
+                # already stores this same `peak` value, per
+                # build_node_coordinates' y-morph of fault nodes -- recomputed
+                # here rather than re-reading meshCoor, since the fault-node
+                # traversal order is independently re-walked in every M-builder).
+                # (single-fault scope only -- readInputFiles.build_params
+                # refuses insertFaultType>0 with ntotft>1.)
+                y_geo, pfx, pfz = insert_fault_interface(
+                    xcoor, ycoor, zcoor, rough, p['dx'], p['dz'],
+                    ymin_m, ymax_m, tol)
+                denom = (pfx ** 2 + 1.0 + pfz ** 2) ** 0.5
+                un[seq] = (-pfx / denom, 1.0 / denom, -pfz / denom)
+                us_denom = (1.0 + pfx ** 2) ** 0.5
+                us[seq] = (1.0 / us_denom, pfx / us_denom, 0.0)
+                ud[seq] = np.cross(us[seq], un[seq])
+            grid[(ifs, ifd)] = (seq, (xcoor, y_geo, zcoor))
+        nftnd_this = local_seq
+        if nftnd_this == 0:
+            # meshgen.f90:115 `if(nftnd0(ift)>0)`: a rank whose box never
+            # meets THIS fault has no quad grid and no area to accumulate
+            # for it -- other faults (if any) are unaffected.
+            continue
+        ns = max(k[0] for k in grid)
+        nd = max(k[1] for k in grid)
+        if len(grid) != ns * nd:
+            raise NotImplementedError('build_fault_geometry: only a fully '
+                                       'rectangular planar fault grid is ported')
+
+        for i in range(2, nd + 1):
+            for j in range(2, ns + 1):
+                m1, c1 = grid[(j, i)]
+                m2, c2 = grid[(j - 1, i)]
+                m3, c3 = grid[(j - 1, i - 1)]
+                m4, c4 = grid[(j, i - 1)]
+                c1, c2, c3, c4 = (np.array(c1), np.array(c2), np.array(c3), np.array(c4))
+                aa1 = np.linalg.norm(c2 - c1)
+                bb1 = np.linalg.norm(c3 - c2)
+                cc1 = np.linalg.norm(c4 - c3)
+                dd1 = np.linalg.norm(c1 - c4)
+                p1 = np.linalg.norm(c4 - c2)
+                q1 = np.linalg.norm(c3 - c1)
+                area = 0.25 * np.sqrt(4 * p1 * p1 * q1 * q1 -
+                                       (bb1 * bb1 + dd1 * dd1 - aa1 * aa1 - cc1 * cc1) ** 2)
+                area = 0.25 * area
+                for m in (m1, m2, m3, m4):
+                    arn[m] += area
+        seq_base += nftnd_this
+
+    if seq_base != nftnd:
+        raise ValueError('build_fault_geometry: faults produced %d fault nodes in total, '
+                          'but nsmp has %d rows -- fault_boxes and build_node_coordinates '
+                          'disagree' % (seq_base, nftnd))
     return un, us, ud, arn
 
 
@@ -1578,9 +1701,11 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
     running match count, so order is part of the contract.
 
     params: same dict as build_grid_lines.
-    xonfs: (2, nonfs) float array, columns [x_strike, z_dip] in meters
-        (already *1000 from km, matching readstations2's conversion),
-        1 fault only (ntotft==1).
+    xonfs: list of ntotft (2, nonfs_i) float arrays, columns [x_strike,
+        z_dip] in meters (already *1000 from km, matching readstations2's
+        conversion), one per fault (Row 17; readInputFiles.read_bstations'
+        return) -- a bare (2, nonfs) array is also accepted (wrapped as a
+        1-element list) for ntotft==1 callers that still pass the old shape.
     x4nds: (3, n_off) float array, rows [x, y, z] in meters, off-fault
         station coordinates.
     pml_zmin: Fortran's `PMLb(5)` -- `build_grid_lines`'s `pmlb['zmin0']`.
@@ -1601,8 +1726,13 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
         would ever see this default fork.
 
     Returns (anonfs, off_fault_matches, z_valid): anonfs is a list of
-    (fault_seq, station_col, iFault=1) tuples, 1-indexed fault_seq/
-    station_col, in match order; off_fault_matches is a list of
+    (fault_seq, station_col, iFault) tuples -- 1-indexed fault_seq is now
+    the row position in build_node_coordinates' FAULT-GROUPED `nsmp` (Row
+    17: used to be the scan-order running count, which was also nsmp's row
+    order back when nsmp was scan-ordered at ntotft==1; both conventions
+    agree bit-for-bit there), station_col is 1-indexed WITHIN fault iFault's
+    own xonfs[iFault-1] array, and iFault is the real 1-indexed fault
+    (always 1 before this fix); off_fault_matches is a list of
     (station_col, node_id) tuples, 1-indexed, in match order (node_id is
     the regular/slave grid node id, matching Fortran's `nodeCount` --
     off-fault stations never match a master/split node since
@@ -1617,8 +1747,27 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
     tol = p['tol']
     nx, ny, nz = len(xline), len(yline), len(zline)
     n_off = x4nds.shape[1]
-    n_onf = xonfs.shape[1]
+    # Row 17: accept either the new per-fault list or the old bare array
+    # (wrapped as a 1-element list) -- so a caller that still has a single
+    # ntotft==1 xonfs array needs no changes.
+    xonfs_list = xonfs if isinstance(xonfs, (list, tuple)) else [xonfs]
+    n_onf_per_fault = [x.shape[1] for x in xonfs_list]
     matched = np.zeros(n_off + 1, dtype=bool)  # 1-indexed
+
+    # Row 17: precompute, ONCE, the SAME per-point (any-fault, which-fault)
+    # test build_node_coordinates uses, so this function's on-fault test and
+    # fault_seq numbering agree with nsmp's by construction rather than by
+    # re-derivation. `grouped_rank[k]` is the 1-indexed FAULT-GROUPED row
+    # (nsmp's own row order) of the k-th fault point encountered in SCAN
+    # order (0-indexed) -- the identity map at ntotft==1.
+    fault_mask_flat, fault_id_flat = on_fault_grid_mask_with_id(xline, yline, zline, p)
+    flat_fault_positions = np.nonzero(fault_mask_flat)[0]
+    fid_scan = fault_id_flat[flat_fault_positions]
+    order = np.argsort(fid_scan, kind='stable')
+    grouped_rank = np.empty(flat_fault_positions.size, dtype=np.int64)
+    grouped_rank[order] = np.arange(1, flat_fault_positions.size + 1, dtype=np.int64)
+    fault_mask_3d = fault_mask_flat.reshape(nx, nz, ny)
+    fault_id_3d = fault_id_flat.reshape(nx, nz, ny)
 
     # Row 94 (owner ruling 2026-09-24): clamp each requested off-fault
     # station's depth to the nearest node of the GLOBAL z grid -- the serial
@@ -1686,7 +1835,7 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
     anonfs = []
     off_fault_matches = []
     node_count = 0
-    fault_seq = 0
+    fault_scan_pos = 0  # 0-indexed running count into flat_fault_positions/grouped_rank
     for ix in range(nx):
         xcoor = xline[ix]
         for iz in range(nz):
@@ -1728,11 +1877,14 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
                 # C_degen>3 case) already threads C_degen/dx correctly --
                 # this call site is the one this milestone's own station
                 # wiring newly exercises end to end, and it had not been.
-                dx_for_fault = p['dx'] if p['C_degen'] > 3.0 else None
-                if is_on_fault(xcoor, ycoor, zcoor, p['fxmin'], p['fxmax'],
-                                p['fymin'], p['fymax'], p['fzmin'], p['fzmax'],
-                                tol, p['C_degen'], dx_for_fault):
-                    fault_seq += 1
+                # Row 17: the per-point test is now the SAME
+                # on_fault_grid_mask_with_id precomputed above (any fault,
+                # plus which one), so this function's fault_seq numbering
+                # and nsmp's row order cannot silently disagree.
+                if fault_mask_3d[ix, iz, iy]:
+                    which_fault = int(fault_id_3d[ix, iz, iy])
+                    fault_seq = int(grouped_rank[fault_scan_pos])  # 1-indexed grouped row
+                    fault_scan_pos += 1
                     # Row 131: on-fault station matching is a single exact-
                     # value test with no ix/iz gate at all, so a fault node
                     # sitting exactly on a shared x seam (npx>1) or z seam
@@ -1751,10 +1903,12 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
                         (ix == 0 and mex != 0) or (iy == 0 and mey != 0) or
                         (iz == 0 and mez != 0))
                     if is_onfault_station_owner:
-                        for i in range(1, n_onf + 1):
-                            if (abs(xcoor - xonfs[0, i - 1]) < tol and
-                                    abs(zcoor - xonfs[1, i - 1]) < tol):
-                                anonfs.append((fault_seq, i, 1))
+                        xonfs_f = xonfs_list[which_fault]
+                        n_onf_f = n_onf_per_fault[which_fault]
+                        for i in range(1, n_onf_f + 1):
+                            if (abs(xcoor - xonfs_f[0, i - 1]) < tol and
+                                    abs(zcoor - xonfs_f[1, i - 1]) < tol):
+                                anonfs.append((fault_seq, i, which_fault + 1))
                                 break
     return anonfs, off_fault_matches, z_valid
 

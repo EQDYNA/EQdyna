@@ -166,11 +166,26 @@ def read_bmodelgeometry(path):
                 dis4uniF=dis4uniF, dis4uniB=dis4uniB, rat=rat, dx=dx, dy=dy, dz=dz)
 
 
+def faultTag(ift, ntotft):
+    """The per-fault filename/variable-name tag -- port of eqquasi's/
+    library_output.f90's faultTag(), verbatim: '' for fault 1, 'ft<N>_' for
+    fault N>=2, but only when ntotft > 1 (so a single-fault case's file/
+    variable names are untouched, bit-for-bit). `ift` is 1-indexed, matching
+    the Fortran convention. Mirrors scripts/lib.py's faultTag exactly (that
+    one writes the case input this one reads)."""
+    if ntotft > 1 and ift > 1:
+        return 'ft%d_' % ift
+    return ''
+
+
 def read_bfaultgeometry(path, ntotft):
     """Port of readfaultgeometry. Returns a list of ntotft dicts, each with
-    fxmin/fxmax/fymin/fymax/fzmin/fzmax (this milestone: ntotft==1 only,
-    matching meshgen.py's scope; ntotft>1 is read structurally but
-    downstream builders raise if handed more than one)."""
+    fxmin/fxmax/fymin/fymax/fzmin/fzmax. Row 17 (multi-fault): every fault's
+    box is read structurally (always was); meshgen.py's builders now
+    consume more than the first entry for ntotft>1 -- see
+    checkInputConsistency's multi-fault guards (C_degen==0, planar, dy-
+    aligned, inside the uniform-y belt, distinct per-fault y, same x/z
+    extent as fault 1) for the scope this is actually exercised under."""
     lines = list(_read_records(path))
     it = iter(lines)
     faults = []
@@ -200,27 +215,41 @@ def read_bmaterial(path, nmat, n2mat):
     return material
 
 
-def read_bstations(path):
-    """Port of readstations1+readstations2 (ntotft==1 only, matching this
-    milestone's scope): totalNumOfOffSt, nonfs(1), nonfs(1) on-fault [x,z]
-    rows (km), totalNumOfOffSt off-fault [x,y,z] rows (km) -- converted to
-    m exactly like the Fortran (`xonfs=xonfs*1000.0d0`, `x4nds=x4nds*1000.0d0`).
-    Returns (xonfs, x4nds), shapes (2,nonfs) and (3,n_off)."""
+def read_bstations(path, ntotft=1):
+    """Port of readstations1+readstations2: totalNumOfOffSt; ntotft
+    on-fault station COUNTS (one per fault, line 2 -- readInputFiles.f90:152
+    reads `(nonfs(i), i = 1, ntotft)`); the on-fault [x,z] rows (km),
+    GROUPED BY FAULT in that same order (`do i = 1, ntotft; do j = 1,
+    nonfs(i)`, scripts/case.setup's resolveOnFaultStationsPerFault writes
+    them this way); then totalNumOfOffSt off-fault [x,y,z] rows (km) --
+    converted to m exactly like the Fortran (`xonfs=xonfs*1000.0d0`,
+    `x4nds=x4nds*1000.0d0`).
+
+    Returns (xonfs_per_fault, x4nds): xonfs_per_fault is a list of ntotft
+    (2, nonfs_i) arrays (row 17; ntotft==1 callers get a 1-element list,
+    identical values to the old single-array return); x4nds is (3,n_off)
+    unchanged (off-fault stations are not assigned per fault)."""
     lines = list(_read_records(path))
     it = iter(lines)
     n_off = int(next(it).split()[0])
-    n_onf = int(next(it).split()[0])
+    nonfs = [int(v) for v in next(it).split()]
+    if len(nonfs) != ntotft:
+        raise ValueError('read_bstations: %s line 2 has %d on-fault station '
+                          'count(s), expected ntotft=%d' % (path, len(nonfs), ntotft))
     next(it)  # blank
-    xonfs = np.zeros((2, n_onf))
-    for j in range(n_onf):
-        vals = [float(v) for v in next(it).split()]
-        xonfs[:, j] = vals[:2]
+    xonfs_per_fault = []
+    for n_onf in nonfs:
+        xonfs = np.zeros((2, n_onf))
+        for j in range(n_onf):
+            vals = [float(v) for v in next(it).split()]
+            xonfs[:, j] = vals[:2]
+        xonfs_per_fault.append(xonfs * 1000.0)
     next(it)  # blank
     x4nds = np.zeros((3, n_off))
     for i in range(n_off):
         vals = [float(v) for v in next(it).split()]
         x4nds[:, i] = vals[:3]
-    return xonfs * 1000.0, x4nds * 1000.0
+    return xonfs_per_fault, x4nds * 1000.0
 
 
 def read_fault_rough_geometry(path):
@@ -267,8 +296,22 @@ def build_params(case_dir):
     globals_dict is read_bglobal's full return (for nmat/n2mat/friclaw/etc,
     needed by callers but not by the geometry builders themselves).
 
-    ntotft must be 1 (this milestone's scope) -- raises otherwise, not a
-    silent first-fault-only truncation.
+    Row 17 (multi-fault): ntotft>1 is now accepted for the narrow release
+    scope -- two (or more) vertical, planar, parallel faults sharing fault
+    1's x/z extent, at distinct y, inside the uniform-y mesh belt (the same
+    scope checkInputConsistency.check_multifault enforces, called by this
+    function's caller -- eqdyna3d.py's build_solver_state -- right after
+    this returns, mirroring checkInputConsistency.f90's call point).
+    `params['faults']` carries every fault's own (fxmin,...,fzmax) dict (the
+    scalar fxmin/fxmax/... keys below stay fault 1's box, unchanged, since
+    every builder that treats them as THE shared box is correct by
+    checkInputConsistency's own x/z-match guarantee); `params['fault_y']` is
+    the list of each fault's y-plane (fymin, since planarity requires
+    fymin==fymax), the one per-fault quantity meshgen.py's builders actually
+    need. insertFaultType>0 (rough/dipping fault) combined with ntotft>1 is
+    NOT supported -- out of this release's narrow scope (the rough-fault
+    y-morph is a single-fault mechanism) -- and raises rather than silently
+    reading only fault 1's rough geometry for every fault.
 
     nPML, tol, and R are NOT present in any bFile -- nPML=6, tol=1.0e-5,
     and R=0.01d0 (theoretical PML reflection coefficient, used by
@@ -286,9 +329,13 @@ def build_params(case_dir):
     """
     import os
     g = read_bglobal(os.path.join(case_dir, 'bGlobal.txt'))
-    if g['ntotft'] != 1:
-        raise NotImplementedError('build_params: only ntotft==1 is ported '
-                                   '(got %d)' % g['ntotft'])
+    if g['ntotft'] > 1 and g['insertFaultType'] > 0:
+        raise NotImplementedError(
+            'build_params: ntotft=%d with insertFaultType=%d is not ported -- '
+            'the rough/dipping-fault y-morph (insertFaultInterface) is a '
+            'single-fault mechanism, out of this release\'s narrow multi-fault '
+            'scope (two-or-more vertical PLANAR parallel faults).'
+            % (g['ntotft'], g['insertFaultType']))
     mg = read_bmodelgeometry(os.path.join(case_dir, 'bModelGeometry.txt'))
     faults = read_bfaultgeometry(os.path.join(case_dir, 'bFaultGeometry.txt'), g['ntotft'])
     fg = faults[0]
@@ -305,12 +352,29 @@ def build_params(case_dir):
         rat=mg['rat'], nPML=6, tol=1.0e-5, R=0.01,
         fstrike=g['fstrike'], C_degen=g['C_degen'],
         insertFaultType=g['insertFaultType'], rough=rough,
+        # Row 17 (multi-fault): every fault's own box, and the one per-fault
+        # scalar (the y-plane) the C_degen==0 builders actually branch on.
+        ntotft=g['ntotft'], faults=faults,
+        fault_y=[f['fymin'] for f in faults],
     )
     return params, g
 
 
-def read_on_fault_vars(nc_path, fxmin, fzmin, dx, dz, meshCoor, nsmp):
-    """Port of netcdf_io.f90's netcdf_read_on_fault_eqdyna (ntotft==1 only).
+def read_on_fault_vars(nc_path, fxmin, fzmin, dx, dz, meshCoor, nsmp, ntotft=1, fault_of=None):
+    """Port of netcdf_io.f90's netcdf_read_on_fault_eqdyna.
+
+    Row 17 (multi-fault): `fault_of` is the (nftnd,) 1-indexed fault id for
+    each row of `nsmp` (build_node_coordinates' return); each row reads its
+    OWN fault's variable set, named with readInputFiles.faultTag(ift,
+    ntotft) -- '' for fault 1 (bit-identical variable names at ntotft==1,
+    the old default), 'ft<N>_' for fault N>=2 -- matching
+    scripts/case.setup's netcdf_write_on_fault_vars and
+    src/fortran/netcdf_io.f90's own per-fault variable-set read exactly.
+    `fault_of=None` is the ntotft==1 shorthand (every row reads the
+    untagged set), unchanged from before this fix. fxmin/fzmin/dx/dz are
+    the SHARED box (checkInputConsistency guarantees every fault matches
+    fault 1's x/z extent in this release's scope), so the same ii/jj index
+    formula applies verbatim to every fault's own tagged array.
 
     Reads on_fault_vars_input.nc directly via the netCDF4 library (the
     SAME library the Fortran-side writer, scripts/case.setup, uses to
@@ -345,6 +409,8 @@ def read_on_fault_vars(nc_path, fxmin, fzmin, dx, dz, meshCoor, nsmp):
 
     nftnd = nsmp.shape[0]
     fric = np.zeros((nftnd + 1, 101))
+    if fault_of is None:
+        fault_of = np.ones(nftnd, dtype=np.int64)
 
     varnames = ['sw_fs', 'sw_fd', 'sw_D0', 'rsf_a', 'rsf_b', 'rsf_Dc', 'rsf_v0',
                 'rsf_r0', 'rsf_fw', 'rsf_vw', 'tp_a_hy', 'tp_a_th', 'tp_rouc',
@@ -354,7 +420,13 @@ def read_on_fault_vars(nc_path, fxmin, fzmin, dx, dz, meshCoor, nsmp):
 
     ds = netCDF4.Dataset(nc_path, 'r')
     try:
-        on_fault_vars = {name: np.asarray(ds.variables[name][:, :]) for name in varnames}
+        # Row 17: one dict of {name: array} PER FAULT TAG actually present
+        # among fault_of -- read once per tag, not once per row.
+        on_fault_vars_by_tag = {}
+        for ift in sorted(set(int(v) for v in fault_of)):
+            tag = faultTag(ift, ntotft)
+            on_fault_vars_by_tag[ift] = {
+                name: np.asarray(ds.variables[tag + name][:, :]) for name in varnames}
     finally:
         ds.close()
 
@@ -379,6 +451,7 @@ def read_on_fault_vars(nc_path, fxmin, fzmin, dx, dz, meshCoor, nsmp):
         zcord = meshCoor[slave, 2]
         ii = fortran_nint((xcord - fxmin) / dx) + 1
         jj = fortran_nint((zcord - fzmin) / dz) + 1
+        on_fault_vars = on_fault_vars_by_tag[int(fault_of[i - 1])]
 
         def v(name):
             return on_fault_vars[name][jj - 1, ii - 1]

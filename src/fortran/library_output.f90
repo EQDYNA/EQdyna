@@ -2,6 +2,7 @@
 ! MIT
 
 ! Subroutine list:
+! 0. faultTag (function)
 ! 1. output_onfault_st
 ! 2. output_offfault_st
 ! 3. output_frt
@@ -16,17 +17,53 @@
 ! 11. report_dropped_offfault_st
 ! 12. report_dropped_onfault_st
 
+!#0
+! Row 17 (multi-fault): the per-fault filename/variable tag, ported verbatim
+! from eqquasi (src/library_output.f90): '' for fault 1, 'ft<N>_' for fault
+! N>=2. Fault 1 keeps the plain name so every existing single-fault
+! reference, station convention and netCDF variable name still matches
+! byte-for-byte; later faults are tagged so their files/variables cannot
+! collide with fault 1's. Declared as an external character function
+! (`character (len=8) :: faultTag`) at each call site, the same convention
+! eqquasi uses, since it is called from multiple files.
+function faultTag(ift) result(tag)
+    use globalvar, only: ntotft
+    implicit none
+    integer (kind = 4), intent(in) :: ift
+    character (len = 8) :: tag
+
+    tag = ''
+    if (ntotft > 1 .and. ift > 1) write(tag,'(A,I0,A)') 'ft', ift, '_'
+end function faultTag
+
 !#1
 subroutine output_onfault_st
 
     use globalvar
     implicit none
-    
-    integer (kind = 4) :: i, j 
-    
+
+    integer (kind = 4) :: i, j
+    character (len = 8) :: tag, faultTag
+
     if(numOfOnFaultStCount>0) then
         do i=1,numOfOnFaultStCount
             j=anonfs(3,i)
+            ! BLOCKER FIX (victor-reyes audit of 2df46aa, 2026-09-30):
+            ! the filename below used to be built from strike/depth alone,
+            ! with no per-fault tag -- the same faultTag() convention
+            ! output_src_evol already uses a few subroutines down. Two
+            ! stations on DIFFERENT faults that happen to share the same
+            ! along-strike/down-dip (strike,depth) pair (as test.multifault2's
+            ! fault-2 stations (0.0,-7.5) and (4.5,-7.5) deliberately do,
+            ! matching two of fault 1's own stations) therefore produced the
+            ! SAME filename, and fault 2's station silently overwrote fault
+            ! 1's file -- measured: 10 requested on-fault stations, only 8
+            ! files on disk, serial and 4-rank both. faultTag(j) is '' for
+            ! fault 1 (bit-identical filename, ntotft==1 reduces to the old
+            ! behaviour exactly) and 'ft<N>_' for fault N>=2, so a fault-2+
+            ! station's file can never collide with a same-(strike,depth)
+            ! fault-1 station's file again.
+            tag = faultTag(j)
             ! FIX (pathway_forward.md item 9): unit 51 used to be opened only
             ! when j==1 ("main fault stations") but written to unconditionally
             ! below -- for a station on fault 2+ (j>1) that skipped this whole
@@ -49,8 +86,8 @@ subroutine output_onfault_st
             else
                 write(sttmp,'(i3.3)') nint(xonfs(1,anonfs(2,i),j)/100.d0)
             endif
-            write(dptmp,'(i3.3)') nint(abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,1))/100.d0)
-            open(51,file='faultst'//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
+            write(dptmp,'(i3.3)') nint(abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,j))/100.d0)
+            open(51,file='faultst'//trim(tag)//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
 
             sttmp = '      '
             dptmp = '      '
@@ -66,7 +103,7 @@ subroutine output_onfault_st
             ! 90 regardless of the true mesh dip) -- test.tpv36/test.tpv37
             ! (C_degen=15) do have on-fault stations and would have printed
             ! vertical depth mislabeled "down-dip" had this shipped unfixed.
-            write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,1))/1000.d0
+            write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,j))/1000.d0
             stLocStamp = '# location = on fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km down-dip'
             ! pathway item 85: stLocStamp was computed every call and never
             ! written -- pathway item 67's own evidence command looked for
@@ -275,47 +312,63 @@ end subroutine output_offfault_st
 !#3
 subroutine output_frt
     ! The subroutine output_frt generates frt.txt* files for each MPI process.
-    ! frt.txt* contain on-fault variables for visualization 
-    !   and restart files for the next deformation phase. 
+    ! frt.txt* contain on-fault variables for visualization
+    !   and restart files for the next deformation phase.
+    !
+    ! Row 17 (multi-fault): ONE frt.txt<rank> file per MPI rank, covering
+    ! EVERY fault this rank owns nodes on -- not one file per fault. This is
+    ! deliberately NOT eqquasi's per-fault faultTag() file split: EQdyna's
+    ! canonical-rupture-time comparator (testsys/frt_canonical.py,
+    ! testsys/matrix.py, testsys/compare.py) globs `frt.txt*`, keyed by RANK,
+    ! dedupes by (x,y,z) and compares per-node physics -- it does not care
+    ! which fault a row belongs to, so appending every fault's rows into the
+    ! same per-rank file keeps that whole pipeline working unchanged, while a
+    ! per-fault file split would have required rewriting it. Reduces to the
+    ! old single-fault write exactly (one ift iteration, same rows, same
+    ! order) at ntotft==1.
     use globalvar
     implicit none
-    
-    integer (kind = 4) :: i, j
+
+    integer (kind = 4) :: i, j, ift
     integer (kind = 4), parameter :: UNIT_FRT_BASE = 10004
 
-    if(nftnd(1) > 0) then
+    if (sum(nftnd) > 0) then
         open(unit=UNIT_FRT_BASE+me,file='frt.txt'//mm,status='unknown')
 
+        do ift = 1, ntotft
+        if (nftnd(ift) > 0) then
         write(UNIT_FRT_BASE+me,'(1x,22e18.7e4)')    &
                 ! 3 coordinates of the fault nodes.
-            ((meshCoor(j,nsmp(1,i,1)), j = 1,3), &
+            ((meshCoor(j,nsmp(1,i,ift)), j = 1,3), &
                 ! rupture time
-            fnft(i,1),                    &
+            fnft(i,ift),                    &
                 ! 71-73: final slips, slipd, slipn
                 ! 74-76: final sliprates, sliprated, slipraten
-            (fric(j,i,1), j = FRIC_SLOT_SLIP_STRIKE, FRIC_SLOT_SLIPRATE_MAX),     &
+            (fric(j,i,ift), j = FRIC_SLOT_SLIP_STRIKE, FRIC_SLOT_SLIPRATE_MAX),     &
                 ! 47: final slip rate
-            fric(FRIC_SLOT_PEAK_SLIPRATE,i,1),                 &
+            fric(FRIC_SLOT_PEAK_SLIPRATE,i,ift),                 &
                 ! 78: final effective normal stress, tnrm
                 ! 79: final shear strike stress, tstk
                 ! 80: final shear dip stress, tdip
-            fric(FRIC_SLOT_TRACT_NORM,i,1),                 &
-            fric(FRIC_SLOT_TRACT_STRIKE,i,1),                 &
-            fric(FRIC_SLOT_TRACT_DIP,i,1),                 &
+            fric(FRIC_SLOT_TRACT_NORM,i,ift),                 &
+            fric(FRIC_SLOT_TRACT_STRIKE,i,ift),                 &
+            fric(FRIC_SLOT_TRACT_DIP,i,ift),                 &
                 ! 31-33, vxm, vym, vzm, 3 vel components of master nodes.
                 ! 34-36, vxs, vys, vzs, 3 vel components of slave nodes.
-            fric(FRIC_SLOT_VEL_MASTER_X,i,1),                 &
-            fric(FRIC_SLOT_VEL_MASTER_Y,i,1),                 &
-            fric(FRIC_SLOT_VEL_MASTER_Z,i,1),                 &
-            fric(FRIC_SLOT_VEL_SLAVE_X,i,1),                 &
-            fric(FRIC_SLOT_VEL_SLAVE_Y,i,1),                 &
-            fric(FRIC_SLOT_VEL_SLAVE_Z,i,1),                 &
+            fric(FRIC_SLOT_VEL_MASTER_X,i,ift),                 &
+            fric(FRIC_SLOT_VEL_MASTER_Y,i,ift),                 &
+            fric(FRIC_SLOT_VEL_MASTER_Z,i,ift),                 &
+            fric(FRIC_SLOT_VEL_SLAVE_X,i,ift),                 &
+            fric(FRIC_SLOT_VEL_SLAVE_Y,i,ift),                 &
+            fric(FRIC_SLOT_VEL_SLAVE_Z,i,ift),                 &
                 ! 20: state variable in RSF
-            fric(FRIC_SLOT_STATE,i,1),                 &
+            fric(FRIC_SLOT_STATE,i,ift),                 &
                 ! 21: state variable for normal stress variation (Shi and Day)
-            fric(FRIC_SLOT_THETA_PC,i,1),                 &
+            fric(FRIC_SLOT_THETA_PC,i,ift),                 &
                 !
-            i=1,nftnd(1)) ! Finish the write(10004,me, ...) line.
+            i=1,nftnd(ift)) ! Finish the write(10004,me, ...) line.
+        endif
+        enddo
 
         close(UNIT_FRT_BASE+me)
     endif
@@ -374,10 +427,16 @@ subroutine find_surfaceNodeIdArr
     integer (kind = 4), parameter :: UNIT_SURFCOOR_BASE = 10008
     real (kind = dp), parameter :: STATION_SEARCH_HALFWIDTH_M = 20.0d3 ! along-strike/along-strike-normal search box half-width around the fault trace, m
     real (kind = dp) :: sc(3)
+    ! Row 17 (multi-fault): the search box used to be fault 1's alone
+    ! (fltxyz(:,1:2,1)), so a ground-motion/final-surface-disp station near
+    ! fault 2 was silently never found. Union the box over every fault's
+    ! nominal x/y extent -- minval/maxval over the whole fltxyz(:,1/2,:)
+    ! array -- which is exactly fault 1's box, hence bit-identical, at
+    ! ntotft==1.
     if (outputGroundMotion==1 .or. outputFinalSurfDisp==1) then
         do i=1,totalNumOfNodes
-            if ((meshCoor(1,i)<fltxyz(2,1,1)+STATION_SEARCH_HALFWIDTH_M) .and. (meshCoor(1,i)>fltxyz(1,1,1)-STATION_SEARCH_HALFWIDTH_M) &
-                    .and. (meshCoor(2,i)<fltxyz(2,2,1)+STATION_SEARCH_HALFWIDTH_M) .and. (meshCoor(2,i)>fltxyz(1,2,1)-STATION_SEARCH_HALFWIDTH_M) &
+            if ((meshCoor(1,i)<maxval(fltxyz(2,1,:))+STATION_SEARCH_HALFWIDTH_M) .and. (meshCoor(1,i)>minval(fltxyz(1,1,:))-STATION_SEARCH_HALFWIDTH_M) &
+                    .and. (meshCoor(2,i)<maxval(fltxyz(2,2,:))+STATION_SEARCH_HALFWIDTH_M) .and. (meshCoor(2,i)>minval(fltxyz(1,2,:))-STATION_SEARCH_HALFWIDTH_M) &
                     .and. (abs(meshCoor(3,i))<dx/1000)) then
                 surface_nnode = surface_nnode + 1
                 surfaceNodeIdArr(surface_nnode) = i
@@ -424,20 +483,31 @@ end subroutine output_finalSurfDisp
 !#9
 subroutine output_src_evol
     ! The subroutine output_src_evol generates binary src_evol files for each MPI process.
-    ! srv_evol contains on-fault slip-rate system states for AI and visualization. 
+    ! srv_evol contains on-fault slip-rate system states for AI and visualization.
+    !
+    ! Row 17 (multi-fault): not part of any gated comparison (unlike
+    ! output_frt), so this DOES use eqquasi's faultTag() per-fault file split
+    ! -- 'src_evol'//mm for fault 1 (unchanged name, bit-identical at
+    ! ntotft==1), 'src_evol'//trim(faultTag(ift))//mm for faults 2+.
+    ! scripts/clean.py's `rm -rf src*` already sweeps these up regardless of
+    ! the tag.
     use globalvar
     implicit none
-    
-    integer (kind = 4) :: i, j, nodeId
-    integer (kind = 4), parameter :: UNIT_SRC_EVOL_BASE = 30009
 
-    if(nftnd(1) > 0) then
-        open(unit=UNIT_SRC_EVOL_BASE+me,file='src_evol'//mm,position='append', access='stream')
-            do i=1,nftnd(1)
-                write(UNIT_SRC_EVOL_BASE+me) fric(FRIC_SLOT_PEAK_SLIPRATE,i,1) ! 47: final slip rate
+    integer (kind = 4) :: i, j, nodeId, ift
+    integer (kind = 4), parameter :: UNIT_SRC_EVOL_BASE = 30009
+    character (len = 8) :: tag, faultTag
+
+    do ift = 1, ntotft
+    if(nftnd(ift) > 0) then
+        tag = faultTag(ift)
+        open(unit=UNIT_SRC_EVOL_BASE+me,file='src_evol'//trim(tag)//mm,position='append', access='stream')
+            do i=1,nftnd(ift)
+                write(UNIT_SRC_EVOL_BASE+me) fric(FRIC_SLOT_PEAK_SLIPRATE,i,ift) ! 47: final slip rate
             enddo
         close(UNIT_SRC_EVOL_BASE+me)
     endif
+    enddo
 end subroutine output_src_evol
 
 !#10

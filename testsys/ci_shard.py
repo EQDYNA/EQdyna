@@ -95,6 +95,8 @@ SHARDS = {
         "test_multifault_item10_fix.py",
         "test_multifault_item9_fix.py",
         "test_multifault_refused.py",
+        "test_multifault_no_ntotft1_specialcase.py",  # added row 17: pure text scan, sub-second
+        "test_multifault_two_fault_smoke.py",  # added row 17: builds+runs eqdyna twice (serial + 4-rank), heaviest new addition here
         "test_perf_parallelism_discriminator.py",
         "test_perf_item91_guards.py",  # added 2026-09-24 (Iris, item 91 perf-
                                  # tool defects): pure monkeypatched
@@ -160,6 +162,13 @@ SHARDS = {
         "test_dev_str_depth_taper.py",
         "test_e2e_run_tree_lock.py",
         "test_e2e_python_cell_logs_kept.py",  # added 2026-09-24 (wei-lin, item 109): one tee child + one failed jax import, ~3 s
+        "test_e2e_cell_timeout.py",  # added 2026-10-01 (Iris, per-cell timeout
+                                 # feature, the 11h45m test.tpv1053d hang):
+                                 # two plain `sleep` children (2s, 5s, the
+                                 # second killed at a 1s deadline) plus pure
+                                 # function checks against the real
+                                 # docs/perf_ledger.jsonl -- no build, no
+                                 # solver, measured ~3.5 s total.
         "test_equilibrium_dump.py",
         "test_fault_geometry_guard.py",
         "test_fault_mpi_boundary_arn.py",
@@ -249,6 +258,7 @@ SHARDS = {
         "test_version_banner.py",
         "test_root_allowlist.py",  # added 2026-09-24 (wei-lin, root-notes move): one git ls-files, <1 s
         "test_text_line_format.py",  # 2026-09-29: static scan of src/fortran, <1 s
+        "test_multifault_two_fault_smoke_jax.py",  # added 2026-10-01 (PR #72 blocker 3): test.multifault2 x python-jax vs the committed reference, one serial jax run (~10 s); shard 3, not 1, which already carries the Fortran sibling
     ],
 }
 UNIT_PYTEST_SHARD = "3"

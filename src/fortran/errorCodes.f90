@@ -72,13 +72,15 @@ MODULE errorCodes
 
     ! --- 31-39 fault geometry -----------------------------------------
     integer, parameter :: ERR_GEOM_ROUGH_INVALID     = 31  ! bFault_Rough_Geometry.txt does not match this mesh
+    integer, parameter :: ERR_GEOM_MULTIFAULT_Y_BAD   = 32  ! a fault's y-plane is not vertical/planar, not a multiple of dy, outside the uniform-y belt, or coincides with another fault's
+    integer, parameter :: ERR_GEOM_MULTIFAULT_XZ_BAD  = 33  ! a fault's x/z extent differs from fault 1's (the shared uniform x/z belt only covers fault 1's box)
 
     ! --- 41-49 mesh generation and element quality --------------------
     integer, parameter :: ERR_MESH_STRESS_ARR_SMALL  = 41  ! sizeOfStressDofIndexArr exceeds 5*sizeOfEqNumIndexArr
     integer, parameter :: ERR_MESH_COUNT_MISMATCH    = 42  ! meshgen's node/element/equation tallies disagree
     integer, parameter :: ERR_MESH_EQNUM_MISMATCH    = 43  ! eqNumIndexArrLocTag /= sizeOfEqNumIndexArr
     integer, parameter :: ERR_MESH_FAULT_MISMATCH    = 44  ! nftnd0 /= nftnd (meshgen vs countMeshEntities)
-    integer, parameter :: ERR_MESH_MULTIFAULT_MSNODE = 45  ! master-node construction cannot handle ntotft>1
+    integer, parameter :: ERR_MESH_MULTIFAULT_MSNODE = 45  ! retired (row 17): msnode collision across faults fixed with a running-total sum(nftnd0(1:iFault-1))-style offset (a fixed per-fault nftmx block offset was tried and reverted -- it overflowed memory); no longer raised
     integer, parameter :: ERR_MESH_BAD_WEDGE         = 46  ! degenerate wedge built with unequal node ids
     integer, parameter :: ERR_MESH_BAD_JACOBIAN      = 47  ! non-positive Jacobian determinant (inverted element)
     integer, parameter :: ERR_MESH_MATERIAL_UNSET    = 48  ! an element has no material property assigned

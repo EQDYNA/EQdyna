@@ -47,6 +47,23 @@ def build(S):
     nuc_radius = np.sqrt((coords[:, 0] - S['xsource']) ** 2
                          + (coords[:, 1] - S['ysource']) ** 2
                          + (coords[:, 2] - S['zsource']) ** 2)
+    # Row 17 (multi-fault): faulting.f90:129/:155 gate forced nucleation on
+    # `ift == nucfault` -- a fault node on any OTHER fault must never force-
+    # nucleate. `nuc_radius` feeds every TPV's `inside = radius <= nucR` test
+    # (forced_rupture_time/rsfNucleation below), so masking it to +inf for
+    # every node not on `nucfault` makes `inside` False there unconditionally,
+    # with no other code path change needed. `S['fault_of']` is 0-indexed
+    # (meshgen's nsmp 3rd column); nucfault is 1-indexed, Fortran convention.
+    # Only applied when the caller actually supplies `fault_of` (every real
+    # eqdyna3d.py-built S does, as of this fix) -- a caller that builds S by
+    # hand without it (e.g. an existing unit test) gets the old, unmasked
+    # nuc_radius and falls back to nucleation_enabled's old nucfault==1 gate
+    # below instead, so this is a no-op for any such caller.
+    fault_of = S.get('fault_of')
+    nuc_masked = fault_of is not None
+    if nuc_masked:
+        on_nucfault = np.asarray(fault_of) == (S.get('nucfault', 1) - 1)
+        nuc_radius = np.where(on_nucfault, nuc_radius, np.inf)
     massSlave = S['fnms'][nsmp1]
     massMaster = S['fnms'][nsmp2]
     return dict(
@@ -56,7 +73,7 @@ def build(S):
         idxF_m=[eq_ids[nsmp2, d] for d in range(3)],
         massSlave=massSlave, massMaster=massMaster,
         mr=massMaster * massSlave / (massMaster + massSlave),   # reduced mass
-        nuc_radius=nuc_radius,
+        nuc_radius=nuc_radius, nuc_masked=nuc_masked,
         # static per-run scalars the step branches on at trace time
         friclaw=S['friclaw'], TPV=S['TPV'], C_elastic=S['C_elastic'],
         C_nuclea=S.get('C_nuclea', 0), nucfault=S.get('nucfault', 1),
@@ -70,9 +87,26 @@ def build(S):
 def nucleation_enabled(finv):
     """Whether swtwNucleation/rsfNucleation does anything for this case.
 
-    faulting.f90:129 and :155 both gate on `C_nuclea==1 .and. ift==nucfault`.
-    ntotft==1 throughout this port, so ift is always 1.
+    faulting.f90:129 and :155 both gate on `C_nuclea==1 .and. ift==nucfault`
+    -- a PER-FAULT-NODE test (ift is which fault THIS node is on), not a
+    per-run one. This function is the per-RUN half (`C_nuclea==1`): whether
+    nucleation logic runs AT ALL; the per-node `ift==nucfault` half is
+    `build`'s `nuc_radius` masking above (every node not on fault `nucfault`
+    gets `nuc_radius=inf`, so it can never satisfy `radius<=nucR`).
+
+    Row 17 fix: this used to ALSO require `finv['nucfault'] == 1` here,
+    which was correct only because ntotft==1 meant every node reaching this
+    code was necessarily on fault 1 (so nucfault must equal 1 for any
+    existing case that uses C_nuclea==1) -- but it is wrong in general: a
+    case nucleating fault 2 (nucfault=2) would have had nucleation silently
+    disabled RUN-WIDE instead of correctly restricted to fault 2's nodes.
+    Now skipped whenever `build` could mask `nuc_radius` per-node instead
+    (`finv['nuc_masked']`, true for every real eqdyna3d.py-built S); kept as
+    a fallback for a caller that builds S/finv by hand without 'fault_of'
+    (no behaviour change for such a caller -- identical to before this fix).
     """
+    if finv.get('nuc_masked'):
+        return finv['C_nuclea'] == 1
     return finv['C_nuclea'] == 1 and finv['nucfault'] == 1
 
 

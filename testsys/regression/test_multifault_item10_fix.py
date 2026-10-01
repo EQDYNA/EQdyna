@@ -1,53 +1,42 @@
 #! /usr/bin/env python3
 """
-Regression guard (PROJECT_RULES.md rule 10; pathway_forward.md item 10) for
-`MPI4arn` (`src/fortran/meshgen.f90`) allocating `fltl..fltu` from the
-PREVIOUS fault's leftover `fltnum` counts, without deallocating an array a
-previous call already allocated.
+Regression guard (PROJECT_RULES.md rule 10; pathway_forward.md item 10,
+superseded by Row 17's multi-fault landing) for `MPI4arn`
+(`src/fortran/meshgen.f90`) corrupting one fault's per-boundary state
+(`fltgm`/`fltl`/`fltr`/`fltf`/`fltb`/`fltd`/`fltu`/`fltnum`) when a LATER
+fault is processed.
 
-Background: `meshgen` calls `MPI4arn` once per fault, from `do ift=1,ntotft`.
-On entry, `MPI4arn` used to do:
+HISTORY: item 10's original defect was `MPI4arn` allocating `fltl..fltu` from
+the PREVIOUS fault's leftover `fltnum` counts without deallocating an array a
+previous call already allocated -- a bug in a single-fault-sized,
+allocate-on-every-call design. Row 17 replaced that design entirely: these
+arrays are now `(nftmx, ntotft)` / `(6, ntotft)`, pre-allocated ONCE
+(`eqdyna3d.f90`'s `allocInit`) and filled in place, one COLUMN per fault, by
+`MPI4arn` (no allocate/deallocate inside it at all any more -- see that
+subroutine's own header comment for why). The ORIGINAL failure mode (fault 2
+corrupting fault 1's already-recorded state) is exactly what is still worth
+guarding: with a shared column layout, a bug that indexes the wrong column,
+or writes past a column's own bounds, would have the same symptom (fault 1's
+state changes when fault 2 is processed) even though the mechanism (stale
+`allocate`) is gone.
 
-    if(fltnum(1) /= 0) allocate(fltl(fltnum(1)))   ! ... same for r/f/b/d/u
-    fltnum = 0
-    do i = 1, totalNumFaultNode                    ! recompute fltnum + fill
-        ...
-    enddo
-
-`fltnum` on entry is stale: either createMasterNode's running tally (first
-call) or -- for every call after the first -- exactly what THIS SAME loop
-left it at for the PREVIOUS fault. So on fault 2's call, `fltnum(k)` from
-fault 1 is still nonzero, `allocate(fltl(fltnum(1)))` fires again, and `fltl`
-is already allocated from fault 1's own call: Fortran's `allocate` on an
-already-allocated object is a runtime error. `ntotft==1` (the only case that
-runs today) never hits this because there is only ever one call.
-
-Fix: count THIS fault's own per-boundary membership from `fltgm` in a
-pre-pass (the same data + arithmetic the fill loop below already reads/uses,
-just counted before allocating instead of after), deallocate any array a
-previous call left allocated, then (re)allocate to the freshly-counted size.
-
-This bug is LATENT and cannot be exercised end-to-end (case.setup refuses
-ntotft>1, pathway_forward.md item 17 -- deliberately left refused, not
-touched here). This test isolates `MPI4arn` directly against the REAL,
-unmodified `meshgen.f90` (and everything it links against -- built exactly
-as production, via the project's own `make`, so no dependency is
-hand-picked or reimplemented) and calls it twice in sequence, simulating a
-2-fault `do ift=1,ntotft` loop:
+This test isolates `MPI4arn` directly against the REAL, unmodified
+`meshgen.f90` (and everything it links against -- built exactly as
+production, via the project's own `make`, no dependency hand-picked or
+reimplemented), calling it twice in sequence to simulate a 2-fault
+`do ift=1,ntotft` loop:
   - fault 1: 3 local fault-node-pairs on boundaries left/right/down
   - fault 2: 2 local fault-node-pairs, BOTH on the left boundary -- a
-    DIFFERENT count than fault 1's (1 -> 2), so a correct fix must both
-    avoid the double-allocate AND resize to the new fault's own count,
-    not just reuse-with-luck a same-sized stale array.
+    DIFFERENT count than fault 1's (1 -> 2), so a correct implementation must
+    both leave fault 1's column alone AND size fault 2's own column
+    correctly, not just happen to not crash.
 npx=npy=npz=1 so the MPI send/recv branches (which need a real multi-rank
-run) are never entered -- this isolates exactly the allocate/reset ordering
-bug, not the (already separately guarded) cross-rank arn exchange.
+run) are never entered -- this isolates exactly the per-fault bookkeeping,
+not the (already separately guarded) cross-rank arn exchange.
 
-Verified against the pre-fix code directly (not shipped, sanity-checked by
-hand during development of this test): the unfixed subroutine aborts on the
-second call with a gfortran "Attempting to allocate already-allocated
-variable" runtime error; the fixed subroutine returns fltnum/fltl/fltr/fltd
-that reflect ONLY fault 2's own data after the second call.
+The genuine end-to-end case (test_multifault_two_fault_smoke.py) additionally
+exercises the cross-rank exchange for two real faults; this test is cheaper
+and pins the bookkeeping in isolation.
 
 Cheap-ish (rule 9): one `make` of the 26-file src/fortran tree (already-built
 objects are reused if the tree hasn't changed) plus one tiny compile/link/run
@@ -87,12 +76,14 @@ OBJS = [
 NETCDF_LIB = make_var('NETCDF_LIB')
 
 # Driver: simulates meshgen's `do ift=1,ntotft: call MPI4arn(...)` loop for
-# two faults back to back. npx=npy=npz=1 so the cross-rank exchange branches
-# (which need a real MPI run) are never entered.
+# two faults back to back, replicating the (nftmx, ntotft) pre-allocation
+# eqdyna3d.f90's allocInit does in production (MPI4arn no longer allocates
+# fltl..fltu itself -- it fills a pre-sized column in place).
 _DRIVER_SRC = r'''
 program mpi4arn_item10_driver
     use globalvar
     implicit none
+    integer, parameter :: NLOCAL = 10
 
     ntotft = 2
     npx = 1
@@ -100,39 +91,41 @@ program mpi4arn_item10_driver
     npz = 1
     me = 0
 
-    allocate(fltgm(10))
+    allocate(fltgm(NLOCAL,ntotft), fltl(NLOCAL,ntotft), fltr(NLOCAL,ntotft), &
+             fltf(NLOCAL,ntotft), fltb(NLOCAL,ntotft), fltd(NLOCAL,ntotft), &
+             fltu(NLOCAL,ntotft), fltnum(6,ntotft))
     fltgm = 0
+    fltl = 0; fltr = 0; fltf = 0; fltb = 0; fltd = 0; fltu = 0
+    fltnum = 0
+    fltMPI = .false.
 
     ! ---- Fault 1: 3 local fault-node-pairs -- left(1), right(2), down(100).
-    fltgm(1) = 1
-    fltgm(2) = 2
-    fltgm(3) = 100
-    ! Pre-set fltnum as createMasterNode's running tally would have left it
-    ! by the time meshgen's own MPI4arn(ift=1) call happens in the real flow.
-    fltnum = 0
-    fltnum(1) = 1
-    fltnum(2) = 1
-    fltnum(5) = 1
+    fltgm(1,1) = 1
+    fltgm(2,1) = 2
+    fltgm(3,1) = 100
 
     call MPI4arn(1, 1, 1, 0, 0, 0, 3, 1)
 
-    print *, 'FLTNUM1', fltnum
-    print *, 'FLTL1', fltl
-    print *, 'FLTR1', fltr
-    print *, 'FLTD1', fltd
+    print *, 'FLTNUM1', fltnum(:,1)
+    print *, 'FLTL1', fltl(:,1)
+    print *, 'FLTR1', fltr(:,1)
+    print *, 'FLTD1', fltd(:,1)
 
     ! ---- Fault 2: 2 local fault-node-pairs, BOTH on the left boundary (a
-    ! DIFFERENT fltnum(1) than fault 1's -- 1 -> 2 -- to prove correct
-    ! resizing, not just reuse of a stale-but-coincidentally-sized array).
-    fltgm(1) = 1
-    fltgm(2) = 1
+    ! DIFFERENT fltnum(1,2) than fault 1's fltnum(1,1) -- 1 -> 2 -- to prove
+    ! correct per-fault sizing, not just reuse of a coincidentally-sized
+    ! shared array).
+    fltgm(1,2) = 1
+    fltgm(2,2) = 1
 
     call MPI4arn(1, 1, 1, 0, 0, 0, 2, 2)
 
-    print *, 'FLTNUM2', fltnum
-    print *, 'FLTL2', fltl
-    print *, 'FLTR2_ALLOCATED', allocated(fltr)
-    print *, 'FLTD2_ALLOCATED', allocated(fltd)
+    print *, 'FLTNUM1_AFTER', fltnum(:,1)
+    print *, 'FLTL1_AFTER', fltl(:,1)
+    print *, 'FLTR1_AFTER', fltr(:,1)
+    print *, 'FLTD1_AFTER', fltd(:,1)
+    print *, 'FLTNUM2', fltnum(:,2)
+    print *, 'FLTL2', fltl(:,2)
     print *, 'DRIVER_OK'
 end program mpi4arn_item10_driver
 '''
@@ -214,47 +207,53 @@ def main():
         r = subprocess.run([binary], cwd=tmp, capture_output=True, text=True, timeout=30)
         if r.returncode != 0:
             print('FAIL test_multifault_item10_fix')
-            print(f' - driver exited {r.returncode} (fault-2 call likely aborted -- '
-                  f'the double-allocate bug is back):\n{r.stdout}\n{r.stderr}')
+            print(f' - driver exited {r.returncode} (fault-2 call likely aborted):\n{r.stdout}\n{r.stderr}')
             return 1
         vals = parse(r.stdout)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
     fails = []
-    if 'DRIVER_OK' not in vals and not any(k == 'DRIVER_OK' for k in vals):
+    if 'DRIVER_OK' not in vals:
         fails.append(f'driver did not report DRIVER_OK -- output:\n{r.stdout}')
 
     # After fault 1's call: fltnum(1)=1 (left), fltnum(2)=1 (right),
     # fltnum(5)=1 (down); fltl/fltr/fltd each hold local node index 1/2/3.
+    want_fltnum1 = [1, 1, 0, 0, 1, 0]
     fltnum1 = as_ints(vals.get('FLTNUM1', []))
-    if fltnum1 != [1, 1, 0, 0, 1, 0]:
-        fails.append(f'FLTNUM1: expected [1, 1, 0, 0, 1, 0], got {fltnum1}')
-    if as_ints(vals.get('FLTL1', [])) != [1]:
-        fails.append(f'FLTL1: expected [1], got {vals.get("FLTL1")}')
-    if as_ints(vals.get('FLTR1', [])) != [2]:
-        fails.append(f'FLTR1: expected [2], got {vals.get("FLTR1")}')
-    if as_ints(vals.get('FLTD1', [])) != [3]:
-        fails.append(f'FLTD1: expected [3], got {vals.get("FLTD1")}')
+    if fltnum1 != want_fltnum1:
+        fails.append(f'FLTNUM1: expected {want_fltnum1}, got {fltnum1}')
+    if as_ints(vals.get('FLTL1', [])) != [1,0,0,0,0,0,0,0,0,0]:
+        fails.append(f'FLTL1: expected [1,0,...], got {vals.get("FLTL1")}')
+    if as_ints(vals.get('FLTR1', [])) != [2,0,0,0,0,0,0,0,0,0]:
+        fails.append(f'FLTR1: expected [2,0,...], got {vals.get("FLTR1")}')
+    if as_ints(vals.get('FLTD1', [])) != [3,0,0,0,0,0,0,0,0,0]:
+        fails.append(f'FLTD1: expected [3,0,...], got {vals.get("FLTD1")}')
 
-    # After fault 2's call: the whole point of the fix. fltnum(1) must be 2
-    # (fault 2's OWN count, not fault 1's leftover 1), and fltl must hold
-    # fault 2's own local node indices (1, 2), not fault 1's stale [1].
+    # THE ACTUAL GUARD: after fault 2's call, fault 1's OWN column must be
+    # UNCHANGED -- this is what a cross-column corruption (wrong index into
+    # the shared (nftmx, ntotft) array, or an out-of-bounds write from
+    # fault 2's fill loop) would break.
+    fltnum1_after = as_ints(vals.get('FLTNUM1_AFTER', []))
+    if fltnum1_after != want_fltnum1:
+        fails.append(f'FLTNUM1_AFTER (fault 1''s column, AFTER fault 2''s call): '
+                      f'expected {want_fltnum1} (unchanged), got {fltnum1_after} '
+                      '-- fault 2 corrupted fault 1''s state')
+    if as_ints(vals.get('FLTL1_AFTER', [])) != [1,0,0,0,0,0,0,0,0,0]:
+        fails.append(f'FLTL1_AFTER: expected [1,0,...] (unchanged), got {vals.get("FLTL1_AFTER")}')
+    if as_ints(vals.get('FLTR1_AFTER', [])) != [2,0,0,0,0,0,0,0,0,0]:
+        fails.append(f'FLTR1_AFTER: expected [2,0,...] (unchanged), got {vals.get("FLTR1_AFTER")}')
+    if as_ints(vals.get('FLTD1_AFTER', [])) != [3,0,0,0,0,0,0,0,0,0]:
+        fails.append(f'FLTD1_AFTER: expected [3,0,...] (unchanged), got {vals.get("FLTD1_AFTER")}')
+
+    # Fault 2's own column: its OWN count (2, not fault 1's leftover 1), and
+    # its own local node indices (1, 2).
+    want_fltnum2 = [2, 0, 0, 0, 0, 0]
     fltnum2 = as_ints(vals.get('FLTNUM2', []))
-    if fltnum2 != [2, 0, 0, 0, 0, 0]:
-        fails.append(f'FLTNUM2: expected [2, 0, 0, 0, 0, 0] (fault 2 own counts), got {fltnum2} '
-                      '(stale fault-1 counts would look like [1, 1, 0, 0, 1, 0])')
-    if as_ints(vals.get('FLTL2', [])) != [1, 2]:
-        fails.append(f'FLTL2: expected [1, 2] (both of fault 2\'s own nodes), got {vals.get("FLTL2")}')
-    # fault 2 has zero right/down-boundary nodes -- a correct fix deallocates
-    # fault 1's leftover fltr/fltd rather than leaving them allocated (and
-    # sized for fault 1) with a now-zero fltnum guarding their use.
-    if vals.get('FLTR2_ALLOCATED') != ['F']:
-        fails.append(f'FLTR2_ALLOCATED: expected F (deallocated, fault 2 has none), '
-                      f'got {vals.get("FLTR2_ALLOCATED")}')
-    if vals.get('FLTD2_ALLOCATED') != ['F']:
-        fails.append(f'FLTD2_ALLOCATED: expected F (deallocated, fault 2 has none), '
-                      f'got {vals.get("FLTD2_ALLOCATED")}')
+    if fltnum2 != want_fltnum2:
+        fails.append(f'FLTNUM2: expected {want_fltnum2} (fault 2 own counts), got {fltnum2}')
+    if as_ints(vals.get('FLTL2', [])) != [1,2,0,0,0,0,0,0,0,0]:
+        fails.append(f'FLTL2: expected [1,2,0,...] (both of fault 2\'s own nodes), got {vals.get("FLTL2")}')
 
     if fails:
         print('FAIL test_multifault_item10_fix')
@@ -262,7 +261,7 @@ def main():
             print('  -', f)
         return 1
     print('SUCCESS test_multifault_item10_fix '
-          '(fault 2 call did not crash and produced fault-2-only fltnum/fltl, not fault-1 leftovers)')
+          '(fault 2''s MPI4arn call left fault 1''s column untouched and filled its own column correctly)')
     return 0
 
 

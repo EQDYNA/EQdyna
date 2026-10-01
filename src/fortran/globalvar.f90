@@ -135,7 +135,6 @@ MODULE globalvar
     integer (kind = 4) :: nstep                                    ! total number of time steps
     integer (kind = 4) :: dis4uniF, dis4uniB                        ! distance (in cells) to uniform-mesh region, front/back
     integer (kind = 4) :: surface_nnode = 0                        ! number of free-surface output nodes
-    integer (kind = 4) :: fltnum(6) = 0                             ! fault-node counts per MPI-boundary direction
     real (kind = dp) :: dx, dy, dz                ! grid cell sizes, m
     real (kind = dp) :: rat                       ! geometrical enlarging ratio of cell size outside the uniform-mesh region
     real (kind = dp) :: xmin,  xmax,  ymin,  ymax,  zmin,  zmax   ! domain boundaries, m
@@ -261,10 +260,21 @@ MODULE globalvar
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
         eqNumIndexArr,    stressCompIndexArr,    elemTypeArr,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surfaceNodeIdArr,&
-        nonfs,  n4yn,   fltl,   fltr,   fltf,   fltb,   fltd,   &
-        fltu,   fltgm
+        nonfs,  n4yn
+    ! Row 17 (multi-fault): fltl/fltr/fltf/fltb/fltd/fltu (local fault-node
+    ! indices touching an MPI boundary, per direction), fltgm (per-fault-node
+    ! boundary-membership bitmask) and fltnum (per-direction boundary-node
+    ! COUNT) all used to hold ONE fault's worth of data at a time -- each was
+    ! silently overwritten by the next fault's call to MPI4arn (meshgen.f90),
+    ! so by solve time only the LAST fault processed was ever visible to
+    ! assembleGlobalMass.f90's MPI4NodalQuant/addFaultBoundaryTerm. Now
+    ! dimensioned (nftmx, ntotft) / (6, ntotft): every fault gets its own
+    ! column, sized once in allocInit and filled in place by MPI4arn (no
+    ! per-call allocate/deallocate). Reduces to the old single-fault arrays
+    ! at ntotft==1 (column 1 only).
     integer (kind = 4), allocatable, dimension(:,:) :: nodeElemIdRelation,     &
-        anonfs, idhist, OffFaultStNodeIdIndex
+        anonfs, idhist, OffFaultStNodeIdIndex, &
+        fltl,   fltr,   fltf,   fltb,   fltd,   fltu,   fltgm,   fltnum
     integer (kind = 4), allocatable, dimension(:,:,:) :: nsmp
     ! Row 94 audit finding 6 (2026-09-25): whether each requested off-fault
     ! station's DEPTH fell inside the physical (non-PML) clamp band -- set
