@@ -43,8 +43,13 @@ FORTRAN_DEPS = ('globalvar.f90', 'library_output.f90')
 # Driver: two on-fault stations, station 1 on fault 1, station 2 on fault 2.
 # Station 1 -> filename faultst005dp003.txt (strike 500 m -> 005, dip 300 m
 # with fltxyz(2,4,1)=pi/2 -> dsin=1 -> 003).
-# Station 2 -> filename faultst010dp004.txt (strike 1000 m -> 010, dip 400 m
-# -> 004). Distinct from station 1's filename by construction.
+# Station 2 -> filename faultstft2_010dp004.txt (strike 1000 m -> 010, dip
+# 400 m -> 004, faultTag(2) = 'ft2_' -- the victor-reyes blocker fix below:
+# fault 2's station filename now carries faultTag(j) the same way
+# output_src_evol's already did, so a fault-2 station whose (strike,depth)
+# happens to COINCIDE with a fault-1 station's cannot collide with it and
+# silently overwrite its file). Distinct from station 1's filename by
+# construction either way.
 # Each station's onFaultQuantHistSCECForm(1,1,i) (the Time column) carries a
 # distinct marker (1.111 / 2.222) so the test can tell the two files apart
 # by content, not just by existing.
@@ -146,8 +151,8 @@ def main():
                           'fault 2 station wrote to an unconnected unit')
 
         expected = {
-            os.path.join(tmp, 'faultst005dp003.txt'): '0.1111',   # fault 1's station
-            os.path.join(tmp, 'faultst010dp004.txt'): '0.2222',   # fault 2's station
+            os.path.join(tmp, 'faultst005dp003.txt'): '0.1111',        # fault 1's station
+            os.path.join(tmp, 'faultstft2_010dp004.txt'): '0.2222',    # fault 2's station (faultTag(2))
         }
         for path, marker in expected.items():
             if not os.path.exists(path):

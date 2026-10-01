@@ -55,7 +55,7 @@ authoritative; the specific number is advisory under `srun`.
 | 42 | `ERR_MESH_COUNT_MISMATCH` | meshgen's node/element/equation tallies disagree |
 | 43 | `ERR_MESH_EQNUM_MISMATCH` | eqNumIndexArrLocTag /= sizeOfEqNumIndexArr |
 | 44 | `ERR_MESH_FAULT_MISMATCH` | nftnd0 /= nftnd (meshgen vs countMeshEntities) |
-| 45 | `ERR_MESH_MULTIFAULT_MSNODE` | retired (row 17): msnode collision across faults fixed with a per-fault nftmx block offset; no longer raised |
+| 45 | `ERR_MESH_MULTIFAULT_MSNODE` | retired (row 17): msnode collision across faults fixed with a running-total sum(nftnd0(1:iFault-1))-style offset (a fixed per-fault nftmx block offset was tried and reverted -- it overflowed memory); no longer raised |
 | 46 | `ERR_MESH_BAD_WEDGE` | degenerate wedge built with unequal node ids |
 | 47 | `ERR_MESH_BAD_JACOBIAN` | non-positive Jacobian determinant (inverted element) |
 | 48 | `ERR_MESH_MATERIAL_UNSET` | an element has no material property assigned |

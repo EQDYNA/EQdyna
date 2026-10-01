@@ -77,6 +77,59 @@ FAULT2_NORM_COEFF = 5000.0
 # stays well clear of this bound either way).
 TOL_PA = 1.0e7
 
+# BLOCKER FIX (victor-reyes audit, 2026-09-30): TOL_PA used to be applied,
+# unchanged, to every one of frt.canonical.txt's 22 columns -- including
+# rupture time (s), slip (m) and slip rate (m/s), where the measured diff is
+# 0.0, so a real regression of up to 1e7 in any of those units would have
+# passed silently. Columns below are output_frt's write order
+# (testsys/frt_canonical.FRT_COLUMNS, src/fortran/library_output.f90
+# output_frt): 0-2 coords (m), 3 rupture time (s), 4-9 slip/slip-rate
+# (m, m/s), 10 peak slip rate (m/s), 11-13 tractions tnrm/tstk/tdip (Pa),
+# 14-19 master/slave velocities (m/s), 20 RSF state (dimensionless/s, unused
+# at this case's friclaw=1), 21 theta_pc -- the Shi & Day (2013)
+# normal-stress-evolution state variable, Pa-scale like tnrm.
+#
+# TOL_TIGHT covers every non-stress column (time/slip/slip-rate/velocity/
+# state): measured max|serial - committed reference| over those columns is
+# 1.787e-16 (column 4, horizontal slip) -- floating-point summation-order
+# noise between the serial (1 rank, both faults on one rank) and 4-rank
+# decompositions, not a real difference (the 4-rank run itself is
+# byte-identical to the reference, max|diff|=0.0 in all 22 columns). 1e-9 is
+# ~1.8e6x that noise: far tighter than TOL_PA, and the same order as this
+# repo's existing near-bit-identical CASE_BOUND entries (testsys/matrix.py:
+# test.tpv8 1e-8, test.tpv29/test.tpv30 1e-10).
+TOL_TIGHT = 1.0e-9
+STRESS_SCALE_COLS = (11, 12, 13, 21)  # tnrm, tstk, tdip, theta_pc -- Pa-scale
+N_FRT_COLUMNS = 22
+COL_BOUND = np.full(N_FRT_COLUMNS, TOL_TIGHT)
+COL_BOUND[list(STRESS_SCALE_COLS)] = TOL_PA
+
+
+def _per_column_bound_report(got, want, label):
+    """(ok, lines): per-column max|diff| against COL_BOUND, not one scalar
+    bound for all 22 columns -- a column that fails only shows up as a
+    FAIL for that column's own physically-appropriate bound."""
+    diff = np.abs(got - want)
+    lines = []
+    ok = True
+    for c in range(N_FRT_COLUMNS):
+        worst = float(diff[:, c].max())
+        bound = float(COL_BOUND[c])
+        col_ok = worst <= bound
+        ok = ok and col_ok
+        tag = 'stress-scale' if c in STRESS_SCALE_COLS else 'tight'
+        if not col_ok:
+            lines.append('    FAIL col %2d (%s bound %.1e): max|diff|=%.6e'
+                         % (c, tag, bound, worst))
+    if ok:
+        worst_tight = float(diff[:, [c for c in range(N_FRT_COLUMNS)
+                                      if c not in STRESS_SCALE_COLS]].max())
+        worst_stress = float(diff[:, list(STRESS_SCALE_COLS)].max())
+        lines.append('  PASS  %s: per-column bounds held (worst tight-group=%.3e '
+                     'vs %.1e, worst stress-group=%.3e vs %.1e)'
+                     % (label, worst_tight, TOL_TIGHT, worst_stress, TOL_PA))
+    return ok, lines
+
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 from testsys import frt_canonical  # noqa: E402
@@ -135,22 +188,40 @@ def _canonical(case_dir):
     return frt_canonical.canonical_from_case(case_dir)
 
 
-def check_four_rank_matches_committed_reference():
+def _check_matches_committed_reference(got, label):
     if not os.path.isfile(REFERENCE):
         raise AssertionError('missing committed reference %r -- regenerate with '
                              'python3 -m testsys.frt_canonical <case_dir>' % REFERENCE)
+    want = np.loadtxt(REFERENCE)
+    if got.shape != want.shape:
+        raise AssertionError('%s: canonical shape %r != reference shape %r'
+                             % (label, got.shape, want.shape))
+    ok, lines = _per_column_bound_report(got, want, label)
+    if not ok:
+        raise AssertionError('%s: per-column bound(s) failed vs committed reference '
+                             '(%d fault nodes compared):\n%s'
+                             % (label, got.shape[0], '\n'.join(lines)))
+    print('\n'.join(lines))
+
+
+def check_four_rank_matches_committed_reference():
     with tempfile.TemporaryDirectory() as tmp:
         case_dir = _build_and_run(tmp, nranks=4, nx=2, ny=2, nz=1)
         got = _canonical(case_dir)
-    want = np.loadtxt(REFERENCE)
-    if got.shape != want.shape:
-        raise AssertionError('canonical shape %r != reference shape %r' % (got.shape, want.shape))
-    diff = abs(got - want).max()
-    if diff > TOL_PA:
-        raise AssertionError('max|diff| against committed reference = %.3e Pa, bound %.3e Pa'
-                             % (diff, TOL_PA))
-    print('  PASS  4-rank (2,2,1) canonical frt matches committed reference: '
-          'max|diff|=%.3e Pa (bound %.3e), %d rows' % (diff, TOL_PA, got.shape[0]))
+    _check_matches_committed_reference(got, '4-rank (2,2,1)')
+
+
+def check_serial_matches_committed_reference():
+    # AUDIT FIX (victor-reyes, 2026-09-30): only the 4-rank run was ever
+    # compared against the committed reference, even though this module's own
+    # docstring and the landing commit both claim the serial run "reproduces
+    # it exactly" too. It was run (check_serial_single_rank_owns_both_faults
+    # below) but only checked structurally/analytically, never against
+    # frt.canonical.txt. Added here.
+    with tempfile.TemporaryDirectory() as tmp:
+        case_dir = _build_and_run(tmp, nranks=1, nx=1, ny=1, nz=1)
+        got = _canonical(case_dir)
+    _check_matches_committed_reference(got, 'serial (1,1,1)')
 
 
 def _check_two_faults_present_and_distinct(rows, label):
@@ -211,6 +282,7 @@ def main():
     failures = []
     for c in (check_serial_single_rank_owns_both_faults,
               check_four_rank_structural,
+              check_serial_matches_committed_reference,
               check_four_rank_matches_committed_reference):
         try:
             c()

@@ -97,11 +97,45 @@ ALLOWLIST = [
     # not a missed generalization.
     ('checkInputConsistency.f90', 'abs(fxmin(i)-fxmin(1))>tol .or. abs(fxmax(i)-fxmax(1))>tol'),
     ('checkInputConsistency.f90', 'abs(fzmin(i)-fzmin(1))>tol .or. abs(fzmax(i)-fzmax(1))>tol'),
+    # Same C_degen>3 wedge-degeneration exemption as the entries above --
+    # nftnd0(1) here is the pre-existing, single-fault-only wedge mechanism's
+    # own argument, not a missed generalization.
+    ('meshgen.f90', 'iy, iz, nftnd0(1))'),
+    # faultTag() (library_output.f90) IS the per-fault tagging convention
+    # itself (CLAUDE.md: '' for fault 1, 'ft<N>_' for fault N>=2) -- it must
+    # compare ntotft and ift against 1 to decide whether to tag at all. This
+    # is the one place in the engine where naming fault 1 specifically is the
+    # whole point, not a missed generalization.
+    ('library_output.f90', 'ntotft > 1 .and. ift > 1'),
 ]
 
-# `ntotft == 1` / `ntotft==1` as a condition -- forbidden everywhere in
-# SCANNED_FILES, no exemptions (this is the actual "no special-casing" rule).
-NTOTFT_EQ_1 = re.compile(r'ntotft\s*==\s*1\b')
+# `ntotft` (or the reversed operand order `1 == ntotft`) compared, by ANY
+# relational operator and in EITHER Fortran spelling (`==`/`.eq.`, `/=`/
+# `.ne.`, `<=`/`.le.`, `<`/`.lt.`, `>=`/`.ge.`, `>`/`.gt.`), against the
+# literal 1 or 2 -- forbidden everywhere in SCANNED_FILES, no exemptions
+# (this is the actual "no special-casing" rule). `ntotft < 2` and
+# `ntotft <= 1` are the same single-fault special case as `ntotft == 1`
+# written with a different operator; `ntotft > 1` is the same special case
+# from its complementary side. re.IGNORECASE: Fortran is case-insensitive, so
+# `NTOTFT == 1` is the identical defect. Audit note (victor-reyes,
+# 2026-09-30): the previous version of this guard matched only the single
+# literal spelling `ntotft==1` and missed 11 of 15 equivalent-mutation probes
+# (`.eq.`, case, every other operator, operand order).
+_REL_OP = r'(?:==|\.eq\.|/=|\.ne\.|<=|\.le\.|<|\.lt\.|>=|\.ge\.|>|\.gt\.)'
+NTOTFT_COMPARISON = re.compile(
+    r'\bntotft\s*' + _REL_OP + r'\s*[12]\b'
+    r'|\b[12]\s*' + _REL_OP + r'\s*ntotft\b',
+    re.IGNORECASE)
+
+# Same defect shape, one level down: the per-fault LOOP INDEX (`ift` in every
+# scanned file, `iFault` in meshgen.f90/checkInputConsistency.f90) compared
+# against the literal 1 -- `if (ift == 1)` special-cases fault 1 inside a
+# loop that is supposed to treat every fault alike, exactly as `ntotft == 1`
+# special-cases the single-fault case outside one.
+FAULT_VAR_COMPARISON = re.compile(
+    r'\b(?:ift|iFault)\s*' + _REL_OP + r'\s*1\b'
+    r'|\b1\s*' + _REL_OP + r'\s*(?:ift|iFault)\b',
+    re.IGNORECASE)
 
 # A literal `1` in the fault-index position of an array this mission made
 # (.., ntotft)-shaped: last argument of a 2+-arg parenthesised subscript/call.
@@ -111,36 +145,63 @@ NTOTFT_EQ_1 = re.compile(r'ntotft\s*==\s*1\b')
 # Two shapes: a MULTI-arg array/call with fault index as the LAST argument
 # (fltxyz(:,:,1), nsmp(:,:,1), checkIsOnFault(x,1,y) via a preceding comma),
 # and a SINGLE-arg array whose one dimension IS the fault index (nftnd(1),
-# nftnd0(1), nonfs(1), fxmin(1), ...).
+# nftnd0(1), nonfs(1), fxmin(1), ...). re.IGNORECASE added for the same
+# reason as NTOTFT_COMPARISON (`NFTND(1)` is the same defect as `nftnd(1)`).
+# _INNER allows exactly one level of nested parens inside the call, so a
+# fault-index-1 literal buried in a call that itself contains another call
+# (e.g. `fric(FRIC_SLOT_STATE, nsmp(1,i,ift), 1)`) is still found -- the
+# previous `[^()]*` could not cross the inner `nsmp(...)`'s own parens at all.
+_INNER = r'(?:[^()]|\([^()]*\))*'
 FAULT_INDEX_1_MULTIARG = re.compile(
     r'\b(fltxyz|nsmp|fric|un|us|ud|arn|fnft|Tatnode|patnode|'
     r'fltgm|fltnum|fltl|fltr|fltf|fltb|fltd|fltu|onFaultTPHist|'
-    r'checkIsOnFault|faultTag)\s*\([^()]*,\s*1\s*\)'
-)
+    r'checkIsOnFault|faultTag)\s*\(' + _INNER + r',\s*1\s*\)',
+    re.IGNORECASE)
 FAULT_INDEX_1_SINGLEARG = re.compile(
-    r'\b(nftnd0?|nonfs|fxmin|fxmax|fymin|fymax|fzmin|fzmax)\s*\(\s*1\s*\)'
-)
+    r'\b(nftnd0?|nonfs|fxmin|fxmax|fymin|fymax|fzmin|fzmax)\s*\(\s*1\s*\)',
+    re.IGNORECASE)
 
 
 def _iter_allowlisted(fname):
-    return {snippet for f, snippet in ALLOWLIST if f == fname}
+    return [snippet for f, snippet in ALLOWLIST if f == fname]
 
 
 def scan_file(path, fname):
-    """Return a list of (lineno, line) violations."""
+    """Return a list of (lineno, line, why) violations.
+
+    Allowlisting is per-MATCH (does this specific matched snippet sit inside
+    an allowlisted snippet?), not per-LINE (does an allowlisted snippet
+    appear anywhere on this line?). The per-line version let an allowlisted
+    fragment shield an unrelated bug placed later on the same physical line
+    (Fortran's `;` statement separator) -- the
+    `check_mutation_allowlist_does_not_shield_a_different_bug_on_same_line`
+    probe below pins this."""
     violations = []
     allow = _iter_allowlisted(fname)
+
+    def _allowlisted(snippet):
+        return any(snippet in a for a in allow)
+
     with open(path, errors='replace') as fh:
         for lineno, raw in enumerate(fh, 1):
             code = raw.split('!', 1)[0]  # strip Fortran end-of-line comments
             if not code.strip():
                 continue
-            if NTOTFT_EQ_1.search(code):
-                violations.append((lineno, raw.rstrip(), 'ntotft==1 branch'))
-                continue
-            m = FAULT_INDEX_1_MULTIARG.search(code) or FAULT_INDEX_1_SINGLEARG.search(code)
-            if m:
-                if any(a in code for a in allow):
+            for m in NTOTFT_COMPARISON.finditer(code):
+                if _allowlisted(m.group(0)):
+                    continue
+                violations.append((lineno, raw.rstrip(), 'ntotft literal comparison (%r)' % m.group(0)))
+            for m in FAULT_VAR_COMPARISON.finditer(code):
+                if _allowlisted(m.group(0)):
+                    continue
+                violations.append((lineno, raw.rstrip(), 'fault-index-variable literal comparison (%r)' % m.group(0)))
+            for m in FAULT_INDEX_1_MULTIARG.finditer(code):
+                if _allowlisted(m.group(0)):
+                    continue
+                violations.append((lineno, raw.rstrip(),
+                                   'literal fault-index 1 on %s(...)' % m.group(1)))
+            for m in FAULT_INDEX_1_SINGLEARG.finditer(code):
+                if _allowlisted(m.group(0)):
                     continue
                 violations.append((lineno, raw.rstrip(),
                                    'literal fault-index 1 on %s(...)' % m.group(1)))
@@ -188,6 +249,72 @@ def check_mutation_literal_fault_index_is_caught():
     print('  PASS  mutation: a planted literal fault-index-1 (nftnd(1)) is detected')
 
 
+# Audit (victor-reyes, 2026-09-30): the auditor's 15-probe equivalent-mutation
+# sweep caught only 4 of 15 under the previous single-literal-spelling regex.
+# Every one of the 15 planted here, one at a time, into a temp copy of
+# meshgen.f90 (the file the original two checks above already used for this
+# purpose) -- each must be independently detected.
+EQUIVALENT_MUTATION_FORMS = {
+    'eq-lower':                  'if (ntotft == 1) then',
+    'dot-eq':                    'if (ntotft .eq. 1) then',
+    'UPPER':                     'if (NTOTFT == 1) then',
+    'lt2':                       'if (ntotft < 2) then',
+    'le1':                       'if (ntotft <= 1) then',
+    'ne1':                       'if (ntotft /= 1) then',
+    'gt1':                       'if (ntotft > 1) call abortRun(45, "x")',
+    'reversed':                  'if (1 == ntotft) then',
+    'nftnd1':                    'x = nftnd(1)',
+    'nftnd1-upper':              'x = NFTND(1)',
+    'fric-nested':               'x = fric(FRIC_SLOT_STATE, nsmp(1,i,ift), 1)',
+    'meshCoor-nsmp1':            'x = meshCoor(1, nsmp(1,i,1))',
+    'fnft-1':                    'x = fnft(i,1)',
+    'allowlisted-line-plus-bug': 'frontEdgeCoor = fltxyz(1,1,1); y = nftnd(1)',
+    'ift-eq-1':                  'if (ift == 1) then',
+}
+
+
+def check_mutation_equivalent_forms_are_caught():
+    with tempfile.TemporaryDirectory() as tmp:
+        missed = []
+        for name, line in EQUIVALENT_MUTATION_FORMS.items():
+            bad_path = os.path.join(tmp, 'meshgen_%s.f90' % name)
+            shutil.copy(os.path.join(FSRC, 'meshgen.f90'), bad_path)
+            with open(bad_path, 'a') as fh:
+                fh.write('\n    ' + line + '\n')
+            v = scan_file(bad_path, 'meshgen.f90')
+            if not v:
+                missed.append('%s (%r)' % (name, line))
+        if missed:
+            raise AssertionError('%d/%d equivalent-mutation form(s) NOT detected: %s'
+                                 % (len(missed), len(EQUIVALENT_MUTATION_FORMS), '; '.join(missed)))
+    print('  PASS  all %d equivalent-mutation forms detected' % len(EQUIVALENT_MUTATION_FORMS))
+
+
+def check_allowlist_does_not_shield_a_different_bug_on_same_line():
+    """The 'allowlisted-line-plus-bug' probe in isolation: an allowlisted
+    snippet on a line must not shield a DIFFERENT, unrelated violation placed
+    later on that same physical line (Fortran's `;` statement separator).
+    This is the defect the old whole-line `if any(a in code for a in allow)`
+    check had -- it skipped the entire line, bug included, whenever any
+    allowlisted snippet appeared anywhere in it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        bad_path = os.path.join(tmp, 'meshgen.f90')
+        shutil.copy(os.path.join(FSRC, 'meshgen.f90'), bad_path)
+        with open(bad_path, 'a') as fh:
+            # 'frontEdgeCoor = fltxyz(1,1,1)' alone IS allowlisted for this
+            # file; the planted 'nftnd(1)' after the ';' is not and must
+            # still be caught.
+            fh.write('\n    frontEdgeCoor = fltxyz(1,1,1); y = nftnd(1)\n')
+        v = scan_file(bad_path, 'meshgen.f90')
+        if not v:
+            raise AssertionError('an allowlisted snippet shielded an unrelated bug '
+                                 '(nftnd(1)) placed later on the same line')
+        if any('fltxyz(1,1,1)' in line for _, line, _ in v) and len(v) == 1 and 'nftnd' not in v[0][2]:
+            raise AssertionError('the reported violation is the allowlisted snippet itself, '
+                                 'not the planted nftnd(1) bug: %r' % (v,))
+    print('  PASS  mutation: an allowlisted snippet does not shield a different bug on the same line')
+
+
 def check_allowlist_entries_still_exist():
     """An allowlist entry for a line that no longer exists is a stale
     exemption hiding nothing -- prune it rather than let it rot."""
@@ -209,7 +336,9 @@ def main():
     for c in (check_current_tree_clean,
               check_allowlist_entries_still_exist,
               check_mutation_ntotft_eq_1_branch_is_caught,
-              check_mutation_literal_fault_index_is_caught):
+              check_mutation_literal_fault_index_is_caught,
+              check_mutation_equivalent_forms_are_caught,
+              check_allowlist_does_not_shield_a_different_bug_on_same_line):
         try:
             c()
         except AssertionError as e:

@@ -41,12 +41,29 @@ subroutine output_onfault_st
 
     use globalvar
     implicit none
-    
-    integer (kind = 4) :: i, j 
-    
+
+    integer (kind = 4) :: i, j
+    character (len = 8) :: tag, faultTag
+
     if(numOfOnFaultStCount>0) then
         do i=1,numOfOnFaultStCount
             j=anonfs(3,i)
+            ! BLOCKER FIX (victor-reyes audit of 2df46aa, 2026-09-30):
+            ! the filename below used to be built from strike/depth alone,
+            ! with no per-fault tag -- the same faultTag() convention
+            ! output_src_evol already uses a few subroutines down. Two
+            ! stations on DIFFERENT faults that happen to share the same
+            ! along-strike/down-dip (strike,depth) pair (as test.multifault2's
+            ! fault-2 stations (0.0,-7.5) and (4.5,-7.5) deliberately do,
+            ! matching two of fault 1's own stations) therefore produced the
+            ! SAME filename, and fault 2's station silently overwrote fault
+            ! 1's file -- measured: 10 requested on-fault stations, only 8
+            ! files on disk, serial and 4-rank both. faultTag(j) is '' for
+            ! fault 1 (bit-identical filename, ntotft==1 reduces to the old
+            ! behaviour exactly) and 'ft<N>_' for fault N>=2, so a fault-2+
+            ! station's file can never collide with a same-(strike,depth)
+            ! fault-1 station's file again.
+            tag = faultTag(j)
             ! FIX (pathway_forward.md item 9): unit 51 used to be opened only
             ! when j==1 ("main fault stations") but written to unconditionally
             ! below -- for a station on fault 2+ (j>1) that skipped this whole
@@ -70,7 +87,7 @@ subroutine output_onfault_st
                 write(sttmp,'(i3.3)') nint(xonfs(1,anonfs(2,i),j)/100.d0)
             endif
             write(dptmp,'(i3.3)') nint(abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,j))/100.d0)
-            open(51,file='faultst'//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
+            open(51,file='faultst'//trim(tag)//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
 
             sttmp = '      '
             dptmp = '      '

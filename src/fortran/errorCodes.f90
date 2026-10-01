@@ -80,7 +80,7 @@ MODULE errorCodes
     integer, parameter :: ERR_MESH_COUNT_MISMATCH    = 42  ! meshgen's node/element/equation tallies disagree
     integer, parameter :: ERR_MESH_EQNUM_MISMATCH    = 43  ! eqNumIndexArrLocTag /= sizeOfEqNumIndexArr
     integer, parameter :: ERR_MESH_FAULT_MISMATCH    = 44  ! nftnd0 /= nftnd (meshgen vs countMeshEntities)
-    integer, parameter :: ERR_MESH_MULTIFAULT_MSNODE = 45  ! retired (row 17): msnode collision across faults fixed with a per-fault nftmx block offset; no longer raised
+    integer, parameter :: ERR_MESH_MULTIFAULT_MSNODE = 45  ! retired (row 17): msnode collision across faults fixed with a running-total sum(nftnd0(1:iFault-1))-style offset (a fixed per-fault nftmx block offset was tried and reverted -- it overflowed memory); no longer raised
     integer, parameter :: ERR_MESH_BAD_WEDGE         = 46  ! degenerate wedge built with unequal node ids
     integer, parameter :: ERR_MESH_BAD_JACOBIAN      = 47  ! non-positive Jacobian determinant (inverted element)
     integer, parameter :: ERR_MESH_MATERIAL_UNSET    = 48  ! an element has no material property assigned
