@@ -38,6 +38,7 @@ Fortran/jax solver -- this is a guard on the HARNESS's timeout mechanism, not
 a physics cell. Under a few seconds total. Exits non-zero on any failure.
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -192,6 +193,128 @@ def check_hung_cell_is_killed_reported_and_actually_gone():
     assert not leaked, 'the killed subprocess is still registered in _ACTIVE_SUBPROCS'
 
 
+# --------------------------------------------------------------------------
+# 5. MPI-SHAPED process tree (blocker 2 audit finding): the direct child is
+#    not the only process a cell leaves behind. A single bare `sleep` child
+#    (checks above) cannot distinguish a kill path that reaches the whole
+#    tree from one that only reaches the direct child -- a mutation breaking
+#    process-GROUP killing but keeping single-PID killing would still pass
+#    those checks. This exercises `mpirun -np 2 sleep N` (if mpirun exists),
+#    whose ranks get their OWN process group separate from mpirun's --
+#    MEASURED on this box (ps -eo pid,ppid,pgid,sid,args on a live
+#    `mpirun -np 2 sleep 15`): mpirun pgid == mpirun pid; each rank's pgid ==
+#    that rank's OWN pid, not mpirun's. os.killpg on mpirun's pgid alone
+#    reaches only mpirun; both ranks survive, reparent to pid 1, and keep
+#    running -- exactly reproducing the orphaned-rank shape of the original
+#    11h45m hang's cleanup problem. Falls back to a Python
+#    double-fork/detach (a different parent, a different process group, no
+#    mpirun needed) when mpirun is not on PATH, so this check still runs
+#    somewhere mpirun is unavailable.
+# --------------------------------------------------------------------------
+def _mpi_tree_fn(cb, tmp, env):
+    t0 = time.time()
+    rc = run_e2e._run(['mpirun', '-np', '2', 'sleep', '20'], tmp, env)
+    return (cb[0], cb[1], rc == 0, time.time() - t0, ['mpirun exited %d' % rc])
+
+
+def _detached_grandchild_fn(cb, tmp, env):
+    """No mpirun available: a Python parent that double-forks a detached
+    grandchild (its own session, its own process group -- same orphan shape
+    an MPI rank has relative to mpirun) running `sleep 20`, then itself
+    sleeps so run_e2e._run has a live child to register and kill."""
+    script = (
+        'import os, subprocess, time, sys\n'
+        'pid = os.fork()\n'
+        'if pid == 0:\n'
+        '    os.setsid()\n'
+        '    pid2 = os.fork()\n'
+        '    if pid2 == 0:\n'
+        '        os.execvp("sleep", ["sleep", "20"])\n'
+        '    os._exit(0)\n'
+        'os.waitpid(pid, 0)\n'
+        'time.sleep(20)\n'
+    )
+    t0 = time.time()
+    rc = run_e2e._run([sys.executable, '-c', script], tmp, env)
+    return (cb[0], cb[1], rc == 0, time.time() - t0, ['parent exited %d' % rc])
+
+
+def check_mpi_shaped_tree_is_fully_killed_not_just_direct_child():
+    tmp = tempfile.gettempdir()
+    env = dict(os.environ)
+    have_mpirun = shutil.which('mpirun') is not None
+    fn = ((lambda cb: _mpi_tree_fn(cb, tmp, env)) if have_mpirun else
+          (lambda cb: _detached_grandchild_fn(cb, tmp, env)))
+    label = 'mpirun -np 2 sleep 20' if have_mpirun else 'double-forked detached grandchild'
+
+    # Grab the registered subprocess's pid and discover ITS direct children
+    # (the ranks, or the double-fork's immediate child) from a second thread
+    # while the deadline wrapper is in flight, so we can independently
+    # confirm by PID after the kill -- not trust run_one_with_deadline's own
+    # message, which (unlike check 4 above) does not name every descendant.
+    discovered = {}
+
+    def discover():
+        # Poll briefly for the subprocess to be registered and (for the
+        # mpirun case) for the ranks to actually have been forked.
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            with run_e2e._ACTIVE_SUBPROCS_LOCK:
+                procs = list(run_e2e._ACTIVE_SUBPROCS.values())
+            if procs:
+                p = procs[-1]
+                time.sleep(0.3)  # let mpirun/fork finish spawning its child(ren)
+                children = run_e2e._direct_children(p.pid)
+                if children:
+                    discovered['pid'] = p.pid
+                    discovered['children'] = children
+                    return
+            time.sleep(0.1)
+
+    discoverer = threading.Thread(target=discover, daemon=True)
+    discoverer.start()
+
+    t0 = time.time()
+    result = run_e2e.run_one_with_deadline(fn, ('test.__fake_mpi_cell__', 'fake-backend'), 1.0)
+    elapsed = time.time() - t0
+    discoverer.join(timeout=5.0)
+
+    assert elapsed < 4.0, (
+        '%s: run_one_with_deadline(deadline=1.0s) took %.2fs to return' % (label, elapsed))
+    _case, _backend, ok, _dt, lines = result
+    assert ok is False and lines and lines[0].startswith('FAIL(timeout)'), (
+        '%s: expected FAIL(timeout), got ok=%r lines=%r' % (label, ok, lines))
+
+    assert 'pid' in discovered, (
+        '%s: never managed to discover the registered subprocess\'s direct '
+        'children before/while it was killed -- test is inconclusive, not a '
+        'pass' % label)
+    all_pids = [discovered['pid']] + [cpid for cpid, _ in discovered['children']]
+    assert len(discovered['children']) >= 1, (
+        '%s: discovered zero direct children of pid %d -- the tree this '
+        'check needs (ranks, or the detached grandchild) never showed up'
+        % (label, discovered['pid']))
+
+    # Give the kill path (already invoked inside run_one_with_deadline,
+    # above) its own grace window, then verify EVERY discovered pid --
+    # parent and every child -- independently via ps, by PID, not by
+    # trusting the harness's own report.
+    deadline = time.time() + 10.0
+    still_alive = list(all_pids)
+    while time.time() < deadline and still_alive:
+        still_alive = [pid for pid in still_alive
+                       if str(pid) in subprocess.run(
+                           ['ps', '-o', 'pid', '-p', str(pid)],
+                           capture_output=True, text=True).stdout]
+        if still_alive:
+            time.sleep(0.2)
+    assert not still_alive, (
+        '%s: pid(s) %r STILL ALIVE after the timeout kill -- only the direct '
+        'child (mpirun itself / the fork parent) was reached, not its '
+        'spawned descendant(s) -- this is exactly the orphaned-process-tree '
+        'regression this check exists to catch' % (label, still_alive))
+
+
 def check_cell_that_finishes_within_deadline_is_unaffected():
     """A cell that finishes comfortably inside its deadline must get its OWN
     result back untouched -- the wrapper must not fire, or mislabel, a cell
@@ -216,6 +339,7 @@ CHECKS = (
     check_timeout_marker_is_labelled_distinctly,
     check_before_fix_an_unwrapped_call_blocks_for_the_full_duration,
     check_hung_cell_is_killed_reported_and_actually_gone,
+    check_mpi_shaped_tree_is_fully_killed_not_just_direct_child,
     check_cell_that_finishes_within_deadline_is_unaffected,
 )
 

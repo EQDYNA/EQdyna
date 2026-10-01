@@ -340,18 +340,84 @@ def cell_deadline_s(case, backend, ledger_costs):
     return CELL_TIMEOUT_MULTIPLIER * wall
 
 
-def _kill_cell_subprocess(thread_ident, grace_s=10.0, poll_s=0.2):
-    """Kill the one subprocess currently registered for `thread_ident` (a
-    timed-out cell's worker thread), verified by PID immediately before any
-    signal is sent, then polled afterward to confirm it is actually gone.
+def _ps_one(pid):
+    """`ps -o pid,args -p <pid>` for exactly one PID, as (alive, line)."""
+    v = subprocess.run(['ps', '-o', 'pid,args', '-p', str(pid)],
+                       capture_output=True, text=True)
+    alive = str(pid) in v.stdout
+    line = v.stdout.strip().splitlines()[-1] if alive else ''
+    return alive, line
 
-    Never a second, separately-computed PID list: every child launched by
-    _run/_call_kept starts its own process group (start_new_session=True),
-    so os.killpg(pgid, SIGKILL) reaches whatever that one child spawned
-    (e.g. mpirun's ranks) through the SAME group relationship the kernel
-    already tracks -- not a tree this function walks and assembles into a
-    list of PIDs to kill one at a time (that is the exact shape of mistake
-    that nearly killed init on this box).
+
+def _direct_children(pid):
+    """[(pid, args), ...] of `pid`'s DIRECT children right now, via
+    `ps --ppid <pid>`. One level only -- see _kill_cell_subprocess."""
+    r = subprocess.run(['ps', '--ppid', str(pid), '-o', 'pid=,args='],
+                       capture_output=True, text=True)
+    out = []
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        pid_str, _, args = line.partition(' ')
+        try:
+            out.append((int(pid_str), args))
+        except ValueError:
+            continue
+    return out
+
+
+def _kill_one_verified(pid, grace_s, poll_s):
+    """Verify `pid` is alive via ps, kill ITS process group, poll until gone
+    or `grace_s` elapses. Returns (ok, note). `ok` is False only when the
+    process is still present after the grace period."""
+    alive, line = _ps_one(pid)
+    if not alive:
+        return True, 'pid %d already gone' % pid
+    try:
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        return True, 'pid %d vanished between verification and kill' % pid
+    os.killpg(pgid, signal.SIGKILL)
+    deadline = time.time() + grace_s
+    while time.time() < deadline:
+        still_alive, _ = _ps_one(pid)
+        if not still_alive:
+            return True, 'killed pid %d (verified before kill: %s)' % (pid, line)
+        time.sleep(poll_s)
+    return False, ('killed pid %d (verified before kill: %s); STILL PRESENT '
+                   'after %.1fs grace' % (pid, line, grace_s))
+
+
+def _kill_cell_subprocess(thread_ident, grace_s=10.0, poll_s=0.2):
+    """Kill the subprocess currently registered for `thread_ident` (a
+    timed-out cell's worker thread) AND whatever it spawned, verified by PID
+    immediately before each signal, then polled afterward to confirm each is
+    actually gone.
+
+    MEASURED (this box, Open MPI 4.1.1), not assumed: `mpirun -np N ...`
+    under start_new_session=True puts the launched subprocess (mpirun) in
+    its OWN new process group, but each MPI RANK gets its OWN SEPARATE
+    process group too (pgid == the rank's own pid), not mpirun's. Launch
+    `mpirun -np 2 sleep 15`, note the PGIDs via
+    `ps -eo pid,ppid,pgid,sid,args`, send SIGKILL to mpirun's pgid alone: the
+    ranks' pgid never matches, they get reparented to pid 1 and KEEP
+    RUNNING -- exactly the orphaned-rank shape this function exists to
+    close, and the reason an earlier version of this function (os.killpg on
+    the registered subprocess's own group only) didn't actually fix the
+    11h45m-hang cleanup problem.
+
+    Fix, verified empirically the same way: before signalling anything,
+    discover the registered subprocess's DIRECT children (`ps --ppid <pid>`,
+    one level -- mpirun forks ranks directly for a local run; this is NOT a
+    recursive tree walk). Kill the registered subprocess's own group first
+    (reaches mpirun itself, or a non-MPI child with no separate-pgid
+    children). Then, for each discovered child, independently: verify it is
+    still present via `ps -o pid,args -p <pid>` RIGHT BEFORE the kill
+    (never a PID computed earlier and trusted), then kill THAT pid's own
+    process group. One PID, one verify, one kill, per loop iteration --
+    never a derived/piped multi-level PID list (the shape of scripting bug
+    that nearly killed init on this box earlier).
 
     Returns a one-line, human-readable description for the FAIL(timeout)
     message. Never raises: a defect in the kill path must still let the
@@ -365,30 +431,29 @@ def _kill_cell_subprocess(thread_ident, grace_s=10.0, poll_s=0.2):
                      'the deadline (it may have finished in the narrow '
                      'window between the deadline firing and this check)')
         pid = p.pid
-        verify = subprocess.run(['ps', '-o', 'pid,args', '-p', str(pid)],
-                                capture_output=True, text=True)
-        if str(pid) not in verify.stdout:
-            return ('pid %d was already gone by the time the deadline fired '
-                     '(ps -o pid,args -p %d: %r)'
-                     % (pid, pid, verify.stdout.strip()))
-        verified_line = verify.stdout.strip().splitlines()[-1]
-        try:
-            pgid = os.getpgid(pid)
-        except ProcessLookupError:
-            return 'pid %d vanished between verification and kill' % pid
-        os.killpg(pgid, signal.SIGKILL)
-        deadline = time.time() + grace_s
-        while time.time() < deadline:
-            check = subprocess.run(['ps', '-o', 'pid', '-p', str(pid)],
-                                   capture_output=True, text=True)
-            if str(pid) not in check.stdout:
-                return ('killed pid %d (verified before kill: %s); '
-                         'confirmed gone within %.1fs'
-                         % (pid, verified_line, grace_s))
-            time.sleep(poll_s)
-        return ('killed pid %d (verified before kill: %s); STILL PRESENT '
-                 'after %.1fs grace -- investigate (possible D-state/zombie)'
-                 % (pid, verified_line, grace_s))
+        alive, verified_line = _ps_one(pid)
+        if not alive:
+            return ('pid %d was already gone by the time the deadline fired' % pid)
+
+        # Discover direct children BEFORE anything is signalled -- once the
+        # registered process dies, `ps --ppid <pid>` returns nothing (its
+        # children get reparented to pid 1, not found under the old ppid).
+        children = _direct_children(pid)
+
+        ok, _note = _kill_one_verified(pid, grace_s, poll_s)
+        notes = ['killed pid %d (verified before kill: %s)' % (pid, verified_line)]
+        still_present = [] if ok else [pid]
+
+        for cpid, _cargs in children:
+            cok, cnote = _kill_one_verified(cpid, grace_s, poll_s)
+            notes.append('child %s' % cnote)
+            if not cok:
+                still_present.append(cpid)
+
+        verdict = ('confirmed gone within %.1fs' % grace_s if not still_present else
+                  'STILL PRESENT after %.1fs grace on pid(s) %s -- investigate '
+                  '(possible D-state/zombie)' % (grace_s, still_present))
+        return '; '.join(notes) + ' -- ' + verdict
     except Exception as exc:                        # noqa: BLE001
         return ('kill attempt itself raised %s: %s -- cell still reported '
                  'FAIL(timeout)' % (type(exc).__name__, exc))
