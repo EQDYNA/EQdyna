@@ -204,6 +204,37 @@ def _check_matches_committed_reference(got, label):
     print('\n'.join(lines))
 
 
+def check_mutation_rupture_time_error_is_caught_by_tight_bound():
+    """Proves TOL_TIGHT (1e-9, column 3 = rupture time) is load-bearing, not
+    just a numerically-plausible-looking constant: plant a 0.01 s synthetic
+    error into a COPY of the committed reference's rupture-time column (0.01
+    is ~1e7x TOL_TIGHT -- unmistakably a real regression, not summation-order
+    noise, which this suite measured at 1.787e-16) and assert
+    `_per_column_bound_report` actually flags it as a FAIL on column 3, with
+    every other column still passing (so the failure is attributed to the
+    right column, not a blanket mismatch)."""
+    if not os.path.isfile(REFERENCE):
+        raise AssertionError('missing committed reference %r' % REFERENCE)
+    want = np.loadtxt(REFERENCE)
+    got = want.copy()
+    got[:, 3] += 0.01  # rupture time column; 0.01 s >> TOL_TIGHT (1e-9 s)
+    ok, lines = _per_column_bound_report(got, want, 'mutation (planted +0.01s rupture time)')
+    if ok:
+        raise AssertionError('planted 0.01s rupture-time error was NOT caught by TOL_TIGHT=%.1e -- '
+                             'the per-column bound for column 3 is not load-bearing' % TOL_TIGHT)
+    if not any('col  3' in line for line in lines):
+        raise AssertionError('the planted rupture-time (column 3) error was not the column reported '
+                             'as failing: %s' % '\n'.join(lines))
+    # Every OTHER column must still pass -- confirms the failure is localized
+    # to column 3 and the per-column bound isn't accidentally failing everything.
+    other_fail = [line for line in lines if 'FAIL' in line and 'col  3' not in line]
+    if other_fail:
+        raise AssertionError('planting only column 3 unexpectedly failed other column(s) too: %s'
+                             % '\n'.join(other_fail))
+    print('  PASS  mutation: a planted 0.01s rupture-time error is caught by TOL_TIGHT=%.1e '
+          '(and only column 3 fails)' % TOL_TIGHT)
+
+
 def check_four_rank_matches_committed_reference():
     with tempfile.TemporaryDirectory() as tmp:
         case_dir = _build_and_run(tmp, nranks=4, nx=2, ny=2, nz=1)
@@ -280,7 +311,8 @@ def check_serial_single_rank_owns_both_faults():
 def main():
     print('Regression guard: test.multifault2 two-fault routing/smoke case (fortran only)')
     failures = []
-    for c in (check_serial_single_rank_owns_both_faults,
+    for c in (check_mutation_rupture_time_error_is_caught_by_tight_bound,
+              check_serial_single_rank_owns_both_faults,
               check_four_rank_structural,
               check_serial_matches_committed_reference,
               check_four_rank_matches_committed_reference):

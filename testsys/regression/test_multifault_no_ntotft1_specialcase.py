@@ -73,10 +73,17 @@ ALLOWLIST = [
     # checkIsOnFault's own comment) and orthogonal to multi-fault; the rough
     # geometry file is validated against fault 1's box specifically because
     # rough geometry + multi-fault is not this mission's scope.
-    ('meshgen.f90', 'numOfNodesWithUniformGridsize = nint((fltxyz(2,1,1)'),
+    # Full line, not a truncated prefix: this physical line has TWO
+    # fltxyz(.., 1) occurrences (`fltxyz(2,1,1)` and `fltxyz(1,1,1)`), and the
+    # per-match position-specific allowlisting needs the entry's span on THIS
+    # line to cover both -- a prefix ending right after the first occurrence
+    # left the second one (after the ` - `) unmatched on this line, a false
+    # positive the per-position fix (2026-09-30) surfaced that the old
+    # per-line-substring check happened to paper over.
+    ('meshgen.f90', 'numOfNodesWithUniformGridsize = nint((fltxyz(2,1,1) - fltxyz(1,1,1))/dx) + 1'),
     ('meshgen.f90', 'frontEdgeCoor = fltxyz(1,1,1)'),
     ('meshgen.f90', 'backEdgeCoor  = fltxyz(2,1,1)'),
-    ('meshgen.f90', 'numOfNodesWithUniformGridsize = nint((fltxyz(2,3,1)'),
+    ('meshgen.f90', 'numOfNodesWithUniformGridsize = nint((fltxyz(2,3,1) - fltxyz(1,3,1))/dz) + 1'),
     ('meshgen.f90', 'frontEdgeCoor = fltxyz(1,3,1)'),
     ('meshgen.f90', 'backEdgeCoor  = fltxyz(2,3,1)'),
     ('readInputFiles.f90', "abs(rough_fx_min - fltxyz(1,1,1))"),
@@ -175,36 +182,70 @@ def scan_file(path, fname):
     fragment shield an unrelated bug placed later on the same physical line
     (Fortran's `;` statement separator) -- the
     `check_mutation_allowlist_does_not_shield_a_different_bug_on_same_line`
-    probe below pins this."""
+    probe below pins this.
+
+    Allowlisting is additionally restricted to each entry's FIRST (earliest,
+    by absolute file offset) occurrence. Every entry was hand-verified
+    against exactly one real line (`check_allowlist_entries_still_exist`
+    confirms each occurs exactly once in the current tree); a SECOND
+    occurrence of identical text appearing later in the file -- which cannot
+    happen in the untouched tree, only when a planted violation happens to
+    reproduce an allowlisted snippet verbatim elsewhere -- is therefore never
+    the hand-verified line and must not be exempted. Without this, a planted
+    violation whose text is byte-identical to an allowlist entry (e.g.
+    replaying `ntotft > 1 .and. ift > 1` outside faultTag()) would slip
+    through the per-line position check too, since the identical text
+    trivially satisfies 'falls inside an occurrence on this line' for
+    whichever line it was pasted on."""
     violations = []
     allow = _iter_allowlisted(fname)
 
-    def _allowlisted(snippet):
-        return any(snippet in a for a in allow)
+    full_text = open(path, errors='replace').read()
+    canonical_offset = {entry: full_text.find(entry) for entry in allow}
 
-    with open(path, errors='replace') as fh:
-        for lineno, raw in enumerate(fh, 1):
-            code = raw.split('!', 1)[0]  # strip Fortran end-of-line comments
-            if not code.strip():
+    def _allowlisted(code, start, end, abs_line_start):
+        """A match (code[start:end]) is allowlisted only if it falls INSIDE
+        an occurrence of one of this file's allowlisted snippets AT THAT
+        POSITION on THIS physical line, AND that occurrence is the entry's
+        canonical (first, hand-verified) one in the file -- not merely if
+        the matched text is a substring of some allowlist entry that exists
+        anywhere in the file. (The former bug: an allowlist entry for one
+        line let a same-text match on any OTHER line, in a different file
+        region entirely, slip through unflagged.)"""
+        for entry in allow:
+            idx = code.find(entry)
+            while idx != -1:
+                if (idx <= start and end <= idx + len(entry)
+                        and abs_line_start + idx == canonical_offset[entry]):
+                    return True
+                idx = code.find(entry, idx + 1)
+        return False
+
+    abs_offset = 0
+    for lineno, raw in enumerate(full_text.splitlines(keepends=True), 1):
+        code = raw.split('!', 1)[0]  # strip Fortran end-of-line comments
+        line_abs_start = abs_offset
+        abs_offset += len(raw)
+        if not code.strip():
+            continue
+        for m in NTOTFT_COMPARISON.finditer(code):
+            if _allowlisted(code, m.start(), m.end(), line_abs_start):
                 continue
-            for m in NTOTFT_COMPARISON.finditer(code):
-                if _allowlisted(m.group(0)):
-                    continue
-                violations.append((lineno, raw.rstrip(), 'ntotft literal comparison (%r)' % m.group(0)))
-            for m in FAULT_VAR_COMPARISON.finditer(code):
-                if _allowlisted(m.group(0)):
-                    continue
-                violations.append((lineno, raw.rstrip(), 'fault-index-variable literal comparison (%r)' % m.group(0)))
-            for m in FAULT_INDEX_1_MULTIARG.finditer(code):
-                if _allowlisted(m.group(0)):
-                    continue
-                violations.append((lineno, raw.rstrip(),
-                                   'literal fault-index 1 on %s(...)' % m.group(1)))
-            for m in FAULT_INDEX_1_SINGLEARG.finditer(code):
-                if _allowlisted(m.group(0)):
-                    continue
-                violations.append((lineno, raw.rstrip(),
-                                   'literal fault-index 1 on %s(...)' % m.group(1)))
+            violations.append((lineno, raw.rstrip(), 'ntotft literal comparison (%r)' % m.group(0)))
+        for m in FAULT_VAR_COMPARISON.finditer(code):
+            if _allowlisted(code, m.start(), m.end(), line_abs_start):
+                continue
+            violations.append((lineno, raw.rstrip(), 'fault-index-variable literal comparison (%r)' % m.group(0)))
+        for m in FAULT_INDEX_1_MULTIARG.finditer(code):
+            if _allowlisted(code, m.start(), m.end(), line_abs_start):
+                continue
+            violations.append((lineno, raw.rstrip(),
+                               'literal fault-index 1 on %s(...)' % m.group(1)))
+        for m in FAULT_INDEX_1_SINGLEARG.finditer(code):
+            if _allowlisted(code, m.start(), m.end(), line_abs_start):
+                continue
+            violations.append((lineno, raw.rstrip(),
+                               'literal fault-index 1 on %s(...)' % m.group(1)))
     return violations
 
 
@@ -315,6 +356,54 @@ def check_allowlist_does_not_shield_a_different_bug_on_same_line():
     print('  PASS  mutation: an allowlisted snippet does not shield a different bug on the same line')
 
 
+# AUDIT FIX (victor-reyes, 2026-09-30): the allowlist check used to be
+# `any(snippet in a for a in allow)` -- "does the matched text appear as a
+# substring of SOME allowlist entry for this file, anywhere" -- with no
+# requirement that the matched text's actual occurrence sit at the position
+# an allowlisted snippet occupies ON THE LINE WHERE IT WAS MATCHED. That let
+# a planted violation on ANY OTHER line of the file slip through unflagged,
+# as long as its literal text happened to be a substring of some unrelated
+# allowlisted line elsewhere in the same file. Each probe below plants the
+# violation on its OWN new line (not the allowlisted line), in a temp copy of
+# the file whose allowlist entry it exploits, and must still be caught.
+REGRESSION_PROBES_DIFFERENT_LINE_THAN_ALLOWLIST_ENTRY = [
+    # exploits meshgen.f90's 'iy, iz, nftnd0(1))' allowlist entry (the
+    # C_degen>3 wedge call) via bare substring match on 'nftnd0(1)'.
+    ('meshgen.f90', 'x = nftnd0(1)'),
+    # exploits checkInputConsistency.f90's
+    # 'abs(fxmin(i)-fxmin(1))>tol .or. abs(fxmax(i)-fxmax(1))>tol' entry via
+    # bare substring match on 'fxmin(1)'.
+    ('checkInputConsistency.f90', 'x = fxmin(1)'),
+    # exploits library_output.f90's faultTag() allowlist entry
+    # 'ntotft > 1 .and. ift > 1' via the literal condition reappearing,
+    # unrelated to faultTag(), on a different line.
+    ('library_output.f90', 'if (ntotft > 1 .and. ift > 1) then'),
+    ('library_output.f90', 'if (ift > 1) then'),
+]
+
+
+def check_mutation_allowlist_is_position_specific_not_file_global():
+    """Each probe must be DETECTED when planted on a line other than the one
+    the allowlist entry it textually overlaps with actually describes --
+    pins the exact regression victor-reyes found and the fix for it."""
+    missed = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for fname, line in REGRESSION_PROBES_DIFFERENT_LINE_THAN_ALLOWLIST_ENTRY:
+            bad_path = os.path.join(tmp, fname)
+            shutil.copy(os.path.join(FSRC, fname), bad_path)
+            with open(bad_path, 'a') as fh:
+                fh.write('\n    ! planted regression, deliberately on its own new line\n    '
+                         + line + '\n')
+            v = scan_file(bad_path, fname)
+            if not v:
+                missed.append('%s: %r' % (fname, line))
+    if missed:
+        raise AssertionError('%d probe(s) NOT detected (allowlist is matching globally, not by '
+                             'line position): %s' % (len(missed), '; '.join(missed)))
+    print('  PASS  all %d position-specific allowlist regression probes detected'
+          % len(REGRESSION_PROBES_DIFFERENT_LINE_THAN_ALLOWLIST_ENTRY))
+
+
 def check_allowlist_entries_still_exist():
     """An allowlist entry for a line that no longer exists is a stale
     exemption hiding nothing -- prune it rather than let it rot."""
@@ -338,7 +427,8 @@ def main():
               check_mutation_ntotft_eq_1_branch_is_caught,
               check_mutation_literal_fault_index_is_caught,
               check_mutation_equivalent_forms_are_caught,
-              check_allowlist_does_not_shield_a_different_bug_on_same_line):
+              check_allowlist_does_not_shield_a_different_bug_on_same_line,
+              check_mutation_allowlist_is_position_specific_not_file_global):
         try:
             c()
         except AssertionError as e:
