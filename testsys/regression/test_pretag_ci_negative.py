@@ -102,8 +102,11 @@ from testsys import ci_status  # noqa: E402
 # --- the real commits these outcomes are driven from -----------------------
 SHA_FAILED_CI = '675115b2b115748ec36a4e637d8ac94b164e5be1'   # CI ran, failed
 SHA_GREEN = '8f6ff075bf5b9ea5b88a0c4e927abded13589324'       # CI ran, green
-SHA_PATHS_IGNORED = 'b3697f8ddea84bae739317c87c0776d6b1d31e08'  # v5.13.1's commit
-SHA_ACK_EVIDENCE = '42da61e20f98d1850b9bc215fb0e64313ee78beb'   # its parent
+SHA_PATHS_IGNORED = '0e7fdab5d66b09e1c485ef68c9c1861fb68b9dfd'  # PROJECT_RULES.md-only commit
+# (was v5.13.1's b3697f8, a pathway_forward.md-only commit; the board left
+# test.yml's paths-ignore 2026-10-01, so that commit can trigger CI now. The
+# run records below stay v5.13.1's real ones, keyed to this sha.)
+SHA_ACK_EVIDENCE = '9153d2236082463d68666a6ca0fed1b8d9eb9fe5'   # its parent
 SHA_CODE_NO_RUN = 'dbe6bf3'   # touches src/python -- CAN trigger CI, here has no run
 
 # --- real run records, captured 2026-09-22 (see PROVENANCE above) ----------
