@@ -408,7 +408,15 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
         ! TPV30" identically, and Part 6 (this formula) is the same T(r) for
         ! both, so 30 belongs in this list too -- do not let a TPV30 compset
         ! impersonate TPV29/36 to reach it (rule 17 step 3).
-        if (TPV == 201 .or. TPV==36 .or. TPV==37 .or. TPV==29 .or. TPV==30) &
+        ! TPV22/23 (TPV22_23_Description_v08, "Friction Parameters and
+        ! Nucleation", p.6) is where this exact formula originates --
+        ! r_crit (called r_crit there too), the 0.081 taper coefficient and
+        ! the 0.7*Vs rupture speed are the SAME symbols and SAME numeric
+        ! values as TPV29/36/37/201, and TPV22/23's own Vs = 3464 m/s
+        ! (p.5 "Material Properties") matches NUC_VS_FIXED exactly -- this
+        ! is not a borrowed/impersonated formula (rule 17 step 3), it is
+        ! this formula's own source benchmark.
+        if (TPV == 201 .or. TPV==36 .or. TPV==37 .or. TPV==29 .or. TPV==30 .or. TPV==22 .or. TPV==23) &
             tr = (radius+NUC_TAPER_COEF*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(NUC_VR_TO_VS*NUC_VS_FIXED)
         if (TPV == 202) tr = radius/nucRuptVel
     endif

@@ -144,7 +144,12 @@ def forced_rupture_time(xp, finv):
     # (spec p.11: "the material properties are the only difference"); p.16
     # states Parts 5/6 (friction + this nucleation formula) apply to
     # "Benchmarks TPV29 and TPV30" identically -- same as faulting.f90:405.
-    if TPV in (29, 30, 36, 37, 201):
+    # TPV22/23 (TPV22_23_Description_v08 p.6, "Friction Parameters and
+    # Nucleation") is this formula's OWN source benchmark: r_crit, the
+    # 0.081 taper coefficient and 0.7*Vs rupture speed are the same symbols
+    # and values, and its Vs=3464 m/s (p.5) matches NUC_VS_FIXED exactly --
+    # not a borrowed/impersonated formula (rule 17 step 3).
+    if TPV in (29, 30, 36, 37, 201, 22, 23):
         ratio = xp.where(inside, radius / nucR, 0.0)
         taper = 1.0 / (1.0 - ratio ** 2) - 1.0
         tr = (radius + gv.NUC_TAPER_COEF * nucR * taper) / (
