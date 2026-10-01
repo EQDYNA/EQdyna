@@ -258,6 +258,7 @@ SHARDS = {
         "test_version_banner.py",
         "test_root_allowlist.py",  # added 2026-09-24 (wei-lin, root-notes move): one git ls-files, <1 s
         "test_text_line_format.py",  # 2026-09-29: static scan of src/fortran, <1 s
+        "test_multifault_two_fault_smoke_jax.py",  # added 2026-10-01 (PR #72 blocker 3): test.multifault2 x python-jax vs the committed reference, one serial jax run (~10 s); shard 3, not 1, which already carries the Fortran sibling
     ],
 }
 UNIT_PYTEST_SHARD = "3"

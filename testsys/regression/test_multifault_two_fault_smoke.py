@@ -45,10 +45,15 @@ entirely (serial, npx=npy=npz=1) -- the serial run is the one that actually
 exercises the msnode-collision and slave/master-swap fixes above; the 4-rank
 run additionally exercises the per-fault MPI boundary fix. Both are run here.
 
-fortran only: the python-jax backend is ntotft==1 throughout as of this
-writing (readInputFiles.py:289-291, eqdyna3d.py:331-333, meshgen.py) and is
-NOT exercised by this test -- a known, reported gap (see the mission report),
-not a silent skip.
+fortran only: this module exercises the Fortran binary. The python-jax
+backend's ntotft>1 path is covered separately, by
+test_multifault_two_fault_smoke_jax.py, against this SAME committed
+reference (BLOCKER 3 audit, 2026-10-01: this paragraph used to say
+python-jax was "ntotft==1 throughout ... NOT exercised by this test, a
+known, reported gap" -- true when it was written, stale once `60cb405`
+actually ported ntotft>1 support into readInputFiles.py/eqdyna3d.py/
+meshgen.py; that port had nothing in the repo testing it until the jax
+sibling of this file was added).
 
 Not cheap in the rule-9 sense (builds + runs the actual solver twice), but
 bounded: dx=500 m, term=1.0 s (~23 steps), 4 + 1 MPI ranks, well under a
@@ -64,6 +69,13 @@ import tempfile
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mpirun_capture  # noqa: E402  (item 95: rank-owned output past MPI_Abort;
+                        # also the shared helper that avoids a hardcoded
+                        # Open-MPI-only --oversubscribe flag mpich rejects --
+                        # see BLOCKER FIX below)
+
+MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 CASE_NAME = 'test.multifault2'
 REFERENCE = os.path.join(ROOT, 'test.reference.results', CASE_NAME, 'frt.canonical.txt')
 FAULT1_NORM_COEFF = 7378.0
@@ -176,11 +188,20 @@ def _build_and_run(tmp, nranks, nx, ny, nz):
         raise AssertionError('case.setup failed (%d):\n%s' % (r.returncode, r.stdout + r.stderr))
 
     exe = _require_binary()
-    r = subprocess.run(['mpirun', '-np', str(nranks), '--oversubscribe', exe],
-                       cwd=case_dir, env=env, capture_output=True, text=True, timeout=300)
-    if r.returncode != 0:
+    # BLOCKER FIX (CI run 36873758310, job unit-regression (1)): this used to
+    # hardcode `mpirun -np N --oversubscribe exe` directly -- --oversubscribe
+    # is an Open-MPI-only flag; CI's mpich rejects it outright ("[mpiexec]
+    # match_arg: unrecognized argument oversubscribe", exit 255) and all of
+    # this module's checks failed as a result. Every other multifault
+    # regression test already runs mpirun through mpirun_capture.run_rank_files,
+    # which needs no --oversubscribe (np here, 1 or 4, is well under any
+    # box's core/slot count so Open MPI never requires it either). Use the
+    # same shared helper instead of reinventing MPI-implementation detection.
+    rc, out = mpirun_capture.run_rank_files(MPIRUN, exe, case_dir, np=nranks, env=env,
+                                            timeout=300)
+    if rc != 0:
         raise AssertionError('eqdyna exited %d for %d rank(s) at (%d,%d,%d):\n%s'
-                             % (r.returncode, nranks, nx, ny, nz, (r.stdout + r.stderr)[-3000:]))
+                             % (rc, nranks, nx, ny, nz, out[-3000:]))
     return case_dir
 
 
