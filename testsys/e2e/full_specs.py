@@ -105,6 +105,34 @@ FULL_SPECS = {
             'submit results for a resolution of 50 meters."'
         ),
     ),
+    'test.tpv22': dict(
+        # rule 17 step 5: recorded, not run (mission: tpv22/23 campaign,
+        # 2026-10-01). ny=1 keeps every fault y-plane off every MPI
+        # partition boundary, same reasoning as tpv29/tpv30's full-tier
+        # entries -- both our faults sit at distinct, small y-offsets
+        # (0 and -1600 m) that an arbitrary y-split could straddle.
+        # Geometry note: at this dx the shared x/z mesh belt (see
+        # case_input/test.tpv22/tpv22_23_common.py for why it is shared)
+        # is 1001 x 401 nodes per fault -- a genuinely large HPC job, same
+        # scale class as tpv29's 50 m entry (119 M elements).
+        dx=50.0, term=15.0, nx=4, ny=1, nz=4,
+        citation=("TPV22_23_Description_v08, p.7 'Running Time, Node "
+                "Spacing, and Results': 'Run the model for times from 0.0 "
+                "to 15.0 seconds after nucleation.' / 'Please submit "
+                "results for two resolutions: Using 100 m node spacing... "
+                "Using 50 m node spacing... If you are unable to run the "
+                "simulation with 50 m node spacing, then it is OK to "
+                "submit just 100 m results.'"),
+    ),
+    'test.tpv23': dict(
+        # Same geometry/duration citation basis as test.tpv22 (shared PDF,
+        # shared Part 3/7); only the stepover sign/distance differs
+        # (1.0 km compressional vs TPV22's 1.6 km extensional -- Parts 1/2).
+        dx=50.0, term=15.0, nx=4, ny=1, nz=4,
+        citation=("TPV22_23_Description_v08, p.7 'Running Time, Node "
+                "Spacing, and Results' (same page/text as test.tpv22's "
+                "entry -- TPV22 and TPV23 share Part 3 verbatim)."),
+    ),
 }
 
 # case -> reason it is excluded from the full tier (rule 2: never invent a
