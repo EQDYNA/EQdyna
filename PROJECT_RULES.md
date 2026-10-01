@@ -1227,7 +1227,9 @@ shape rule 15 step 4 asks for — can never have its own pre-tag CI run by
 push alone. `test.yml`'s own comment claiming "a release commit always also
 touches non-ignored files (e.g. VERSION), so it still triggers CI regardless"
 is true for a normal release commit and false for a follow-up row commit, and
-nothing before this rule mechanically noticed the difference.
+nothing before this rule mechanically noticed the difference. (Superseded
+2026-10-01: `pathway_forward.md` left `paths-ignore`, rule 15g, so a
+board-only commit now gets its own run; `PROJECT_RULES.md` is still ignored.)
 
 **How to apply**: run the pre-tag guard against the exact SHA before every
 `git tag`. If it reports no completed run for that SHA, stop — do not tag on
@@ -1566,9 +1568,10 @@ calls the existing one at the right point in the sequence.
 ## 15f. A release lands in this order, and the tag goes last on a SHA whose own CI and image workflow are green
 
 Rewritten 2026-09-30 (owner, row 139), replacing the four-push M/E1/E2/tag
-order, which rule 15a's same-day hardening made unexecutable (a board-only
-or `paths-ignore`-only commit never gets a CI run of its own, so it can no
-longer be tagged).
+order, which rule 15a's same-day hardening made unexecutable (a
+`paths-ignore`-only commit never gets a CI run of its own, so it can no
+longer be tagged; since 2026-10-01 a board-only commit is not ignored and
+does get one).
 
 1. **Board row first.** Push the release's Tasks-done row (rule 14, rule
    15 step 4) to master as its own board-only commit (rule 21c), BEFORE the

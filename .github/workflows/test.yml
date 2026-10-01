@@ -2,9 +2,12 @@ name: Automatic Testing of EQdyna
 
 # paths-ignore is deliberately NARROW, not a blanket '**.md': README.md is
 # read by test_readme_commands.py and test_release_complete.py, so it stays
-# in the trigger set unconditionally. pathway_forward.md and
-# PROJECT_RULES.md are excluded -- a release commit always also touches
-# non-md files (e.g. VERSION), so it still triggers CI regardless.
+# in the trigger set unconditionally. pathway_forward.md is NOT ignored
+# either (2026-10-01, v5.21.0): check_pretag_ci.py and
+# test_release_complete.py read its Tasks-done row (rule 15g), and a
+# board-only commit that cannot get its own CI run cannot be a tag target
+# (rule 15a), which moved v5.21.0's tag target twice. PROJECT_RULES.md
+# stays excluded: no check reads it as data.
 #
 # push is filtered to master and tags (board row 87, owner 2026-09-24): under
 # rule 25 every mission branch reaches master through a PR, whose
@@ -45,7 +48,6 @@ on:
     tags:
       - '**'
     paths-ignore:
-      - 'pathway_forward.md'
       - 'PROJECT_RULES.md'
       - 'pastReleaseNotes.md'
       - 'Docker.guide.md'
@@ -206,9 +208,10 @@ jobs:
     # flag every merge of a board branch). An "evil merge" -- a merge commit
     # hand-edited to carry board file + code -- is therefore NOT caught here.
     #
-    # Nor does a board-ONLY push reach this step: the workflow's own
-    # paths-ignore (top of file) starts no run for one. That is correct and
-    # costs nothing -- a MIXED commit by definition also touches a non-board
+    # A board-ONLY push (pathway_forward.md) reaches this step since
+    # 2026-10-01 and passes: board-only is a permitted shape. A
+    # PROJECT_RULES.md-only push is still paths-ignored and starts no run --
+    # correct, since a MIXED commit by definition also touches a non-ignored
     # file, so it always triggers.
     - name: Check board/code commit separation (rule 21c)
       env:
