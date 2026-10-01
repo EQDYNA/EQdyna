@@ -202,8 +202,9 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
     (library_output.f90; board rows 116 and 94). On-fault stations: unchanged
     -- name, on stdout, every requested station that matched no fault node and
     so gets no file (neither snaps nor refuses; out of this mission's scope).
-    ntotft == 1 is the only case case.setup allows, so on-fault stations are
-    all fault 1.
+    Row 17 (multi-fault): `xonfs` is the per-fault LIST
+    (readInputFiles.read_bstations' return) -- a bare array is still
+    accepted (wrapped as 1 fault) for ntotft==1 callers.
 
     Off-fault (row 94, owner ruling 2026-09-24): depth now snaps to the
     nearest node (build_station_matching), so every station whose (x,y) is
@@ -287,16 +288,21 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
             print('   dropped off-fault station %d at x,y,z =%10.3f%10.3f%10.3f km (%s)'
                   % (i, x4nds[0, i - 1] / 1000.0, x4nds[1, i - 1] / 1000.0,
                      x4nds[2, i - 1] / 1000.0, cause))
-    on_matched = {sc for fs, sc, ift in anonfs}
-    on_dropped = [i for i in range(1, xonfs.shape[1] + 1) if i not in on_matched]
-    if on_dropped:
-        print(' WARNING: %d of %d requested on-fault stations match no fault '
-              'node and get NO faultst* file' % (len(on_dropped), xonfs.shape[1]))
-        print('   (setOnFaultStation, meshgen.f90: along-strike x and depth z '
-              'must both equal a fault node within tol)')
-        for i in on_dropped:
-            print('   dropped on-fault station %d (fault 1) at x,z =%10.3f%10.3f km'
-                  % (i, xonfs[0, i - 1] / 1000.0, xonfs[1, i - 1] / 1000.0))
+    xonfs_list = xonfs if isinstance(xonfs, (list, tuple)) else [xonfs]
+    on_matched = {(ift, sc) for fs, sc, ift in anonfs}  # ift 1-indexed, sc 1-indexed within that fault
+    on_dropped = []  # list of (ift, sc), 1-indexed
+    for ift, xonfs_f in enumerate(xonfs_list, start=1):
+        n_onf_f = xonfs_f.shape[1]
+        dropped_f = [i for i in range(1, n_onf_f + 1) if (ift, i) not in on_matched]
+        if dropped_f:
+            print(' WARNING: %d of %d requested on-fault stations match no fault '
+                  'node and get NO faultst* file' % (len(dropped_f), n_onf_f))
+            print('   (setOnFaultStation, meshgen.f90: along-strike x and depth z '
+                  'must both equal a fault node within tol)')
+            for i in dropped_f:
+                print('   dropped on-fault station %d (fault %d) at x,z =%10.3f%10.3f km'
+                      % (i, ift, xonfs_f[0, i - 1] / 1000.0, xonfs_f[1, i - 1] / 1000.0))
+        on_dropped.extend((ift, i) for i in dropped_f)
     return on_dropped, off_dropped
 
 
@@ -328,9 +334,21 @@ def build_solver_state(case_dir, part=None):
     # NotImplementedError, since these are configuration refusals with a
     # numbered exit code to match, not scope gaps in this port.
     checkInputConsistency.check(g['C_elastic'], g['output_plastic'], params['rat'])
-    if g['ntotft'] != 1:
-        raise NotImplementedError('build_solver_state: only ntotft==1 is supported (got %d)'
-                                   % g['ntotft'])
+    # Row 17 (multi-fault): checkInputConsistency.f90's new guards, called at
+    # the same point the Fortran's own `check()` block calls them (same
+    # subroutine, right after the three pre-existing checks above). No-op at
+    # ntotft==1 (see check_multifault's docstring). `params['faults']` is
+    # absent for a hand-built params dict (pre-Row-17 unit-test fixtures
+    # that construct `params` directly rather than via
+    # readInputFiles.build_params) -- falls back to the single scalar box,
+    # exactly `_fault_boxes`' own fallback convention (meshgen.py), so such
+    # a fixture is unaffected.
+    faults_for_check = params.get('faults') or [dict(
+        fxmin=params['fxmin'], fxmax=params['fxmax'], fymin=params['fymin'],
+        fymax=params['fymax'], fzmin=params['fzmin'], fzmax=params['fzmax'])]
+    checkInputConsistency.check_multifault(
+        faults_for_check, params['dy'], params['dis4uniF'], params['dis4uniB'],
+        params['C_degen'], tol=params['tol'])
     if g['friclaw'] not in SUPPORTED_FRICLAW:
         raise NotImplementedError('build_solver_state: friclaw=%d is not implemented '
                                    '(implemented: %r)' % (g['friclaw'], list(SUPPORTED_FRICLAW)))
@@ -393,8 +411,10 @@ def build_solver_state(case_dir, part=None):
     # LOCAL lines (matching Fortran's per-rank setSurfaceStation/
     # createMasterNode at the SAME decomposition, run 120) -- see below,
     # after part.slice_lines.
-    xonfs, x4nds = readInputFiles.read_bstations(os.path.join(case_dir, 'bStations.txt'))
-    st_on_total, st_off_total = xonfs.shape[1], x4nds.shape[1]
+    xonfs, x4nds = readInputFiles.read_bstations(
+        os.path.join(case_dir, 'bStations.txt'), ntotft=g['ntotft'])
+    st_on_total = sum(x.shape[1] for x in xonfs)
+    st_off_total = x4nds.shape[1]
 
     xline, yline, zline, pmlb, bounds = meshgen.build_grid_lines(params)
     # fltxyz(2,4,1) (readInputFiles.f90:139-143), the fault dip angle in
@@ -449,9 +469,18 @@ def build_solver_state(case_dir, part=None):
         xline, yline, zline, params, xonfs, x4nds,
         pmlb['zmin0'], bounds[2][1], zline_global=zline_global,
         mex=mex, mey=mey, mez=mez)
+    # Row 17: `sc` (station_col) is 1-indexed WITHIN fault `ift`'s own
+    # xonfs[ift-1] array (meshgen.build_station_matching's per-fault anonfs
+    # contract) -- always fault 1 before this fix, so this is unchanged at
+    # ntotft==1.
     st_on_idx = np.array([fs - 1 for fs, sc, ift in anonfs], dtype=np.int64)
-    st_on_strike_m = np.array([xonfs[0, sc - 1] for fs, sc, ift in anonfs])
-    st_on_depth_m = np.array([xonfs[1, sc - 1] for fs, sc, ift in anonfs])
+    st_on_strike_m = np.array([xonfs[ift - 1][0, sc - 1] for fs, sc, ift in anonfs])
+    st_on_depth_m = np.array([xonfs[ift - 1][1, sc - 1] for fs, sc, ift in anonfs])
+    # Row 17: which fault (1-indexed) each on-fault station matched --
+    # library_output.write_onfault_stations needs this for the faultTag()
+    # filename prefix (fixing the exact fault-2-overwrites-fault-1 filename
+    # collision ea292ab fixed in Fortran).
+    st_on_fault = np.array([ift for fs, sc, ift in anonfs], dtype=np.int64)
     st_off_idx = np.array([nc - 1 for sc, nc in off_matches], dtype=np.int64)
     st_off_x_m = np.array([x4nds[0, sc - 1] for sc, nc in off_matches])
     st_off_y_m = np.array([x4nds[1, sc - 1] for sc, nc in off_matches])
@@ -488,9 +517,13 @@ def build_solver_state(case_dir, part=None):
     un, us, ud, arn = meshgen.build_fault_geometry(
         xline, yline, zline, params, nsmp, model_bound=model_bound)
 
+    # Row 17: nsmp's 3rd column is the 0-indexed fault id, in the SAME row
+    # order read_on_fault_vars indexes fric by -- +1 for the 1-indexed
+    # fault_of/faultTag convention.
     fric = readInputFiles.read_on_fault_vars(
         os.path.join(case_dir, 'on_fault_vars_input.nc'), params['fxmin'], params['fzmin'],
-        params['dx'], params['dz'], meshCoor, nsmp)
+        params['dx'], params['dz'], meshCoor, nsmp,
+        ntotft=g['ntotft'], fault_of=nsmp[:, 2].astype(np.int64) + 1)
 
     # calcGlobalShapeFunc.f90:22-28 (called unconditionally, for EVERY
     # element, from assembleGlobalMass.f90:35) special-cases elemTypeArr
@@ -574,7 +607,15 @@ def build_solver_state(case_dir, part=None):
                       pmlb['maxdx'], pmlb['maxdy'], pmlb['maxdz']])
 
     S = dict(
-        N=N, E=E, NEQ=total_eqs, nen=8, ned=3, nftnd=nftnd, ntotft=1,
+        N=N, E=E, NEQ=total_eqs, nen=8, ned=3, nftnd=nftnd, ntotft=g['ntotft'],
+        # Row 17 (multi-fault): the 0-indexed fault each row of
+        # nsmp1/nsmp2/un/us/ud/arn/fric_init belongs to -- nsmp's 3rd column,
+        # same row order. faulting.py's nucleation gating masks on this
+        # (fault_of == nucfault-1); every other physics path is fault-id-
+        # agnostic (the SAME friction-law code runs per fault node
+        # regardless of which fault it is on, exactly as Fortran's
+        # solveSWTW/solveRSF do, called once per fault with identical code).
+        fault_of=nsmp[:, 2].astype(np.int64),
         nstep=g['nstep'], dt=g['dt'], w=assembleGlobalMass._W, rdampk=g['rdampk'], rdampm=0.0,
         kapa_hg=0.1, R=params['R'], nPML=params['nPML'], vmaxPML=g['vmaxPML'], PMLb=PMLb,
         grav=9.8, C_elastic=g['C_elastic'], roumax=g['roumax'], rhow=g['rhow'],
@@ -597,6 +638,7 @@ def build_solver_state(case_dir, part=None):
         # exactly as readInputFiles.f90 reads it (board row 22a, PR #20).
         nStressOutSign=float(g['nStressOutSign']),
         st_on_idx=st_on_idx, st_on_strike_m=st_on_strike_m, st_on_depth_m=st_on_depth_m,
+        st_on_fault=st_on_fault,
         st_off_idx=st_off_idx, st_off_x_m=st_off_x_m, st_off_y_m=st_off_y_m,
         st_off_z_m=st_off_z_m, st_on_total=st_on_total, st_off_total=st_off_total,
         # Row 94: the ACTUAL matched node (x,y,z), for the header location
@@ -608,6 +650,20 @@ def build_solver_state(case_dir, part=None):
         st_off_z_actual_m=st_off_actual_m[:, 2],
     )
     mesh = dict(meshCoor=meshCoor, nsmp=nsmp)
+    if part is not None and g['ntotft'] > 1:
+        # Row 17 scope cut (documented, not silent): the python-jax-mpi path
+        # (MPI4NodalQuant.py's fault_boundary_lists/mpi4arn/fault_census/
+        # equation_census, all in meshgen.py) is still single-fault-shaped --
+        # widening it is a separate, opt-in-per-case decision (CLAUDE.md
+        # "There is ONE test" / python-jax-mpi section), not attempted here.
+        # Refuses loudly rather than building a rank-local mesh whose MPI
+        # boundary bookkeeping silently only covers fault 1.
+        raise NotImplementedError(
+            'build_solver_state: ntotft=%d with part!=None (python-jax-mpi) is not '
+            'supported -- the rank-local MPI fault-boundary bookkeeping '
+            '(meshgen.fault_boundary_lists/mpi4arn/fault_census/equation_census) is '
+            'still single-fault-shaped; only the serial python-jax path is '
+            'generalized for multi-fault in this release.' % g['ntotft'])
     if part is not None:
         n_local = (len(xline), len(yline), len(zline))
         mesh.update(

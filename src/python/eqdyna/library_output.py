@@ -202,15 +202,33 @@ def _format_fortran_f(x, width, decimals):
     return '*' * width if len(s) > width else s
 
 
-def onfault_filename(strike_m, depth_m, dip_rad):
-    """library_output.f90:41-52's faultst<sss>dp<ddd>.txt name.
+def faultTag(ift, ntotft):
+    """The per-fault filename/variable tag -- port of library_output.f90's
+    faultTag(), verbatim: '' for fault 1, 'ft<N>_' for fault N>=2, only when
+    ntotft>1. Mirrors readInputFiles.faultTag/scripts/lib.py's faultTag
+    exactly (same convention, three places by necessity: Fortran writes it,
+    scripts/case.setup's netCDF writer uses it, this port's station/netCDF
+    readers and writers use it)."""
+    if ntotft > 1 and ift > 1:
+        return 'ft%d_' % ift
+    return ''
+
+
+def onfault_filename(strike_m, depth_m, dip_rad, tag=''):
+    """library_output.f90:41-52's faultst<tag><sss>dp<ddd>.txt name.
 
     `strike_m`/`depth_m` are xonfs's along-strike x and vertical-depth z, in
     meters (this port's bStations.txt units, already *1000 from km -- see
     readInputFiles.read_bstations). `dip_rad` is fltxyz(2,4,1): C_degen*pi/180
     for C_degen>3, else 90*pi/180 (meshgen.py build_fault_geometry's `fdip`,
     recomputed here verbatim rather than plumbed through, since it is a pure
-    function of params['C_degen'])."""
+    function of params['C_degen']). `tag` (Row 17, ea292ab's audit fix):
+    faultTag(ift, ntotft) -- '' for fault 1 (bit-identical filename at
+    ntotft==1), 'ft<N>_' for fault N>=2, inserted right after the 'faultst'
+    literal, matching output_onfault_st's `'faultst'//trim(tag)//sttmp//...`
+    exactly -- fixes the fault-2-silently-overwrites-fault-1 filename
+    collision a same-(strike,depth) station pair on two different faults
+    would otherwise produce."""
     st_val = _fortran_nint(strike_m / 100.0)
     if st_val < 0:
         sttmp = '-' + _format_fortran_i(abs(st_val), 3, 3)
@@ -218,7 +236,7 @@ def onfault_filename(strike_m, depth_m, dip_rad):
         sttmp = _format_fortran_i(st_val, 3, 3)
     dp_val = _fortran_nint(abs(depth_m) / np.sin(dip_rad) / 100.0)
     dptmp = _format_fortran_i(dp_val, 3, 3)
-    return 'faultst%sdp%s.txt' % (sttmp, dptmp)
+    return 'faultst%s%sdp%s.txt' % (tag, sttmp, dptmp)
 
 
 def onfault_location_stamp(strike_m, depth_m, dip_rad):
@@ -287,10 +305,17 @@ def write_onfault_stations(case_dir, S, on_st_hist):
     nstep = on_st_hist.shape[2]
     names8 = 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress'
     names11 = names8 + ' psi temperature pressure'
+    # Row 17: which fault (1-indexed) each station matched -- defaults to
+    # fault 1 for every station when the caller doesn't carry st_on_fault
+    # (ntotft==1 callers built before this fix), bit-identical filenames.
+    ntotft = int(S.get('ntotft', 1))
+    st_on_fault = S.get('st_on_fault')
     paths = []
     for i in range(n_on):
         strike_m = float(S['st_on_strike_m'][i]); depth_m = float(S['st_on_depth_m'][i])
-        fname = onfault_filename(strike_m, depth_m, dip_rad)
+        ift = int(st_on_fault[i]) if st_on_fault is not None else 1
+        tag = faultTag(ift, ntotft)
+        fname = onfault_filename(strike_m, depth_m, dip_rad, tag=tag)
         path = os.path.join(case_dir, fname)
         with open(path, 'w') as f:
             f.write(onfault_location_stamp(strike_m, depth_m, dip_rad) + '\n')
