@@ -162,6 +162,13 @@ SHARDS = {
         "test_dev_str_depth_taper.py",
         "test_e2e_run_tree_lock.py",
         "test_e2e_python_cell_logs_kept.py",  # added 2026-09-24 (wei-lin, item 109): one tee child + one failed jax import, ~3 s
+        "test_e2e_cell_timeout.py",  # added 2026-10-01 (Iris, per-cell timeout
+                                 # feature, the 11h45m test.tpv1053d hang):
+                                 # two plain `sleep` children (2s, 5s, the
+                                 # second killed at a 1s deadline) plus pure
+                                 # function checks against the real
+                                 # docs/perf_ledger.jsonl -- no build, no
+                                 # solver, measured ~3.5 s total.
         "test_equilibrium_dump.py",
         "test_fault_geometry_guard.py",
         "test_fault_mpi_boundary_arn.py",
