@@ -22,7 +22,7 @@ except ModuleNotFoundError as e:
     raise
 from lib import (ensureFaultRoughGeometryForCase, resolveNormalStressSign, resolveViscoplasticParams,
                  faultTag, resolveFaultGeom, resolveOnFaultStationsPerFault, resolveOnFaultVarsPerFault)
-from machines import write_slurm_header
+from machines import machine, write_slurm_header
 import netCDF4 as nc
 import numpy as np
 import os
@@ -289,10 +289,15 @@ def create_LS6batch_script():
     # Function to create batch script used by HPC system.
     with open("batch.hpc", "w") as f:
         _write_slurm_header(f)
-        # Executable part.
-        f.write("  ibrun -np 1 python clean.py" + "\n")
-        f.write("  ibrun -np " + str(par.nx*par.ny*par.nz) + " eqdyna" + "\n")
-        f.write("  ibrun -np 1 python plotRuptureDynamics" + "\n") # produce figure of rupture dynamics
+        # Executable part. The launcher comes from machines.py, the one
+        # registry testsys --submit also reads: on ls6 it is Intel `mpirun`,
+        # measured 2026-09-29. TACC's `ibrun` takes -n/-o, never -np, so the
+        # `ibrun -np N` this used to write was not a valid ibrun call
+        # (2026-10-01). The two Python steps are serial and need no launcher.
+        launcher = machine('ls6')['mpirun']
+        f.write("  python3 clean.py" + "\n")
+        f.write("  " + launcher + " -np " + str(par.nx*par.ny*par.nz) + " eqdyna" + "\n")
+        f.write("  python3 plotRuptureDynamics" + "\n") # produce figure of rupture dynamics
         #f.write("for i in $(seq " + str(istart) + " " + str(iend) + ");" + "\n")
         #f.write("do" + "\n")
         #f.write("  echo $i > currentcycle.txt" + "\n")

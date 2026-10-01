@@ -136,7 +136,7 @@ def render_table(codes):
          'hydra) reports it directly. `srun` reports the **maximum** status across tasks,',
          'so a straggler killed while `MPI_Abort` tears the job down yields 137 or 143 and',
          'masks the code; `sbatch` reports the wrapper script\'s status unless the script',
-         'ends with `exit $?`. On ls6 and grace the launcher is `ibrun` -> `srun`. So treat',
+         'ends with `exit $?`. Under a SLURM batch job the launcher may go through `srun`. So treat',
          'a **non-zero status** as the reliable signal and the printed `FATAL` block as',
          'authoritative; the specific number is advisory under `srun`.', '']
     for lo, hi, title in RANGES:

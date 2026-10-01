@@ -49,7 +49,8 @@ cd mytpv8
 `case.submit` refuses a job with no project account. Queue, wall time and
 node count come from `HPC_queue`, `HPC_time` and `HPC_ncpu` (see
 [Parameters](parameters.md)). The batch job runs the Fortran solver with
-`ibrun`, then plots; per-case batch jobs do not run the Python/JAX backend.
+`mpirun -np <ranks>` (Intel MPI on LS6), then plots; per-case batch jobs do
+not run the Python/JAX backend.
 
 ## MPI rank count
 

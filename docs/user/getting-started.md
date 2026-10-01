@@ -83,5 +83,16 @@ bash run.sh
 
 `run.sh` runs the solver under MPI and then produces a rupture-dynamics
 plot, `cRuptureDynamics.png`, in the same directory. See Running a Case for
-what each step does and how to configure your own case, and its "On an HPC
-cluster (LS6)" section to submit the same case as a batch job.
+what each step does and how to configure your own case.
+
+To run the same case on **TACC Lonestar6** as a batch job (details in
+[Running a Case](running-a-case.md#on-an-hpc-cluster-ls6)):
+
+```
+source install-eqdyna.sh -c ls6
+create.newcase mytpv8 test.tpv8
+cd mytpv8
+# in user_defined_params.py: par.HPC_account = "<your allocation>"
+./case.setup
+./case.submit
+```
