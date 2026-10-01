@@ -48,7 +48,10 @@ workflow), and with exactly ONE disclosed modification: `_IN_PROGRESS_RUN` is re
 run 35673827398 with `status` changed 'completed' -> 'in_progress' and
 `conclusion` changed 'success' -> None, because GitHub keeps no historical
 record of a run while it was still running. Every other field of every other
-record is as the API returned it. The commit SHAs, their parents and their
+record is as the API returned it -- except that `_RUN_V5131_TAGPUSH` and
+`_RUN_ACK_PARENT`'s `headSha` were re-keyed 2026-10-01 from v5.13.1's
+b3697f8/42da61e onto 0e7fdab/9153d22 (see SHA_PATHS_IGNORED below), since
+b3697f8 is a board-only commit and the board left paths-ignore. The commit SHAs, their parents and their
 changed-path sets are read live from this repo's git history, not faked.
 
 WHAT IS AND IS NOT INJECTED. Only the two network calls are replaced:
@@ -401,7 +404,8 @@ def check_post_tag_every_workflow(failures):
 
 def check_tag_filter_is_load_bearing(failures):
     """The v5.13.1 violation, reproduced: with the tag-run filter disabled the
-    guard reads b3697f8 as green off the run its own tag push created. This is
+    guard reads the PATHS_IGNORED fixture commit (SHA_PATHS_IGNORED) as green
+    off the run its own tag push created. This is
     the defect rule 15a exists to close; if this case stops flipping, case E is
     passing for some other reason and has gone vacuous."""
     with injected_ci([_RUN_V5131_TAGPUSH], honour_tags=False):
@@ -462,11 +466,32 @@ def check_history_is_present():
     return None
 
 
+def check_ignored_fixture_still_ignored():
+    """SHA_PATHS_IGNORED must touch only paths test.yml still ignores. When the
+    ignore list narrows (the board left it 2026-10-01 and broke b3697f8), say
+    the fixture needs repointing instead of failing E/G/H on an exit code."""
+    import subprocess
+    files = subprocess.run(['git', 'diff-tree', '--no-commit-id', '--name-only',
+                            '-r', SHA_PATHS_IGNORED], cwd=ROOT, check=True,
+                           capture_output=True, text=True).stdout.split()
+    patterns = ci_status.parse_paths_ignore()
+    live = [f for f in files if not ci_status.path_is_ignored(f, patterns)]
+    if not files or live:
+        return ('fixture SHA_PATHS_IGNORED %s touches %s, not ignored by '
+                'test.yml any more -- repoint it at a commit touching only '
+                'still-ignored paths' % (SHA_PATHS_IGNORED[:7], live or 'nothing'))
+    return None
+
+
 def main():
     print('Negative test: check_pretag_ci.py across all six outcomes')
     shallow = check_history_is_present()
     if shallow:
         print('\nFAIL: ' + shallow)
+        return 1
+    stale = check_ignored_fixture_still_ignored()
+    if stale:
+        print('\nFAIL: ' + stale)
         return 1
     failures = []
     seen_codes = check_injected_cases(failures)
