@@ -332,6 +332,72 @@ def shearModulusFromPar(par, depth=0.0):
         % (depth, mat[par.nmat-1, 0]))
 
 
+def _frtFaultBoxes(par):
+    """Row 17 (multi-fault): one (ift, fxmin, fxmax, fymin, fymax, fzmin,
+    fzmax, fx, fz, nfx, nfz) tuple per fault, 1-indexed.
+
+    ntotft<=1 (or absent -- every pre-row-17 case): the single fault-1-only
+    box/grid (par.fxmin/fxmax/fymin/fymax/fzmin/fzmax, par.fx/fz/nfx/nfz),
+    unchanged -- this is what makes the ntotft==1 path below a true no-op.
+
+    ntotft>1: par.faultgeom[ift-1] -- the SAME per-fault box
+    bFaultGeometry.txt/case.setup already use (resolveFaultGeom above), one
+    distinct box per fault, each fault's own fx/fz/nfx/nfz derived from it
+    (par.dx/par.dz are shared across faults -- one mesh resolution per
+    case, same as every per-fault on_fault_vars array already assumes)."""
+    ntotft = getattr(par, 'ntotft', 1)
+    if ntotft <= 1:
+        # Derived the same way the pre-row-17 code derived its own na/ma --
+        # NOT read from par.nfx/par.nfz -- so this path needs no attribute
+        # the original function didn't already need. fymin/fymax are not
+        # read at all when there is only one box (_frtFaultOfRow's own
+        # single-box shortcut below), so a getattr default here is never
+        # exercised for a real case; it only keeps a minimal synthetic par
+        # fixture (no fymin/fymax at all) working.
+        nfx = round((par.fxmax - par.fxmin) / par.dx + 1)
+        nfz = round((par.fzmax - par.fzmin) / par.dz + 1)
+        return [(1, par.fxmin, par.fxmax, getattr(par, 'fymin', 0.0),
+                 getattr(par, 'fymax', 0.0), par.fzmin, par.fzmax,
+                 par.fx, par.fz, nfx, nfz)]
+    boxes = []
+    for ift in range(1, ntotft + 1):
+        fxmin, fxmax, fymin, fymax, fzmin, fzmax = par.faultgeom[ift - 1]
+        nfx = round((fxmax - fxmin) / par.dx + 1)
+        nfz = round((fzmax - fzmin) / par.dz + 1)
+        fx = np.linspace(fxmin, fxmax, nfx)
+        fz = np.linspace(fzmin, fzmax, nfz)
+        boxes.append((ift, fxmin, fxmax, fymin, fymax, fzmin, fzmax, fx, fz, nfx, nfz))
+    return boxes
+
+
+# Row 17: the y-tolerance used to route one frt.txt<rank> row to the fault
+# whose own (fymin, fymax) box contains it. 1 m, matching
+# test_multifault_two_fault_smoke.py's own fault-membership tolerance for
+# these geometries (vertical, planar, one fixed y-plane per fault -- every
+# multi-fault case this repo currently supports, test.multifault2 and
+# test.tpv22/test.tpv23 alike).
+FRT_FAULT_Y_TOL = 1.0
+
+
+def _frtFaultOfRow(y, boxes):
+    if len(boxes) == 1:
+        # The pre-row-17 behaviour, exactly: one box, every row routed to
+        # it unconditionally -- no y-coordinate check at all, so this path
+        # has no dependency on fymin/fymax being meaningful (a dipping or
+        # rough single fault's y is not a fixed plane; _frtFaultBoxes'
+        # ntotft<=1 branch above does not even require fymin/fymax to be
+        # set on `par`).
+        return boxes[0]
+    hits = [b for b in boxes if b[3] - FRT_FAULT_Y_TOL <= y <= b[4] + FRT_FAULT_Y_TOL]
+    if len(hits) != 1:
+        raise ValueError(
+            'loadFrtData: a frt.txt row at y=%r matches %d fault box(es) (want '
+            'exactly 1) -- the per-fault y-ranges in par.faultgeom are '
+            'ambiguous or do not cover this row: %r'
+            % (y, len(hits), [(b[0], b[3], b[4]) for b in boxes]))
+    return hits[0]
+
+
 def loadFrtData(par):
     """Load and grid the on-fault frt.txt* output written by EQdyna.
 
@@ -352,75 +418,100 @@ def loadFrtData(par):
       21,    state variable
       22,    state var for normal stress variation (Shi and Day)
 
-    Returns (xx, zz, rupt, rupt2d, fVarArr, magnitude):
+    Row 17 (multi-fault): par.fxmin/fxmax/fzmin/fzmax (a SINGLE box) used to
+    grid every row regardless of which fault it came from -- for ntotft>1
+    this aliased fault #2's rows onto fault #1's (ii,jj) grid cells (or, for
+    a fault #2 whose own x-extent exceeds fault #1's, indexed clean out of
+    fault #1's array). Fixed: each fault is gridded from ITS OWN box
+    (_frtFaultBoxes), a frt row routed to its fault by y-coordinate
+    (_frtFaultOfRow). At ntotft<=1 this is BY CONSTRUCTION the pre-row-17
+    code path (one box, every row routed to it, since there is only one box
+    to match) -- same loop, same indexing, same column reads, so a
+    single-fault case's output is unchanged.
+
+    Returns a LIST of (xx, zz, rupt, rupt2d, fVarArr, magnitude, fx, fz, nfx,
+    nfz) tuples, one per fault, in fault order 1..ntotft -- length 1 at
+    ntotft<=1 (every pre-row-17 caller's only case):
       xx, zz    -- meshgrid of along-strike/along-dip coordinates, km
       rupt      -- (na*ma, 3) flat [xcoor, along-dip distance, rupture time]
       rupt2d    -- (ma, na, 100) gridded rupture-time/slip/stress panels
       fVarArr   -- (ma, na, 100) gridded fault-restart variables, passed
-                   to generateNcRestart(faultVarArr)
+                   to generateNcRestart(faultVarArr, fx, fz, nfx, nfz)
       magnitude -- moment magnitude computed from summed slip*area*shearMod
+      fx, fz, nfx, nfz -- THIS fault's own strike/dip grid (generateNcRestart
+                   needs these per fault instead of reading par.fx/par.nfx
+                   directly, which are fault-1-only fallback fields)
     """
     nprocs = par.nx*par.ny*par.nz
-    na     = round((par.fxmax-par.fxmin)/par.dx+1)
-    ma     = round((par.fzmax-par.fzmin)/par.dz+1)
-    rupt   = np.zeros((na*ma,3))
-    rupt2d = np.zeros((ma,na,100))
-    fVarArr= np.zeros((ma,na,100))
+    boxes = _frtFaultBoxes(par)
 
-    [xx,zz] = np.meshgrid(par.fx,par.fz/sin(par.dip/180.*pi))
-    xx = xx/1.e3
-    zz = zz/1.e3#/sin(par.dip/180.*pi) # along dip distance
-    moment = 0.
+    state = {}
+    for (ift, fxmin, fxmax, fymin, fymax, fzmin, fzmax, fx, fz, nfx, nfz) in boxes:
+        state[ift] = dict(
+            na=nfx, ma=nfz, fxmin=fxmin, fzmin=fzmin, fx=fx, fz=fz,
+            rupt=np.zeros((nfx*nfz, 3)), rupt2d=np.zeros((nfz, nfx, 100)),
+            fVarArr=np.zeros((nfz, nfx, 100)), moment=0.0)
 
     for me in range(nprocs):
       fname = 'frt.txt' + str(me)
       if exists(fname):
         print('Post-processing ' + fname + ' ... ...')
         a = np.loadtxt(fname)
+        if a.ndim == 1:
+            a = a.reshape(1, -1)
         n, m = a.shape
         for i in range(n):
+            s = state[_frtFaultOfRow(a[i, 1], boxes)[0]]
+            na, ma = s['na'], s['ma']
             #!! use round() instead of int()!!
-            ii = round((a[i,0] - par.fxmin)/par.dx)
-            jj = round((a[i,2] - par.fzmin)/par.dz)
+            ii = round((a[i,0] - s['fxmin'])/par.dx)
+            jj = round((a[i,2] - s['fzmin'])/par.dz)
 
-            rupt[jj*na+ii,0] = a[i,0]  # xcoor
-            rupt[jj*na+ii,1] = -a[i,2]/sin(par.dip/180.*pi) # zcoor to along dip distance, reverse sign to positive numbers.
-            rupt[jj*na+ii,2] = a[i,3]  # rupture time
+            s['rupt'][jj*na+ii,0] = a[i,0]  # xcoor
+            s['rupt'][jj*na+ii,1] = -a[i,2]/sin(par.dip/180.*pi) # zcoor to along dip distance, reverse sign to positive numbers.
+            s['rupt'][jj*na+ii,2] = a[i,3]  # rupture time
 
-            rupt2d[jj,ii,0]  = a[i,3]  # rupture time
-            rupt2d[jj,ii,1]  = (a[i,4]**2 + a[i,5]**2)**0.5  # slip magnitude
-            rupt2d[jj,ii,2]  = a[i,9]                        # peak slip rate
-            rupt2d[jj,ii,3]  = a[i,10]                       # final slip rate
+            s['rupt2d'][jj,ii,0]  = a[i,3]  # rupture time
+            s['rupt2d'][jj,ii,1]  = (a[i,4]**2 + a[i,5]**2)**0.5  # slip magnitude
+            s['rupt2d'][jj,ii,2]  = a[i,9]                        # peak slip rate
+            s['rupt2d'][jj,ii,3]  = a[i,10]                       # final slip rate
             # mu = rho*Vs^2 of THIS case's material at this node's depth, not
             # the 3464^2*2800 constant this line carried until v5.9.0 -- that
             # was a density this repo's own default case does not use (2670),
             # and it rescales every reported moment/Mw.
             shearMod = shearModulusFromPar(par, abs(a[i,2]))
-            moment = moment + rupt2d[jj,ii,1]*par.dx*par.dx*shearMod
-            rupt2d[jj,ii,4]  = a[i,12]/1.e6 # final shear stress
-            rupt2d[jj,ii,5]  = a[i,11]/1.e6 # final normal stress
-            rupt2d[jj,ii,6]  = a[i,13]/1.e6 # final dip shear
-            rupt2d[jj,ii,7]  = a[i,4] # final slip s
-            rupt2d[jj,ii,8]  = a[i,5] # final slip d
+            s['moment'] = s['moment'] + s['rupt2d'][jj,ii,1]*par.dx*par.dx*shearMod
+            s['rupt2d'][jj,ii,4]  = a[i,12]/1.e6 # final shear stress
+            s['rupt2d'][jj,ii,5]  = a[i,11]/1.e6 # final normal stress
+            s['rupt2d'][jj,ii,6]  = a[i,13]/1.e6 # final dip shear
+            s['rupt2d'][jj,ii,7]  = a[i,4] # final slip s
+            s['rupt2d'][jj,ii,8]  = a[i,5] # final slip d
 
             #
             # fVarArr will be passed to the function generateNcRestart(faultVarArr):
-            fVarArr[jj,ii,0]  = a[i,12] # shear_strike, Pa
-            fVarArr[jj,ii,1]  = a[i,13] # shear_dip, Pa
-            fVarArr[jj,ii,2]  = a[i,11] # effective_normal, Pa
-            fVarArr[jj,ii,3]  = a[i,10] # slip_rate, m/s
-            fVarArr[jj,ii,4]  = a[i,20] # state_variable
-            fVarArr[jj,ii,5]  = a[i,21] # state_normal
-            fVarArr[jj,ii,6]  = a[i,14] # vxm, m/s
-            fVarArr[jj,ii,7]  = a[i,15] # vym
-            fVarArr[jj,ii,8]  = a[i,16] # vzm
-            fVarArr[jj,ii,9]  = a[i,17] # vxs
-            fVarArr[jj,ii,10] = a[i,18] # vys
-            fVarArr[jj,ii,11] = a[i,19] # vzs
+            s['fVarArr'][jj,ii,0]  = a[i,12] # shear_strike, Pa
+            s['fVarArr'][jj,ii,1]  = a[i,13] # shear_dip, Pa
+            s['fVarArr'][jj,ii,2]  = a[i,11] # effective_normal, Pa
+            s['fVarArr'][jj,ii,3]  = a[i,10] # slip_rate, m/s
+            s['fVarArr'][jj,ii,4]  = a[i,20] # state_variable
+            s['fVarArr'][jj,ii,5]  = a[i,21] # state_normal
+            s['fVarArr'][jj,ii,6]  = a[i,14] # vxm, m/s
+            s['fVarArr'][jj,ii,7]  = a[i,15] # vym
+            s['fVarArr'][jj,ii,8]  = a[i,16] # vzm
+            s['fVarArr'][jj,ii,9]  = a[i,17] # vxs
+            s['fVarArr'][jj,ii,10] = a[i,18] # vys
+            s['fVarArr'][jj,ii,11] = a[i,19] # vzs
 
-    magnitude = 2/3*log10(moment*1.e7)-10.7
+    out = []
+    for (ift, fxmin, fxmax, fymin, fymax, fzmin, fzmax, fx, fz, nfx, nfz) in boxes:
+        s = state[ift]
+        [xx,zz] = np.meshgrid(fx, fz/sin(par.dip/180.*pi))
+        xx = xx/1.e3
+        zz = zz/1.e3#/sin(par.dip/180.*pi) # along dip distance
+        magnitude = 2/3*log10(s['moment']*1.e7)-10.7
+        out.append((xx, zz, s['rupt'], s['rupt2d'], s['fVarArr'], magnitude, fx, fz, nfx, nfz))
 
-    return xx, zz, rupt, rupt2d, fVarArr, magnitude
+    return out
 
 def tryint(s):
     try:

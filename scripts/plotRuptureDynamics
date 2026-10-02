@@ -11,76 +11,99 @@ from os.path import exists
 import matplotlib.pyplot as plt
 from matplotlib import animation, rc
 import netCDF4 as nc
-from lib import loadFrtData
+from lib import loadFrtData, faultTag
 #
 SMALL_SIZE = 12
 
 def ruptureDynamics():
-    xx, zz, rupt, rupt2d, fVarArr, magnitude = loadFrtData(par)
+    """Row 17 (multi-fault): loadFrtData now returns ONE (xx, zz, rupt,
+    rupt2d, fVarArr, magnitude, fx, fz, nfx, nfz) tuple PER FAULT -- a list
+    of length 1 at ntotft<=1 (every pre-row-17 case). Looping over it and
+    tagging every output filename with faultTag(ift, ntotft) ('' for fault
+    1/ntotft==1, 'ft<N>_' for fault N>=2) means an ntotft<=1 case still
+    writes EXACTLY 'cRuptureDynamics.png'/'SCECRuptureTime.txt' (no suffix,
+    byte-identical content -- loadFrtData's own ntotft<=1 branch is the
+    unmodified pre-row-17 code path), while an ntotft>1 case gets one panel
+    and one restart-variable payload per fault instead of fault #2's rows
+    being aliased onto fault #1's grid (or, for a fault whose x-extent
+    exceeds fault #1's, indexing clean out of its array -- the crash this
+    fix closes, test.tpv22/test.tpv23's own real geometry).
 
-    levels = np.linspace(0,30,60)
-    #dt     = 30/60
-    fig = plt.figure(figsize=(24,12), dpi= 300, facecolor='w', edgecolor='k')
+    Returns a list of (fVarArr, fx, fz, nfx, nfz, tag) -- one per fault, fed
+    to generateNcRestart in _main_func below.
+    """
+    faults = loadFrtData(par)
+    ntotft = len(faults)
+    results = []
+    for i, (xx, zz, rupt, rupt2d, fVarArr, magnitude, fx, fz, nfx, nfz) in enumerate(faults, start=1):
+        tag = faultTag(i, ntotft)
+        suffix = ('_' + tag.rstrip('_')) if tag else ''
 
-    plt.rc('font', size=SMALL_SIZE)
-    ax11 = fig.add_subplot(331)
-    plt.contourf(xx,zz,rupt2d[:,:,1])
-    plt.colorbar()
-    plt.contour(xx,zz,rupt2d[:,:,0], levels)
-    plt.title('Slip (m) & Rupture time (per 0.05 s)')
+        levels = np.linspace(0,30,60)
+        #dt     = 30/60
+        fig = plt.figure(figsize=(24,12), dpi= 300, facecolor='w', edgecolor='k')
 
-    ax12 = fig.add_subplot(332)
-    plt.contourf(xx,zz,rupt2d[:,:,7])
-    plt.colorbar()
-    plt.title('Slip s (m) ')
-    
-    ax13 = fig.add_subplot(333)
-    plt.contourf(xx,zz,rupt2d[:,:,8])
-    plt.colorbar()
-    plt.title('Slip d (m) ')
-    
-    ax21 = fig.add_subplot(334)
-    plt.contourf(xx,zz,rupt2d[:,:,2])
-    plt.colorbar()
-    plt.title('Peak slip rate (m/s); Mag = '+str(magnitude))
+        plt.rc('font', size=SMALL_SIZE)
+        ax11 = fig.add_subplot(331)
+        plt.contourf(xx,zz,rupt2d[:,:,1])
+        plt.colorbar()
+        plt.contour(xx,zz,rupt2d[:,:,0], levels)
+        plt.title('Slip (m) & Rupture time (per 0.05 s)')
 
-    ax22 = fig.add_subplot(335)
-    plt.contourf(xx,zz,rupt2d[:,:,3])
-    plt.colorbar()
-    plt.title('Final slip rate (m/s)')
+        ax12 = fig.add_subplot(332)
+        plt.contourf(xx,zz,rupt2d[:,:,7])
+        plt.colorbar()
+        plt.title('Slip s (m) ')
 
-    ax23 = fig.add_subplot(336)
-    plt.contourf(xx,zz,rupt2d[:,:,4])
-    plt.colorbar()
-    plt.title('Shear stress (MPa)')
-   
-    ax31 = fig.add_subplot(337)
-    plt.contourf(xx,zz,rupt2d[:,:,6])
-    plt.colorbar()
-    plt.title('Dip shear stress (MPa)')
+        ax13 = fig.add_subplot(333)
+        plt.contourf(xx,zz,rupt2d[:,:,8])
+        plt.colorbar()
+        plt.title('Slip d (m) ')
 
-    ax32 = fig.add_subplot(338)
-    plt.contourf(xx,zz,rupt2d[:,:,5])
-    plt.colorbar()
-    plt.title('Normal stress (MPa)')
+        ax21 = fig.add_subplot(334)
+        plt.contourf(xx,zz,rupt2d[:,:,2])
+        plt.colorbar()
+        plt.title('Peak slip rate (m/s); Mag = '+str(magnitude))
 
-    ax11.set_ylabel('Depth, km')
-    ax21.set_ylabel('Depth, km')
-    ax31.set_ylabel('Depth, km')
-    ax31.set_xlabel('Along strike distance, km')
-    ax32.set_xlabel('Along strike distance, km')
-    #plt.contourf(xx,zz,rupt2d[:,:,9])
-    #plt.contourf(xx,zz,rupt2d[:,:,9])
-    #plt.colorbar()
-    #plt.title('Normal stress change (MPa)')
-    
-    np.savetxt('SCECRuptureTime.txt', rupt, fmt='%e', delimiter='\t',
-                header= "j k t", comments = ' ')
-    
-    plt.savefig("cRuptureDynamics.png", dpi = 300)
-    plt.close()
+        ax22 = fig.add_subplot(335)
+        plt.contourf(xx,zz,rupt2d[:,:,3])
+        plt.colorbar()
+        plt.title('Final slip rate (m/s)')
 
-    return fVarArr
+        ax23 = fig.add_subplot(336)
+        plt.contourf(xx,zz,rupt2d[:,:,4])
+        plt.colorbar()
+        plt.title('Shear stress (MPa)')
+
+        ax31 = fig.add_subplot(337)
+        plt.contourf(xx,zz,rupt2d[:,:,6])
+        plt.colorbar()
+        plt.title('Dip shear stress (MPa)')
+
+        ax32 = fig.add_subplot(338)
+        plt.contourf(xx,zz,rupt2d[:,:,5])
+        plt.colorbar()
+        plt.title('Normal stress (MPa)')
+
+        ax11.set_ylabel('Depth, km')
+        ax21.set_ylabel('Depth, km')
+        ax31.set_ylabel('Depth, km')
+        ax31.set_xlabel('Along strike distance, km')
+        ax32.set_xlabel('Along strike distance, km')
+        #plt.contourf(xx,zz,rupt2d[:,:,9])
+        #plt.contourf(xx,zz,rupt2d[:,:,9])
+        #plt.colorbar()
+        #plt.title('Normal stress change (MPa)')
+
+        np.savetxt('SCECRuptureTime%s.txt' % suffix, rupt, fmt='%e', delimiter='\t',
+                    header= "j k t", comments = ' ')
+
+        plt.savefig("cRuptureDynamics%s.png" % suffix, dpi = 300)
+        plt.close()
+
+        results.append((fVarArr, fx, fz, nfx, nfz, suffix))
+
+    return results
 
 def finalSurfDisp():
     nprocs = par.nx*par.ny*par.nz
@@ -142,21 +165,30 @@ def finalSurfDisp():
     plt.savefig("cFinalSurfDisp.png", dpi=300)
     plt.close()
 
-def generateNcRestart(faultVarArr):
-    # input fault_arr(nfx, nfz,) and make netCDF file fault.r.4eqquasi.nc for EQquasi. 
+def generateNcRestart(faultVarArr, fx, fz, nfx, nfz, suffix=''):
+    # input fault_arr(nfx, nfz,) and make netCDF file fault.r.4eqquasi.nc for EQquasi.
     # According to EQquasi subroutine netcdf_read_on_fault_restart(infile1, infile2),
     # or according to EQquasi subroutine netcdf_write_on_fault(outfile) in netcdf_io.f90,
-    # The variables transferred include: 
+    # The variables transferred include:
     # infile1:  5, a, b, Dc, v0, r0
     # infile2/outfile: 12, shear_strike,, shear_dip, effective_normal, slip_rate, state_variable, state_normal, vxm, vym, vzm, vxs, vys, vzs
     # infile1 will be provided by EQquasi.
-    # Therefore, we need to generate infile2 from frt.txt* from EQdyna. 
+    # Therefore, we need to generate infile2 from frt.txt* from EQdyna.
     # frt.txt* are processed by function ruptureDynamics() in this Python script.
+    #
+    # Row 17 (multi-fault): fx/fz/nfx/nfz are THIS fault's own strike/dip
+    # grid (ruptureDynamics' per-fault loadFrtData output), not par.fx/par.
+    # nfx/par.fz/par.nfz directly -- those are fault-1-only fallback fields
+    # and would be wrong for fault 2+. `suffix` ('' for fault 1/ntotft==1,
+    # '_ft2' etc otherwise) keeps fault 1's restart file named exactly
+    # 'fault.dyna.r.nc' (byte-identical at ntotft<=1, and the one name
+    # testsys/compare.py's nc gate reads for every case) while giving
+    # fault 2+ their own file instead of overwriting fault 1's.
 
-    ds         = nc.Dataset("fault.dyna.r.nc", "w", format="NETCDF4")
+    ds         = nc.Dataset("fault.dyna.r%s.nc" % suffix, "w", format="NETCDF4")
 
-    dip        = ds.createDimension('dip',    par.nfz)
-    strike     = ds.createDimension('strike', par.nfx)
+    dip        = ds.createDimension('dip',    nfz)
+    strike     = ds.createDimension('strike', nfx)
     dip_var    = ds.createVariable('dip', np.float64, ('dip',))
     strike_var = ds.createVariable('strike', np.float64, ('strike',))
 
@@ -185,8 +217,8 @@ def generateNcRestart(faultVarArr):
     var10.units = 'm/s'
     var11.units = 'm/s'
 
-    strike_var[:] = par.fx[:]
-    dip_var[:]    = par.fz[:]
+    strike_var[:] = fx[:]
+    dip_var[:]    = fz[:]
     var0[:,:]     = faultVarArr[:,:,0]
     var1[:,:]     = faultVarArr[:,:,1]
     var2[:,:]     = faultVarArr[:,:,2]
@@ -203,10 +235,11 @@ def generateNcRestart(faultVarArr):
     ds.close()
   
 def _main_func(description):
-    fVarArr = ruptureDynamics()
+    results = ruptureDynamics()
     print('Generating rupture dynamics figure ...')
-    generateNcRestart(fVarArr)
-    print('Generating restart file fault.dyna.r.nc ...')
+    for fVarArr, fx, fz, nfx, nfz, suffix in results:
+        generateNcRestart(fVarArr, fx, fz, nfx, nfz, suffix)
+        print('Generating restart file fault.dyna.r%s.nc ...' % suffix)
 
     if par.outputFinalSurfDisp==1:
         if '--skip-final-surf-disp' in sys.argv[1:]:
