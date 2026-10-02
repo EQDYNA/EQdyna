@@ -22,34 +22,34 @@ i.e. code_y = spec_z (the stepover offset, unchanged sign and magnitude) and
 code_z = -spec_y (depth, negative down). Material/friction/stress formulas
 below are written directly in code axes.
 
-MESH-SHARING CONSTRAINT (read, not guessed): checkInputConsistency.f90's row-17
-multi-fault guards (ERR_GEOM_MULTIFAULT_XZ_BAD) require EVERY fault to share
-EXACTLY fault 1's x/z box -- the uniform x/z mesh belt is built once, from
-fault 1's box alone (checkInputConsistency.f90:69-81). TPV22/23's real
-geometry has fault #2 offset 20 km ALONG STRIKE from fault #1 (only a 10 km
-overlap out of each fault's 30 km length), so the two faults' TRUE x-extents
-differ -- exactly the case this guard refuses outright.
-
-Fix used here (not a physics shortcut): both faults are given the SAME shared
-box, the UNION of their true along-strike extents, x in [-25000, 25000]
-(50 km). Each fault's on_fault_vars then marks the portion of that shared box
-OUTSIDE its own true 30 km extent as UNBREAKABLE (sw_fs = 1000, the same
-"unbreakable border" technique already used in case_input/test.tpv29 and
-test.tpv8 for domain-edge nodes) -- those extension nodes are mesh-only
-scaffolding, never load-bearing physics, identical in spirit to the existing
-border treatment, just extended over a wider inert region instead of a single
-row. Each fault's TRUE borders (its own real left/right edge, and bottom
-[z=-20000]) get the same unbreakable treatment, matching PDF Part 3, p.5:
-"Slip goes to zero at the border of a fault ... a node which lies precisely
-on the border of a fault should not be permitted to slip. This is a CHANGE
-from earlier benchmarks". REVISED 2026-10-01 (mira/row17-tpv2223-rebased
-iteration log): the TOP edge (z=0, the surface trace) is deliberately NOT
-included, reversing this module's original reading. Both independent
-references (kaneko/SPECFEM3D, payne/EQdyna) show large early slip at the
-station literally named "0 km down-dip" (onset ~5.35s, peak 2.5-2.8 m, both
-tpv22 and tpv23) -- incompatible with that node being unbreakable. See
-build_on_fault_vars' inline comment for the full evidence and the remaining
-ambiguity in the spec text.
+GEOMETRY (restored, not invented -- mira/row17-tpv2223-rebased, row 17
+widened audit): a prior iteration on this branch found checkInputConsistency.
+f90's old row-17 guard (ERR_GEOM_MULTIFAULT_XZ_BAD) required EVERY fault to
+share EXACTLY fault 1's x/z box -- the uniform x/z mesh belt used to be built
+once, from fault 1's box alone (getLocalOneDimCoorArrAndSize, hardcoded
+fltxyz(.,.,1)). TPV22/23's real geometry has fault #2 offset 20 km ALONG
+STRIKE from fault #1 (only a 10 km overlap out of each fault's 30 km length),
+so the two faults' TRUE x-extents differ -- exactly what that guard refused.
+That prior iteration worked around the gap with a UNION-box scaffold (both
+faults meshed over the same 50 km box, with the portion outside each fault's
+own 30 km forced unbreakable) instead of fixing the mesh generator. The owner
+caught this ("Why you invent new vars? ... the support was lost over time")
+and the generator itself is now fixed (meshgen.f90's getLocalOneDimCoorArrAndSize
+unions every fault's OWN box; checkInputConsistency.f90 no longer requires a
+shared x/z extent) -- so each fault below gets its TRUE box, nothing shared,
+no scaffold, no scaffold-stress fix, no per-resolution margin bump:
+  fault #1: x in [-25000,  5000], z in [-20000, 0]  (code axes)
+  fault #2: x in [ -5000, 25000], z in [-20000, 0]
+A fault's TRUE borders (its own real left/right edge, and bottom [z=-20000])
+get the unbreakable treatment, matching PDF Part 3, p.5: "Slip goes to zero
+at the border of a fault ... a node which lies precisely on the border of a
+fault should not be permitted to slip. This is a CHANGE from earlier
+benchmarks" -- kept from the 2026-10-01 iteration (the one real fix from that
+work, see build_on_fault_vars' inline comment). The TOP edge (z=0, the
+surface trace) is deliberately NOT included: both independent references
+(kaneko/SPECFEM3D, payne/EQdyna) show large early slip at the station
+literally named "0 km down-dip" (onset ~5.35s, peak 2.5-2.8 m, both tpv22 and
+tpv23) -- incompatible with that node being unbreakable.
 
 Material (PDF p.5): rho=2670 kg/m^3, Vs=3464 m/s, Vp=6000 m/s (same as TPV5).
 Stress (PDF p.5): sigma_ini = 60.00 MPa (normal, compressive, constant with
@@ -79,11 +79,14 @@ from math import *
 from lib import *
 import numpy as np
 
-# Shared geometry, in CODE axes (x=strike, y=stepover/fault-normal, z=depth<=0)
-FXMIN, FXMAX = -25000.0, 25000.0   # UNION of fault1 [-25000,5000] and fault2 [-5000,25000]
-FZMIN, FZMAX = -20000.0, 0.0       # both faults: 20 km deep, reaching the surface
+# Each fault's TRUE box, in CODE axes (x=strike, y=stepover/fault-normal,
+# z=depth<=0). z is identical for both (20 km deep, reaching the surface);
+# x differs -- that is the whole point of a stepover, and the restored mesh
+# generator (meshgen.f90's getLocalOneDimCoorArrAndSize) now unions every
+# fault's own box rather than requiring them to match.
 FAULT1_XRANGE = (-25000.0, 5000.0)   # fault #1's TRUE along-strike extent
 FAULT2_XRANGE = (-5000.0, 25000.0)   # fault #2's TRUE along-strike extent
+FZMIN, FZMAX = -20000.0, 0.0         # both faults: 20 km deep, reaching the surface
 
 MU_S, MU_D, D0 = 0.548, 0.373, 0.30
 NUCR = 3000.0           # r_crit, m (PDF p.6)
@@ -108,69 +111,38 @@ def cohesion(depth_m):
     return 0.0
 
 
-def build_on_fault_vars(fx, fz, nfx, nfz, true_xrange, is_nucleation_fault):
-    """One fault's on_fault_vars array, built on the SHARED box (fx/fz span
-    the union [-25000,25000] x [-20000,0] for both faults -- see module
-    docstring). true_xrange is this fault's own real along-strike extent;
-    nodes outside it are UNBREAKABLE (mesh-sharing scaffolding, never ruptures).
+def build_on_fault_vars(fx, fz, nfx, nfz):
+    """One fault's on_fault_vars array, built on ITS OWN box (fx/fz span that
+    fault's true extent -- see module docstring; no mesh-sharing scaffold, no
+    "active" node distinction, every node here is real fault physics).
     Nucleation (swtwNucleation, TPV==22/23 branch) only acts on nodes where
-    C_nuclea==1 AND this fault is par.nucfault -- is_nucleation_fault is
-    informational only here (no manual stress patch needed, unlike the older
-    "shear bump" style of test.tpv8/test.multifault2; TPV22/23 is
-    forced-rupture-only, same as test.tpv29)."""
+    C_nuclea==1 AND this fault is par.nucfault -- no manual stress patch
+    needed here (unlike the older "shear bump" style of test.tpv8/
+    test.multifault2; TPV22/23 is forced-rupture-only, same as test.tpv29)."""
     v = np.zeros((nfz, nfx, 100))
-    xlo, xhi = true_xrange
     for ix, xcoor in enumerate(fx):
-        active = (xcoor >= xlo - 0.5) and (xcoor <= xhi + 0.5)
         for iz, zcoor in enumerate(fz):
             depth = -zcoor  # zcoor <= 0; depth positive-down
-            # ITERATION (mira/row17-tpv2223-rebased, 2026-10-01): scaffold
-            # (mesh-sharing, outside this fault's true x-extent) nodes used to
-            # fall through here with sigma_n=tau_ini=cohesion=0 (the
-            # np.zeros() default) and ONLY the friction coefficient forced to
-            # UNBREAKABLE_FS. That does not actually make them unbreakable:
-            # shear strength = C0 + mu*max(0,sigma_n) = 0 + 1000*max(0,0) = 0
-            # regardless of mu, so these nodes had ZERO frictional strength
-            # and would slip freely under the slightest incident shear stress
-            # -- found by inspection (not yet isolated by a measurement
-            # against reference data; flagged as a found-but-unconfirmed
-            # defect, see report). test.tpv29's own border treatment
-            # (user_defined_params.py, sw_fs=10000 at ix==0/nfx-1/iz==0) does
-            # NOT skip the physical stress assignment for border nodes --
-            # every node gets the real in-situ stress state, and ONLY the
-            # friction coefficient is forced absurdly high. Matched here: the
-            # scaffold region now carries the SAME physical stress as an
-            # active node at that (x,z); only friction is forced unbreakable.
-            v[iz, ix, 1] = MU_S if active else UNBREAKABLE_FS
+            v[iz, ix, 1] = MU_S
             v[iz, ix, 2] = MU_D
             v[iz, ix, 3] = D0
             v[iz, ix, 4] = cohesion(depth)
             v[iz, ix, 5] = TW_T0
             v[iz, ix, 7] = -SIGMA_INI               # init normal stress, negative=compressive
             v[iz, ix, 8] = tau_ini(depth)            # init strike (right-lateral) shear
-            # True borders: left/right edge of THIS fault's own extent, and
-            # bottom (z=fzmin). ITERATION (mira/row17-tpv2223-rebased,
-            # 2026-10-01): top edge (z=0, the surface trace) REMOVED from the
-            # border set -- both independent references (kaneko/SPECFEM3D,
-            # payne/EQdyna) show large early slip (onset ~5.35s, peak
-            # 2.5-2.8 m) at the station literally named "0 km down-dip" for
-            # BOTH tpv22 and tpv23, which an unbreakable z=0 node cannot
-            # produce (measured: our run showed exactly 0 slip there at
-            # term=15s with top-edge included). Barall's own DayFD header
-            # reports its "0 km down-dip" station's ACTUAL node at z=-800 m,
-            # not 0 -- i.e. independent codes do not sample the literal
-            # geometric border either; whether the spec's "a node which lies
-            # precisely on the border... should not slip" is meant to apply to
-            # the free surface trace at all is genuinely ambiguous from the
-            # text alone, and the measured reference behavior is the
-            # tie-breaker used here. Reverts the docstring's prior reading
-            # (originally cited PDF p.5's "CHANGE from earlier benchmarks" as
-            # covering top+bottom; evidence says bottom only matches, top does
-            # not). Bottom and left/right are UNCHANGED (no reference evidence
-            # against them).
-            on_left_edge = abs(xcoor - xlo) < 0.5
-            on_right_edge = abs(xcoor - xhi) < 0.5
-            on_bottom_edge = abs(zcoor - FZMIN) < 0.5
+            # True borders: this fault's own left/right edge (ix==0/nfx-1),
+            # and bottom (iz==0, z=FZMIN). Per PDF Part 3 p.5 ("a node which
+            # lies precisely on the border of a fault should not be permitted
+            # to slip ... CHANGE from earlier benchmarks"). The TOP edge
+            # (z=0, the surface trace) is deliberately EXCLUDED -- see module
+            # docstring: both independent references show large early slip at
+            # the "0 km down-dip" station, incompatible with that node being
+            # unbreakable (measured directly: our own run showed exactly 0
+            # slip there at term=15s with the top edge included, 2026-10-01
+            # iteration log).
+            on_left_edge = (ix == 0)
+            on_right_edge = (ix == nfx - 1)
+            on_bottom_edge = (iz == 0)
             if on_left_edge or on_right_edge or on_bottom_edge:
                 v[iz, ix, 1] = UNBREAKABLE_FS
     return v
@@ -183,55 +155,61 @@ def build_params(tpv, fault2_z):
     par = parameters()
     par.ntotft = 2
 
-    # Domain margins beyond the fault union box (~7 km in x/z, matching
-    # test.tpv8's margin style; y margin generous since the stepover offset
-    # is tiny, <=1.6 km, relative to the domain).
+    # Domain margins beyond the union footprint of both faults' TRUE x-extents
+    # ([-25000,25000], ~7 km in x/z, matching test.tpv8's margin style; y
+    # margin generous since the stepover offset is tiny, <=1.6 km, relative
+    # to the domain). The mesh generator unions the faults' own boxes
+    # internally (meshgen.f90); this domain footprint is unchanged by that --
+    # it always had to cover both faults' full physical extent.
     par.xmin, par.xmax = -32.0e3, 32.0e3
     par.ymin, par.ymax = -10.0e3, 10.0e3
     par.zmin, par.zmax = -27.0e3, 0.0e3
 
     # ntotft==1 fallback fields (other scripts may still read these for
-    # fault 1); fault 1's box is also the shared union box (see docstring).
-    par.fxmin, par.fxmax = FXMIN, FXMAX
+    # fault 1 specifically) -- fault 1's OWN true box, not a shared union.
+    par.fxmin, par.fxmax = FAULT1_XRANGE
     par.fymin, par.fymax = 0.0, 0.0
     par.fzmin, par.fzmax = FZMIN, FZMAX
 
+    # Each fault's TRUE box -- restored per-fault mesh extent (meshgen.f90's
+    # getLocalOneDimCoorArrAndSize now unions every fault's own box; no
+    # shared-box requirement left to work around).
     par.faultgeom = [
-        (FXMIN, FXMAX, 0.0, 0.0, FZMIN, FZMAX),
-        (FXMIN, FXMAX, fault2_z, fault2_z, FZMIN, FZMAX),
+        (FAULT1_XRANGE[0], FAULT1_XRANGE[1], 0.0, 0.0, FZMIN, FZMAX),
+        (FAULT2_XRANGE[0], FAULT2_XRANGE[1], fault2_z, fault2_z, FZMIN, FZMAX),
     ]
 
     # Hypocenter: spec (x,y,z)=(-10000,10000,0) -> code (x,y,z)=(-10000,0,-10000)
     par.xsource, par.ysource, par.zsource = -10000.0, 0.0, -10000.0
 
-    # Gate-coarse resolution (minutes at 4 ranks -- NOT the spec's 100/50 m;
-    # full_specs.py carries the spec resolution for later, scheduled runs).
-    # dx/dz (strike/depth, in-plane fault resolution) independent of dy (the
-    # cross-fault/volume-mesh spacing) -- same pattern test.tpv36/37 already
-    # use (par.dy = par.dx*cos(dip) there). dy must be an integer multiple of
-    # the stepover offset (checkInputConsistency.f90 ERR_GEOM_MULTIFAULT_Y_BAD):
-    # 1600 m (TPV22) factors as 4*400; 1000 m (TPV23) factors as 2*500.
-    par.dx = 1000.0
-    par.dz = 1000.0
-    par.dy = abs(fault2_z) / 4.0 if tpv == 22 else abs(fault2_z) / 2.0
+    # Resolution: ISOTROPIC dx=dy=dz (NOTES_tpv2223_iteration.md's own
+    # resolution-scan evidence, iteration 5 -- owner-judged "good matches"):
+    # 200 m for TPV22 (the extensional, harder-to-jump stepover: at coarser
+    # 1000/400/400m fault #2 never ruptured past a 0.7%-of-nodes patch; 200m
+    # isotropic is where it jumps, onset/peak-slip/peak-sr within 5-20% of
+    # both independent references at all 3 gated stations), 250 m for TPV23
+    # (jumps comfortably even gate-coarse; 250m isotropic sharpens onset/
+    # peak-slip further). Both commensurate with the stepover offset
+    # (checkInputConsistency's fault-y commensurability guard, now enforced
+    # inside meshgen.f90's getLocalOneDimCoorArrAndSize/checkInputConsistency:
+    # 1600/200=8, 1000/250=4) and with each fault's own x/z extent relative to
+    # the union belt origin (every bound here is a multiple of 5000 m, itself
+    # a multiple of both 200 and 250). No more per-resolution nuni_y margin
+    # bump needed: the restored y-belt (union of every fault's own y) derives
+    # its margin from the fault geometry itself, not a hand-set constant.
+    par.dx = 200.0 if tpv == 22 else 250.0
+    par.dz = par.dx
+    par.dy = par.dx
 
     par.nmat = 1
     par.vp, par.vs, par.rou = 6000.0, 3464.0, 2670.0
 
-    par.term = 15.0  # ITERATION (mira/row17-tpv2223-rebased, 2026-10-01): spec's
-    # own full duration (TPV22_23_Description_v08.pdf p.7, "Run the model for
-    # times from 0.0 to 15.0 seconds"); GATE_TERM_S (5.0) is too short even for
-    # fault #1's own far stations (fault1st000dp000 onset ~5.37s in both
-    # independent references) -- never mind fault #2 (~9-12s). NOT the
-    # testsys gate value; this file is pre-gate physics investigation only
-    # (see dispatch brief), term is restored before this becomes a gate case.
-    # CFL: dt must be set from the SMALLEST element dimension, not dx --
-    # test.tpv36/37 (also dx != dy != dz) use dz for exactly this reason when
-    # dz is the small one. Here dy (400 m TPV22 / 500 m TPV23) is smaller
-    # than dx=dz=1000 m; using 0.5*dx/vp (that is, ignoring dy) blew up the
-    # run within the first few steps (IEEE_DIVIDE_BY_ZERO, slip ~1e37 m) --
-    # measured directly, not inferred -- before this fix.
-    par.dt = 0.5 * min(par.dx, par.dy, par.dz) / par.vp
+    par.term = 15.0  # spec's own full duration (TPV22_23_Description_v08.pdf
+    # p.7, "Run the model for times from 0.0 to 15.0 seconds"); GATE_TERM_S
+    # (5.0) is too short even for fault #1's own far stations (onset ~5.37s
+    # in both independent references) -- never mind fault #2 (~9-12s).
+
+    par.dt = 0.5 * par.dx / par.vp  # isotropic dx=dy=dz; CFL on the common cell size
 
     par.C_elastic = 1
     par.C_nuclea = 1
@@ -252,15 +230,19 @@ def build_params(tpv, fault2_z):
     par.HPC_account = "EAR22013"
     par.HPC_email = ""
 
-    par.nfx = round((FXMAX - FXMIN) / par.dx + 1)
+    # Fault 1's own box (ntotft==1 fallback fields other scripts/the netCDF
+    # writer's fault-1 slot read directly -- scripts/case.setup's
+    # netcdf_write_on_fault_vars, i==0 branch).
+    par.nfx = round((FAULT1_XRANGE[1] - FAULT1_XRANGE[0]) / par.dx + 1)
     par.nfz = round((FZMAX - FZMIN) / par.dz + 1)
-    par.fx = np.linspace(FXMIN, FXMAX, par.nfx)
+    par.fx = np.linspace(FAULT1_XRANGE[0], FAULT1_XRANGE[1], par.nfx)
     par.fz = np.linspace(FZMIN, FZMAX, par.nfz)
+    par.on_fault_vars = build_on_fault_vars(par.fx, par.fz, par.nfx, par.nfz)
 
-    par.on_fault_vars = build_on_fault_vars(
-        par.fx, par.fz, par.nfx, par.nfz, FAULT1_XRANGE, is_nucleation_fault=True)
-    fault2_vars = build_on_fault_vars(
-        par.fx, par.fz, par.nfx, par.nfz, FAULT2_XRANGE, is_nucleation_fault=False)
+    # Fault 2's own box (independent along-strike extent, same z as fault 1).
+    nfx2 = round((FAULT2_XRANGE[1] - FAULT2_XRANGE[0]) / par.dx + 1)
+    fx2 = np.linspace(FAULT2_XRANGE[0], FAULT2_XRANGE[1], nfx2)
+    fault2_vars = build_on_fault_vars(fx2, par.fz, nfx2, par.nfz)
     par.onFaultVarsPerFault = [par.on_fault_vars, fault2_vars]
 
     # On-fault stations, PDF Part 6 p.11 (7 on fault #1, 11 on fault #2),
