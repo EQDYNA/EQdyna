@@ -96,7 +96,7 @@ SHARDS = {
         "test_multifault_item9_fix.py",
         "test_multifault_refused.py",
         "test_multifault_no_ntotft1_specialcase.py",  # added row 17: pure text scan, sub-second
-        "test_multifault_two_fault_smoke.py",  # added row 17: builds+runs eqdyna twice (serial + 4-rank), heaviest new addition here
+        "test_tpv2223_multifault_routing.py",  # replaces test_multifault_two_fault_smoke.py (item 17 section A, test.multifault2 retired): serial (1 rank, both faults) Fortran routing check on test.tpv22's own real compset, ~2.3 min
         "test_perf_parallelism_discriminator.py",
         "test_perf_item91_guards.py",  # added 2026-09-24 (Iris, item 91 perf-
                                  # tool defects): pure monkeypatched
@@ -258,7 +258,6 @@ SHARDS = {
         "test_version_banner.py",
         "test_root_allowlist.py",  # added 2026-09-24 (wei-lin, root-notes move): one git ls-files, <1 s
         "test_text_line_format.py",  # 2026-09-29: static scan of src/fortran, <1 s
-        "test_multifault_two_fault_smoke_jax.py",  # added 2026-10-01 (PR #72 blocker 3): test.multifault2 x python-jax vs the committed reference, one serial jax run (~10 s); shard 3, not 1, which already carries the Fortran sibling
     ],
 }
 UNIT_PYTEST_SHARD = "3"

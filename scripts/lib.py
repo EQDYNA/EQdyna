@@ -372,10 +372,9 @@ def _frtFaultBoxes(par):
 
 # Row 17: the y-tolerance used to route one frt.txt<rank> row to the fault
 # whose own (fymin, fymax) box contains it. 1 m, matching
-# test_multifault_two_fault_smoke.py's own fault-membership tolerance for
+# test_tpv2223_multifault_routing.py's own fault-membership tolerance for
 # these geometries (vertical, planar, one fixed y-plane per fault -- every
-# multi-fault case this repo currently supports, test.multifault2 and
-# test.tpv22/test.tpv23 alike).
+# multi-fault case this repo currently supports, test.tpv22/test.tpv23).
 FRT_FAULT_Y_TOL = 1.0
 
 
