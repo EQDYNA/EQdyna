@@ -78,26 +78,80 @@ the serial path's arithmetic is unchanged. `fault_boundary_lists` and
 """
 import numpy as np
 
+from . import checkInputConsistency as _cic
 
-def one_dim_coor_array(dim_id, dx, dy, dz, fxmin, fxmax, fzmin, fzmax,
+
+def one_dim_coor_array(dim_id, dx, dy, dz, fault_bounds,
                         dis4uniF, dis4uniB, xmin, xmax, ymin, ymax, zmin, zmax,
-                        rat, nPML, np_max=1000000):
-    """Port of getLocalOneDimCoorArrAndSize, serial case (numOfMPIXyz=1).
-    dim_id: 1=x, 2=y, 3=z. Returns (coor_array, PMLb_partial dict)."""
+                        rat, nPML, np_max=1000000, c_degen=0.0):
+    """Port of getLocalOneDimCoorArrAndSize (meshgen.f90), serial case
+    (numOfMPIXyz=1). Row 17 rebased (restore per-fault mesh extent, invent
+    nothing): `fault_bounds` is the list of EVERY fault's own (lo, hi) on
+    THIS axis (dim_id 1=x -> fxmin/fxmax, 2=y -> fymin/fymax, 3=z -> fzmin/
+    fzmax), not fault 1's alone -- the belt origin/far edge is the UNION
+    (min/max) over every fault's own box, mirroring eqquasi's b6010e2 (x/z)
+    and 2769c73 (y). ntotft==1 collapses flt_lo==flt_hi==fault 1's own
+    single value on every axis, so every formula below is bit-identical to
+    the old fault-1-only one (and the old fixed y-belt) in that case.
+
+    `c_degen`: dim_id==2 (y) only. C_degen>3 (wedge-degeneration dipping
+    fault, e.g. tpv36/tpv37) is a DIFFERENT, pre-existing, single-fault-only
+    mechanism where fymin/fymax describe a dip-projection y-RANGE, not a
+    fault y-PLANE the uniform belt should ever be anchored to -- the belt
+    was never built from fault_bounds' y at all before this mission, and
+    generalizing it to the union unconditionally broke test.tpv36 (measured:
+    test_rank_local_mesh.py's 8-rank fault ownership count changed). c_degen
+    != 0 therefore falls back to the untouched fixed-margin y belt,
+    bit-identical to before this mission, regardless of fault_bounds.
+    dim_id: 1=x, 2=y, 3=z. Returns (coor_array, PMLb_partial dict, model_bound)."""
+    if dim_id == 2 and c_degen != 0.0:
+        flt_lo = flt_hi = 0.0
+    else:
+        flt_lo = min(lo for lo, _hi in fault_bounds)
+        flt_hi = max(hi for _lo, hi in fault_bounds)
+
+        # Hard refuse (not a silent clamp or a widened margin) when a fault's
+        # bound on this axis is not an integer number of grid-size steps from
+        # flt_lo, the belt origin just computed -- eqquasi's eeac6f9/a761f33
+        # finding, ported here: a fault edge that falls between node lines
+        # meshes with fewer fault nodes than declared, or none, SILENTLY.
+        # Checked once per fault per bound (lower and upper -- a planar
+        # y-fault has both bounds equal, so this subsumes the old "fymin not
+        # a multiple of dy" check with the now-correct, union-based origin
+        # instead of a hardcoded 0). ntotft==1 makes flt_lo this very
+        # fault's own bound, so the offset is always exactly 0 and this can
+        # never fire for a single-fault case (bit-identical no-op). Skipped
+        # entirely for dim_id==2 when c_degen!=0 (see docstring above).
+        grid_size_for_axis = {1: dx, 2: dy, 3: dz}[dim_id]
+        for ift, (lo, hi) in enumerate(fault_bounds, start=1):
+            for label, bound in (('lower', lo), ('upper', hi)):
+                steps = _fortran_nint((bound - flt_lo) / grid_size_for_axis)
+                offset = bound - flt_lo - steps * grid_size_for_axis
+                if abs(offset) > grid_size_for_axis / 100.0:
+                    code = (_cic.ERR_GEOM_MULTIFAULT_Y_BAD if dim_id == 2
+                            else _cic.ERR_GEOM_MULTIFAULT_XZ_BAD)
+                    raise _cic.InputConsistencyError(
+                        code,
+                        'one_dim_coor_array: dim_id=%d, fault %d %s bound = %r is not an '
+                        'integer multiple of gridSize=%r from this axis'' belt origin=%r; '
+                        'it would fall between mesh node lines and mesh with too few fault '
+                        'nodes, or none, silently. Fix par.faultgeom or dx/dy/dz.'
+                        % (dim_id, ift, label, bound, grid_size_for_axis, flt_lo))
+
     if dim_id == 1:
-        n_uniform = round((fxmax - fxmin) / dx) + 1
+        n_uniform = round((flt_hi - flt_lo) / dx) + 1
         grid_size = dx
-        front_edge, back_edge = fxmin, fxmax
+        front_edge, back_edge = flt_lo, flt_hi
         min_coor, max_coor = xmin, xmax
     elif dim_id == 2:
-        n_uniform = dis4uniF + dis4uniB + 1
+        n_uniform = round((flt_hi - flt_lo) / dy) + dis4uniF + dis4uniB + 1
         grid_size = dy
-        front_edge, back_edge = -dis4uniF * dy, dis4uniB * dy
+        front_edge, back_edge = flt_lo - dis4uniF * dy, flt_hi + dis4uniB * dy
         min_coor, max_coor = ymin, ymax
     elif dim_id == 3:
-        n_uniform = round((fzmax - fzmin) / dz) + 1
+        n_uniform = round((flt_hi - flt_lo) / dz) + 1
         grid_size = dz
-        front_edge, back_edge = fzmin, fzmax
+        front_edge, back_edge = flt_lo, flt_hi
         min_coor, max_coor = zmin, zmax
     else:
         raise ValueError(dim_id)
@@ -158,20 +212,33 @@ def one_dim_coor_array(dim_id, dx, dy, dz, fxmin, fxmax, fzmin, fzmax,
 
 
 def build_grid_lines(params):
-    """params: dict with dx,dy,dz,fxmin,fxmax,fzmin,fzmax,dis4uniF,dis4uniB,
-    xmin,xmax,ymin,ymax,zmin,zmax,rat,nPML. Returns (xline, yline, zline,
-    PMLb dict, model bound coors)."""
+    """params: dict with dx,dy,dz,dis4uniF,dis4uniB,xmin,xmax,ymin,ymax,
+    zmin,zmax,rat,nPML, plus either 'faults' (per-fault box list,
+    readInputFiles.build_params' convention) or the scalar fxmin/fxmax/
+    fymin/fymax/fzmin/fzmax fallback (`_fault_boxes`'s own convention, also
+    what hand-built params dicts in pre-Row-17 fixtures still use). Returns
+    (xline, yline, zline, PMLb dict, model bound coors).
+
+    Row 17 REBASED (restore per-fault mesh extent, invent nothing): each
+    axis' belt is now built from EVERY fault's own box (`_fault_boxes`), the
+    union (min/max), not fault 1's box alone -- mirrors
+    src/fortran/meshgen.f90's getLocalOneDimCoorArrAndSize. ntotft==1
+    collapses to the old fault-1-only behaviour bit-for-bit."""
     p = params
+    boxes = _fault_boxes(p)
+    x_bounds = [(b[0], b[1]) for b in boxes]
+    y_bounds = [(b[2], b[3]) for b in boxes]
+    z_bounds = [(b[4], b[5]) for b in boxes]
     xline, pmlx, xbound = one_dim_coor_array(
-        1, p['dx'], p['dy'], p['dz'], p['fxmin'], p['fxmax'], p['fzmin'], p['fzmax'],
+        1, p['dx'], p['dy'], p['dz'], x_bounds,
         p['dis4uniF'], p['dis4uniB'], p['xmin'], p['xmax'], p['ymin'], p['ymax'],
         p['zmin'], p['zmax'], p['rat'], p['nPML'])
     yline, pmly, ybound = one_dim_coor_array(
-        2, p['dx'], p['dy'], p['dz'], p['fxmin'], p['fxmax'], p['fzmin'], p['fzmax'],
+        2, p['dx'], p['dy'], p['dz'], y_bounds,
         p['dis4uniF'], p['dis4uniB'], p['xmin'], p['xmax'], p['ymin'], p['ymax'],
-        p['zmin'], p['zmax'], p['rat'], p['nPML'])
+        p['zmin'], p['zmax'], p['rat'], p['nPML'], c_degen=p.get('C_degen', 0.0))
     zline, pmlz, zbound = one_dim_coor_array(
-        3, p['dx'], p['dy'], p['dz'], p['fxmin'], p['fxmax'], p['fzmin'], p['fzmax'],
+        3, p['dx'], p['dy'], p['dz'], z_bounds,
         p['dis4uniF'], p['dis4uniB'], p['xmin'], p['xmax'], p['ymin'], p['ymax'],
         p['zmin'], p['zmax'], p['rat'], p['nPML'])
     pmlb = dict(**pmlx, **pmly, **pmlz)

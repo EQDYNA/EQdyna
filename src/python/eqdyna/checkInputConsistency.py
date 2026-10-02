@@ -52,8 +52,8 @@ ERR_CFG_Q_NEEDS_ELASTIC = 11   # C_Q=1 requires C_elastic=1
 ERR_CFG_Q_NEEDS_UNIFORM = 12   # C_Q=1 requires rat=1.0 (uniform elements)
 ERR_CFG_PLASTIC_OUTPUT = 13    # output_plastic=1 requires C_elastic=0
 ERR_CFG_NSTRESS_SIGN_INVALID = 15  # bGlobal.txt's station n-stress sign is neither +1 nor -1 (raised by readInputFiles.read_bglobal)
-ERR_GEOM_MULTIFAULT_Y_BAD = 32  # a fault's y-plane is not vertical/planar, not a multiple of dy, outside the uniform-y belt, or coincides with another fault's
-ERR_GEOM_MULTIFAULT_XZ_BAD = 33  # a fault's x/z extent differs from fault 1's (the shared uniform x/z belt only covers fault 1's box)
+ERR_GEOM_MULTIFAULT_Y_BAD = 32  # a fault's y-plane is not vertical/planar, coincides with another fault's, or (row 17 rebased) a fault's y bound is not an integer multiple of dy from the union-derived uniform-y belt origin (raised by meshgen.py's one_dim_coor_array)
+ERR_GEOM_MULTIFAULT_XZ_BAD = 33  # (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line (raised as InputConsistencyError by meshgen.py's one_dim_coor_array)
 
 # C_Q is never a case-input field (see module docstring) -- hardcoded here
 # exactly as globalvar.f90:104 hardcodes its default, never overridden by
@@ -82,19 +82,29 @@ def check(C_elastic, output_plastic, rat, C_Q=C_Q):
 
 
 def check_multifault(faults, dy, dis4uniF, dis4uniB, C_degen, tol=1.0e-5):
-    """checkInputConsistency.f90's row-17 multi-fault guards, verbatim
-    (only the `C_degen == 0.0` branch -- C_degen>3's dipping/wedge-
-    degeneration mechanism is a different, pre-existing, single-fault-only
-    path with a legitimate fymin != fymax, orthogonal to this work).
+    """checkInputConsistency.f90's row-17 multi-fault guards (only the
+    `C_degen == 0.0` branch -- C_degen>3's dipping/wedge-degeneration
+    mechanism is a different, pre-existing, single-fault-only path with a
+    legitimate fymin != fymax, orthogonal to this work).
     No-op at ntotft==1 (every loop below is over a single fault, and the
-    i<j distinctness/xz-match loop does not execute for ntotft<2) --
-    bit-identical refusal behaviour to before this function existed.
+    i<j distinctness loop does not execute for ntotft<2) -- bit-identical
+    refusal behaviour to before this function existed.
+
+    Row 17 REBASED (restore per-fault mesh extent, invent nothing): the "y
+    outside the fixed belt" and "x/z must equal fault 1's" checks that used
+    to live here are GONE, not relaxed -- they refused exactly the two
+    limitations meshgen.py's one_dim_coor_array no longer has (the belt is
+    now the union over every fault's own box, mirroring
+    src/fortran/meshgen.f90's getLocalOneDimCoorArrAndSize/
+    checkInputConsistency.f90). one_dim_coor_array itself now raises the
+    commensurability guard (a fault bound not an integer multiple of
+    dx/dy/dz from the union origin) at mesh-build time, same as the
+    Fortran's hard refuse inside getLocalOneDimCoorArrAndSize.
 
     `faults`: read_bfaultgeometry's return (list of ntotft dicts with
     fxmin/fxmax/fymin/fymax/fzmin/fzmax)."""
     if C_degen != 0.0:
         return
-    f0 = faults[0]
     for i, f in enumerate(faults, start=1):
         if abs(f['fymax'] - f['fymin']) > tol:
             raise InputConsistencyError(
@@ -102,30 +112,6 @@ def check_multifault(faults, dy, dis4uniF, dis4uniB, C_degen, tol=1.0e-5):
                 "checkInputConsistency: fault %d has fymin /= fymax -- only a planar, "
                 "vertical fault (single y-plane) is supported; non-planar multi-fault "
                 "geometry is out of scope." % i)
-        y_over_dy = f['fymin'] / dy
-        nearest_int = round(y_over_dy)
-        if abs(y_over_dy - nearest_int) > 1.0e-6:
-            raise InputConsistencyError(
-                ERR_GEOM_MULTIFAULT_Y_BAD,
-                "checkInputConsistency: fault %d's y = %.3f is not an integer multiple of "
-                "dy = %.3f -- it would fall between mesh node lines and mesh with zero "
-                "fault nodes." % (i, f['fymin'], dy))
-        if f['fymin'] < -float(dis4uniF) * dy - tol or f['fymin'] > float(dis4uniB) * dy + tol:
-            raise InputConsistencyError(
-                ERR_GEOM_MULTIFAULT_Y_BAD,
-                "checkInputConsistency: fault %d's y = %.3f lies outside the uniform-y mesh "
-                "belt [-dis4uniF*dy, +dis4uniB*dy] = [%.3f, %.3f]; widen "
-                "par.nuni_y_minus/par.nuni_y_plus or move the fault."
-                % (i, f['fymin'], -float(dis4uniF) * dy, float(dis4uniB) * dy))
-        if i > 1:
-            if (abs(f['fxmin'] - f0['fxmin']) > tol or abs(f['fxmax'] - f0['fxmax']) > tol or
-                    abs(f['fzmin'] - f0['fzmin']) > tol or abs(f['fzmax'] - f0['fzmax']) > tol):
-                raise InputConsistencyError(
-                    ERR_GEOM_MULTIFAULT_XZ_BAD,
-                    "checkInputConsistency: fault %d has a different x/z extent than fault 1. "
-                    "The shared uniform x/z mesh belt is built from fault 1 box alone, so every "
-                    "fault must share it (two parallel faults, same strike extent) -- "
-                    "independent per-fault x/z extents are out of scope." % i)
     for i in range(len(faults)):
         for j in range(i + 1, len(faults)):
             if abs(faults[i]['fymin'] - faults[j]['fymin']) < tol:
