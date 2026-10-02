@@ -950,21 +950,34 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     # Fortran, and is intentionally absent from both masks below.)
     # Test uses the element's "top" node coords (this ix,iy,iz), matching
     # Fortran's `nodeCoor` at the point createElement/replaceSlave... run.
-    # Row 17 (multi-fault): generalized from a single `ycoor > 0.0 and
-    # abs(ycoor - dy) < tol` (one cell above fault 1's plane alone) to
-    # `any(abs(ycoor - (fault_y[i] + dy)) < tol)` over every fault's own
-    # y-plane -- meshgen.f90's replaceSlaveWithMasterNode guard, generalized
-    # identically (src/fortran/meshgen.f90's row-17 commit). Reduces to the
-    # old test bit-for-bit at ntotft==1, fault 1 at y=0 (fault_y=[0.0], and
-    # `ycoor > 0.0` was redundant there since a tol-match to dy>0 already
-    # implies ycoor>0).
+    # Row 17 (multi-fault): meshgen.f90's replaceSlaveWithMasterNode is a
+    # `do ift=1,ntotft` loop testing x/z/y ALL THREE against THAT fault's own
+    # box (fltxyz(1,1,iFault)/fltxyz(2,1,iFault)/fltxyz(1,3,iFault)/
+    # fltxyz(1,2,iFault)) in the SAME iteration. The first row-17 pass here
+    # generalized only the y-match (looping `fault_y`) while leaving x/z
+    # bounded by fault 1's own fxmin/fxmax/fzmin alone -- correct at
+    # ntotft==1, but for ntotft>1 faults whose x-extent reaches beyond fault
+    # 1's own (test.tpv22/test.tpv23's real stepover geometry: fault 2 spans
+    # x up to 25000 m, fault 1 only to 5000 m), the one-cell-above-fault
+    # elements beyond fault 1's xmax never had this substitution applied,
+    # leaving fault 2's own MASTER node at those positions unreferenced by
+    # any element -- zero mass, driver.run's loud "lumped nodal masses are
+    # <= 0" refusal (9999 orphaned nodes measured on test.tpv22's own mesh,
+    # exactly the fault-2 y-plane x>5000 region, before this fix). Fixed by
+    # looping ALL THREE bounds per fault together, mirroring the Fortran
+    # loop exactly instead of generalizing y alone. `faults` falls back to
+    # the single fault-1 box when `params['faults']` is absent (every
+    # ntotft==1 caller, including every pre-row-17 unit fixture), so this
+    # reduces to the untouched single-fault mask bit-for-bit there.
     xcoor, ycoor, zcoor = xline[IX], yline[IY], zline[IZ]
-    fault_y = np.asarray(p.get('fault_y', [fymin]))
-    one_cell_above_any_fault = np.any(
-        np.abs(ycoor[:, None] - (fault_y[None, :] + dy)) < tol, axis=1)
-    replace = (((elem_type == 1) & (xcoor > fxmin - tol) & (xcoor < fxmax + dx + tol) &
-                (zcoor > fzmin - tol) & one_cell_above_any_fault) |
-               (elem_type == 13))
+    faults = p.get('faults', [dict(fxmin=fxmin, fxmax=fxmax, fzmin=fzmin, fymin=fymin)])
+    one_cell_above_any_fault = np.zeros(xcoor.shape[0], dtype=bool)
+    for f in faults:
+        one_cell_above_any_fault |= (
+            (xcoor > f['fxmin'] - tol) & (xcoor < f['fxmax'] + dx + tol) &
+            (zcoor > f['fzmin'] - tol) &
+            (np.abs(ycoor - (f['fymin'] + dy)) < tol))
+    replace = ((elem_type == 1) & one_cell_above_any_fault) | (elem_type == 13)
     lut = np.arange(meshCoor.shape[0], dtype=np.int64)
     lut[nsmp[:, 0]] = nsmp[:, 1]
     if replace.any():
