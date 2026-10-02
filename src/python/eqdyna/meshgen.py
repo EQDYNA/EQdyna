@@ -83,7 +83,7 @@ from . import checkInputConsistency as _cic
 
 def one_dim_coor_array(dim_id, dx, dy, dz, fault_bounds,
                         dis4uniF, dis4uniB, xmin, xmax, ymin, ymax, zmin, zmax,
-                        rat, nPML, np_max=1000000, c_degen=0.0):
+                        rat, nPML, np_max=1000000, c_degen=0.0, tol=1.0e-5):
     """Port of getLocalOneDimCoorArrAndSize (meshgen.f90), serial case
     (numOfMPIXyz=1). Row 17 rebased (restore per-fault mesh extent, invent
     nothing): `fault_bounds` is the list of EVERY fault's own (lo, hi) on
@@ -122,12 +122,27 @@ def one_dim_coor_array(dim_id, dx, dy, dz, fault_bounds,
         # fault's own bound, so the offset is always exactly 0 and this can
         # never fire for a single-fault case (bit-identical no-op). Skipped
         # entirely for dim_id==2 when c_degen!=0 (see docstring above).
+        #
+        # Tolerance: `tol` (1e-5 m, matches globalvar.f90's module `tol` and
+        # this port's own is_on_fault/checkIsOnFault), NOT
+        # grid_size_for_axis/100 (victor-reyes audit, PR #76 MAJOR 1).
+        # eqquasi's own eeac6f9/a761f33 use dx/100, but this port's downstream
+        # consumer, is_on_fault, only ever matches a node to a fault plane
+        # within `tol`=1e-5 m regardless of grid size -- a grid_size/100 pass
+        # band (2 m at dy=200) let a fault bound land up to 2 m off a node
+        # line, this check pass silently, and is_on_fault then match ZERO
+        # nodes (1e-5 m << 2 m): the exact silent failure this guard exists to
+        # prevent. `tol` ties the two checks to the same constant by
+        # construction. Measured on TPV22 (dy=200, fault y-offset 1600 m) and
+        # TPV23 (dy=250, fault y-offset 1000 m): both ratios are exact
+        # integers in double precision, so offset==0.0 exactly for both --
+        # tightening to `tol` does not newly refuse either mesh.
         grid_size_for_axis = {1: dx, 2: dy, 3: dz}[dim_id]
         for ift, (lo, hi) in enumerate(fault_bounds, start=1):
             for label, bound in (('lower', lo), ('upper', hi)):
                 steps = _fortran_nint((bound - flt_lo) / grid_size_for_axis)
                 offset = bound - flt_lo - steps * grid_size_for_axis
-                if abs(offset) > grid_size_for_axis / 100.0:
+                if abs(offset) > tol:
                     code = (_cic.ERR_GEOM_MULTIFAULT_Y_BAD if dim_id == 2
                             else _cic.ERR_GEOM_MULTIFAULT_XZ_BAD)
                     raise _cic.InputConsistencyError(
@@ -232,15 +247,16 @@ def build_grid_lines(params):
     xline, pmlx, xbound = one_dim_coor_array(
         1, p['dx'], p['dy'], p['dz'], x_bounds,
         p['dis4uniF'], p['dis4uniB'], p['xmin'], p['xmax'], p['ymin'], p['ymax'],
-        p['zmin'], p['zmax'], p['rat'], p['nPML'])
+        p['zmin'], p['zmax'], p['rat'], p['nPML'], tol=p.get('tol', 1.0e-5))
     yline, pmly, ybound = one_dim_coor_array(
         2, p['dx'], p['dy'], p['dz'], y_bounds,
         p['dis4uniF'], p['dis4uniB'], p['xmin'], p['xmax'], p['ymin'], p['ymax'],
-        p['zmin'], p['zmax'], p['rat'], p['nPML'], c_degen=p.get('C_degen', 0.0))
+        p['zmin'], p['zmax'], p['rat'], p['nPML'], c_degen=p.get('C_degen', 0.0),
+        tol=p.get('tol', 1.0e-5))
     zline, pmlz, zbound = one_dim_coor_array(
         3, p['dx'], p['dy'], p['dz'], z_bounds,
         p['dis4uniF'], p['dis4uniB'], p['xmin'], p['xmax'], p['ymin'], p['ymax'],
-        p['zmin'], p['zmax'], p['rat'], p['nPML'])
+        p['zmin'], p['zmax'], p['rat'], p['nPML'], tol=p.get('tol', 1.0e-5))
     pmlb = dict(**pmlx, **pmly, **pmlz)
     return xline, yline, zline, pmlb, (xbound, ybound, zbound)
 

@@ -622,6 +622,26 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
     ! (bit-identical no-op). Same abortRun-with-the-actual-numbers-named style
     ! as the overflow refusal below.
     !
+    ! Tolerance: `tol` (globalvar.f90, 1.0d-5 m), NOT gridSize/100 (victor-reyes
+    ! audit, PR #76 MAJOR 1). eqquasi's own eeac6f9/a761f33 use dx/100 for this
+    ! check, but EQdyna's own downstream consumer, checkIsOnFault, only ever
+    ! matches a node to a fault plane within `tol`=1e-5 m regardless of
+    ! gridSize -- so a gridSize/100 pass band (2 m at dy=200) let a fault
+    ! bound land up to 2 m off a node line, this check pass silently, and
+    ! checkIsOnFault then fail to match ANY node (1e-5 m << 2 m), i.e. the
+    ! exact silent zero-fault-node failure this guard exists to prevent. Using
+    ! `tol` ties the two checks to the same constant by construction. The
+    ! prior (pre-this-PR) single-fault check in checkInputConsistency.f90 used
+    ! 1.0d-6 relative to dy (abs(fymin/dy - nint(fymin/dy)) > 1.0d-6, i.e.
+    ! 1e-6*dy absolute -- 2e-4 m at dy=200), itself looser than `tol`=1e-5 m
+    ! at any dy>10; `tol` is the tighter, defensible, already-shared constant.
+    ! Measured on TPV22 (dy=200, fault y-offset 1600 m) and TPV23 (dy=250,
+    ! fault y-offset 1000 m): both offsets are exact integer multiples of dy
+    ! in double precision (1600.0d0/200.0d0 and 1000.0d0/250.0d0 both exact
+    ! integers, no representable remainder), so commensOffset==0.0d0 exactly
+    ! for both cases -- tightening this check to `tol` does not newly refuse
+    ! either mesh.
+    !
     ! dimId==2 skips entirely when C_degen/=0: the belt for that axis is the
     ! untouched fixed-margin one (see the dimId==2 branch above), not built
     ! from fltxyz's y at all, so testing fltxyz(.,2,ift)'s dip-projection
@@ -633,7 +653,7 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
         do i = 1, 2
             commensOffset = fltxyz(i,dimId,ift) - fltMin1 - &
                 dble(nint((fltxyz(i,dimId,ift) - fltMin1)/gridSize))*gridSize
-            if (abs(commensOffset) > gridSize/100.0d0) then
+            if (abs(commensOffset) > tol) then
                 write(reasonMsg,'(a,i0,a,i0,a,i0,a,f0.3,a,f0.3,a,f0.3,a)') &
                     'getLocalOneDimCoorArrAndSize: dimId=', dimId, ', fault ', ift, &
                     ' bound ', i, ' = ', fltxyz(i,dimId,ift), &
