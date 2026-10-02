@@ -81,6 +81,13 @@ program probeAxisTooThin
     integer (kind = 4) :: frontEdgeNodeId, localOneDimCoorArrSize, globalOneDimCoorArrOutSize
     real (kind = dp) :: localOneDimCoorArr(10000), modelBoundCoor(3,2), globalOneDimCoorArrOut(10000)
 
+    ntotft = 1  ! Row 17 rebased: getLocalOneDimCoorArrAndSize now unions
+                ! every fault's own box (fltxyz(.,.,1:ntotft)) instead of
+                ! reading fault 1 alone -- a real call site always has
+                ! ntotft set (read from bGlobal.txt before meshgen runs);
+                ! this probe must set it too, or ntotft defaults to this
+                ! module variable's zero-initialized value and fltxyz(.,.,1:0)
+                ! is an empty slice, not fault 1's box.
     allocate(fltxyz(2,4,1))
     fltxyz(1,1,1) = 0.0d0
     fltxyz(2,1,1) = 1.0d0
