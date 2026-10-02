@@ -17,11 +17,12 @@ Two INDEPENDENT codes' public SCEC cvws submissions for TPV22/TPV23, fetched
 2026-10-01 from the portal's "Public Area" (https://strike.scec.org/cvws/
 cgi-bin/cvws.cgi, the same CGI scripts/scec/fetch_all_dliu.py automates for
 this repo's OWN submissions -- this script's reference data is OTHER
-submitters', so it was fetched by hand, see scratch/specs/tpv2223/
-scec_cross_code/<case>/<user>/PROVENANCE, if present, or this module's own
-citation below) against a completed run of EQdyna's current code:
+submitters', so it was fetched by hand and lives read-only in
+~/shared_dataset/scec_cvws.tpv2223/raw/<case>/<user>/, see that bundle's
+MANIFEST.json and PROVENANCE.md, or this module's own citation below)
+against a completed run of EQdyna's current code:
 
-  1. THE REFERENCE -- scratch/specs/tpv2223/scec_cross_code/<case>/<user>/,
+  1. THE REFERENCE -- ~/shared_dataset/scec_cvws.tpv2223/raw/<case>/<user>/,
      <case> in (tpv22, tpv23), <user> in:
        kaneko -- Yoshihiro Kaneko, SPECFEM3D (spectral element), 100 m,
                  fetched 2026-10-01 (cvws benchmark='tpv22'/'tpv23', user
@@ -95,7 +96,15 @@ import numpy as np
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
 OUT_DIR = os.path.join(TESTSYS, 'evidence_output')
-ARCHIVE_ROOT = os.path.join(REPO_ROOT, 'scratch', 'specs', 'tpv2223', 'scec_cross_code')
+# Cross-code reference data (other submitters' public cvws submissions) is
+# NOT repo content -- it lives once, read-only, in the machine-wide
+# ~/shared_dataset/ (CLAUDE.md "SHARED DATASETS"; MANIFEST.json there carries
+# the source URL, fetch date, per-file md5, submitter labels). This used to
+# point at scratch/specs/tpv2223/scec_cross_code/, a gitignored local-only
+# copy that did not exist on a fresh clone; moved 2026-10-02 (item 17
+# section C) so this script runs anywhere ~/shared_dataset/ is populated.
+ARCHIVE_ROOT = os.path.expanduser(
+    os.path.join('~', 'shared_dataset', 'scec_cvws.tpv2223', 'raw'))
 
 # Our own case's file name for each archive station, per case (fault #1 has
 # no 'ft'-prefix at ntotft>1's fault-1 convention; fault #2 uses the
@@ -200,8 +209,9 @@ def main():
 
     archive_dir = os.path.join(ARCHIVE_ROOT, args.case)
     if not os.path.isdir(archive_dir):
-        raise SystemExit(f'{archive_dir}: missing -- fetch per this module\'s '
-                         f'docstring (scratch/specs/tpv2223/scec_cross_code/)')
+        raise SystemExit(f'{archive_dir}: missing -- populate '
+                         f'~/shared_dataset/scec_cvws.tpv2223/ per its '
+                         f'MANIFEST.json (see this module\'s docstring)')
 
     prov = provenance()
     print('==== provenance ====')

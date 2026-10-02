@@ -16,7 +16,7 @@ n-stress) -- the SCEC on-fault format is identical across all three sources
 v-/n- columns the way the TPV29/30 script had to size its own station list
 around mesh-exactness.
 
-OFF-FAULT: Kaneko's archive here (scratch/specs/tpv2223/scec_cross_code/) was
+OFF-FAULT: Kaneko's archive here (~/shared_dataset/scec_cvws.tpv2223/) was
 fetched for exactly the 3 on-fault stations this mission needed (see that
 module's docstring) and carries no body* files, so no Kaneko off-fault
 overlay is possible. Barall DID serve body* files, and one of them --
@@ -140,9 +140,13 @@ def make_family(case, rdir, kaneko_dir, barall_dir, stations, cols, out, kind):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--results', default=os.path.join(ROOT, 'test', 'test.%s'))
-    ap.add_argument('--kaneko', default=os.path.join(
-        ROOT, 'scratch', 'specs', 'tpv2223', 'scec_cross_code'))
-    ap.add_argument('--archive', default=os.path.join(ROOT, 'scec_archive'))
+    # barall* and kaneko/payne both live, read-only, in one place now:
+    # ~/shared_dataset/scec_cvws.tpv2223/raw/<case>/<label>/ (item 17
+    # section C, 2026-10-02) -- see that bundle's MANIFEST.json/README row.
+    _SHARED = os.path.expanduser(os.path.join(
+        '~', 'shared_dataset', 'scec_cvws.tpv2223', 'raw'))
+    ap.add_argument('--kaneko', default=_SHARED)
+    ap.add_argument('--archive', default=_SHARED)
     ap.add_argument('--outdir', default=os.path.join(ROOT, 'docs', 'figures', 'tpv22_23'))
     args = ap.parse_args()
 

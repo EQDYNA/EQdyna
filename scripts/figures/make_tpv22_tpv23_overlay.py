@@ -11,9 +11,9 @@ fault #2). 2x2 grid: rows = fault #1 / fault #2, columns = tpv22 / tpv23.
 
 Barall resolution picked: FaultMod 100 m (`barall-faultmod-100m-2013`), to
 match Kaneko's own 100 m -- a same-resolution, cross-method/cross-code pair.
-Barall's 50 m and DayFD variants are archived (scec_archive/) but not
-overlaid here, to keep the panel legible; they are available for a follow-up
-figure if needed.
+Barall's 50 m and DayFD variants are archived
+(~/shared_dataset/scec_cvws.tpv2223/) but not overlaid here, to keep the
+panel legible; they are available for a follow-up figure if needed.
 
 WHY THE CAPTION IS COMPUTED, NOT WRITTEN -- same discipline as
 make_tpv29_tpv30_overlay.py: every number below is measured from the arrays
@@ -79,11 +79,14 @@ def main():
     ap.add_argument('--results', default=os.path.join(ROOT, 'test', 'test.%s'),
                     help='printf-style template for the completed run dir, '
                          '%%s = tpv22|tpv23 (default: test/test.<case>)')
-    ap.add_argument('--archive', default=os.path.join(ROOT, 'scec_archive'),
-                    help='READ-ONLY cross-code archive (symlinked into this '
-                         'worktree to the main checkout -- see dispatch brief)')
-    ap.add_argument('--kaneko', default=os.path.join(
-        ROOT, 'scratch', 'specs', 'tpv2223', 'scec_cross_code'),
+    # barall* and kaneko/payne both live, read-only, in one place now:
+    # ~/shared_dataset/scec_cvws.tpv2223/raw/<case>/<label>/ (item 17
+    # section C, 2026-10-02) -- see that bundle's MANIFEST.json/README row.
+    _SHARED = os.path.expanduser(os.path.join(
+        '~', 'shared_dataset', 'scec_cvws.tpv2223', 'raw'))
+    ap.add_argument('--archive', default=_SHARED,
+                    help='READ-ONLY cross-code archive (barall* submissions)')
+    ap.add_argument('--kaneko', default=_SHARED,
         help='kaneko/payne reference dir (per-case subdir)')
     ap.add_argument('--out', default=os.path.join(
         ROOT, 'docs', 'figures', 'tpv22_23', 'tpv22_tpv23_cplot_overlay.png'))

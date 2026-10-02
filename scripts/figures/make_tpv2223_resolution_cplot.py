@@ -36,9 +36,15 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--case', required=True, choices=('tpv22', 'tpv23'))
     ap.add_argument('--run-dir', required=True)
-    ap.add_argument('--archive', default=os.path.join(ROOT, 'scec_archive'))
-    ap.add_argument('--kaneko', default=os.path.join(
-        ROOT, 'scratch', 'specs', 'tpv2223', 'scec_cross_code'))
+    # Both barall* (formerly scec_archive/, EQdyna's own submissions only
+    # per its README) and kaneko/payne now live in one place, read-only:
+    # ~/shared_dataset/scec_cvws.tpv2223/raw/<case>/<label>/ (item 17
+    # section C, 2026-10-02) -- the two flags are kept distinct for anyone
+    # overriding one in isolation, but default to the same root.
+    _SHARED = os.path.expanduser(os.path.join(
+        '~', 'shared_dataset', 'scec_cvws.tpv2223', 'raw'))
+    ap.add_argument('--archive', default=_SHARED)
+    ap.add_argument('--kaneko', default=_SHARED)
     ap.add_argument('--out', required=True)
     ap.add_argument('--label', default=None,
                     help='extra string for the figure title (e.g. "400 m isotropic")')
