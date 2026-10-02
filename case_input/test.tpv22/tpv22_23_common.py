@@ -38,14 +38,18 @@ OUTSIDE its own true 30 km extent as UNBREAKABLE (sw_fs = 1000, the same
 test.tpv8 for domain-edge nodes) -- those extension nodes are mesh-only
 scaffolding, never load-bearing physics, identical in spirit to the existing
 border treatment, just extended over a wider inert region instead of a single
-row. Each fault's TRUE borders (its own real left/right edge, plus the top
-[z=0, now zero-slip per this spec's OWN changed convention below] and bottom
-[z=-20000] edges) get the same unbreakable treatment, matching PDF Part 3,
-p.5: "Slip goes to zero at the border of a fault ... a node which lies
-precisely on the border of a fault should not be permitted to slip. This is a
-CHANGE from earlier benchmarks" -- earlier TPVs (8, 29) exempt the free
-surface from this; TPV22/23's own text does not, so the top edge (z=0, the
-fault trace at the surface) is included here as a true border, not left free.
+row. Each fault's TRUE borders (its own real left/right edge, and bottom
+[z=-20000]) get the same unbreakable treatment, matching PDF Part 3, p.5:
+"Slip goes to zero at the border of a fault ... a node which lies precisely
+on the border of a fault should not be permitted to slip. This is a CHANGE
+from earlier benchmarks". REVISED 2026-10-01 (mira/row17-tpv2223-rebased
+iteration log): the TOP edge (z=0, the surface trace) is deliberately NOT
+included, reversing this module's original reading. Both independent
+references (kaneko/SPECFEM3D, payne/EQdyna) show large early slip at the
+station literally named "0 km down-dip" (onset ~5.35s, peak 2.5-2.8 m, both
+tpv22 and tpv23) -- incompatible with that node being unbreakable. See
+build_on_fault_vars' inline comment for the full evidence and the remaining
+ambiguity in the spec text.
 
 Material (PDF p.5): rho=2670 kg/m^3, Vs=3464 m/s, Vp=6000 m/s (same as TPV5).
 Stress (PDF p.5): sigma_ini = 60.00 MPa (normal, compressive, constant with
@@ -120,26 +124,54 @@ def build_on_fault_vars(fx, fz, nfx, nfz, true_xrange, is_nucleation_fault):
         active = (xcoor >= xlo - 0.5) and (xcoor <= xhi + 0.5)
         for iz, zcoor in enumerate(fz):
             depth = -zcoor  # zcoor <= 0; depth positive-down
-            if not active:
-                # Mesh-sharing scaffolding outside this fault's true extent:
-                # unbreakable, no physical stress state needed.
-                v[iz, ix, 1] = UNBREAKABLE_FS
-                continue
-            v[iz, ix, 1] = MU_S
+            # ITERATION (mira/row17-tpv2223-rebased, 2026-10-01): scaffold
+            # (mesh-sharing, outside this fault's true x-extent) nodes used to
+            # fall through here with sigma_n=tau_ini=cohesion=0 (the
+            # np.zeros() default) and ONLY the friction coefficient forced to
+            # UNBREAKABLE_FS. That does not actually make them unbreakable:
+            # shear strength = C0 + mu*max(0,sigma_n) = 0 + 1000*max(0,0) = 0
+            # regardless of mu, so these nodes had ZERO frictional strength
+            # and would slip freely under the slightest incident shear stress
+            # -- found by inspection (not yet isolated by a measurement
+            # against reference data; flagged as a found-but-unconfirmed
+            # defect, see report). test.tpv29's own border treatment
+            # (user_defined_params.py, sw_fs=10000 at ix==0/nfx-1/iz==0) does
+            # NOT skip the physical stress assignment for border nodes --
+            # every node gets the real in-situ stress state, and ONLY the
+            # friction coefficient is forced absurdly high. Matched here: the
+            # scaffold region now carries the SAME physical stress as an
+            # active node at that (x,z); only friction is forced unbreakable.
+            v[iz, ix, 1] = MU_S if active else UNBREAKABLE_FS
             v[iz, ix, 2] = MU_D
             v[iz, ix, 3] = D0
             v[iz, ix, 4] = cohesion(depth)
             v[iz, ix, 5] = TW_T0
             v[iz, ix, 7] = -SIGMA_INI               # init normal stress, negative=compressive
             v[iz, ix, 8] = tau_ini(depth)            # init strike (right-lateral) shear
-            # True borders: left/right edge of THIS fault's own extent, plus
-            # top (z=0, the surface -- a true border per this spec's own
-            # changed convention, PDF p.5) and bottom (z=fzmin).
+            # True borders: left/right edge of THIS fault's own extent, and
+            # bottom (z=fzmin). ITERATION (mira/row17-tpv2223-rebased,
+            # 2026-10-01): top edge (z=0, the surface trace) REMOVED from the
+            # border set -- both independent references (kaneko/SPECFEM3D,
+            # payne/EQdyna) show large early slip (onset ~5.35s, peak
+            # 2.5-2.8 m) at the station literally named "0 km down-dip" for
+            # BOTH tpv22 and tpv23, which an unbreakable z=0 node cannot
+            # produce (measured: our run showed exactly 0 slip there at
+            # term=15s with top-edge included). Barall's own DayFD header
+            # reports its "0 km down-dip" station's ACTUAL node at z=-800 m,
+            # not 0 -- i.e. independent codes do not sample the literal
+            # geometric border either; whether the spec's "a node which lies
+            # precisely on the border... should not slip" is meant to apply to
+            # the free surface trace at all is genuinely ambiguous from the
+            # text alone, and the measured reference behavior is the
+            # tie-breaker used here. Reverts the docstring's prior reading
+            # (originally cited PDF p.5's "CHANGE from earlier benchmarks" as
+            # covering top+bottom; evidence says bottom only matches, top does
+            # not). Bottom and left/right are UNCHANGED (no reference evidence
+            # against them).
             on_left_edge = abs(xcoor - xlo) < 0.5
             on_right_edge = abs(xcoor - xhi) < 0.5
-            on_top_edge = abs(zcoor - 0.0) < 0.5
             on_bottom_edge = abs(zcoor - FZMIN) < 0.5
-            if on_left_edge or on_right_edge or on_top_edge or on_bottom_edge:
+            if on_left_edge or on_right_edge or on_bottom_edge:
                 v[iz, ix, 1] = UNBREAKABLE_FS
     return v
 
@@ -186,7 +218,13 @@ def build_params(tpv, fault2_z):
     par.nmat = 1
     par.vp, par.vs, par.rou = 6000.0, 3464.0, 2670.0
 
-    par.term = 5.0   # GATE_TERM_S (testsys: "there is ONE term, everywhere")
+    par.term = 15.0  # ITERATION (mira/row17-tpv2223-rebased, 2026-10-01): spec's
+    # own full duration (TPV22_23_Description_v08.pdf p.7, "Run the model for
+    # times from 0.0 to 15.0 seconds"); GATE_TERM_S (5.0) is too short even for
+    # fault #1's own far stations (fault1st000dp000 onset ~5.37s in both
+    # independent references) -- never mind fault #2 (~9-12s). NOT the
+    # testsys gate value; this file is pre-gate physics investigation only
+    # (see dispatch brief), term is restored before this becomes a gate case.
     # CFL: dt must be set from the SMALLEST element dimension, not dx --
     # test.tpv36/37 (also dx != dy != dz) use dz for exactly this reason when
     # dz is the small one. Here dy (400 m TPV22 / 500 m TPV23) is smaller
