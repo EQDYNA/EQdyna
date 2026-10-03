@@ -282,7 +282,8 @@ subroutine allocInitAfterMeshGen
     use globalvar 
     use errorCodes
     implicit none 
-    integer (kind = 4) :: iSt, iDof, dispOrVel, rowCount, nodeId
+    integer (kind = 4) :: iSt, iDof, dispOrVel, rowCount
+    integer (kind = 8) :: nodeId
     ! Allocate at least one station slot, but NEVER raise the count itself.
     ! This used to set numOfOnFaultStCount=1 on a rank that matched no
     ! on-fault station, so output_onfault_st (library_output.f90) wrote a
@@ -333,7 +334,8 @@ subroutine init_vel
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: i, ift, tmp
+    integer (kind = 4) :: i, ift
+    integer (kind = 8) :: tmp
 
     do ift = 1, ntotft
         do i = 1,nftnd(ift)
@@ -490,7 +492,8 @@ subroutine checkOffFaultStationCoverage
     implicit none
     include 'mpif.h'
     real (kind = dp), parameter :: UNMATCHED_SENTINEL = -1.0d30
-    integer (kind = 4) :: iMPIerr, iSt3, kSt3, nodeIdSt3
+    integer (kind = 4) :: iMPIerr, iSt3, kSt3
+    integer (kind = 8) :: nodeIdSt3
     logical, allocatable :: matchedHere(:), matchedAnyRank(:)
     real (kind = dp), allocatable :: actualCoorHere(:,:), actualCoorGlobal(:,:)
 
@@ -500,7 +503,7 @@ subroutine checkOffFaultStationCoverage
     matchedHere = (n4yn /= 0)
     actualCoorHere = UNMATCHED_SENTINEL
     do kSt3 = 1, numOfOffFaultStCount
-        iSt3 = OffFaultStNodeIdIndex(1,kSt3)
+        iSt3 = int(OffFaultStNodeIdIndex(1,kSt3), 4)   ! row 1 is the STATION index; row 2 the 64-bit node id (item 143)
         nodeIdSt3 = OffFaultStNodeIdIndex(2,kSt3)
         actualCoorHere(1:3,iSt3) = meshCoor(1:3,nodeIdSt3)
     enddo
@@ -554,7 +557,7 @@ subroutine checkMeshMaterial
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: i
+    integer (kind = 8) :: i
     do i = 1, totalNumOfElements
         if (mat(i,1) == 0.0d3 .or. mat(i,2) == 0.0d3 .or. mat(i,3) == 0.0d3) then
             write(*,*) 'Element ', i, ' has no material property.'

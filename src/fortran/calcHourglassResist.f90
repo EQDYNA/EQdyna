@@ -6,7 +6,8 @@ subroutine calcHourglassResist
     implicit none
     include 'mpif.h'
 
-    integer (kind = 4) :: nel, i , j, k, itmp, itag, fi(4,8)
+    integer (kind = 8) :: nel, itag, k   ! k: equation number (item 143)
+    integer (kind = 4) :: i , j, itmp, fi(4,8)
     real (kind = dp) :: phid(ned), dl(ned,nen), vl(ned,nen), fhr(ned,nen), f(24), det, coef, q(3,4)
     
     ! LOCAL stage timer. The shared global startTimeStamp was written by

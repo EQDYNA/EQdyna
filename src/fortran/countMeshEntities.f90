@@ -5,9 +5,11 @@ subroutine countMeshEntities
     implicit none
     include 'mpif.h'
 
-    integer(kind = 4) :: nodeCount=0, elementCount=0, equationNumCount=0, &
-            nxt, nyt, nzt, nx, ny, nz, ix, iy, iz, &
-        edgex1,edgey1, iDof,edgezn, eqNumIndexArrSizeCount=0,numOfDof, nxuni,nyuni,nzuni,ift,mex,mey,mez,isOnFt
+    ! Item 143: the four running tallies are 64-bit (they become
+    ! totalNumOfNodes/Elements/Equations and sizeOfEqNumIndexArr).
+    integer(kind = 8) :: nodeCount=0, elementCount=0, equationNumCount=0, eqNumIndexArrSizeCount=0
+    integer(kind = 4) :: nxt, nyt, nzt, nx, ny, nz, ix, iy, iz, &
+        edgex1,edgey1, iDof,edgezn, numOfDof, nxuni,nyuni,nzuni,ift,mex,mey,mez,isOnFt
     real (kind = dp) :: xcoor, ycoor, zcoor, xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2), nodeCoor(10)
     ! Row 94: getLocalOneDimCoorArrAndSize now also returns the FULL global
     ! 1D grid it builds internally (see meshgen.f90); countMeshEntities has

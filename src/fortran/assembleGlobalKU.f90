@@ -5,7 +5,8 @@ subroutine assembleGlobalKU
     implicit none
     include 'mpif.h'
     
-    integer (kind = 4) :: nel, i, j, eqNumTmp
+    integer (kind = 8) :: nel, eqNumTmp
+    integer (kind = 4) :: i, j
     real (kind = dp) :: pstrinc, efPML(96), elresf(nee), al(ned,nen)
         
     ! LOCAL stage timer. The shared global startTimeStamp was written by
@@ -113,7 +114,8 @@ subroutine calcPMLElemKU(vl,f,s,ex,mat1,globalShapeFunc,det,nel)
     integer(kind=4),dimension(4,8)::fi
     real(kind = dp)::xmax2,xmin2,ymax2,ymin2,zmin2,&
                     maxdx,maxdy,maxdz,mat1(5)
-    integer(kind=4)::i,j,k,j1,j2,j3,nel
+    integer(kind=4)::i,j,k,j1,j2,j3
+    integer(kind=8)::nel
     real (kind = dp),dimension(nrowb,nee) :: bb    !correspond to b
     real (kind = dp),dimension(nstr) :: strainrate,stressrate    
     real(kind = dp)::c(6,6)

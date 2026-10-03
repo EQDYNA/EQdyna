@@ -383,7 +383,9 @@ subroutine output_timeanalysis
     integer (kind = 4) :: i, j     
     
     open(unit=14,file='compTime'//mm,status='unknown')    !rupture time
-        write(14,'(1x,10e18.7e4,2i10)') (compTimeInSeconds(i),i=1,9),MPICommTimeInSeconds,totalNumOfElements,totalNumOfEquations
+        ! Item 143: i12 (was i10) -- the two 64-bit counts; i10 prints
+        ! asterisks past 9,999,999,999, which 10^10 elements reaches.
+        write(14,'(1x,10e18.7e4,2i12)') (compTimeInSeconds(i),i=1,9),MPICommTimeInSeconds,totalNumOfElements,totalNumOfEquations
     close(14)
 end subroutine output_timeanalysis
 
@@ -391,7 +393,8 @@ end subroutine output_timeanalysis
 subroutine output_plastic_strain
     use globalvar
     implicit none
-    integer (kind = 4) :: i, j
+    integer (kind = 8) :: i
+    integer (kind = 4) :: j
     integer (kind = 4), parameter :: UNIT_PSTR_BASE = 10007
     real (kind = dp) :: sc(3)
     if (output_plastic == 1) then
@@ -423,7 +426,8 @@ end subroutine output_plastic_strain
 subroutine find_surfaceNodeIdArr
     use globalvar
     implicit none
-    integer (kind = 4) :: i, j
+    integer (kind = 8) :: i
+    integer (kind = 4) :: j
     integer (kind = 4), parameter :: UNIT_SURFCOOR_BASE = 10008
     real (kind = dp), parameter :: STATION_SEARCH_HALFWIDTH_M = 20.0d3 ! along-strike/along-strike-normal search box half-width around the fault trace, m
     real (kind = dp) :: sc(3)
@@ -452,7 +456,8 @@ end subroutine find_surfaceNodeIdArr
 subroutine output_gm
     use globalvar
     implicit none
-    integer (kind = 4) :: i, j, nodeId
+    integer (kind = 4) :: i, j
+    integer (kind = 8) :: nodeId
     integer (kind = 4), parameter :: UNIT_GM_BASE = 10009
 
     if (outputGroundMotion == 1 .and. surface_nnode > 0) then
@@ -468,7 +473,8 @@ end subroutine output_gm
 subroutine output_finalSurfDisp
     use globalvar
     implicit none
-    integer (kind = 4) :: i, j, nodeId
+    integer (kind = 4) :: i, j
+    integer (kind = 8) :: nodeId
     integer (kind = 4), parameter :: UNIT_FINALSURFDISP_BASE = 20009
 
     if (outputFinalSurfDisp == 1 .and. surface_nnode > 0) then
@@ -494,7 +500,8 @@ subroutine output_src_evol
     use globalvar
     implicit none
 
-    integer (kind = 4) :: i, j, nodeId, ift
+    integer (kind = 4) :: i, j, ift
+    integer (kind = 8) :: nodeId
     integer (kind = 4), parameter :: UNIT_SRC_EVOL_BASE = 30009
     character (len = 8) :: tag, faultTag
 
