@@ -328,6 +328,55 @@ def _close(name, loc, ser, shared):
     return worst
 
 
+class _Captured(Exception):
+    """Carries a rank's local owned-equations value out of a REAL call to
+    MQ._check_censuses, in place of a real comm.allreduce SUM across ranks
+    this single-process test cannot perform. See _run_check_censuses."""
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+
+
+class _FakeComm(object):
+    """Lets ONE rank's call to the real MQ._check_censuses run to completion
+    without a real MPI communicator. The function calls comm.allreduce
+    exactly twice: first a (count, key-sum) pair for the fault-node census
+    (checked against mesh['fault_census'], already known and identical on
+    every rank -- fed back so that check passes and the function proceeds),
+    then a single scalar for the owned-equations census. That second value is
+    THE thing this test wants: the per-rank local contribution computed by
+    the exact formula under audit (nsmp[owned_rows,1]-1, item 145 follow-up
+    fix (a)). Raising _Captured on the third call intercepts it before the
+    function's own (necessarily wrong, single-rank) comparison against the
+    GLOBAL equation_census would otherwise raise a different RuntimeError."""
+    def __init__(self, fault_census):
+        self.fault_census = tuple(fault_census)
+        self.n = 0
+
+    def allreduce(self, x):
+        self.n += 1
+        if self.n <= 2:
+            return self.fault_census[self.n - 1]
+        raise _Captured(x)
+
+
+def _run_check_censuses(part, S, mesh, owned_rows, live):
+    """Runs the REAL MQ._check_censuses for one rank and returns its local
+    owned-equations contribution (see _FakeComm). Summing this across every
+    rank and comparing to mesh['equation_census'] is exactly what a real
+    comm.allreduce(SUM) + the function's own check would do -- this test
+    just performs the SUM in Python instead of over real MPI ranks, the same
+    technique _simulate_arn/_simulate_relay already use elsewhere in this
+    file for faces/mass/fnms."""
+    try:
+        MQ._check_censuses(_FakeComm(mesh['fault_census']), part, S, mesh, owned_rows, live)
+    except _Captured as exc:
+        return exc.value
+    raise AssertionError('_check_censuses returned without reaching the '
+                         'owned-equations allreduce -- _FakeComm protocol out of sync '
+                         'with MPI4NodalQuant._check_censuses')
+
+
 def check_case(label, case, overrides, rank_counts, must_reach, tmp):
     case_dir = os.path.join(tmp, label)
     _make_case(case, case_dir, overrides)
@@ -411,6 +460,7 @@ def check_case(label, case, overrides, rank_counts, must_reach, tmp):
         fnms = [m['fnms1'].copy() for m in ms]
         _simulate_relay(parts, planes, 'eqs', mass, 'mass')
         _simulate_relay(parts, planes, 'nodes', fnms, 'fnms')
+        local_eqs = []
         for r in range(nranks):
             g, frow = maps[r]
             S, m = built[r]
@@ -443,6 +493,42 @@ def check_case(label, case, overrides, rank_counts, must_reach, tmp):
             owned.append(frow[own])
             if tuple(m['fault_census']) != tuple(meshgen.fault_census(xg, yg, zg, params)):
                 raise AssertionError('rank %d fault census differs' % r)
+            # Exercise the REAL MQ._check_censuses (item 145 follow-up fix (a):
+            # the master-id lookup via nsmp[owned_rows,1]-1, not the old
+            # n_reg+owned_rows row-position arithmetic). owned_rows here is
+            # local nsmp ROW indices, exactly setup_exchange's own
+            # `np.nonzero(owned_mask(...))[0]`, built from the same `own`
+            # mask computed just above for the frt-shape check.
+            owned_rows_r = (np.nonzero(own)[0] if frow.size
+                           else np.zeros(0, dtype=np.int64))
+            local_eqs.append(_run_check_censuses(parts[r], S, m, owned_rows_r, live))
+        total_eqs = sum(local_eqs)
+        # MEASURED LIMIT, not a guess (victor-reyes PR #79 audit flagged that
+        # nothing called _check_censuses at all; this call closes that, but
+        # only partially): this is a SUM, and a sum over a permutation of
+        # EQUAL-valued elements is invariant to the permutation. Checked
+        # directly on tpv23-2fault at 2 ranks: every fault master node has
+        # per_node==3 (uniform 3-DOF split node, the normal case), and
+        # 250 of 672 owned rows have scan_pos != row_position (a REAL
+        # permutation, the exact thing fix (a) addresses) -- yet reverting
+        # fix (a) still leaves this sum, and the whole suite, SUCCESS. This
+        # call therefore protects against a gross/API-level regression in
+        # _check_censuses (wrong column, off-by-one, index error) but is NOT
+        # sensitive to a reintroduction of the old n_reg+owned_rows formula
+        # specifically, for any case in this file's CASES tuple today, all of
+        # which happen to have uniform per-fault-node DOF. The strong,
+        # per-row oracle for THAT bug class is the nsmp/ndof elementwise
+        # comparisons above (_eq('nsmp', ...), _eq('ndof', ...)), proven
+        # sensitive by the build_faces-formula revert (42 of 1302 rows
+        # differ) -- because build_faces's own master ids feed directly into
+        # those bitwise comparisons, while _check_censuses collapses its
+        # per-row read into a scalar before this test can observe it.
+        if total_eqs != ms[0]['equation_census']:
+            raise AssertionError(
+                '%s at %d ranks: sum of per-rank _check_censuses owned-equations '
+                '(%d) != global equation_census (%d) -- the master-id lookup '
+                '(item 145 follow-up fix (a)) is wrong somewhere in this '
+                'decomposition' % (label, nranks, total_eqs, ms[0]['equation_census']))
         allown = np.sort(np.concatenate(owned)) if owned else np.zeros(0)
         _eq('owned fault rows partition the serial fault', allown, np.arange(S_s['nftnd']))
         files = sum(1 for o in owned if o.size)
