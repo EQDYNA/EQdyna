@@ -226,6 +226,10 @@ SHARDS = {
                                  # scripts/defaultParameters.py plus a string
                                  # compare, well under 1 s.
         "test_user_docs_style.py",  # added 2026-09-24 (wei-lin, user-facing docs rule): pure text checks, <1 s
+        "test_user_docs_coverage.py",  # added 2026-10-03 (owner: "keep docs
+                                 # synced", pathway_forward.md section A
+                                 # header note): two file reads + a list
+                                 # membership check, well under 1 s.
         "test_sweep_core_budget.py",
         "test_sweep_tenancy_budget_2026_09_23.py",
         "test_slot47_peak_sliprate.py",  # added 2026-10-02 (item 17b, PR #76):
