@@ -377,3 +377,32 @@ Every entry below is an attribute of the `parameters` class in `scripts/defaultP
 * **`n_off_fault`** -- default `len(st_coor_off_fault)`
 
 <!-- END PARAMETER REFERENCE -->
+
+## Multiple faults
+
+`ntotft` and `nucfault` above are the generated reference's entries for how
+many faults a case has and which one nucleates; this section adds what the
+generator cannot pull from a one-line default comment.
+
+`ntotft > 1` requires `par.faultgeom`: a list of `ntotft`
+`(fxmin, fxmax, fymin, fymax, fzmin, fzmax)` tuples, one distinct box per
+fault (the eqquasi-style override; see `scripts/lib.py:resolveFaultGeom`).
+With no per-fault geometry every fault would otherwise get the same box --
+two indistinguishable planes at the same location rather than two distinct
+faults -- so `case.setup` refuses that combination instead of silently
+building a case that only looks like it has two faults. At `ntotft == 1`
+`faultgeom` is a no-op: the single `fxmin/fxmax/fymin/fymax/fzmin/fzmax` box
+is used, exactly the pre-multi-fault behaviour.
+
+The faults' along-strike extents should be commensurate with each other and
+with the mesh spacing `par.dx` -- a stepover distance that is not an integer
+multiple of `par.dx` on both faults produces a mesh seam that silently cuts
+a fault node in two.
+
+Every per-fault output file (rupture time, on-fault stations, the NetCDF
+restart) is tagged `ft<N>_` for fault `N >= 2` and untagged for fault 1 --
+see [Outputs](outputs.md#multiple-faults) for the exact filenames, and
+`test.tpv22`/`test.tpv23` (two vertical planar faults, an extensional and a
+compressional stepover respectively) on the [Benchmarks](benchmarks.md) page
+for a complete worked example of `faultgeom`, the stepover distance, and
+`nucfault`.

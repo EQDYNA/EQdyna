@@ -195,9 +195,17 @@ reason each step exists:
   rough-fault y-blend is deliberately kept OUT of `nodeCoor` (it goes to
   `ycoort` → `meshCoor`). Blending in place — the obvious simplification —
   breaks every rough-fault node. See pathway item 11.
-- **`ntotft > 1` is refused in `case.setup`.** Multi-fault input is
-  unimplemented: `bStations.txt` line 2 must carry ntotft station counts and
-  the writer emits one. Items 7/9/10 sit behind that. See item 17.
+- **`ntotft > 1` is implemented (Row 17, item 17), not refused.** `case.setup`
+  requires `par.faultgeom` (a distinct box per fault; see
+  `scripts/lib.py:resolveFaultGeom`) and refuses only the case that would
+  silently give every fault the SAME box. Every per-fault output is tagged
+  `ft<N>_` for fault `N >= 2` (`scripts/lib.py:faultTag`,
+  `src/fortran/library_output.f90`); `frt.txt<rank>` is the one exception,
+  never split per fault. `test.tpv22`/`test.tpv23` (two vertical planar
+  faults, SCEC TPV22/23) are the registered multi-fault cases, gated fortran
+  + python-jax + python-jax-mpi (item 145). See `docs/user/parameters.md`'s
+  "Multiple faults" section and `docs/user/outputs.md`'s for the user-facing
+  version of this.
 - **jax-GPU is nondeterministic run to run** — XLA lowers the duplicate-index
   scatter-add to atomics (measured 8.9e-08 between identical runs). jax-CPU is
   exactly reproducible. No gate may assume bit-identity on GPU.

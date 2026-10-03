@@ -48,6 +48,27 @@ A NetCDF file of the whole fault plane's slip, slip rate, and traction,
 sampled every `nt_out` time steps, for visualization and for resuming a
 later stage of a multicycle run.
 
+## Multiple faults
+
+A case with `par.ntotft > 1` (see [Parameters](parameters.md#multiple-faults);
+`test.tpv22`/`test.tpv23` are the worked examples) tags every PER-FAULT output
+filename with `ft<N>_` for fault `N >= 2`, and leaves fault 1's names
+untouched -- a single-fault case's files are byte-for-byte unaffected:
+
+* `faultst<tag><strike>dp<depth>.txt` -- on-fault stations, `tag` empty for
+  fault 1, `ft2_` for fault 2 (e.g. `faultstft2_000dp100.txt`).
+* `src_evol<tag><rank>` -- source-time-function restart data, same `tag`
+  convention, per rank.
+* `fault.dyna.r<suffix>.nc` -- the NetCDF field file (see above), `suffix`
+  empty for fault 1 or `_ft2` for fault 2.
+* `SCECRuptureTime<suffix>.txt` and `cRuptureDynamics<suffix>.png`, written by
+  `plotRuptureDynamics` -- same `suffix` convention.
+
+`frt.txt<rank>` is the one exception: it is NOT split per fault. One file per
+MPI rank still covers every fault that rank owns nodes on, same as the
+single-fault case (`library_output.f90`'s `output_frt`); the per-rank/per-node
+row data already carries each row's own fault id.
+
 ## Other outputs
 
 * `compTime<rank>` -- a per-rank wall-clock breakdown by simulation phase.

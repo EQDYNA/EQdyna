@@ -76,6 +76,24 @@ live benchmark:
 | test.meng2023cb | 400 | 4 | 50.7 | 346.3 | 113.9 |
 | test.tpv29 | 500 | 4 | 148.3 | 1108.5 | 229.4 |
 
+## Multi-fault python-jax-mpi
+
+Measured 2026-10-03 (`docs/perf_ledger.jsonl`), 4 ranks, real MPI (one
+process per rank), `test.tpv22`/`test.tpv23` (two-fault, their own 15 s
+term):
+
+| case | ranks | wall (s) |
+|---|---|---|
+| test.tpv22 | 4 | 585-589 (contended box, busy_ceiling 0.5) |
+| test.tpv23 | 4 | 276-280 (contended box, busy_ceiling 0.5) |
+
+Both run under the same `MPI4NodalQuant.DECOMP` box decomposition as every
+other python-jax-mpi case; multi-fault adds a per-row divide mask and a
+per-fault master-id lookup (`src/python/eqdyna/MPI4NodalQuant.py`) rather
+than a different parallelization scheme, so no separate scaling curve is
+expected or measured here -- see [Core scaling](#core-scaling) above for the
+single-fault curve this case set shares.
+
 ## Hardware assumptions
 
 The figures above were measured on a 64-core (2 sockets x 32 cores, 8 NUMA
