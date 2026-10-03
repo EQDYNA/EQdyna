@@ -1,12 +1,7 @@
 {
   "sha": "a51602c6a9bf405e1f37fa36c78abad0c2661f22",
-  "tree_clean": false,
-  "dirty_at_start": [
-    " M docs/perf_ledger.jsonl",
-    " M docs/run_profiles.jsonl",
-    "?? docs/evidence/sweep-3bacc94/",
-    "?? docs/perf_snapshots/e2e_cells_2026-10-02_172448_2101176.json"
-  ],
+  "tree_clean": true,
+  "dirty_at_start": [],
   "term": 5.0,
   "n_runnable": 27,
   "n_success": 27,
@@ -17,7 +12,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": null,
-      "wall_s": 144.94159698486328
+      "wall_s": 104.36987352371216
     },
     {
       "case": "test.drv.a6",
@@ -25,7 +20,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": null,
-      "wall_s": 478.310670375824
+      "wall_s": 328.4219448566437
     },
     {
       "case": "test.tpv8",
@@ -33,7 +28,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 28.525222301483154
+      "wall_s": 15.6398606300354
     },
     {
       "case": "test.tpv8",
@@ -41,7 +36,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 2.288819e-10,
-      "wall_s": 70.8424801826477
+      "wall_s": 56.28424334526062
     },
     {
       "case": "test.tpv8",
@@ -49,7 +44,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 1.525879e-10,
-      "wall_s": 28.132972478866577
+      "wall_s": 16.995240688323975
     },
     {
       "case": "test.tpv10",
@@ -57,7 +52,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 73.61822152137756
+      "wall_s": 42.25445747375488
     },
     {
       "case": "test.tpv10",
@@ -65,7 +60,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 1.13068e-08,
-      "wall_s": 216.62931418418884
+      "wall_s": 215.9341757297516
     },
     {
       "case": "test.tpv104",
@@ -73,7 +68,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 72.42253565788269
+      "wall_s": 36.982738971710205
     },
     {
       "case": "test.tpv104",
@@ -81,7 +76,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 4.9819e-07,
-      "wall_s": 184.83143997192383
+      "wall_s": 100.54794120788574
     },
     {
       "case": "test.tpv1053d",
@@ -89,7 +84,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 78.60201263427734
+      "wall_s": 46.166085958480835
     },
     {
       "case": "test.tpv1053d",
@@ -97,7 +92,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 1.360451e-06,
-      "wall_s": 224.97233700752258
+      "wall_s": 223.91003894805908
     },
     {
       "case": "test.meng2023a",
@@ -105,7 +100,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 102.54076170921326
+      "wall_s": 51.12213611602783
     },
     {
       "case": "test.meng2023a",
@@ -113,7 +108,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 2.735853e-09,
-      "wall_s": 224.49729180335999
+      "wall_s": 235.80092453956604
     },
     {
       "case": "test.meng2023cb",
@@ -121,7 +116,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 88.28399777412415
+      "wall_s": 52.8916380405426
     },
     {
       "case": "test.meng2023cb",
@@ -129,7 +124,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 4.631281e-09,
-      "wall_s": 225.78268814086914
+      "wall_s": 191.4112617969513
     },
     {
       "case": "test.tpv29",
@@ -137,7 +132,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 74.28662323951721
+      "wall_s": 44.282360553741455
     },
     {
       "case": "test.tpv29",
@@ -145,7 +140,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 1.792826e-14,
-      "wall_s": 225.8820436000824
+      "wall_s": 256.47523188591003
     },
     {
       "case": "test.tpv36",
@@ -153,7 +148,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 248.75954747200012
+      "wall_s": 180.88967871665955
     },
     {
       "case": "test.tpv36",
@@ -161,7 +156,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 3.999404e-09,
-      "wall_s": 408.8499686717987
+      "wall_s": 327.0020041465759
     },
     {
       "case": "test.tpv37",
@@ -169,7 +164,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 298.7836489677429
+      "wall_s": 164.1100718975067
     },
     {
       "case": "test.tpv37",
@@ -177,7 +172,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 4.066276e-09,
-      "wall_s": 418.9912543296814
+      "wall_s": 344.6512486934662
     },
     {
       "case": "test.tpv30",
@@ -185,7 +180,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 79.794930934906
+      "wall_s": 43.99447178840637
     },
     {
       "case": "test.tpv30",
@@ -193,7 +188,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 2.424165e-14,
-      "wall_s": 234.77450323104858
+      "wall_s": 255.8160126209259
     },
     {
       "case": "test.tpv22",
@@ -201,7 +196,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 1280.5827267169952
+      "wall_s": 1056.9181559085846
     },
     {
       "case": "test.tpv22",
@@ -209,7 +204,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 7.494722e-15,
-      "wall_s": 1642.2930753231049
+      "wall_s": 1729.3983762264252
     },
     {
       "case": "test.tpv23",
@@ -217,7 +212,7 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 0.0,
-      "wall_s": 716.2424495220184
+      "wall_s": 486.60569643974304
     },
     {
       "case": "test.tpv23",
@@ -225,11 +220,11 @@
       "verdict": "SUCCESS",
       "timed_out": false,
       "max_diff": 7.54952e-15,
-      "wall_s": 1114.8875846862793
+      "wall_s": 938.0737679004669
     }
   ],
-  "started_utc": "2026-10-03T01:52:32.759745+00:00",
-  "finished_utc": "2026-10-03T02:19:57.166134+00:00",
+  "started_utc": "2026-10-03T02:45:24.915225+00:00",
+  "finished_utc": "2026-10-03T03:15:55.416365+00:00",
   "content_key": "e97aa8bf38dad98c2197aab5a4f84c6ad28d4f16f0aa403b18fb007c1dacb1b2",
   "release_physics_key": "39028cc75ea399dea747ef5b555accf44dce8387c0587fa99c51a0a8ef8be5b4"
 }
