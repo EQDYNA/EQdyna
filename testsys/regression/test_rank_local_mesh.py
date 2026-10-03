@@ -63,6 +63,42 @@ from eqdyna import MPI4NodalQuant as MQ   # noqa: E402
 from eqdyna import eqdyna3d, meshgen      # noqa: E402
 from eqdyna import readInputFiles         # noqa: E402
 
+# test.tpv23 (ntotft=2, item 145/PR #78 follow-up) at its native 250 m dx
+# costs ~4 min just to build its serial mesh (measured: 236 s at test.tpv22's
+# 200 m, same O(N) shape) -- far too slow for this file's "run constantly"
+# tier. Coarsened to dx=1000 m (same value test.tpv36 already coarsens to,
+# below): commensurate with BOTH fault boxes' extents (30000/1000=30),
+# fault #2's own 1000 m y-stepover (1000/1000=1) and the domain extents
+# (64000/1000=64, 20000/1000=20, 27000/1000=27) -- every commensurability
+# checkInputConsistency enforces still holds, so this is the same benchmark
+# geometry at a coarser sample, not a different one. `on_fault_vars` (and
+# nfx/nfz/fx/fz) must be rebuilt AT the override dx -- case.setup's netCDF
+# writer shapes it to the actual fault node count, which is dx-derived; a
+# plain `par.dx = 1000.0` override (as test.tpv36's below) left the native-
+# resolution array in place and case.setup raised a netCDF shape mismatch
+# (21,31) vs (81,121) when first tried. The two per-fault builders invoked
+# below are tpv22_23_common's OWN (not reinvented): this rebuilds the same
+# physics field at a coarser sample, the same thing build_params does
+# internally for its native dx, not a second formula.
+_TPV23_COARSE_DX = 1000.0
+_TPV23_COARSE_RAW = '''
+import numpy as np
+import tpv22_23_common as common
+par.dx = %r
+par.dy = %r
+par.dz = %r
+par.dt = 0.5 * par.dx / par.vp
+par.nfx = round((common.FAULT1_XRANGE[1] - common.FAULT1_XRANGE[0]) / par.dx + 1)
+par.nfz = round((common.FZMAX - common.FZMIN) / par.dz + 1)
+par.fx = np.linspace(common.FAULT1_XRANGE[0], common.FAULT1_XRANGE[1], par.nfx)
+par.fz = np.linspace(common.FZMIN, common.FZMAX, par.nfz)
+par.on_fault_vars = common.build_on_fault_vars(par.fx, par.fz, par.nfx, par.nfz)
+nfx2 = round((common.FAULT2_XRANGE[1] - common.FAULT2_XRANGE[0]) / par.dx + 1)
+fx2 = np.linspace(common.FAULT2_XRANGE[0], common.FAULT2_XRANGE[1], nfx2)
+fault2_vars = common.build_on_fault_vars(fx2, par.fz, nfx2, par.nfz)
+par.onFaultVarsPerFault = [par.on_fault_vars, fault2_vars]
+''' % (_TPV23_COARSE_DX, _TPV23_COARSE_DX, _TPV23_COARSE_DX)
+
 # (label, case, par overrides, decompositions by rank count, arn paths it must reach)
 CASES = (
     ('tpv8', 'test.tpv8', {}, (4, 8, 16), ('xsplit', 'zsplit')),
@@ -76,6 +112,21 @@ CASES = (
     ('tpv10-yasym', 'test.tpv10', {'xmin': -20.0e3, 'xmax': 20.0e3, 'zmin': -20.0e3},
      (4,), ('xsplit',)),
     ('tpv36', 'test.tpv36', {'dx': 1000.0}, (4, 8), ('xsplit', 'ydiv')),
+    # test.tpv23 (ntotft=2): the only multi-fault case this file covers
+    # (victor-reyes PR #78 audit, item 145 follow-up). 2 ranks picks
+    # MPI4NodalQuant.DECOMP[2] = (2, 1, 1) -- npy=1, so a rank's box spans
+    # BOTH faults' y (fault #1 at y=0, fault #2 at y=+1000 m) and, wherever
+    # its x-slab meets the two faults' 10 km x-overlap band, owns fault rows
+    # from BOTH faults in SCAN order (interleaved: fault_id goes 0,1,0,1,...
+    # down each shared (x,z) column) -- the exact shape build_faces' Row 17
+    # comment describes, and the configuration MPI4NodalQuant.DECOMP[4] =
+    # (2, 2, 1) (this case's REGISTERED python-jax-mpi rank count) does NOT
+    # reach: measured directly (mira, this follow-up), at 4 ranks the y-split
+    # falls exactly on fault #1's own y=0 plane, so each rank owns only ONE
+    # fault's rows and the interleave never occurs. 4 ranks is included too,
+    # to mesh-check the actually-registered decomposition, but 2 is the one
+    # that is vacuous without the interleave check below.
+    ('tpv23-2fault', 'test.tpv23', {'_raw': _TPV23_COARSE_RAW}, (2, 4), ('xsplit',)),
 )
 # THE ZERO-FAULT-NODE CONTRACT, per decomposition, as MEASURED DATA (first run
 # of this guard, 2026-09-24): (ranks that write a frt file, ranks whose box
@@ -91,6 +142,7 @@ FRT_SHAPE = {
     ('tpv10-ysym', 2): (2, 0), ('tpv10-ysym', 4): (2, 0), ('tpv10-ysym', 8): (4, 0),
     ('tpv10-yasym', 4): (2, 2),
     ('tpv36', 2): (2, 0), ('tpv36', 4): (4, 0), ('tpv36', 8): (6, 2),
+    ('tpv23-2fault', 2): (2, 0), ('tpv23-2fault', 4): (4, 0),
 }
 ELEM_KEYS = ('elemType', 'mat', 'eledet', 'eleshp', 'ss', 'phi', 'init_stress')
 FAULT_KEYS = ('un', 'us', 'ud', 'fric_init')
@@ -106,6 +158,12 @@ def _env():
 
 
 def _make_case(case, case_dir, overrides):
+    """overrides is `par.key = repr(value)` pairs, EXCEPT the reserved key
+    `_raw`, whose value is appended VERBATIM (not repr'd) -- for overrides a
+    scalar repr can't express, e.g. test.tpv22/23's per-fault `on_fault_vars`
+    ndarray, which must be rebuilt at the override dx (case.setup's netCDF
+    writer requires on_fault_vars shaped to the ACTUAL fault node count at
+    whatever par.dx is when it runs, not the case's native resolution)."""
     env = _env()
     r = subprocess.run([sys.executable, os.path.join(ROOT, 'scripts', 'create.newcase'),
                         case_dir, case], env=env, capture_output=True, text=True)
@@ -113,9 +171,11 @@ def _make_case(case, case_dir, overrides):
         raise AssertionError('create.newcase %s failed: %s' % (case, (r.stderr or '')[-800:]))
     p = os.path.join(case_dir, 'user_defined_params.py')
     text = open(p).read().rstrip('\n')
-    extra = ''.join('par.%s = %r\n' % kv for kv in overrides.items())
+    raw = overrides.get('_raw', '')
+    scalars = {k: v for k, v in overrides.items() if k != '_raw'}
+    extra = ''.join('par.%s = %r\n' % kv for kv in scalars.items())
     open(p, 'w').write(text + '\n\n# test_rank_local_mesh.py: serial case inputs\n'
-                       'par.nx = 1\npar.ny = 1\npar.nz = 1\n' + extra)
+                       'par.nx = 1\npar.ny = 1\npar.nz = 1\n' + extra + raw)
     r = subprocess.run([sys.executable, 'case.setup'], cwd=case_dir, env=env,
                        capture_output=True, text=True)
     if r.returncode != 0:
@@ -141,21 +201,58 @@ def _g_of_l(mesh_l, mesh_s):
              + (oy + s % ny) + 1)
     slaves_g = g_reg[mesh_l['nsmp'][:, 0] - 1]
     serial_slaves = mesh_s['nsmp'][:, 0]
-    frow = np.searchsorted(serial_slaves, slaves_g)
+    # mesh_s['nsmp'] is GROUPED BY FAULT (Row 17: stable-sorted by fault id),
+    # not globally sorted by slave node id -- a bare searchsorted on it is
+    # only valid at ntotft==1, where grouping is a no-op and scan-order slave
+    # ids are already ascending. At ntotft>1 two faults' slave ids interleave
+    # in absolute value (build_node_coordinates's docstring), so sort once
+    # explicitly and map back through the permutation -- correct at any
+    # ntotft, including 1 (sorting an already-sorted array is a no-op).
+    order = np.argsort(serial_slaves, kind='stable')
+    sorted_slaves = serial_slaves[order]
+    pos = np.searchsorted(sorted_slaves, slaves_g)
+    pos = np.clip(pos, 0, max(sorted_slaves.size - 1, 0))
+    frow = order[pos] if sorted_slaves.size else pos
     if frow.size and not np.array_equal(serial_slaves[frow], slaves_g):
         raise AssertionError('a local fault node is not a serial fault node')
-    g_master = mesh_s['nsmp'][frow, 1]
+    g_master_by_row = mesh_s['nsmp'][frow, 1]
+    # meshCoor's OWN master-node block is written in LOCAL SCAN order
+    # (build_node_coordinates fills it straight from slave_ids_scan), but
+    # `frow`/`g_master_by_row` above are in mesh_l['nsmp']'s ROW order --
+    # fault-GROUPED (Row 17's stable sort), the same order FAULT_KEYS/`S[k]`
+    # and `mesh_s['nsmp']` itself are read in elsewhere in this file. The two
+    # orders coincide only at ntotft==1 (no grouping reorder happens). Each
+    # row's OWN master id tells us which scan position it is -- a fault row
+    # whose master id is n_reg+1+p was written at meshCoor's scan position p
+    # by construction -- so scatter this row's mapped serial master id there
+    # to build g_master in meshCoor's own order, without assuming the two
+    # orders match.
+    n_reg_l = n_reg
+    scan_pos = mesh_l['nsmp'][:, 1] - n_reg_l - 1
+    nftnd = mesh_l['nsmp'].shape[0]
+    g_master = np.empty(nftnd, dtype=np.int64)
+    if nftnd:
+        g_master[scan_pos] = g_master_by_row
     return np.concatenate(([0], g_reg, g_master)), frow
 
 
 def _serial_elem_rows(S_s, mesh_s, n_glob, mesh_l):
     """Serial element rows whose brick (top corner = max grid index over its
     nodes; masters count as their slave's grid point) lies in the box, in
-    SERIAL order. Works for bricks and both wedge halves."""
+    SERIAL order. Works for bricks and both wedge halves.
+
+    `grid[n_reg:]` must be indexed by RAW master node id (i.e. SCAN position,
+    since master ids are n_reg+1+scan_position by construction), but
+    mesh_s['nsmp']'s rows are fault-GROUPED (Row 17's stable sort) -- the two
+    orders coincide only at ntotft==1. Each row's own master id tells us its
+    scan position (n_reg+1+p), so scatter each row's slave id there rather
+    than assuming row order is scan order (same fix as _g_of_l's g_master)."""
     nxg, nyg, nzg = n_glob
     n_reg = nxg * nyg * nzg
     grid = np.arange(S_s['N'], dtype=np.int64)
-    grid[n_reg:] = mesh_s['nsmp'][:, 0] - 1
+    if mesh_s['nsmp'].shape[0]:
+        scan_pos = mesh_s['nsmp'][:, 1] - n_reg - 1
+        grid[n_reg + scan_pos] = mesh_s['nsmp'][:, 0] - 1
     cg = grid[S_s['conn']]
     gx, gz, gy = cg // (nzg * nyg), (cg % (nzg * nyg)) // nyg, cg % nyg
     top = (gx.max(axis=1), gy.max(axis=1), gz.max(axis=1))
@@ -231,6 +328,55 @@ def _close(name, loc, ser, shared):
     return worst
 
 
+class _Captured(Exception):
+    """Carries a rank's local owned-equations value out of a REAL call to
+    MQ._check_censuses, in place of a real comm.allreduce SUM across ranks
+    this single-process test cannot perform. See _run_check_censuses."""
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+
+
+class _FakeComm(object):
+    """Lets ONE rank's call to the real MQ._check_censuses run to completion
+    without a real MPI communicator. The function calls comm.allreduce
+    exactly twice: first a (count, key-sum) pair for the fault-node census
+    (checked against mesh['fault_census'], already known and identical on
+    every rank -- fed back so that check passes and the function proceeds),
+    then a single scalar for the owned-equations census. That second value is
+    THE thing this test wants: the per-rank local contribution computed by
+    the exact formula under audit (nsmp[owned_rows,1]-1, item 145 follow-up
+    fix (a)). Raising _Captured on the third call intercepts it before the
+    function's own (necessarily wrong, single-rank) comparison against the
+    GLOBAL equation_census would otherwise raise a different RuntimeError."""
+    def __init__(self, fault_census):
+        self.fault_census = tuple(fault_census)
+        self.n = 0
+
+    def allreduce(self, x):
+        self.n += 1
+        if self.n <= 2:
+            return self.fault_census[self.n - 1]
+        raise _Captured(x)
+
+
+def _run_check_censuses(part, S, mesh, owned_rows, live):
+    """Runs the REAL MQ._check_censuses for one rank and returns its local
+    owned-equations contribution (see _FakeComm). Summing this across every
+    rank and comparing to mesh['equation_census'] is exactly what a real
+    comm.allreduce(SUM) + the function's own check would do -- this test
+    just performs the SUM in Python instead of over real MPI ranks, the same
+    technique _simulate_arn/_simulate_relay already use elsewhere in this
+    file for faces/mass/fnms."""
+    try:
+        MQ._check_censuses(_FakeComm(mesh['fault_census']), part, S, mesh, owned_rows, live)
+    except _Captured as exc:
+        return exc.value
+    raise AssertionError('_check_censuses returned without reaching the '
+                         'owned-equations allreduce -- _FakeComm protocol out of sync '
+                         'with MPI4NodalQuant._check_censuses')
+
+
 def check_case(label, case, overrides, rank_counts, must_reach, tmp):
     case_dir = os.path.join(tmp, label)
     _make_case(case, case_dir, overrides)
@@ -247,6 +393,25 @@ def check_case(label, case, overrides, rank_counts, must_reach, tmp):
         raise AssertionError('fault_census count != serial nftnd')
     if meshgen.equation_census(xg, yg, zg, params, pmlb, bounds) != S_s['NEQ']:
         raise AssertionError('equation_census != serial NEQ')
+    if mesh_s['nsmp'].shape[0] and np.unique(mesh_s['nsmp'][:, 2]).size > 1:
+        # Multi-fault vacuousness guard (item 145 follow-up, Fix 2): a case
+        # whose GLOBAL master-node ids already sit at n_reg+1+row_position
+        # for every fault-grouped row would pass build_faces' old buggy
+        # n_reg+owned_rows arithmetic too, and this test would be exercising
+        # nothing new over the ntotft==1 cases above. This checks a DATA
+        # property (is this case's own serial mesh actually interleaved?),
+        # not the fix's formula -- the correctness oracle stays the existing
+        # bit-identical `nsmp` comparison against this same serial mesh,
+        # below, per rank.
+        n_reg_s = S_s['N'] - mesh_s['nsmp'].shape[0]
+        expect_seq = n_reg_s + 1 + np.arange(mesh_s['nsmp'].shape[0])
+        if np.array_equal(mesh_s['nsmp'][:, 1], expect_seq):
+            raise AssertionError(
+                '%s: serial mesh has %d fault ids but every master-node id '
+                'already sits at n_reg+1+row_position -- this case is '
+                'VACUOUS for the Row 17 master-id regression (build_faces\' '
+                'old n_reg+owned_rows arithmetic would also have passed)'
+                % (label, np.unique(mesh_s['nsmp'][:, 2]).size))
     reached = set()
     for nranks in rank_counts:
         parts = [MQ.Partition.for_size(r, nranks) for r in range(nranks)]
@@ -274,7 +439,14 @@ def check_case(label, case, overrides, rank_counts, must_reach, tmp):
                     and np.array_equal(pairs[:, 0], np.arange(1, S['NEQ'] + 1))):
                 raise AssertionError('local equations are not an order-preserving '
                                      'injection into the serial numbering')
-            _eq('nsmp', g[m['nsmp']], mesh_s['nsmp'][frow])
+            # nsmp's 3rd column is fault_id (Row 17), a small int tag, NOT a
+            # node id -- only columns 0/1 (slave/master) go through `g`. At
+            # ntotft==1 fault_id is always 0 and g[0]==0 trivially agreed, so
+            # this never mattered until a case with a real fault_id column.
+            nsmp_g = np.empty_like(m['nsmp'])
+            nsmp_g[:, :2] = g[m['nsmp'][:, :2]]
+            nsmp_g[:, 2] = m['nsmp'][:, 2]
+            _eq('nsmp', nsmp_g, mesh_s['nsmp'][frow])
             for k in FAULT_KEYS:
                 _eq(k, S[k], np.asarray(S_s[k])[frow])
         # --- setup exchanges, simulated across all ranks
@@ -288,6 +460,7 @@ def check_case(label, case, overrides, rank_counts, must_reach, tmp):
         fnms = [m['fnms1'].copy() for m in ms]
         _simulate_relay(parts, planes, 'eqs', mass, 'mass')
         _simulate_relay(parts, planes, 'nodes', fnms, 'fnms')
+        local_eqs = []
         for r in range(nranks):
             g, frow = maps[r]
             S, m = built[r]
@@ -320,6 +493,42 @@ def check_case(label, case, overrides, rank_counts, must_reach, tmp):
             owned.append(frow[own])
             if tuple(m['fault_census']) != tuple(meshgen.fault_census(xg, yg, zg, params)):
                 raise AssertionError('rank %d fault census differs' % r)
+            # Exercise the REAL MQ._check_censuses (item 145 follow-up fix (a):
+            # the master-id lookup via nsmp[owned_rows,1]-1, not the old
+            # n_reg+owned_rows row-position arithmetic). owned_rows here is
+            # local nsmp ROW indices, exactly setup_exchange's own
+            # `np.nonzero(owned_mask(...))[0]`, built from the same `own`
+            # mask computed just above for the frt-shape check.
+            owned_rows_r = (np.nonzero(own)[0] if frow.size
+                           else np.zeros(0, dtype=np.int64))
+            local_eqs.append(_run_check_censuses(parts[r], S, m, owned_rows_r, live))
+        total_eqs = sum(local_eqs)
+        # MEASURED LIMIT, not a guess (victor-reyes PR #79 audit flagged that
+        # nothing called _check_censuses at all; this call closes that, but
+        # only partially): this is a SUM, and a sum over a permutation of
+        # EQUAL-valued elements is invariant to the permutation. Checked
+        # directly on tpv23-2fault at 2 ranks: every fault master node has
+        # per_node==3 (uniform 3-DOF split node, the normal case), and
+        # 250 of 672 owned rows have scan_pos != row_position (a REAL
+        # permutation, the exact thing fix (a) addresses) -- yet reverting
+        # fix (a) still leaves this sum, and the whole suite, SUCCESS. This
+        # call therefore protects against a gross/API-level regression in
+        # _check_censuses (wrong column, off-by-one, index error) but is NOT
+        # sensitive to a reintroduction of the old n_reg+owned_rows formula
+        # specifically, for any case in this file's CASES tuple today, all of
+        # which happen to have uniform per-fault-node DOF. The strong,
+        # per-row oracle for THAT bug class is the nsmp/ndof elementwise
+        # comparisons above (_eq('nsmp', ...), _eq('ndof', ...)), proven
+        # sensitive by the build_faces-formula revert (42 of 1302 rows
+        # differ) -- because build_faces's own master ids feed directly into
+        # those bitwise comparisons, while _check_censuses collapses its
+        # per-row read into a scalar before this test can observe it.
+        if total_eqs != ms[0]['equation_census']:
+            raise AssertionError(
+                '%s at %d ranks: sum of per-rank _check_censuses owned-equations '
+                '(%d) != global equation_census (%d) -- the master-id lookup '
+                '(item 145 follow-up fix (a)) is wrong somewhere in this '
+                'decomposition' % (label, nranks, total_eqs, ms[0]['equation_census']))
         allown = np.sort(np.concatenate(owned)) if owned else np.zeros(0)
         _eq('owned fault rows partition the serial fault', allown, np.arange(S_s['nftnd']))
         files = sum(1 for o in owned if o.size)

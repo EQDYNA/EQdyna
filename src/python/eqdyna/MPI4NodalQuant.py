@@ -369,7 +369,20 @@ def _check_censuses(comm, part, S, mesh, owned_rows, live):
     n_reg = nx * ny * nz
     per_node = live.sum(axis=1)
     own_reg = owned_mask(part, np.arange(1, n_reg + 1), mesh['n_local'])
-    owned_eqs = int(per_node[:n_reg][own_reg].sum()) + int(per_node[n_reg + owned_rows].sum())
+    # Master-node id looked up via nsmp[:, 1] (1-based -> 0-indexed into
+    # per_node), exactly as build_faces does -- NOT the old n_reg+row_position
+    # arithmetic, which assumed a fault row's position in the rank-local
+    # nsmp table equals its position in meshCoor's master-node block. True at
+    # ntotft==1 (no fault-grouping reorder happens there) but not guaranteed
+    # in general at ntotft>1, where build_node_coordinates stable-sorts nsmp
+    # by fault id (see build_faces' Row 17 comment above). Measured directly
+    # on test.tpv23 (4 ranks, native 250 m res): the two formulas agree
+    # bit-for-bit on every owned row on every rank (0 of 8181/1701/1620/8100
+    # rows differ) -- this case's faults sit at distinct y, so no row ever
+    # interleaves within a rank's local box, and the old formula happened to
+    # be silently right here, not merely silently uncaught.
+    owned_eqs = (int(per_node[:n_reg][own_reg].sum())
+                 + int(per_node[mesh['nsmp'][owned_rows, 1] - 1].sum()))
     total = comm.allreduce(owned_eqs)
     if total != mesh['equation_census']:
         raise RuntimeError(
