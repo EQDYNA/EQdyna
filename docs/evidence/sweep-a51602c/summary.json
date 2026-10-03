@@ -1,0 +1,235 @@
+{
+  "sha": "a51602c6a9bf405e1f37fa36c78abad0c2661f22",
+  "tree_clean": false,
+  "dirty_at_start": [
+    " M docs/perf_ledger.jsonl",
+    " M docs/run_profiles.jsonl",
+    "?? docs/evidence/sweep-3bacc94/",
+    "?? docs/perf_snapshots/e2e_cells_2026-10-02_172448_2101176.json"
+  ],
+  "term": 5.0,
+  "n_runnable": 27,
+  "n_success": 27,
+  "cells": [
+    {
+      "case": "test.drv.a6",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": null,
+      "wall_s": 144.94159698486328
+    },
+    {
+      "case": "test.drv.a6",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": null,
+      "wall_s": 478.310670375824
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 28.525222301483154
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 2.288819e-10,
+      "wall_s": 70.8424801826477
+    },
+    {
+      "case": "test.tpv8",
+      "backend": "python-jax-mpi",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 1.525879e-10,
+      "wall_s": 28.132972478866577
+    },
+    {
+      "case": "test.tpv10",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 73.61822152137756
+    },
+    {
+      "case": "test.tpv10",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 1.13068e-08,
+      "wall_s": 216.62931418418884
+    },
+    {
+      "case": "test.tpv104",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 72.42253565788269
+    },
+    {
+      "case": "test.tpv104",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 4.9819e-07,
+      "wall_s": 184.83143997192383
+    },
+    {
+      "case": "test.tpv1053d",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 78.60201263427734
+    },
+    {
+      "case": "test.tpv1053d",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 1.360451e-06,
+      "wall_s": 224.97233700752258
+    },
+    {
+      "case": "test.meng2023a",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 102.54076170921326
+    },
+    {
+      "case": "test.meng2023a",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 2.735853e-09,
+      "wall_s": 224.49729180335999
+    },
+    {
+      "case": "test.meng2023cb",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 88.28399777412415
+    },
+    {
+      "case": "test.meng2023cb",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 4.631281e-09,
+      "wall_s": 225.78268814086914
+    },
+    {
+      "case": "test.tpv29",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 74.28662323951721
+    },
+    {
+      "case": "test.tpv29",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 1.792826e-14,
+      "wall_s": 225.8820436000824
+    },
+    {
+      "case": "test.tpv36",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 248.75954747200012
+    },
+    {
+      "case": "test.tpv36",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 3.999404e-09,
+      "wall_s": 408.8499686717987
+    },
+    {
+      "case": "test.tpv37",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 298.7836489677429
+    },
+    {
+      "case": "test.tpv37",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 4.066276e-09,
+      "wall_s": 418.9912543296814
+    },
+    {
+      "case": "test.tpv30",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 79.794930934906
+    },
+    {
+      "case": "test.tpv30",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 2.424165e-14,
+      "wall_s": 234.77450323104858
+    },
+    {
+      "case": "test.tpv22",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 1280.5827267169952
+    },
+    {
+      "case": "test.tpv22",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 7.494722e-15,
+      "wall_s": 1642.2930753231049
+    },
+    {
+      "case": "test.tpv23",
+      "backend": "fortran",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 0.0,
+      "wall_s": 716.2424495220184
+    },
+    {
+      "case": "test.tpv23",
+      "backend": "python-jax",
+      "verdict": "SUCCESS",
+      "timed_out": false,
+      "max_diff": 7.54952e-15,
+      "wall_s": 1114.8875846862793
+    }
+  ],
+  "started_utc": "2026-10-03T01:52:32.759745+00:00",
+  "finished_utc": "2026-10-03T02:19:57.166134+00:00",
+  "content_key": "e97aa8bf38dad98c2197aab5a4f84c6ad28d4f16f0aa403b18fb007c1dacb1b2",
+  "release_physics_key": "39028cc75ea399dea747ef5b555accf44dce8387c0587fa99c51a0a8ef8be5b4"
+}

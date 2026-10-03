@@ -1,0 +1,256 @@
+{
+ "tool": "run_e2e",
+ "sha": "3bacc94",
+ "host": "cotopaxi",
+ "date": "2026-10-02 17:24",
+ "label": "default: every cell of the table (release, --release)",
+ "device": "cpu",
+ "jobs_budget": 40,
+ "tenancy_ceiling": 0.5,
+ "cells": [
+  {
+   "case": "test.drv.a6",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 103.04670262336731,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.drv.a6",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 591.0412383079529,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv8",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 14.090260744094849,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv8",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 67.63031077384949,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv8",
+   "backend": "python-jax-mpi",
+   "ok": true,
+   "seconds": 17.36449956893921,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "eqdyna3d --mpi with no --device pins JAX_PLATFORMS=cpu (the default, board row 56; run_e2e passes no --device)"
+  },
+  {
+   "case": "test.tpv10",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 43.180185317993164,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv10",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 197.93377780914307,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv104",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 39.2385311126709,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv104",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 211.6435890197754,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv1053d",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 43.83363676071167,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv1053d",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 122.80441403388977,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.meng2023a",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 54.77525305747986,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.meng2023a",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 272.7079484462738,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.meng2023cb",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 54.457069396972656,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.meng2023cb",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 179.19312858581543,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv29",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 49.717095375061035,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv29",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 258.6902415752411,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv36",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 153.0129144191742,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv36",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 353.19652819633484,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv37",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 151.67793440818787,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv37",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 354.2355921268463,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv30",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 44.939186573028564,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv30",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 273.0166971683502,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv22",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 1033.9724836349487,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv22",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 1630.8148143291473,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv23",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 484.56939911842346,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv23",
+   "backend": "python-jax",
+   "ok": true,
+   "seconds": 945.1154425144196,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  }
+ ],
+ "tree_dirty": false
+}
