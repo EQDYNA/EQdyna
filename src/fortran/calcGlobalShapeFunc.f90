@@ -6,7 +6,8 @@ subroutine calcGlobalShapeFunc(xl,det,globalShapeFunc,nel,xs,lcubic)
   ! Jacobian determinant for a reduced order hexahedral element.
   logical :: lcubic
   
-  integer (kind = 4) :: i,j,k,nel
+  integer (kind = 4) :: i,j,k
+  integer (kind = 8) :: nel
   
   real(kind = dp) :: det,temp, &
                     cof11,cof12,cof13, &

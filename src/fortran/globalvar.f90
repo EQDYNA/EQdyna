@@ -125,8 +125,21 @@ MODULE globalvar
     !=====================================================================
     integer (kind = 4) :: nsd=3, ndof=3, ned=3, nesd=3            ! spatial/DOF dimensionality
     integer (kind = 4) :: nen=8, nee=24, nrowsh=4, nrowb=6, nrowc=6, nstr=6 ! element shape/stress bookkeeping (8-node brick)
-    integer (kind = 4) :: totalNumOfNodes, totalNumOfElements, totalNumOfEquations
-    integer (kind = 4) :: sizeOfEqNumIndexArr, sizeOfStressDofIndexArr
+    ! Item 143 (64-bit indices): every per-rank node/element/equation COUNT,
+    ! every node/element/equation ID, and every OFFSET into eqNumIndexArr /
+    ! stressArr is integer(kind=8). The offsets are what overflow first:
+    ! eqNumStartIndexLoc reaches 12*N (PML nodes), stressCompIndexArr 21*E
+    ! (PML elements), and allocInit sizes stressArr as 5*sizeOfEqNumIndexArr
+    ! -- all past 2^31-1 at ~1.4e8-1.8e8 elements on ONE rank, which a
+    ! fat-memory node can hold. The raw counts follow at 2^31 nodes/rank.
+    ! The id arithmetic lives in gridNodeCount/regularNodeId (module
+    ! procedures below) so a test can drive it past 2^31 without a mesh
+    ! (testsys/regression/test_int64_index_width.py). Quantities that stay
+    ! kind=4 ON PURPOSE: anything passed to MPI as a COUNT or RANK (rrr, n,
+    ! fltnum, numcount(4:9), me, dest...) -- the MPI count argument is a C
+    ! int -- and the per-axis sizes nx/ny/nz (<= 10000 each, fixed buffer).
+    integer (kind = 8) :: totalNumOfNodes, totalNumOfElements, totalNumOfEquations
+    integer (kind = 8) :: sizeOfEqNumIndexArr, sizeOfStressDofIndexArr
     integer (kind = 4) :: npx, npy, npz                            ! processor grid dimensions
     integer (kind = 4) :: nnx, nnz                                 ! fault-plane node counts along strike/dip
     integer (kind = 4) :: nmat, n2mat                              ! number of material blocks / material properties per block
@@ -259,8 +272,12 @@ MODULE globalvar
     real (kind = dp), allocatable, dimension(:,:,:,:):: onFaultTPHist
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
-        eqNumIndexArr,    stressCompIndexArr,    elemTypeArr,     eqNumStartIndexLoc,  numOfDofPerNodeArr,   surfaceNodeIdArr,&
+        elemTypeArr,     numOfDofPerNodeArr,   &
         nonfs,  n4yn
+    ! Item 143: equation numbers, offsets into eqNumIndexArr/stressArr and
+    ! node ids -- 64-bit (see the count declarations above).
+    integer (kind = 8), allocatable, dimension(:) :: &
+        eqNumIndexArr,    stressCompIndexArr,    eqNumStartIndexLoc,   surfaceNodeIdArr
     ! Row 17 (multi-fault): fltl/fltr/fltf/fltb/fltd/fltu (local fault-node
     ! indices touching an MPI boundary, per direction), fltgm (per-fault-node
     ! boundary-membership bitmask) and fltnum (per-direction boundary-node
@@ -272,10 +289,13 @@ MODULE globalvar
     ! column, sized once in allocInit and filled in place by MPI4arn (no
     ! per-call allocate/deallocate). Reduces to the old single-fault arrays
     ! at ntotft==1 (column 1 only).
-    integer (kind = 4), allocatable, dimension(:,:) :: nodeElemIdRelation,     &
-        anonfs, idhist, OffFaultStNodeIdIndex, &
+    integer (kind = 4), allocatable, dimension(:,:) :: &
+        anonfs, &
         fltl,   fltr,   fltf,   fltb,   fltd,   fltu,   fltgm,   fltnum
-    integer (kind = 4), allocatable, dimension(:,:,:) :: nsmp
+    ! Item 143: node-id-carrying arrays -- element connectivity, the
+    ! split-node pairs, and the off-fault station -> node maps -- 64-bit.
+    integer (kind = 8), allocatable, dimension(:,:) :: nodeElemIdRelation, idhist, OffFaultStNodeIdIndex
+    integer (kind = 8), allocatable, dimension(:,:,:) :: nsmp
     ! Row 94 audit finding 6 (2026-09-25): whether each requested off-fault
     ! station's DEPTH fell inside the physical (non-PML) clamp band -- set
     ! once per rank by meshgen (identical on every rank, no MPI needed),
@@ -287,5 +307,33 @@ MODULE globalvar
     logical, allocatable, dimension(:) :: x4ndsZValidPersist
 
     integer (kind = 4) :: np = 1000000              ! legacy default array-sizing hint (see individual allocate() calls for actual sizes)
+
+contains
+
+    ! Item 143 (64-bit indices). The two pieces of index arithmetic that
+    ! turn a per-rank (nx, ny, nz) grid into node counts and node ids.
+    ! Both promote their kind=4 arguments to kind=8 BEFORE multiplying:
+    ! `nx*ny*nz` written inline wraps silently past 2^31-1 (gfortran does
+    ! not trap integer overflow) -- 2000*2000*600 = 2.4e9 came out as
+    ! -1894967296 under the old inline product. Used by meshgen.f90
+    ! (msnode, meshGenError) and assembleGlobalMass.f90 (MPI4NodalQuant's
+    ! boundary-node ids); tested past 2^31 by
+    ! testsys/regression/test_int64_index_width.py.
+
+    pure function gridNodeCount(nx, ny, nz) result(n)
+    ! Number of regular-grid nodes on this rank, nx*ny*nz, in 64-bit.
+        integer (kind = 4), intent(in) :: nx, ny, nz
+        integer (kind = 8) :: n
+        n = int(nx, 8) * int(ny, 8) * int(nz, 8)
+    end function gridNodeCount
+
+    pure function regularNodeId(ix, iy, iz, ny, nz) result(id)
+    ! 1-based id of regular-grid node (ix, iy, iz) in meshgen's scan order
+    ! (ix outermost, then iz, iy innermost -- see meshgen.f90's node loop
+    ! and MPI4NodalQuant's nodenumtemp), in 64-bit.
+        integer (kind = 4), intent(in) :: ix, iy, iz, ny, nz
+        integer (kind = 8) :: id
+        id = (int(ix, 8) - 1_8) * int(ny, 8) * int(nz, 8) + (int(iz, 8) - 1_8) * int(ny, 8) + int(iy, 8)
+    end function regularNodeId
 
 end MODULE globalvar

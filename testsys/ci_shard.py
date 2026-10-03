@@ -133,6 +133,7 @@ SHARDS = {
         "test_rough_fault_normal_consistency.py",
         "test_rsfNucleation_tpv2802_td.py",
         "test_station_header_column_count.py",
+        "test_int64_index_width.py",  # added 2026-10-03 (item 143, int64 indices): 3 tiny gfortran builds of globalvar.f90 + a driver, <3 s
         "test_offfault_station_dropped_report.py",  # added 2026-09-24 (wei-lin, item 94): 2 tiny gfortran builds, <2 s
         "test_onfault_station_dropped_report.py",  # added 2026-09-24 (wei-lin, item 116): 2 tiny gfortran builds, <2 s
         "test_offfault_station_header_actual_node.py",  # added 2026-09-25 (mira-volkov, row 94 audit finding 4): 1 tiny gfortran build, <1 s

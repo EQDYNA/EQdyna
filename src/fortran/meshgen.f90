@@ -11,15 +11,17 @@ subroutine meshgen
     implicit none
     include 'mpif.h'
     ! incremental variables 
-    integer (kind = 4) :: nodeCount=0, elemCount=0, equationNumCount=0, eqNumIndexArrLocTag=0, stressDofCount=0
+    ! Item 143: counts, ids and offsets are 64-bit (globalvar.f90); the
+    ! per-axis grid sizes and loop indices stay kind=4.
+    integer (kind = 8) :: nodeCount=0, elemCount=0, equationNumCount=0, eqNumIndexArrLocTag=0, stressDofCount=0
+    integer (kind = 8) :: msnode, n1,n2,n3,n4,m1,m2,m3,m4
     integer (kind = 4) :: nxt,nyt,nzt,nx,ny,nz,ix,iy,iz, &
                        edgex1,edgey1,edgez1,i,j,k,i1,j1,k1,edgezn, &
                        nxuni,nyuni,nzuni,ift, &
-                       n1,n2,n3,n4,m1,m2,m3,m4,&
                        mex,mey,mez,itmp1,&
-                       numOfDofPerNodeTmp, msnode, nodeXyzIndex(10),isOnFt
+                       numOfDofPerNodeTmp, nodeXyzIndex(10),isOnFt
     integer (kind = 4), dimension(ntotft) :: nftnd0,ixfi,izfi,ifs,ifd
-    integer (kind = 4), allocatable :: fltrc(:,:,:,:)
+    integer (kind = 8), allocatable :: fltrc(:,:,:,:)
     ! Temporary real variables
     real (kind = dp) :: nodeCoor(10), elementCenterCoor(3), &
                        a,b,area,aa1,bb1,cc1,dd1,p1,q1, ycoort, pfx = 0.0d0, pfz = 0.0d0
@@ -109,7 +111,7 @@ subroutine meshgen
     
     ! Initialize scalars
 
-    msnode   = nx*ny*nz
+    msnode   = gridNodeCount(nx, ny, nz)
     numOfOnFaultStCount    = 0
     numOfOffFaultStCount    = 0
     OffFaultStNodeIdIndex   = 0
@@ -235,7 +237,8 @@ subroutine setElementMaterial(elemCount, elementCenterCoor)
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: elemCount, i
+    integer (kind = 8) :: elemCount
+    integer (kind = 4) :: i
     real (kind = dp) :: elementCenterCoor(3), vptmp, vstmp, rhotmp
     
     if (nmat == 1 .and. n2mat == 3) then
@@ -478,14 +481,15 @@ subroutine meshGenError(nx, ny, nz, nodeCount, msnode, elemCount, equationNumCou
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: nx, ny, nz, nodeCount, msnode, elemCount, equationNumCount, nftnd0(ntotft), eqNumIndexArrLocTag
+    integer (kind = 4) :: nx, ny, nz, nftnd0(ntotft)
+    integer (kind = 8) :: nodeCount, msnode, elemCount, equationNumCount, eqNumIndexArrLocTag
     integer (kind = 4) :: i
     if (sizeOfStressDofIndexArr>=(5*sizeOfEqNumIndexArr)) then
         write(*,*) '5*sizeOfEqNumIndexArr',sizeOfEqNumIndexArr,'is not enough for sizeOfStressDofIndexArr',sizeOfStressDofIndexArr
         call abortRun(ERR_MESH_STRESS_ARR_SMALL, &
             'stressArr is too small for this mesh; 5*sizeOfEqNumIndexArr does not cover sizeOfStressDofIndexArr.')
     endif
-    if(nodeCount/=nx*ny*nz.or.msnode/=totalNumOfNodes.or.elemCount/=totalNumOfElements.or.equationNumCount/=totalNumOfEquations) then
+    if(nodeCount/=gridNodeCount(nx, ny, nz).or.msnode/=totalNumOfNodes.or.elemCount/=totalNumOfElements.or.equationNumCount/=totalNumOfEquations) then
         write(*,*) 'Inconsistency in node/element/equation/between meshgen and countMeshEntities: stop!',me
         write(*,*) 'nodeCount&totalNumOfNodes=',nodeCount,totalNumOfNodes
         write(*,*) 'elemCount,totalNumOfElements=',elemCount,totalNumOfElements
@@ -855,7 +859,8 @@ subroutine setSurfaceStation(nodeXyzIndex, nodeCoor, xline, yline, nodeCount, x4
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: nodeXyzIndex(10), ix, iy, iz, nx, ny, nodeCount, i
+    integer (kind = 4) :: nodeXyzIndex(10), ix, iy, iz, nx, ny, i
+    integer (kind = 8) :: nodeCount
     integer (kind = 4) :: mex, mey, mez
     real (kind = dp) :: nodeCoor(10), xline(nodeXyzIndex(4)), yline(nodeXyzIndex(5))
     real (kind = dp) :: x4ndsSnapZ(max(1,totalNumOfOffSt))
@@ -968,7 +973,8 @@ subroutine setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equati
     use globalvar 
     use errorCodes
     implicit none
-    integer (kind = 4) :: iDof, numOfDofPerNodeTmp, eqNumIndexArrLocTag, equationNumCount, nodeXyzIndex(10)
+    integer (kind = 4) :: iDof, numOfDofPerNodeTmp, nodeXyzIndex(10)
+    integer (kind = 8) :: eqNumIndexArrLocTag, equationNumCount
     real (kind = dp) :: nodeCoor(10)
     
     do iDof = 1,numOfDofPerNodeTmp
@@ -1011,7 +1017,8 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: elemCount, stressDofCount, iy, iz, i, j 
+    integer (kind = 8) :: elemCount, stressDofCount
+    integer (kind = 4) :: iy, iz, i, j 
     real (kind = dp) :: elementCenterCoor(3)
     
     elementCenterCoor = 0.0d0 
@@ -1053,7 +1060,8 @@ end subroutine createElement
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: elemCount, iFault, iFaultNodePair, nftnd0(ntotft), k
+    integer (kind = 8) :: elemCount
+    integer (kind = 4) :: iFault, iFaultNodePair, nftnd0(ntotft), k
     real (kind = dp) :: nodeCoor(10)
     logical :: isAboveSomeFaultPlane
     ! The default grids only contain slave nodes.
@@ -1138,8 +1146,10 @@ subroutine createMasterNode(nodeXyzIndex, nxuni, nzuni, nodeCoor, ycoort, nodeCo
 use globalvar 
 use errorCodes
 implicit none
-integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nodeCount, msnode, nftnd0(ntotft), equationNumCount, i, nxuni, nzuni, eqNumIndexArrLocTag
-integer (kind = 4) :: fltrc(2,nxuni,nzuni,ntotft), ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft), nodeXyzIndex(10)
+integer (kind = 4) :: iFault, iFaultNodePair, isOnFault, nftnd0(ntotft), i, nxuni, nzuni
+integer (kind = 8) :: nodeCount, msnode, equationNumCount, eqNumIndexArrLocTag
+integer (kind = 8) :: fltrc(2,nxuni,nzuni,ntotft)
+integer (kind = 4) :: ixfi(ntotft), izfi(ntotft), ifs(ntotft), ifd(ntotft), nodeXyzIndex(10)
 integer (kind = 4) :: mex, mey, mez
 logical :: isOnFaultStationOwner
 real (kind = dp) :: nodeCoor(10), ycoort, pfx, pfz
@@ -1199,7 +1209,9 @@ do iFault = 1, ntotft
         ! same mapping this line writes to nsmp two lines below), so the
         ! interleaving is invisible to it. Reduces to the old formula
         ! bit-for-bit at ntotft==1 (sum over a length-1 array).
-        msnode                        = nodeXyzIndex(4)*nodeXyzIndex(5)*nodeXyzIndex(6) + sum(nftnd0) ! create Master node at the end of regular grids
+        ! Item 143: gridNodeCount (globalvar.f90) does the nx*ny*nz product
+        ! in 64-bit; written inline with kind=4 operands it wraps past 2^31.
+        msnode                        = gridNodeCount(nodeXyzIndex(4), nodeXyzIndex(5), nodeXyzIndex(6)) + sum(nftnd0) ! create Master node at the end of regular grids
 
         eqNumStartIndexLoc(msnode) = eqNumIndexArrLocTag
         numOfDofPerNodeArr(msnode) = 3         
@@ -1316,7 +1328,8 @@ subroutine createNode(nodeCoor, xcoor, ycoor, zcoor, nodeCount, nodeXyzIndex)
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: nodeCount, nodeXyzIndex(10), iy, iz
+    integer (kind = 8) :: nodeCount
+    integer (kind = 4) :: nodeXyzIndex(10), iy, iz
     real (kind = dp) :: nodeCoor(10), xcoor, ycoor, zcoor
     iy = nodeXyzIndex(2)
     iz = nodeXyzIndex(3)
@@ -1352,7 +1365,8 @@ subroutine setPlasticStress(depth, elemCount)
     
     real(kind = dp) :: depth, vstmp, vptmp, routmp, strVert, devStr
     real(kind = dp) :: devStrDepthTaper
-    integer(kind = 4) :: elemCount, etTag
+    integer(kind = 8) :: elemCount
+    integer(kind = 4) :: etTag
 
     etTag = 0
     if (elemTypeArr(elemCount)==2) etTag = 1 ! adjustment for PML elements

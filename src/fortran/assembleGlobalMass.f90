@@ -7,7 +7,8 @@ subroutine assembleGlobalMass
     include 'mpif.h'
 
     logical :: lcubic
-    integer (kind = 4) :: nel, i, j, itmp
+    integer (kind = 8) :: nel
+    integer (kind = 4) :: i, j, itmp
     real (kind = dp) :: det, xs(3,3), xl(nesd,nen), eleffm(nee), globalShapeFunc(nrowsh,nen) 
 
     do nel = 1, totalNumOfElements
@@ -61,8 +62,13 @@ subroutine MPI4NodalQuant(quantArray, numDof)
     use errorCodes
     implicit none
     include 'mpif.h'
+    ! Item 143: nodenumtemp is a node ID -> 64-bit, built by regularNodeId
+    ! (globalvar.f90). rrr/abc/dofCount4MPI are MPI COUNTS (one boundary
+    ! face, <= 1.2e9 at the 10000-node axis cap) and stay kind=4: the MPI
+    ! count argument is a C int.
+    integer (kind = 8) :: nodenumtemp
     integer (kind = 4) ::  iMPIerr, iMPIstatus(MPI_STATUS_SIZE), i, ixyz, numDof, rrr, &
-        ix,iy,iz, nodenumtemp, dofCount4MPI, dest, sendtag, source, recvtag, ib, iSign, &
+        ix,iy,iz, dofCount4MPI, dest, sendtag, source, recvtag, ib, iSign, &
         bnd(2), mexyz(3), npxyz(3), numxyz(3), abc(3)
     real (kind = dp) :: quantArray(totalNumOfEquations)
     ! LOCAL stage timer, not the shared global: this routine is called
@@ -155,7 +161,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                     if (ixyz == 1) then 
                         do iz=1,numxyz(3)
                             do iy=1,numxyz(2)
-                                nodenumtemp=(bnd(ib)-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+iy
+                                nodenumtemp=regularNodeId(bnd(ib), iy, iz, numxyz(2), numxyz(3))
                                 !                         nodeID, numDof, fetch, ...
                                 call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, dofCount4MPI) 
                             enddo
@@ -163,14 +169,14 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                     elseif (ixyz == 2) then 
                         do ix=1,numxyz(1)
                             do iz=1,numxyz(3)
-                                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bnd(ib)
+                                nodenumtemp=regularNodeId(ix, bnd(ib), iz, numxyz(2), numxyz(3))
                                 call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, dofCount4MPI)   
                             enddo
                         enddo
                     elseif (ixyz == 3) then 
                         do ix=1,numxyz(1)
                             do iy=1,numxyz(2)
-                                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bnd(ib)-1)*numxyz(2)+iy
+                                nodenumtemp=regularNodeId(ix, iy, bnd(ib), numxyz(2), numxyz(3))
                                 call processNodalQuantArr(nodenumtemp, numDof, 1, btmp, rrr, quantArray, dofCount4MPI)   
                             enddo
                         enddo
@@ -192,7 +198,7 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                     if (ixyz == 1) then 
                         do iz=1,numxyz(3)
                             do iy=1,numxyz(2)
-                                nodenumtemp=(bnd(ib)-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+iy
+                                nodenumtemp=regularNodeId(bnd(ib), iy, iz, numxyz(2), numxyz(3))
                                 !                                        add
                                 call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, dofCount4MPI)  
                             enddo
@@ -200,14 +206,14 @@ subroutine MPI4NodalQuant(quantArray, numDof)
                     elseif (ixyz == 2) then 
                         do ix=1,numxyz(1)
                             do iz=1,numxyz(3)
-                                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(iz-1)*numxyz(2)+bnd(ib)
+                                nodenumtemp=regularNodeId(ix, bnd(ib), iz, numxyz(2), numxyz(3))
                                 call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, dofCount4MPI)   
                             enddo
                         enddo
                     elseif (ixyz == 3) then 
                         do ix=1,numxyz(1)
                             do iy=1,numxyz(2)
-                                nodenumtemp=(ix-1)*numxyz(2)*numxyz(3)+(bnd(ib)-1)*numxyz(2)+iy
+                                nodenumtemp=regularNodeId(ix, iy, bnd(ib), numxyz(2), numxyz(3))
                                 call processNodalQuantArr(nodenumtemp, numDof, 2, btmp1, rrr, quantArray, dofCount4MPI)    
                             enddo
                         enddo
@@ -259,7 +265,8 @@ contains
         real (kind = dp), intent(inout) :: arr(rrrArg)
         real (kind = dp), intent(inout) :: quantArr(totalNumOfEquations)
         integer (kind = 4), intent(inout) :: dofCount
-        integer (kind = 4) :: j, nodeId, k, ift, localIdx
+        integer (kind = 4) :: j, k, ift, localIdx
+        integer (kind = 8) :: nodeId
 
         k = 2*(ixyzArg-1)+ibArg
         if (.not. fltMPI(k)) return
@@ -289,7 +296,8 @@ subroutine processNodalQuantArr(nodeID, numDof, operation, resArr, resArrSize, q
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: nodeID, numDof, iDof, dofCount4MPI, resArrSize, operation
+    integer (kind = 8) :: nodeID
+    integer (kind = 4) :: numDof, iDof, dofCount4MPI, resArrSize, operation
     real(kind = dp) :: resArr(resArrSize), quantArray(totalNumOfEquations)
     !character (len = 20) :: operation
     
@@ -326,7 +334,8 @@ subroutine assembleElementMassDetShg(elemID, elementMass, det, globalShapeFunc)
     use globalvar 
     use errorCodes
     implicit none 
-    integer (kind = 4) :: i, j, eqNumTmp, nodeID, ixyz, elemID
+    integer (kind = 4) :: i, j, ixyz
+    integer (kind = 8) :: eqNumTmp, nodeID, elemID
     real (kind = dp) :: elementMass(nee), det, globalShapeFunc(nrowsh, nen)
     
     do i = 1, nen 
@@ -372,7 +381,8 @@ subroutine calcSSPhi4Hrgls(elemID, xl, xs, globalShapeFunc)
     use globalvar
     use errorCodes
     implicit none
-    integer (kind = 4) :: elemID, i, j, k
+    integer (kind = 8) :: elemID
+    integer (kind = 4) :: i, j, k
     integer (kind = 4), dimension(8,4) :: ha = reshape((/ &
             1,1,-1,-1,-1,-1,1,1, 1,-1,-1,1,-1,1,1,-1, &
             1,-1,1,-1,1,-1,1,-1, -1,1,-1,1,1,-1,1,-1/), &

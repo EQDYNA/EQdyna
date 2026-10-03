@@ -51,7 +51,8 @@ subroutine dumpNodalAccel
     use globalvar
     implicit none
 
-    integer (kind = 4) :: i, j, eqn, ift, ifn
+    integer (kind = 8) :: i, eqn
+    integer (kind = 4) :: j, ift, ifn
     real (kind = dp) :: acc(3)
     character (len = 64) :: fname
     character (len = 8)  :: envval
@@ -89,7 +90,7 @@ subroutine doubleCouplePointSource
     use globalvar 
     use errorCodes
     implicit none
-    integer (kind = 4) :: i
+    integer (kind = 8) :: i
     
     if (C_dc==1)then
         do i=1,totalNumOfNodes
@@ -143,7 +144,8 @@ subroutine velDispUpdate
     implicit none 
     include 'mpif.h'
     
-    integer (kind = 4) :: i, j, eqNumTmp
+    integer (kind = 8) :: i, eqNumTmp
+    integer (kind = 4) :: j
     real (kind = dp) :: dampv(9)
    
     ! LOCAL stage timer. The shared global startTimeStamp was written by
@@ -216,15 +218,18 @@ subroutine storeOffFaultStData
     use errorCodes
     implicit none
     
-    integer (kind = 4) :: i, nodeId, quantType, k, eqNum
+    integer (kind = 4) :: i, quantType, k
+    integer (kind = 8) :: nodeId, eqNum
     
         if (numOfOffFaultStCount*ndof*2>0) then
             OffFaultStGramSCEC(1,nt) = timeElapsed
             do i = 1, numOfOffFaultStCount*ndof*2 
                 nodeId = idhist(1,i)
                 !if (j<=0) j=1  !avoid zero that cannot be used below
-                    k = idhist(2,i)
-                    quantType = idhist(3,i)
+                    ! idhist is kind=8 for its node-id row (item 143); rows
+                    ! 2 and 3 hold a dof index (1..3) and a 1/2/3 type tag.
+                    k = int(idhist(2,i), 4)
+                    quantType = int(idhist(3,i), 4)
                 if (quantType ==1) then
                     OffFaultStGramSCEC(i+1,nt) = dispArr(k,nodeId)
                 elseif(quantType == 2) then

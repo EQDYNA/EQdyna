@@ -5,7 +5,8 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
     use globalvar
     implicit none
     
-    integer (kind = 4) :: elemCount, stressDofCount, iy, iz, nftndtmp, k, i, neworder(nen)
+    integer (kind = 8) :: elemCount, stressDofCount
+    integer (kind = 4) :: iy, iz, nftndtmp, k, i, neworder(nen)
     real (kind = dp) :: cenx, ceny, cenz, pointToFaultDist, tangentDip
         tangentDip = dtan(C_degen/180.d0*pi)
         pointToFaultDist = abs(ceny*tangentDip+cenz)/(1.d0+tangentDip**2)**0.5
@@ -59,7 +60,7 @@ subroutine wedge4num(cenx, ceny, cenz, elemCount)
     use globalvar
     implicit none
     
-    integer (kind = 4) :: elemCount    
+    integer (kind = 8) :: elemCount    
     real (kind = dp) :: cenx, ceny, cenz, tangentDip, pointToFaultDist
     
         tangentDip = dtan(C_degen/180.d0*pi)
@@ -79,7 +80,8 @@ subroutine reorder(neworder, elemCount, iy, iz)
     use globalvar
     implicit none
     
-    integer (kind = 4) :: i, neworder(nen), nodeIdPerElem(nen), elemCount, iz, iy
+    integer (kind = 4) :: i, neworder(nen), iz, iy
+    integer (kind = 8) :: nodeIdPerElem(nen), elemCount
     
         nodeIdPerElem(1) = plane1(iy-1,iz-1)
         nodeIdPerElem(2) = plane2(iy-1,iz-1)
