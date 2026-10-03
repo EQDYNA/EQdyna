@@ -252,7 +252,7 @@ def getNsdSlipSliprateTraction(xp, finv, fric, velArr, dispArr, force, dt):
     # restart-init value for the whole run, zeroing frt.txt's slip-rate
     # column, src_evol's final slip rate and the restart netCDF slip rate.
     # solveRSF still overwrites this with its own v_trial (strike+dip only)
-    # for friclaw>=3 (:594 below), so this line changes nothing there --
+    # for friclaw>=3 (:609 below), so this line changes nothing there --
     # only friclaw 1/2 outputs change.
     fric = B.setat(xp, fric, (slice(None), gv.PEAK_SLIPRATE), srMag)
 

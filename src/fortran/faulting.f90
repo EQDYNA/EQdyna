@@ -119,7 +119,7 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     ! 0) for the whole run, zeroing frt.txt's slip-rate column
     ! (library_output.f90:349), src_evol's final slip rate (:506) and the
     ! restart netCDF slip rate. solveRSF still overwrites this with its own
-    ! v_trial (strike+dip only, faulting.f90:275) for friclaw>=3, so this
+    ! v_trial (strike+dip only, faulting.f90:285) for friclaw>=3, so this
     ! line changes nothing there -- only friclaw 1/2 outputs change.
     fric(FRIC_SLOT_PEAK_SLIPRATE,iFaultNodePair,iFault) = nsdSliprateVector(4) !mag, 3-component
     
