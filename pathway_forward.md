@@ -71,6 +71,8 @@ first, and that is item 76, owner-scoped.
 
 ## A. Open work -- something to do, P1 first
 
+**OWNER DECISION 2026-10-03 (typed in the main session):** "/autopilot clear the board" -- every open row in sections A and B is in scope for the conductor, in prio order, except 19(c), which the owner parked ("keep tpv34/35 parked for now", 2026-09-30); item 140 (Harris sweep) was "later" relative to v5.22.0, which has shipped. The owner was asked "start the 100 m TPV22/23 runs?" (item 144) and answered with this command.
+
 **Batch small items (owner, 2026-09-30):** after every landing, re-read this board and fold every small, ready, non-physics item into ONE PR (one CI run, one audit). Physics changes keep their own PR; a red fix or a ready P1 never waits for a batch.
 
 Ranked by value per unit of risk, not by item number. Do not start a P3
