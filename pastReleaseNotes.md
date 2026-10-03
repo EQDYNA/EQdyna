@@ -1,6 +1,15 @@
 # Past release notes\
 
 # News in 2026
+* 20261002 v5.22.0 release notes
+  * New - **two-fault per-fault mesh support restored** (item 17, PR #76, `a51602c`): per-fault mesh extent restored in both backends (`meshgen.py` and the Fortran mesh generator); one-fault cases are bit-identical to before.
+  * New - **TPV22/TPV23 SCEC compsets registered, RELEASE_ONLY** (PR #76, `a51602c`): nucleation branches and compsets on plain `par.faultgeom` (TPV22 at 200 m, TPV23 at 250 m, 15 s gate term), own frozen references (`frt.canonical.txt`, `fault.dyna.r.nc`, `stations/`). RELEASE_ONLY means a cost gate only -- neither case is in the everyday local sweep or CI's `e2e-ci-smoke`; `test_term_axis.py` guards against a third case or a second term reappearing.
+  * New - **multi-fault plotting** (PR #76, `a51602c`): `scripts/lib.py`'s `loadFrtData`, `plotRuptureDynamics` and `plotSlipAndRPT` now handle multiple faults.
+  * Fix - **slot-47 peak-slip-rate output was silently zero for every friclaw 1/2 (slip-weakening / time-weakening) case.** `FRIC_SLOT_PEAK_SLIPRATE` was written only for `friclaw>=3`; it is now written for every friction law (PR #76, commit `45b5f02`, item 17b), with 10 cases' `frt`/nc references regenerated under rule 7 (commit `9ebe0e7`). `frt.txt`, `src_evol`, and restart-netCDF slip-rate fields were affected before this fix.
+  * Change - **`test.multifault2` retired as the two-fault gate case** (owner decision, PR #76): `test.tpv22`/`test.tpv23` are the two-fault gate now; routing checks moved to `test_tpv2223_multifault_routing.py`.
+  * Evidence - full `testsys/run.py release` sweep run on a clean checkout of `a51602c`: 27/27 runnable cells SUCCESS, including the RELEASE_ONLY `test.tpv22`/`test.tpv23` cells on both gated backends; evidence committed at `docs/evidence/sweep-a51602c/summary.json` (commit `968a0a8`, rule 15f step 3).
+  * Note - minor release: physics-path change (`src/fortran/`, `src/python/eqdyna/`, `case_input/`, `test.reference.results/` all touched by PR #76); full `testsys/run.py release` sweep run per rule 15f step 3, carried forward into this release's own tag per rule 15f step 3 (this release PR, `VERSION`/banner/docs only, touches no further `is_release_physics_path` content).
+
 * 20261001 v5.21.0 release notes
   * New - **multi-fault support: two vertical, planar, PARALLEL faults, on both gated backends** (item 17/141, PR #72, `6b5b81b`, squash-merged). Fortran port `2df46aa`, two audit-fix rounds `ea292ab`/`0507d04` (first audit's MAJORs fixed; second audit caught and fixed a regression in the anti-`ntotft==1` special-case guard). Python-jax port `60cb405`. New case `case_input/test.multifault2/` (two-fault smoke/parity, own committed reference), deliberately NOT in the release gate matrix (`testNameList.py`/`testsys/matrix.py` untouched by it).
   * New - **per-cell e2e timeout** (unplanned addition during the multi-fault campaign, `1a9a587`), fixing an 11h45m MPI-transport hang on `test.tpv1053d x fortran` that previously went unnoticed until a human manually killed it (verdict `FAIL(timeout)`, ~3x last-ledger-wall-time deadline, verified-single-PID kill).
