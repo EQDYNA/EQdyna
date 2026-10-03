@@ -79,7 +79,8 @@ def main():
     inv_l, finv_l = inv, finv
     faces = MQ.build_faces(part, mesh['n_local'], S['ndof'], S['eq_ids'],
                            mesh['flt_lists'],
-                           meshgen.flt_mpi_flags(part, mesh['flt_lists']))
+                           meshgen.flt_mpi_flags(part, mesh['flt_lists']),
+                           mesh['nsmp'])
     halo_h = (np.unique(np.concatenate([f['eqs'] for f in faces])) if faces
               else np.zeros(0, dtype=np.int64)).astype(np.int32)
     build_s = time.perf_counter() - t0

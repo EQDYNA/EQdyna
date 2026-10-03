@@ -394,6 +394,16 @@ NSTRESS_CONVENTION = {
 # call (see the UNSUPPORTED reason string), not a policy requirement.
 PY_MPI_RANKS = {
     'test.tpv8': 4,
+    # Board item 145: meshgen.fault_boundary_lists/mpi4arn/fault_census/
+    # equation_census and MPI4NodalQuant.build_faces are now generalized to
+    # ntotft>1 (eqdyna3d.py's build_solver_state no longer refuses ntotft>1
+    # with part!=None) -- test.tpv22/23 (both ntotft=2) opt in at 4 ranks,
+    # the same DECOMP[4]=(2,2,1) split every other 4-rank cell uses. Measured
+    # wall time at 4 ranks vs the serial-jax numbers RELEASE_ONLY's reason
+    # strings record (1537.9s/775.1s): see docs/cycle_ledger.jsonl / the PR
+    # that landed this for the actual figures.
+    'test.tpv22': 4,
+    'test.tpv23': 4,
 }
 
 # PY_MPI_EXPECTED_FRT_FILES: the number of `frt.txt<rank>` files a cell must
@@ -417,6 +427,14 @@ PY_MPI_RANKS = {
 # 1891 rows pre-dedup (= the reference's row count).
 PY_MPI_EXPECTED_FRT_FILES = {
     ('test.tpv8', 4): 2,
+    # Board item 145: measured directly (eqdyna3d.build_solver_state(part=...)
+    # for every rank of DECOMP[4]=(2,2,1), no MPI, same oracle style as
+    # test.tpv8's own figure above) -- both faults' footprints are wide
+    # enough in x that every one of the 4 ranks owns at least one fault
+    # node for both tpv22 and tpv23, unlike tpv8's asymmetric-y case where
+    # 2 of 4 ranks never touch the fault.
+    ('test.tpv22', 4): 4,
+    ('test.tpv23', 4): 4,
 }
 
 THRESHOLD = 1e-3  # PROJECT_RULES rule 5's one outer sanity bound.
@@ -486,36 +504,52 @@ def gate_term_for(case):
 # CASE_TERM_OVERRIDE term as every other case -- never a looser bound for
 # being release-only).
 #
-# Measured cost (item 17 section B, this session): test.tpv22 x python-jax
+# Measured cost (item 17 section B, original landing): test.tpv22 x python-jax
 # 1537.9s wall (~25.6 min), peak RSS ~13.5 GB; test.tpv23 x python-jax 775.1s
-# wall -- vs 30-70s wall / 1.9-4.3 GB for every other gated jax cell.
-# Root cause (verified, not guessed, from eqdyna3d.py:667's build_solver_state
-# NotImplementedError): python-jax-mpi refuses ntotft>1, so these two cells'
-# jax column runs SERIAL jax today, not the MPI-parallel execution mode every
-# single-fault jax cell gets. Porting python-jax-mpi to ntotft>1 is a
-# separate, later job (not this one) that would remove the reason this flag
-# exists; until then, registering both cases at their own 15s
-# CASE_TERM_OVERRIDE term in the EVERYDAY gate would ~5-6x the whole sweep's
-# wall time for 2 of what would become 25 cells.
+# wall -- vs 30-70s wall / 1.9-4.3 GB for every other gated jax cell. Root
+# cause then (eqdyna3d.py:667's build_solver_state NotImplementedError):
+# python-jax-mpi refused ntotft>1, so these two cells' jax column ran SERIAL
+# jax, not the MPI-parallel execution mode every single-fault jax cell gets.
+#
+# Board item 145 (this PR): that NotImplementedError is gone -- both cases
+# are now opted into PY_MPI_RANKS above (4 ranks) and PASS on python-jax-mpi
+# too (max|diff| 8.2e-15 / 7.7e-15, bound 1e-10). Measured wall time dropped
+# to 681.7s / 374.8s (2.26x / 2.07x vs the serial-jax figures above) but is
+# still well above a normal gated jax cell's 30-70s, so RELEASE_ONLY's COST
+# rationale persists at a smaller margin -- left as the owner's call, not
+# changed by this PR.
 #
 # Both backends of both cases are SUPPORTED and PASS (fortran bit-exact 0.0,
 # python-jax max|diff| ~1e-14, both at the case's own 15s term) -- see
 # CASE_BOUND's own comment a few lines below for the exact observed numbers.
 # Keyed by CASE (not cell): applies to every BACKEND of that case that is
-# actually runnable (python-jax-mpi is already UNSUPPORTED for both cases via
-# PY_MPI_RANKS above, for the same ntotft>1 reason -- everyday_cells() below
-# only ever moves cells out of the RUNNABLE set, so it can never collide with
-# an UNSUPPORTED declaration).
+# actually runnable (python-jax-mpi is now SUPPORTED for both cases via
+# PY_MPI_RANKS above -- everyday_cells() below only ever moves cells out of
+# the RUNNABLE set, so it can never collide with an UNSUPPORTED declaration).
 RELEASE_ONLY = {
+    # Board item 145 update: the root cause named below (python-jax-mpi
+    # refusing ntotft>1) is FIXED -- meshgen.fault_boundary_lists/mpi4arn/
+    # fault_census/equation_census and MPI4NodalQuant.build_faces now
+    # generalize to ntotft>1, and both cases are opted into PY_MPI_RANKS
+    # above. Measured on this fix's own PR (4 ranks, DECOMP[4]=(2,2,1),
+    # same box as the serial-jax figures below): test.tpv22 681.7s wall
+    # (vs 1537.9s serial jax, 2.26x), test.tpv23 374.8s wall (vs 775.1s
+    # serial jax, 2.07x) -- both still well above the 30-70s every other
+    # gated jax cell costs, so the COST reason for RELEASE_ONLY persists,
+    # just at a smaller margin than before. Left in RELEASE_ONLY (moving a
+    # case between the everyday and release sweep is the owner's suite-cost
+    # call, not this PR's to make) -- see this PR's description for the
+    # full before/after numbers and provenance.
     'test.tpv22': (
         'release-only for COST, not correctness (owner decision, 2026-10-02, '
         'item 17 section B; PROJECT_RULES rule 24 contingency clause). '
         'SUPPORTED and PASSING on both gated backends at the case\'s own 15s '
         'CASE_TERM_OVERRIDE term (fortran 0.0, python-jax ~1e-14 -- see '
-        'CASE_BOUND\'s own comment). python-jax measured 1537.9s wall '
-        '(~25.6 min), peak RSS ~13.5 GB, because python-jax-mpi refuses '
-        'ntotft>1 (eqdyna3d.py:667) and this cell runs serial jax -- a '
-        'separate, later port job closes that gap, not this one. Moved out '
+        'CASE_BOUND\'s own comment) AND on python-jax-mpi (max|diff|=8.2e-15, '
+        'bound 1e-10, board item 145). python-jax-mpi measured 681.7s wall at '
+        '4 ranks (board item 145 PR) -- down from python-jax serial\'s 1537.9s '
+        '(~25.6 min, peak RSS ~13.5 GB) now that python-jax-mpi supports '
+        'ntotft>1, but still ~10-20x a normal 30-70s gated jax cell. Moved out '
         'of the everyday sweep (run.py all / run.py unit regression); stays '
         'in the release sweep (run.py release) at the SAME bound/term as '
         'every other case.'
@@ -524,10 +558,13 @@ RELEASE_ONLY = {
         'release-only for COST, not correctness (owner decision, 2026-10-02, '
         'item 17 section B; PROJECT_RULES rule 24 contingency clause). '
         'SUPPORTED and PASSING on both gated backends at the case\'s own 15s '
-        'CASE_TERM_OVERRIDE term (fortran 0.0, python-jax ~1e-14). '
-        'python-jax measured 775.1s wall, same ntotft>1/serial-jax cause as '
-        'test.tpv22. Moved out of the everyday sweep; stays in the release '
-        'sweep at the same bound/term as every other case.'
+        'CASE_TERM_OVERRIDE term (fortran 0.0, python-jax ~1e-14) AND on '
+        'python-jax-mpi (max|diff|=7.7e-15, bound 1e-10, board item 145). '
+        'python-jax-mpi measured 374.8s wall at 4 ranks (board item 145 PR) -- '
+        'down from python-jax serial\'s 775.1s now that python-jax-mpi '
+        'supports ntotft>1, same relative cost profile as test.tpv22. Moved '
+        'out of the everyday sweep; stays in the release sweep at the same '
+        'bound/term as every other case.'
     ),
 }
 
