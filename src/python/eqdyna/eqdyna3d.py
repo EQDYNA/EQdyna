@@ -655,28 +655,22 @@ def build_solver_state(case_dir, part=None):
         st_off_z_actual_m=st_off_actual_m[:, 2],
     )
     mesh = dict(meshCoor=meshCoor, nsmp=nsmp)
-    if part is not None and g['ntotft'] > 1:
-        # Row 17 scope cut (documented, not silent): the python-jax-mpi path
-        # (MPI4NodalQuant.py's fault_boundary_lists/mpi4arn/fault_census/
-        # equation_census, all in meshgen.py) is still single-fault-shaped --
-        # widening it is a separate, opt-in-per-case decision (CLAUDE.md
-        # "There is ONE test" / python-jax-mpi section), not attempted here.
-        # Refuses loudly rather than building a rank-local mesh whose MPI
-        # boundary bookkeeping silently only covers fault 1.
-        raise NotImplementedError(
-            'build_solver_state: ntotft=%d with part!=None (python-jax-mpi) is not '
-            'supported -- the rank-local MPI fault-boundary bookkeeping '
-            '(meshgen.fault_boundary_lists/mpi4arn/fault_census/equation_census) is '
-            'still single-fault-shaped; only the serial python-jax path is '
-            'generalized for multi-fault in this release.' % g['ntotft'])
+    # Row 17 (multi-fault, board item 145): the python-jax-mpi rank-local MPI
+    # fault-boundary bookkeeping (meshgen.fault_boundary_lists/mpi4arn/
+    # fault_census/equation_census, MPI4NodalQuant.build_faces) is now
+    # generalized to ntotft>1 -- see those functions' own docstrings for the
+    # per-fault divide/duplicate (mpi4arn) and master-node-id-lookup
+    # (build_faces) fixes this required. The NotImplementedError this block
+    # used to raise unconditionally for ntotft>1 is gone; every case below
+    # reduces bit-identically to the old ntotft==1 formulas (see each
+    # function's docstring for the specific reduction argument).
     if part is not None:
         n_local = (len(xline), len(yline), len(zline))
         mesh.update(
             n_local=n_local, offsets=offsets,
             n_global=tuple(len(a) for a in glines),
             flt_lists=meshgen.fault_boundary_lists(nsmp, *n_local),
-            fault_box={k: params[k] for k in ('fxmin', 'fxmax', 'fymin', 'fymax',
-                                               'fzmin', 'fzmax')},
+            fault_boxes=meshgen.fault_boxes(params),
             arn1=arn, mass1=nodalMassArr, fnms1=fnms,
             fault_census=meshgen.fault_census(*glines, params),
             equation_census=meshgen.equation_census(*glines, params, pmlb, bounds))

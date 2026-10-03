@@ -337,15 +337,26 @@ def local_line(line, num_mpi, mpi_id):
 
 def fault_boundary_lists(nsmp, nx, ny, nz):
     """createMasterNode's fltgm bookkeeping (meshgen.f90:877-900) and
-    MPI4arn's fltl..fltu fill (:271-300), for ONE fault (ntotft==1).
+    MPI4arn's fltl..fltu fill (:271-300).
 
     fltgm codes which LOCAL faces a split node sits on (+1 ix==1, +2 ix==nx,
     +10 iy==1, +20 iy==ny, +100 iz==1, +200 iz==nz) and the six lists are
     decoded from it with the Fortran's own mod arithmetic. Returns a list of
     six int64 arrays, k = 0..5 for Fortran's k = 1..6 (x-, x+, y-, y+, z-,
-    z+), each the ascending 1-based local fault-node indices on that face.
-    `nsmp` is the (nftnd, 2) 1-based [slave, master] table in fault-encounter
-    order, so row j IS local fault node j+1."""
+    z+), each the ascending 1-based ROW POSITION (into `nsmp`, not a node id)
+    of every fault row on that face.
+
+    Row 17 (multi-fault): this classification only looks at a row's SLAVE
+    grid position (nsmp[:,0]), never which fault the row belongs to, so it
+    is already correct with every fault's rows mixed in one call -- Fortran's
+    per-fault fltnum(k,ift)/fltl(:,ift) are recovered by the CALLER splitting
+    a returned row-position array by that row's nsmp[:,2] (fault id) where a
+    per-fault decision is needed (see `mpi4arn`'s divide/duplicate test).
+    `nsmp` is the (nftnd, 2-or-3) 1-based [slave, master, (fault_id)] table,
+    fault-grouped (ntotft==1: identical to fault-encounter order), so row j
+    IS local fault row j+1 for whichever fault that row belongs to -- exactly
+    the index `arn`/`fric_init`/etc. (also row-ordered the same way) are
+    addressed by elsewhere in this port."""
     s = np.asarray(nsmp[:, 0], dtype=np.int64) - 1
     ix = s // (nz * ny)
     iz = (s % (nz * ny)) // ny
@@ -366,29 +377,47 @@ def flt_mpi_flags(part, flt_lists):
             and flt_lists[k].size > 0 for k in range(6)]
 
 
-def mpi4arn(comm, part, arn, flt_lists, params):
-    """MPI4arn + syncArnBoundary (meshgen.f90:212-433), for ONE fault.
+def mpi4arn(comm, part, arn, flt_lists, fault_boxes, fault_of):
+    """MPI4arn + syncArnBoundary (meshgen.f90:212-433).
 
     Walks x (left, right), y (front, back), z (down, up) in the Fortran's
     order; on every face that is interior to the model AND carries fault
     nodes on THIS rank, Sendrecv's the arn of those nodes with the face
-    neighbour and adds the neighbour's values back ONLY when the fault has
-    non-zero nominal extent (fltxyz, i.e. params f*min/f*max) along that
-    dimension -- the DIVIDE path. Along a degenerate dimension (a vertical or
-    inserted fault's y) both ranks already hold the complete tributary area,
-    the neighbour's value is a duplicate, and nothing is added -- but the
+    neighbour and adds the neighbour's values back ONLY when the OWNING
+    FAULT of that row has non-zero nominal extent (fltxyz, i.e. that fault's
+    own f*min/f*max) along that dimension -- the DIVIDE path. Along a
+    degenerate dimension (a vertical or inserted fault's y) both ranks
+    already hold the complete tributary area for that fault, the
+    neighbour's value is a duplicate, and nothing is added -- but the
     exchange still happens and fltMPI(k) is still set, because
     MPI4NodalQuant's addFaultBoundaryTerm keys on fltMPI (see the long FIX
     comment at meshgen.f90:291-315 for why skipping the call was reverted).
     Evidence for both branches: testsys/regression/test_fault_mpi_boundary_arn.py
     (DUPLICATE) and test_dipping_fault_y_split.py (DIVIDE), on the Fortran.
 
+    Row 17 (multi-fault): Fortran decides divide/duplicate PER FAULT
+    (syncArnBoundary's `fltxyz(2,dimId,ift) /= fltxyz(1,dimId,ift)`, called
+    once per fault from meshgen.f90's `do ift=1,ntotft` loop around
+    `MPI4arn`) -- a face's row set here can mix rows from several faults
+    (e.g. test.tpv22/23's two faults share an x/z overlap band), and each
+    fault's own extent can answer this differently in principle, so the
+    decision is made PER ROW, keyed by that row's `fault_of` entry, not once
+    for the whole face. `fault_boxes`: list of (fxmin,fxmax,fymin,fymax,
+    fzmin,fzmax) tuples, `meshgen._fault_boxes` order (index i == fault i,
+    bFaultGeometry.txt order). `fault_of`: the (nftnd,) 0-indexed fault id of
+    every ROW of the local `nsmp` table `flt_lists` indexes into (its 3rd
+    column). Reduces to the old single-fault formula at ntotft==1 (one box,
+    fault_of all zero): the per-row mask is then constant across the whole
+    face, so `arn[idx[mask]] += recv[mask]` is either the full add or a
+    complete no-op, bit-identical to the old `if fext[d][1]!=fext[d][0]:
+    arn[idx] += recv`.
+
     `arn` is the 1-indexed (nftnd+1,) array, updated IN PLACE. Returns
     fltMPI, six bools. Tags are syncArnBoundary's (tagBase+me /
     tagBase+neighbour, tagBase 1000/2000/3000)."""
-    p = params
-    fext = ((p['fxmin'], p['fxmax']), (p['fymin'], p['fymax']),
-            (p['fzmin'], p['fzmax']))
+    # fext[f, d, 0] = lo, fext[f, d, 1] = hi, for fault f, axis d.
+    fext = np.array([((b[0], b[1]), (b[2], b[3]), (b[4], b[5])) for b in fault_boxes])
+    fault_of = np.asarray(fault_of, dtype=np.int64)
     flt_mpi = flt_mpi_flags(part, flt_lists)
     for d in range(3):
         for ib in (0, 1):
@@ -402,8 +431,10 @@ def mpi4arn(comm, part, arn, flt_lists, params):
             recv = np.empty_like(send)
             comm.Sendrecv(send, dest=nb, sendtag=tag + part.rank, recvbuf=recv,
                           source=nb, recvtag=tag + nb)
-            if fext[d][1] != fext[d][0]:
-                arn[idx] += recv
+            fid = fault_of[idx - 1]
+            divide = fext[fid, d, 1] != fext[fid, d, 0]
+            if divide.any():
+                arn[idx[divide]] += recv[divide]
     return flt_mpi
 
 
@@ -414,17 +445,26 @@ def fault_census(xline, yline, zline, params):
     rank-local run can check, with two integers, that the ranks' OWNED fault
     nodes are exactly the global set (a count alone would pass a node owned
     twice plus one owned never). Same predicate, elementwise, as
-    on_fault_grid_mask."""
+    on_fault_grid_mask.
+
+    Row 17 (multi-fault): the "on fault" test is the UNION (OR) of every
+    fault's own box (`_fault_boxes`), matching on_fault_grid_mask_with_id --
+    this function used to test only params['fxmin']/.../['fzmax'] (fault 1's
+    scalar box alone), silently missing every other fault's nodes. Reduces
+    to the old single-box test at ntotft==1 (`_fault_boxes` returns that one
+    box)."""
     p = params
     X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
     ny, nz = Y.shape[0], Z.shape[0]
     dx = p['dx'] if p['C_degen'] > 3.0 else None
+    boxes = _fault_boxes(p)
     count, key_sum = 0, 0
     for ix in range(X.shape[0]):
-        m = _check_is_on_fault_vec(X[ix], Y[None, :], Z[:, None], p['fxmin'],
-                                   p['fxmax'], p['fymin'], p['fymax'],
-                                   p['fzmin'], p['fzmax'], p['tol'],
-                                   p['C_degen'], dx)
+        masks = [_check_is_on_fault_vec(X[ix], Y[None, :], Z[:, None], *box,
+                                        p['tol'], p['C_degen'], dx) for box in boxes]
+        m = masks[0]
+        for mm in masks[1:]:
+            m = m | mm
         flat = np.nonzero(np.broadcast_to(m, (nz, ny)).ravel())[0]
         count += int(flat.size)
         key_sum += int(flat.sum()) + int(flat.size) * ix * nz * ny
@@ -436,7 +476,11 @@ def equation_census(xline, yline, zline, params, pmlb, model_bound):
     (countMeshEntities.f90's per-node count: 0 if on the fixed model
     boundary else numOfDof, plus 3 per master node) -- the number a
     rank-local run's OWNED equations must sum to. It is what catches a
-    boundary test that used a local line's end instead of the model's."""
+    boundary test that used a local line's end instead of the model's.
+
+    Row 17 (multi-fault): the "on fault" test is the UNION (OR) of every
+    fault's own box (`_fault_boxes`), same fix and same bit-identical
+    ntotft==1 reduction as `fault_census` above."""
     p = params
     X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
     tol = p['tol']
@@ -446,6 +490,7 @@ def equation_census(xline, yline, zline, params, pmlb, model_bound):
     py = (Y > pmlb['ymax0']) | (Y < pmlb['ymin0'])
     pz = Z < pmlb['zmin0']
     dx = p['dx'] if p['C_degen'] > 3.0 else None
+    boxes = _fault_boxes(p)
     total = 0
     for ix in range(X.shape[0]):
         x = X[ix]
@@ -453,9 +498,11 @@ def equation_census(xline, yline, zline, params, pmlb, model_bound):
         px = (x > pmlb['xmax0']) or (x < pmlb['xmin0'])
         fixed = fx | fz[:, None] | fy[None, :]
         ndpn = np.where(px | pz[:, None] | py[None, :], 12, 3)
-        m = _check_is_on_fault_vec(x, Y[None, :], Z[:, None], p['fxmin'],
-                                   p['fxmax'], p['fymin'], p['fymax'],
-                                   p['fzmin'], p['fzmax'], tol, p['C_degen'], dx)
+        masks = [_check_is_on_fault_vec(x, Y[None, :], Z[:, None], *box,
+                                        tol, p['C_degen'], dx) for box in boxes]
+        m = masks[0]
+        for mm in masks[1:]:
+            m = m | mm
         total += int(np.where(fixed, 0, ndpn).sum()) + 3 * int(np.broadcast_to(m, fixed.shape).sum())
     return total
 
@@ -528,6 +575,14 @@ def _fault_boxes(params):
                 for f in faults]
     return [(params['fxmin'], params['fxmax'], params['fymin'], params['fymax'],
              params['fzmin'], params['fzmax'])]
+
+
+def fault_boxes(params):
+    """Public alias for `_fault_boxes`, for callers outside this module
+    (eqdyna3d.build_solver_state's python-jax-mpi setup, `mpi4arn`'s own
+    caller) that need the per-fault box list without reaching into a
+    leading-underscore helper."""
+    return _fault_boxes(params)
 
 
 def on_fault_grid_mask_with_id(xline, yline, zline, params):

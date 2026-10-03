@@ -144,19 +144,34 @@ def face_node_ids(d, ib, nx, ny, nz):
     return ids.ravel().astype(np.int64)
 
 
-def build_faces(part, n_local, ndof, eq_ids, flt_lists, flt_mpi):
+def build_faces(part, n_local, ndof, eq_ids, flt_lists, flt_mpi, nsmp):
     """The exchange plan: one entry per face this rank exchanges, in the
     Fortran's order (x-, x+, y-, y+, z-, z+; model-boundary faces and
     undivided dimensions skipped).
 
     Each entry carries `nodes` (1-based local node ids: the face's regular
-    nodes, then -- when fltMPI(k) -- nx*ny*nz + its fault-node indices, i.e.
-    addFaultBoundaryTerm's master nodes) and `eqs` (processNodalQuantArr's
-    numDof==3 slots: every eq>0 of those nodes in dof order). `ndof`/`eq_ids`
-    are the 0-indexed-by-node S['ndof']/S['eq_ids'] tables (sink 0 = no
-    equation)."""
+    nodes, then -- when fltMPI(k) -- the ACTUAL master-node id of each
+    fault-node row on that face, looked up as `nsmp[flt_lists[k]-1, 1]`,
+    exactly Fortran's addFaultBoundaryTerm `nsmp(2,fltl(j,ift),ift)` lookup)
+    and `eqs` (processNodalQuantArr's numDof==3 slots: every eq>0 of those
+    nodes in dof order). `ndof`/`eq_ids` are the 0-indexed-by-node
+    S['ndof']/S['eq_ids'] tables (sink 0 = no equation).
+
+    Row 17 (multi-fault): the master-node id used to be derived by
+    arithmetic (`n_reg + flt_lists[k]`), which is only correct when a fault
+    row's position in the (rank-local) `nsmp` table equals its position in
+    the meshCoor master-node block -- true at ntotft==1 (no fault-grouping
+    reorder happens) but NOT in general at ntotft>1, where
+    `build_node_coordinates` stable-sorts `nsmp` by fault id while the
+    master-node BLOCK in meshCoor stays in grid-SCAN order (interleaved
+    across faults wherever two faults' x/z footprints overlap, e.g.
+    test.tpv22/23's 10 km overlap band). Looking the id up in `nsmp[:,1]`
+    directly -- rather than re-deriving it -- is correct regardless of scan
+    vs. fault-grouped order, and is bit-identical to the old formula at
+    ntotft==1 (there, nsmp[:,1] IS exactly n_reg+row_position by
+    construction)."""
     nx, ny, nz = n_local
-    n_reg = nx * ny * nz
+    master_id = np.asarray(nsmp[:, 1], dtype=np.int64)
     faces = []
     for d in range(3):
         if part.dims[d] <= 1:
@@ -167,7 +182,7 @@ def build_faces(part, n_local, ndof, eq_ids, flt_lists, flt_mpi):
             k = 2 * d + ib
             nodes = face_node_ids(d, ib, nx, ny, nz)
             if flt_mpi[k]:
-                nodes = np.concatenate((nodes, n_reg + flt_lists[k]))
+                nodes = np.concatenate((nodes, master_id[flt_lists[k] - 1]))
             if np.unique(nodes).size != nodes.size:
                 raise ValueError('build_faces: face %d holds a node twice' % k)
             e = eq_ids[nodes - 1]
@@ -287,10 +302,12 @@ def setup_exchange(comm, part, S, mesh):
     n_local = mesh['n_local']
     arn1 = mesh['arn1']
     flt_lists = mesh['flt_lists']
+    nsmp = mesh['nsmp']
     flt_mpi = meshgen.flt_mpi_flags(part, flt_lists)
-    faces = build_faces(part, n_local, S['ndof'], S['eq_ids'], flt_lists, flt_mpi)
+    faces = build_faces(part, n_local, S['ndof'], S['eq_ids'], flt_lists, flt_mpi, nsmp)
     handshake(comm, part, faces, mesh['meshCoor'])
-    if meshgen.mpi4arn(comm, part, arn1, flt_lists, mesh['fault_box']) != flt_mpi:
+    if meshgen.mpi4arn(comm, part, arn1, flt_lists, mesh['fault_boxes'],
+                       nsmp[:, 2]) != flt_mpi:
         raise RuntimeError('MPI4NodalQuant.setup_exchange: MPI4arn set fltMPI '
                            'differently from the plan it was built against')
     mass1, fnms1 = mesh['mass1'], mesh['fnms1']

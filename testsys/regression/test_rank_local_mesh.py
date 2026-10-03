@@ -185,9 +185,14 @@ def _simulate_relay(parts, planes, key, arrs, num_dof_label):
                 arrs[r][f[key]] += snap[f['nb']][partner[0][key]]
 
 
-def _simulate_arn(parts, meshes, arns, fbox):
-    fext = ((fbox['fxmin'], fbox['fxmax']), (fbox['fymin'], fbox['fymax']),
-            (fbox['fzmin'], fbox['fzmax']))
+def _simulate_arn(parts, meshes, arns, fault_boxes):
+    """Independent oracle for meshgen.mpi4arn. Row 17 (multi-fault): the
+    divide/duplicate decision is now PER ROW (keyed by that row's own
+    fault's extent, `fault_boxes[fid]`), not once per face -- mirrors
+    mpi4arn's own generalization. At ntotft==1 (every CASES entry here) the
+    per-row mask is constant across a face, so this reduces to the old
+    per-face branch exactly."""
+    fext = np.array([((b[0], b[1]), (b[2], b[3]), (b[4], b[5])) for b in fault_boxes])
     used = set()
     flt_mpi = [[False] * 6 for _ in parts]
     for d in range(3):
@@ -206,10 +211,12 @@ def _simulate_arn(parts, meshes, arns, fbox):
                 if pidx.size != idx.size:
                     raise AssertionError('rank %d face %d: %d fault nodes, neighbour %d: %d'
                                          % (r, k, idx.size, nb, pidx.size))
-                if fext[d][1] != fext[d][0]:
-                    arns[r][idx] += snap[nb][pidx]
+                fid = meshes[r]['nsmp'][idx - 1, 2]
+                divide = fext[fid, d, 1] != fext[fid, d, 0]
+                if divide.any():
+                    arns[r][idx[divide]] += snap[nb][pidx[divide]]
                     used.add(('xsplit', 'ydiv', 'zsplit')[d])
-                else:
+                if (~divide).any():
                     used.add(('xdup', 'ydup', 'zdup')[d])
     return flt_mpi, used
 
@@ -272,10 +279,11 @@ def check_case(label, case, overrides, rank_counts, must_reach, tmp):
                 _eq(k, S[k], np.asarray(S_s[k])[frow])
         # --- setup exchanges, simulated across all ranks
         arns = [m['arn1'].copy() for m in ms]
-        flt_mpi, used = _simulate_arn(parts, ms, arns, ms[0]['fault_box'])
+        flt_mpi, used = _simulate_arn(parts, ms, arns, ms[0]['fault_boxes'])
         reached |= used
         planes = [MQ.build_faces(parts[r], ms[r]['n_local'], Ss[r]['ndof'], Ss[r]['eq_ids'],
-                                 ms[r]['flt_lists'], flt_mpi[r]) for r in range(nranks)]
+                                 ms[r]['flt_lists'], flt_mpi[r], ms[r]['nsmp'])
+                 for r in range(nranks)]
         mass = [m['mass1'].copy() for m in ms]
         fnms = [m['fnms1'].copy() for m in ms]
         _simulate_relay(parts, planes, 'eqs', mass, 'mass')
