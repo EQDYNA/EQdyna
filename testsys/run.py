@@ -6,7 +6,7 @@ Single entry point for EQdyna's tiered test system (PROJECT_RULES.md rule 3).
     python3 testsys/run.py regression    # one guard per past incident (rule 10)
     python3 testsys/run.py e2e           # THE test: the everyday case x backend sweep vs test.reference.results/, at matrix.GATE_TERM_S (rule 7)
     python3 testsys/run.py e2e-ci        # the same sweep, restricted to matrix.CI_CELLS (2026-09-23: one case x 2 backends -- fortran, python-jax -- portability smoke)
-    python3 testsys/run.py release       # THE test, over every supported cell (currently the same cells as `e2e` -- matrix.RELEASE_ONLY was retired 2026-09-23): the release gate, writes docs/evidence/sweep-<sha>/summary.json
+    python3 testsys/run.py release       # THE test, over every supported cell (`e2e`'s cells PLUS matrix.RELEASE_ONLY -- test.tpv22/test.tpv23, held out of `e2e` for cost only, item 17 section B): the release gate, writes docs/evidence/sweep-<sha>/summary.json
     python3 testsys/run.py e2e-full      # SCEC cases at spec dx/term, 16 ranks, report-only (opt-in; hours)
     python3 testsys/run.py gpu           # the sweep's python-jax column on CUDA (one cell; needs a GPU)
     python3 testsys/run.py perf          # pinned single-core Fortran/NumPy/JAX timing, ratio-guarded
@@ -34,12 +34,13 @@ earlier two-term design): every cell of every selection -- `e2e`, `e2e-ci`,
 existing override path regardless of a case's own committed par.term.
 `release` is run_e2e.py's `--release` selector: it is the tier that gates a
 release (PROJECT_RULES rule 15/16) and writes docs/evidence/sweep-<sha>/
-summary.json (rule 24), currently over the SAME cell set as `e2e` --
-matrix.RELEASE_ONLY, the mechanism that used to widen it, was retired
-2026-09-23 (its only two occupants were both python-numpy cells, removed
-along with the backend axis itself). CI runs e2e-ci ONLY; `release` is a
-human- or conductor-scheduled tier, the same as the old `run.py all`'s e2e
-slice was.
+summary.json (rule 24), over `e2e`'s cell set PLUS matrix.RELEASE_ONLY
+(test.tpv22/test.tpv23, reintroduced 2026-10-02 per rule 24's own
+contingency clause -- held out of `e2e` for wall-clock cost only, item 17
+section B; both are SUPPORTED and PASSING, never held out for failing), each
+at its own CASE_BOUND/CASE_TERM_OVERRIDE term, same as every other case. CI
+runs e2e-ci ONLY; `release` is a human- or conductor-scheduled tier, the same
+as the old `run.py all`'s e2e slice was.
 
 Two tiers that used to sit beside it are gone, for the same reason each time:
 they were a SECOND way of asking a question e2e already answers, and a second
@@ -387,9 +388,10 @@ def _e2e(*args):
 
 def run_e2e():
     """THE sweep, EVERYDAY selection (run_e2e.py's default, no flags): every
-    supported case x backend cell, at matrix.GATE_TERM_S regardless of its
-    own committed par.term. (matrix.RELEASE_ONLY, which used to hold cells
-    back from this selection for cost, was retired 2026-09-23.)"""
+    supported case x backend cell MINUS matrix.RELEASE_ONLY (test.tpv22/
+    test.tpv23, held out for wall-clock cost only -- see matrix.RELEASE_ONLY's
+    own comment), at matrix.gate_term_for(case) (matrix.GATE_TERM_S for every
+    case not in matrix.CASE_TERM_OVERRIDE)."""
     print('\n==== testsys: e2e ====')
     return _e2e()
 
@@ -479,17 +481,16 @@ def _release_sweep_carry_forward():
 
 def run_release():
     """THE sweep, RELEASE selection (run_e2e.py --release): every supported
-    cell, at the SAME matrix.GATE_TERM_S as every other selection. This is the
+    cell, each at its own CASE_BOUND/matrix.gate_term_for(case). This is the
     release gate (PROJECT_RULES rule 15/16) -- the tier `run.py all`'s e2e
-    slice used to be before CI stopped running the wider sweep. Currently
-    selects the SAME cells as `e2e` (matrix.RELEASE_ONLY, the mechanism that
-    used to widen this selection beyond the everyday one, was retired
-    2026-09-23 along with the python-numpy backend axis -- its only two
-    occupants were both python-numpy cells); kept as its own flag because it
-    is also the deliberate pre-tag/evidence invocation, not merely a cell
-    filter. Run over the full default selection (no --cases/--backends), it
-    also writes docs/evidence/sweep-<shortsha>/summary.json
-    (run_e2e.write_release_evidence).
+    slice used to be before CI stopped running the wider sweep. Selects
+    `e2e`'s cells PLUS matrix.RELEASE_ONLY (test.tpv22/test.tpv23,
+    reintroduced 2026-10-02 per rule 24's own contingency clause -- held out
+    of `e2e` for wall-clock cost only, item 17 section B); kept as its own
+    flag because it is also the deliberate pre-tag/evidence invocation, not
+    merely a cell filter. Run over the full default selection (no
+    --cases/--backends), it also writes docs/evidence/sweep-<shortsha>/
+    summary.json (run_e2e.write_release_evidence).
 
     Item 3 (owner, 2026-09-30): before running anything, checks
     `_release_sweep_carry_forward()` -- if the most recent committed
@@ -626,9 +627,10 @@ RUNNERS = {'unit': run_unit, 'regression': run_regression, 'e2e': run_e2e,
 # selection) -- perf requires a Fortran build and a generated baseline that a
 # fresh checkout does not have; it is opt-in, invoked by name, not swept into
 # 'all'. e2e-ci and gpu are SELECTIONS of e2e, not tiers of their own;
-# `release` is the same-cells (2026-09-23: RELEASE_ONLY retired), same-term
-# selection of the same one sweep, kept as its own flag for the pre-tag
-# evidence artifact it writes, not for a second implementation. 'all'
+# `release` is the same one sweep, widened by matrix.RELEASE_ONLY (reintroduced
+# 2026-10-02, item 17 section B) and each case at its own term, kept as its
+# own flag for the pre-tag evidence artifact it writes, not for a second
+# implementation. 'all'
 # runs the everyday sweep; CI runs e2e-ci (2026-09-23: a one-case portability
 # smoke, not physics coverage); `release` is the human-/conductor-scheduled
 # release gate, whose narrower or wider coverage the sweep itself prints

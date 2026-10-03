@@ -112,6 +112,16 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     fric(FRIC_SLOT_SLIPRATE_DIP,iFaultNodePair,iFault) = nsdSliprateVector(3) !d
     if (nsdSliprateVector(4)>fric(FRIC_SLOT_SLIPRATE_MAX,iFaultNodePair,iFault)) fric(FRIC_SLOT_SLIPRATE_MAX,iFaultNodePair,iFault) = nsdSliprateVector(4) !mag
     fric(FRIC_SLOT_CUM_SLIP,iFaultNodePair,iFault) = fric(FRIC_SLOT_CUM_SLIP,iFaultNodePair,iFault) + nsdSliprateVector(4)*dt ! cummulated slip
+    ! item 17(b)/slot-47 bug fix: set the peak/current slip-rate magnitude here
+    ! for EVERY friction law, not only friclaw>=3. Previously this slot was
+    ! written only inside solveRSF (below, friclaw>=3 only), so friclaw 1/2
+    ! (slip-weakening/time-weakening) left it at its restart-init value (often
+    ! 0) for the whole run, zeroing frt.txt's slip-rate column
+    ! (library_output.f90:349), src_evol's final slip rate (:506) and the
+    ! restart netCDF slip rate. solveRSF still overwrites this with its own
+    ! v_trial (strike+dip only, faulting.f90:285) for friclaw>=3, so this
+    ! line changes nothing there -- only friclaw 1/2 outputs change.
+    fric(FRIC_SLOT_PEAK_SLIPRATE,iFaultNodePair,iFault) = nsdSliprateVector(4) !mag, 3-component
     
     ! n
     nsdTractionVector(1) = (massSlave*massMaster*((nsdNodalQuant(1,2,2)-nsdNodalQuant(1,1,2))+(nsdNodalQuant(1,2,3)-nsdNodalQuant(1,1,3))/dt)/dt &
@@ -408,7 +418,15 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
         ! TPV30" identically, and Part 6 (this formula) is the same T(r) for
         ! both, so 30 belongs in this list too -- do not let a TPV30 compset
         ! impersonate TPV29/36 to reach it (rule 17 step 3).
-        if (TPV == 201 .or. TPV==36 .or. TPV==37 .or. TPV==29 .or. TPV==30) &
+        ! TPV22/23 (TPV22_23_Description_v08, "Friction Parameters and
+        ! Nucleation", p.6) is where this exact formula originates --
+        ! r_crit (called r_crit there too), the 0.081 taper coefficient and
+        ! the 0.7*Vs rupture speed are the SAME symbols and SAME numeric
+        ! values as TPV29/36/37/201, and TPV22/23's own Vs = 3464 m/s
+        ! (p.5 "Material Properties") matches NUC_VS_FIXED exactly -- this
+        ! is not a borrowed/impersonated formula (rule 17 step 3), it is
+        ! this formula's own source benchmark.
+        if (TPV == 201 .or. TPV==36 .or. TPV==37 .or. TPV==29 .or. TPV==30 .or. TPV==22 .or. TPV==23) &
             tr = (radius+NUC_TAPER_COEF*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(NUC_VR_TO_VS*NUC_VS_FIXED)
         if (TPV == 202) tr = radius/nucRuptVel
     endif

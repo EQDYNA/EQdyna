@@ -73,37 +73,21 @@ ALLOWLIST = [
     # checkIsOnFault's own comment) and orthogonal to multi-fault; the rough
     # geometry file is validated against fault 1's box specifically because
     # rough geometry + multi-fault is not this mission's scope.
-    # Full line, not a truncated prefix: this physical line has TWO
-    # fltxyz(.., 1) occurrences (`fltxyz(2,1,1)` and `fltxyz(1,1,1)`), and the
-    # per-match position-specific allowlisting needs the entry's span on THIS
-    # line to cover both -- a prefix ending right after the first occurrence
-    # left the second one (after the ` - `) unmatched on this line, a false
-    # positive the per-position fix (2026-09-30) surfaced that the old
-    # per-line-substring check happened to paper over.
-    ('meshgen.f90', 'numOfNodesWithUniformGridsize = nint((fltxyz(2,1,1) - fltxyz(1,1,1))/dx) + 1'),
-    ('meshgen.f90', 'frontEdgeCoor = fltxyz(1,1,1)'),
-    ('meshgen.f90', 'backEdgeCoor  = fltxyz(2,1,1)'),
-    ('meshgen.f90', 'numOfNodesWithUniformGridsize = nint((fltxyz(2,3,1) - fltxyz(1,3,1))/dz) + 1'),
-    ('meshgen.f90', 'frontEdgeCoor = fltxyz(1,3,1)'),
-    ('meshgen.f90', 'backEdgeCoor  = fltxyz(2,3,1)'),
+    # Row 17 REBASED (restore per-fault mesh extent): getLocalOneDimCoorArrAndSize's
+    # fault-1-only reads of fltxyz (x/z uniform-belt origin/extent) and
+    # replaceSlaveWithMasterNode's fault-1-only x/z bound test, plus
+    # checkInputConsistency.f90's "every fault must share fault 1's x/z
+    # extent" guard, are GONE -- not relaxed, removed: the belt is now the
+    # UNION (minval/maxval) over every fault's own box, and
+    # replaceSlaveWithMasterNode tests each fault's own x/z alongside its own
+    # y-plane, one fault at a time. The allowlist entries that used to
+    # document those fault-1-only reads as a deliberate, reviewed exemption
+    # are deleted along with the code, not left stale.
     ('readInputFiles.f90', "abs(rough_fx_min - fltxyz(1,1,1))"),
     ('readInputFiles.f90', "abs(rough_fz_min - fltxyz(1,3,1))"),
     ('readInputFiles.f90', "fltxyz(1,1,1), fltxyz(1,3,1)"),
     ('readInputFiles.f90', "spanx = (fltxyz(2,1,1) - fltxyz(1,1,1))/dx"),
     ('readInputFiles.f90', "spanz = (fltxyz(2,3,1) - fltxyz(1,3,1))/dz"),
-    # replaceSlaveWithMasterNode (meshgen.f90): the x/z bound check here is
-    # intentionally keyed to fault 1's box alone -- checkInputConsistency.f90
-    # already REQUIRES every fault share fault 1's x/z extent (this
-    # mission's narrow two-parallel-faults scope: independent per-fault x/z
-    # extents are explicitly out of scope, guarded there).
-    ('meshgen.f90', 'nodeCoor(1)>(fltxyz(1,1,1)-tol) .and. nodeCoor(1)<(fltxyz(2,1,1)+dx+tol)'),
-    ('meshgen.f90', 'nodeCoor(3)>(fltxyz(1,3,1)-tol)'),
-    # checkInputConsistency.f90's own multi-fault guard: deliberately
-    # compares every fault's x/z box against FAULT 1's specifically (the
-    # shared-x/z-extent requirement this mission's narrow scope imposes),
-    # not a missed generalization.
-    ('checkInputConsistency.f90', 'abs(fxmin(i)-fxmin(1))>tol .or. abs(fxmax(i)-fxmax(1))>tol'),
-    ('checkInputConsistency.f90', 'abs(fzmin(i)-fzmin(1))>tol .or. abs(fzmax(i)-fzmax(1))>tol'),
     # Same C_degen>3 wedge-degeneration exemption as the entries above --
     # nftnd0(1) here is the pre-existing, single-fault-only wedge mechanism's
     # own argument, not a missed generalization.
@@ -370,9 +354,11 @@ REGRESSION_PROBES_DIFFERENT_LINE_THAN_ALLOWLIST_ENTRY = [
     # exploits meshgen.f90's 'iy, iz, nftnd0(1))' allowlist entry (the
     # C_degen>3 wedge call) via bare substring match on 'nftnd0(1)'.
     ('meshgen.f90', 'x = nftnd0(1)'),
-    # exploits checkInputConsistency.f90's
-    # 'abs(fxmin(i)-fxmin(1))>tol .or. abs(fxmax(i)-fxmax(1))>tol' entry via
-    # bare substring match on 'fxmin(1)'.
+    # Row 17 rebased: checkInputConsistency.f90's 'fxmin(i)-fxmin(1)' entry
+    # (and the source line it allowlisted) are both gone -- this probe is now
+    # a plain positive-detection check (no allowlist entry left to shield it
+    # by substring at all), kept so a FUTURE literal fxmin(1) hardcode in
+    # this file is still caught.
     ('checkInputConsistency.f90', 'x = fxmin(1)'),
     # exploits library_output.f90's faultTag() allowlist entry
     # 'ntotft > 1 .and. ift > 1' via the literal condition reappearing,

@@ -297,21 +297,25 @@ def build_params(case_dir):
     needed by callers but not by the geometry builders themselves).
 
     Row 17 (multi-fault): ntotft>1 is now accepted for the narrow release
-    scope -- two (or more) vertical, planar, parallel faults sharing fault
-    1's x/z extent, at distinct y, inside the uniform-y mesh belt (the same
-    scope checkInputConsistency.check_multifault enforces, called by this
-    function's caller -- eqdyna3d.py's build_solver_state -- right after
-    this returns, mirroring checkInputConsistency.f90's call point).
-    `params['faults']` carries every fault's own (fxmin,...,fzmax) dict (the
-    scalar fxmin/fxmax/... keys below stay fault 1's box, unchanged, since
-    every builder that treats them as THE shared box is correct by
-    checkInputConsistency's own x/z-match guarantee); `params['fault_y']` is
-    the list of each fault's y-plane (fymin, since planarity requires
-    fymin==fymax), the one per-fault quantity meshgen.py's builders actually
-    need. insertFaultType>0 (rough/dipping fault) combined with ntotft>1 is
-    NOT supported -- out of this release's narrow scope (the rough-fault
-    y-morph is a single-fault mechanism) -- and raises rather than silently
-    reading only fault 1's rough geometry for every fault.
+    scope -- two (or more) vertical, planar, parallel faults at distinct y,
+    each with its OWN x/z extent (Row 17 rebased: independent per-fault x/z
+    extents are supported, each must simply land on a mesh node line --
+    checkInputConsistency.check_multifault, called by this function's
+    caller -- eqdyna3d.py's build_solver_state -- right after this returns,
+    mirroring checkInputConsistency.f90's call point, no longer requires
+    every fault to share fault 1's x/z extent; meshgen.py's
+    one_dim_coor_array raises the commensurability guard instead).
+    `params['faults']` carries every fault's own (fxmin,...,fzmax) dict --
+    every builder that needs a fault's own box reads `params['faults']` (via
+    `_fault_boxes`), not the scalar fxmin/fxmax/... keys below, which remain
+    fault 1's box ONLY for callers that still want "the" single box (the
+    ntotft==1 convention, and any genuinely fault-1-specific need);
+    `params['fault_y']` is the list of each fault's y-plane (fymin, since
+    planarity requires fymin==fymax), the one per-fault quantity meshgen.py's
+    builders actually need. insertFaultType>0 (rough/dipping fault) combined
+    with ntotft>1 is NOT supported -- out of this release's narrow scope (the
+    rough-fault y-morph is a single-fault mechanism) -- and raises rather
+    than silently reading only fault 1's rough geometry for every fault.
 
     nPML, tol, and R are NOT present in any bFile -- nPML=6, tol=1.0e-5,
     and R=0.01d0 (theoretical PML reflection coefficient, used by
@@ -371,10 +375,18 @@ def read_on_fault_vars(nc_path, fxmin, fzmin, dx, dz, meshCoor, nsmp, ntotft=1, 
     scripts/case.setup's netcdf_write_on_fault_vars and
     src/fortran/netcdf_io.f90's own per-fault variable-set read exactly.
     `fault_of=None` is the ntotft==1 shorthand (every row reads the
-    untagged set), unchanged from before this fix. fxmin/fzmin/dx/dz are
-    the SHARED box (checkInputConsistency guarantees every fault matches
-    fault 1's x/z extent in this release's scope), so the same ii/jj index
-    formula applies verbatim to every fault's own tagged array.
+    untagged set), unchanged from before this fix.
+
+    Row 17 REBASED (restore per-fault mesh extent): `fxmin`/`fzmin` are now
+    PER-FAULT sequences (fxmin[ift-1], fzmin[ift-1]), not one shared scalar
+    -- the Fortran side (netcdf_io.f90's `fxmin(ift)`/`fzmin(ift)`, globalvar
+    arrays, never a scalar) always indexed the ii/jj offset per fault; this
+    port's scalar `fxmin`/`fzmin` was the one remaining fault-1-only
+    shortcut, latent as long as checkInputConsistency required every fault
+    to share fault 1's x/z extent exactly. A single-fault or scalar caller
+    may still pass a bare float/int: wrapped into a length-1 sequence below,
+    reproducing the old ntotft==1 behaviour bit-for-bit (every row then
+    reads index 0 regardless of `fault_of`, same as the old shared scalar).
 
     Reads on_fault_vars_input.nc directly via the netCDF4 library (the
     SAME library the Fortran-side writer, scripts/case.setup, uses to
@@ -411,6 +423,10 @@ def read_on_fault_vars(nc_path, fxmin, fzmin, dx, dz, meshCoor, nsmp, ntotft=1, 
     fric = np.zeros((nftnd + 1, 101))
     if fault_of is None:
         fault_of = np.ones(nftnd, dtype=np.int64)
+    # Row 17 rebased: accept a bare scalar (old single-box convention) or a
+    # per-fault sequence indexed 0-based (fxmin_by_fault[ift-1]).
+    fxmin_by_fault = [fxmin] if np.isscalar(fxmin) else list(fxmin)
+    fzmin_by_fault = [fzmin] if np.isscalar(fzmin) else list(fzmin)
 
     varnames = ['sw_fs', 'sw_fd', 'sw_D0', 'rsf_a', 'rsf_b', 'rsf_Dc', 'rsf_v0',
                 'rsf_r0', 'rsf_fw', 'rsf_vw', 'tp_a_hy', 'tp_a_th', 'tp_rouc',
@@ -449,9 +465,16 @@ def read_on_fault_vars(nc_path, fxmin, fzmin, dx, dz, meshCoor, nsmp, ntotft=1, 
         slave = int(nsmp[i - 1, 0])
         xcord = meshCoor[slave, 0]
         zcord = meshCoor[slave, 2]
-        ii = fortran_nint((xcord - fxmin) / dx) + 1
-        jj = fortran_nint((zcord - fzmin) / dz) + 1
-        on_fault_vars = on_fault_vars_by_tag[int(fault_of[i - 1])]
+        ift_row = int(fault_of[i - 1])
+        # Row 17 rebased: THIS row's own fault's box, not a shared one --
+        # fxmin_by_fault has length 1 for the old scalar convention, so
+        # ift_row-1 may be out of range there only if fault_of itself claims
+        # more than one fault while the caller supplied a single box, which
+        # would be a caller bug (mismatched arguments), not silently papered
+        # over by clamping to index 0.
+        ii = fortran_nint((xcord - fxmin_by_fault[ift_row - 1]) / dx) + 1
+        jj = fortran_nint((zcord - fzmin_by_fault[ift_row - 1]) / dz) + 1
+        on_fault_vars = on_fault_vars_by_tag[ift_row]
 
         def v(name):
             return on_fault_vars[name][jj - 1, ii - 1]

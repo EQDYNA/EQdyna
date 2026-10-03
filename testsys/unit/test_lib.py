@@ -188,10 +188,19 @@ def test_loadFrtData_grids_two_nodes_from_a_synthetic_frt_file(tmp_path, monkeyp
     monkeypatch.chdir(tmp_path)
     np.savetxt(tmp_path / "frt.txt0", np.array([row0, row1]))
 
-    xx, zz, rupt, rupt2d, fVarArr, magnitude = lib.loadFrtData(par)
+    faults = lib.loadFrtData(par)
+
+    # Row 17: loadFrtData now returns a LIST of per-fault tuples -- length 1
+    # at ntotft<=1 (this fixture has no par.ntotft at all, the pre-row-17
+    # shape every existing single-fault case still is).
+    assert len(faults) == 1
+    xx, zz, rupt, rupt2d, fVarArr, magnitude, fx, fz, nfx, nfz = faults[0]
 
     assert rupt2d.shape == (1, 2, 100)
     assert fVarArr.shape == (1, 2, 100)
+    assert nfx == 2 and nfz == 1
+    np.testing.assert_array_equal(fx, par.fx)
+    np.testing.assert_array_equal(fz, par.fz)
     assert rupt2d[0, 0, 1] == pytest.approx(5.0)   # slip magnitude = hypot(3,4)
     assert rupt2d[0, 0, 0] == pytest.approx(1.0)   # rupture time
     assert fVarArr[0, 0, 4] == pytest.approx(16.0)  # state_variable (col 20)
@@ -204,6 +213,73 @@ def test_loadFrtData_grids_two_nodes_from_a_synthetic_frt_file(tmp_path, monkeyp
     mu = par.rou*par.vs**2
     expectedMagnitude = 2/3*math.log10(5.0*par.dx*par.dx*mu*1.e7) - 10.7
     assert magnitude == pytest.approx(expectedMagnitude, rel=1e-12)
+
+
+# ---- loadFrtData, ntotft>1 (Row 17): each fault gridded from ITS OWN box ----
+
+def _make_two_fault_par(tmp_path):
+    """Two faults, same z-range, DIFFERENT x-ranges and a distinct y-plane
+    each -- test.tpv22/test.tpv23's own shape (overlapping-but-unequal
+    along-strike extents), not test.multifault2's (equal, aliasing-prone-
+    by-coincidence) boxes. Fault 1: x in [0,1], y=0. Fault 2: x in [1,3],
+    y=500 -- an x-range that does NOT fit inside fault 1's own (na=2), the
+    exact shape that indexed out of bounds before this fix."""
+    dx = dz = 1.0
+    fault1_box = (0.0, 1.0, 0.0, 0.0, 0.0, 0.0)
+    fault2_box = (1.0, 3.0, 500.0, 500.0, 0.0, 0.0)
+    return types.SimpleNamespace(
+        nx=1, ny=1, nz=1, dx=dx, dz=dz, dip=90.0,
+        ntotft=2, faultgeom=[fault1_box, fault2_box],
+        # ntotft==1 fallback fields (unused when ntotft>1, but loadFrtData's
+        # module-level contract keeps them available on a real par object).
+        fxmin=0.0, fxmax=1.0, fzmin=0.0, fzmax=0.0,
+        fx=np.linspace(0.0, 1.0, 2), fz=np.linspace(0.0, 0.0, 1),
+        nmat=1, vp=6.0e3, vs=3.464e3, rou=2.67e3,
+    )
+
+
+def test_loadFrtData_ntotft_gt1_grids_each_fault_from_its_own_box(tmp_path, monkeypatch):
+    par = _make_two_fault_par(tmp_path)
+    # fault 1: one node at x=0 (y=0, within fault 1's [0,1] box).
+    f1_row = [0.0, 0.0, 0.0, 1.0, 3.0, 4.0, 0, 0, 0, 5.0, 6.0, 7.0, 8.0, 9.0,
+              10, 11, 12, 13, 14, 15, 16.0, 17.0]
+    # fault 2: one node at x=3 (y=500, within fault 2's [1,3] box) -- x=3 is
+    # OUTSIDE fault 1's [0,1] box/grid (na=2) entirely: the pre-fix function
+    # would have indexed ii=3 into a size-2 array and raised IndexError.
+    f2_row = [3.0, 500.0, 0.0, 2.0, 1.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0,
+              0, 0, 0, 0, 0, 0, 0.0, 0.0]
+    monkeypatch.chdir(tmp_path)
+    np.savetxt(tmp_path / "frt.txt0", np.array([f1_row, f2_row]))
+
+    faults = lib.loadFrtData(par)
+
+    assert len(faults) == 2
+    xx1, zz1, rupt1, rupt2d1, fVarArr1, mag1, fx1, fz1, nfx1, nfz1 = faults[0]
+    xx2, zz2, rupt2, rupt2d2, fVarArr2, mag2, fx2, fz2, nfx2, nfz2 = faults[1]
+
+    # Fault 1's own grid: x in [0,1], nfx=2 -- the node landed at ii=0.
+    assert nfx1 == 2
+    assert rupt2d1[0, 0, 0] == pytest.approx(1.0)   # fault 1's rupture time
+    assert rupt2d1[0, 1, 0] == 0.0                  # fault 1's OTHER node untouched
+
+    # Fault 2's own grid: x in [1,3], nfx=3 -- the node at x=3 lands at
+    # ii=2 (its OWN box's last column), not aliased onto fault 1's grid and
+    # not an out-of-bounds index.
+    assert nfx2 == 3
+    assert rupt2d2[0, 2, 0] == pytest.approx(2.0)   # fault 2's rupture time
+    assert rupt2d2[0, 0, 0] == 0.0 and rupt2d2[0, 1, 0] == 0.0  # untouched
+
+
+def test_loadFrtData_ntotft_gt1_raises_on_a_row_matching_no_fault_box(tmp_path, monkeypatch):
+    """A frt row whose y falls in neither fault's box is a mesh/geometry
+    inconsistency, not a row to silently drop (rule 2)."""
+    par = _make_two_fault_par(tmp_path)
+    bad_row = [0.0, 9999.0, 0.0, 1.0, 0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0,
+               0, 0, 0, 0, 0, 0, 0.0, 0.0]
+    monkeypatch.chdir(tmp_path)
+    np.savetxt(tmp_path / "frt.txt0", np.array([bad_row]))
+    with pytest.raises(ValueError, match='matches 0 fault box'):
+        lib.loadFrtData(par)
 
 
 # ---- shearModulusFromPar: the case's material, not a baked-in constant ----

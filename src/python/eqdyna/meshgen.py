@@ -78,26 +78,95 @@ the serial path's arithmetic is unchanged. `fault_boundary_lists` and
 """
 import numpy as np
 
+from . import checkInputConsistency as _cic
 
-def one_dim_coor_array(dim_id, dx, dy, dz, fxmin, fxmax, fzmin, fzmax,
+
+def one_dim_coor_array(dim_id, dx, dy, dz, fault_bounds,
                         dis4uniF, dis4uniB, xmin, xmax, ymin, ymax, zmin, zmax,
-                        rat, nPML, np_max=1000000):
-    """Port of getLocalOneDimCoorArrAndSize, serial case (numOfMPIXyz=1).
-    dim_id: 1=x, 2=y, 3=z. Returns (coor_array, PMLb_partial dict)."""
+                        rat, nPML, np_max=1000000, c_degen=0.0, tol=1.0e-5):
+    """Port of getLocalOneDimCoorArrAndSize (meshgen.f90), serial case
+    (numOfMPIXyz=1). Row 17 rebased (restore per-fault mesh extent, invent
+    nothing): `fault_bounds` is the list of EVERY fault's own (lo, hi) on
+    THIS axis (dim_id 1=x -> fxmin/fxmax, 2=y -> fymin/fymax, 3=z -> fzmin/
+    fzmax), not fault 1's alone -- the belt origin/far edge is the UNION
+    (min/max) over every fault's own box, mirroring eqquasi's b6010e2 (x/z)
+    and 2769c73 (y). ntotft==1 collapses flt_lo==flt_hi==fault 1's own
+    single value on every axis, so every formula below is bit-identical to
+    the old fault-1-only one (and the old fixed y-belt) in that case.
+
+    `c_degen`: dim_id==2 (y) only. C_degen>3 (wedge-degeneration dipping
+    fault, e.g. tpv36/tpv37) is a DIFFERENT, pre-existing, single-fault-only
+    mechanism where fymin/fymax describe a dip-projection y-RANGE, not a
+    fault y-PLANE the uniform belt should ever be anchored to -- the belt
+    was never built from fault_bounds' y at all before this mission, and
+    generalizing it to the union unconditionally broke test.tpv36 (measured:
+    test_rank_local_mesh.py's 8-rank fault ownership count changed). c_degen
+    != 0 therefore falls back to the untouched fixed-margin y belt,
+    bit-identical to before this mission, regardless of fault_bounds.
+    dim_id: 1=x, 2=y, 3=z. Returns (coor_array, PMLb_partial dict, model_bound)."""
+    if dim_id == 2 and c_degen != 0.0:
+        flt_lo = flt_hi = 0.0
+    else:
+        flt_lo = min(lo for lo, _hi in fault_bounds)
+        flt_hi = max(hi for _lo, hi in fault_bounds)
+
+        # Hard refuse (not a silent clamp or a widened margin) when a fault's
+        # bound on this axis is not an integer number of grid-size steps from
+        # flt_lo, the belt origin just computed -- eqquasi's eeac6f9/a761f33
+        # finding, ported here: a fault edge that falls between node lines
+        # meshes with fewer fault nodes than declared, or none, SILENTLY.
+        # Checked once per fault per bound (lower and upper -- a planar
+        # y-fault has both bounds equal, so this subsumes the old "fymin not
+        # a multiple of dy" check with the now-correct, union-based origin
+        # instead of a hardcoded 0). ntotft==1 makes flt_lo this very
+        # fault's own bound, so the offset is always exactly 0 and this can
+        # never fire for a single-fault case (bit-identical no-op). Skipped
+        # entirely for dim_id==2 when c_degen!=0 (see docstring above).
+        #
+        # Tolerance: `tol` (1e-5 m, matches globalvar.f90's module `tol` and
+        # this port's own is_on_fault/checkIsOnFault), NOT
+        # grid_size_for_axis/100 (victor-reyes audit, PR #76 MAJOR 1).
+        # eqquasi's own eeac6f9/a761f33 use dx/100, but this port's downstream
+        # consumer, is_on_fault, only ever matches a node to a fault plane
+        # within `tol`=1e-5 m regardless of grid size -- a grid_size/100 pass
+        # band (2 m at dy=200) let a fault bound land up to 2 m off a node
+        # line, this check pass silently, and is_on_fault then match ZERO
+        # nodes (1e-5 m << 2 m): the exact silent failure this guard exists to
+        # prevent. `tol` ties the two checks to the same constant by
+        # construction. Measured on TPV22 (dy=200, fault y-offset 1600 m) and
+        # TPV23 (dy=250, fault y-offset 1000 m): both ratios are exact
+        # integers in double precision, so offset==0.0 exactly for both --
+        # tightening to `tol` does not newly refuse either mesh.
+        grid_size_for_axis = {1: dx, 2: dy, 3: dz}[dim_id]
+        for ift, (lo, hi) in enumerate(fault_bounds, start=1):
+            for label, bound in (('lower', lo), ('upper', hi)):
+                steps = _fortran_nint((bound - flt_lo) / grid_size_for_axis)
+                offset = bound - flt_lo - steps * grid_size_for_axis
+                if abs(offset) > tol:
+                    code = (_cic.ERR_GEOM_MULTIFAULT_Y_BAD if dim_id == 2
+                            else _cic.ERR_GEOM_MULTIFAULT_XZ_BAD)
+                    raise _cic.InputConsistencyError(
+                        code,
+                        'one_dim_coor_array: dim_id=%d, fault %d %s bound = %r is not an '
+                        'integer multiple of gridSize=%r from this axis'' belt origin=%r; '
+                        'it would fall between mesh node lines and mesh with too few fault '
+                        'nodes, or none, silently. Fix par.faultgeom or dx/dy/dz.'
+                        % (dim_id, ift, label, bound, grid_size_for_axis, flt_lo))
+
     if dim_id == 1:
-        n_uniform = round((fxmax - fxmin) / dx) + 1
+        n_uniform = round((flt_hi - flt_lo) / dx) + 1
         grid_size = dx
-        front_edge, back_edge = fxmin, fxmax
+        front_edge, back_edge = flt_lo, flt_hi
         min_coor, max_coor = xmin, xmax
     elif dim_id == 2:
-        n_uniform = dis4uniF + dis4uniB + 1
+        n_uniform = round((flt_hi - flt_lo) / dy) + dis4uniF + dis4uniB + 1
         grid_size = dy
-        front_edge, back_edge = -dis4uniF * dy, dis4uniB * dy
+        front_edge, back_edge = flt_lo - dis4uniF * dy, flt_hi + dis4uniB * dy
         min_coor, max_coor = ymin, ymax
     elif dim_id == 3:
-        n_uniform = round((fzmax - fzmin) / dz) + 1
+        n_uniform = round((flt_hi - flt_lo) / dz) + 1
         grid_size = dz
-        front_edge, back_edge = fzmin, fzmax
+        front_edge, back_edge = flt_lo, flt_hi
         min_coor, max_coor = zmin, zmax
     else:
         raise ValueError(dim_id)
@@ -158,22 +227,36 @@ def one_dim_coor_array(dim_id, dx, dy, dz, fxmin, fxmax, fzmin, fzmax,
 
 
 def build_grid_lines(params):
-    """params: dict with dx,dy,dz,fxmin,fxmax,fzmin,fzmax,dis4uniF,dis4uniB,
-    xmin,xmax,ymin,ymax,zmin,zmax,rat,nPML. Returns (xline, yline, zline,
-    PMLb dict, model bound coors)."""
+    """params: dict with dx,dy,dz,dis4uniF,dis4uniB,xmin,xmax,ymin,ymax,
+    zmin,zmax,rat,nPML, plus either 'faults' (per-fault box list,
+    readInputFiles.build_params' convention) or the scalar fxmin/fxmax/
+    fymin/fymax/fzmin/fzmax fallback (`_fault_boxes`'s own convention, also
+    what hand-built params dicts in pre-Row-17 fixtures still use). Returns
+    (xline, yline, zline, PMLb dict, model bound coors).
+
+    Row 17 REBASED (restore per-fault mesh extent, invent nothing): each
+    axis' belt is now built from EVERY fault's own box (`_fault_boxes`), the
+    union (min/max), not fault 1's box alone -- mirrors
+    src/fortran/meshgen.f90's getLocalOneDimCoorArrAndSize. ntotft==1
+    collapses to the old fault-1-only behaviour bit-for-bit."""
     p = params
+    boxes = _fault_boxes(p)
+    x_bounds = [(b[0], b[1]) for b in boxes]
+    y_bounds = [(b[2], b[3]) for b in boxes]
+    z_bounds = [(b[4], b[5]) for b in boxes]
     xline, pmlx, xbound = one_dim_coor_array(
-        1, p['dx'], p['dy'], p['dz'], p['fxmin'], p['fxmax'], p['fzmin'], p['fzmax'],
+        1, p['dx'], p['dy'], p['dz'], x_bounds,
         p['dis4uniF'], p['dis4uniB'], p['xmin'], p['xmax'], p['ymin'], p['ymax'],
-        p['zmin'], p['zmax'], p['rat'], p['nPML'])
+        p['zmin'], p['zmax'], p['rat'], p['nPML'], tol=p.get('tol', 1.0e-5))
     yline, pmly, ybound = one_dim_coor_array(
-        2, p['dx'], p['dy'], p['dz'], p['fxmin'], p['fxmax'], p['fzmin'], p['fzmax'],
+        2, p['dx'], p['dy'], p['dz'], y_bounds,
         p['dis4uniF'], p['dis4uniB'], p['xmin'], p['xmax'], p['ymin'], p['ymax'],
-        p['zmin'], p['zmax'], p['rat'], p['nPML'])
+        p['zmin'], p['zmax'], p['rat'], p['nPML'], c_degen=p.get('C_degen', 0.0),
+        tol=p.get('tol', 1.0e-5))
     zline, pmlz, zbound = one_dim_coor_array(
-        3, p['dx'], p['dy'], p['dz'], p['fxmin'], p['fxmax'], p['fzmin'], p['fzmax'],
+        3, p['dx'], p['dy'], p['dz'], z_bounds,
         p['dis4uniF'], p['dis4uniB'], p['xmin'], p['xmax'], p['ymin'], p['ymax'],
-        p['zmin'], p['zmax'], p['rat'], p['nPML'])
+        p['zmin'], p['zmax'], p['rat'], p['nPML'], tol=p.get('tol', 1.0e-5))
     pmlb = dict(**pmlx, **pmly, **pmlz)
     return xline, yline, zline, pmlb, (xbound, ybound, zbound)
 
@@ -883,21 +966,34 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     # Fortran, and is intentionally absent from both masks below.)
     # Test uses the element's "top" node coords (this ix,iy,iz), matching
     # Fortran's `nodeCoor` at the point createElement/replaceSlave... run.
-    # Row 17 (multi-fault): generalized from a single `ycoor > 0.0 and
-    # abs(ycoor - dy) < tol` (one cell above fault 1's plane alone) to
-    # `any(abs(ycoor - (fault_y[i] + dy)) < tol)` over every fault's own
-    # y-plane -- meshgen.f90's replaceSlaveWithMasterNode guard, generalized
-    # identically (src/fortran/meshgen.f90's row-17 commit). Reduces to the
-    # old test bit-for-bit at ntotft==1, fault 1 at y=0 (fault_y=[0.0], and
-    # `ycoor > 0.0` was redundant there since a tol-match to dy>0 already
-    # implies ycoor>0).
+    # Row 17 (multi-fault): meshgen.f90's replaceSlaveWithMasterNode is a
+    # `do ift=1,ntotft` loop testing x/z/y ALL THREE against THAT fault's own
+    # box (fltxyz(1,1,iFault)/fltxyz(2,1,iFault)/fltxyz(1,3,iFault)/
+    # fltxyz(1,2,iFault)) in the SAME iteration. The first row-17 pass here
+    # generalized only the y-match (looping `fault_y`) while leaving x/z
+    # bounded by fault 1's own fxmin/fxmax/fzmin alone -- correct at
+    # ntotft==1, but for ntotft>1 faults whose x-extent reaches beyond fault
+    # 1's own (test.tpv22/test.tpv23's real stepover geometry: fault 2 spans
+    # x up to 25000 m, fault 1 only to 5000 m), the one-cell-above-fault
+    # elements beyond fault 1's xmax never had this substitution applied,
+    # leaving fault 2's own MASTER node at those positions unreferenced by
+    # any element -- zero mass, driver.run's loud "lumped nodal masses are
+    # <= 0" refusal (9999 orphaned nodes measured on test.tpv22's own mesh,
+    # exactly the fault-2 y-plane x>5000 region, before this fix). Fixed by
+    # looping ALL THREE bounds per fault together, mirroring the Fortran
+    # loop exactly instead of generalizing y alone. `faults` falls back to
+    # the single fault-1 box when `params['faults']` is absent (every
+    # ntotft==1 caller, including every pre-row-17 unit fixture), so this
+    # reduces to the untouched single-fault mask bit-for-bit there.
     xcoor, ycoor, zcoor = xline[IX], yline[IY], zline[IZ]
-    fault_y = np.asarray(p.get('fault_y', [fymin]))
-    one_cell_above_any_fault = np.any(
-        np.abs(ycoor[:, None] - (fault_y[None, :] + dy)) < tol, axis=1)
-    replace = (((elem_type == 1) & (xcoor > fxmin - tol) & (xcoor < fxmax + dx + tol) &
-                (zcoor > fzmin - tol) & one_cell_above_any_fault) |
-               (elem_type == 13))
+    faults = p.get('faults', [dict(fxmin=fxmin, fxmax=fxmax, fzmin=fzmin, fymin=fymin)])
+    one_cell_above_any_fault = np.zeros(xcoor.shape[0], dtype=bool)
+    for f in faults:
+        one_cell_above_any_fault |= (
+            (xcoor > f['fxmin'] - tol) & (xcoor < f['fxmax'] + dx + tol) &
+            (zcoor > f['fzmin'] - tol) &
+            (np.abs(ycoor - (f['fymin'] + dy)) < tol))
+    replace = ((elem_type == 1) & one_cell_above_any_fault) | (elem_type == 13)
     lut = np.arange(meshCoor.shape[0], dtype=np.int64)
     lut[nsmp[:, 0]] = nsmp[:, 1]
     if replace.any():

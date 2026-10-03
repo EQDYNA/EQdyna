@@ -50,6 +50,41 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
+# test.tpv22/test.tpv23 (mission: tpv22/23 stepover campaign, 2026-10-01):
+# `create.newcase <dir> test.tpv22` is what a real user actually runs --
+# create.newcase resolves a compset name to case_input/<name> directly
+# (scripts/create.newcase:43-52), with NO lookup against
+# case_input/compSetList.py or compsets.txt (confirmed: neither file is read
+# anywhere in this repo), so the bare name `tpv22` the mission brief first
+# guessed at does NOT work -- only the literal directory name does. Both
+# cases share tpv22_23_common.py via a symlink from test.tpv23/ into
+# test.tpv22/ (same pattern as test.tpv37's tpv36_37_common.py symlink into
+# test.tpv36/), so this also exercises case_copy's symlink handling for a
+# second, independent pair.
+for compset_name, extra_expected in (('test.tpv22', 'tpv22_23_common.py'),
+                                     ('test.tpv23', 'tpv22_23_common.py')):
+    tmp2 = tempfile.mkdtemp(prefix='testCreateNewcase.%s.' % compset_name)
+    case2 = os.path.join(tmp2, 'case')
+    try:
+        r = subprocess.run([sys.executable, script, case2, compset_name],
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            fails.append(f'create.newcase {compset_name} exited {r.returncode}:\n{r.stderr}')
+        else:
+            for f in ['user_defined_params.py', 'case.setup', 'create.newcase',
+                      extra_expected]:
+                p = os.path.join(case2, f)
+                if not os.path.isfile(p):
+                    fails.append(f'{compset_name}: expected file missing: {f}')
+                elif os.path.getsize(p) == 0:
+                    fails.append(f'{compset_name}: {f} is empty')
+            copied_dirs2 = [d for d in os.listdir(case2)
+                           if os.path.isdir(os.path.join(case2, d))]
+            if copied_dirs2:
+                fails.append(f'{compset_name}: directories copied into case: {copied_dirs2}')
+    finally:
+        shutil.rmtree(tmp2, ignore_errors=True)
+
 if fails:
     print('FAIL testCreateNewcase')
     for m in fails:

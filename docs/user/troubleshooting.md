@@ -44,8 +44,8 @@ authoritative; the specific number is advisory under `srun`.
 | code | name | meaning |
 |-----:|------|---------|
 | 31 | `ERR_GEOM_ROUGH_INVALID` | bFault_Rough_Geometry.txt does not match this mesh |
-| 32 | `ERR_GEOM_MULTIFAULT_Y_BAD` | a fault's y-plane is not vertical/planar, not a multiple of dy, outside the uniform-y belt, or coincides with another fault's |
-| 33 | `ERR_GEOM_MULTIFAULT_XZ_BAD` | a fault's x/z extent differs from fault 1's (the shared uniform x/z belt only covers fault 1's box) |
+| 32 | `ERR_GEOM_MULTIFAULT_Y_BAD` | a fault's y-plane is not vertical/planar, coincides with another fault's, or (row 17 rebased) a fault's y bound is not an integer multiple of dy from the union-derived uniform-y belt origin |
+| 33 | `ERR_GEOM_MULTIFAULT_XZ_BAD` | (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line |
 
 **Mesh generation and element quality** (41-49)
 

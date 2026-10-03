@@ -84,13 +84,22 @@ science gate: `run.py all` at the 5 s gate term every day, and `run.py
 release`, the same cells at the same term, before every tag, committed as
 evidence and checked by
 `testsys/regression/check_pretag_ci.py` (a tag needs that sweep AND green CI
-for its exact SHA). **There is ONE term, everywhere** (owner decision,
-2026-09-23, superseding a same-day earlier two-term design that gave
-tpv29/tpv36/tpv37 a second "full term" reference,
+for its exact SHA). **There is ONE term, everywhere, with one named
+exception** (owner decision, 2026-09-23, superseding a same-day earlier
+two-term design that gave tpv29/tpv36/tpv37 a second "full term" reference,
 `frt.canonical.term5.txt`): every case, every tier, runs at `GATE_TERM_S`,
-and `testsys/regression/test_term_axis.py` is the mechanical guard against
-that second reference, a `--term` flag, or a per-case full-term table
-reappearing. What this gives up: `test.tpv29`/`test.tpv36`/`test.tpv37`'s
+**except `test.tpv22`/`test.tpv23`, which run at their own 15.0 s
+`matrix.CASE_TERM_OVERRIDE` term** (owner decision, 2026-10-02, item 17
+section B — their SCEC spec requires 15 s post-nucleation for fault #2 to
+rupture at all) — every other case is unaffected, there is still exactly
+one committed reference file per case, and
+`testsys/regression/test_term_axis.py` is the mechanical guard against that
+second reference, a `--term` flag, a per-case full-term table, or this
+named exception silently widening to a third case reappearing. The same
+2026-10-02 decision also REINTRODUCED `matrix.RELEASE_ONLY`, by name, for
+exactly these two cases/both backends (cost only — see `PROJECT_RULES.md`
+rule 24 for the measured numbers and the mechanical guard). What the
+original 5 s simplification gives up: `test.tpv29`/`test.tpv36`/`test.tpv37`'s
 late-time rupture (the owner's accounting: 47-63% of the fault ruptures after
 the 5 s cutoff across those three cases) is gated nowhere, everyday or
 release; see `pathway_forward.md` item 102 for the full account and the

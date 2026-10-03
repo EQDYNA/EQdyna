@@ -144,7 +144,12 @@ def forced_rupture_time(xp, finv):
     # (spec p.11: "the material properties are the only difference"); p.16
     # states Parts 5/6 (friction + this nucleation formula) apply to
     # "Benchmarks TPV29 and TPV30" identically -- same as faulting.f90:405.
-    if TPV in (29, 30, 36, 37, 201):
+    # TPV22/23 (TPV22_23_Description_v08 p.6, "Friction Parameters and
+    # Nucleation") is this formula's OWN source benchmark: r_crit, the
+    # 0.081 taper coefficient and 0.7*Vs rupture speed are the same symbols
+    # and values, and its Vs=3464 m/s (p.5) matches NUC_VS_FIXED exactly --
+    # not a borrowed/impersonated formula (rule 17 step 3).
+    if TPV in (29, 30, 36, 37, 201, 22, 23):
         ratio = xp.where(inside, radius / nucR, 0.0)
         taper = 1.0 / (1.0 - ratio ** 2) - 1.0
         tr = (radius + gv.NUC_TAPER_COEF * nucR * taper) / (
@@ -240,6 +245,16 @@ def getNsdSlipSliprateTraction(xp, finv, fric, velArr, dispArr, force, dt):
                    xp.maximum(fric[:, gv.SLIPRATE_MAX], srMag))
     fric = B.setat(xp, fric, (slice(None), gv.CUM_SLIP),
                    fric[:, gv.CUM_SLIP] + srMag * dt)
+    # item 17(b)/slot-47 bug fix (faulting.f90:106-115, this commit): write
+    # PEAK_SLIPRATE here for EVERY friction law, not only friclaw>=3.
+    # Previously only solveRSF's write (below, friclaw>=3 only) ever touched
+    # this slot, so friclaw 1/2 (slip-weakening/time-weakening) left it at its
+    # restart-init value for the whole run, zeroing frt.txt's slip-rate
+    # column, src_evol's final slip rate and the restart netCDF slip rate.
+    # solveRSF still overwrites this with its own v_trial (strike+dip only)
+    # for friclaw>=3 (:609 below), so this line changes nothing there --
+    # only friclaw 1/2 outputs change.
+    fric = B.setat(xp, fric, (slice(None), gv.PEAK_SLIPRATE), srMag)
 
     massSlave = finv['massSlave']; massMaster = finv['massMaster']
     totalMass = (massSlave + massMaster) * arn

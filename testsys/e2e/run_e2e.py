@@ -728,22 +728,29 @@ def apply_term_override(case_name, case_dir):
     and before case.setup runs, so every cell goes through the ONE case-build
     path rather than forking a second one.
 
-    Appends `par.term = matrix.GATE_TERM_S`, unconditionally, for every case,
-    every selection (everyday, release, CI) -- there is no per-case "full"
-    term to fall back to. case_input/<case_name>/user_defined_params.py's own
-    committed par.term (what a user gets from create.newcase, run by hand,
-    outside the gate) is left on disk untouched above this override; this
-    function only appends the LAST assignment, which is what case.setup
-    reads.
+    Appends `par.term = matrix.gate_term_for(case_name)`, unconditionally,
+    for every case, every selection (everyday, release, CI) -- there is no
+    `--term` flag and no second reference file. `gate_term_for` returns
+    matrix.GATE_TERM_S for every case except the two named in
+    matrix.CASE_TERM_OVERRIDE (test.tpv22/test.tpv23, item 17 section A/B),
+    which run their gated cells at their own SCEC-spec term (15.0 s)
+    instead -- a scoped, by-NAME exception, not a reintroduction of the
+    retired per-case "full" term axis (no `--term` flag, no second
+    committed reference file; test_term_axis.py guards both). case_input/
+    <case_name>/user_defined_params.py's own committed par.term (what a user
+    gets from create.newcase, run by hand, outside the gate) is left on disk
+    untouched above this override; this function only appends the LAST
+    assignment, which is what case.setup reads.
     """
+    term = matrix.gate_term_for(case_name)
     params = os.path.join(case_dir, 'user_defined_params.py')
     with open(params) as f:
         text = f.read().rstrip('\n')
     with open(params, 'w') as f:
         f.write(text + '\n\n# term override by testsys/e2e/run_e2e.py: '
-                       'every gated cell runs at matrix.GATE_TERM_S '
-                       'regardless of %r\'s own committed par.term.\n'
-                       'par.term = %r\n' % (case_name, matrix.GATE_TERM_S))
+                       'every gated cell runs at matrix.gate_term_for(%r) '
+                       'regardless of its own committed par.term.\n'
+                       'par.term = %r\n' % (case_name, term))
 
 
 # --------------------------------------------------------------------------
@@ -1066,12 +1073,18 @@ def run_cell(case, backend, test_dir, eqdyna_cmd, env, device, gpu_slots=None):
 # selection
 # --------------------------------------------------------------------------
 def select(args):
-    """(runnable, declared_unsupported, label, explicit) for this invocation.
+    """(runnable, declared_unsupported, label, explicit, release_only) for
+    this invocation.
 
-    --release selects the same cells as the default everyday selection (the
-    one cost-deferred mechanism, matrix.RELEASE_ONLY, was retired 2026-09-23
-    with the python-numpy axis); the flag stays because it is what triggers
-    write_release_evidence (rule 24's committed pre-tag artifact)."""
+    matrix.RELEASE_ONLY (reintroduced 2026-10-02, item 17 section B --
+    test.tpv22/test.tpv23, held out of the everyday sweep for cost) holds
+    cells OUT of the DEFAULT everyday selection (no --release, no explicit
+    --cases/--backends) and back IN for --release, at the SAME bound/term as
+    every other case -- matrix.cells() itself is unchanged and always
+    includes them. An EXPLICIT --cases/--backends ask is answered exactly
+    (RELEASE_ONLY is a default-selection policy, not a per-cell refusal), so
+    `--cases test.tpv22 --backends fortran,python-jax` runs it even without
+    --release."""
     if args.ci:
         # --backends/--cases, WHEN COMBINED WITH --ci, filter matrix.CI_CELLS
         # itself rather than switching to matrix.cells() -- this is what lets
@@ -1101,19 +1114,26 @@ def select(args):
         return (runnable, unsupported,
                 'CI (declared cell list, chosen against a measured %.0f GB '
                 'runner -- matrix.CI_CELLS%s)' % (matrix.CI_RUNNER_RAM_GB, filt),
-                True)
+                True, [])
     cases = args.cases.split(',') if args.cases else None
     backends = args.backends.split(',') if args.backends else None
     explicit = bool(cases or backends)
-    runnable, unsupported = matrix.cells(cases, backends)
     if explicit:
+        # A named ask is answered exactly, not cost-filtered: matrix.cells()
+        # already includes RELEASE_ONLY cells; that is unchanged here.
+        runnable, unsupported = matrix.cells(cases, backends)
+        release_only = []
         label = 'explicit: cases=%s backends=%s' % (args.cases or 'all',
                                                       args.backends or 'all')
     elif args.release:
+        runnable, unsupported = matrix.cells(cases, backends)
+        release_only = []
         label = 'default: every cell of the table (release, --release)'
     else:
-        label = 'default: every supported cell of the table (everyday)'
-    return runnable, unsupported, label, explicit
+        runnable, unsupported, release_only = matrix.everyday_cells(cases, backends)
+        label = ('default: every supported cell of the table minus '
+                 'matrix.RELEASE_ONLY (everyday)')
+    return runnable, unsupported, label, explicit, release_only
 
 
 def memory_note(runnable):
@@ -1416,13 +1436,14 @@ def main(argv=None):
     ap.add_argument('--release', action='store_true',
                     help='the RELEASE selection, used by `run.py release` '
                          '(rule 24: writes docs/evidence/sweep-<sha>/'
-                         'summary.json). Currently selects the SAME cells as '
-                         'the default everyday selection -- matrix.RELEASE_ONLY '
-                         'was retired 2026-09-23 -- but stays a distinct flag '
-                         'because it is the deliberate pre-tag/evidence '
-                         'invocation, not a per-cell widener. Same GATE_TERM_S '
-                         'as every other selection. Ignored (a named ask is '
-                         'answered exactly) when --cases/--backends is given.')
+                         'summary.json). Selects every supported cell '
+                         'INCLUDING matrix.RELEASE_ONLY (test.tpv22/'
+                         'test.tpv23, held out of the everyday default for '
+                         'cost only -- see matrix.RELEASE_ONLY\'s own '
+                         'comment), each at its own CASE_BOUND/'
+                         'CASE_TERM_OVERRIDE term, same as every other '
+                         'selection. Ignored (a named ask is answered '
+                         'exactly) when --cases/--backends is given.')
     ap.add_argument('--jobs', type=int, default=None,
                     help='core budget for concurrent cells (default: TENANCY-'
                          'AWARE -- cores measured free right now, minus a '
@@ -1450,13 +1471,16 @@ def main(argv=None):
         for ln in dirty_at_start:
             print('  %s' % ln)
 
-    runnable, unsupported, label, explicit = select(args)
+    runnable, unsupported, label, explicit, release_only = select(args)
 
     print('\n==== e2e sweep: coverage ====')
     print('term     : %gs (matrix.GATE_TERM_S, applied to every selected '
-          'case regardless of its own committed par.term -- there is only '
-          'one term)' % matrix.GATE_TERM_S)
-    for line in matrix.coverage_report(runnable, unsupported, label):
+          'case regardless of its own committed par.term, EXCEPT %s at its '
+          'own matrix.CASE_TERM_OVERRIDE term -- see apply_term_override)'
+          % (matrix.GATE_TERM_S,
+             ', '.join('%s=%gs' % kv for kv in sorted(matrix.CASE_TERM_OVERRIDE.items()))
+             if matrix.CASE_TERM_OVERRIDE else 'no case'))
+    for line in matrix.coverage_report(runnable, unsupported, label, release_only):
         print(line)
     for line in memory_note(runnable):
         print(line)
@@ -1770,6 +1794,9 @@ def main(argv=None):
     print('not gated : %d declared-unsupported cell(s): %s'
           % (len(unsupported),
              ', '.join('%s x %s' % (c, b) for c, b, _ in unsupported) or 'none'))
+    print('release-only (not run in this everyday sweep): %d cell(s): %s'
+          % (len(release_only),
+             ', '.join('%s x %s' % (c, b) for c, b, _ in release_only) or 'none'))
     print('wall clock: %.1fs' % elapsed)
     # Every sweep is a free timing data point (owner policy 2026-09-22).
     # Placed BEFORE the verdict returns below but able to affect none of them:

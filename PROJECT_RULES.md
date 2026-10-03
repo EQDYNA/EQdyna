@@ -1340,12 +1340,15 @@ exact SHA being tagged.
   is retained and stays authoritative over what `CI_CELLS` actually is; this
   rule does not restate its count.
 - **The local sweep is the ONLY physics gate this project has**, at the ONE
-  5 s `GATE_TERM_S` everywhere — the everyday local gate (rule 9) and the
+  5 s `GATE_TERM_S` everywhere (`test.tpv22`/`test.tpv23` excepted, rule 24's
+  named `CASE_TERM_OVERRIDE`) — the everyday local gate (rule 9) and the
   release sweep (rule 24) run the same term; release differs only in cell
-  SELECTION, never in term — though as of 2026-09-23 there is nothing left to
-  widen: `matrix.RELEASE_ONLY` is DELETED, not emptied, along with numpy (its
-  only member); today's release sweep runs the SAME cells as the everyday
-  sweep. A same-day 2026-09-23 design that gave release a
+  SELECTION, never in term. `matrix.RELEASE_ONLY` was DELETED 2026-09-23
+  (numpy, its only member, dropped from every gate the same day) and
+  REINTRODUCED 2026-10-02 for exactly `test.tpv22`/`test.tpv23` (both
+  backends, cost only — see rule 24 for the full account); the release
+  sweep today runs the everyday sweep's cells PLUS these 4 (27 total vs the
+  everyday 23). A same-day 2026-09-23 design that gave release a
   separate "full term" was retired the same day (rule 7, rule 24); nothing in
   CI substitutes for the local sweep at either tier.
 
@@ -2895,25 +2898,50 @@ local sweep as the only physics gate this project has, and this rule states
 what a release tag requires of it, on top of rule 15a's existing CI check
 (which stays, unchanged).
 
-- **ONE term everywhere (rewritten 2026-09-23, same day as first landed —
-  see the incident below).** Every gated case, at every tier — the everyday
-  local gate (rule 9, rule 3), the release sweep, and CI's smoke selection —
-  runs at the ONE `GATE_TERM_S` (5 s). There is no second, per-case "full"
-  term and no `--term` flag; rule 7's "two references per case" provision is
-  retired along with it.
-- At RELEASE time, what widens is the CELL SELECTION, not the term — though as
-  of 2026-09-23 there is nothing left TO widen: `matrix.RELEASE_ONLY` is
-  DELETED, not empty. Its only member, `test.tpv36`/`test.tpv37` x
-  python-numpy, went away the same day numpy was dropped from every gate
-  (rule 17 step 7; owner decision, "I actually don't care numpy... I will use
-  Jax anyway"; PR #4, `91afba4`). The release sweep today runs the SAME
-  runnable cells as the everyday sweep — 11 cases x {fortran, python-jax} plus
-  `test.tpv8` x `python-jax-mpi`, 23 cells (`test.tpv30` registered the same
-  day, PR #5 `567e723`) — run locally on the exact release
-  tree and committed as evidence at `docs/evidence/sweep-<shortsha>/summary.json`,
-  before `git tag` runs. If a future case is held out of the everyday run for
-  cost, `RELEASE_ONLY` (or an equivalent) is reintroduced deliberately, not
-  left implied.
+- **ONE term everywhere, with one named exception (rewritten 2026-09-23,
+  exception added 2026-10-02 — see the incidents below).** Every gated case,
+  at every tier — the everyday local gate (rule 9, rule 3), the release
+  sweep, and CI's smoke selection — runs at the ONE `GATE_TERM_S` (5 s),
+  **except** `test.tpv22`/`test.tpv23`, which run their gated cells at their
+  own 15.0 s term (`matrix.CASE_TERM_OVERRIDE`, consulted by name only for
+  these two cases via `matrix.gate_term_for(case)`), because their SCEC spec
+  (`TPV22_23_Description_v08.pdf`, Part 5: "Run the model for times from 0.0
+  to 15.0 seconds") requires 15 s post-nucleation for fault #2 to rupture at
+  all — at 5 s even fault #1's own far stations have not finished rupturing.
+  Every other case is completely unaffected and still runs at the one
+  `GATE_TERM_S`; there is still exactly one committed reference file per
+  case, no `--term` CLI flag, and no `CASE_FULL_TERM_S` or
+  `compare.GATE_TERM_NAME` — `testsys/regression/test_term_axis.py`'s own
+  mutation check (plant a third case in `CASE_TERM_OVERRIDE`, assert the
+  guard rejects it) proves the exception is scoped to exactly these two
+  names and no wider.
+- At RELEASE time, what widens is the CELL SELECTION, not the term.
+  `matrix.RELEASE_ONLY` was DELETED 2026-09-23 (its only member,
+  `test.tpv36`/`test.tpv37` x python-numpy, went away the same day numpy was
+  dropped from every gate — rule 17 step 7; owner decision, "I actually
+  don't care numpy... I will use Jax anyway"; PR #4, `91afba4`) and was
+  **REINTRODUCED 2026-10-02** (item 17 section B), by name, for exactly
+  `test.tpv22`/`test.tpv23` (both backends) — the exact contingency this
+  rule's own text anticipated below. Reason: `test.tpv22 x python-jax`
+  measured 1537.9 s wall (~25.6 min), peak RSS ~13.5 GB, and `test.tpv23 x
+  python-jax` 775.1 s — vs 30–70 s / 1.9–4.3 GB for every other gated jax
+  cell — because `python-jax-mpi` refuses `ntotft>1`
+  (`src/python/eqdyna/eqdyna3d.py:667`) so both cells run serial jax
+  (`pathway_forward.md` item 145 tracks the port that closes this). Cost
+  only, never correctness: both cases pass on both backends at their own
+  `CASE_BOUND`/`CASE_TERM_OVERRIDE` term (fortran 0.0, python-jax ~1e-14),
+  and `matrix.RELEASE_ONLY` is a static, named dict carrying no code path
+  that reads pass/fail before assigning membership — guarded by
+  `test_term_axis.py`'s own exactness and mutation checks, same shape as the
+  `CASE_TERM_OVERRIDE` guard. `matrix.everyday_cells()` is `matrix.cells()`
+  minus `RELEASE_ONLY`, used by the everyday tiers and `run_e2e.py`'s
+  default selection (23 cells); `matrix.cells()` itself is unchanged and is
+  what `--release` runs (27 cells, the everyday 23 plus both tpv22/tpv23
+  backends), at the SAME bound/term as every other case — run locally on the
+  exact release tree and committed as evidence at
+  `docs/evidence/sweep-<shortsha>/summary.json`, before `git tag` runs. If a
+  future case is held out of the everyday run for cost, the same named,
+  reasoned-dict mechanism is extended, never left implied.
 - A release tag requires BOTH of the following for the exact SHA being
   tagged, or for an ancestor whose diff from that SHA lands entirely inside
   `docs/evidence/`, the perf ledger, or `pathway_forward.md`: (i) a committed
@@ -2964,9 +2992,11 @@ is the one the owner accepted in exchange for that simplification.
 `test.tpv30`'s own registration (PR #5, `567e723`, same day) runs at this
 same 5 s / 500 m point from the start — it was never on a separate term.
 
-**How to apply**: before `git tag`, run the local sweep (today, all 21
-runnable cells — `RELEASE_ONLY` no longer exists, see above) at
-`GATE_TERM_S` on the exact release SHA, write and commit
+**How to apply**: before `git tag`, run the local sweep (today, all of
+`matrix.cells()`'s runnable cells — 27, the everyday 23 plus
+`RELEASE_ONLY`'s 4 reintroduced 2026-10-02, see above) at
+`GATE_TERM_S` (`test.tpv22`/`test.tpv23` at their own 15 s
+`CASE_TERM_OVERRIDE`) on the exact release SHA, write and commit
 `docs/evidence/sweep-<shortsha>/summary.json`, then run rule 15a's pre-tag
 guard. Record both the evidence commit's SHA and the CI run id in the
 Tasks-done row (rule 15 step 4). A tag with CI green and no committed sweep
@@ -2980,9 +3010,9 @@ evidence: `evaluate_sweep_evidence` requires a committed
 `docs/evidence/sweep-<shortsha>/summary.json` with `term==matrix.GATE_TERM_S`
 (there is no `"full"` term to check for anymore), `tree_clean`, every declared
 cell `SUCCESS`, and `n_runnable`/`n_success`/`len(cells)` all equal to the
-current `testsys/matrix.py`'s runnable-cell count (23 today — `RELEASE_ONLY`
-is deleted, not a set to add) for the exact tag SHA (or a rule-15d-permitted
-ancestor); it
+current `testsys/matrix.py`'s runnable-cell count (`matrix.cells()`, 27
+today — the everyday 23 plus `RELEASE_ONLY`'s 4 reintroduced 2026-10-02) for
+the exact tag SHA (or a rule-15d-permitted ancestor); it
 exits 5 (`SWEEP_INSUFFICIENT`) otherwise. Guarded itself by
 `testsys/regression/test_pretag_sweep_negative.py`,
 `test_release_complete.py`, and `testsys/regression/test_term_axis.py` (the

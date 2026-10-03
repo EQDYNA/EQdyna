@@ -344,7 +344,17 @@ def compare_nc(case, run_dir):
 # --------------------------------------------------------------------------
 # station files: the n-stress sign convention (board row 22a)
 # --------------------------------------------------------------------------
-ONFAULT_STATION_RE = re.compile(r'^faultst(-?\d+)dp(\d+)\.txt$')
+# Row 17 (multi-fault): an optional `ft<N>_` infix (faultTag(), fault N>=2's
+# own filename tag -- library_output.f90/library_output.py's
+# onfault_filename, inserted right after the 'faultst' literal) between
+# 'faultst' and the strike digits. '' at ntotft==1 (every pre-row-17 case),
+# so this is unchanged there -- test.tpv22/test.tpv23's own fault-2 station
+# files (faultstft2_050dp050.txt etc) were the first case to exercise this
+# gate with a tagged filename and found it unmatched entirely (group 2 is
+# depth, used for the buried/surface split below; the tag itself carries no
+# sign-convention meaning -- both faults in every gated multi-fault case use
+# the same matrix.NSTRESS_CONVENTION entry).
+ONFAULT_STATION_RE = re.compile(r'^faultst(?:ft\d+_)?(-?\d+)dp(\d+)\.txt$')
 
 
 _FORTRAN_E_DROPPED = re.compile(r'^([-+]?\d*\.\d*)([-+]\d{3})$')

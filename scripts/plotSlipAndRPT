@@ -10,7 +10,7 @@ from os.path import exists
 import matplotlib.pyplot as plt
 from matplotlib import animation, rc
 import netCDF4 as nc
-from lib import loadFrtData
+from lib import loadFrtData, faultTag
 #
 SMALL_SIZE = 10
 font = {'family': 'serif',
@@ -21,29 +21,40 @@ plt.rcParams['axes.labelweight'] = font['weight']     # Ensures bold axis labels
 plt.rcParams['axes.labelsize'] = font['size']          # Ensures correct font size for xlabel/ylabel
 
 def ruptureDynamics():
-    xx, zz, rupt, rupt2d, fVarArr, magnitude = loadFrtData(par)
+    """Row 17 (multi-fault): see plotRuptureDynamics' own ruptureDynamics()
+    docstring -- same loadFrtData-returns-a-list-per-fault contract, same
+    faultTag()-based filename suffix ('' at ntotft<=1, so a single-fault
+    case still writes exactly 'cRuptureDynamics.png')."""
+    faults = loadFrtData(par)
+    ntotft = len(faults)
+    fVarArrs = []
+    for i, (xx, zz, rupt, rupt2d, fVarArr, magnitude, fx, fz, nfx, nfz) in enumerate(faults, start=1):
+        tag = faultTag(i, ntotft)
+        suffix = ('_' + tag.rstrip('_')) if tag else ''
 
-    levels = np.linspace(0,30,60)
-    fig = plt.figure(figsize=(6,3), dpi= 300, facecolor='w', edgecolor='k')
-    ax1 = plt.subplot(111)
-    plt.rc('font', size=SMALL_SIZE)
-    plt.contourf(xx,zz,rupt2d[:,:,1])
-    cbar=plt.colorbar()
-    cs=plt.contour(xx,zz,rupt2d[:,:,0], levels)
-    ax1.clabel(cs, inline=True, fontsize=SMALL_SIZE - 2, fmt="%.2f", colors='w') 
-    cbar.set_label('m')
+        levels = np.linspace(0,30,60)
+        fig = plt.figure(figsize=(6,3), dpi= 300, facecolor='w', edgecolor='k')
+        ax1 = plt.subplot(111)
+        plt.rc('font', size=SMALL_SIZE)
+        plt.contourf(xx,zz,rupt2d[:,:,1])
+        cbar=plt.colorbar()
+        cs=plt.contour(xx,zz,rupt2d[:,:,0], levels)
+        ax1.clabel(cs, inline=True, fontsize=SMALL_SIZE - 2, fmt="%.2f", colors='w')
+        cbar.set_label('m')
 
-    ax1.set_xlabel('Strike (km)')
-    ax1.set_ylabel('Dip (km)')
-    ax1.set_aspect('equal')
-    plt.tight_layout()
-    plt.savefig("cRuptureDynamics.png", dpi = 300)
-    plt.close()
+        ax1.set_xlabel('Strike (km)')
+        ax1.set_ylabel('Dip (km)')
+        ax1.set_aspect('equal')
+        plt.tight_layout()
+        plt.savefig("cRuptureDynamics%s.png" % suffix, dpi = 300)
+        plt.close()
 
-    return fVarArr
+        fVarArrs.append(fVarArr)
+
+    return fVarArrs
 
 def _main_func(description):
-    fVarArr = ruptureDynamics()
+    fVarArrs = ruptureDynamics()
     print('Generating rupture dynamics figure ...')
 
 if __name__ == "__main__":

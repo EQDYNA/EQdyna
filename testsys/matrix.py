@@ -219,6 +219,29 @@ GATE_STATIONS = {
                'faultst120dp030.txt'),
         'off': ('body010st000dp000.txt', 'body390st000dp000.txt'),
     },
+    'test.tpv22': {
+        # Two of the three stations this case's own SCEC cross-code
+        # validation already used (NOTES_tpv2223_iteration.md: onset/peak-
+        # slip/peak-sr checked against kaneko/SPECFEM3D, payne/EQdyna-2013
+        # and barall/FaultMod) -- fault1st000dp000 (hypocenter-depth,
+        # along-strike-centre station) and fault2st050dp050 (the harder
+        # across-stepover station, which also proves fault #2's OWN station
+        # file is written and routed correctly, faultTag()-tagged
+        # 'faultstft2_'-prefixed, not aliased onto fault #1's). Third 'on' is
+        # a shallow-buried fault-1 station 5 km from the hypocentre
+        # (faultst-100dp050.txt). Off-fault: the two surface stations
+        # nearest (3 km) the fault on either side of the stepover
+        # (x=-5/+15 km, the hypocentre's own along-strike span).
+        'on': ('faultst000dp000.txt', 'faultst-100dp050.txt',
+               'faultstft2_050dp050.txt'),
+        'off': ('body030st-050dp000.txt', 'body030st150dp000.txt'),
+    },
+    'test.tpv23': {
+        # Same station grid as tpv22 (shared compset shape, tpv22_23_common.py).
+        'on': ('faultst000dp000.txt', 'faultst-100dp050.txt',
+               'faultstft2_050dp050.txt'),
+        'off': ('body030st-050dp000.txt', 'body030st150dp000.txt'),
+    },
 }
 
 # STATION_ZERO_FLOOR -- the absolute floor a per-column scale S_q is clamped
@@ -275,6 +298,12 @@ STATION_BOUND = {
     # chaotic). Observed 0.0 -- 4-rank Fortran is deterministic against its
     # own reference -- so the smallest bound in use, 1e-10.
     'test.drv.a6': 1e-10,
+    # test.tpv22/test.tpv23: measured python-jax vs fortran, same 15s-term
+    # run as CASE_BOUND's own note -- worst e 2.3946e-15 (tpv22, off n-vel)
+    # / 1.2345e-13 (tpv23, on v-slip-rate), both near-machine-epsilon;
+    # same smallest-bound-in-use floor as tpv29/tpv30.
+    'test.tpv22': 1e-10,
+    'test.tpv23': 1e-10,
 }
 
 # STATION_UNSUPPORTED -- (case, backend) cells whose station comparison is refused
@@ -343,6 +372,11 @@ NSTRESS_CONVENTION = {
     'test.meng2023a': ('extension', 'not a SCEC benchmark; SCEC default'),
     'test.meng2023cb': ('extension', 'not a SCEC benchmark; SCEC default'),
     'test.drv.a6': ('extension', 'not a SCEC benchmark; SCEC default'),
+    'test.tpv22': ('extension', 'TPV22_23_Description_v08.pdf Part 6 p.15, '
+                   'n-stress: "Positive means extension."'),
+    'test.tpv23': ('extension', 'TPV22_23_Description_v08.pdf Part 6 p.15 '
+                   '(TPV22 and TPV23 share the format), "Positive means '
+                   'extension."'),
 }
 
 # python-jax-mpi is a FOURTH value on the `backend` axis: real MPI (one
@@ -402,6 +436,118 @@ THRESHOLD = 1e-3  # PROJECT_RULES rule 5's one outer sanity bound.
 # the compset's own default for standalone use, not a second source of truth
 # the gate reads or reconciles against. The gate always overrides it.
 GATE_TERM_S = 5.0
+
+# CASE_TERM_OVERRIDE -- a SCOPED, per-case exception to the one term above,
+# by NAME only (owner decision, item 17 section A/B, replacing
+# test.multifault2 as the two-fault gate with the real SCEC benchmarks
+# test.tpv22/test.tpv23). This is NOT a reintroduction of the retired
+# CASE_FULL_TERM_S/--term/second-reference-file design test_term_axis.py
+# guards against: there is still exactly ONE committed frt.canonical.txt per
+# case (just generated at THIS case's own term when it has an entry here),
+# no CLI flag, and every case not named here is completely unaffected --
+# apply_term_override's default path (matrix.GATE_TERM_S) is unchanged for
+# every other case, everyday or release.
+#
+# TPV22/TPV23's own SCEC spec (TPV22_23_Description_v08.pdf, Part 5: "Run
+# the model for times from 0.0 to 15.0 seconds") requires 15 s
+# post-nucleation for fault #2 to rupture at all -- at the everyday 5 s gate
+# term, fault #1's own far stations have not even finished rupturing yet
+# (reference onset ~5.35-5.37 s), so a 5 s comparison for these two cases
+# would not be a comparison of the physics the benchmark specifies at all.
+CASE_TERM_OVERRIDE = {
+    'test.tpv22': 15.0,
+    'test.tpv23': 15.0,
+}
+
+
+def gate_term_for(case):
+    """The term `case` runs its gated cells at: CASE_TERM_OVERRIDE[case] if
+    present, else the one GATE_TERM_S every other case uses."""
+    return CASE_TERM_OVERRIDE.get(case, GATE_TERM_S)
+
+
+# RELEASE_ONLY -- REINTRODUCED deliberately, by NAME, 2026-10-02 (owner
+# decision, item 17 section B; PROJECT_RULES rule 24's own contingency
+# clause: "If a future case is held out of the everyday run for cost,
+# RELEASE_ONLY (or an equivalent) is reintroduced deliberately, not left
+# implied"). This is the SAME shape rule 24 describes as DELETED on
+# 2026-09-23 (its only occupants then, test.tpv36/test.tpv37 x python-numpy,
+# went away with the numpy axis itself) -- not a new mechanism, the same one,
+# scoped fresh.
+#
+# This is a suite-COST flag, never a correctness one. A case named here is
+# SUPPORTED and PASSING on every backend below -- there is no code path
+# anywhere that reads "does this case pass" before deciding RELEASE_ONLY
+# status; it is a static set, decided once, by the owner, in this commit, for
+# the stated cost reason alone. It is read by matrix.everyday_cells() (the
+# everyday/regression selection) to hold these cases' cells OUT of the
+# everyday sweep; matrix.cells() itself is UNCHANGED and remains the RELEASE
+# selection (every supported cell, these included, at the SAME CASE_BOUND /
+# CASE_TERM_OVERRIDE term as every other case -- never a looser bound for
+# being release-only).
+#
+# Measured cost (item 17 section B, this session): test.tpv22 x python-jax
+# 1537.9s wall (~25.6 min), peak RSS ~13.5 GB; test.tpv23 x python-jax 775.1s
+# wall -- vs 30-70s wall / 1.9-4.3 GB for every other gated jax cell.
+# Root cause (verified, not guessed, from eqdyna3d.py:667's build_solver_state
+# NotImplementedError): python-jax-mpi refuses ntotft>1, so these two cells'
+# jax column runs SERIAL jax today, not the MPI-parallel execution mode every
+# single-fault jax cell gets. Porting python-jax-mpi to ntotft>1 is a
+# separate, later job (not this one) that would remove the reason this flag
+# exists; until then, registering both cases at their own 15s
+# CASE_TERM_OVERRIDE term in the EVERYDAY gate would ~5-6x the whole sweep's
+# wall time for 2 of what would become 25 cells.
+#
+# Both backends of both cases are SUPPORTED and PASS (fortran bit-exact 0.0,
+# python-jax max|diff| ~1e-14, both at the case's own 15s term) -- see
+# CASE_BOUND's own comment a few lines below for the exact observed numbers.
+# Keyed by CASE (not cell): applies to every BACKEND of that case that is
+# actually runnable (python-jax-mpi is already UNSUPPORTED for both cases via
+# PY_MPI_RANKS above, for the same ntotft>1 reason -- everyday_cells() below
+# only ever moves cells out of the RUNNABLE set, so it can never collide with
+# an UNSUPPORTED declaration).
+RELEASE_ONLY = {
+    'test.tpv22': (
+        'release-only for COST, not correctness (owner decision, 2026-10-02, '
+        'item 17 section B; PROJECT_RULES rule 24 contingency clause). '
+        'SUPPORTED and PASSING on both gated backends at the case\'s own 15s '
+        'CASE_TERM_OVERRIDE term (fortran 0.0, python-jax ~1e-14 -- see '
+        'CASE_BOUND\'s own comment). python-jax measured 1537.9s wall '
+        '(~25.6 min), peak RSS ~13.5 GB, because python-jax-mpi refuses '
+        'ntotft>1 (eqdyna3d.py:667) and this cell runs serial jax -- a '
+        'separate, later port job closes that gap, not this one. Moved out '
+        'of the everyday sweep (run.py all / run.py unit regression); stays '
+        'in the release sweep (run.py release) at the SAME bound/term as '
+        'every other case.'
+    ),
+    'test.tpv23': (
+        'release-only for COST, not correctness (owner decision, 2026-10-02, '
+        'item 17 section B; PROJECT_RULES rule 24 contingency clause). '
+        'SUPPORTED and PASSING on both gated backends at the case\'s own 15s '
+        'CASE_TERM_OVERRIDE term (fortran 0.0, python-jax ~1e-14). '
+        'python-jax measured 775.1s wall, same ntotft>1/serial-jax cause as '
+        'test.tpv22. Moved out of the everyday sweep; stays in the release '
+        'sweep at the same bound/term as every other case.'
+    ),
+}
+
+
+def everyday_cells(cases=None, backends=None):
+    """(runnable, declared_unsupported, release_only) for the EVERYDAY
+    selection (run.py all / run.py unit regression / run_e2e.py's default,
+    no --release, no explicit --cases/--backends): cells() minus RELEASE_ONLY,
+    with the held-back cells returned separately (case, backend, reason) so a
+    caller prints them rather than letting them go silently absent (rule 2).
+    cells() itself is UNCHANGED and remains the RELEASE selection -- this
+    function is strictly additive and can only ever remove cells that cells()
+    already reported as RUNNABLE (supported), never touch an UNSUPPORTED
+    declaration."""
+    runnable, unsupported = cells(cases, backends)
+    release_only = [(c, b, RELEASE_ONLY[c]) for (c, b) in runnable
+                    if c in RELEASE_ONLY]
+    runnable = [(c, b) for (c, b) in runnable if c not in RELEASE_ONLY]
+    return runnable, unsupported, release_only
+
 
 # One bound per case. None means "this case is not gated on a scalar" -- see
 # GATE/DRV_A6 below. Every case in CASES must appear here.
@@ -467,6 +613,16 @@ CASE_BOUND = {
     # not physics, same shape as tpv36's own observation). 1e-6 is ~144x the
     # worst observation, in the same headroom family as tpv8/tpv36.
     'test.tpv37': 1e-6,
+    # test.tpv22/test.tpv23: measured python-jax vs the fresh fortran-
+    # canonicalised reference (15s term, 200m/250m): tpv22 max|diff|
+    # 6.562459e-15 (col 4), tpv23 7.549520e-15 (col 4) -- both Fortran cells
+    # bit-exact (0.0) against their own just-generated reference. Same
+    # near-machine-epsilon family as tpv29/tpv30 (1e-10): * ~120 headroom
+    # stays below 1e-12, rounded UP to the smallest bound already in use
+    # rather than a new, tighter one with no margin for ordinary run-to-run
+    # noise at that scale.
+    'test.tpv22': 1e-10,
+    'test.tpv23': 1e-10,
 }
 # test.tpv30 was held out of the gate from 2026-09-17 to 2026-09-23 by a real
 # divergence (numpy==jax, both != Fortran by up to 4.0e8 Pa at t=20 s). It was
@@ -490,6 +646,8 @@ GATE = {
     # "everything drifted a little". Gated on bulk agreement PLUS an explicit
     # flip budget instead.
     'test.drv.a6': 'flip-budget',
+    'test.tpv22': 'abs-max',
+    'test.tpv23': 'abs-max',
 }
 
 # test.drv.a6's flip-budget gate. These numbers are measured, not chosen;
@@ -724,10 +882,16 @@ def cells(cases=None, backends=None):
     return runnable, unsupported
 
 
-def coverage_report(runnable, declared_unsupported, selection_label):
+def coverage_report(runnable, declared_unsupported, selection_label,
+                    release_only=()):
     """The lines a run prints BEFORE it starts, so its own output states
     exactly what it is about to cover. Requirement zero of this sweep: a green
-    result must never be readable as broader than it is."""
+    result must never be readable as broader than it is.
+
+    release_only: (case, backend, reason) triples held back from THIS
+    selection by RELEASE_ONLY (the everyday/release cost split). Printed on
+    their own line -- never silently absent -- and excluded from 'NOT in this
+    selection' (they were considered and named, not skipped)."""
     total = len(CASES) * len(BACKENDS)
     selected = len(runnable) + len(declared_unsupported)
     lines = [
@@ -755,7 +919,15 @@ def coverage_report(runnable, declared_unsupported, selection_label):
                  % len(declared_unsupported))
     for c, b, reason in declared_unsupported:
         lines.append('  %-16s %-13s %s' % (c, b, reason))
-    chosen = set(runnable) | set((c, b) for c, b, _ in declared_unsupported)
+    lines.append('release-only (not run in this everyday sweep): %d cell(s)%s'
+                 % (len(release_only),
+                    (': ' + ', '.join('%s x %s' % (c, b)
+                                      for c, b, _ in release_only))
+                    if release_only else ''))
+    for c, b, reason in release_only:
+        lines.append('  %-16s %-13s %s' % (c, b, reason))
+    chosen = (set(runnable) | set((c, b) for c, b, _ in declared_unsupported)
+              | set((c, b) for c, b, _ in release_only))
     not_selected = [(c, b) for c in CASES for b in BACKENDS if (c, b) not in chosen]
     lines.append('NOT in this selection, %d cell(s)%s'
                  % (len(not_selected),
@@ -809,8 +981,15 @@ for (_c, _b) in list(UNSUPPORTED) + list(CI_CELLS):
 for (_c, _b) in list(MEASURED_PEAK_RSS_GB):
     if _c not in CASES or _b not in BACKENDS:
         raise RuntimeError('measurement for unknown cell %r x %r' % (_c, _b))
-# RELEASE_ONLY's own consistency check retired with the flag itself
-# (2026-09-23) -- there is nothing left to validate.
+for _c in RELEASE_ONLY:
+    if _c not in CASES:
+        raise RuntimeError('RELEASE_ONLY entry for unknown case %r' % _c)
+    if all((_c, _b) in UNSUPPORTED for _b in BACKENDS):
+        raise RuntimeError(
+            '%s is in RELEASE_ONLY but UNSUPPORTED on every backend -- '
+            'release-only means "supported, cost-deferred to the release '
+            'tier", not "does not work anywhere"; a case cannot honestly '
+            'claim both' % _c)
 
 # Every case has a GATE_STATIONS entry and ONE finite STATION_BOUND; a cell
 # that cannot be compared is declared per (case, backend) in

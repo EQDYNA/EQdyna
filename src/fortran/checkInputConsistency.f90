@@ -4,7 +4,6 @@ subroutine checkInputConsistency
     use errorCodes
     implicit none
     integer (kind = 4) :: i, j
-    real (kind = dp) :: yOverDy, nearestInt
     character (len = 12) :: itoa
     character (len = 24) :: dtoa
 
@@ -25,7 +24,7 @@ subroutine checkInputConsistency
     ! Row 17 (multi-fault) guards, modelled on eqquasi's eeac6f9 (fault plane
     ! must land on a mesh node line) and a761f33 (x/z bound commensurability).
     ! No-op at ntotft==1 (every loop below is over a single fault, and the
-    ! i<j distinctness/xz-match loops do not execute for ntotft<2).
+    ! i<j distinctness loop does not execute for ntotft<2).
     ! These multi-fault guards are about checkIsOnFault's PLANAR,
     ! C_degen==0 branch (one y-plane per fault, tested by exact-ish equality
     ! against fltxyz(1,2,iFault)) -- the narrow two-vertical-parallel-faults
@@ -35,6 +34,19 @@ subroutine checkInputConsistency
     ! fymin /= fymax (the fault spans a range of grid y by construction) --
     ! orthogonal to this work and explicitly out of scope, so these guards
     ! do not apply to it.
+    !
+    ! Row 17 rebased (restore per-fault mesh extent, invent nothing): the
+    ! "y outside the fixed belt" and "x/z must equal fault 1's" checks that
+    ! used to live here are GONE, not relaxed -- they were refusing exactly
+    ! the two limitations getLocalOneDimCoorArrAndSize (meshgen.f90) no
+    ! longer has. The belt is now derived FROM every fault's own box (union
+    ! min/max), so a fault's y can never fall outside it, and independent
+    ! per-fault x/z extents are now meshed, not refused. What replaces both
+    ! checks is one generic commensurability guard inside
+    ! getLocalOneDimCoorArrAndSize itself (it alone knows the belt's true
+    ! per-axis origin after the union, which this subroutine does not
+    ! compute) -- still a hard stop, now correct for every axis instead of
+    ! y-only-relative-to-a-hardcoded-0.
     if (C_degen == 0.0d0) then
     do i = 1, ntotft
         ! checkIsOnFault (meshgen.f90) assumes a PLANAR vertical fault: one
@@ -45,39 +57,6 @@ subroutine checkInputConsistency
             call abortRun(ERR_GEOM_MULTIFAULT_Y_BAD, &
                 'checkInputConsistency: fault '//trim(itoa(i))//' has fymin /= fymax -- only a planar, ' // &
                 'vertical fault (single y-plane) is supported; non-planar multi-fault geometry is out of scope.')
-        endif
-        ! The y-grid's uniform belt spans [-dis4uniF*dy, +dis4uniB*dy] in
-        ! exact steps of dy (meshgen.f90's getLocalOneDimCoorArrAndSize,
-        ! dimId==2) -- a fault y not an integer multiple of dy falls between
-        ! node lines and meshes with ZERO fault nodes, silently (eqquasi
-        ! eeac6f9's exact failure mode: "Fault nodes = 0" read as cosmetic).
-        yOverDy = fymin(i) / dy
-        nearestInt = dble(nint(yOverDy))
-        if (abs(yOverDy - nearestInt) > 1.0d-6) then
-            call abortRun(ERR_GEOM_MULTIFAULT_Y_BAD, &
-                'checkInputConsistency: fault '//trim(itoa(i))//'''s y = '//trim(dtoa(fymin(i)))// &
-                ' is not an integer multiple of dy = '//trim(dtoa(dy))// &
-                ' -- it would fall between mesh node lines and mesh with zero fault nodes.')
-        endif
-        if (fymin(i) < -dble(dis4uniF)*dy - tol .or. fymin(i) > dble(dis4uniB)*dy + tol) then
-            call abortRun(ERR_GEOM_MULTIFAULT_Y_BAD, &
-                'checkInputConsistency: fault '//trim(itoa(i))//'''s y = '//trim(dtoa(fymin(i)))// &
-                ' lies outside the uniform-y mesh belt [-dis4uniF*dy, +dis4uniB*dy] = ['// &
-                trim(dtoa(-dble(dis4uniF)*dy))//', '//trim(dtoa(dble(dis4uniB)*dy))// &
-                ']; widen par.nuni_y_minus/par.nuni_y_plus or move the fault.')
-        endif
-        ! The uniform x/z belt (meshgen.f90's getLocalOneDimCoorArrAndSize,
-        ! dimId==1/3) is anchored on fault 1's box ALONE (fltxyz(:,1,1),
-        ! fltxyz(:,3,1)) -- independent per-fault x/z extents are out of
-        ! scope for this release (two PARALLEL faults, same strike extent).
-        if (i > 1) then
-            if (abs(fxmin(i)-fxmin(1))>tol .or. abs(fxmax(i)-fxmax(1))>tol .or. &
-                abs(fzmin(i)-fzmin(1))>tol .or. abs(fzmax(i)-fzmax(1))>tol) then
-                call abortRun(ERR_GEOM_MULTIFAULT_XZ_BAD, &
-                    'checkInputConsistency: fault '//trim(itoa(i))//' has a different x/z extent than fault 1. ' // &
-                    'The shared uniform x/z mesh belt is built from fault 1 box alone, so every fault must ' // &
-                    'share it (two parallel faults, same strike extent) -- independent per-fault x/z extents are out of scope.')
-            endif
         endif
     enddo
 

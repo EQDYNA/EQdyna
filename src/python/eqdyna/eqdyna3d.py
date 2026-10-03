@@ -520,8 +520,13 @@ def build_solver_state(case_dir, part=None):
     # Row 17: nsmp's 3rd column is the 0-indexed fault id, in the SAME row
     # order read_on_fault_vars indexes fric by -- +1 for the 1-indexed
     # fault_of/faultTag convention.
+    # Row 17 rebased: per-fault fxmin/fzmin (faults_for_check, built above
+    # from params['faults'] with the same single-box fallback used
+    # everywhere else in this function), not params['fxmin']/['fzmin'] alone
+    # -- read_on_fault_vars now indexes each row by ITS OWN fault's box.
     fric = readInputFiles.read_on_fault_vars(
-        os.path.join(case_dir, 'on_fault_vars_input.nc'), params['fxmin'], params['fzmin'],
+        os.path.join(case_dir, 'on_fault_vars_input.nc'),
+        [f['fxmin'] for f in faults_for_check], [f['fzmin'] for f in faults_for_check],
         params['dx'], params['dz'], meshCoor, nsmp,
         ntotft=g['ntotft'], fault_of=nsmp[:, 2].astype(np.int64) + 1)
 

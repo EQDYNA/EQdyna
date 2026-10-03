@@ -72,8 +72,8 @@ MODULE errorCodes
 
     ! --- 31-39 fault geometry -----------------------------------------
     integer, parameter :: ERR_GEOM_ROUGH_INVALID     = 31  ! bFault_Rough_Geometry.txt does not match this mesh
-    integer, parameter :: ERR_GEOM_MULTIFAULT_Y_BAD   = 32  ! a fault's y-plane is not vertical/planar, not a multiple of dy, outside the uniform-y belt, or coincides with another fault's
-    integer, parameter :: ERR_GEOM_MULTIFAULT_XZ_BAD  = 33  ! a fault's x/z extent differs from fault 1's (the shared uniform x/z belt only covers fault 1's box)
+    integer, parameter :: ERR_GEOM_MULTIFAULT_Y_BAD   = 32  ! a fault's y-plane is not vertical/planar, coincides with another fault's, or (row 17 rebased) a fault's y bound is not an integer multiple of dy from the union-derived uniform-y belt origin
+    integer, parameter :: ERR_GEOM_MULTIFAULT_XZ_BAD  = 33  ! (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line
 
     ! --- 41-49 mesh generation and element quality --------------------
     integer, parameter :: ERR_MESH_STRESS_ARR_SMALL  = 41  ! sizeOfStressDofIndexArr exceeds 5*sizeOfEqNumIndexArr

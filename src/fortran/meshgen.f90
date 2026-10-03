@@ -539,39 +539,136 @@ subroutine getLocalOneDimCoorArrAndSize(globalOneDimCoorArrSize, numOfNodesWithU
     integer (kind = 4) :: globalOneDimCoorArrSize, numOfNodesWithUniformGridsize, dimId
     integer (kind = 4) :: frontEdgeNodeId, localOneDimCoorArrSize, MPIXyzId
     integer (kind = 4) :: numOfNodesPerMPI, residualNumOfNodes
-    integer (kind = 4) :: i, numOfMPIXyz
+    integer (kind = 4) :: i, numOfMPIXyz, ift
     integer (kind = 4) :: globalOneDimCoorArrOutSize
     real (kind = dp) :: gridSize, frontEdgeCoor, backEdgeCoor, &
             minCoor, maxCoor, coorTmp, gridSizeTmp, localOneDimCoorArr(10000), &
             modelBoundCoor(3,2), globalOneDimCoorArrOut(10000)
+    real (kind = dp) :: fltMin1, fltMax1, commensOffset
     real (kind = dp), allocatable :: globalOneDimCoorArr(:)
     character(len=300) :: reasonMsg
 
-    if (dimId == 1) then 
-        numOfNodesWithUniformGridsize = nint((fltxyz(2,1,1) - fltxyz(1,1,1))/dx) + 1
+    ! Row 17 rebased (restore per-fault mesh extent, invent nothing): the
+    ! uniform x/z belt (dimId==1/3) and the uniform-y belt (dimId==2) used to
+    ! be anchored on FAULT 1's box alone (fltxyz(.,.,1)) -- every other
+    ! fault's box was never consulted here at all, so a case with a fault
+    ! outside fault 1's x/z extent, or outside a hand-widened fixed y-margin,
+    ! either refused to run (checkInputConsistency's old guards) or meshed
+    ! wrong. fltMin1/fltMax1 are now the UNION (minval/maxval) over every
+    ! fault's own box on this axis, mirroring eqquasi's b6010e2 (x/z) and
+    ! 2769c73 (y). ntotft==1 collapses fltMin1==fltMax1==fault 1's own single
+    ! value on every axis, so every formula below is bit-identical to the old
+    ! fault-1-only one in that case.
+    if (dimId == 1) then
+        fltMin1 = minval(fltxyz(1,1,1:ntotft))
+        fltMax1 = maxval(fltxyz(2,1,1:ntotft))
+        numOfNodesWithUniformGridsize = nint((fltMax1 - fltMin1)/dx) + 1
         gridSize      = dx
-        frontEdgeCoor = fltxyz(1,1,1)
-        backEdgeCoor  = fltxyz(2,1,1)
+        frontEdgeCoor = fltMin1
+        backEdgeCoor  = fltMax1
         minCoor       = xmin
         maxCoor       = xmax
         numOfMPIXyz   = npx
-    elseif (dimId == 2) then 
-        numOfNodesWithUniformGridsize = dis4uniF + dis4uniB + 1
+    elseif (dimId == 2) then
+        if (C_degen == 0.0d0) then
+            fltMin1 = minval(fltxyz(1,2,1:ntotft))
+            fltMax1 = maxval(fltxyz(2,2,1:ntotft))
+        else
+            ! C_degen>3 (wedge-degeneration dipping fault, e.g. tpv36/tpv37):
+            ! a DIFFERENT, pre-existing, single-fault-only mechanism
+            ! (orthogonal to this work -- see checkInputConsistency.f90's own
+            ! "C_degen>3 ... legitimate fymin /= fymax" comment) where
+            ! fltxyz(1,2,1)/fltxyz(2,2,1) describe a dip-projection y-RANGE,
+            ! not a fault y-PLANE the uniform belt should be anchored to --
+            ! the belt was never built from fltxyz's y at all before this
+            ! mission (frontEdgeCoor/backEdgeCoor were -/+ dis4uniF/B*dy
+            ! regardless), and generalizing it to the union here broke
+            ! test.tpv36 (measured: test_rank_local_mesh.py's 8-rank fault
+            ! ownership count changed). Left exactly as before, bit-identical
+            ! -- this mission's multi-fault scope is ntotft==1-only for
+            ! C_degen>3 regardless, so no multi-fault y-belt case is lost.
+            fltMin1 = 0.0d0
+            fltMax1 = 0.0d0
+        endif
+        numOfNodesWithUniformGridsize = nint((fltMax1 - fltMin1)/dy) + dis4uniF + dis4uniB + 1
         gridSize      = dy
-        frontEdgeCoor = -dis4uniF*dy
-        backEdgeCoor  = dis4uniB*dy
+        frontEdgeCoor = fltMin1 - dis4uniF*dy
+        backEdgeCoor  = fltMax1 + dis4uniB*dy
         minCoor       = ymin
         maxCoor       = ymax
         numOfMPIXyz   = npy
-    elseif (dimId == 3) then 
-        numOfNodesWithUniformGridsize = nint((fltxyz(2,3,1) - fltxyz(1,3,1))/dz) + 1
+    elseif (dimId == 3) then
+        fltMin1 = minval(fltxyz(1,3,1:ntotft))
+        fltMax1 = maxval(fltxyz(2,3,1:ntotft))
+        numOfNodesWithUniformGridsize = nint((fltMax1 - fltMin1)/dz) + 1
         gridSize      = dz
-        frontEdgeCoor = fltxyz(1,3,1)
-        backEdgeCoor  = fltxyz(2,3,1)
+        frontEdgeCoor = fltMin1
+        backEdgeCoor  = fltMax1
         minCoor       = zmin
         maxCoor       = zmax
-        numOfMPIXyz   = npz 
-    endif 
+        numOfMPIXyz   = npz
+    endif
+
+    ! Hard refuse (not a silent clamp or a widened margin) when a fault's
+    ! bound on this axis is not an integer number of gridSize steps from
+    ! fltMin1, the belt origin just computed -- eqquasi's eeac6f9/a761f33
+    ! finding, ported here: a fault edge that falls between node lines meshes
+    ! with fewer fault nodes than declared, or none, SILENTLY. Checked once
+    ! per fault per bound (lower and upper -- a planar y-fault has both
+    ! bounds equal, so this subsumes the old "fymin not a multiple of dy"
+    ! check with the now-correct, union-based origin instead of a hardcoded
+    ! 0). ntotft==1 makes fltMin1 this very fault's own bound, so the offset
+    ! is always exactly 0 and this can never fire for a single-fault case
+    ! (bit-identical no-op). Same abortRun-with-the-actual-numbers-named style
+    ! as the overflow refusal below.
+    !
+    ! Tolerance: `tol` (globalvar.f90, 1.0d-5 m), NOT gridSize/100 (victor-reyes
+    ! audit, PR #76 MAJOR 1). eqquasi's own eeac6f9/a761f33 use dx/100 for this
+    ! check, but EQdyna's own downstream consumer, checkIsOnFault, only ever
+    ! matches a node to a fault plane within `tol`=1e-5 m regardless of
+    ! gridSize -- so a gridSize/100 pass band (2 m at dy=200) let a fault
+    ! bound land up to 2 m off a node line, this check pass silently, and
+    ! checkIsOnFault then fail to match ANY node (1e-5 m << 2 m), i.e. the
+    ! exact silent zero-fault-node failure this guard exists to prevent. Using
+    ! `tol` ties the two checks to the same constant by construction. The
+    ! prior (pre-this-PR) single-fault check in checkInputConsistency.f90 used
+    ! 1.0d-6 relative to dy (abs(fymin/dy - nint(fymin/dy)) > 1.0d-6, i.e.
+    ! 1e-6*dy absolute -- 2e-4 m at dy=200), itself looser than `tol`=1e-5 m
+    ! at any dy>10; `tol` is the tighter, defensible, already-shared constant.
+    ! Measured on TPV22 (dy=200, fault y-offset 1600 m) and TPV23 (dy=250,
+    ! fault y-offset 1000 m): both offsets are exact integer multiples of dy
+    ! in double precision (1600.0d0/200.0d0 and 1000.0d0/250.0d0 both exact
+    ! integers, no representable remainder), so commensOffset==0.0d0 exactly
+    ! for both cases -- tightening this check to `tol` does not newly refuse
+    ! either mesh.
+    !
+    ! dimId==2 skips entirely when C_degen/=0: the belt for that axis is the
+    ! untouched fixed-margin one (see the dimId==2 branch above), not built
+    ! from fltxyz's y at all, so testing fltxyz(.,2,ift)'s dip-projection
+    ! y-range for commensurability with dy would be checking a quantity this
+    ! guard has nothing to do with (and tpv36/tpv37's own y-range is not
+    ! generally dy-commensurate from 0 -- it never needed to be).
+    do ift = 1, ntotft
+        if (dimId == 2 .and. C_degen /= 0.0d0) cycle
+        do i = 1, 2
+            commensOffset = fltxyz(i,dimId,ift) - fltMin1 - &
+                dble(nint((fltxyz(i,dimId,ift) - fltMin1)/gridSize))*gridSize
+            if (abs(commensOffset) > tol) then
+                write(reasonMsg,'(a,i0,a,i0,a,i0,a,f0.3,a,f0.3,a,f0.3,a)') &
+                    'getLocalOneDimCoorArrAndSize: dimId=', dimId, ', fault ', ift, &
+                    ' bound ', i, ' = ', fltxyz(i,dimId,ift), &
+                    ' is not an integer multiple of gridSize=', gridSize, &
+                    ' from this axis'' belt origin=', fltMin1, &
+                    '; it would fall between mesh node lines and mesh with too few ' // &
+                    'fault nodes, or none, silently. Fix par.faultgeom or dx/dy/dz.'
+                if (dimId == 2) then
+                    call abortRun(ERR_GEOM_MULTIFAULT_Y_BAD, trim(reasonMsg))
+                else
+                    call abortRun(ERR_GEOM_MULTIFAULT_XZ_BAD, trim(reasonMsg))
+                endif
+            endif
+        enddo
+    enddo
 
     coorTmp = frontEdgeCoor
     gridSizeTmp = gridSize
@@ -953,14 +1050,15 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
 end subroutine createElement
 
  subroutine replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
-    use globalvar 
+    use globalvar
     use errorCodes
     implicit none
     integer (kind = 4) :: elemCount, iFault, iFaultNodePair, nftnd0(ntotft), k
     real (kind = dp) :: nodeCoor(10)
-    ! The default grids only contain slave nodes. 
+    logical :: isAboveSomeFaultPlane
+    ! The default grids only contain slave nodes.
     ! This subroutine will replace slave nodes with corresponding master nodes.
-    
+
     ! Row 17 (multi-fault): the y-test used to be `nodeCoor(2)>0.0d0 .and.
     ! abs(nodeCoor(2)-dy)<tol` -- one cell above fault 1's plane (y=0) alone.
     ! For ntotft>1 an element one cell above fault 2's plane (or any fault's)
@@ -969,14 +1067,26 @@ end subroutine createElement
     ! split, which showed up downstream as a zero/singular mass entry and a
     ! NaN velocity at a fault-2 node within the first 2 steps (measured on
     ! test.multifault2, rank 1/3, nodes at fault 2's z-edges). Generalized to
-    ! ANY fault's plane-plus-one-cell -- x/z bounds stay keyed to fault 1's
-    ! box (checkInputConsistency.f90 already requires every fault share it).
-    ! Reduces to the old test bit-for-bit at ntotft==1 (a one-element array,
-    ! fltxyz(1,2,1)+dy = 0+dy = dy).
-    if ((elemTypeArr(elemCount) == 1 .and. &
-        (nodeCoor(1)>(fltxyz(1,1,1)-tol) .and. nodeCoor(1)<(fltxyz(2,1,1)+dx+tol) .and. &
-         nodeCoor(3)>(fltxyz(1,3,1)-tol) .and. &
-         any(abs(nodeCoor(2) - (fltxyz(1,2,1:ntotft) + dy)) < tol))) &
+    ! ANY fault's plane-plus-one-cell.
+    !
+    ! Row 17 rebased: x/z bounds USED to stay keyed to fault 1's box alone
+    ! (checkInputConsistency.f90 used to require every fault share it) --
+    ! now getLocalOneDimCoorArrAndSize meshes the UNION of every fault's x/z
+    ! extent, so a fault whose x/z differs from fault 1's (TPV22/23's two
+    ! faults, e.g.) needs its OWN x/z tested alongside its OWN y-plane, one
+    ! fault at a time, not fault 1's x/z paired with any(...) fault's y.
+    ! Reduces to the old any(...)-across-y test bit-for-bit at ntotft==1 (one
+    ! fault, so "test fault i's own x/z and y" IS "test fault 1's x/z and y").
+    isAboveSomeFaultPlane = .false.
+    do iFault = 1, ntotft
+        if (nodeCoor(1)>(fltxyz(1,1,iFault)-tol) .and. nodeCoor(1)<(fltxyz(2,1,iFault)+dx+tol) .and. &
+            nodeCoor(3)>(fltxyz(1,3,iFault)-tol) .and. &
+            abs(nodeCoor(2) - (fltxyz(1,2,iFault) + dy)) < tol) then
+            isAboveSomeFaultPlane = .true.
+            exit
+        endif
+    enddo
+    if ((elemTypeArr(elemCount) == 1 .and. isAboveSomeFaultPlane) &
          .or. elemTypeArr(elemCount)==12 .or. elemTypeArr(elemCount)==13 ) then
         do iFault = 1, ntotft
             do iFaultNodePair = 1, nftnd0(iFault)
