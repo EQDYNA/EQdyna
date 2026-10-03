@@ -21,34 +21,45 @@ gate already covers on its own):
      (not falling through to ntotft==1 behaviour): both fault node counts
      are positive and distinct in y.
 
-NOT ported forward (covered elsewhere, see the dispatch report):
+NOT ported forward (covered elsewhere, or not covered at all -- corrected
+here, victor-reyes audit, PR #76 MAJOR 3, 2026-10-02: this paragraph used to
+claim two things that are not true and is rewritten to say only what is
+actually tested):
   - 4-rank-split-across-faults decomposition and byte-parity against a
-    committed reference: covered by the e2e gate itself
-    (test.tpv22/test.tpv23 x fortran, matrix.FORTRAN_RANKS=4 -- a different
-    decomposition that happens to also split the two faults across ranks,
-    since par.ny=1 keeps every fault's own y-plane off the x/z partition
-    boundaries that DO split -- the full node-for-node byte comparison the
-    e2e gate performs is a strictly STRONGER check than multifault2's own
-    coefficient-based anti-aliasing probe).
+    committed reference: test.tpv22/test.tpv23 x fortran at
+    matrix.FORTRAN_RANKS=4 IS the e2e gate's own cell for these cases, but
+    both cases are RELEASE_ONLY (testsys/matrix.py, cost reason, item 17
+    section B) -- that 4-rank byte-parity comparison runs under `run.py
+    release` only, NOT the everyday e2e gate and NOT CI. It is not a gap
+    this file needs to cover (release coverage is real), but it is NOT an
+    everyday/CI guarantee either; do not read the sentence above as saying
+    it is.
   - per-fault station file existence/routing (faultstft2_*-tagged files):
-    covered by matrix.GATE_STATIONS' own 'faultstft2_050dp050.txt' entry,
-    on BOTH gated backends.
-  - anti-aliasing of fault #2's physics onto fault #1's: covered, far more
-    strongly than multifault2's synthetic coefficient check, by this
-    mission's own independent SCEC cross-validation (kaneko/SPECFEM3D,
-    barall/FaultMod) at a fault-#2 station -- aliased physics could not
-    independently match a different, externally-produced solution
-    (testsys/parity/evidence_tpv22_23_scec_comparison.py).
+    covered by matrix.GATE_STATIONS' own 'faultstft2_050dp050.txt' entry --
+    also only at RELEASE_ONLY's cells, same caveat as above.
+  - anti-aliasing of fault #2's physics onto fault #1's against an
+    INDEPENDENT, externally-produced solution:
+    testsys/parity/evidence_tpv22_23_scec_comparison.py does NOT cover this.
+    That script is REPORT-ONLY by its own docstring and `main()` (always
+    `return 0`; it never asserts), and the barall/FaultMod cross-code
+    dataset it was originally written to compare against was removed from
+    this repo's scec_archive in 6e76c93 ("remove 8 barall* cross-code
+    dirs"). It is evidence a human can read, not a gate. The real,
+    mechanical anti-aliasing guard for this case pair is
+    check_two_faults_x_ranges_are_not_aliased below (new, this commit) --
+    see its own docstring.
   - the anti-ntotft==1 case.setup guard: test_multifault_refused.py, built
     on test.tpv8 + an appended par.ntotft=2 override, independent of any
     committed multifault2 reference -- left untouched.
 
-THIS test is the one gap registering test.tpv22/test.tpv23 as the gate
-cases left open: no gated cell ever runs Fortran with ONE rank owning both
-faults (the e2e cell is always matrix.FORTRAN_RANKS[case]=4). That
-decomposition is exactly what exercises createMasterNode's and
-replaceSlaveWithMasterNode's cross-fault paths most directly (both faults'
-nodes built and connected on the SAME rank, in the SAME call).
+THIS test is a gap registering test.tpv22/test.tpv23 as the gate cases
+left open in the EVERYDAY sweep and CI specifically (both cases being
+RELEASE_ONLY means the serial, single-rank-owns-both-faults decomposition
+below never runs there otherwise): no everyday/CI cell ever runs Fortran
+with ONE rank owning both faults. That decomposition is exactly what
+exercises createMasterNode's and replaceSlaveWithMasterNode's cross-fault
+paths most directly (both faults' nodes built and connected on the SAME
+rank, in the SAME call).
 
 COST: builds test.tpv22 at its real, committed 200 m resolution (the mesh
 size the bug classes above actually depend on -- a coarser synthetic mesh
@@ -56,8 +67,19 @@ would not exercise the same code paths at the same scale) but with
 par.term cut to 0.5 s (~30 steps instead of ~900), serial. This is a
 structural/routing check, not a physics parity gate -- it does not compare
 against the 15 s frt.canonical.txt reference (a different term entirely);
-it asserts the two fault node COUNTS, which are a pure function of the
-mesh geometry and do not depend on how many steps ran.
+it asserts the two fault node COUNTS (a pure function of mesh geometry,
+term-independent) AND, since PR #76 MAJOR 3, each fault's own along-strike
+x-RANGE, which is the real per-fault-distinguishing signature: TPV22/23's
+two faults overlap in x only over [-5000, 5000] (FAULT1_XRANGE=(-25000,
+5000), FAULT2_XRANGE=(-5000, 25000), tpv22_23_common.py) -- if fault 2 were
+aliased onto fault 1's mesh/geometry (the exact bug class commit 1ac3d60
+fixed, "restore per-fault mesh extent (ift), invent nothing"), its node x
+values would be bounded by fault 1's box ([-25000, 5000]) and could never
+reach fault 2's true far edge (25000 m). A bare node-COUNT match (the
+previous version of this test) cannot catch that: both faults have the same
+dx and the same along-strike LENGTH (30 km each), so an aliased fault 2
+confined to fault 1's x-range would still report the same node count,
+just at the wrong x positions.
 """
 import os
 import subprocess
@@ -85,6 +107,15 @@ FAULT2_Y = -1600.0  # test.tpv22's own stepover offset (tpv22_23_common.py)
 # (15251 fault-1 + 15251 fault-2), frozen by this same mission.
 EXPECTED_NFTND_PER_FAULT = 15251
 SHORT_TERM_S = 0.5  # ~30 steps at this case's dt -- routing/structure only.
+
+# Copied verbatim from case_input/test.tpv22/tpv22_23_common.py (not imported
+# -- that module has import-time side effects (building par) this test does
+# not want) -- the two faults' TRUE along-strike x-extents, the real
+# per-fault-distinguishing signature used by
+# check_two_faults_x_ranges_are_not_aliased below (MAJOR 3, PR #76).
+FAULT1_XRANGE = (-25000.0, 5000.0)
+FAULT2_XRANGE = (-5000.0, 25000.0)
+X_EDGE_TOL_M = 250.0  # a few dx (200m) of slack for the nearest-node snap
 
 
 def _env():
@@ -138,14 +169,18 @@ def _build_and_run_serial(tmp):
     return case_dir
 
 
-def check_serial_single_rank_builds_and_runs_both_faults():
-    """ONE rank meshes, connects and steps BOTH test.tpv22 faults -- the
-    decomposition that exercises createMasterNode's/replaceSlaveWithMaster
-    Node's cross-fault paths most directly (test.multifault2's own smoke
-    test's reason for running this decomposition at all)."""
-    with tempfile.TemporaryDirectory() as tmp:
-        case_dir = _build_and_run_serial(tmp)
-        rows = frt_canonical.canonical_from_case(case_dir)
+_CANONICAL = []  # one solver run shared by every check below (rule 9: cheap)
+
+
+def _canonical_rows():
+    if not _CANONICAL:
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = _build_and_run_serial(tmp)
+            _CANONICAL.append(frt_canonical.canonical_from_case(case_dir))
+    return _CANONICAL[0]
+
+
+def _split_faults(rows):
     y = rows[:, 1]
     f1 = rows[np.abs(y - FAULT1_Y) < 1.0]
     f2 = rows[np.abs(y - FAULT2_Y) < 1.0]
@@ -154,6 +189,15 @@ def check_serial_single_rank_builds_and_runs_both_faults():
             'serial test.tpv22: expected fault nodes at BOTH y=%r (%d found) and '
             'y=%r (%d found) -- the multi-fault code path did not run for both '
             'faults on a single rank' % (FAULT1_Y, f1.shape[0], FAULT2_Y, f2.shape[0]))
+    return f1, f2
+
+
+def check_serial_single_rank_builds_and_runs_both_faults():
+    """ONE rank meshes, connects and steps BOTH test.tpv22 faults -- the
+    decomposition that exercises createMasterNode's/replaceSlaveWithMaster
+    Node's cross-fault paths most directly (test.multifault2's own smoke
+    test's reason for running this decomposition at all)."""
+    f1, f2 = _split_faults(_canonical_rows())
     if f1.shape[0] != EXPECTED_NFTND_PER_FAULT or f2.shape[0] != EXPECTED_NFTND_PER_FAULT:
         raise AssertionError(
             'serial test.tpv22: expected %d fault nodes per fault (this case\'s '
@@ -166,10 +210,63 @@ def check_serial_single_rank_builds_and_runs_both_faults():
           % (f1.shape[0], FAULT1_Y, f2.shape[0], FAULT2_Y))
 
 
+def check_two_faults_x_ranges_are_not_aliased():
+    """A real per-fault DISTINGUISHING value check (MAJOR 3, PR #76),
+    not just a node count: fault 1 and fault 2 have different, only
+    partially overlapping along-strike x-extents (FAULT1_XRANGE=(-25000,
+    5000) vs FAULT2_XRANGE=(-5000, 25000), tpv22_23_common.py) -- a value
+    that WOULD be identical (both confined to fault 1's box) if fault 2's
+    mesh were aliased onto fault 1's, the exact bug class commit 1ac3d60
+    ("restore per-fault mesh extent (ift), invent nothing") fixed. Fault 1's
+    own x values must never reach fault 2's exclusive far edge (25000 m)
+    and fault 2's must never be confined to fault 1's far edge (5000 m) --
+    asserts both faults' x range actually reaches its OWN true edge, within
+    a couple of dx of nearest-node snap."""
+    f1, f2 = _split_faults(_canonical_rows())
+    x1, x2 = f1[:, 0], f2[:, 0]
+    x1_min, x1_max = float(x1.min()), float(x1.max())
+    x2_min, x2_max = float(x2.min()), float(x2.max())
+    checks = [
+        ('fault 1 min x', x1_min, FAULT1_XRANGE[0]),
+        ('fault 1 max x', x1_max, FAULT1_XRANGE[1]),
+        ('fault 2 min x', x2_min, FAULT2_XRANGE[0]),
+        ('fault 2 max x', x2_max, FAULT2_XRANGE[1]),
+    ]
+    bad = [(label, got, want) for label, got, want in checks
+           if abs(got - want) > X_EDGE_TOL_M]
+    if bad:
+        raise AssertionError(
+            'serial test.tpv22: fault x-range does not reach its own true edge '
+            '(aliased onto the other fault''s mesh box?): %s (tol %.0fm)'
+            % ('; '.join('%s=%.1f (want %.1f)' % (l, g, w) for l, g, w in bad),
+               X_EDGE_TOL_M))
+    # The sharpest aliasing signature: fault 1 must NEVER reach fault 2's
+    # exclusive far edge (x>5000 is only reachable by fault 2's true box),
+    # and fault 2 must NEVER be confined inside fault 1's far edge (x<-5000
+    # untouched by fault 2's true box starts at -5000, so this is the same
+    # bound -- stated explicitly, not just via the edge-match above, since an
+    # edge-match alone could in principle pass by coincidence on a bug that
+    # only shifts the far edge).
+    if x1_max > FAULT1_XRANGE[1] + X_EDGE_TOL_M:
+        raise AssertionError('serial test.tpv22: fault 1 x reaches %.1f, past its own '
+                             'true far edge %.1f -- looks aliased onto fault 2''s box'
+                             % (x1_max, FAULT1_XRANGE[1]))
+    if x2_min < FAULT2_XRANGE[0] - X_EDGE_TOL_M:
+        raise AssertionError('serial test.tpv22: fault 2 x reaches %.1f, past its own '
+                             'true near edge %.1f -- looks aliased onto fault 1''s box'
+                             % (x2_min, FAULT2_XRANGE[0]))
+    print('  PASS  serial (1 rank owns both faults): fault1 x in [%.0f, %.0f] '
+          '(true box [%.0f, %.0f]), fault2 x in [%.0f, %.0f] (true box [%.0f, %.0f]) '
+          '-- no fault-2-aliased-to-fault-1 x-range collapse'
+          % (x1_min, x1_max, FAULT1_XRANGE[0], FAULT1_XRANGE[1],
+             x2_min, x2_max, FAULT2_XRANGE[0], FAULT2_XRANGE[1]))
+
+
 def main():
     print('Regression guard: test.tpv22 Fortran serial (one rank, both faults) routing')
     failures = []
-    for c in (check_serial_single_rank_builds_and_runs_both_faults,):
+    for c in (check_serial_single_rank_builds_and_runs_both_faults,
+              check_two_faults_x_ranges_are_not_aliased):
         try:
             c()
         except AssertionError as e:
