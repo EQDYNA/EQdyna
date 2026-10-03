@@ -245,6 +245,16 @@ def getNsdSlipSliprateTraction(xp, finv, fric, velArr, dispArr, force, dt):
                    xp.maximum(fric[:, gv.SLIPRATE_MAX], srMag))
     fric = B.setat(xp, fric, (slice(None), gv.CUM_SLIP),
                    fric[:, gv.CUM_SLIP] + srMag * dt)
+    # item 17(b)/slot-47 bug fix (faulting.f90:106-115, this commit): write
+    # PEAK_SLIPRATE here for EVERY friction law, not only friclaw>=3.
+    # Previously only solveRSF's write (below, friclaw>=3 only) ever touched
+    # this slot, so friclaw 1/2 (slip-weakening/time-weakening) left it at its
+    # restart-init value for the whole run, zeroing frt.txt's slip-rate
+    # column, src_evol's final slip rate and the restart netCDF slip rate.
+    # solveRSF still overwrites this with its own v_trial (strike+dip only)
+    # for friclaw>=3 (:594 below), so this line changes nothing there --
+    # only friclaw 1/2 outputs change.
+    fric = B.setat(xp, fric, (slice(None), gv.PEAK_SLIPRATE), srMag)
 
     massSlave = finv['massSlave']; massMaster = finv['massMaster']
     totalMass = (massSlave + massMaster) * arn

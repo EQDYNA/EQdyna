@@ -228,6 +228,12 @@ SHARDS = {
         "test_user_docs_style.py",  # added 2026-09-24 (wei-lin, user-facing docs rule): pure text checks, <1 s
         "test_sweep_core_budget.py",
         "test_sweep_tenancy_budget_2026_09_23.py",
+        "test_slot47_peak_sliprate.py",  # added 2026-10-02 (item 17b, PR #76):
+                                 # one serial test.tpv8 build+run at a
+                                 # shortened 1 s term (vs its 5 s gate term),
+                                 # comparable cost to
+                                 # test_offfault_station_depth_selection.py
+                                 # above.
     ],
     "3": [
         "test_tenancy_without_numa.py",  # added 2026-09-23 (wei-lin, PR #6 CI smoke fix): <2 s

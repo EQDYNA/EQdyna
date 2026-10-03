@@ -112,6 +112,16 @@ subroutine getNsdSlipSliprateTraction(iFault, iFaultNodePair, nsdSlipVector, nsd
     fric(FRIC_SLOT_SLIPRATE_DIP,iFaultNodePair,iFault) = nsdSliprateVector(3) !d
     if (nsdSliprateVector(4)>fric(FRIC_SLOT_SLIPRATE_MAX,iFaultNodePair,iFault)) fric(FRIC_SLOT_SLIPRATE_MAX,iFaultNodePair,iFault) = nsdSliprateVector(4) !mag
     fric(FRIC_SLOT_CUM_SLIP,iFaultNodePair,iFault) = fric(FRIC_SLOT_CUM_SLIP,iFaultNodePair,iFault) + nsdSliprateVector(4)*dt ! cummulated slip
+    ! item 17(b)/slot-47 bug fix: set the peak/current slip-rate magnitude here
+    ! for EVERY friction law, not only friclaw>=3. Previously this slot was
+    ! written only inside solveRSF (below, friclaw>=3 only), so friclaw 1/2
+    ! (slip-weakening/time-weakening) left it at its restart-init value (often
+    ! 0) for the whole run, zeroing frt.txt's slip-rate column
+    ! (library_output.f90:349), src_evol's final slip rate (:506) and the
+    ! restart netCDF slip rate. solveRSF still overwrites this with its own
+    ! v_trial (strike+dip only, faulting.f90:275) for friclaw>=3, so this
+    ! line changes nothing there -- only friclaw 1/2 outputs change.
+    fric(FRIC_SLOT_PEAK_SLIPRATE,iFaultNodePair,iFault) = nsdSliprateVector(4) !mag, 3-component
     
     ! n
     nsdTractionVector(1) = (massSlave*massMaster*((nsdNodalQuant(1,2,2)-nsdNodalQuant(1,1,2))+(nsdNodalQuant(1,2,3)-nsdNodalQuant(1,1,3))/dt)/dt &
