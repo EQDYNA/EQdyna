@@ -21,7 +21,8 @@ only through a merged pull request (branch, CI, plus a `victor-reyes` audit
 in parallel only when gate or physics logic changes, squash-merge only — repo settings disable merge-commit and
 rebase-merge — serial). Everything else — docs, board, evidence, session
 logs, rule text — pushes directly to master with no local test run (README
-and docs/user/ run their three content guards first; reference artifacts go
+and docs/user/ run their four content guards first, `test_user_docs_coverage.py`
+added 2026-10-03, PR #81; reference artifacts go
 through their own reviewed change, rule 7). Live as of `bf4d451` (PR #3); the rule's own text carries
 the enforcement detail, the repo-settings rationale, and its known limits.
 

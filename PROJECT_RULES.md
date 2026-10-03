@@ -3167,10 +3167,18 @@ test run is needed for a docs/board/evidence/notes-only push** (owner,
 2026-09-30: "Just doc change"): no test reads those files as code, the
 pre-push hook still enforces this rule's PR policy, and CI runs the full
 unit+regression tiers on the next code PR. The one narrow exception: a
-change to `README.md` or `docs/user/` runs their three content guards
+change to `README.md` or `docs/user/` runs their four content guards
 first (~30 s): `python3 testsys/regression/test_readme_commands.py &&
 python3 testsys/regression/test_user_docs_style.py && python3
-testsys/regression/test_params_reference_freshness.py`. A reference
+testsys/regression/test_params_reference_freshness.py && python3
+testsys/regression/test_user_docs_coverage.py`. **Added 2026-10-03 (PR
+#81, rule 15g)**: `test_user_docs_coverage.py` checks `docs/user/` content
+against `testNameList.py`/the solver's own output-filename families — it
+reads `docs/user/**` as data exactly like the other three, and `docs/user/**`
+stays in `test.yml`'s `paths-ignore` (rule 15g's own carve-out for this path,
+enforced here instead of by CI), so it belongs in this named list, not only
+in `testsys/ci_shard.py`'s CI registration which a docs-only direct push
+never triggers. A reference
 artifact (`test.reference.results/`) is not "just docs": it needs its own
 reviewed change (rule 7). When both a code PR and a direct docs push are ready at once,
 land the direct push on its own; it does not wait for the PR's serial slot,
