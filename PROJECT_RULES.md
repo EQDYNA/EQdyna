@@ -1597,6 +1597,22 @@ does get one).
    Never a separate `git push` of a tag.
 7. `python3 testsys/regression/test_release_complete.py --post-publish`,
    then the stranger gate on the published tag.
+8. **Branch hygiene.** List every remote branch with no open PR
+   (`git ls-remote --heads origin`, `gh pr list --head <b>`). One whose
+   content is on master (merged PR, ancestor, or `git cherry` all `-`) is
+   deleted; any other gets a board row or is deleted with the reason in the
+   session log. A conductor's end-of-run "still owns" lines name every
+   branch its run pushed.
+
+**Repo settings (owner, 2026-10-04)**: master is protected against
+force-push and deletion (admins included; direct pushes stay allowed, rule
+25), and the `release tags immutable` ruleset blocks updating or deleting
+any `v*` tag, with no bypass. An owner-approved re-tag (the v5.20.2 case)
+means the owner disables that ruleset for the one command, then re-enables
+it. **Incident (2026-10-04)**: 84 stale remote branches were found and
+deleted: 26 with merged PRs, 32 already on master that never had a PR (WIP
+and salvage branches from agents that died on rate limits), and 26 whose
+content had landed by other routes.
 
 **Rationale**: every check the tag triggers has then already passed on the
 tag's own SHA, so the tag's CI re-runs green checks instead of running them
