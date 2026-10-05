@@ -100,7 +100,56 @@ concurrency:
 # cell fails the regression tier regardless of how many jobs or invocations
 # this grows to.
 jobs:
+  # PR-for-everything workflow (owner decision, 2026-10-04, superseding the
+  # 2026-09-23 hybrid model): every PR now takes one of two lanes, and this
+  # job is the ONLY place that decides which -- it runs testsys/pr_policy.py
+  # in `pr-lane` mode against the PR's own base/head shas (a merge-base
+  # diff, matching what the PR's "Files changed" tab shows; see
+  # compute_pr_lane_files's docstring for why this differs from the
+  # before/after push-range walk pr-policy-gate below uses). `full` reuses
+  # the existing is_gated_path/touches_gated_paths union (same definition
+  # rule 25's direct-push gate always used, GATED_PREFIXES plus
+  # testsys/change_class.py's PHYSICS classification) -- no new
+  # classification scheme. Runs ONLY on pull_request: a push to master is
+  # always a post-merge event by the time it fires, with nothing left to
+  # route.
+  detect-lane:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    outputs:
+      lane: ${{ steps.classify.outputs.lane }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Classify this PR's lane (fast vs full)
+      id: classify
+      run: |
+        set -eu
+        OUT=$(python3 testsys/pr_policy.py pr-lane "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+        echo "$OUT"
+        LANE=$(echo "$OUT" | grep '^LANE=' | cut -d= -f2)
+        if [ "$LANE" != "fast" ] && [ "$LANE" != "full" ]; then
+          echo "REFUSED: pr-lane did not print a recognizable LANE= line"
+          exit 1
+        fi
+        echo "lane=$LANE" >> "$GITHUB_OUTPUT"
+
+  # Needs detect-lane for the pull_request-only lane gate below, even though
+  # a push (master/tags) never runs detect-lane at all (it is skipped, not
+  # failed) -- the custom `if:` on this job does not rely on the implicit
+  # success() check GitHub would otherwise require of a skipped dependency,
+  # so a push build is unaffected.
   build:
+    needs: detect-lane
+    if: github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full'
     runs-on: ubuntu-22.04
 
     steps:
@@ -158,7 +207,8 @@ jobs:
   # test_stop_exit_status.py's (shard 1) real-binary probe needs bin/eqdyna
   # present or it SKIPS.
   unit-regression:
-    needs: build
+    needs: [build, detect-lane]
+    if: github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full'
     runs-on: ubuntu-22.04
     strategy:
       # fail-fast: false -- one shard failing must not cancel the other two
@@ -380,7 +430,8 @@ jobs:
   # fortran cell. Uses the build job's binary via EQDYNA_E2E_BIN so it never
   # rebuilds.
   e2e-ci-smoke:
-    needs: build
+    needs: [build, detect-lane]
+    if: github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full'
     runs-on: ubuntu-22.04
 
     steps:
@@ -428,15 +479,117 @@ jobs:
       if: always()
       run: cat testRunLog.txt
 
-  # Owner-approved hybrid PR workflow (2026-09-23): changes under src/ or
-  # testsys/ reach master ONLY through a merged pull request (squash-merge
-  # on GitHub). This job is the AUTHORITATIVE half of the enforcement --
-  # testsys/hooks/pre-push is the LOCAL half, installed the same way as
-  # testsys/hooks/pre-commit (core.hooksPath). Both call
-  # testsys/pr_policy.py, so there is ONE copy of the decision logic; this
-  # job runs it in `ci-check` mode, which can call GitHub's commits-pulls
-  # API (the local hook cannot, and does not need to -- see that module's
-  # own docstring for why).
+  # Fast lane (PR-for-everything, owner decision 2026-10-04): a PR
+  # detect-lane classified `fast` (no gated path touched) gets LIGHT content
+  # checks instead of the full build/unit-regression/e2e-ci-smoke tier --
+  # the four existing content guards rule 25 already names when the PR
+  # touches README.md or docs/user/**, or, when it touches neither, a
+  # SAFETY RE-CHECK that this PR's own diff still classifies LANE=fast (a
+  # second pr-lane call against the same base/head, independent of
+  # detect-lane's), so nothing gated can slip into what detect-lane called a
+  # docs-only PR between that job running and this one. No victor-reyes
+  # audit, no queueing behind a code PR -- this job is the entire fast lane.
+  fast-lane-checks:
+    needs: detect-lane
+    if: github.event_name == 'pull_request' && needs.detect-lane.outputs.lane == 'fast'
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Run the matching fast-lane check
+      env:
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -eu
+        CHANGED=$(git diff --name-only "$PR_BASE...$PR_HEAD")
+        COUNT=$(printf '%s\n' "$CHANGED" | grep -c . || true)
+        echo "changed file(s) ($COUNT total):"
+        printf '%s\n' "$CHANGED"
+        if printf '%s\n' "$CHANGED" | grep -qE '^(README\.md$|docs/user/)'; then
+          echo "README.md or docs/user/** touched -- running the four content guards (rule 25)"
+          python3 testsys/regression/test_readme_commands.py
+          python3 testsys/regression/test_user_docs_style.py
+          python3 testsys/regression/test_params_reference_freshness.py
+          python3 testsys/regression/test_user_docs_coverage.py
+        else
+          echo "no README.md/docs/user/** path touched -- re-checking this PR's own diff still classifies LANE=fast"
+          OUT=$(python3 testsys/pr_policy.py pr-lane "$PR_BASE" "$PR_HEAD")
+          echo "$OUT"
+          printf '%s\n' "$OUT" | grep -q '^LANE=fast$' || {
+            echo "FAIL: pr-lane re-check did not say LANE=fast for a PR detect-lane already called fast"
+            exit 1
+          }
+        fi
+
+  # Required-status unification (PR-for-everything, owner decision
+  # 2026-10-04): branch protection (applied as a FOLLOW-UP, after this PR
+  # merges -- see PROJECT_RULES.md rule 25) names ONE required check, this
+  # job, so a required-check list does not itself have to vary by lane. It
+  # reaches both lanes (`if: always()`, not the default success()-only
+  # condition, so a skipped heavy job in the fast lane or a skipped
+  # fast-lane-checks in the full lane does not short-circuit it away) and
+  # fails unless the lane that actually ran, actually passed -- reading each
+  # needed job's own `.result` explicitly rather than trusting that it ran
+  # at all, so a `skipped` job can never silently count as a pass.
+  merge-gate:
+    needs: [detect-lane, build, unit-regression, e2e-ci-smoke, fast-lane-checks]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Require the lane that ran to have actually passed
+      env:
+        LANE: ${{ needs.detect-lane.outputs.lane }}
+        BUILD_RESULT: ${{ needs.build.result }}
+        UNIT_REGRESSION_RESULT: ${{ needs.unit-regression.result }}
+        E2E_RESULT: ${{ needs.e2e-ci-smoke.result }}
+        FAST_LANE_RESULT: ${{ needs.fast-lane-checks.result }}
+      run: |
+        set -eu
+        echo "lane=$LANE build=$BUILD_RESULT unit-regression=$UNIT_REGRESSION_RESULT e2e-ci-smoke=$E2E_RESULT fast-lane-checks=$FAST_LANE_RESULT"
+        case "$LANE" in
+          full)
+            if [ "$BUILD_RESULT" = "success" ] && [ "$UNIT_REGRESSION_RESULT" = "success" ] && [ "$E2E_RESULT" = "success" ]; then
+              echo "PASS: full lane -- build, unit-regression and e2e-ci-smoke all succeeded"
+              exit 0
+            fi
+            echo "FAIL: full lane requires build, unit-regression and e2e-ci-smoke to ALL succeed (skipped does not count as a pass)"
+            exit 1 ;;
+          fast)
+            if [ "$FAST_LANE_RESULT" = "success" ]; then
+              echo "PASS: fast lane -- fast-lane-checks succeeded"
+              exit 0
+            fi
+            echo "FAIL: fast lane requires fast-lane-checks to succeed (skipped does not count as a pass)"
+            exit 1 ;;
+          *)
+            echo "FAIL: detect-lane did not produce a recognized lane ('$LANE')"
+            exit 1 ;;
+        esac
+
+  # PR-for-everything workflow (owner decision 2026-10-04, superseding the
+  # 2026-09-23 hybrid model): EVERY commit now reaches master only through a
+  # merged pull request (squash-merge on GitHub), fast lane included -- this
+  # job is the AUTHORITATIVE half of that enforcement -- testsys/hooks/
+  # pre-push is the LOCAL half, installed the same way as testsys/hooks/
+  # pre-commit (core.hooksPath). Both call testsys/pr_policy.py, so there is
+  # ONE copy of the decision logic; this job runs it in `ci-check` mode,
+  # which can call GitHub's commits-pulls API (the local hook cannot, and
+  # does not need to -- see that module's own docstring for why). Under the
+  # new model ci-check requires PR evidence for every non-empty commit, not
+  # only one touching a gated path -- a push whose own content is entirely
+  # fast-lane (docs/board/evidence) must STILL have arrived via a merged,
+  # auto-squashed PR, and this job checks that exactly the same way it
+  # checks a full-lane push.
   #
   # RUNS ONLY on a push that lands directly on refs/heads/master -- not on
   # pull_request (a PR's own commits are reviewed and gated when the MERGE

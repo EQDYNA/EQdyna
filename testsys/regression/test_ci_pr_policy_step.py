@@ -1,9 +1,14 @@
 #! /usr/bin/env python3
 """
-Regression guard: CI must still RUN the owner-approved hybrid PR workflow
-gate (2026-09-23) -- the `pr-policy-gate` job of test.yml, which calls
+Regression guard: CI must still RUN the PR-for-everything workflow's push-to-
+master gate (owner decision 2026-10-04, superseding the 2026-09-23 hybrid
+model) -- the `pr-policy-gate` job of test.yml, which calls
 testsys/pr_policy.py in `ci-check` mode -- and it must be wired correctly
-enough to actually gate something. Mirrors
+enough to actually gate something. This job's own shape (master-only `if:`,
+fetch-depth 0, a token) is UNCHANGED by the 2026-10-04 rewrite; what changed
+is pr_policy.py's ci-check semantics underneath it (every non-empty commit
+now needs PR evidence, not only a gated one) -- this file's assertions about
+the JOB's wiring still hold unmodified. Mirrors
 test_ci_board_separation_step.py's shape and its stated reason for existing
 as a SIBLING rather than an extension of test_ci_workflow_coverage.py: one
 guard per incident, and this one needs structural YAML parsing plus a
@@ -38,7 +43,9 @@ WHAT THIS PINS, in order:
   4. the job checks out with `fetch-depth: 0`;
   5. the step's env carries a `GITHUB_TOKEN`, without which
      github_commits_pulls_fetcher raises PolicyCheckUnavailable on every
-     gated commit regardless of whether it was actually PR-merged;
+     non-empty commit (every one needs PR evidence under the
+     PR-for-everything model, 2026-10-04 -- not only a gated one) regardless
+     of whether it was actually PR-merged;
   6. testsys/pr_policy.py exists, is executable, and still refuses a bad
      invocation with exit 2 (its documented CLI contract) -- proof the
      step's target is runnable, not just present.
@@ -63,18 +70,29 @@ import test_ci_board_separation_step as board_step  # noqa: E402 -- reuse its YA
 
 
 def invocation_lines(run_body):
+    """Lines invoking pr_policy.py in `ci-check` mode specifically -- NOT
+    every pr_policy.py invocation. Since the 2026-10-04 PR-for-everything
+    rewrite, pr_policy.py also has a legitimate `pr-lane` mode, invoked by
+    the detect-lane and fast-lane-checks jobs (see this file's own module
+    docstring and testsys/pr_policy.py's); counting those invocations here
+    would make this guard fail on the mere presence of a DIFFERENT, correct
+    use of the same module. This guard's job is to pin the ONE authoritative
+    ci-check invocation (push-to-master gate), so it filters to that mode by
+    name, exactly like test_ci_workflow_coverage.py filters `run_e2e.py`
+    invocations down to `--ci` ones rather than counting every invocation of
+    that script."""
     hits = []
     for raw in run_body.splitlines():
         line = raw.split('#', 1)[0].strip()
-        if POLICY_REL in line or 'pr_policy.py' in line:
+        if 'pr_policy.py' in line and 'ci-check' in line:
             hits.append(line)
     return hits
 
 
 def main():
     print('Regression guard: CI must still run pr_policy.py ci-check on '
-         'push to master, at fetch-depth 0, with a token (owner-approved '
-         'hybrid PR workflow, 2026-09-23)')
+         'push to master, at fetch-depth 0, with a token (PR-for-everything '
+         'model, owner decision 2026-10-04)')
     problems = []
     doc = board_step.parse_workflow(WORKFLOW)
 
@@ -93,7 +111,7 @@ def main():
     print('  parsed %d job(s) from %s' % (len(doc['jobs']), WORKFLOW))
     if not found:
         print('\nFAIL: no step in %s runs `python3 %s ci-check`.' % (WORKFLOW, POLICY_REL))
-        print('  The owner-approved hybrid PR workflow is then enforced by')
+        print('  The PR-for-everything model is then enforced by nothing on')
         print('  nothing on the CI side: a direct push touching src/ or')
         print('  testsys/ would land on master with a green workflow.')
         return 1
@@ -161,7 +179,8 @@ def main():
         problems.append(
             "the invoking step's env does not set GITHUB_TOKEN -- "
             "github_commits_pulls_fetcher raises PolicyCheckUnavailable for "
-            "every gated commit without one, regardless of whether it was "
+            "every non-empty commit without one (every commit needs PR "
+            "evidence now, gated or not), regardless of whether it was "
             "really PR-merged")
 
     if not os.path.isfile(POLICY):
