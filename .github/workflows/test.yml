@@ -142,14 +142,22 @@ jobs:
         fi
         echo "lane=$LANE" >> "$GITHUB_OUTPUT"
 
-  # Needs detect-lane for the pull_request-only lane gate below, even though
-  # a push (master/tags) never runs detect-lane at all (it is skipped, not
-  # failed) -- the custom `if:` on this job does not rely on the implicit
-  # success() check GitHub would otherwise require of a skipped dependency,
-  # so a push build is unaffected.
+  # Needs detect-lane for the pull_request-only lane gate below. On a push
+  # (master/tags) detect-lane is SKIPPED, not failed -- and GitHub auto-adds
+  # an implicit success() to any `if:` that doesn't already start with a
+  # status-check function when the job has `needs:`. An `if:` that was just
+  # `github.event_name != 'pull_request' || ...` would therefore itself
+  # SKIP on push (a skipped dependency fails the implicit success() check),
+  # silently dropping build/unit-regression/e2e-ci-smoke from every push and
+  # tag run while the workflow still concludes "success" -- exactly what
+  # check_pretag_ci.py reads as green. `!cancelled() && !failure()` below
+  # explicitly short-circuits that: a SKIPPED detect-lane satisfies both
+  # (cancelled() and failure() are only true for cancellation/failure, not
+  # skip), so the custom lane boolean after it is actually evaluated instead
+  # of being pre-empted by the injected success() check.
   build:
     needs: detect-lane
-    if: github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full'
+    if: ${{ !cancelled() && !failure() && (github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full') }}
     runs-on: ubuntu-22.04
 
     steps:
@@ -208,7 +216,7 @@ jobs:
   # present or it SKIPS.
   unit-regression:
     needs: [build, detect-lane]
-    if: github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full'
+    if: ${{ !cancelled() && !failure() && (github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full') }}
     runs-on: ubuntu-22.04
     strategy:
       # fail-fast: false -- one shard failing must not cancel the other two
@@ -431,7 +439,7 @@ jobs:
   # rebuilds.
   e2e-ci-smoke:
     needs: [build, detect-lane]
-    if: github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full'
+    if: ${{ !cancelled() && !failure() && (github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full') }}
     runs-on: ubuntu-22.04
 
     steps:

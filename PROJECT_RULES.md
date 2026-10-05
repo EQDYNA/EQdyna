@@ -3181,10 +3181,19 @@ on before it may merge, not in whether a PR exists:
   `build`/`unit-regression`/`e2e-ci-smoke` when the lane is fast, running
   only `fast-lane-checks` (the four content guards when the diff touches
   `README.md`/`docs/user/`, otherwise a re-check that the diff really is
-  fast-lane as a safety net). Merge via `gh pr merge --auto --squash` —
-  auto-merge on green, no human or `victor-reyes` gate, because a fast-lane
+  fast-lane as a safety net). No `victor-reyes` gate, because a fast-lane
   diff by definition touches nothing `change_class` calls PHYSICS and
-  nothing under `GATED_PREFIXES`.
+  nothing under `GATED_PREFIXES` — but `gh pr merge --auto --squash` is
+  **not yet a green-gated merge on its own**: `--auto` only becomes
+  mechanically gated on the `merge-gate` check once GitHub branch protection
+  names `merge-gate` as a required status check, and that follow-up has not
+  landed (see "What is NOT yet done by this rewrite" below). Until it does,
+  `--auto` either merges as soon as GitHub's merge button is clickable
+  regardless of `merge-gate`'s own result, or errors outright if repo
+  auto-merge is disabled — so a human confirms the PR is actually green
+  (checks tab, not just that `--auto`/`--squash` was invoked without error)
+  before merging a fast-lane PR, exactly as today's full lane already
+  requires by hand.
 
 **What is NOT yet done by this rewrite, stated so nobody assumes it is**:
 GitHub's own branch protection / ruleset ("require a pull request before
@@ -3237,7 +3246,9 @@ worktree off master and open a full-lane PR; never a fast-lane merge for
 one of these, even with a passing local gate. Before touching only docs,
 board, evidence, session logs, or rule text, still open a PR — never a
 direct push — but it is fast lane: no `victor-reyes` audit, no serial wait
-behind a full-lane PR, auto-merge on green. **No local test run is needed
+behind a full-lane PR, and merge once a human has confirmed the PR is green
+(`--auto`/`--squash` is not yet gated by branch protection on `merge-gate`;
+see the fast-lane paragraph above). **No local test run is needed
 before opening a docs/board/evidence/notes-only PR** (owner, 2026-09-30:
 "Just doc change", carried into the 2026-10-04 rewrite): no test reads
 those files as code, and CI's `detect-lane` job keeps `build`/
