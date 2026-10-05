@@ -1605,13 +1605,23 @@ does get one).
    branch its run pushed.
 
 **Repo settings (owner, 2026-10-04)**: master is protected against
-force-push and deletion (admins included; direct pushes stay allowed, rule
-25), and the `release tags immutable` ruleset blocks updating or deleting
-any `v*` tag, with no bypass. An owner-approved re-tag (the v5.20.2 case)
-means the owner disables that ruleset for the one command, then re-enables
-it. **Incident (2026-10-04)**: 84 stale remote branches were found and
-deleted: 26 with merged PRs, 32 already on master that never had a PR (WIP
-and salvage branches from agents that died on rate limits), and 26 whose
+force-push and deletion (admins included), and the `release tags immutable`
+ruleset blocks updating or deleting any `v*` tag, with no bypass. An
+owner-approved re-tag (the v5.20.2 case) means the owner disables that
+ruleset for the one command, then re-enables it. **Superseded same-day
+(owner decision 2026-10-04, see rule 25): direct pushes to master are no
+longer the intended path** — every commit, gated or not, is meant to reach
+master only through a merged PR (fast lane for docs/board/evidence, full
+lane otherwise). The GitHub-side enforcement of that ("require a pull
+request before merging" as a branch-protection/ruleset setting, admins
+included) is a PENDING FOLLOW-UP, applied via `gh api` by someone else after
+rule 25's PR merges — it had not been flipped as of this paragraph, so a
+direct push was still mechanically possible on GitHub's side even though
+rule 25 no longer sanctions one; `testsys/pr_policy.py`'s push-guard and
+ci-check modes are the enforcement that exists today, see rule 25.
+**Incident (2026-10-04)**: 84 stale remote branches were found and deleted:
+26 with merged PRs, 32 already on master that never had a PR (WIP and
+salvage branches from agents that died on rate limits), and 26 whose
 content had landed by other routes.
 
 **Rationale**: every check the tag triggers has then already passed on the
@@ -3110,36 +3120,41 @@ passes, and the gate is shown load-bearing).
 
 ---
 
-## 25. `src/`, `testsys/`, and `.github/` reach master only through a merged pull request; everything else may still push direct
+## 25. Every commit reaches master through a merged pull request; the lane it takes (fast or full) is decided by content
 
-Owner-approved hybrid PR workflow (relayed 2026-09-23; merged as PR #3,
-`bf4d451`). Two paths to master, by content, not by author:
+**Owner decision 2026-10-04, superseding the 2026-09-23 hybrid model (PR #3,
+`bf4d451`) that let a docs/board/evidence/notes change push directly.**
+Industry-standard PR-for-everything: there is no longer a direct-to-master
+path for anything. What the 2026-09-23 model called "the gated path" and
+"everything else" are now two LANES of the same PR path, split by the same
+content test as before (reused unchanged, not reinvented):
 
-- **A change under `src/`, `testsys/`, or `.github/` goes through a PR.**
-  `.github/` was added to the gated set by the conductor before merge,
-  loudly: without it, one direct push could delete the `pr-policy-gate` job
-  itself, and the "mechanical" enforcement below would be deletable by the
-  thing it is supposed to gate. The three prefixes live in exactly one
-  place — `GATED_PREFIXES` in `testsys/pr_policy.py` — and widening or
-  narrowing that PREFIX set is an owner decision made by editing that one
-  constant. Separately (2026-09-30, PR #62), `pr_policy.is_gated_path` also
-  gates any path the ONE shared classifier, `testsys/change_class.py`,
-  calls PHYSICS, even outside the three prefixes — e.g. `case_input/`,
-  `scripts/*.py` (except the legacy `*.m`/`figures/` scripts),
-  `test.reference.results/`, `testNameList.py`, `install-eqdyna.sh` —
-  never by editing `GATED_PREFIXES` itself, and never narrower than the
-  classifier's default-PHYSICS answer for a path nobody has reviewed yet.
-  Whether a change needs a full sweep has ONE answer,
-  `change_class.is_release_physics_path` (the owner's closed list:
-  solver source, case inputs, references, the case list, the three
-  judging modules, the case-pipeline scripts), applied by
-  `check_pretag_ci.py --pre-tag` and `run.py release`; no sweep when no
-  physics change (owner, 2026-09-30). `python3 -c "from testsys import change_class as c;
-  print(c.classify_path('<path>'))"` classifies one path. Branch off
-  master, or an isolated worktree for anything that builds (rule 21). Run
-  the local fast suite (`python3 testsys/run.py unit regression`); for a
-  `src/` change ALSO run the everyday e2e sweep covering every backend of
-  every case the change touches — not one case, not one backend. The PR body
+- **Full lane** — a change under `src/`, `testsys/`, or `.github/`
+  (`GATED_PREFIXES` in `testsys/pr_policy.py`), or any path the shared
+  classifier `testsys/change_class.py` calls PHYSICS even outside those
+  three prefixes (2026-09-30, PR #62) — e.g. `case_input/`, `scripts/*.py`
+  (except the legacy `*.m`/`figures/` scripts), `test.reference.results/`,
+  `testNameList.py`, `install-eqdyna.sh`. `pr_policy.is_gated_path`/
+  `touches_gated_paths` is still the one place this union lives; widening or
+  narrowing `GATED_PREFIXES` itself is still an owner decision made by
+  editing that one constant, never by editing the classifier to dodge it.
+  Whether a change needs a full e2e sweep has its own, separate answer,
+  `change_class.is_release_physics_path`, applied by `check_pretag_ci.py
+  --pre-tag` and `run.py release` — unchanged by this rewrite.
+- **Fast lane** — everything else: docs, board, evidence, session logs,
+  rule text. (A reference artifact under `test.reference.results/` is
+  PHYSICS per the classifier, so it is full lane, not fast — it already
+  needed its own reviewed change per rule 7, and this rewrite does not
+  loosen that.)
+
+Both lanes are a PR, branched (or worktree'd, rule 21) off master; neither
+lane commits directly to master. The difference is in what the PR is gated
+on before it may merge, not in whether a PR exists:
+
+- **Full lane**, unchanged from the 2026-09-23 model in substance: run the
+  local fast suite (`python3 testsys/run.py unit regression`); for a `src/`
+  change ALSO run the everyday e2e sweep covering every backend of every
+  case the change touches — not one case, not one backend. The PR body
   states what changed and why, with evidence for each removal. Two gates run
   in parallel: ALL CI checks green (`build`, `e2e-ci-smoke`, and the three
   `unit-regression` shards — not `build` alone) AND, only when the diff
@@ -3147,24 +3162,75 @@ Owner-approved hybrid PR workflow (relayed 2026-09-23; merged as PR #3,
   change classifier's answer, or what the solver, a case or a reference
   computes), a `victor-reyes` audit scoped to that diff. A PR that only
   deletes, renames, or edits comments, docs or rule text needs no audit
-  (owner, 2026-09-30). Fix on the branch and re-audit only the new commit;
-  loop until both pass. Squash-merge and delete the branch. **Serial**: the next
-  PR opens only after this one merges.
-- **Everything else pushes directly to master**: docs, board, evidence,
-  session logs, rule text, and reference artifacts, after the local fast
-  suite. Rules 21c and 15d already separate these from code by commit; a
-  squash-merge would break that separation, so they never travel inside a
-  code PR. A reference regeneration (rule 7) is its own commit or PR, never
-  squashed together with code.
+  (owner, 2026-09-30) — in the new model that case is fast lane anyway, since
+  it touches no gated path. Fix on the branch and re-audit only the new
+  commit; loop until both pass. Squash-merge and delete the branch.
+  **Serial**: the next full-lane PR opens only after this one merges.
+- **Fast lane**: light content checks only, no `victor-reyes` audit, never
+  queued behind a full-lane PR (the two lanes do not share the serial slot).
+  No local test run is required before opening it — no test reads a
+  docs/board/evidence/notes-only path as code — except the one narrow
+  carve-out that already existed: a change to `README.md` or `docs/user/`
+  runs their four content guards first (~30 s): `python3
+  testsys/regression/test_readme_commands.py && python3
+  testsys/regression/test_user_docs_style.py && python3
+  testsys/regression/test_params_reference_freshness.py && python3
+  testsys/regression/test_user_docs_coverage.py` (`test_user_docs_coverage.py`
+  added 2026-10-03, PR #81, rule 15g). CI's `detect-lane` job classifies the
+  PR's own diff (`testsys/pr_policy.py pr-lane <base> <head>`) and skips
+  `build`/`unit-regression`/`e2e-ci-smoke` when the lane is fast, running
+  only `fast-lane-checks` (the four content guards when the diff touches
+  `README.md`/`docs/user/`, otherwise a re-check that the diff really is
+  fast-lane as a safety net). No `victor-reyes` gate, because a fast-lane
+  diff by definition touches nothing `change_class` calls PHYSICS and
+  nothing under `GATED_PREFIXES` — but `gh pr merge --auto --squash` is
+  **not yet a green-gated merge on its own**: `--auto` only becomes
+  mechanically gated on the `merge-gate` check once GitHub branch protection
+  names `merge-gate` as a required status check, and that follow-up has not
+  landed (see "What is NOT yet done by this rewrite" below). Until it does,
+  `--auto` either merges as soon as GitHub's merge button is clickable
+  regardless of `merge-gate`'s own result, or errors outright if repo
+  auto-merge is disabled — so a human confirms the PR is actually green
+  (checks tab, not just that `--auto`/`--squash` was invoked without error)
+  before merging a fast-lane PR, exactly as today's full lane already
+  requires by hand.
+
+**What is NOT yet done by this rewrite, stated so nobody assumes it is**:
+GitHub's own branch protection / ruleset ("require a pull request before
+merging", admins included) has NOT been flipped on by this rule or its PR.
+That flip is a pending FOLLOW-UP, applied separately via `gh api` after this
+rule's own PR merges (owner decision: land the policy-logic change first,
+flip the platform setting second, so the setting change is reviewable
+against working `pr-lane`/CI wiring rather than the other way around). Until
+that follow-up lands, a direct push to master is still mechanically
+possible on GitHub's side; `testsys/pr_policy.py`'s push-guard mode (the
+local `pre-push` hook) and its ci-check mode (the `pr-policy-gate` CI job)
+are what actually refuse/flag one today, per rule 15f step 8.
+
+- **`.github/` is in the full-lane set, loudly, on purpose**: without it,
+  one fast-lane PR could edit the `pr-policy-gate`/`detect-lane` jobs
+  themselves, and the mechanical enforcement below would be deletable by
+  the thing it is supposed to gate. `python3 -c "from testsys import
+  change_class as c; print(c.classify_path('<path>'))"` classifies one
+  path; `python3 testsys/pr_policy.py pr-lane <base-sha> <head-sha>` prints
+  `LANE=fast` or `LANE=full` for a real diff. Whether a change needs a full
+  e2e sweep (separate from which lane it takes) has ONE answer,
+  `change_class.is_release_physics_path` (the owner's closed list: solver
+  source, case inputs, references, the case list, the three judging
+  modules, the case-pipeline scripts), applied by `check_pretag_ci.py
+  --pre-tag` and `run.py release`; no sweep when no physics change (owner,
+  2026-09-30). Branch off master, or an isolated worktree for anything that
+  builds (rule 21).
 - **`VERSION` moves at release time**, with the runtime banner alongside
-  (rule 11), not on every `src/` change — inside its own release PR, since
-  the banner is a `src/` edit. **Corrected 2026-09-24 (rule 15f)**: a release
-  PR does NOT carry rule 24's local-sweep evidence — a squash-merge mints a
-  new SHA the sweep has not yet run against, and this rule's own docs/board
-  direct-push path is where evidence lands instead, never inside a code PR.
+  (rule 11), not on every `src/` change — inside its own release PR (full
+  lane, since the banner is a `src/` edit). **Corrected 2026-09-24 (rule
+  15f)**: a release PR does NOT carry rule 24's local-sweep evidence — a
+  squash-merge mints a new SHA the sweep has not yet run against, and
+  evidence lands as its own fast-lane PR instead, never inside the code PR.
   The sweep runs on the merged SHA, after merge, and only on a physics
-  change; see rule 15f for the current order. A tag names only a master commit whose own CI passed
-  (rule 15a) AND that has committed sweep evidence per rule 24/15f.
+  change; see rule 15f for the current order. A tag names only a master
+  commit whose own CI passed (rule 15a) AND that has committed sweep
+  evidence per rule 24/15f.
 
 **Rationale**: `4465c17` reverted `aca6979` because the landing check that
 gated it ran one case with no RSF nucleation and missed a `NameError` on
@@ -3174,63 +3240,81 @@ a PR, a parallel CI-and-audit gate, and a serial merge order is how this
 project already recovers from that kind of miss without letting a second one
 land while the first is still being fixed.
 
-**How to apply**: before touching `src/`, `testsys/`, `.github/`, or any other path
-`change_class` calls PHYSICS, open (or confirm) a branch or worktree off master; do not commit such a change
-directly to master even with a passing local gate. Before touching only docs, board,
-evidence, session logs, rule text, or a reference artifact, push directly
-— do not route it through a code PR only to keep one workflow. **No local
-test run is needed for a docs/board/evidence/notes-only push** (owner,
-2026-09-30: "Just doc change"): no test reads those files as code, the
-pre-push hook still enforces this rule's PR policy, and CI runs the full
-unit+regression tiers on the next code PR. The one narrow exception: a
-change to `README.md` or `docs/user/` runs their four content guards
-first (~30 s): `python3 testsys/regression/test_readme_commands.py &&
-python3 testsys/regression/test_user_docs_style.py && python3
+**How to apply**: before touching `src/`, `testsys/`, `.github/`, or any
+other path `change_class` calls PHYSICS, open (or confirm) a branch or
+worktree off master and open a full-lane PR; never a fast-lane merge for
+one of these, even with a passing local gate. Before touching only docs,
+board, evidence, session logs, or rule text, still open a PR — never a
+direct push — but it is fast lane: no `victor-reyes` audit, no serial wait
+behind a full-lane PR, and merge once a human has confirmed the PR is green
+(`--auto`/`--squash` is not yet gated by branch protection on `merge-gate`;
+see the fast-lane paragraph above). **No local test run is needed
+before opening a docs/board/evidence/notes-only PR** (owner, 2026-09-30:
+"Just doc change", carried into the 2026-10-04 rewrite): no test reads
+those files as code, and CI's `detect-lane` job keeps `build`/
+`unit-regression`/`e2e-ci-smoke` off the PR entirely when the lane is fast.
+The one narrow exception: a PR touching `README.md` or `docs/user/` runs
+their four content guards first (~30 s), either locally or via CI's
+`fast-lane-checks` job: `python3 testsys/regression/test_readme_commands.py
+&& python3 testsys/regression/test_user_docs_style.py && python3
 testsys/regression/test_params_reference_freshness.py && python3
 testsys/regression/test_user_docs_coverage.py`. **Added 2026-10-03 (PR
 #81, rule 15g)**: `test_user_docs_coverage.py` checks `docs/user/` content
 against `testNameList.py`/the solver's own output-filename families — it
 reads `docs/user/**` as data exactly like the other three, and `docs/user/**`
-stays in `test.yml`'s `paths-ignore` (rule 15g's own carve-out for this path,
-enforced here instead of by CI), so it belongs in this named list, not only
-in `testsys/ci_shard.py`'s CI registration which a docs-only direct push
-never triggers. A reference
-artifact (`test.reference.results/`) is not "just docs": it needs its own
-reviewed change (rule 7). When both a code PR and a direct docs push are ready at once,
-land the direct push on its own; it does not wait for the PR's serial slot,
-because rule 21c/15d's separation means it never shared a commit with the
-code in the first place.
+stays in `test.yml`'s `paths-ignore` (rule 15g's own carve-out for this
+path, enforced here and by `fast-lane-checks` instead of by the full CI
+suite), so it belongs in this named list, not only in `testsys/ci_shard.py`'s
+CI registration which a fast-lane-only PR never triggers. A reference
+artifact (`test.reference.results/`) is not "just docs": it is PHYSICS per
+the classifier, so it is full lane and needs its own reviewed change (rule
+7), never squashed together with a fast-lane docs PR. Rules 21c and 15d's
+separation between docs/board commits and code commits still holds inside
+this model — a fast-lane PR and a full-lane PR never share a commit, so
+neither waits on the other's serial slot.
 
-**Enforcement (Tier: mechanical, LIVE — PR #3 merged as `bf4d451`,
-https://github.com/EQDYNA/EQdyna/pull/3, branch
-`iris/pr-enforce-2026-09-23`)**: `testsys/pr_policy.py` is the one copy of
-the decision logic (which paths are gated, how a push range resolves, how a
-commit's changed paths are read), called from two places. `test.yml`'s
-`pr-policy-gate` job declares explicit `permissions: {contents: read,
-pull-requests: read}` so the commits-pulls API call never depends on the
-repo's default token setting, and runs the module in `ci-check` mode on
-every push to master: for each commit in the push range that touches
-`src/`, `testsys/`, or `.github/` (`GATED_PREFIXES`), it calls
+**Enforcement (Tier: mechanical, LIVE — core logic since PR #3,
+`bf4d451`, https://github.com/EQDYNA/EQdyna/pull/3, branch
+`iris/pr-enforce-2026-09-23`; widened to PR-for-everything 2026-10-04)**:
+`testsys/pr_policy.py` is the one copy of the decision logic (which paths
+are gated for lane purposes, how a push range resolves, how a commit's
+changed paths are read, how a PR's diff classifies into a lane), called
+from three places. `test.yml`'s `pr-policy-gate` job declares explicit
+`permissions: {contents: read, pull-requests: read}` so the commits-pulls
+API call never depends on the repo's default token setting, and runs the
+module in `ci-check` mode on every push to master: since 2026-10-04, this
+checks EVERY non-empty commit in the push range, not only one touching
+`GATED_PREFIXES` — the PR-for-everything model means every commit needs PR
+evidence, gated or not. For each such commit it calls
 `GET /repos/{owner}/{repo}/commits/{sha}/pulls` and counts a PR only when
 ALL of: `merged_at` is set, the PR's base ref is `master`, GitHub's own
 `merge_commit_sha` for that PR equals this commit, and this commit is NOT
 the PR's head sha (the last clause is what catches an agent fast-forwarding
 master to an open PR's head, which GitHub still marks "merged"). A commit
 range is walked with `git rev-list --first-parent`, so a merge commit
-carrying its own gated edits is evaluated too, not skipped as a merge; a
-rename OUT of a gated prefix is read via `--no-renames`, so it reports the
-OLD (gated) path and cannot launder a gated file through a move. A
-squash-merge subject's trailing `(#NNN)` is used only as a fallback when the
-API call itself fails, never to override what the API said, and an
+carrying its own edits is evaluated too, not skipped as a merge; a rename OUT
+of a gated prefix is read via `--no-renames`, so a lane classification
+reports the OLD (gated) path and cannot launder a gated file through a move.
+A squash-merge subject's trailing `(#NNN)` is used only as a fallback when
+the API call itself fails, never to override what the API said, and an
 unresolvable check raises rather than defaulting to a pass.
 `testsys/hooks/pre-push` (installed via the same `core.hooksPath` as
-`testsys/hooks/pre-commit`) is the local half: it refuses a push to
-`refs/heads/master` carrying any new commit that touches `src/`, `testsys/`,
-or `.github/`, unconditionally and with no API call, because a merged PR can
-only ever reach a local clone via fetch, never via a local push — so a local
-push touching a gated path is by construction a direct push. No bypass flag.
-Guarded by `testsys/regression/test_pr_policy_guard.py`,
-`test_prepush_pr_policy_guard.py`, and `test_ci_pr_policy_step.py`.
+`testsys/hooks/pre-commit`) is the local half: since 2026-10-04 it refuses
+ANY push to `refs/heads/master` carrying a new, non-empty commit, full
+stop, with no gated-path carve-out and no API call — a merged PR can only
+ever reach a local clone via fetch, never via a local push, so any local
+push landing a new commit on master is by construction a direct push and
+the model now has no lane that permits one. No bypass flag. The third
+place, new 2026-10-04, is CI's `detect-lane` job: it runs `pr_policy.py
+pr-lane <base-sha> <head-sha>` on every `pull_request` event (a pure
+function of `git diff --name-only base...head` against the same
+`GATED_PREFIXES`/classifier union, computed via the PR's own merge-base
+diff, not the push-range walk the other two modes use) and gates
+`build`/`unit-regression`/`e2e-ci-smoke` on the result; `fast-lane-checks`
+and `merge-gate` consume its output the same way. Guarded by
+`testsys/regression/test_pr_policy_guard.py`,
+`test_prepush_pr_policy_guard.py`, `test_ci_pr_policy_step.py`, and
+`testsys/unit/test_pr_policy_gated_paths.py`'s `pr-lane` cases.
 
 **Repo settings, changed by the conductor under the owner's authorisation
 (2026-09-23), matching the workflow this rule enforces**: squash-merge only
@@ -3244,15 +3328,23 @@ would report a false RED on a real merged PR. Squash-merge is the only
 strategy that puts exactly one new commit on master per PR, which is what
 the per-commit check above assumes.
 
-**GitHub branch protection is NOT enabled, and this is a scope decision, not
-an oversight.** The repository is public (`visibility=PUBLIC`) on the org's
-free plan; a branch protection ruleset requiring a pull request cannot be
-scoped to paths, so turning it on would also block the docs/board/evidence
-direct-push path this rule deliberately keeps open. Path-scoped push
-rulesets are documented by GitHub for private/internal repositories only.
-Left to the owner: whether `scripts/`, `install-eqdyna.sh`, and
-`case_input/` join the PR-required set — today they do not, and a direct
-push to any of those is not caught by either enforcement half above.
+**GitHub branch protection: NOT YET enabled — a pending FOLLOW-UP, not a
+scope decision anymore.** Through 2026-10-03 this was a deliberate scope
+decision: the repository is public (`visibility=PUBLIC`) on the org's free
+plan, a branch protection ruleset requiring a pull request cannot be
+scoped to paths (GitHub documents path-scoped push rulesets for
+private/internal repositories only), and turning it on would have blocked
+the docs/board/evidence direct-push path that model deliberately kept
+open. **That blocker is gone under the 2026-10-04 PR-for-everything
+rewrite**: there is no longer a direct-push path to protect around, so an
+unscoped "require a pull request before merging" ruleset (admins included)
+is now the correct setting, not an overreach. It has not been applied as
+of this rule's own PR — flipping it is a deliberate FOLLOW-UP step, done
+separately via `gh api` by someone other than the PR that rewrote this
+rule, so the platform setting is reviewed against working `pr-lane`/CI
+wiring rather than blind. Until it is flipped, `testsys/pr_policy.py`'s
+push-guard (local) and ci-check (CI, after the fact) modes are what
+actually enforce "no direct push", not GitHub itself.
 
 **Known limits, stated so this rule does not claim more than it enforces —
 these matter against a DELIBERATE bypass; the realistic risk this rule
@@ -3266,10 +3358,17 @@ clone; (d) the CI check marks AFTER the push lands, so it cannot block a bad
 push, only report it — `testsys/hooks/pre-push` is the preventive layer, and
 `core.hooksPath` points at the main checkout's absolute `testsys/hooks` so a
 worktree on an old branch still runs the CURRENT hook, not a stale copy of
-it; (e) a direct docs push made after a non-fast-forward `git pull` merge
-commit falsely fails the local guard (that merge commit's diff can touch a
-gated path even when no individual change did) — use `git pull --ff-only`,
-already this project's prescribed pull.
+it; (e) a direct push made after a non-fast-forward `git pull` merge commit
+can falsely fail or pass the local guard depending on the merge commit's own
+diff — use `git pull --ff-only`, already this project's prescribed pull;
+(f) **(new, 2026-10-04)** a commit on a path still in `test.yml`'s
+`paths-ignore` (rule 15g) never triggers a CI run of its own, so it never
+gets its own `ci-check` evaluation — the local `pre-push` hook is still the
+preventive layer for such a commit, and the GitHub branch-protection
+follow-up above, once applied, is what closes this gap at the platform
+level rather than relying on CI running at all; until then, a direct push
+to such a path on a clone with the hook not installed is not caught by
+either enforcement half.
 
 **Cycle-time evidence, the first PR under this workflow**: PR #3 opened
 2026-09-24T02:06:14Z, merged 2026-09-24T02:53:35Z — 47 minutes covering one
@@ -3277,9 +3376,11 @@ audit round, three accident-class fixes, and one re-audit. Master CI run
 `35949158106` on `bf4d451` finished green including `pr-policy-gate`'s first
 real (non-drill) run.
 
-**Tier**: mechanical for `src/`/`testsys/`/`.github/`, live as of `bf4d451`,
-per the guards named above. The path list itself (`GATED_PREFIXES`, today
-`src/`, `testsys/`, `.github/`) is an owner decision, reviewable only — no
+**Tier**: mechanical for the PR-required-everywhere requirement, live as of
+`bf4d451` for the gated prefixes and widened 2026-10-04 to every commit, per
+the guards named above. The full/fast LANE split still rests on
+`GATED_PREFIXES` (today `src/`, `testsys/`, `.github/`) plus
+`change_class`'s PHYSICS union — an owner decision, reviewable only; no
 guard can tell whether a future new top-level directory should have joined
 the gated set the day it was created.
 

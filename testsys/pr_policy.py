@@ -1,32 +1,49 @@
 #! /usr/bin/env python3
 """
-Decision logic for the owner-approved hybrid PR workflow (2026-09-23):
-changes under src/ or testsys/ reach master ONLY through a merged pull
-request (squash-merge on GitHub). Everything else (docs, board, evidence,
-session logs, rule text, reference artifacts) may still be pushed directly.
+Decision logic for the PR-for-everything workflow (owner decision,
+2026-10-04, superseding the 2026-09-23 hybrid model this module used to
+implement): EVERY commit reaches master ONLY through a merged pull request
+(squash-merge on GitHub). There is no longer a direct-push path for ANYTHING
+-- docs, board, evidence, session logs, rule text and reference artifacts
+now also travel through a PR, just a FAST LANE one (light content checks,
+`gh pr merge --auto --squash`, no victor-reyes audit, never queued behind a
+code PR). "Gated path" (GATED_PREFIXES / is_gated_path / touches_gated_paths)
+is still a meaningful question -- it is now exactly the fast-lane/full-lane
+split (see `pr-lane` mode below) -- it is just no longer the question that
+decides whether a PR is required at all. GitHub-side "require a PR" branch
+protection is a FOLLOW-UP step, applied by someone else after this module's
+own PR merges; this module does not flip it and does not assume it is on.
 
-ONE COPY of the decision logic, called from two places, on purpose:
+THREE MODES, called from three places:
 
   - .github/workflows/test.yml's pr-policy-gate job runs this module in
     ci-check mode on every push to master. It is the AUTHORITATIVE gate --
     it can call GitHub's own commits-pulls API, so it can tell a direct push
-    apart from a squash-merge landing.
+    apart from a squash-merge landing. Every non-empty commit (one that
+    changes at least one path) now needs PR evidence, not only a gated one.
   - testsys/hooks/pre-push (installed the same way as testsys/hooks/
     pre-commit, via core.hooksPath) runs this module in push-guard mode
     before a local push reaches the remote at all. It needs NO API call: a
     squash/rebase/merge-commit PR landing on GitHub arrives in a local clone
-    via fetch, never via push from a developer's own machine, so a LOCAL
-    push that carries new src/ or testsys/ content is by construction a
-    direct push. push-guard therefore refuses unconditionally the moment a
-    new commit in the push range touches a gated path -- no evidence to
-    weigh, nothing to call out to.
+    via fetch, never via push from a developer's own machine, so ANY local
+    push to master carrying a new, non-empty commit is by construction a
+    direct push -- refused unconditionally, full stop, no gated-path
+    carve-out and no evidence to weigh.
+  - CI's new detect-lane job (and anyone wanting to know which lane a PR's
+    diff belongs in) runs this module in pr-lane mode: given a PR's
+    base/head shas, it classifies the PR's own changed-file set (a merge-base
+    diff, `git diff --name-only base...head`) as `LANE=full` (touches a
+    gated path) or `LANE=fast` (does not), and exits 0 regardless -- it
+    classifies, it does not gate.
 
-Both modes share: which paths are "gated" (touches_gated_paths), how a push
-range is resolved from a before/after sha pair (resolve_push_range), how a
-commit's changed paths are read (commit_files), and the per-commit / whole-
-range evaluation (evaluate_commit_gate / evaluate_range). ci-check adds one
-thing on top: PR evidence (commit_pr_evidence) that can turn a gated commit
-from a violation into an accounted-for PR merge.
+All three modes share: which paths are "gated" (touches_gated_paths), how a
+push range is resolved from a before/after sha pair (resolve_push_range), how
+a commit's changed paths are read (commit_files), and the per-commit / whole-
+range evaluation (evaluate_commit_gate / evaluate_range). ci-check adds PR
+evidence (commit_pr_evidence) on top, now required for every non-empty
+commit rather than only a gated one. pr-lane needs none of that machinery --
+it is a pure classification of a PR's own diff, not a commit-by-commit push
+audit.
 
 EVIDENCE SOURCE FOR ci-check, AND WHY. GitHub's "list pull requests
 associated with a commit" endpoint (GET /repos/OWNER/REPO/commits/SHA/pulls)
@@ -46,7 +63,17 @@ suffix matches, this module RAISES (PolicyCheckUnavailable) rather than
 defaulting to green OR red by guess -- an unverifiable check is a
 CI-environment problem to fix, not a policy verdict to report.
 
-push-guard needs none of this: see above, it never calls the API at all.
+push-guard needs none of this: see above, it never calls the API at all, and
+now never consults gated-path status either -- any non-empty commit is
+refused regardless of what it touches.
+
+pr-lane vs push-guard/ci-check's "before/after": pr-lane's two arguments are
+a PR's BASE and HEAD sha (`git diff --name-only base...head`, a three-dot
+merge-base diff -- exactly what a PR's own "Files changed" tab shows), not a
+push's before/after sha pair (`before..head`, a two-dot range that walks
+every COMMIT newly reachable). Passing a push before/after to pr-lane, or a
+PR base/head to push-guard/ci-check, silently answers a different question
+than the one asked.
 """
 import json
 import os
@@ -217,26 +244,40 @@ def commit_pr_evidence(sha, subject, api_fetcher):
 
 def evaluate_commit_gate(sha, subject, files, verify_pr,
                          gated_prefixes=GATED_PREFIXES):
-    """One commit's verdict. verify_pr(sha, subject) -> Evidence, or None
-    to skip PR verification entirely (push-guard mode: a gated commit is
-    always a violation, no evidence to weigh -- see module docstring)."""
+    """One commit's verdict under the PR-for-everything model (owner
+    decision, 2026-10-04): EVERY commit that changes at least one path must
+    have arrived via a merged PR -- gated vs ungated no longer decides
+    WHETHER a PR is required (it still decides which LANE a PR takes, see
+    `pr-lane` mode below). `gated` is still computed and carried on the
+    Decision purely for reporting (which paths a RED commit touched); it is
+    never consulted to decide ok/not-ok here.
+
+    verify_pr(sha, subject) -> Evidence, or None for push-guard mode: a
+    LOCAL PUSH can never itself be a PR merge (a squash/rebase/merge-commit
+    PR lands via fetch from GitHub, not push), so EVERY non-empty commit in
+    a local push range to master is refused unconditionally -- no evidence
+    to weigh, no gated-path carve-out.
+    """
     gated = touches_gated_paths(files, gated_prefixes)
-    if not gated:
-        return Decision(sha, True, gated, 'touches no gated path')
+    if not files:
+        return Decision(sha, True, gated,
+                        'empty commit (no changed paths); nothing to '
+                        'require a PR for')
     if verify_pr is None:
         return Decision(sha, False, gated,
-                        'touches gated path(s) %s; a LOCAL PUSH can never be '
-                        'a PR merge (a squash/rebase/merge-commit PR lands '
-                        'via fetch from GitHub, not push), so this is a '
-                        'direct push and is refused' % gated)
+                        'touches path(s) %s; under the PR-for-everything '
+                        'model a LOCAL PUSH can never be a PR merge (a '
+                        'squash/rebase/merge-commit PR lands via fetch from '
+                        'GitHub, not push), so this is a direct push and is '
+                        'refused' % (sorted(files),))
     evidence = verify_pr(sha, subject)
     if evidence.via_pr:
         return Decision(sha, True, gated,
-                        'touches gated path(s) %s; PR-merged (%s: %s)'
-                        % (gated, evidence.source, evidence.detail))
+                        'touches path(s) %s; PR-merged (%s: %s)'
+                        % (sorted(files), evidence.source, evidence.detail))
     return Decision(sha, False, gated,
-                    'touches gated path(s) %s WITHOUT an associated merged '
-                    'PR (%s: %s)' % (gated, evidence.source, evidence.detail))
+                    'touches path(s) %s WITHOUT an associated merged '
+                    'PR (%s: %s)' % (sorted(files), evidence.source, evidence.detail))
 
 
 def evaluate_range(range_spec, cwd, verify_pr):
@@ -289,13 +330,43 @@ def have_commit(sha, cwd=None):
     return r.returncode == 0
 
 
+def compute_pr_lane_files(base, head, cwd=None):
+    """A PR's own changed-file set: `git diff --name-only base...head`, the
+    three-dot merge-base diff (what a PR's "Files changed" tab actually
+    shows) -- NOT the two-dot push range `before..head` evaluate_range walks.
+    See the module docstring's "pr-lane vs push-guard/ci-check" section."""
+    out = run_git(['diff', '--name-only', '%s...%s' % (base, head)], cwd=cwd)
+    return [p for p in (l.strip() for l in out.splitlines()) if p]
+
+
 def main(argv, cwd=None, fetcher_factory=github_commits_pulls_fetcher):
-    if len(argv) != 3 or argv[0] not in ('ci-check', 'push-guard'):
+    valid_modes = ('ci-check', 'push-guard', 'pr-lane')
+    if len(argv) != 3 or argv[0] not in valid_modes:
         print(__doc__.strip())
         print('\npr_policy: REFUSED -- usage: pr_policy.py '
-             '{ci-check|push-guard} <before-sha> <after-sha>')
+             '{ci-check|push-guard} <before-sha> <after-sha>\n'
+             '       pr_policy.py pr-lane <base-sha> <head-sha>')
         return 2
-    mode, before, after = argv
+    mode, a, b = argv
+
+    if mode == 'pr-lane':
+        # Classifies, does not gate: exits 0 always, unless git itself fails
+        # (GitCommandError), matching the existing raises-don't-swallow
+        # pattern elsewhere in this module.
+        try:
+            files = compute_pr_lane_files(a, b, cwd=cwd)
+        except GitCommandError as e:
+            print('pr_policy pr-lane: REFUSED -- %s' % e)
+            return 1
+        gated = touches_gated_paths(files)
+        lane = 'full' if gated else 'fast'
+        print('pr_policy pr-lane: %d file(s) changed (%s...%s), %d gated '
+             '(%s, or PHYSICS per testsys/change_class.py): %s'
+             % (len(files), a[:12], b[:12], len(gated), GATED_PREFIXES, gated))
+        print('LANE=%s' % lane)
+        return 0
+
+    before, after = a, b
     try:
         range_spec, note = resolve_push_range(
             before, after, have_commit=lambda s: have_commit(s, cwd=cwd))
@@ -311,26 +382,26 @@ def main(argv, cwd=None, fetcher_factory=github_commits_pulls_fetcher):
         print('pr_policy %s: REFUSED -- %s' % (mode, e))
         return 1
 
-    gated = [d for d in decisions if d.gated_files]
-    print('pr_policy %s: %d commit(s) in range, %d touching a gated path '
-         '(%s, or PHYSICS per testsys/change_class.py)'
-         % (mode, len(decisions), len(gated), GATED_PREFIXES))
-    for d in gated:
+    print('pr_policy %s: %d commit(s) in range -- under the PR-for-everything '
+         'model every non-empty one needs PR evidence, not only a gated one'
+         % (mode, len(decisions)))
+    for d in decisions:
         print('  %s %s -- %s' % ('OK ' if d.ok else 'RED', d.sha[:12], d.reason))
 
     if not ok:
         bad = [d for d in decisions if not d.ok]
-        print('\nFAIL pr_policy %s: %d commit(s) touch a gated path (%s, or '
-             'PHYSICS) without an associated merged PR:' % (mode, len(bad), GATED_PREFIXES))
+        print('\nFAIL pr_policy %s: %d commit(s) in range are not accounted '
+             'for by a merged PR:' % (mode, len(bad)))
         for d in bad:
             print('  %s  %s' % (d.sha[:12], d.reason))
         if mode == 'push-guard':
-            print('\nPush changes under src/ or testsys/ through a pull '
-                 'request (squash-merge) instead of directly to master.')
+            print('\nEvery change now reaches master through a merged pull '
+                 'request (fast lane for docs/board/evidence-only content, '
+                 'full lane otherwise) -- push your branch and open a PR '
+                 'instead of pushing directly to master.')
         return 1
-    print('PASS pr_policy %s: every gated commit in range (%d total, %d '
-         'gated) is a merged pull request, or the range carries no gated '
-         'commit at all' % (mode, len(decisions), len(gated)))
+    print('PASS pr_policy %s: every commit in range (%d total) is either '
+         'empty or a merged pull request' % (mode, len(decisions)))
     return 0
 
 

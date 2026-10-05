@@ -16,15 +16,29 @@ index block carries the current count and the regression tier checks it.
 must be able to come out BOTH ways, because two rows were found carrying
 commands that could never go red.
 
-**Rule 25**: a change under `src/`, `testsys/`, or `.github/` reaches master
-only through a merged pull request (branch, CI, plus a `victor-reyes` audit
-in parallel only when gate or physics logic changes, squash-merge only — repo settings disable merge-commit and
-rebase-merge — serial). Everything else — docs, board, evidence, session
-logs, rule text — pushes directly to master with no local test run (README
-and docs/user/ run their four content guards first, `test_user_docs_coverage.py`
-added 2026-10-03, PR #81; reference artifacts go
-through their own reviewed change, rule 7). Live as of `bf4d451` (PR #3); the rule's own text carries
-the enforcement detail, the repo-settings rationale, and its known limits.
+**Rule 25**: every commit reaches master only through a merged pull request
+(owner decision 2026-10-04, superseding the 2026-09-23 hybrid model that let
+docs/board/evidence push directly). Two lanes, split by the same content
+test as before (`GATED_PREFIXES` in `testsys/pr_policy.py` unioned with
+`change_class`'s PHYSICS classification): **full lane** — a change under
+`src/`, `testsys/`, `.github/`, or any other PHYSICS path — branch, CI, plus
+a `victor-reyes` audit in parallel only when gate or physics logic changes,
+squash-merge only (repo settings disable merge-commit and rebase-merge),
+serial. **Fast lane** — everything else (docs, board, evidence, session
+logs, rule text) — light content checks only (README/docs/user/ run their
+four content guards, `test_user_docs_coverage.py` added 2026-10-03, PR #81),
+no audit, no serial wait; merge once a human confirms the PR is green, then
+`gh pr merge --auto --squash` — `--auto` is NOT yet gated on `merge-gate`
+(that needs branch protection to name it a required check, pending below),
+so it merges or errors on repo auto-merge settings alone, not on green;
+reference artifacts are PHYSICS so they are full lane (rule 7). CI's
+`detect-lane` job (`pr_policy.py pr-lane`) classifies each PR and skips the
+heavy jobs on a fast-lane one. GitHub's own "require a PR" branch protection
+is a pending FOLLOW-UP (`gh api`, applied by someone else after this rule's PR merges),
+not yet flipped — `pr_policy.py`'s push-guard and ci-check modes are today's
+actual enforcement. Core logic live since `bf4d451` (PR #3), widened
+2026-10-04; the rule's own text carries the enforcement detail, the
+repo-settings rationale, and its known limits.
 
 **Rule 21e, for whoever is conducting**: a dispatch is for a port, a
 multi-file build, a long investigation, a release, or a per-PR audit — a

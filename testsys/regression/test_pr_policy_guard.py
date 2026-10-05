@@ -1,32 +1,43 @@
 #! /usr/bin/env python3
 """
-Regression guard for the owner-approved hybrid PR workflow (2026-09-23):
-testsys/pr_policy.py's decision logic, mutation-tested against a REAL
-throwaway repository (tempfile.mkdtemp()), never against this repository.
+Regression guard for the PR-for-everything workflow (owner decision,
+2026-10-04, superseding the 2026-09-23 hybrid model): testsys/pr_policy.py's
+decision logic, mutation-tested against a REAL throwaway repository
+(tempfile.mkdtemp()), never against this repository.
 
 WHAT THIS PINS, each driven by a real commit in the sandbox and a real
 run_git/rev-list/show underneath testsys.pr_policy (only the PR-evidence
 API call is stubbed -- there is no network dependency anywhere in this
 file):
 
-  ci-check mode (verify_pr backed by a stubbed commits-pulls API):
+  ci-check mode (verify_pr backed by a stubbed commits-pulls API) -- EVERY
+  non-empty commit now needs PR evidence, gated or not:
     1. a commit touching ONLY testsys/ with NO associated merged PR -> RED
-    2. a commit touching ONLY docs (README.md) -> GREEN, no API call needed
-       at all (the commit is not gated, so verify_pr is never invoked --
-       checked by making the stub raise if called)
+    2. a commit touching ONLY docs (README.md) WITH a stubbed merged-PR
+       response -> GREEN, and the API IS called (fast-lane docs content now
+       also needs a merged PR under the PR-for-everything model -- checked
+       by making the stub raise if NOT called, the mirror image of the old
+       "API never invoked" assertion this case replaces)
+    2b. the SAME docs-only commit with NO associated merged PR -> RED (the
+        semantic flip this guard exists to pin: ungated no longer means
+        "may land without PR evidence")
     3. a commit touching src/ WITH a stubbed merged-PR response -> GREEN
     4. a commit touching BOTH README.md and src/ (mixed) with no PR -> RED,
-       and the report names the src/ path specifically
+       and the report names the src/ path specifically (gated_files is still
+       reported for diagnostics even though it no longer decides ok/not-ok)
     5. the API-unavailable path: stub raises, subject carries "(#7)" ->
        fallback signal accepts it (GREEN, source=squash-subject-fallback);
        stub raises, subject carries no suffix -> PolicyCheckUnavailable,
        never a silent GREEN or RED-by-default
 
-  push-guard mode (verify_pr=None -- no API, ever):
+  push-guard mode (verify_pr=None -- no API, ever, no gated-path carve-out):
     6. the SAME testsys/-touching commit from (1) is RED here too, and for
        a DIFFERENT stated reason (no PR merge is possible over a local
        push, not "no PR was found")
-    7. the SAME docs-only commit from (2) is GREEN
+    7. the SAME docs-only commit from (2) is ALSO RED here -- under the
+       PR-for-everything model a local push can never be a PR merge,
+       regardless of what it touches; this is the other half of the flip
+       case 2b pins on the ci-check side
 
   range resolution (resolve_push_range), against real commits so "reachable"
   is a real property of a real object database, not a mocked bool:
@@ -36,18 +47,31 @@ file):
        syntactically a sha but genuinely absent from this repo's object
        database) -> PolicyCheckUnavailable, not a guessed range
 
+  pr-lane mode (compute_pr_lane_files + touches_gated_paths, and the CLI
+  itself), classifying a PR's OWN diff (base...head), not a push range:
+    10. a README-only diff (root...docs_sha) -> LANE=fast
+    11. a diff that touches testsys/ (docs_sha...testsys_sha) -> LANE=full
+    12. a mixed diff spanning docs + src (docs_sha...mixed_sha) -> LANE=full
+    13. the CLI itself (`pr_policy.py pr-lane <base> <head>`), subprocess,
+        prints exactly one `LANE=fast` or `LANE=full` line and exits 0
+
 Mutation check for this guard itself (done by hand while writing it, stated
 so the next person does not have to re-derive it): flip GATED_PREFIXES to
-only ('testsys/',) and case 3/case 8's src/-only commits stop being
-evaluated as gated at all, which flips their PASS reasons from "PR-merged"
-to "touches no gated path" -- case (1)'s testsys/ commit still catches the
-regression on its own, but was checked directly by temporarily editing
-touches_gated_paths's default and re-running: cases 3 and 4 both went from
-their expected reasons to "touches no gated path", confirming the assertions
-below are sensitive to that prefix list and not vacuously true.
+only ('testsys/',) and case 3/case 8/case 11-12's src/-only content stops
+being evaluated as gated at all, which flips case 3's PASS reason from
+"PR-merged" citing commits-api to a differently-worded one and flips cases
+11/12 from LANE=full to LANE=fast -- case (1)'s testsys/ commit still
+catches the regression on its own, but was checked directly by temporarily
+editing touches_gated_paths's default and re-running: case 3's reason text
+and cases 11/12's LANE both changed as predicted, confirming the assertions
+below are sensitive to that prefix list and not vacuously true. Also checked:
+temporarily reverting evaluate_commit_gate to its pre-2026-10-04 "only gated
+commits need PR evidence" behavior flips cases 2b and 7 from RED back to
+GREEN, confirming those two cases actually exercise the new semantics and
+are not vacuously true either.
 
 Cheap (rule 9): a handful of git inits and one-line commits in a temp dir,
-no build, no network. Under ~1 s.
+one subprocess for the CLI case, no build, no network. Under ~1 s.
 """
 import os
 import shutil
@@ -114,6 +138,20 @@ def api_fail_if_called(_sha):
                          'gated -- it must never be invoked at all for one')
 
 
+def api_fail_if_not_called():
+    """Returns a stub plus a mutable flag, so a test can assert the API WAS
+    invoked -- the mirror image of api_fail_if_called, needed now that every
+    non-empty commit (gated or not) must be checked against PR evidence."""
+    called = {'n': 0}
+
+    def fetch(sha):
+        called['n'] += 1
+        return [{'number': 7, 'merged_at': '2026-10-04T00:00:00Z',
+                 'base': {'ref': 'master'}, 'merge_commit_sha': sha,
+                 'head': {'sha': 'd' * 40}}]
+    return fetch, called
+
+
 def make_api_returns_merged(pr_number, base='master', merge_sha=None, head_sha='f' * 40):
     """A merged PR as GitHub reports it. merge_sha=None means 'the commit
     being asked about' -- a genuine squash merge."""
@@ -152,14 +190,31 @@ def main():
             fails.append('case 1: gated_files=%r, expected exactly the testsys/ path'
                         % (d.gated_files,))
 
-        # ---- case 2: docs-only -> GREEN, API never called -------------------
+        # ---- case 2: docs-only WITH a stubbed merged PR -> GREEN, and the
+        # API IS called (fast-lane docs content now also needs PR evidence) --
+        fetch2, called2 = api_fail_if_not_called()
         d = pp.evaluate_commit_gate(docs_sha, 'docs: readme tweak',
                                     pp.commit_files(docs_sha, cwd=repo),
-                                    lambda sha, subj: pp.commit_pr_evidence(sha, subj, api_fail_if_called))
+                                    lambda sha, subj: pp.commit_pr_evidence(sha, subj, fetch2))
         if not d.ok:
-            fails.append('case 2: docs-only commit was RED (reason: %r)' % d.reason)
+            fails.append('case 2: docs-only commit WITH a stubbed merged PR was RED '
+                        '(reason: %r)' % d.reason)
+        if called2['n'] < 1:
+            fails.append('case 2: verify_pr was never invoked for a docs-only commit '
+                        '-- under the PR-for-everything model every non-empty commit '
+                        'needs PR evidence, gated or not')
         if d.gated_files:
             fails.append('case 2: docs-only commit reported gated_files=%r' % (d.gated_files,))
+
+        # ---- case 2b: docs-only with NO merged PR -> RED (the semantic flip:
+        # ungated no longer means "may land without PR evidence") -----------
+        d = pp.evaluate_commit_gate(docs_sha, 'docs: readme tweak',
+                                    pp.commit_files(docs_sha, cwd=repo),
+                                    lambda sha, subj: pp.commit_pr_evidence(sha, subj, api_no_merged_pr))
+        if d.ok:
+            fails.append('case 2b: docs-only commit with NO merged PR was GREEN '
+                        '(reason: %r) -- expected RED under the PR-for-everything '
+                        'model' % d.reason)
 
         # ---- case 3: src/ with a stubbed merged PR -> GREEN ------------------
         d = pp.evaluate_commit_gate(src_pr_sha, 'feature: scratch fortran routine (#42)',
@@ -252,12 +307,18 @@ def main():
             fails.append('case 6: push-guard refusal reason does not explain WHY '
                         '(missing "LOCAL PUSH"): %r' % d.reason)
 
-        # ---- case 7: push-guard mode allows the same docs-only commit --------
+        # ---- case 7: push-guard mode ALSO refuses the same docs-only commit --
+        # (the flip this guard exists to pin: under the PR-for-everything
+        # model there is no gated-path carve-out left in push-guard mode)
         d = pp.evaluate_commit_gate(docs_sha, 'docs: readme tweak',
                                     pp.commit_files(docs_sha, cwd=repo), None)
-        if not d.ok:
-            fails.append('case 7: push-guard mode refused a docs-only commit '
-                        '(reason: %r)' % d.reason)
+        if d.ok:
+            fails.append('case 7: push-guard mode ALLOWED a docs-only commit '
+                        '(reason: %r) -- expected RED, no carve-out left for '
+                        'ungated content' % d.reason)
+        if 'LOCAL PUSH' not in d.reason:
+            fails.append('case 7: push-guard refusal reason does not explain WHY '
+                        '(missing "LOCAL PUSH"): %r' % d.reason)
 
         # ---- case 8: resolve_push_range, ZERO_SHA -> full history, real repo -
         range_spec, note = pp.resolve_push_range(pp.ZERO_SHA, head,
@@ -296,6 +357,45 @@ def main():
         except pp.PolicyCheckUnavailable:
             pass
 
+        # ---- case 10: pr-lane, README-only diff -> LANE=fast ------------------
+        files = pp.compute_pr_lane_files(root, docs_sha, cwd=repo)
+        gated = pp.touches_gated_paths(files)
+        if files != ['README.md'] or gated:
+            fails.append('case 10: root...docs_sha changed files=%r gated=%r, '
+                        'expected exactly [README.md] and no gated paths '
+                        '(LANE=fast)' % (files, gated))
+
+        # ---- case 11: pr-lane, a diff touching testsys/ -> LANE=full ---------
+        files = pp.compute_pr_lane_files(docs_sha, testsys_sha, cwd=repo)
+        gated = pp.touches_gated_paths(files)
+        if 'testsys/scratch_gate.py' not in gated:
+            fails.append('case 11: docs_sha...testsys_sha changed files=%r gated=%r, '
+                        'expected testsys/scratch_gate.py to be gated (LANE=full)'
+                        % (files, gated))
+
+        # ---- case 12: pr-lane, a mixed diff spanning docs + src -> LANE=full --
+        files = pp.compute_pr_lane_files(docs_sha, mixed_sha, cwd=repo)
+        gated = pp.touches_gated_paths(files)
+        if not gated:
+            fails.append('case 12: docs_sha...mixed_sha changed files=%r reported no '
+                        'gated paths -- expected at least the src/ edits in that span '
+                        '(LANE=full)' % (files,))
+
+        # ---- case 13: the pr-lane CLI itself prints LANE=fast / LANE=full -----
+        policy_path = os.path.join(ROOT, 'testsys', 'pr_policy.py')
+        r_fast = subprocess.run([sys.executable, policy_path, 'pr-lane', root, docs_sha],
+                                cwd=repo, capture_output=True, text=True, timeout=60)
+        if r_fast.returncode != 0 or 'LANE=fast' not in r_fast.stdout:
+            fails.append('case 13a: CLI pr-lane on root...docs_sha exited %d, stdout %r '
+                        '-- expected exit 0 and a LANE=fast line'
+                        % (r_fast.returncode, r_fast.stdout))
+        r_full = subprocess.run([sys.executable, policy_path, 'pr-lane', docs_sha, testsys_sha],
+                                cwd=repo, capture_output=True, text=True, timeout=60)
+        if r_full.returncode != 0 or 'LANE=full' not in r_full.stdout:
+            fails.append('case 13b: CLI pr-lane on docs_sha...testsys_sha exited %d, '
+                        'stdout %r -- expected exit 0 and a LANE=full line'
+                        % (r_full.returncode, r_full.stdout))
+
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -304,13 +404,17 @@ def main():
         for f in fails:
             print('  -', f)
         return 1
-    print('SUCCESS test_pr_policy_guard: 9 cases -- ci-check RED on a bare '
-         'testsys/ commit and on a mixed docs+src commit, GREEN on docs-only '
-         '(API never invoked) and on a stubbed-merged-PR src/ commit, correct '
-         'fallback/raise split when the API is unavailable, push-guard RED/'
-         'GREEN mirroring ci-check but for the push-specific reason, and '
-         'resolve_push_range correct on both a ZERO_SHA ref-creation and an '
-         'unresolvable before-sha, all against a real throwaway git repository')
+    print('SUCCESS test_pr_policy_guard: 13 cases -- ci-check RED on a bare '
+         'testsys/ commit, on a docs-only commit with no PR (2b), and on a '
+         'mixed docs+src commit; GREEN on a docs-only commit WITH a stubbed '
+         'merged PR (API confirmed called) and on a stubbed-merged-PR src/ '
+         'commit; correct fallback/raise split when the API is unavailable; '
+         'push-guard RED on BOTH the testsys/ commit and the docs-only commit '
+         '(no gated-path carve-out left); resolve_push_range correct on both '
+         'a ZERO_SHA ref-creation and an unresolvable before-sha; pr-lane '
+         'mode (function and CLI) correct on a README-only, a testsys/-'
+         'touching, and a mixed diff -- all against a real throwaway git '
+         'repository')
     return 0
 
 
