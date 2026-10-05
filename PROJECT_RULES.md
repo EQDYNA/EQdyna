@@ -1576,18 +1576,18 @@ order, which rule 15a's same-day hardening made unexecutable (a
 longer be tagged; since 2026-10-01 a board-only commit is not ignored and
 does get one).
 
-1. **Board row first.** Push the release's Tasks-done row (rule 14, rule
-   15 step 4) to master as its own board-only commit (rule 21c), BEFORE the
-   release PR merges, so the tagged tree already contains it.
+1. **Board row first.** Land the release's Tasks-done row (rule 14, rule
+   15 step 4) as its own board-only fast-lane PR (rule 21c, rule 25), BEFORE
+   the release PR merges, so the tagged tree already contains it.
 2. **Release PR.** `VERSION`, the runtime banner (rule 11), the README
    notes move, `pastReleaseNotes.md`. Small non-physics items may batch into
    it. Squash-merge it; call the result **M**.
 3. **Sweep only on a physics change.** If `change_class.is_release_physics_path`
    matches nothing since the last swept release, the last evidence carries
    forward (rule 24) and **T = M**. Otherwise run `python3 testsys/run.py
-   release` on a clean checkout of M and commit the evidence (`docs/evidence/`
-   is not `paths-ignore`'d, rule 15g, so it gets its own CI); that commit is
-   **T**.
+   release` on a clean checkout of M and land the evidence as a fast-lane
+   PR (rule 25; `docs/evidence/` is not `paths-ignore`'d, rule 15g, so its
+   squash commit gets its own push CI); that squash commit is **T**.
 4. **T's own gates.** T's own push CI green (rule 15a: never an ancestor's),
    then `gh workflow run publish.yml --ref master` with master at T, green
    (rule 24a). Nothing else lands on master in between.
@@ -1612,13 +1612,10 @@ ruleset for the one command, then re-enables it. **Superseded same-day
 (owner decision 2026-10-04, see rule 25): direct pushes to master are no
 longer the intended path** — every commit, gated or not, is meant to reach
 master only through a merged PR (fast lane for docs/board/evidence, full
-lane otherwise). The GitHub-side enforcement of that ("require a pull
-request before merging" as a branch-protection/ruleset setting, admins
-included) is a PENDING FOLLOW-UP, applied via `gh api` by someone else after
-rule 25's PR merges — it had not been flipped as of this paragraph, so a
-direct push was still mechanically possible on GitHub's side even though
-rule 25 no longer sanctions one; `testsys/pr_policy.py`'s push-guard and
-ci-check modes are the enforcement that exists today, see rule 25.
+lane otherwise). **Applied 2026-10-04**: master protection now also
+requires a pull request (0 approvals) and the `merge-gate` status check,
+admins included, so a direct push is refused by GitHub itself and
+`gh pr merge --auto --squash` waits for `merge-gate` to pass.
 **Incident (2026-10-04)**: 84 stale remote branches were found and deleted:
 26 with merged PRs, 32 already on master that never had a PR (WIP and
 salvage branches from agents that died on rate limits), and 26 whose
@@ -3183,29 +3180,17 @@ on before it may merge, not in whether a PR exists:
   `README.md`/`docs/user/`, otherwise a re-check that the diff really is
   fast-lane as a safety net). No `victor-reyes` gate, because a fast-lane
   diff by definition touches nothing `change_class` calls PHYSICS and
-  nothing under `GATED_PREFIXES` — but `gh pr merge --auto --squash` is
-  **not yet a green-gated merge on its own**: `--auto` only becomes
-  mechanically gated on the `merge-gate` check once GitHub branch protection
-  names `merge-gate` as a required status check, and that follow-up has not
-  landed (see "What is NOT yet done by this rewrite" below). Until it does,
-  `--auto` either merges as soon as GitHub's merge button is clickable
-  regardless of `merge-gate`'s own result, or errors outright if repo
-  auto-merge is disabled — so a human confirms the PR is actually green
-  (checks tab, not just that `--auto`/`--squash` was invoked without error)
-  before merging a fast-lane PR, exactly as today's full lane already
-  requires by hand.
+  nothing under `GATED_PREFIXES`. `gh pr merge --auto --squash` is a
+  green-gated merge: since 2026-10-04 branch protection names `merge-gate`
+  as a required status check, so `--auto` waits for it.
 
-**What is NOT yet done by this rewrite, stated so nobody assumes it is**:
-GitHub's own branch protection / ruleset ("require a pull request before
-merging", admins included) has NOT been flipped on by this rule or its PR.
-That flip is a pending FOLLOW-UP, applied separately via `gh api` after this
-rule's own PR merges (owner decision: land the policy-logic change first,
-flip the platform setting second, so the setting change is reviewable
-against working `pr-lane`/CI wiring rather than the other way around). Until
-that follow-up lands, a direct push to master is still mechanically
-possible on GitHub's side; `testsys/pr_policy.py`'s push-guard mode (the
-local `pre-push` hook) and its ci-check mode (the `pr-policy-gate` CI job)
-are what actually refuse/flag one today, per rule 15f step 8.
+**Platform enforcement (applied 2026-10-04, after this rule's PR merged,
+as planned)**: master's branch protection requires a pull request (0
+approvals) and the `merge-gate` status check, admins included, with
+force-push and deletion refused. A direct push to master is now refused by
+GitHub itself; `testsys/pr_policy.py`'s push-guard (local `pre-push` hook)
+and ci-check (`pr-policy-gate` CI job) modes remain as the earlier, local
+layer and the after-the-fact audit.
 
 - **`.github/` is in the full-lane set, loudly, on purpose**: without it,
   one fast-lane PR could edit the `pr-policy-gate`/`detect-lane` jobs
@@ -3328,23 +3313,16 @@ would report a false RED on a real merged PR. Squash-merge is the only
 strategy that puts exactly one new commit on master per PR, which is what
 the per-commit check above assumes.
 
-**GitHub branch protection: NOT YET enabled — a pending FOLLOW-UP, not a
-scope decision anymore.** Through 2026-10-03 this was a deliberate scope
-decision: the repository is public (`visibility=PUBLIC`) on the org's free
-plan, a branch protection ruleset requiring a pull request cannot be
-scoped to paths (GitHub documents path-scoped push rulesets for
-private/internal repositories only), and turning it on would have blocked
-the docs/board/evidence direct-push path that model deliberately kept
-open. **That blocker is gone under the 2026-10-04 PR-for-everything
-rewrite**: there is no longer a direct-push path to protect around, so an
-unscoped "require a pull request before merging" ruleset (admins included)
-is now the correct setting, not an overreach. It has not been applied as
-of this rule's own PR — flipping it is a deliberate FOLLOW-UP step, done
-separately via `gh api` by someone other than the PR that rewrote this
-rule, so the platform setting is reviewed against working `pr-lane`/CI
-wiring rather than blind. Until it is flipped, `testsys/pr_policy.py`'s
-push-guard (local) and ci-check (CI, after the fact) modes are what
-actually enforce "no direct push", not GitHub itself.
+**GitHub branch protection: enabled 2026-10-04.** Through 2026-10-03 this
+was a deliberate scope decision: the repository is public on the org's free
+plan, a ruleset requiring a pull request cannot be scoped to paths there,
+and turning it on would have blocked the docs/board/evidence direct-push
+path that model kept open. The 2026-10-04 PR-for-everything rewrite removed
+that path, so the unscoped setting became correct and was applied via
+`gh api` after this rule's PR merged: require a pull request (0 approvals)
+and the `merge-gate` status check, admins included, no force-push, no
+deletion. `testsys/pr_policy.py`'s push-guard and ci-check modes stay as the
+local and after-the-fact layers.
 
 **Known limits, stated so this rule does not claim more than it enforces —
 these matter against a DELIBERATE bypass; the realistic risk this rule
