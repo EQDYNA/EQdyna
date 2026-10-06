@@ -406,6 +406,10 @@ def build_solver_state(case_dir, part=None):
     # checkTwoSidedMaterialTable` -- no-op for n2mat 3/4.
     checkInputConsistency.check_two_sided_material(
         material, faults_for_check, params['C_degen'], tol=params['tol'])
+    # readmaterial's `if (n2mat == 6) call buildMaterialGrid3D` -- validation
+    # here at the same point in the run; build_elements rebuilds the (cheap)
+    # grid itself from `material`. No-op for n2mat 3/4/5.
+    checkInputConsistency.build_material_grid3d(material, tol=params['tol'])
 
     # Row 114/120 -- station output. bStations.txt is read unconditionally
     # (every case.setup-generated case dir has one, scripts/case.setup:111).

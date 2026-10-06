@@ -56,6 +56,7 @@ ERR_CFG_Q_NEEDS_UNIFORM = 12   # C_Q=1 requires rat=1.0 (uniform elements)
 ERR_CFG_PLASTIC_OUTPUT = 13    # output_plastic=1 requires C_elastic=0
 ERR_CFG_NSTRESS_SIGN_INVALID = 15  # bGlobal.txt's station n-stress sign is neither +1 nor -1 (raised by readInputFiles.read_bglobal)
 ERR_CFG_MATERIAL_TABLE_INVALID = 16  # bMaterial.txt's two-sided (n2mat=5) table needs one vertical planar fault, side column -1/+1, ascending per-side layer bottoms (raised by check_two_sided_material)
+ERR_CFG_MATERIAL_GRID_INVALID = 17  # bMaterial.txt's 3D material grid (n2mat=6, rows x y z vp vs rho) must be a complete uniform nx*ny*nz block, every cell once, on-grid coordinates, positive vp/vs/rho (raised by build_material_grid3d)
 ERR_GEOM_MULTIFAULT_Y_BAD = 32  # a fault's y-plane is not vertical/planar, coincides with another fault's, or (row 17 rebased) a fault's y bound is not an integer multiple of dy from the union-derived uniform-y belt origin (raised by meshgen.py's one_dim_coor_array)
 ERR_GEOM_MULTIFAULT_XZ_BAD = 33  # (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line (raised as InputConsistencyError by meshgen.py's one_dim_coor_array)
 
@@ -167,3 +168,66 @@ def check_two_sided_material(material, faults, C_degen, tol=1.0e-5):
             raise InputConsistencyError(code, 'bMaterial.txt: layer bottoms within one side of a '
                                         'two-sided (n2mat=5) table must be strictly ascending '
                                         'and positive.')
+
+
+def build_material_grid3d(material, tol=1.0e-5):
+    """readInputFiles.f90's buildMaterialGrid3D, same checks in the same
+    order, same messages: the n2mat==6 3D structured material grid (SCEC
+    TPV34, CVM-H sampled at the uniform element-centre spacing), rows
+    [x y z vp vs rho] in the EQdyna frame. Self-describing: per axis the
+    origin is the smallest coordinate, the spacing the smallest positive
+    offset from it (1.0 for a single-plane axis), the count
+    nint((max-min)/spacing)+1; nmat must equal nx*ny*nz, every cell filled
+    exactly once by an on-grid row, vp/vs/rho positive. Returns None unless
+    material has 6 columns; otherwise dict(origin (3,), spacing (3,),
+    count (3,) int, props (3, nx, ny, nz) = vp, vs, rho). meshgen.py's
+    build_elements gathers the NEAREST cell to each element centre from
+    `props`, clamped -- piecewise constant, never interpolated."""
+    material = np.asarray(material, dtype=float)
+    if material.ndim != 2 or material.shape[1] != 6:
+        return None
+    nmat = material.shape[0]
+    code = ERR_CFG_MATERIAL_GRID_INVALID
+    if nmat < 2:
+        raise InputConsistencyError(code, 'bMaterial.txt: a 3D material grid (n2mat=6) '
+                                    'needs nmat >= 2 rows.')
+    origin = material[:, :3].min(axis=0)
+    cmax = material[:, :3].max(axis=0)
+    spacing = np.empty(3)
+    for k in range(3):
+        off = material[:, k] - origin[k]
+        pos = off[off > tol]
+        spacing[k] = pos.min() if pos.size else 1.0   # single-plane axis
+    count = np.rint((cmax - origin) / spacing).astype(int) + 1
+    if int(np.prod(count)) != nmat:
+        raise InputConsistencyError(code, 'bMaterial.txt: the 3D material grid (n2mat=6) rows '
+                                    'do not form a complete uniform nx*ny*nz block '
+                                    '(nmat /= nx*ny*nz).')
+    off = (material[:, :3] - origin) / spacing
+    idx = np.rint(off).astype(int)
+    if (np.abs(off - idx).max() > 1.0e-6 or idx.min() < 0 or np.any(idx >= count)):
+        raise InputConsistencyError(code, 'bMaterial.txt: a 3D material grid (n2mat=6) row has '
+                                    'a coordinate that is not on the uniform grid.')
+    flat = np.ravel_multi_index((idx[:, 0], idx[:, 1], idx[:, 2]), tuple(count))
+    if np.unique(flat).size != nmat:
+        raise InputConsistencyError(code, 'bMaterial.txt: a 3D material grid (n2mat=6) cell '
+                                    'is given twice.')
+    if np.any(material[:, 3:6] <= 0.0):
+        raise InputConsistencyError(code, 'bMaterial.txt: a 3D material grid (n2mat=6) row has '
+                                    'vp, vs or rho <= 0.')
+    props = np.empty((3,) + tuple(count))
+    props[:, idx[:, 0], idx[:, 1], idx[:, 2]] = material[:, 3:6].T
+    return dict(origin=origin, spacing=spacing, count=count, props=props)
+
+
+def material_grid3d_index(grid, cx, cy, cz):
+    """The element -> grid-cell index rule of meshgen.f90 setElementMaterial's
+    n2mat==6 branch: floor(off + 0.5) per axis, clamped to [0, count-1]
+    (0-based here). Shared by the vectorized and scalar meshgen.py paths so
+    the tie rule is written once; floor(off+0.5), not numpy.rint, so a .5
+    offset rounds the same way as the Fortran."""
+    c = np.stack([np.asarray(cx, dtype=float), np.asarray(cy, dtype=float),
+                  np.asarray(cz, dtype=float)], axis=-1)
+    off = (c - grid['origin']) / grid['spacing']
+    idx = np.floor(off + 0.5).astype(int)
+    return np.clip(idx, 0, grid['count'] - 1)

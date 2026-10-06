@@ -320,6 +320,22 @@ def shearModulusFromPar(par, depth=0.0):
     if par.nmat == 1:
         return par.rou*par.vs**2
     mat = par.mat
+    if getattr(par, 'n2mat', 4) == 6:
+        # 3D structured grid [x, y, z, vp, vs, rho] (TPV34, CVM-H): mu varies
+        # along strike and across the fault, so the modulus used for the
+        # reported moment is the MEAN rho*Vs^2 over the grid plane nearest
+        # this depth (z = -depth), every x and y -- a reporting convention,
+        # stated here, not a solver quantity (the solver assigns each element
+        # the modulus of its own nearest grid cell).
+        z = mat[:, 2]
+        zplanes = np.unique(z)
+        if depth > -zplanes.min() + 0.5*(zplanes[1] - zplanes[0] if zplanes.size > 1 else 0.0):
+            raise ValueError(
+                'shearModulusFromPar: depth %g m lies below the deepest plane of the '
+                'par.mat 3D grid (%g m).' % (depth, -zplanes.min()))
+        zsel = zplanes[np.argmin(np.abs(zplanes + depth))]
+        rows = mat[np.abs(z - zsel) < 1e-6]
+        return float(np.mean(rows[:, 5]*rows[:, 4]**2))
     if getattr(par, 'n2mat', 4) == 5:
         # Two-sided table [bottom, vp, vs, rho, side] (TPV35): the fault
         # plane itself borders BOTH media, so the modulus used for the

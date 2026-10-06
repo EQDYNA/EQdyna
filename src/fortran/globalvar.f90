@@ -143,6 +143,8 @@ MODULE globalvar
     integer (kind = 4) :: npx, npy, npz                            ! processor grid dimensions
     integer (kind = 4) :: nnx, nnz                                 ! fault-plane node counts along strike/dip
     integer (kind = 4) :: nmat, n2mat                              ! number of material blocks / material properties per block
+    integer (kind = 4) :: matGridCount(3)                          ! n2mat=6 3D material grid (TPV34): cells per axis x,y,z
+    real (kind = dp) :: matGridOrigin(3), matGridSpacing(3)        ! n2mat=6 3D material grid: first cell centre / spacing per axis (m)
     integer (kind = 4) :: nftmx, nonmx                             ! max fault-node-pair count / max on-fault station count (array sizing)
     integer (kind = 4) :: nt                                       ! current time step index
     integer (kind = 4) :: nstep                                    ! total number of time steps
@@ -269,7 +271,7 @@ MODULE globalvar
     real (kind = dp), allocatable, dimension(:,:,:) :: fric,    &
         un,     us,     ud,     onFaultQuantHistSCECForm, eleshp, phi,    &
         fltxyz, xonfs
-    real (kind = dp), allocatable, dimension(:,:,:,:):: onFaultTPHist
+    real (kind = dp), allocatable, dimension(:,:,:,:):: onFaultTPHist, matGrid3D
 
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
         elemTypeArr,     numOfDofPerNodeArr,   &

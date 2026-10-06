@@ -103,7 +103,8 @@ def create_model_input_file():
         elif par.nmat > 1:
             # n2mat columns per row: 4 for the 1D layered table
             # [bottom, vp, vs, rho], 5 for the two-sided table
-            # [bottom, vp, vs, rho, side] (readInputFiles.f90 readmaterial
+            # [bottom, vp, vs, rho, side], 6 for the 3D structured grid
+            # [x, y, z, vp, vs, rho] (readInputFiles.f90 readmaterial
             # reads `(material(i,j), j = 1, n2mat)`).
             for i in range(par.nmat):
                 f.write(" ".join(str(par.mat[i,j]) for j in range(par.n2mat)) + "\n")

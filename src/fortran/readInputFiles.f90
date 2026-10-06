@@ -176,6 +176,7 @@ subroutine readmaterial
     close(1004)
 
     if (n2mat == 5) call checkTwoSidedMaterialTable
+    if (n2mat == 6) call buildMaterialGrid3D
 
     ccosphi = coheplas*dcos(atan(bulk))
     sinphi  = dsin(atan(bulk))
@@ -222,6 +223,65 @@ subroutine checkTwoSidedMaterialTable
             'bMaterial.txt: a two-sided (n2mat=5) table must have at least one row for each side (-1 and +1).')
     enddo
 end subroutine checkTwoSidedMaterialTable
+
+subroutine buildMaterialGrid3D
+! Build the n2mat==6 3D structured material grid (SCEC TPV34: CVM-H
+! sampled at the mesh's uniform element-centre spacing) from bMaterial.txt
+! rows [x y z vp vs rho] (m, m/s, kg/m3; EQdyna frame, z <= 0 underground).
+! The grid is self-describing: per axis the origin is the smallest
+! coordinate, the spacing the smallest positive offset from it (1 m for a
+! single-plane axis), the count nint((max-min)/spacing)+1. nmat must equal
+! nx*ny*nz, every cell must be filled exactly once by an on-grid row, and
+! vp/vs/rho must be positive (ERR_CFG_MATERIAL_GRID_INVALID otherwise).
+! meshgen.f90's setElementMaterial then reads the NEAREST cell to each
+! element centre, clamped to the grid: piecewise constant, never
+! interpolated (rule 17 step 2) -- an element centre on the grid (every
+! uniform-belt element when the grid spacing equals dx) reads its own
+! sample exactly.
+    use globalvar
+    use errorCodes
+    implicit none
+    integer (kind = 4) :: i, k, idx(3)
+    integer (kind = 4), allocatable :: filled(:,:,:)
+    real (kind = dp) :: cmin(3), cmax(3), off
+
+    if (nmat < 2) call abortRun(ERR_CFG_MATERIAL_GRID_INVALID, &
+        'bMaterial.txt: a 3D material grid (n2mat=6) needs nmat >= 2 rows.')
+    do k = 1, 3
+        cmin(k) = minval(material(:,k))
+        cmax(k) = maxval(material(:,k))
+        matGridSpacing(k) = huge(1.0d0)
+        do i = 1, nmat
+            off = material(i,k) - cmin(k)
+            if (off > tol .and. off < matGridSpacing(k)) matGridSpacing(k) = off
+        enddo
+        if (matGridSpacing(k) == huge(1.0d0)) matGridSpacing(k) = 1.0d0   ! single-plane axis
+        matGridOrigin(k) = cmin(k)
+        matGridCount(k) = nint((cmax(k) - cmin(k))/matGridSpacing(k)) + 1
+    enddo
+    if (product(matGridCount) /= nmat) call abortRun(ERR_CFG_MATERIAL_GRID_INVALID, &
+        'bMaterial.txt: the 3D material grid (n2mat=6) rows do not form a complete uniform nx*ny*nz block (nmat /= nx*ny*nz).')
+    allocate(matGrid3D(3, matGridCount(1), matGridCount(2), matGridCount(3)))
+    allocate(filled(matGridCount(1), matGridCount(2), matGridCount(3)))
+    filled = 0
+    do i = 1, nmat
+        do k = 1, 3
+            off = (material(i,k) - matGridOrigin(k))/matGridSpacing(k)
+            idx(k) = nint(off) + 1
+            if (abs(off - nint(off)) > 1.0d-6 .or. idx(k) < 1 .or. idx(k) > matGridCount(k)) &
+                call abortRun(ERR_CFG_MATERIAL_GRID_INVALID, &
+                'bMaterial.txt: a 3D material grid (n2mat=6) row has a coordinate that is not on the uniform grid.')
+        enddo
+        if (filled(idx(1),idx(2),idx(3)) /= 0) call abortRun(ERR_CFG_MATERIAL_GRID_INVALID, &
+            'bMaterial.txt: a 3D material grid (n2mat=6) cell is given twice.')
+        if (material(i,4) <= 0.0d0 .or. material(i,5) <= 0.0d0 .or. material(i,6) <= 0.0d0) &
+            call abortRun(ERR_CFG_MATERIAL_GRID_INVALID, &
+            'bMaterial.txt: a 3D material grid (n2mat=6) row has vp, vs or rho <= 0.')
+        filled(idx(1),idx(2),idx(3)) = 1
+        matGrid3D(1:3, idx(1), idx(2), idx(3)) = material(i,4:6)
+    enddo
+    deallocate(filled)
+end subroutine buildMaterialGrid3D
 
 ! #6 readstations --------------------------------------------------------
 subroutine readstations1
