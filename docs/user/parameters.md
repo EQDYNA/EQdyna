@@ -378,6 +378,49 @@ Every entry below is an attribute of the `parameters` class in `scripts/defaultP
 
 <!-- END PARAMETER REFERENCE -->
 
+## Material tables: `nmat` and `n2mat`
+
+The generated entries above show only the defaults class's two branches.
+`case.setup` writes `par.mat` row by row with `n2mat` columns, and the solver
+picks the material rule from `(nmat, n2mat)`:
+
+| `nmat` | `n2mat` | `par.mat` rows | example case |
+|---|---|---|---|
+| 1 | 3 | none: `vp`, `vs`, `rou` scalars, one homogeneous medium | `test.tpv8` |
+| > 1 | 4 | `[bottom depth, Vp, Vs, rho]`, a 1D layered table, ascending bottoms, first match | `test.meng2023a` |
+| > 1 | 5 | `[bottom depth, Vp, Vs, rho, side]`, two 1D tables, `side = -1` for `y < fymin` and `+1` for `y > fymin`; one vertical planar fault only | `test.tpv35` |
+| > 1 | 6 | `[x, y, z, Vp, Vs, rho]`, a complete uniform 3D grid; each element takes the row nearest its centre, clamped to the grid, never interpolated | `test.tpv34` |
+
+For `n2mat == 6` the solver derives the grid from the rows themselves
+(origin = minimum, spacing = smallest positive offset) and refuses an
+incomplete block, a duplicate or off-grid row, or a non-positive property
+(`ERR_CFG_MATERIAL_GRID_INVALID`). Set `par.nmat, par.n2mat = par.mat.shape`
+after building `par.mat`, and set `roumax`/`vmaxPML` from the table's
+maxima, as `case_input/test.tpv34/user_defined_params.py` does.
+
+## Per-node fault properties: `on_fault_vars`
+
+`par.on_fault_vars` is a `(nfz, nfx, 100)` array, one row per fault node on
+the `fx` x `fz` fault grid; `case.setup` writes the slots below to the
+fault NetCDF input. A case overrides any slot node by node to give the fault
+heterogeneous friction or initial stress (`test.tpv35` reads `mu_s` and
+`tau0` from its inverted model; `test.tpv34` scales the stresses by the
+local shear modulus).
+
+| slot | quantity | slot | quantity |
+|---|---|---|---|
+| 1 | slip-weakening `mu_s` | 12 | RSF `v0` |
+| 2 | slip-weakening `mu_d` | 13 | RSF `f0` (`r0`) |
+| 3 | slip-weakening `D0` (m) | 14, 15 | RSF `fw`, `vw` |
+| 4 | cohesion (Pa) | 16-19 | TP `a_hy`, `a_th`, `rouc`, `lambda` |
+| 5 | forced-rupture time `t0` (s) | 20 | initial state variable |
+| 7 | initial normal stress (Pa, negative compressive) | 40-42 | TP `h`, `Tini`, `pini` |
+| 8 | initial along-strike shear stress (Pa) | 46 | initial slip rate (m/s) |
+| 9-11 | RSF `a`, `b`, `Dc` | 49 | initial along-dip shear stress (Pa) |
+
+Slots not listed are unused. Setting `mu_s = 1000` on the side and bottom
+border nodes is how the planar-fault cases pin slip to zero there.
+
 ## Multiple faults
 
 `ntotft` and `nucfault` above are the generated reference's entries for how
