@@ -147,3 +147,36 @@ entry added to `FULL_SPECS` in this session will make that command emit a
 full tier before `case_input/test.tpv35` exists. This is the documented
 trade-off of doing rule-17-step-5 "paperwork" ahead of steps 2–4; noting it
 so it isn't a surprise.
+
+## 2026-10-05 update (dunyu-liu, TPV35 landing mission): data files fetched
+
+Corrections to the text above, found while doing steps 2-4:
+
+- `scratch/specs/TPV35_desc.txt` did NOT exist anywhere when this mission
+  started (neither checkout had it); the "Confirmed against ..." claim above
+  for TPV35 was made against a file that was never written. Re-fetched
+  `TPV35_Description_v05.pdf` and converted with `pdftotext -layout`
+  (1002 lines). The spec facts above were re-checked against it and hold.
+- Hypocenter: (x, depth) = (0, 8100) m on a fault spanning x in
+  [-30000, 10000] m -- 30 km from the LEFT edge, 10 km from the RIGHT.
+- "No external per-node stress-field ingestion path exists" is WRONG. The
+  single-run per-node seeding path is `par.on_fault_vars[iz,ix,slot]` ->
+  `on_fault_vars_input.nc` (scripts/case.setup `netcdf_write_on_fault_vars`,
+  read by `netcdf_read_on_fault_eqdyna` in both solvers); every TPV case
+  seeds friction and initial stress through it. The restart netcdf is a
+  different path and is not needed. TPV35's new work is a CASE-SIDE loader of
+  the SCEC grid file into that array (scripts/lib.py), not a solver feature.
+
+`tpv35_data_files.zip` (532,685 B, from tpv35docs.html -> download/) contents:
+
+| file | content |
+|---|---|
+| `tpv35_input_data.txt` | 62,557 rows = 401 x 156 grid at 100 m, x in [-30000, 10000], depth in [0, 15500]; columns `nx ny x y mu_s tau0(MPa)` (header + comment lines). mu_s in [0.3217, 0.5011], tau0 in [14.79, 28.17] MPa; border rows mu_s=0.33. Nucleation is BUILT IN: 155 nodes have mu_s*60 MPa < tau0 (x in [-700, 700], depth in [7400, 8800], max excess 0.5 MPa at (-300, 7500)). Spec: interpolate for off-grid nodes; we never do -- rule 17 step 2, decimate only. |
+| `tpv35_station_locations.txt` | 43 off-fault surface stations, `name map_code z x` (SCEC z = fault-normal, x = along strike, metres). |
+| `tpv35_velocity_structure_near_side.txt` | 1D table (thickness Vp Vs rho) for the z<0 side, 8 layers + halfspace (7300/4300/2800). |
+| `tpv35_velocity_structure_far_side.txt` | 1D table for the z>0 side, 9 layers + halfspace (7300/4300/2800). |
+
+Resolutions that both tile the 40 km x 15.5 km fault exactly AND are integer
+multiples of the 100 m source: 100 m (spec) and 500 m only. The gate uses
+500 m (stride 5; 81 x 32 = 2592 fault nodes; 7 nodes inside the nucleation
+patch).

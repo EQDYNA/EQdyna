@@ -100,9 +100,13 @@ def create_model_input_file():
     with open('bMaterial.txt', "w") as f:
         if par.nmat == 1:
             f.write(str(par.vp) + " " + str(par.vs) + " " + str(par.rou) + "\n")
-        elif par.nmat > 1: 
+        elif par.nmat > 1:
+            # n2mat columns per row: 4 for the 1D layered table
+            # [bottom, vp, vs, rho], 5 for the two-sided table
+            # [bottom, vp, vs, rho, side] (readInputFiles.f90 readmaterial
+            # reads `(material(i,j), j = 1, n2mat)`).
             for i in range(par.nmat):
-                f.write(str(par.mat[i,0]) + " " + str(par.mat[i,1]) + " " + str(par.mat[i,2]) + " " + str(par.mat[i,3]) + "\n")
+                f.write(" ".join(str(par.mat[i,j]) for j in range(par.n2mat)) + "\n")
 
 def create_station_input_file():
     # Function to create model.txt used by EQquasi.

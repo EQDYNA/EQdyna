@@ -219,6 +219,22 @@ GATE_STATIONS = {
                'faultst120dp030.txt'),
         'off': ('body010st000dp000.txt', 'body390st000dp000.txt'),
     },
+    'test.tpv35': {
+        # On-fault: the spec's 7 stations sit at 8.1 km depth, which at the
+        # 500 m gate dx is rounded to the nearest fault plane (8.0 km,
+        # dp080 -- setOnFaultStation needs an exact node, it does not snap).
+        # faultst000dp080 is the hypocentre column (x=0, max slip 0.60 m at
+        # 5 s), faultst-100dp080 and faultst050dp080 the farthest stations
+        # on either side that rupture within the gate term (0.25 / 0.17 m).
+        # Off-fault: one station on each side of the fault (near side y<0,
+        # far side y>0) from the official 43-station list, both with a
+        # clear 5 s signal (final h-disp -7.1e-3 / +7.4e-3 m, right-lateral
+        # sense confirmed). Stations with |y| < 250 m are avoided: body001st088
+        # (y=+92 m) snaps onto the fault plane and its side is ambiguous.
+        'on': ('faultst000dp080.txt', 'faultst-100dp080.txt',
+               'faultst050dp080.txt'),
+        'off': ('body-005st-063dp000.txt', 'body007st029dp000.txt'),
+    },
     'test.tpv22': {
         # Two of the three stations this case's own SCEC cross-code
         # validation already used (NOTES_tpv2223_iteration.md: onset/peak-
@@ -294,6 +310,7 @@ STATION_BOUND = {
     'test.tpv30': 1e-10,     # 2.44e-13 (on v-slip-rate, 170dp045) -> 3.0e-11
     'test.tpv36': 1e-7,      # 1.16e-10 (off h-vel, body010st000dp000)
     'test.tpv37': 1e-7,      # 1.16e-10 (off h-vel, body010st000dp000)
+    'test.tpv35': 1e-10,     # 1.14e-13 (off v-vel, body007st029dp000); fortran 0.0
     # drv.a6: the FORTRAN cell only (python-jax is STATION_UNSUPPORTED,
     # chaotic). Observed 0.0 -- 4-rank Fortran is deterministic against its
     # own reference -- so the smallest bound in use, 1e-10.
@@ -369,6 +386,8 @@ NSTRESS_CONVENTION = {
                    'n-stress: "Positive means extension."'),
     'test.tpv37': ('extension', 'TPV36_37_Description_v12 (2024-07-15), '
                    'n-stress: "Positive means extension."'),
+    'test.tpv35': ('extension', 'TPV35_Description_v05, Part 3 on-fault '
+                   'time series, n-stress: "Positive means extension."'),
     'test.meng2023a': ('extension', 'not a SCEC benchmark; SCEC default'),
     'test.meng2023cb': ('extension', 'not a SCEC benchmark; SCEC default'),
     'test.drv.a6': ('extension', 'not a SCEC benchmark; SCEC default'),
@@ -650,6 +669,17 @@ CASE_BOUND = {
     # not physics, same shape as tpv36's own observation). 1e-6 is ~144x the
     # worst observation, in the same headroom family as tpv8/tpv36.
     'test.tpv37': 1e-6,
+    # test.tpv35 (Parkfield 2004 validation benchmark, two-sided 1D velocity
+    # structure via the n2mat==5 table, mu_s/tau0 from the official 100 m
+    # grid decimated to 500 m, no artificial nucleation): a coarse
+    # REGRESSION gate (rule 17 step 4), not a spec-accuracy claim -- at 5 s
+    # 410 of 2592 fault nodes have ruptured. Fortran cell bit-exact against
+    # its own freshly-frozen 4-rank reference (max|diff| 0.0, 2592 nodes,
+    # 28.1 s wall). Measured python-jax vs that reference: 1.000000e-09 (row
+    # 31 col 13, a last-printed-digit flip of a -6.53e-3 component; 51.1 s
+    # wall), 2026-10-05, commit following e0548c9. 1e-7 is 100x the worst
+    # observation, the tpv8/tpv36 headroom ratio.
+    'test.tpv35': 1e-7,
     # test.tpv22/test.tpv23: measured python-jax vs the fresh fortran-
     # canonicalised reference (15s term, 200m/250m): tpv22 max|diff|
     # 6.562459e-15 (col 4), tpv23 7.549520e-15 (col 4) -- both Fortran cells
@@ -677,6 +707,7 @@ GATE = {
     'test.tpv29': 'abs-max',
     'test.tpv36': 'abs-max',
     'test.tpv37': 'abs-max',
+    'test.tpv35': 'abs-max',
     # test.drv.a6 (C_elastic==0 viscoplastic, friclaw==4, fractal-rough, long
     # duration) has genuinely bistable rupture arrivals, so a scalar max-abs
     # bound cannot distinguish "a few hundred marginal nodes flipped" from

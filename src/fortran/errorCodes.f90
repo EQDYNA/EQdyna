@@ -65,6 +65,7 @@ MODULE errorCodes
     integer, parameter :: ERR_CFG_PLASTIC_OUTPUT     = 13  ! output_plastic=1 requires C_elastic=0
     integer, parameter :: ERR_CFG_PROFILE_ENV_INVALID = 14 ! EQDYNA_PROFILE is set to a value other than unset, "", "1" or "0"
     integer, parameter :: ERR_CFG_NSTRESS_SIGN_INVALID = 15 ! bGlobal.txt's station n-stress sign is neither +1 nor -1
+    integer, parameter :: ERR_CFG_MATERIAL_TABLE_INVALID = 16 ! bMaterial.txt's two-sided (n2mat=5) table needs one vertical planar fault, side column -1/+1, ascending per-side layer bottoms
 
     ! --- 21-29 input files --------------------------------------------
     integer, parameter :: ERR_INPUT_FILE_MISSING     = 21  ! a required FE_*.txt / data file is absent

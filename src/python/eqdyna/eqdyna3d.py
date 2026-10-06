@@ -402,6 +402,10 @@ def build_solver_state(case_dir, part=None):
 
     material = readInputFiles.read_bmaterial(
         os.path.join(case_dir, 'bMaterial.txt'), g['nmat'], g['n2mat'])
+    # readInputFiles.f90 readmaterial's `if (n2mat == 5) call
+    # checkTwoSidedMaterialTable` -- no-op for n2mat 3/4.
+    checkInputConsistency.check_two_sided_material(
+        material, faults_for_check, params['C_degen'], tol=params['tol'])
 
     # Row 114/120 -- station output. bStations.txt is read unconditionally
     # (every case.setup-generated case dir has one, scripts/case.setup:111).

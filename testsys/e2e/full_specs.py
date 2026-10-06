@@ -90,11 +90,13 @@ FULL_SPECS = {
         ),
     ),
     'test.tpv35': dict(
-        # NOTE: rule 17 step 1 only (spec fetched, no case exists yet --
-        # no test.tpv35 compset/case_input, no fortran or python branch;
-        # spec-resolution recorded here per step 5 so it is not lost, not
-        # because the case is registered in testNameList.py/matrix.py).
-        dx=100., term=18., nx=4, ny=2, nz=2,
+        # rule 17 step 5: recorded, not run. The case is registered
+        # (case_input/test.tpv35, gate dx=500 m at GATE_TERM_S). 100 m is the
+        # finest dx the shipped mu_s/tau0 grid admits without interpolation
+        # (lib.requireFaultGeometryResolution). ny=1 keeps the fault y-plane
+        # off every MPI subdomain boundary, as the gate layout (2,1,2) does;
+        # 4x1x2 = 8 ranks for a 60 x 32 x 26 km box at 100 m.
+        dx=100., term=18., nx=4, ny=1, nz=2,
         citation=(
             'SCEC TPV35 description (scratch/specs/TPV35_desc.pdf / .txt, '
             'via https://strike.scec.org/cvws/tpv35docs.html -> '

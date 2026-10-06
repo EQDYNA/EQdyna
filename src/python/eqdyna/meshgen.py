@@ -1083,10 +1083,38 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
         mu = vs * vs * rho
         lam = vp * vp * rho - 2.0 * mu
         mat[:, 0], mat[:, 1], mat[:, 2], mat[:, 3], mat[:, 4] = vp, vs, rho, lam, mu
+    elif nmat > 1 and n2mat == 5:
+        # meshgen.f90 setElementMaterial's two-sided 1D branch (SCEC TPV35):
+        # columns [bottom, vp, vs, rho, side]; side -1 for element centres at
+        # y < the fault y-plane (meshgen.f90's minval(fltxyz(1,2,:)); the
+        # table is validated to coplanar vertical faults, so the min over
+        # _fault_boxes' fymin is that plane), +1 for y >= it; within a side the
+        # n2mat==4 rule (ascending bottoms, first match). The table itself is
+        # validated by checkInputConsistency.check_two_sided_material.
+        y_plane = min(b[2] for b in _fault_boxes(p))
+        side_of_elem = np.where(cy < y_plane, -1, 1)
+        d = np.abs(cz)
+        vp = np.empty(n_elem); vs = np.empty(n_elem); rho = np.empty(n_elem)
+        for s in (-1, 1):
+            rows = np.nonzero(np.rint(material[:, 4]).astype(int) == s)[0]
+            edges = material[rows, 0]
+            sel = side_of_elem == s
+            row = np.searchsorted(edges, d[sel], side='right')
+            bad = np.nonzero(row >= rows.size)[0]
+            if bad.size:
+                raise ValueError('setElementMaterial: depth %r (side %+d) not covered '
+                                  'by any material layer' % (d[sel][bad[0]], s))
+            vp[sel] = material[rows[row], 1]
+            vs[sel] = material[rows[row], 2]
+            rho[sel] = material[rows[row], 3]
+        mu = vs * vs * rho
+        lam = vp * vp * rho - 2.0 * mu
+        mat[:, 0], mat[:, 1], mat[:, 2], mat[:, 3], mat[:, 4] = vp, vs, rho, lam, mu
     else:
         raise NotImplementedError('setElementMaterial: only nmat==1/n2mat==3 '
-                                   '(homogeneous) or nmat>1/n2mat==4 (1D '
-                                   'layered) branches are ported')
+                                   '(homogeneous), nmat>1/n2mat==4 (1D layered) '
+                                   'or nmat>1/n2mat==5 (two-sided 1D layered) '
+                                   'branches are ported')
 
     # meshgen.f90:103 `setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0,
     # elemCount)` -- same expression, same operand order, evaluated per element.
@@ -1214,15 +1242,31 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
         mu = vs * vs * rho
         lam = vp * vp * rho - 2.0 * mu
         mat_row_homog = np.array([vp, vs, rho, lam, mu])
-    elif not (nmat > 1 and n2mat == 4):
+    elif not (nmat > 1 and n2mat in (4, 5)):
         raise NotImplementedError('setElementMaterial: only nmat==1/n2mat==3 '
-                                   '(homogeneous) or nmat>1/n2mat==4 (1D '
-                                   'layered) branches are ported')
+                                   '(homogeneous), nmat>1/n2mat==4 (1D layered) '
+                                   'or nmat>1/n2mat==5 (two-sided 1D layered) '
+                                   'branches are ported')
 
-    def material_for(elem_center_z):
+    def material_for(elem_center_z, elem_center_y=None):
         if nmat == 1 and n2mat == 3:
             return mat_row_homog
         depth = abs(elem_center_z)
+        if n2mat == 5:
+            # setElementMaterial's two-sided branch, verbatim: side by the
+            # sign of (y - the common fault y-plane, minval(fltxyz(1,2,:))),
+            # first ascending row on that side with depth < bottom.
+            side = -1 if elem_center_y < min(b[2] for b in _fault_boxes(p)) else 1
+            for i in range(nmat):
+                if int(round(material[i, 4])) != side:
+                    continue
+                if depth < material[i, 0]:
+                    vp, vs, rho = material[i, 1], material[i, 2], material[i, 3]
+                    mu = vs * vs * rho
+                    lam = vp * vp * rho - 2.0 * mu
+                    return np.array([vp, vs, rho, lam, mu])
+            raise ValueError('setElementMaterial: depth %r (side %+d) not covered '
+                              'by any material layer' % (depth, side))
         if depth < material[0, 0]:
             vp, vs, rho = material[0, 1], material[0, 2], material[0, 3]
         else:
@@ -1299,7 +1343,7 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
                             c12 = c[[3, 7, 4, 4, 2, 6, 5, 5]]
                             conn_rows.append(c11)
                             elem_type_rows.append(11)
-                            mat_rows.append(material_for(cz))
+                            mat_rows.append(material_for(cz, cy))
                             depth_rows.append(depth_val)
                             c12 = np.array([slave2master.get(int(v), int(v)) for v in c12],
                                             dtype=np.int64)
@@ -1329,7 +1373,7 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
 
                         conn_rows.append(c)
                         elem_type_rows.append(etype)
-                        mat_rows.append(material_for(cz))
+                        mat_rows.append(material_for(cz, cy))
                         depth_rows.append(depth_val)
                         elem_count += 1
         plane1 = plane2.copy()

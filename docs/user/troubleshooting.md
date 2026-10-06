@@ -31,6 +31,7 @@ authoritative; the specific number is advisory under `srun`.
 | 13 | `ERR_CFG_PLASTIC_OUTPUT` | output_plastic=1 requires C_elastic=0 |
 | 14 | `ERR_CFG_PROFILE_ENV_INVALID` | EQDYNA_PROFILE is set to a value other than unset, "", "1" or "0" |
 | 15 | `ERR_CFG_NSTRESS_SIGN_INVALID` | bGlobal.txt's station n-stress sign is neither +1 nor -1 |
+| 16 | `ERR_CFG_MATERIAL_TABLE_INVALID` | bMaterial.txt's two-sided (n2mat=5) table needs one vertical planar fault, side column -1/+1, ascending per-side layer bottoms |
 
 **Input files** (21-29)
 

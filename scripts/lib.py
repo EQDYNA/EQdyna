@@ -320,6 +320,22 @@ def shearModulusFromPar(par, depth=0.0):
     if par.nmat == 1:
         return par.rou*par.vs**2
     mat = par.mat
+    if getattr(par, 'n2mat', 4) == 5:
+        # Two-sided table [bottom, vp, vs, rho, side] (TPV35): the fault
+        # plane itself borders BOTH media, so the modulus used for the
+        # reported moment is the mean of the two sides' mu at this depth --
+        # a reporting convention, stated here, not a solver quantity (the
+        # solver assigns each element the modulus of its own side).
+        mus = []
+        for side in (-1, 1):
+            rows = mat[np.rint(mat[:, 4]).astype(int) == side]
+            hit = rows[rows[:, 0] > depth]
+            if hit.shape[0] == 0:
+                raise ValueError(
+                    'shearModulusFromPar: depth %g m lies below the deepest layer '
+                    'on side %+d of par.mat (bottom at %g m).' % (depth, side, rows[-1, 0]))
+            mus.append(hit[0, 3]*hit[0, 2]**2)
+        return 0.5*(mus[0] + mus[1])
     if depth < mat[0, 0]:
         return mat[0, 3]*mat[0, 2]**2
     for i in range(1, par.nmat):
