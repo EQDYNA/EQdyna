@@ -62,6 +62,7 @@ and is linked, not copied, from the "details" column below.
 | test.meng2023a | layered velocity structure | internal, no published spec | -- | [README](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.meng2023a/README.md) |
 | test.meng2023cb | layered velocity, multi-patch | internal, no published spec | -- | [README](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.meng2023cb/README.md) |
 | test.tpv22 | strike-slip, two vertical planar faults, extensional (1.6 km) stepover | [TPV22/23](https://strike.scec.org/cvws/tpv22_23docs.html) | 100 m (50 m optional) / 15 s, release-only | [params](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv22/user_defined_params.py) |
+| test.tpv35 | Parkfield 2004 M6 validation: vertical strike-slip fault, two-sided layered velocity structure, inverted friction and initial stress, no artificial nucleation | [TPV35](https://strike.scec.org/cvws/tpv35docs.html) | 100 m (50 m optional) / 18 s | [README](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv35/README.md) |
 | test.tpv23 | strike-slip, two vertical planar faults, compressional (1.0 km) stepover | [TPV22/23](https://strike.scec.org/cvws/tpv22_23docs.html) | 100 m (50 m optional) / 15 s, release-only | [params](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv23/user_defined_params.py) |
 
 `test.tpv22`/`test.tpv23` run at their own 15.0 s gate term, not the everyday

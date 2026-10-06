@@ -13,7 +13,7 @@ loading -- see the Parameters page for every setting that file can
 override.
 
 * test.drv.a6, for deterministic ground motion with a fractal fault and plasticity
-* test.tpv8, test.tpv10, test.tpv36, test.tpv37, test.tpv104, test.tpv1053d, test.tpv29, test.tpv30
+* test.tpv8, test.tpv10, test.tpv36, test.tpv37, test.tpv104, test.tpv1053d, test.tpv29, test.tpv30, test.tpv35
 
 `TPV<number>` follows the naming convention of the SCEC/USGS Spontaneous
 Rupture Code Verification Project; see the Benchmarks page for what each
