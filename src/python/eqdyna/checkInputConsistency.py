@@ -36,6 +36,9 @@ both binaries).
 """
 
 
+import numpy as np
+
+
 class InputConsistencyError(RuntimeError):
     """Raised by check(). `.code` is the matching src/fortran/errorCodes.f90
     ERR_CFG_* value, so `python3 -m eqdyna` (see eqdyna3d.main's `_abort`)
@@ -52,6 +55,7 @@ ERR_CFG_Q_NEEDS_ELASTIC = 11   # C_Q=1 requires C_elastic=1
 ERR_CFG_Q_NEEDS_UNIFORM = 12   # C_Q=1 requires rat=1.0 (uniform elements)
 ERR_CFG_PLASTIC_OUTPUT = 13    # output_plastic=1 requires C_elastic=0
 ERR_CFG_NSTRESS_SIGN_INVALID = 15  # bGlobal.txt's station n-stress sign is neither +1 nor -1 (raised by readInputFiles.read_bglobal)
+ERR_CFG_MATERIAL_TABLE_INVALID = 16  # bMaterial.txt's two-sided (n2mat=5) table needs one vertical planar fault, side column -1/+1, ascending per-side layer bottoms (raised by check_two_sided_material)
 ERR_GEOM_MULTIFAULT_Y_BAD = 32  # a fault's y-plane is not vertical/planar, coincides with another fault's, or (row 17 rebased) a fault's y bound is not an integer multiple of dy from the union-derived uniform-y belt origin (raised by meshgen.py's one_dim_coor_array)
 ERR_GEOM_MULTIFAULT_XZ_BAD = 33  # (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line (raised as InputConsistencyError by meshgen.py's one_dim_coor_array)
 
@@ -119,3 +123,47 @@ def check_multifault(faults, dy, dis4uniF, dis4uniB, C_degen, tol=1.0e-5):
                     ERR_GEOM_MULTIFAULT_Y_BAD,
                     "checkInputConsistency: faults %d and %d are both at y = %.3f -- two "
                     "faults must occupy distinct y-planes." % (i + 1, j + 1, faults[i]['fymin']))
+
+
+def check_two_sided_material(material, faults, C_degen, tol=1.0e-5):
+    """readInputFiles.f90's checkTwoSidedMaterialTable, same checks in the
+    same order, same messages: the n2mat==5 two-sided 1D material table
+    (meshgen.py build_elements' third material branch, SCEC TPV35) picks a
+    layer set by the sign of (element-centre y - the fault y-plane), which
+    only means something when every fault lies on ONE common vertical plane
+    (`faults`: the per-fault box dicts, fymin == fymax and identical across
+    faults -- the Fortran's `maxval(fltxyz(2,2,:)) - minval(fltxyz(1,2,:))`
+    test); the per-side first-match lookup is only reproducible for strictly
+    ascending bottoms; a side with no rows would leave every element on it
+    without a material. No-op unless material has 5 columns."""
+    material = np.asarray(material)
+    if material.ndim != 2 or material.shape[1] != 5:
+        return
+    nmat = material.shape[0]
+    code = ERR_CFG_MATERIAL_TABLE_INVALID
+    if nmat < 2:
+        raise InputConsistencyError(code, 'bMaterial.txt: a two-sided (n2mat=5) table '
+                                    'needs nmat >= 2 rows (at least one per side).')
+    yspan = max(f['fymax'] for f in faults) - min(f['fymin'] for f in faults)
+    if yspan > tol:
+        raise InputConsistencyError(code, 'bMaterial.txt: the two-sided (n2mat=5) material '
+                                    'table takes sides against ONE vertical y-plane; every '
+                                    'fault must have fymin == fymax and share the same y.')
+    if C_degen != 0:
+        raise InputConsistencyError(code, 'bMaterial.txt: the two-sided (n2mat=5) material '
+                                    'table needs a vertical planar fault (C_degen=0); a '
+                                    'dipping/degenerate fault has no single y-plane to take '
+                                    'sides against.')
+    sides = np.rint(material[:, 4]).astype(int)
+    if np.any((sides != -1) & (sides != 1)):
+        raise InputConsistencyError(code, 'bMaterial.txt: column 5 of a two-sided (n2mat=5) '
+                                    'table must be -1 (y below the fault plane) or +1 (y above it).')
+    for s in (-1, 1):
+        bottoms = material[sides == s, 0]
+        if bottoms.size == 0:
+            raise InputConsistencyError(code, 'bMaterial.txt: a two-sided (n2mat=5) table must '
+                                        'have at least one row for each side (-1 and +1).')
+        if bottoms[0] <= 0.0 or np.any(np.diff(bottoms) <= 0.0):
+            raise InputConsistencyError(code, 'bMaterial.txt: layer bottoms within one side of a '
+                                        'two-sided (n2mat=5) table must be strictly ascending '
+                                        'and positive.')

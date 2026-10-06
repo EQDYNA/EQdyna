@@ -172,8 +172,10 @@ subroutine readmaterial
     open(unit = 1004, file = 'bMaterial.txt', form = 'formatted', status = 'old')
         do i = 1, nmat
             read(1004,*) (material(i,j), j = 1, n2mat)
-        enddo 
+        enddo
     close(1004)
+
+    if (n2mat == 5) call checkTwoSidedMaterialTable
 
     ccosphi = coheplas*dcos(atan(bulk))
     sinphi  = dsin(atan(bulk))
@@ -181,6 +183,45 @@ subroutine readmaterial
     rdampk  = rdampk*dt
     ! tv is no longer derived here -- it is read from bGlobal.txt (readglobal).
 end subroutine readmaterial
+
+subroutine checkTwoSidedMaterialTable
+! Validate the n2mat==5 two-sided 1D material table (meshgen.f90's
+! setElementMaterial third branch, introduced for SCEC TPV35): the side
+! column decides a layer set by the sign of (element-centre y - the fault
+! y-plane), which only means something when every fault lies on ONE common
+! vertical plane (fymin == fymax, identical across faults); the
+! per-side first-match lookup is only reproducible for strictly ascending
+! bottoms; and a side with no rows would leave every element on it without
+! a material (caught later as ERR_MESH_MATERIAL_UNSET, but with no hint why).
+    use globalvar
+    use errorCodes
+    implicit none
+    integer (kind = 4) :: i, s, nrows
+    real (kind = dp) :: lastBottom
+
+    if (nmat < 2) call abortRun(ERR_CFG_MATERIAL_TABLE_INVALID, &
+        'bMaterial.txt: a two-sided (n2mat=5) table needs nmat >= 2 rows (at least one per side).')
+    if (maxval(fltxyz(2,2,:)) - minval(fltxyz(1,2,:)) > tol) call abortRun(ERR_CFG_MATERIAL_TABLE_INVALID, &
+        'bMaterial.txt: the two-sided (n2mat=5) material table takes sides against ONE vertical y-plane; every fault must have fymin == fymax and share the same y.')
+    if (C_degen /= 0) call abortRun(ERR_CFG_MATERIAL_TABLE_INVALID, &
+        'bMaterial.txt: the two-sided (n2mat=5) material table needs a vertical planar fault (C_degen=0); a dipping/degenerate fault has no single y-plane to take sides against.')
+    do s = -1, 1, 2
+        nrows = 0
+        lastBottom = -1.0d0
+        do i = 1, nmat
+            if (nint(material(i,5)) /= -1 .and. nint(material(i,5)) /= 1) &
+                call abortRun(ERR_CFG_MATERIAL_TABLE_INVALID, &
+                'bMaterial.txt: column 5 of a two-sided (n2mat=5) table must be -1 (y below the fault plane) or +1 (y above it).')
+            if (nint(material(i,5)) /= s) cycle
+            nrows = nrows + 1
+            if (material(i,1) <= lastBottom) call abortRun(ERR_CFG_MATERIAL_TABLE_INVALID, &
+                'bMaterial.txt: layer bottoms within one side of a two-sided (n2mat=5) table must be strictly ascending and positive.')
+            lastBottom = material(i,1)
+        enddo
+        if (nrows == 0) call abortRun(ERR_CFG_MATERIAL_TABLE_INVALID, &
+            'bMaterial.txt: a two-sided (n2mat=5) table must have at least one row for each side (-1 and +1).')
+    enddo
+end subroutine checkTwoSidedMaterialTable
 
 ! #6 readstations --------------------------------------------------------
 subroutine readstations1

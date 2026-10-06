@@ -238,9 +238,9 @@ subroutine setElementMaterial(elemCount, elementCenterCoor)
     use errorCodes
     implicit none
     integer (kind = 8) :: elemCount
-    integer (kind = 4) :: i
+    integer (kind = 4) :: i, sideOfFault
     real (kind = dp) :: elementCenterCoor(3), vptmp, vstmp, rhotmp
-    
+
     if (nmat == 1 .and. n2mat == 3) then
     ! homogenous material
         mat(elemCount,1)  = material(1,1)
@@ -266,11 +266,38 @@ subroutine setElementMaterial(elemCount, elementCenterCoor)
                     mat(elemCount,1)  = material(i,2)
                     mat(elemCount,2)  = material(i,3)
                     mat(elemCount,3)  = material(i,4)
-                endif 
+                endif
             enddo
         endif
-    endif 
-    
+    elseif (nmat > 1 .and. n2mat == 5) then
+        ! Two-sided 1D velocity structure (SCEC TPV35: a different 1D
+        ! profile on each side of the fault). Columns:
+        !   1: bottom depth of a layer (positive, m)   2: Vp   3: Vs   4: rho
+        !   5: side, -1 for element centres at y < the fault y-plane,
+        !      +1 for y > it.
+        ! The fault y-plane is the ONE vertical plane every fault shares
+        ! (readmaterial's checkTwoSidedMaterialTable refuses anything else),
+        ! so minval over the fault axis is that plane, not a fault-1 read.
+        ! Within a side the rule is the n2mat==4 one above (ascending
+        ! bottoms, first match). The table is validated once in
+        ! readmaterial (ERR_CFG_MATERIAL_TABLE_INVALID): coplanar vertical
+        ! faults, side column -1/+1, per-side bottoms strictly ascending.
+        if (elementCenterCoor(2) < minval(fltxyz(1,2,:))) then
+            sideOfFault = -1
+        else
+            sideOfFault = 1
+        endif
+        do i = 1, nmat
+            if (nint(material(i,5)) /= sideOfFault) cycle
+            if (abs(elementCenterCoor(3)) < material(i,1)) then
+                mat(elemCount,1)  = material(i,2)
+                mat(elemCount,2)  = material(i,3)
+                mat(elemCount,3)  = material(i,4)
+                exit
+            endif
+        enddo
+    endif
+
     ! calculate lambda and mu from Vp, Vs and rho.
     ! mu = Vs**2*rho
     mat(elemCount,5)  = mat(elemCount,2)**2*mat(elemCount,3)
