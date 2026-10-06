@@ -240,6 +240,31 @@ def check_master_delete_allowed(bare, local, fails, log):
                      'remote after a claimed-successful delete' % after)
 
 
+def check_empty_commit_push_advances_master(bare, local, fails, log):
+    """The one remaining allowed direct-master path (`pr_policy.py`'s
+    `evaluate_commit_gate`, `if not files:`) is exercised nowhere else in
+    this guard -- every other case above proves a REFUSAL left the remote
+    sha unchanged, but nothing proves an ALLOWED push actually ADVANCES it.
+    An empty commit (`git commit --allow-empty`, no changed paths) is
+    pushed for real; both the exit code and the bare remote's master sha
+    (not just "the hook printed something") are asserted, and the new sha
+    must be exactly the pushed commit, not merely different from before."""
+    before = remote_master_sha(bare)
+    sh(['commit', '-q', '--allow-empty', '-m', 'empty: no files changed'], cwd=local)
+    sha = sh(['rev-parse', 'HEAD'], cwd=local).stdout.strip()
+    r = sh(['push', 'origin', 'master'], cwd=local, check=False)
+    log.append(('empty-commit push', r))
+    if r.returncode != 0:
+        fails.append('an EMPTY commit push to master was REFUSED (exit %d): %r -- '
+                     'expected ALLOWED, this is the one direct-push path '
+                     'evaluate_commit_gate still carves out' % (r.returncode, out(r)[:600]))
+    after = remote_master_sha(bare)
+    if after != sha:
+        fails.append('the bare remote master did not ADVANCE to the pushed empty '
+                     'commit (before=%r, after=%r, pushed=%r) -- an allowed push '
+                     'must actually move the ref, not just exit 0' % (before, after, sha))
+
+
 def check_hook_mentions_dependency(fails):
     if not os.path.exists(HOOK_PATH):
         fails.append('%s does not exist' % HOOK_RELPATH)
@@ -265,6 +290,11 @@ def main():
         check_testsys_push_refused(bare, local, fails, log)
         check_mixed_push_refused(bare, local, fails, log)
         check_non_master_branch_allowed(bare, local, fails, log)
+        # must run before check_master_delete_allowed: once master is
+        # deleted, the next push recreates the ref and the push-guard's
+        # range widens to every ancestor (including the non-empty seed
+        # commit), which would refuse this push for an unrelated reason.
+        check_empty_commit_push_advances_master(bare, local, fails, log)
         check_master_delete_allowed(bare, local, fails, log)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -284,8 +314,10 @@ def main():
          'UNCHANGED (the PR-for-everything flip), a testsys/-only push and '
          'a mixed docs+src push were likewise REFUSED with the remote sha '
          'UNCHANGED, the same gated content pushed to a non-master branch '
-         'succeeded, and deleting refs/heads/master succeeded despite '
-         'gated history behind it')
+         'succeeded, deleting refs/heads/master succeeded despite '
+         'gated history behind it, and an empty commit pushed to master '
+         'was ALLOWED with the remote sha actually ADVANCING to the pushed '
+         'commit')
     return 0
 
 
