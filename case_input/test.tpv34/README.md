@@ -25,6 +25,9 @@ case's box at the gate spacing:
 | file | content | used for |
 |---|---|---|
 | `extract_cvmh_grid.py` | the spec Part 2 recipe, committed | regenerating the grid (needs vx_lite + the CVM-H data) |
+| `fetch_cvmh.sh` | downloads the 30 CVM-H 15.1.1 data files (~1.5 GB) from the UCVM host, resumable | step 1 of regenerating the grid |
+| `make_cvmh_manifest.py` | writes the data set's `MANIFEST.json` (size + md5 per file), makes `raw/` read-only | step 2 |
+| `build_vx_lite.sh` | clones SCECcode/cvmh and builds `vx_lite` | step 3 |
 | `tpv34_cvmh_grid_500m.txt.gz` | 120 x 64 x 52 = 399,360 rows `x y z vp vs rho` on the element centres of the 60 x 32 x 26 km box at 500 m; 31,029 rows (7.8 %) at the spec's clamp floor; Vs 1400..4499 m/s; provenance in its `#` header | `par.mat` (the `n2mat == 6` 3D material grid) and, through `tpv34Tools.faultState`, every fault node's `tau0`/`sigma0` |
 
 Provenance, stated rather than hidden:
@@ -48,6 +51,16 @@ Provenance, stated rather than hidden:
   grid was sampled at (`lib.requireFaultGeometryResolution`, `availableDx =
   [500]`): a finer or coarser mesh needs a fresh extraction with the script,
   not a resampling of this file.
+
+Regenerating the grid from scratch, in order:
+
+```
+bash case_input/test.tpv34/fetch_cvmh.sh <dataset_root>
+python3 case_input/test.tpv34/make_cvmh_manifest.py <dataset_root>
+bash case_input/test.tpv34/build_vx_lite.sh <work_dir>
+python3 case_input/test.tpv34/extract_cvmh_grid.py --vx-lite <work_dir>/cvmh/src/vx_lite \
+    --model <dataset_root>/raw/cvmh --out tpv34_cvmh_grid_500m.txt.gz
+```
 
 ## Fault stresses from the same samples
 
