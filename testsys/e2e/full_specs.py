@@ -168,9 +168,10 @@ EXCLUDED = {
         'Excluded rather than invented.'
     ),
     'test.tpv34': (
-        # NOTE: rule 17 step 1 only -- no test.tpv34 case exists yet
-        # (no compset/case_input, no fortran or python branch). Recorded
-        # here per step 5 so the gap is not lost before the case is built.
+        # case_input/test.tpv34 exists (gated at dx=500 m, GATE_TERM_S,
+        # 2026-10-06); the shipped CVM-H grid admits only 500 m, so a
+        # spec-resolution run needs a fresh extraction with its
+        # extract_cvmh_grid.py as well -- another reason not to pick a dx.
         'SCEC TPV34 description (scratch/specs/TPV34_desc.pdf / .txt, via '
         'https://strike.scec.org/cvws/tpv34docs.html -> '
         'download/TPV34_Description_v10.pdf), Part 3 "Running Time, Node '

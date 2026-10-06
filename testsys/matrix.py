@@ -235,6 +235,22 @@ GATE_STATIONS = {
                'faultst050dp080.txt'),
         'off': ('body-005st-063dp000.txt', 'body007st029dp000.txt'),
     },
+    'test.tpv34': {
+        # On-fault (measured on the 4-rank fortran run that froze the
+        # reference, 2026-10-06, 500 m / 5 s): faultst000dp075 is the
+        # hypocentre (max slip 1.37 m, peak slip rate 1.13 m/s at 5 s);
+        # faultst-060dp075 / faultst060dp075 are the farthest stations on
+        # either side along strike that rupture within the gate term
+        # (arrival 2.85 / 2.81 s, slip 0.83 / 0.83 m). The x = +-12 km
+        # columns have not ruptured by 5 s and would gate only zeros.
+        # Off-fault: the two 3 km-from-fault stations at 2.4 km depth
+        # directly above the hypocentre, one on each side (near y<0, far
+        # y>0), the strongest signals of the 56 (final h-disp -0.197 /
+        # +0.195 m, max |h-vel| 0.13 / 0.12 m/s; right-lateral sense).
+        'on': ('faultst000dp075.txt', 'faultst-060dp075.txt',
+               'faultst060dp075.txt'),
+        'off': ('body-030st000dp024.txt', 'body030st000dp024.txt'),
+    },
     'test.tpv22': {
         # Two of the three stations this case's own SCEC cross-code
         # validation already used (NOTES_tpv2223_iteration.md: onset/peak-
@@ -311,6 +327,7 @@ STATION_BOUND = {
     'test.tpv36': 1e-7,      # 1.16e-10 (off h-vel, body010st000dp000)
     'test.tpv37': 1e-7,      # 1.16e-10 (off h-vel, body010st000dp000)
     'test.tpv35': 1e-10,     # 1.14e-13 (off v-vel, body007st029dp000); fortran 0.0
+    'test.tpv34': 1e-10,     # 4.43e-15 (on v-shear-stress, faultst-060dp075); fortran 0.0
     # drv.a6: the FORTRAN cell only (python-jax is STATION_UNSUPPORTED,
     # chaotic). Observed 0.0 -- 4-rank Fortran is deterministic against its
     # own reference -- so the smallest bound in use, 1e-10.
@@ -388,6 +405,9 @@ NSTRESS_CONVENTION = {
                    'n-stress: "Positive means extension."'),
     'test.tpv35': ('extension', 'TPV35_Description_v05, Part 3 on-fault '
                    'time series, n-stress: "Positive means extension."'),
+    'test.tpv34': ('extension', 'TPV34_Description_v10 (2016-01-31), Part 3 '
+                   'on-fault time series, n-stress: "Positive means '
+                   'extension."'),
     'test.meng2023a': ('extension', 'not a SCEC benchmark; SCEC default'),
     'test.meng2023cb': ('extension', 'not a SCEC benchmark; SCEC default'),
     'test.drv.a6': ('extension', 'not a SCEC benchmark; SCEC default'),
@@ -680,6 +700,16 @@ CASE_BOUND = {
     # wall), 2026-10-05, commit following e0548c9. 1e-7 is 100x the worst
     # observation, the tpv8/tpv36 headroom ratio.
     'test.tpv35': 1e-7,
+    # test.tpv34 (Imperial Fault Model 1, 3D CVM-H medium via the n2mat==6
+    # grid, stresses scaled by local mu, stress-bump nucleation): a coarse
+    # REGRESSION gate (rule 17 step 4), not a spec-accuracy claim -- at 5 s
+    # 1162 of 1891 fault nodes have ruptured. Fortran cell bit-exact against
+    # its own freshly-frozen 4-rank reference (max|diff| 0.0, 1891 nodes,
+    # 56.0 s wall, contended host). Measured python-jax vs that reference:
+    # 1.923690e-15 (row 132 col 10; 83.6 s wall), 2026-10-06, worktree on
+    # dbd254a. 1e-7 keeps the tpv35/tpv8/tpv36 bound family rather than a
+    # bound 5e7x above the observation that would never be re-measured.
+    'test.tpv34': 1e-7,
     # test.tpv22/test.tpv23: measured python-jax vs the fresh fortran-
     # canonicalised reference (15s term, 200m/250m): tpv22 max|diff|
     # 6.562459e-15 (col 4), tpv23 7.549520e-15 (col 4) -- both Fortran cells
@@ -708,6 +738,7 @@ GATE = {
     'test.tpv36': 'abs-max',
     'test.tpv37': 'abs-max',
     'test.tpv35': 'abs-max',
+    'test.tpv34': 'abs-max',
     # test.drv.a6 (C_elastic==0 viscoplastic, friclaw==4, fractal-rough, long
     # duration) has genuinely bistable rupture arrivals, so a scalar max-abs
     # bound cannot distinguish "a few hundred marginal nodes flipped" from
