@@ -1,6 +1,15 @@
 # Past release notes\
 
 # News in 2026
+* 20261006 v5.24.0 release notes
+  * New - **test.tpv35: SCEC TPV35 Parkfield 2004 M6 validation benchmark** (PR #91, `05b4c1e`): gated fortran + python-jax at 500 m/`GATE_TERM_S`; carried a separable material-lookup generalization (two-sided 1D velocity table, `nmat>1`/`n2mat==5`).
+  * New - **test.tpv34: SCEC TPV34 Imperial Fault Model 1, 3D CVM-H** (PR #93, `809a023`): gated fortran + python-jax; new `n2mat==6` self-describing 3D material grid (nearest-cell lookup) in both `meshgen.f90` and `meshgen.py`.
+  * New - **`testsys/parity/evidence_tpv35_scec_comparison.py`** (PR #99, `283a555`): rule 17 step 6 validation script for TPV35 vs its own 2017 SCEC submission (`eqdyna3d-v4.1.3-100m-2017`), MATCHED 100 m/18 s resolution. Report-only, never a gate. Also fixed a plotting defect (tricontour triangulating across unruptured fault area, drawn as spurious diagonal rupture-time contours) by masking long triangle edges.
+  * New - **extended `testsys/parity/evidence_tpv34_scec_comparison.py`** (PR #100, `ef42c11`): rule 17 step 6 validation for TPV34 vs its 2016 SCEC submission (`eqdyna3d-v3.2.3-50m-2016`), NOT matched resolution (100 m run vs 50 m submission, owner-accepted) -- rupture-time median \|dt\| 0.006 s p90 0.022 s, ruptured fraction 0.9868 vs 0.9934, final slip ratio 0.996.
+  * Evidence - full `testsys/run.py release` sweep run fresh for this release (physics changed since v5.23.0 -- PR #91/#93 both touch `src/fortran/` and `src/python/eqdyna/`; rule 15f step 3 -- mandatory, not carried forward): see this release's evidence commit, `docs/evidence/sweep-<sha>/summary.json`, and the GitHub Release body for the run tally and SHA.
+  * Note - PR #92, #94, #95, #96, #97, #98, #101 were board/ledger/session-log bookkeeping only, no code; left out of this user-facing list.
+  * Note - minor release: physics-path change (`src/fortran/`, `src/python/eqdyna/` both touched by PR #91/#93); full `testsys/run.py release` sweep required and run fresh per rule 15f step 3 (not carried forward -- see Evidence above).
+
 * 20261003 v5.23.0 release notes
   * New - **python-jax-mpi multi-fault support: `ntotft>1` on the real-MPI jax backend** (item 145, PR #78, `f2aa429`): Fortran's per-fault decomposition (master-node running offset, per-fault MPI4arn) replicated in `MPI4NodalQuant.py` and `meshgen.py`; the `eqdyna3d.py` `NotImplementedError` guard for multi-fault removed. `test.tpv22`/`test.tpv23` parity verified at 4 ranks: max\|diff\| 8.2e-15 / 7.7e-15 (case bound 1e-10); no regression on the existing `test.tpv8 x python-jax-mpi` cell (max\|diff\|=1.526e-10, bound 1e-08). `matrix.PY_MPI_RANKS` now includes both cases.
   * Fix - **`_check_censuses`'s master-id formula was stale** (item 145 audit follow-up, PR #79, `c8cf865`): now uses the real `nsmp` master-id lookup rather than the old approximation; `tpv23-2fault` added to `test_rank_local_mesh.py`'s everyday tier with a data-property guard against a vacuous pass.
