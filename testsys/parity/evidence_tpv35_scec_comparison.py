@@ -427,6 +427,7 @@ def make_overlays(r, sub, run, plot_dir):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    import matplotlib.tri
     from matplotlib.lines import Line2D
     os.makedirs(plot_dir, exist_ok=True)
     term, dz = r['run_term_s'], r['run_dz_m']
@@ -443,8 +444,19 @@ def make_overlays(r, sub, run, plot_dir):
     levels = np.arange(0.5, term + 1e-9, 0.5)
     fig, ax = plt.subplots(figsize=(12, 4.2))
     ax.contour(xs / 1e3, ks / 1e3, T, levels=levels, colors='k', linewidths=0.9)
-    ax.tricontour(f[m, 0] / 1e3, -f[m, 2] / 1e3, f[m, 3], levels=levels, colors='r',
-                  linewidths=0.9, linestyles='--')
+    # Delaunay triangulation of only the RUPTURED points fills the convex hull
+    # of that (non-convex) patch, so a handful of long thin triangles bridge
+    # across unruptured bays -- tricontour then draws spurious lines through
+    # them (the diagonal streaks the owner flagged, 2026-10-06). Mask any
+    # triangle whose longest edge exceeds a few node spacings; 2*dz is wide
+    # enough for this patch's own node spacing but rejects a bridge across
+    # unruptured ground.
+    tri = matplotlib.tri.Triangulation(f[m, 0] / 1e3, -f[m, 2] / 1e3)
+    pts = np.column_stack([tri.x, tri.y])
+    edges = pts[tri.triangles] - pts[tri.triangles[:, [1, 2, 0]]]
+    max_edge_km = np.max(np.hypot(edges[:, :, 0], edges[:, :, 1]), axis=1)
+    tri.set_mask(max_edge_km > 2.0 * dz / 1e3)
+    ax.tricontour(tri, f[m, 3], levels=levels, colors='r', linewidths=0.9, linestyles='--')
     for x in ON_FAULT_X_KM:
         ax.plot(x, ON_FAULT_DEPTH_KM_SPEC, 'b^', ms=6)
     ax.invert_yaxis()
