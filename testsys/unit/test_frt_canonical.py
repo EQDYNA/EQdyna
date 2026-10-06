@@ -54,6 +54,7 @@ EXPECTED_ROWS = {
     'test.meng2023cb': 651,
     'test.tpv36': 3477,
     'test.tpv35': 2592,     # 81 x 32 fault nodes at 500 m (40 x 15.5 km)
+    'test.tpv34': 1891,     # 61 x 31 fault nodes at 500 m (30 x 15 km)
 }
 
 # How the synthetic multi-rank fixtures below are built. OVERLAP_ROWS is the

@@ -1110,10 +1110,27 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
         mu = vs * vs * rho
         lam = vp * vp * rho - 2.0 * mu
         mat[:, 0], mat[:, 1], mat[:, 2], mat[:, 3], mat[:, 4] = vp, vs, rho, lam, mu
+    elif nmat > 1 and n2mat == 6:
+        # meshgen.f90 setElementMaterial's 3D structured-grid branch (SCEC
+        # TPV34, CVM-H sampled at the uniform element-centre spacing): rows
+        # [x y z vp vs rho], validated/built by
+        # checkInputConsistency.build_material_grid3d (the Fortran's
+        # buildMaterialGrid3D); each element gathers the NEAREST grid cell to
+        # its centre, clamped -- piecewise constant, never interpolated.
+        from .checkInputConsistency import build_material_grid3d, material_grid3d_index
+        grid = build_material_grid3d(material)
+        idx = material_grid3d_index(grid, cx, cy, cz)
+        vp = grid['props'][0, idx[:, 0], idx[:, 1], idx[:, 2]]
+        vs = grid['props'][1, idx[:, 0], idx[:, 1], idx[:, 2]]
+        rho = grid['props'][2, idx[:, 0], idx[:, 1], idx[:, 2]]
+        mu = vs * vs * rho
+        lam = vp * vp * rho - 2.0 * mu
+        mat[:, 0], mat[:, 1], mat[:, 2], mat[:, 3], mat[:, 4] = vp, vs, rho, lam, mu
     else:
         raise NotImplementedError('setElementMaterial: only nmat==1/n2mat==3 '
-                                   '(homogeneous), nmat>1/n2mat==4 (1D layered) '
-                                   'or nmat>1/n2mat==5 (two-sided 1D layered) '
+                                   '(homogeneous), nmat>1/n2mat==4 (1D layered), '
+                                   'nmat>1/n2mat==5 (two-sided 1D layered) '
+                                   'or nmat>1/n2mat==6 (3D structured grid) '
                                    'branches are ported')
 
     # meshgen.f90:103 `setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0,
@@ -1242,15 +1259,29 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
         mu = vs * vs * rho
         lam = vp * vp * rho - 2.0 * mu
         mat_row_homog = np.array([vp, vs, rho, lam, mu])
+    elif nmat > 1 and n2mat == 6:
+        from .checkInputConsistency import build_material_grid3d, material_grid3d_index
+        mat_grid3d = build_material_grid3d(material)
     elif not (nmat > 1 and n2mat in (4, 5)):
         raise NotImplementedError('setElementMaterial: only nmat==1/n2mat==3 '
-                                   '(homogeneous), nmat>1/n2mat==4 (1D layered) '
-                                   'or nmat>1/n2mat==5 (two-sided 1D layered) '
+                                   '(homogeneous), nmat>1/n2mat==4 (1D layered), '
+                                   'nmat>1/n2mat==5 (two-sided 1D layered) '
+                                   'or nmat>1/n2mat==6 (3D structured grid) '
                                    'branches are ported')
 
-    def material_for(elem_center_z, elem_center_y=None):
+    def material_for(elem_center_z, elem_center_y=None, elem_center_x=None):
         if nmat == 1 and n2mat == 3:
             return mat_row_homog
+        if n2mat == 6:
+            # setElementMaterial's 3D structured-grid branch: nearest grid
+            # cell to the element centre, clamped (see build_elements'
+            # vectorized twin above for the full note).
+            i, j, k = material_grid3d_index(mat_grid3d, elem_center_x, elem_center_y,
+                                            elem_center_z)
+            vp, vs, rho = mat_grid3d['props'][:, i, j, k]
+            mu = vs * vs * rho
+            lam = vp * vp * rho - 2.0 * mu
+            return np.array([vp, vs, rho, lam, mu])
         depth = abs(elem_center_z)
         if n2mat == 5:
             # setElementMaterial's two-sided branch, verbatim: side by the
@@ -1343,7 +1374,7 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
                             c12 = c[[3, 7, 4, 4, 2, 6, 5, 5]]
                             conn_rows.append(c11)
                             elem_type_rows.append(11)
-                            mat_rows.append(material_for(cz, cy))
+                            mat_rows.append(material_for(cz, cy, cx))
                             depth_rows.append(depth_val)
                             c12 = np.array([slave2master.get(int(v), int(v)) for v in c12],
                                             dtype=np.int64)
@@ -1373,7 +1404,7 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
 
                         conn_rows.append(c)
                         elem_type_rows.append(etype)
-                        mat_rows.append(material_for(cz, cy))
+                        mat_rows.append(material_for(cz, cy, cx))
                         depth_rows.append(depth_val)
                         elem_count += 1
         plane1 = plane2.copy()

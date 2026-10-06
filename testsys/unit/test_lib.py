@@ -313,6 +313,72 @@ def test_shearModulusFromPar_layered_material_selects_the_layer_at_that_depth():
         lib.shearModulusFromPar(par, 9.5e3)
 
 
+# ---- n2mat == 6: the 3D structured material grid (TPV34, CVM-H) ----------
+# Rows [x, y, z, vp, vs, rho]; built/validated by
+# eqdyna.checkInputConsistency.build_material_grid3d (the Python twin of
+# readInputFiles.f90's buildMaterialGrid3D) and looked up nearest-cell,
+# clamped, by material_grid3d_index (meshgen.f90 setElementMaterial's
+# n2mat==6 branch). Expected values are hand-computed from the table.
+
+def _grid3d_table():
+    # 2 x 1 x 3 grid: x in {0, 500}, y = 0 (single plane), z in {-1250, -750, -250}
+    rows = []
+    for ix, x in enumerate((0.0, 500.0)):
+        for iz, z in enumerate((-1250.0, -750.0, -250.0)):
+            vs = 1000.0 + 100.0*ix + 10.0*iz
+            rows.append([x, 0.0, z, 2.0*vs, vs, 2000.0 + ix])
+    return np.array(rows)
+
+
+def test_build_material_grid3d_is_self_describing_and_rejects_bad_tables():
+    from eqdyna import checkInputConsistency as cic
+    g = cic.build_material_grid3d(_grid3d_table())
+    assert g['count'].tolist() == [2, 1, 3]
+    assert g['origin'].tolist() == [0.0, 0.0, -1250.0]
+    assert g['spacing'].tolist() == [500.0, 1.0, 500.0]
+    # props[:, ix, iy, iz]: vs at (x=500, z=-250) is 1000+100+20 = 1120.
+    assert g['props'][1, 1, 0, 2] == 1120.0
+    assert cic.build_material_grid3d(np.ones((3, 4))) is None     # not a grid table
+    with pytest.raises(cic.InputConsistencyError, match='complete uniform') as e:
+        cic.build_material_grid3d(_grid3d_table()[:-1])             # one cell missing
+    assert e.value.code == cic.ERR_CFG_MATERIAL_GRID_INVALID
+    dup = _grid3d_table(); dup[-1, :3] = dup[0, :3]
+    with pytest.raises(cic.InputConsistencyError, match='given twice'):
+        cic.build_material_grid3d(dup)
+    # 500.001 keeps the derived spacing/count (so the block-size check
+    # passes) but sits 2e-6 cells off the grid line, beyond the 1e-6 tol.
+    offg = _grid3d_table(); offg[5, 0] = 500.001
+    with pytest.raises(cic.InputConsistencyError, match='not on the uniform grid'):
+        cic.build_material_grid3d(offg)
+    neg = _grid3d_table(); neg[0, 4] = 0.0
+    with pytest.raises(cic.InputConsistencyError, match='<= 0'):
+        cic.build_material_grid3d(neg)
+
+
+def test_material_grid3d_index_is_nearest_cell_clamped_with_fortran_tie_rule():
+    from eqdyna import checkInputConsistency as cic
+    g = cic.build_material_grid3d(_grid3d_table())
+    # On-grid centre reads its own cell; off-grid reads the nearest; far
+    # outside clamps to the edge; an exact half offset rounds UP
+    # (floor(off+0.5)), as meshgen.f90's floor(... + 0.5d0) does -- numpy.rint
+    # would round 0.5 to 0 (half-to-even), which is why rint is not used.
+    idx = cic.material_grid3d_index(g, [500.0, 120.0, -9.0e3, 250.0], [0.0, 3.0, 0.0, 0.0],
+                                    [-250.0, -1100.0, -1.0e5, -1000.0])
+    assert idx.tolist() == [[1, 0, 2], [0, 0, 0], [0, 0, 0], [1, 0, 1]]
+
+
+def test_shearModulusFromPar_grid3d_is_mean_rho_vs2_on_the_nearest_depth_plane():
+    mat = _grid3d_table()
+    par = types.SimpleNamespace(nmat=mat.shape[0], n2mat=6, mat=mat)
+    # Depth 300 m -> nearest plane z=-250 (iz=2): vs 1020 (rho 2000) and
+    # 1120 (rho 2001); mean of rho*vs^2.
+    expect = 0.5*(2000.0*1020.0**2 + 2001.0*1120.0**2)
+    assert lib.shearModulusFromPar(par, 300.0) == pytest.approx(expect, rel=1e-15)
+    assert lib.shearModulusFromPar(par, -300.0) == lib.shearModulusFromPar(par, 300.0)
+    with pytest.raises(ValueError, match='below the deepest plane'):
+        lib.shearModulusFromPar(par, 2.0e3)
+
+
 # ---- resolveViscoplasticParams: the bGlobal.txt viscoplastic block --------
 # (pathway_forward.md item 24(b)(c)(f).)
 

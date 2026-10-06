@@ -180,3 +180,31 @@ Resolutions that both tile the 40 km x 15.5 km fault exactly AND are integer
 multiples of the 100 m source: 100 m (spec) and 500 m only. The gate uses
 500 m (stride 5; 81 x 32 = 2592 fault nodes; 7 nodes inside the nucleation
 patch).
+
+## 2026-10-06 update (dunyu-liu, TPV34 landing mission): case built and gated
+
+- `case_input/test.tpv34` exists; registered in `testNameList.py` and
+  `testsys/matrix.py`, gated fortran + python-jax at 500 m / `GATE_TERM_S`
+  (both cells SUCCESS: fortran max|diff| 0.0, python-jax 1.92e-15 on frt;
+  station worst e 4.4e-15). The `run_e2e_full.py` risk flagged above no
+  longer applies to TPV34 (its `FULL_SPECS` entry stays EXCLUDED on purpose).
+- Rule 17 step 2 resolved with REAL data, not a stand-in: CVM-H queried with
+  `vx_lite` per the spec's Part 2 recipe on this case's element centres at
+  500 m (`extract_cvmh_grid.py`, output `tpv34_cvmh_grid_500m.txt.gz`,
+  399,360 rows, 7.8 % at the clamp floor). Model is CVM-H **15.1.1** as UCVM
+  ships it (spec: 15.1.0); the hypocentre mu/mu0 (0.977) matches the 2016
+  submission's implied value to three digits. Data kept once, read-only, in
+  `~/shared_dataset/scec_cvmh.15.1.1/`.
+- The "architecture call" above (3D material lookup in `meshgen.f90`'s
+  dispatch) became `n2mat == 6`, a self-describing 3D grid with nearest-cell
+  lookup in BOTH solvers; it was swept against every already-gated cell
+  BEFORE the case was added (25/25 e2e cells SUCCESS, 2026-10-06).
+- Step 3: `swtwNucleation` has and needs no TPV34 branch -- nucleation is a
+  static shear-stress increment at t = 0 (`par.C_nuclea = 0`).
+- Step 6: `testsys/parity/evidence_tpv34_scec_comparison.py` vs the 2016
+  50 m / 20 s submission: initial h-shear and n-stress at the 35 on-fault
+  stations agree to median ratio 1.0000 (range 0.84-1.18, worst where the
+  500 m 8-cell average spans the fastest-varying sediments); the 500 m
+  rupture front arrives LATER by median +0.30 s (max +0.54 s, 16 stations
+  reached within 5 s in both); 61 % vs 72 % of the fault ruptured at 5 s;
+  hypocentre slip 1.37 vs 1.53 m at 5 s. Report, not a gate.

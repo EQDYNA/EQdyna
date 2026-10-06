@@ -238,7 +238,7 @@ subroutine setElementMaterial(elemCount, elementCenterCoor)
     use errorCodes
     implicit none
     integer (kind = 8) :: elemCount
-    integer (kind = 4) :: i, sideOfFault
+    integer (kind = 4) :: i, sideOfFault, idx(3)
     real (kind = dp) :: elementCenterCoor(3), vptmp, vstmp, rhotmp
 
     if (nmat == 1 .and. n2mat == 3) then
@@ -296,6 +296,24 @@ subroutine setElementMaterial(elemCount, elementCenterCoor)
                 exit
             endif
         enddo
+    elseif (nmat > 1 .and. n2mat == 6) then
+        ! 3D structured material grid (SCEC TPV34: CVM-H sampled at the
+        ! uniform element-centre spacing). bMaterial.txt rows are
+        ! [x y z vp vs rho]; readmaterial's buildMaterialGrid3D validated
+        ! them into matGrid3D with matGridOrigin/Spacing/Count. Each element
+        ! reads the NEAREST grid cell to its centre, clamped to the grid
+        ! (piecewise constant, never interpolated): a uniform-belt element
+        ! centre lies ON the grid and reads its own sample exactly; a
+        ! stretched or PML element off the grid reads the nearest sample.
+        ! floor(off + 0.5) is the tie rule the Python port uses too (nint
+        ! and numpy.rint differ at exact .5 offsets).
+        do i = 1, 3
+            idx(i) = floor((elementCenterCoor(i) - matGridOrigin(i))/matGridSpacing(i) + 0.5d0) + 1
+            idx(i) = max(1, min(matGridCount(i), idx(i)))
+        enddo
+        mat(elemCount,1) = matGrid3D(1, idx(1), idx(2), idx(3))
+        mat(elemCount,2) = matGrid3D(2, idx(1), idx(2), idx(3))
+        mat(elemCount,3) = matGrid3D(3, idx(1), idx(2), idx(3))
     endif
 
     ! calculate lambda and mu from Vp, Vs and rho.
