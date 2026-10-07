@@ -408,8 +408,13 @@ def build_solver_state(case_dir, part=None):
         material, faults_for_check, params['C_degen'], tol=params['tol'])
     # readmaterial's `if (n2mat == 6) call buildMaterialGrid3D` -- validation
     # here at the same point in the run; build_elements rebuilds the (cheap)
-    # grid itself from `material`. No-op for n2mat 3/4/5.
-    checkInputConsistency.build_material_grid3d(material, tol=params['tol'])
+    # grid itself from `material`. No-op for n2mat 3/4/5. domain_box is the
+    # declared mesh box (bModelGeometry.txt) the grid must cover -- see
+    # build_material_grid3d's docstring.
+    checkInputConsistency.build_material_grid3d(
+        material, tol=params['tol'],
+        domain_box=(params['xmin'], params['xmax'], params['ymin'],
+                    params['ymax'], params['zmin'], params['zmax']))
 
     # Row 114/120 -- station output. bStations.txt is read unconditionally
     # (every case.setup-generated case dir has one, scripts/case.setup:111).

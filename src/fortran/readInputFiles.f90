@@ -261,6 +261,29 @@ subroutine buildMaterialGrid3D
     enddo
     if (product(matGridCount) /= nmat) call abortRun(ERR_CFG_MATERIAL_GRID_INVALID, &
         'bMaterial.txt: the 3D material grid (n2mat=6) rows do not form a complete uniform nx*ny*nz block (nmat /= nx*ny*nz).')
+
+    ! The grid must cover the DECLARED mesh box (xmin/xmax/ymin/ymax/zmin/
+    ! zmax from bModelGeometry.txt, already read by readmodelgeometry before
+    ! this subroutine runs) at cell-centre granularity: the grid's
+    ! nearest-neighbour reach is [origin - spacing/2, origin +
+    ! spacing*(count-1) + spacing/2] per axis, and that reach must contain
+    ! [box_min, box_max]. A stretched/PML element legitimately lands OFF the
+    ! grid and clamps to the nearest sample -- setElementMaterial's n2mat==6
+    ! branch does that deliberately and is unaffected by this check. What
+    ! this check catches is the grid not even covering the declared domain,
+    ! which would silently clamp core/interior elements (the ones the
+    ! physics depends on) to an edge cell with no indication.
+    if (matGridOrigin(1) - 0.5d0*matGridSpacing(1) > xmin + tol .or. &
+        matGridOrigin(1) + matGridSpacing(1)*(matGridCount(1)-1) + 0.5d0*matGridSpacing(1) < xmax - tol .or. &
+        matGridOrigin(2) - 0.5d0*matGridSpacing(2) > ymin + tol .or. &
+        matGridOrigin(2) + matGridSpacing(2)*(matGridCount(2)-1) + 0.5d0*matGridSpacing(2) < ymax - tol .or. &
+        matGridOrigin(3) - 0.5d0*matGridSpacing(3) > zmin + tol .or. &
+        matGridOrigin(3) + matGridSpacing(3)*(matGridCount(3)-1) + 0.5d0*matGridSpacing(3) < zmax - tol) &
+        call abortRun(ERR_CFG_MATERIAL_GRID_INVALID, &
+        'bMaterial.txt: the 3D material grid (n2mat=6) does not cover the mesh box '// &
+        '(xmin/xmax/ymin/ymax/zmin/zmax from bModelGeometry.txt) -- a core element '// &
+        'outside the grid would silently clamp to the edge cell instead of reading '// &
+        'the right material.')
     allocate(matGrid3D(3, matGridCount(1), matGridCount(2), matGridCount(3)))
     allocate(filled(matGridCount(1), matGridCount(2), matGridCount(3)))
     filled = 0

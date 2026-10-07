@@ -170,7 +170,7 @@ def check_two_sided_material(material, faults, C_degen, tol=1.0e-5):
                                         'and positive.')
 
 
-def build_material_grid3d(material, tol=1.0e-5):
+def build_material_grid3d(material, tol=1.0e-5, domain_box=None):
     """readInputFiles.f90's buildMaterialGrid3D, same checks in the same
     order, same messages: the n2mat==6 3D structured material grid (SCEC
     TPV34, CVM-H sampled at the uniform element-centre spacing), rows
@@ -182,7 +182,23 @@ def build_material_grid3d(material, tol=1.0e-5):
     material has 6 columns; otherwise dict(origin (3,), spacing (3,),
     count (3,) int, props (3, nx, ny, nz) = vp, vs, rho). meshgen.py's
     build_elements gathers the NEAREST cell to each element centre from
-    `props`, clamped -- piecewise constant, never interpolated."""
+    `props`, clamped -- piecewise constant, never interpolated.
+
+    `domain_box`, when given, is (xmin, xmax, ymin, ymax, zmin, zmax) from
+    bModelGeometry.txt (params['xmin']/... in the Python params dict). This
+    is the case's DECLARED mesh box -- the one `tools.materialGrid`'s box is
+    documented to equal (e.g. case_input/test.tpv34/user_defined_params.py's
+    "default box MUST equal the box above"). It is checked here, not against
+    actual element centres, because a stretched/PML element legitimately
+    lands off-grid and is meant to clamp to the nearest sample
+    (meshgen.f90 setElementMaterial's n2mat==6 branch, material_grid3d_index
+    above) -- that is not a configuration error. What IS an error is the
+    material grid not even covering the declared domain, which would
+    silently clamp core/interior elements (the ones the physics depends on)
+    to an edge cell with no indication. Coverage is checked at cell-centre
+    granularity: the grid's nearest-neighbour reach is
+    [origin - spacing/2, origin + spacing*(count-1) + spacing/2] per axis,
+    and that reach must contain [box_min, box_max]."""
     material = np.asarray(material, dtype=float)
     if material.ndim != 2 or material.shape[1] != 6:
         return None
@@ -215,6 +231,20 @@ def build_material_grid3d(material, tol=1.0e-5):
     if np.any(material[:, 3:6] <= 0.0):
         raise InputConsistencyError(code, 'bMaterial.txt: a 3D material grid (n2mat=6) row has '
                                     'vp, vs or rho <= 0.')
+    if domain_box is not None:
+        xmin, xmax, ymin, ymax, zmin, zmax = domain_box
+        box_min = np.array([xmin, ymin, zmin])
+        box_max = np.array([xmax, ymax, zmax])
+        reach_min = origin - 0.5 * spacing
+        reach_max = origin + spacing * (count - 1) + 0.5 * spacing
+        if np.any(reach_min > box_min + tol) or np.any(reach_max < box_max - tol):
+            raise InputConsistencyError(code,
+                'bMaterial.txt: the 3D material grid (n2mat=6) does not cover the mesh '
+                'box (xmin/xmax/ymin/ymax/zmin/zmax from bModelGeometry.txt) -- grid '
+                'reach [%r, %r] vs mesh box [%r, %r]; a core element outside the grid '
+                'would silently clamp to the edge cell instead of reading the right '
+                'material.' % (tuple(reach_min.tolist()), tuple(reach_max.tolist()),
+                                tuple(box_min.tolist()), tuple(box_max.tolist())))
     props = np.empty((3,) + tuple(count))
     props[:, idx[:, 0], idx[:, 1], idx[:, 2]] = material[:, 3:6].T
     return dict(origin=origin, spacing=spacing, count=count, props=props)
@@ -225,7 +255,14 @@ def material_grid3d_index(grid, cx, cy, cz):
     n2mat==6 branch: floor(off + 0.5) per axis, clamped to [0, count-1]
     (0-based here). Shared by the vectorized and scalar meshgen.py paths so
     the tie rule is written once; floor(off+0.5), not numpy.rint, so a .5
-    offset rounds the same way as the Fortran."""
+    offset rounds the same way as the Fortran.
+
+    The clamp here is deliberate and matches the Fortran: a stretched/PML
+    element centre legitimately falls off the grid (meshgen.f90's own
+    comment on this branch) and reads the nearest sample. What must NOT
+    silently clamp is the grid failing to cover the declared mesh BOX in the
+    first place -- that is checked once, up front, in
+    build_material_grid3d(..., domain_box=...)."""
     c = np.stack([np.asarray(cx, dtype=float), np.asarray(cy, dtype=float),
                   np.asarray(cz, dtype=float)], axis=-1)
     off = (c - grid['origin']) / grid['spacing']

@@ -355,6 +355,33 @@ def test_build_material_grid3d_is_self_describing_and_rejects_bad_tables():
         cic.build_material_grid3d(neg)
 
 
+def test_build_material_grid3d_domain_box_coverage_is_checked_not_clamped():
+    """The n2mat==6 grid must cover the case's DECLARED mesh box
+    (bModelGeometry.txt xmin/xmax/ymin/ymax/zmin/zmax), or the solver would
+    silently clamp core elements to an edge cell (the Medium flagged in the
+    TPV34 PR #93 pre-merge audit; see checkInputConsistency.build_material_grid3d's
+    docstring). _grid3d_table's grid reach is x in [-250, 750], y in
+    [-0.5, 0.5], z in [-1500, 0] (cell-centre +-spacing/2)."""
+    from eqdyna import checkInputConsistency as cic
+    g = _grid3d_table()
+    covering_box = (-250.0, 750.0, -0.5, 0.5, -1500.0, 0.0)
+    cic.build_material_grid3d(g, domain_box=covering_box)   # exact match: no error
+
+    # Mesh box wider than the grid on x (xmax=800 > grid reach 750): refuse,
+    # don't silently let setElementMaterial clamp interior elements near x=800.
+    noncovering_box = (-250.0, 800.0, -0.5, 0.5, -1500.0, 0.0)
+    with pytest.raises(cic.InputConsistencyError, match='does not cover the mesh box'):
+        cic.build_material_grid3d(g, domain_box=noncovering_box)
+    try:
+        cic.build_material_grid3d(g, domain_box=noncovering_box)
+    except cic.InputConsistencyError as e:
+        assert e.code == cic.ERR_CFG_MATERIAL_GRID_INVALID
+
+    # No domain_box given (back-compat / callers that don't have one yet):
+    # unaffected, still builds the grid.
+    assert cic.build_material_grid3d(g) is not None
+
+
 def test_material_grid3d_index_is_nearest_cell_clamped_with_fortran_tie_rule():
     from eqdyna import checkInputConsistency as cic
     g = cic.build_material_grid3d(_grid3d_table())
