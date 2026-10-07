@@ -20,15 +20,13 @@ currently tracks, this guard's own source excluded (see MECHANISM below).
 Any hit is a hard FAIL -- there is no allowlist and no skip, per rule 2's
 "no third state" discipline used by the rest of testsys/.
 
-ONE DELIBERATE, DOCUMENTED EXCEPTION: `docs/BOARD_HISTORY.md` declares
-itself a verbatim archive ("Nothing here is edited. Every block below is the
-verbatim cell text of the row it came from") and carries four pre-existing
-leaked paths inside archived cells that predate this guard; scrubbing them
-would violate the file's own stated invariant, so the 2026-10-07 path-scrub
-pass left them in place and flagged them for an owner call (see the note
-appended to that file). This guard EXEMPTS exactly that one path, by name,
-so the exception is visible here rather than silently re-widening if another
-file picks up a leaked path later. No other file may match.
+NO EXEMPTIONS: `docs/BOARD_HISTORY.md` carried four pre-existing leaked paths
+inside archived cells, flagged for an owner call rather than scrubbed, since
+the file declares itself a verbatim archive. The owner decided (PR #136,
+"Scrub them (Recommended)") to scrub them with inline placeholders instead of
+keeping a named exemption; that exemption is removed here (rule 14a: this
+guard must be able to fail on a real leak in that file again, not just on
+everything else).
 
 MECHANISM (so this file does not trip its own check): the two regexes are
 built from concatenated string fragments rather than spelled out whole, so
@@ -43,8 +41,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SELF_RELPATH = 'testsys/regression/test_no_hardcoded_paths.py'
 
-# Exactly one pre-existing, documented exception (see module docstring).
-EXEMPT = {'docs/BOARD_HISTORY.md'}
+# No exemptions (see module docstring, rule 14a): every tracked file must be
+# clean, including docs/BOARD_HISTORY.md since PR #136/#137.
+EXEMPT = set()
 
 # Built from fragments so this file's own source never matches its own
 # check (a plain scan for the literal pattern strings would self-trip).
@@ -96,9 +95,8 @@ def main():
             print('  %s (%d match(es))' % (path, unexpected[path]))
         print('  Fix: replace with a placeholder (prose) or a relative '
               'path / env var (functional code) -- see pathway_forward.md '
-              "for the 2026-10-06 scrub this guard enforces, or add a "
-              'documented, named exemption here if this is a deliberate '
-              'archival exception like docs/BOARD_HISTORY.md.')
+              'for the 2026-10-06 scrub this guard enforces. No exemptions '
+              '(rule 14a) -- every tracked file must be clean.')
         return 1
 
     exempted_present = sorted(p for p in EXEMPT if p in hits)
