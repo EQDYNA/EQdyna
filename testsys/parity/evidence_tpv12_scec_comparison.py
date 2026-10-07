@@ -34,50 +34,71 @@ on.
 
 TOLERANCE, AND WHY (rule 14a: do not invent)
 ---------------------------------------------
+Neither bound below is precedent from another case's script. Checked
+directly (victor-reyes audit, PR #147): evidence_tpv34_scec_comparison.py
+and evidence_tpv29_scec_comparison.py both only REPORT their peak ratios --
+`main()` in each always `return 0`, so neither one is a gate whose value
+could have been validated by passing or failing. Citing them as precedent
+for a numeric bound here would be false. Both bounds below are instead SET
+AFTER measuring this exact comparison, on the committed gate run, with the
+measured value given next to each (rule: state plainly when a bound is set
+post-measurement rather than derived from a stated spec number -- the spec
+itself states no station-amplitude or rupture-fraction tolerance for
+TPV12/13, see full_specs.py's test.tpv12 entry).
+
 Peak-ratio bound: ratio must be in [1/PEAK_RATIO_BOUND, PEAK_RATIO_BOUND],
-PEAK_RATIO_BOUND = 2.0 (a factor of 2 either way). Justified from this
-repo's own measured TPV29 resolution-convergence study
-(PROJECT_RULES.md rule 17 step 5): median rupture-time difference against
-EQdyna's own 2015 submission improved an ORDER OF MAGNITUDE per 5x
-refinement -- 500 m: 0.076 s, 200 m: 0.028 s, 100 m: 0.006 s. This run is
-exactly that same 5x-coarser gap (500 m vs Barall's 100 m), on top of being
-a different code -- a factor-of-2 peak-amplitude budget is the generous,
-stated-reason bound for that combination, not a spec-level accuracy claim.
-A column whose reference peak is below PEAK_FLOOR (a station/column pair
-where the signal itself is near-zero, e.g. h-disp/h-vel directly above a
-symmetric hypocentre) is reported but not ratio-gated -- dividing two
-near-zero numbers is not a meaningful check (rule: a relative error needs a
-floor on the physical scale, same reasoning as this repo's own GATE_STATIONS
-e_q formula, CLAUDE.md "There is ONE test").
+PEAK_RATIO_BOUND = 2.0 (a factor of 2 either way). Measured on the
+committed gate run (500 m, 5 s) against Barall's 100 m/8 s archive: every
+GATED_COLS (velocity) peak ratio at both stations falls in
+[0.929, 0.991] -- see this script's own report. 2.0 is a deliberately
+generous multiple of that measured spread, wide enough to still catch a
+materially wrong run (e.g. a rupture an order of magnitude too fast or
+slow) rather than a resolution/code difference, not a tight fit to the
+measurement. A column whose reference peak is below PEAK_FLOOR (a
+station/column pair where the signal itself is near-zero, e.g. h-disp/h-vel
+directly above a symmetric hypocentre) is reported but not ratio-gated --
+dividing two near-zero numbers is not a meaningful check (rule: a relative
+error needs a floor on the physical scale, same reasoning as this repo's
+own GATE_STATIONS e_q formula, CLAUDE.md "There is ONE test").
 
 DISPLACEMENT columns (h-disp, v-disp) are reported (max|diff| and peak
-ratio, both printed) but NOT ratio-gated, following existing practice:
-evidence_tpv34_scec_comparison.py's own cross-resolution/cross-code peak
-ratios (`peak_hvel_ratio`, `peak_vvel_ratio`) are VELOCITY-only; it never
-gates displacement. Displacement is velocity integrated over the whole 8 s
-window, so a timing/phase offset from the resolution gap (see "WHY PEAK
-RATIO" above) accumulates into it rather than cancelling, and is measured
-here to do so: v-disp peak ratio at the 3 km/12 km-along-strike station is
-0.176-0.233 depending on the exact run, well outside a factor of 2, while
-every velocity column at both stations stays inside it. Gating displacement
-at this resolution gap would be inventing a tolerance to paper over a
-known, explained divergence rather than following the precedent script's
-own choice of what to bound.
+ratio, both printed) but NOT ratio-gated. Measured reason, this run: v-disp
+peak ratio at the 3 km/12 km-along-strike station is 0.176, well outside a
+factor of 2, while every velocity column at both stations stays inside it.
+Displacement is velocity integrated over the whole run window, so the
+rupture-arrival timing offset between a 500 m and a 100 m mesh (see "WHY
+PEAK RATIO" above) accumulates into it rather than cancelling -- that is
+the mechanism, not a restatement of the number. Gating displacement at this
+resolution gap would be inventing a tolerance to paper over a known,
+measured divergence, so it stays reported-only, the same convention
+evidence_tpv34_scec_comparison.py's own `GATED_COLS`-equivalent
+(`peak_hvel_ratio`/`peak_vvel_ratio`, velocity-only) happens to follow --
+cited here only for the convention, not as a validated numeric precedent.
 
 Ruptured-fraction bound: |frac_ours - frac_barall| <= FRACTION_BOUND = 0.15.
-Justified the same way: a 5x coarser mesh under-resolves rupture at the
-fault edges/barriers first, so some shortfall in ruptured-node fraction is
-expected, not a bug; 0.15 is generous against the measured gap (0.111 at
-the committed gate run, see this script's own report) while still catching
-a materially different physics outcome (e.g. rupture failing to
-nucleate/propagate at all, which would show as a shortfall an order of
-magnitude larger).
+Measured like-for-like: BOTH sides exclude the 121 (ours) / 601 (Barall's,
+100 m grid) strength-barrier nodes along the two along-strike edges and the
+deepest down-dip row (`mu_s = 1000`, unbreakable by construction -- these
+can never "rupture" on either side, so including them in the denominator
+only dilutes both fractions toward 1.0 and is not a measure of the physics
+this bound is meant to catch), and Barall's count is windowed to
+`t <= gate_term_for('test.tpv12')` (this run's own 5 s gate term), not his
+full 8 s, since counting 3 more seconds of his rupture against our 5 s
+run would not be a comparison of the same event. Measured this way:
+frac_ours = 0.9475 (1677/1770 non-barrier nodes), frac_barall = 0.9960
+(44672/44850 non-barrier nodes within 5 s), |delta| = 0.0486. 0.15 is a
+~3x-generous multiple of that measured gap -- resolution (500 m vs 100 m)
+under-resolves rupture at the fault edges first, so some shortfall is
+expected, not a bug, but 0.15 would still catch rupture failing to
+nucleate/propagate at all (a shortfall an order of magnitude larger than
+what is measured here).
 
-A FRESH spec-resolution (100 m, 8 s) run would tighten both bounds; they
-are not loosened here to make a coarse run pass (rule: never relax a bound
-to turn a cell green) -- they are SET, for the first time, at the strength
-this coarse cross-code/cross-resolution comparison can actually support,
-with the measurement and the reasoning both in this docstring.
+A FRESH spec-resolution (100 m, 8 s) run would let both bounds be
+re-measured and tightened; they are not loosened here to make a coarse run
+pass (rule: never relax a bound to turn a cell green) -- they are SET, for
+the first time, at the strength this coarse cross-code/cross-resolution
+comparison can actually support, with the measurement and the reasoning
+both in this docstring, not borrowed from another script's number.
 
 WHAT IS COMPARED AND WHERE IT COMES FROM
 -----------------------------------------
@@ -138,11 +159,27 @@ import numpy as np
 
 TESTSYS = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+from testsys import matrix  # noqa: E402  -- gate_term_for, the one source of
+                             # truth for this case's gate term (rule 1: reuse)
+
 OUT_DIR = os.path.join(TESTSYS, 'evidence_output')
-ARCHIVE_DIR = os.path.expanduser(os.path.join(
-    '~', 'shared_dataset', 'scec_cvws.tpv1213', 'raw', 'tpv12',
-    'barall-faultmod-100m-2009'))
+# Overridable for the both-ways test (testsys/regression/
+# test_evidence_tpv12_both_ways.py), which needs a synthetic Barall-shaped
+# fixture in a tempdir rather than the real ~/shared_dataset archive (CI has
+# no access to shared_dataset -- rule: no silent skip, build a fixture
+# instead).
+ARCHIVE_DIR = os.environ.get('TPV12_BARALL_ARCHIVE_DIR') or os.path.expanduser(
+    os.path.join('~', 'shared_dataset', 'scec_cvws.tpv1213', 'raw', 'tpv12',
+                 'barall-faultmod-100m-2009'))
 DIP_DEG = 60.0
+# Grid-position tolerance (metres) for classifying a node as a strength-
+# barrier node from its coordinates alone. The coarsest gated grid here is
+# 500 m (gate) and the finest compared is Barall's 100 m archive; 1 m is far
+# inside either spacing and cannot misclassify an interior node as a border
+# one or vice versa.
+BARRIER_ATOL_M = 1.0
 
 STATIONS = [
     # (archive file name, our file name, human label)
@@ -245,7 +282,26 @@ def compare_one(ref_path, our_path, label):
     )
 
 
-def rupture_counts(run_dir):
+def _barrier_mask(coord_a, coord_b):
+    """Strength-barrier nodes: the two along-strike edges (coord_a at its
+    min/max) and the deepest down-dip row (coord_b at its max magnitude of
+    down-dip extent) -- `mu_s = 1000` (unbreakable) by construction on our
+    side (case_input/test.tpv12/user_defined_params.py's own
+    "strength barrier" block) and the border of Barall's grid on his. These
+    nodes can never rupture on either side, so they must be excluded from
+    BOTH numerator and denominator on BOTH sides for a like-for-like
+    ruptured-node fraction (finding 2, PR #147 audit) -- including them
+    dilutes both fractions toward 1.0 without saying anything about the
+    physics this bound exists to catch."""
+    a_min, a_max = coord_a.min(), coord_a.max()
+    b_extreme = coord_b.max() if abs(coord_b.max()) >= abs(coord_b.min()) \
+        else coord_b.min()
+    return (np.isclose(coord_a, a_min, atol=BARRIER_ATOL_M) |
+            np.isclose(coord_a, a_max, atol=BARRIER_ATOL_M) |
+            np.isclose(coord_b, b_extreme, atol=BARRIER_ATOL_M))
+
+
+def rupture_counts(run_dir, our_term):
     frt = os.path.join(run_dir, 'frt.canonical.txt')
     if not os.path.isfile(frt):
         raise SystemExit(
@@ -254,7 +310,13 @@ def rupture_counts(run_dir):
             f'pass --run-dir at a directory that already has one). Rule 1: '
             f'no fallback for a missing required input.')
     a = np.loadtxt(frt)
-    n_ours = int((a[:, 3] < 999.0).sum())
+    # frt.canonical.txt columns: 0 = x (along strike), 2 = z (actual vertical
+    # coordinate, most negative at the deepest row), 3 = rupture time
+    # (sentinel 99999 = never ruptured) -- see testsys/frt_canonical.py.
+    ours_barrier = _barrier_mask(a[:, 0], a[:, 2])
+    n_ours = int((a[~ours_barrier, 3] < 999.0).sum())
+    n_total_ours = int((~ours_barrier).sum())
+
     cplot_path = os.path.join(ARCHIVE_DIR, 'cplot')
     if not os.path.isfile(cplot_path):
         raise SystemExit(f'{cplot_path}: missing from the Barall archive -- '
@@ -266,16 +328,26 @@ def rupture_counts(run_dir):
             continue
         p = s.split()
         try:
-            b_rows.append(float(p[2]))
+            b_rows.append([float(p[0]), float(p[1]), float(p[2])])
         except (ValueError, IndexError):
             continue
     b = np.asarray(b_rows)
-    n_barall = int((b < 1.0e8).sum())
-    frac_ours = n_ours / a.shape[0]
-    frac_barall = n_barall / b.size
+    # cplot columns: 0 = along-strike x, 1 = down-dip distance, 2 = rupture
+    # time (sentinel >= 1e8 = never ruptured within Barall's own 8 s run).
+    barall_barrier = _barrier_mask(b[:, 0], b[:, 1])
+    # Same time window as our own run (rule: like-for-like, not his full 8 s
+    # against our term-S run) -- counting his later rupture against a run
+    # that stopped earlier is not a comparison of the same event.
+    barall_in_window = (b[:, 2] <= our_term) & (~barall_barrier)
+    n_barall = int(barall_in_window.sum())
+    n_total_barall = int((~barall_barrier).sum())
+
+    frac_ours = n_ours / n_total_ours
+    frac_barall = n_barall / n_total_barall
     frac_delta = abs(frac_ours - frac_barall)
-    return dict(n_ours=n_ours, n_total_ours=int(a.shape[0]),
-                n_barall=n_barall, n_total_barall=int(b.size),
+    return dict(n_ours=n_ours, n_total_ours=n_total_ours,
+                n_barall=n_barall, n_total_barall=n_total_barall,
+                our_term=our_term,
                 frac_ours=frac_ours, frac_barall=frac_barall,
                 frac_delta=frac_delta,
                 frac_pass=frac_delta <= FRACTION_BOUND)
@@ -332,12 +404,15 @@ def main():
         stations_dir = os.path.join(args.run_dir, 'stations') \
             if os.path.isdir(os.path.join(args.run_dir, 'stations')) else args.run_dir
 
-    rc = rupture_counts(case_dir)
+    our_term = matrix.gate_term_for('test.tpv12')
+    rc = rupture_counts(case_dir, our_term)
     print('\n==== cplot (rupture-time field) ruptured-node counts ====')
-    print(f'  ours  : {rc["n_ours"]}/{rc["n_total_ours"]} nodes ruptured '
-          f'({rc["frac_ours"]:.4f})')
-    print(f'  barall: {rc["n_barall"]}/{rc["n_total_barall"]} nodes ruptured '
-          f'({rc["frac_barall"]:.4f})')
+    print(f'  (both sides exclude strength-barrier nodes; barall windowed '
+          f'to t <= {rc["our_term"]} s, this run\'s own gate term)')
+    print(f'  ours  : {rc["n_ours"]}/{rc["n_total_ours"]} non-barrier nodes '
+          f'ruptured ({rc["frac_ours"]:.4f})')
+    print(f'  barall: {rc["n_barall"]}/{rc["n_total_barall"]} non-barrier '
+          f'nodes ruptured ({rc["frac_barall"]:.4f})')
     print(f'  |delta| = {rc["frac_delta"]:.4f}  bound FRACTION_BOUND = '
           f'{FRACTION_BOUND}  -> {"PASS" if rc["frac_pass"] else "FAIL"}')
     print('  (figure: run scripts/figures/make_tpv12_overlay.py '

@@ -61,7 +61,7 @@ gate run against Michael Barall's independent FaultMod TPV12 submission
 (100 m), but only on the rupture-time field and the two off-fault body
 stations. Barall's on-fault station set uses a fixed depth grid
 (dp000/015/030/045/075/120/150) that does not line up with this case's own
-this case's own gate-selected on-fault station sample (chosen from the actual gate run's
+gate-selected on-fault station sample (chosen from the actual gate run's
 nodes, not the spec's station grid), so there is no common on-fault station
 name to difference against without resampling one run onto the other's
 node positions -- not done here. This is a comparison-script scoping
