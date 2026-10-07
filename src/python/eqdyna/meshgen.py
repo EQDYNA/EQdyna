@@ -1118,7 +1118,10 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
         # buildMaterialGrid3D); each element gathers the NEAREST grid cell to
         # its centre, clamped -- piecewise constant, never interpolated.
         from .checkInputConsistency import build_material_grid3d, material_grid3d_index
-        grid = build_material_grid3d(material)
+        grid = build_material_grid3d(
+            material,
+            domain_box=(params['xmin'], params['xmax'], params['ymin'],
+                        params['ymax'], params['zmin'], params['zmax']))
         idx = material_grid3d_index(grid, cx, cy, cz)
         vp = grid['props'][0, idx[:, 0], idx[:, 1], idx[:, 2]]
         vs = grid['props'][1, idx[:, 0], idx[:, 1], idx[:, 2]]
@@ -1261,7 +1264,10 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
         mat_row_homog = np.array([vp, vs, rho, lam, mu])
     elif nmat > 1 and n2mat == 6:
         from .checkInputConsistency import build_material_grid3d, material_grid3d_index
-        mat_grid3d = build_material_grid3d(material)
+        mat_grid3d = build_material_grid3d(
+            material,
+            domain_box=(params['xmin'], params['xmax'], params['ymin'],
+                        params['ymax'], params['zmin'], params['zmax']))
     elif not (nmat > 1 and n2mat in (4, 5)):
         raise NotImplementedError('setElementMaterial: only nmat==1/n2mat==3 '
                                    '(homogeneous), nmat>1/n2mat==4 (1D layered), '

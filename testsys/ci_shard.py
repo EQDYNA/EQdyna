@@ -152,6 +152,11 @@ SHARDS = {
                                  # 2 tiny 1-rank runs each on Fortran and
                                  # python-numpy, well under shard 2's other
                                  # subprocess-heavy scripts.
+        "test_material_grid3d_coverage.py",  # added 2026-10-06 (mira-volkov,
+                                 # TPV34 PR #93 pre-merge audit Medium): one
+                                 # build + 2 tiny 1-rank runs each on Fortran
+                                 # and python-numpy, same cost profile as
+                                 # test_check_input_consistency.py above.
         "test_offfault_station_depth_selection.py",  # added 2026-09-25
                                  # (mira-volkov, row 94 audit finding 3): one
                                  # serial case.setup + one 3-step 1-rank
