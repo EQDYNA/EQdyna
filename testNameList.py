@@ -4,8 +4,19 @@ nameList = ['test.drv.a6',   'test.tpv8', 'test.tpv10', 'test.tpv104',
             'test.tpv1053d', 'test.meng2023a', 'test.meng2023cb',
             'test.tpv29', 'test.tpv36', 'test.tpv37', 'test.tpv30',
             'test.tpv22', 'test.tpv23', 'test.tpv35', 'test.tpv34',
-            'test.tpv26', 'test.tpv27']
-coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+            'test.tpv26', 'test.tpv27', 'test.tpv31', 'test.tpv32']
+coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+# test.tpv31/test.tpv32 (SCEC TPV31/32, planar vertical strike-slip, 1D
+# layered velocity structure -- discontinuous/continuous respectively)
+# REGISTERED 2026-10-06 (board row 151): 4 ranks (par.nx,ny,nz=2,1,2),
+# fortran + python-jax, at the ONE 5 s GATE_TERM_S and dx=500 m. Confirmed
+# (TPV31_32_Description_v03, direct spec read) NOT blocked: nucleation is a
+# static, time-independent additive shear-stress bump (swtwNucleation is a
+# no-op for unmatched par.tpv, same as test.tpv8/test.tpv10), initial stress
+# is SCEC's own Method 2 (on-fault traction only, no off-fault tensor) same
+# mechanism as test.tpv26/29, and the 1D layered material reuses the
+# EXISTING n2mat==4 mechanism (test.meng2023a) by precomputing one row per
+# mesh z-layer from the spec's table. Zero src/ changes.
 # test.tpv26/test.tpv27 (SCEC TPV26/27, planar vertical strike-slip, TPV27
 # adding Drucker-Prager viscoplasticity) REGISTERED 2026-10-06 (board row
 # 150): 4 ranks (par.nx,ny,nz=2,1,2), fortran + python-jax, at the ONE 5 s
