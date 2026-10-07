@@ -17,17 +17,21 @@ subroutine readglobal
         read(1001,*) C_elastic
         read(1001,*) C_nuclea
         read(1001,*) C_degen
-        ! Row 153 checkpoint 1 audit fix: checkIsOnFault (meshgen.f90) takes
-        ! neither its C_degen==0 nor its C_degen>3.0d0 branch for 0<C_degen<=3
-        ! -- isOnFault stays 0 for every node, which this refactor's
-        ! faultDegenStyle/faultDegenAngle derivation (readfaultgeometry,
-        ! below) would otherwise silently map to style=0 (vertical planar
-        ! fault) instead of refusing. Python's meshgen.py:_check_is_on_fault_vec
-        ! raises NotImplementedError for the same range; match it here.
-        if (C_degen > 0.0d0 .and. C_degen <= 3.0d0) call abortRun(ERR_GEOM_DEGEN_UNSUPPORTED, &
-            'bGlobal.txt: C_degen is in (0, 3], a value checkIsOnFault takes neither its ' // &
-            '==0 nor its >3 branch for -- no fault node would be found. Use C_degen=0 ' // &
-            '(vertical planar fault) or C_degen>3 (wedge-degeneration dip angle in degrees).')
+        ! Row 153 checkpoint 1 audit fix, widened per the victor-reyes re-audit
+        ! on PR #150: checkIsOnFault (meshgen.f90) takes neither its C_degen==0
+        ! branch nor its C_degen>3.0d0 branch for any C_degen that is NOT in
+        ! {0} union (3, infinity) -- that includes 0<C_degen<=3 AND every
+        ! negative value -- isOnFault stays 0 for every node, which this
+        ! refactor's faultDegenStyle/faultDegenAngle derivation
+        ! (readfaultgeometry, below) would otherwise silently map to style=0
+        ! (vertical planar fault) instead of refusing. Python's
+        ! meshgen.py:_check_is_on_fault_vec raises NotImplementedError for the
+        ! same accepted set; match it here with the accepted-set test itself
+        ! (not a refused-range test), so no third region can slip through.
+        if (.not. (C_degen == 0.0d0 .or. C_degen > 3.0d0)) call abortRun(ERR_GEOM_DEGEN_UNSUPPORTED, &
+            'bGlobal.txt: C_degen must be 0 (vertical planar fault) or >3 ' // &
+            '(wedge-degeneration dip angle in degrees); checkIsOnFault takes ' // &
+            'neither branch for the value read here, so no fault node would be found.')
         read(1001,*) insertFaultType
         read(1001,*) friclaw
         read(1001,*) ntotft
