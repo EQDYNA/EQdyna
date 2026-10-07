@@ -11,11 +11,16 @@ repository yet -- see "TPV13 status" below.
 
 ## What this case reuses
 
-Geometry, the dipping-fault mesh construction, and the nucleation
-mechanism are the same, already-validated machinery `test.tpv10` uses
-(same dip, same fault footprint, same material: rho 2700, Vs 3300,
-Vp 5716). This case changes only its own input parameters and spec-specific
-initial-stress/friction/station values.
+Geometry and the dipping-fault mesh construction are the same,
+already-validated `insertFaultType=1` + `mod4dip` machinery `test.tpv10`
+uses (same dip, same fault footprint, same material: rho 2700, Vs 3300,
+Vp 5716). The NUCLEATION MECHANISM is not shared with test.tpv10: both
+cases set `C_nuclea = 0` (no artificial forced-rupture code path), but
+test.tpv10 nucleates via an ELEVATED initial shear stress in its patch,
+while this case nucleates via a REDUCED static friction coefficient in its
+patch (see "Initial stress and friction" below) -- the spec's own TPV12
+mechanism. This case changes only its own input parameters and
+spec-specific initial-stress/friction/station values.
 
 ## Initial stress and friction
 
@@ -27,18 +32,44 @@ distance (spec Part 2, p.5-6):
 - down-dip distance >= 13800 m: `(sigma_n - Pf) = 14427.98 Pa/m * ddist`,
   `tau = 0` (stresses become isotropic)
 
+A fault node whose own sub-fault cell (half-width `par.dx/2` in down-dip
+distance) straddles 13800 m gets the spec-required weighted average instead
+of a hard cutoff: each side evaluated at the midpoint of its own portion of
+the cell, combined weighted by that portion's fractional length
+(`user_defined_params.py`'s `DOWNDIP_SPLIT_M` block).
+
 Friction: `mu_s = 0.70` outside the nucleation patch, `mu_s = 0.54` inside
 it (a 3 km x 3 km square centered 12 km down-dip, along-strike centered);
 `mu_d = 0.10`, `d0 = 0.50 m`, frictional cohesion `c0 = 0.2 MPa` everywhere.
-Nucleation is the spec's own mechanism: a lower static friction coefficient
-in the patch, applied to the same stress field used everywhere else --
-no artificial forced-rupture formula is used.
+A node whose sub-fault cell straddles exactly one nucleation-zone edge gets
+`mu_s = 0.62`; one straddling exactly one corner gets `mu_s = 0.66` (the
+spec's own worked examples, p.257-263). Nucleation is the spec's own
+mechanism: a lower static friction coefficient in the patch, applied to the
+same stress field used everywhere else -- no artificial forced-rupture
+formula is used.
 
 ## Resolution and duration
 
 Spec recommends 100 m node spacing; everyday regression runs this case
 coarser and shorter for speed (see `user_defined_params.py`'s own
 `par.dx`/`par.term`). Published SCEC run duration: 0-8 s after nucleation.
+
+## Barall cross-code comparison: on-fault stations not compared
+
+`testsys/parity/evidence_tpv12_scec_comparison.py` compares this case's own
+gate run against Michael Barall's independent FaultMod TPV12 submission
+(100 m), but only on the rupture-time field and the two off-fault body
+stations. Barall's on-fault station set uses a fixed depth grid
+(dp000/015/030/045/075/120/150) that does not line up with this case's own
+this case's own gate-selected on-fault station sample (chosen from the actual gate run's
+nodes, not the spec's station grid), so there is no common on-fault station
+name to difference against without resampling one run onto the other's
+node positions -- not done here. This is a comparison-script scoping
+decision, not a statement that on-fault behavior is unchecked: on-fault
+fields are still covered by this case's own gate parity test (fortran vs
+python-jax vs `frt.canonical.txt`/`fault.dyna.r.nc`/on-fault station bounds
+in `testsys/matrix.py`), which is the cross-BACKEND check; the Barall
+comparison is the cross-CODE one and is narrower by design.
 
 ## TPV13 status: not built
 

@@ -13,10 +13,14 @@ coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
 # TPV12/13 pair, built exactly as test.tpv29 is to test.tpv30's METHOD 2. 4
 # ranks (par.nx,ny,nz=2,2,1, test.tpv10's own partition), fortran +
 # python-jax, at the ONE 5 s GATE_TERM_S and dx=500 m. Confirmed (direct read
-# of TPV12_13_Description_v6.pdf) NOT blocked: nucleation is reduced static
-# friction in a patch (C_nuclea=0, test.tpv10's own mechanism, no forced-
-# rupture code path at all), geometry is test.tpv10's already-gated
-# insertFaultType=1 planar-dipping-fault + mod4dip machinery verbatim, and
+# of TPV12_13_Description_v6.pdf) NOT blocked: nucleation is a reduced static
+# friction coefficient inside the nucleation patch (C_nuclea=0 -- no
+# forced-rupture code path at all, the SAME C_nuclea=0 convention test.tpv10
+# uses, though test.tpv10's own nucleation mechanism is an ELEVATED initial
+# shear stress in its patch, not reduced friction -- the two cases share the
+# "no forced-rupture code path" convention, not the specific mechanism).
+# Geometry is test.tpv10's already-gated insertFaultType=1 planar-dipping-
+# fault + mod4dip machinery verbatim, and
 # initial stress is per-node manual fault tractions (Method 1, no off-fault
 # stress tensor, so setPlasticStress is never called for this case). TPV13
 # (the Method 2 / Drucker-Prager sibling) is NOT added here -- see

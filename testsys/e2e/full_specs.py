@@ -131,17 +131,21 @@ FULL_SPECS = {
                 "here."),
     ),
     'test.tpv12': dict(
-        # rule 17 step 5: recorded, not run. requireFaultGeometryResolution
-        # admits only the gate-tier dx today; the spec's own 100 m tier is
-        # a scheduling decision, not a spec gap (planar dipping fault,
-        # needs only a finer on_fault_vars/material grid, not a downloaded
-        # surface).
-        dx=100.0, term=8.0, nx=4, ny=1, nz=4,
+        # rule 17 step 5: recorded, not run -- a scheduling decision, not a
+        # spec gap (planar dipping fault, needs only a finer
+        # on_fault_vars/material grid, not a downloaded surface).
+        # test.tpv12/user_defined_params.py does not call
+        # lib.requireFaultGeometryResolution at all (unlike e.g. test.tpv35),
+        # so nothing in the code admits or refuses a particular dx here.
+        dx=100.0, term=8.0, nx=4, ny=2, nz=2,
         citation=("TPV12_13_Description_v6.pdf, Part 2/3: spec recommends "
                 "100 m node spacing on the fault plane; 'Run the model for "
-                "times from 0.0 to 8.0 seconds after nucleation.' ny=1 "
-                "keeps the fault plane off MPI partitions, same convention "
-                "as every other planar-fault full-tier entry here."),
+                "times from 0.0 to 8.0 seconds after nucleation.' "
+                "nx,ny,nz=4,2,2 follows test.tpv10's own partition "
+                "convention for this DIPPING fault (not the ny=1 convention "
+                "used by the VERTICAL planar strike-slip entries, e.g. "
+                "tpv31/32/33/35, which keep a vertical fault plane off a "
+                "y-normal MPI partition -- this fault is not vertical)."),
     ),
     'test.tpv8': dict(
         dx=100., term=15., nx=4, ny=2, nz=2,

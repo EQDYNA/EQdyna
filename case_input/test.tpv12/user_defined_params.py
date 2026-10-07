@@ -27,7 +27,11 @@
 #                  per spec Part 1/2 -- "we specify a reduced static
 #                  coefficient of friction within the nucleation zone");
 #                  mu_d 0.10, d0 0.50 m, frictional cohesion c0 0.2 MPa
-#                  everywhere (Part 2 "Friction Parameters and Nucleation")
+#                  everywhere (Part 2 "Friction Parameters and Nucleation").
+#                  A node whose sub-fault cell straddles a nucleation-zone
+#                  edge or corner gets the spec's own weighted-average mu_s
+#                  (0.62 edge, 0.66 corner) rather than a hard inside/outside
+#                  cutoff -- see MU_S_EDGE/MU_S_CORNER below.
 #   initial stress depth-dependent principal-stress formulas resolved onto
 #                  the planar 60-degree dipping fault (Part 2 "Initial Normal
 #                  and Shear Stress on the Fault", p.5-6):
@@ -35,11 +39,12 @@
 #                                     tau = 0.549847 * (sigma_n - Pf)
 #                    for down-dip distance < 13800 m; at/beyond 13800 m,
 #                    (sigma_n - Pf) = 14427.98 Pa/m * down-dip distance,
-#                    tau = 0 (stresses become isotropic, spec p.5). No
-#                    weighted-average interpolation across the 13800 m
-#                    boundary is applied here -- same per-node hard-cutoff
-#                    simplification test.tpv10 already uses at its own fault
-#                    borders, not a new approximation introduced by this case.
+#                    tau = 0 (stresses become isotropic, spec p.5). A node
+#                    whose sub-fault cell straddles the 13800 m boundary gets
+#                    the spec's required weighted average (area-overlap
+#                    fraction, each side evaluated at its own portion's
+#                    midpoint) rather than a hard cutoff -- see the
+#                    DOWNDIP_SPLIT_M block below.
 #   nucleation     C_nuclea = 0 (no artificial forced-rupture patch): the
 #                  reduced static friction coefficient above, applied to the
 #                  SAME depth-dependent shear/normal stress formula used
@@ -78,6 +83,8 @@ par.fzmin, par.fzmax = -15.0e3, 0.0e3
 
 par.xsource = 0.0
 par.zsource = -12.0e3  # down-dip distance to the nucleation-patch center
+ZSOURCE_DOWNDIP = abs(par.zsource)  # captured before mod4dip overwrites
+                                    # par.zsource into a vertical coordinate
 
 par.dx = 500.   # fast gate; spec recommends 100 m
 par.dy = par.dx
@@ -135,15 +142,67 @@ SIGN_DEEP_PA_PER_M    = 14427.98
 TAU_RATIO_SHALLOW     = 0.549847
 DOWNDIP_SPLIT_M       = 13800.0
 
+# Grid-alignment tolerance for the exact-equality classifications below. Both
+# the nucleation-edge weighting (item 3) and the 13800 m stress boundary
+# (item 4) rely on exact node-grid arithmetic (par.nucR and par.dx are exact
+# multiples; mod4dip scales dz so the down-dip-distance node spacing is
+# exactly par.dx -- see defaultParameters.mod4dip), so this is a float-noise
+# guard, not a physical tolerance.
+EPS_GRID = 1.0e-6 * par.dx
+
+# Nucleation-zone edge/corner friction weighting (TPV12_13_Description_v6.pdf
+# Part 2, "Friction Parameters and Nucleation", p.257-263 in the combined
+# PDF): "A fault node represents a sub-fault with finite extent. If a
+# sub-fault lies partly inside and partly outside the nucleation zone, the
+# friction parameters should be a weighted average." The spec's own worked
+# examples: a corner node gets mu_s = 0.75*0.70 + 0.25*0.54 = 0.66, an edge
+# node (not a corner) gets mu_s = 0.50*0.70 + 0.50*0.54 = 0.62. Both are
+# exact because par.nucR (1500 m) is an exact multiple of par.dx (500 m here,
+# and of the spec's 100 m), so a node's own sub-fault cell (half-width
+# par.dx/2 in both the along-strike and down-dip-distance directions) either
+# lies fully inside, fully outside, straddles exactly one nucleation-zone
+# edge (50/50 overlap), or straddles exactly one corner (75/25 overlap) --
+# never a partial fraction other than those three.
+MU_S_EDGE   = 0.5 *par.fric_sw_fs + 0.5 *par.fric_sw_fs_nuclea   # == 0.62
+MU_S_CORNER = 0.75*par.fric_sw_fs + 0.25*par.fric_sw_fs_nuclea   # == 0.66
+
+# 13800 m stress-boundary weighted average (same PDF, "Initial Normal and
+# Shear Stress on the Fault", p.177-178/220-221): "A fault node represents a
+# sub-fault with finite extent. If a sub-fault extends both above and below
+# 13800 m down-dip, the initial normal and shear stresses should be a
+# weighted average." The spec gives no explicit formula for this one (unlike
+# the friction case above); the down-dip-distance node spacing is exactly
+# par.dx (mod4dip), so each node's own down-dip-distance cell is
+# [downDipDistance - par.dx/2, downDipDistance + par.dx/2]. For a node whose
+# cell straddles 13800 m, this applies the same area-overlap-fraction
+# principle as the friction weighting above: each side's stress is evaluated
+# at the MIDPOINT of that side's own portion of the cell (exact for a linear
+# formula), then the two values are combined weighted by each portion's
+# fractional length of the cell.
+HALF_DD = par.dx / 2.0
+
 for ix, xcoor in enumerate(par.fx):
   for iz, zcoor in enumerate(par.fz):
     downDipDistance = abs(zcoor)/sin(abs(par.dip)/180.*pi)
 
-    par.on_fault_vars[iz,ix,1] = par.fric_sw_fs
-    # nucleation patch: 3 km x 3 km square centered on (xsource, zsource)
-    if (abs(xcoor-par.xsource) <= par.nucR and
-            abs(zcoor-par.zsource) <= par.nucR*sin(abs(par.dip)/180.*pi)):
-        par.on_fault_vars[iz,ix,1] = par.fric_sw_fs_nuclea
+    # --- item 3: nucleation-zone friction, with edge/corner weighting -----
+    dxn = abs(xcoor - par.xsource)
+    ddn = abs(downDipDistance - ZSOURCE_DOWNDIP)
+    x_inside  = dxn < par.nucR - EPS_GRID
+    z_inside  = ddn < par.nucR - EPS_GRID
+    x_on_edge = abs(dxn - par.nucR) < EPS_GRID
+    z_on_edge = abs(ddn - par.nucR) < EPS_GRID
+
+    if x_inside and z_inside:
+        mu_s = par.fric_sw_fs_nuclea            # fully inside: 0.54
+    elif x_on_edge and z_on_edge:
+        mu_s = MU_S_CORNER                      # corner: 0.66
+    elif (x_on_edge and z_inside) or (z_on_edge and x_inside):
+        mu_s = MU_S_EDGE                        # edge (not corner): 0.62
+    else:
+        mu_s = par.fric_sw_fs                   # fully outside: 0.70
+    par.on_fault_vars[iz,ix,1] = mu_s
+
     # strength barrier: along-strike edges and the deepest (down-dip) row;
     # the free surface (iz at zcoor==0) is NOT a border.
     if abs(abs(xcoor) - par.fxmax) < 0.01 or abs(zcoor - par.fzmin) < 0.01:
@@ -153,12 +212,26 @@ for ix, xcoor in enumerate(par.fx):
     par.on_fault_vars[iz,ix,3] = par.fric_sw_D0
     par.on_fault_vars[iz,ix,4] = par.fric_cohesion
 
-    if downDipDistance < DOWNDIP_SPLIT_M:
+    # --- item 4: 13800 m stress boundary, weighted average on straddle ----
+    d_lo = downDipDistance - HALF_DD
+    d_hi = downDipDistance + HALF_DD
+    if d_hi <= DOWNDIP_SPLIT_M + EPS_GRID:
         sigEff = -SIGN_SHALLOW_PA_PER_M*downDipDistance
         tau    = -abs(TAU_RATIO_SHALLOW*sigEff)
-    else:
+    elif d_lo >= DOWNDIP_SPLIT_M - EPS_GRID:
         sigEff = -SIGN_DEEP_PA_PER_M*downDipDistance
         tau    = 0.0
+    else:
+        frac_shallow   = (DOWNDIP_SPLIT_M - d_lo) / par.dx
+        frac_deep      = 1.0 - frac_shallow
+        dd_shallow_mid = 0.5*(d_lo + DOWNDIP_SPLIT_M)
+        dd_deep_mid    = 0.5*(DOWNDIP_SPLIT_M + d_hi)
+        sigEff_shallow = -SIGN_SHALLOW_PA_PER_M*dd_shallow_mid
+        tau_shallow    = -abs(TAU_RATIO_SHALLOW*sigEff_shallow)
+        sigEff_deep    = -SIGN_DEEP_PA_PER_M*dd_deep_mid
+        tau_deep       = 0.0
+        sigEff = frac_shallow*sigEff_shallow + frac_deep*sigEff_deep
+        tau    = frac_shallow*tau_shallow    + frac_deep*tau_deep
     par.on_fault_vars[iz,ix,7]  = sigEff  # initial effective normal stress
     par.on_fault_vars[iz,ix,8]  = 0.0     # no along-strike (horizontal) shear
     # positive initial dip stress moves the y+ (hanging) wall up; negative
