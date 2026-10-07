@@ -112,6 +112,24 @@ FULL_SPECS = {
                 "'Run the model for times from 0.0 to 15.0 seconds after "
                 "nucleation.'"),
     ),
+    'test.tpv33': dict(
+        # rule 17 step 5: recorded, not run. requireFaultGeometryResolution
+        # admits only dx=400 m today (the gate tier); the spec's own
+        # recommended 12.5-25 m fault-plane tier is a scheduling decision,
+        # not a spec gap (planar fault, needs only a finer on_fault_vars
+        # grid + material grid, not a downloaded surface).
+        dx=12.5, term=13.0, nx=4, ny=1, nz=4,
+        citation=("TPV33_Description_v04, p.7: 'Run the model for times "
+                "from 0.0 to 13.0 seconds after nucleation.' 'A resolution "
+                "in the range of 12.5 meters to 25 meters on the fault "
+                "plane. 50 meters throughout the low-velocity zone. 100 "
+                "meters outside the low-velocity zone. ... We suggest using "
+                "12.5 meter resolution if you are able to do so. TPV33 "
+                "requires twice the resolution of any earlier benchmark.' "
+                "ny=1 keeps the fault plane off MPI partitions, same "
+                "convention as every other planar-fault full-tier entry "
+                "here."),
+    ),
     'test.tpv8': dict(
         dx=100., term=15., nx=4, ny=2, nz=2,
         citation=(

@@ -69,6 +69,7 @@ and is linked, not copied, from the "details" column below.
 | test.tpv27 | same geometry/nucleation as test.tpv26, adding off-fault Drucker-Prager viscoplasticity | [TPV26/27](https://strike.scec.org/cvws/tpv26_27docs.html) | 100 m (50 m optional) / 13 s | [params](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv27/user_defined_params.py) |
 | test.tpv31 | strike-slip, single vertical planar fault, discontinuous 1D layered velocity structure, (mu/mu0)-scaled initial stress, static nucleation patch | [TPV31/32](https://strike.scec.org/cvws/tpv31_32docs.html) | 50 m / 15 s | [README](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv31/README.md) |
 | test.tpv32 | same geometry/nucleation as test.tpv31, continuous piecewise-linear 1D velocity structure | [TPV31/32](https://strike.scec.org/cvws/tpv31_32docs.html) | 25-50 m / 15 s | [README](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv32/README.md) |
+| test.tpv33 | strike-slip, single vertical planar fault, fault-parallel low-velocity zone (n2mat==6 grid, single-axis variation), constant-amplitude initial stress, static nucleation patch | [TPV33](https://strike.scec.org/cvws/tpv33docs.html) | 12.5-25 m / 13 s | [README](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv33/README.md) |
 
 `test.tpv22`/`test.tpv23` run at their own 15.0 s gate term, not the everyday
 5.0 s one (the spec requires 15 s post-nucleation for fault #2 to rupture at

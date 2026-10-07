@@ -4,8 +4,23 @@ nameList = ['test.drv.a6',   'test.tpv8', 'test.tpv10', 'test.tpv104',
             'test.tpv1053d', 'test.meng2023a', 'test.meng2023cb',
             'test.tpv29', 'test.tpv36', 'test.tpv37', 'test.tpv30',
             'test.tpv22', 'test.tpv23', 'test.tpv35', 'test.tpv34',
-            'test.tpv26', 'test.tpv27', 'test.tpv31', 'test.tpv32']
-coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+            'test.tpv26', 'test.tpv27', 'test.tpv31', 'test.tpv32',
+            'test.tpv33']
+coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+# test.tpv33 (SCEC TPV33, planar vertical strike-slip, fault-parallel
+# low-velocity zone) REGISTERED 2026-10-07 (board row 152): 4 ranks
+# (par.nx,ny,nz=2,1,2), fortran + python-jax, at the ONE 5 s GATE_TERM_S and
+# dx=400 m. Rule 17 step 3 (the question the board row posed): confirmed NOT
+# blocked -- the EXISTING n2mat==6 3D nearest-cell material grid (TPV34, PR
+# #93/#114) already covers a field that varies along one axis only (here,
+# EQdyna y = the spec's fault-normal coordinate), no new material-grid
+# architecture needed. See case_input/test.tpv33/README.md for the full
+# evidence (file:line citations) and case_input/test.tpv33/user_defined_params.py
+# for the grid construction. Nucleation is a static, time-independent
+# additive shear-stress bump (swtwNucleation is a no-op for unmatched
+# par.tpv, same as test.tpv8/test.tpv31/test.tpv34); initial stress is
+# SCEC's own Method 2 (on-fault traction only), same mechanism as
+# test.tpv26/29/31. Zero src/ changes.
 # test.tpv31/test.tpv32 (SCEC TPV31/32, planar vertical strike-slip, 1D
 # layered velocity structure -- discontinuous/continuous respectively)
 # REGISTERED 2026-10-06 (board row 151): 4 ranks (par.nx,ny,nz=2,1,2),
