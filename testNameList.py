@@ -5,8 +5,8 @@ nameList = ['test.drv.a6',   'test.tpv8', 'test.tpv10', 'test.tpv104',
             'test.tpv29', 'test.tpv36', 'test.tpv37', 'test.tpv30',
             'test.tpv22', 'test.tpv23', 'test.tpv35', 'test.tpv34',
             'test.tpv26', 'test.tpv27', 'test.tpv31', 'test.tpv32',
-            'test.tpv33', 'test.tpv12']
-coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+            'test.tpv33', 'test.tpv12', 'test.tpv13']
+coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
 # test.tpv12 (SCEC TPV12, 60-degree dipping planar normal fault, linear
 # elastic) REGISTERED 2026-10-07 (board row 149, owner pairing decision):
 # TPV12 is the METHOD 1 (C_elastic=1, stress change, no gravity) half of the
@@ -23,9 +23,36 @@ coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
 # fault + mod4dip machinery verbatim, and
 # initial stress is per-node manual fault tractions (Method 1, no off-fault
 # stress tensor, so setPlasticStress is never called for this case). TPV13
-# (the Method 2 / Drucker-Prager sibling) is NOT added here -- see
-# case_input/test.tpv12/README.md and pathway_forward.md row 149 for the
-# still-open gap that blocks it.
+# (the Method 2 / Drucker-Prager sibling) was NOT added at the time this note
+# was written -- see test.tpv13's own note below, which closes that gap.
+# test.tpv13 (SCEC TPV13, the Drucker-Prager-PLASTIC half of the TPV12/13
+# pair) REGISTERED 2026-10-07 (board row 149, owner decision, follow-on to
+# test.tpv12): same geometry/friction/on-fault-traction code as test.tpv12
+# (test.tpv10's insertFaultType=1 dipping-fault mesh, unchanged), METHOD 2
+# (C_elastic=0, explicit gravity, full off-fault stress tensor, bulk=0.85,
+# coheplas=5.0e6) the same convention test.tpv30 uses. Closes the gap
+# test.tpv12/README.md documented ("TPV13 status: not built"): the shared
+# setPlasticStress builder pins sxx+syy to 2x vertical stress and cannot
+# represent TPV13's own asymmetric sigma2=(sigma1+sigma3)/2 relation with its
+# existing two free parameters. Fixed with a new `if (TPV == 13)` branch
+# inside setPlasticStress itself (src/fortran/meshgen.f90, mirrored in
+# src/python/eqdyna/eqdyna3d.py's init_stress construction -- see that file's
+# docstring for why the mirror lives there and not in meshgen.py) that
+# `return`s before the existing devStr/rotation code, so every other TPV
+# (tpv27, tpv30, drv.a6, drv.a6.v2, ...) runs the unchanged branch and is
+# untouched bit-for-bit. TPV13's fault strike (x) and dip (y-z) happen to
+# align its principal stress axes directly with model x/y/z, so no rotation/
+# shear term is needed -- a structurally simpler formula than TPV29/30's,
+# cleanly separable by the TPV==13 guard. The non-associative plastic return
+# map EQdyna's shared kernel implements is Duvaut-Lions-viscoplastic
+# (relaxation timescale par.viscoplasticRelaxTime); TPV13's spec wants the
+# INSTANTANEOUS limit, obtained bit-exactly (not approximately) by setting
+# viscoplasticRelaxTime=1.0e-5 s, small enough that exp(-dt/Tv) underflows to
+# exactly 0.0 in IEEE double precision at this case's gate dt (dt/Tv ~ 4374,
+# underflow threshold ~745) -- no new plastic-update code needed. 4 ranks,
+# fortran + python-jax, at the ONE 5 s GATE_TERM_S and dx=500 m. See
+# case_input/test.tpv13/user_defined_params.py and
+# TPV12_13_Description_v6.pdf (scratch/specs/) for the exact constants.
 # test.tpv33 (SCEC TPV33, planar vertical strike-slip, fault-parallel
 # low-velocity zone) REGISTERED 2026-10-07 (board row 152): 4 ranks
 # (par.nx,ny,nz=2,1,2), fortran + python-jax, at the ONE 5 s GATE_TERM_S and

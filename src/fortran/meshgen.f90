@@ -1425,28 +1425,72 @@ subroutine setPlasticStress(depth, elemCount)
     use globalvar
     use errorCodes
     implicit none
-    
+
     real(kind = dp) :: depth, vstmp, vptmp, routmp, strVert, devStr
     real(kind = dp) :: devStrDepthTaper
+    real(kind = dp) :: sig1Eff, sig2Eff, sig3Eff
+    ! SCEC TPV12_13_Description_v6.pdf Part 2, "Initial Stress Tensor" /
+    ! "Initial Normal and Shear Stress on the Fault" (p.4-6): the ratio
+    ! (sigma3 - Pf) = 0.3496*(sigma1 - Pf) and the 11951.15 m depth at which
+    ! the stress regime becomes isotropic (== 13800 m down-dip distance at
+    ! this benchmark's fixed 60-degree dip, converted to vertical depth: the
+    ! spec states both numbers directly, p.5 "depths less than 11951.15
+    ! meters"). Both are TPV12/13-specific physical constants of the spec,
+    ! not case-configurable knobs (same precedent as the 7.3215d0 magic
+    ! shift at this subroutine's call site, meshgen.f90:168) -- local
+    ! parameters, not globalvar fields.
+    real(kind = dp), parameter :: TPV13_SIG3_RATIO = 0.3496d0
+    real(kind = dp), parameter :: TPV13_DEPTH_SPLIT_M = 11951.15d0
     integer(kind = 8) :: elemCount
     integer(kind = 4) :: etTag
 
     etTag = 0
     if (elemTypeArr(elemCount)==2) etTag = 1 ! adjustment for PML elements
-    
+
     eleporep(elemCount) = 0.0d0  !rhow*tmp2*gama  !pore pressure>0
-    strVert            = -(roumax- rhow*(gamar+1.0d0))*depth*grav ! should be negative   
+    strVert            = -(roumax- rhow*(gamar+1.0d0))*depth*grav ! should be negative
+
+    if (TPV == 13) then
+        ! TPV13's principal stresses already align with the model axes for
+        ! this fault's strike-along-x, dip-in-y-z geometry: sigma1 (vertical,
+        ! max compressive) is szz; sigma3 (horizontal, normal to the fault
+        ! TRACE) is syy; sigma2 (horizontal, PARALLEL to the fault trace) is
+        ! sxx. Unlike the TPV29/30 branch below (a near-vertical strike-slip
+        ! fault, whose sigma1/sigma3 lie in the HORIZONTAL plane at an angle
+        ! to the fault and so need a deviatoric rotation with an xy shear
+        ! term), there is no rotation here: sxy = sxz = syz = 0.
+        sig1Eff = strVert  ! == sigma1 - Pf (every depth; see spec p.4-6: the
+                           ! vertical/Pf formulas are gamar=0's existing
+                           ! strVert verbatim, no new formula needed)
+        if (depth < TPV13_DEPTH_SPLIT_M) then
+            sig3Eff = TPV13_SIG3_RATIO * sig1Eff
+        else
+            sig3Eff = sig1Eff  ! p.5: "stresses become isotropic"
+        end if
+        sig2Eff = 0.5d0 * (sig1Eff + sig3Eff)  ! p.5: sigma2 = (sigma1+sigma3)/2,
+                                                ! the same relation holds for
+                                                ! the effective stress since Pf
+                                                ! cancels linearly out of it
+
+        stressArr(stressCompIndexArr(elemCount)+3+15*etTag) = sig1Eff  ! szz
+        stressArr(stressCompIndexArr(elemCount)+2+15*etTag) = sig3Eff  ! syy
+        stressArr(stressCompIndexArr(elemCount)+1+15*etTag) = sig2Eff  ! sxx
+        stressArr(stressCompIndexArr(elemCount)+6+15*etTag) = 0.0d0    ! sxy
+        if (sig3Eff >= 0.0d0) write(*,*) 'WARNING: positive Sigma3 ... ...'
+        return
+    end if
+
     ! devStrDepthTaper (func_lib.f90) is SCEC TPV29/30's Omega(depth): the
     ! deviatoric component tapers to zero over a depth interval while the
     ! vertical component keeps growing. It returns exactly 1.0d0 when the
     ! taper is not configured, so this line is bit-for-bit the pre-v5.9.0
     ! `abs(strVert)*devStrToStrVertRatio` for every such case.
     devStr             = abs(strVert)*devStrToStrVertRatio*devStrDepthTaper(depth) ! positive
-    
+
     stressArr(stressCompIndexArr(elemCount)+3+15*etTag) = strVert
     stressArr(stressCompIndexArr(elemCount)+1+15*etTag) = strVert - devStr*dcos(2.0d0*str1ToFaultAngle)
     stressArr(stressCompIndexArr(elemCount)+2+15*etTag) = strVert + devStr*dcos(2.0d0*str1ToFaultAngle)
     stressArr(stressCompIndexArr(elemCount)+6+15*etTag) = devStr*dsin(2.0d0*str1ToFaultAngle)
     if (stressArr(stressCompIndexArr(elemCount)+2+15*etTag) >= 0.0d0) write(*,*) 'WARNING: positive Sigma3 ... ...'
-    
+
 end subroutine setPlasticStress
