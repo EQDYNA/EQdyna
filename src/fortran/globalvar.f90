@@ -276,6 +276,17 @@ MODULE globalvar
     integer (kind = 4), allocatable, dimension(:) :: nftnd,     &
         elemTypeArr,     numOfDofPerNodeArr,   &
         nonfs,  n4yn
+    ! Row 153 (TPV24/25 scoped build, checkpoint 1): per-fault degeneration
+    ! style/angle, replacing the single global C_degen scalar as the thing
+    ! wedge()/wedge4num()/checkIsOnFault test against. Derived ENTIRELY from
+    ! C_degen in readfaultgeometry (no new input line yet): faultDegenStyle(i)
+    ! = 1 and faultDegenAngle(i) = C_degen for every fault when C_degen>3,
+    ! else style 0 -- identical to today's uniform-C_degen test, so this is a
+    ! pure refactor, byte-identical on every existing case. Style 1 is the
+    ! existing y-z dip-tilt pattern only; a style 2 (x-y strike-tilt,
+    ! z-extruded, for the TPV24/25 branch) is NOT added in this checkpoint.
+    integer (kind = 4), allocatable, dimension(:) :: faultDegenStyle
+    real (kind = dp), allocatable, dimension(:) :: faultDegenAngle
     ! Item 143: equation numbers, offsets into eqNumIndexArr/stressArr and
     ! node ids -- 64-bit (see the count declarations above).
     integer (kind = 8), allocatable, dimension(:) :: &

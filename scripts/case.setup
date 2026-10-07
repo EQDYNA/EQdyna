@@ -30,6 +30,34 @@ import os
 def create_model_input_file():
     # Function to create bGlobal.txt, bModelGeometry.txt, b.FaultGeometry.txt,
     #  bMaterial.txt, bStations.txt used by EQdyna.
+    # Row 153 checkpoint 1 audit fix, widened per the victor-reyes re-audit on
+    # PR #150: Fortran's checkIsOnFault (meshgen.f90) and Python's
+    # meshgen.py:_check_is_on_fault_vec both take neither the C_degen==0
+    # branch (vertical planar fault) nor the C_degen>3 branch
+    # (wedge-degeneration dip) for any C_degen outside the accepted set {0}
+    # union (3, infinity) -- that is 0 < C_degen <= 3 AND every negative
+    # value. Refuse here, at case.setup time, rather than writing an input
+    # file that silently builds a degenerate run. Tested as an accepted-set
+    # check, not a refused-range check, so no third region can slip through.
+    if not (par.C_degen == 0.0 or par.C_degen > 3.0):
+        sys.exit('case.setup: par.C_degen=%r is neither 0 nor >3, a value '
+                  'neither Fortran\'s nor Python\'s checkIsOnFault takes a branch '
+                  'for -- no fault node would be found. Use C_degen=0 (vertical '
+                  'planar fault) or C_degen>3 (wedge-degeneration dip angle in '
+                  'degrees).'
+                  % (par.C_degen,))
+    # Row 153 re-audit finding 3: Fortran reads C_degen as integer(kind=4),
+    # so a non-integer >3 value (e.g. 15.5) would be silently truncated by
+    # Fortran while Python's meshgen.py compares it as a float -- the two
+    # backends would then run different dip angles for the same
+    # user_defined_params.py. Refuse any non-integer C_degen so all three
+    # (Fortran, Python, case.setup) agree on an integer input.
+    if par.C_degen != int(par.C_degen):
+        sys.exit('case.setup: par.C_degen=%r is not an integer. Fortran reads '
+                  'C_degen as integer(kind=4), so a non-integer value would be '
+                  'silently truncated there while Python compares it as a float. '
+                  'Use an integer C_degen (0, or an integer >3).'
+                  % (par.C_degen,))
     with open('bGlobal.txt', 'w') as f:
         f.write(str(par.mode)        + "\n")
         f.write(str(par.C_elastic)   + "\n")

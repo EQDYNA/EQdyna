@@ -17,6 +17,21 @@ subroutine readglobal
         read(1001,*) C_elastic
         read(1001,*) C_nuclea
         read(1001,*) C_degen
+        ! Row 153 checkpoint 1 audit fix, widened per the victor-reyes re-audit
+        ! on PR #150: checkIsOnFault (meshgen.f90) takes neither its C_degen==0
+        ! branch nor its C_degen>3.0d0 branch for any C_degen that is NOT in
+        ! {0} union (3, infinity) -- that includes 0<C_degen<=3 AND every
+        ! negative value -- isOnFault stays 0 for every node, which this
+        ! refactor's faultDegenStyle/faultDegenAngle derivation
+        ! (readfaultgeometry, below) would otherwise silently map to style=0
+        ! (vertical planar fault) instead of refusing. Python's
+        ! meshgen.py:_check_is_on_fault_vec raises NotImplementedError for the
+        ! same accepted set; match it here with the accepted-set test itself
+        ! (not a refused-range test), so no third region can slip through.
+        if (.not. (C_degen == 0.0d0 .or. C_degen > 3.0d0)) call abortRun(ERR_GEOM_DEGEN_UNSUPPORTED, &
+            'bGlobal.txt: C_degen must be 0 (vertical planar fault) or >3 ' // &
+            '(wedge-degeneration dip angle in degrees); checkIsOnFault takes ' // &
+            'neither branch for the value read here, so no fault node would be found.')
         read(1001,*) insertFaultType
         read(1001,*) friclaw
         read(1001,*) ntotft
@@ -147,10 +162,21 @@ subroutine readfaultgeometry
         fltxyz(1,3,i)=fzmin(i)
         fltxyz(2,3,i)=fzmax(i)
         fltxyz(1,4,i)=fstrike*pi/180.0d0
-        if (C_degen>3.0d0) then 
+        if (C_degen>3.0d0) then
             fltxyz(2,4,i) = C_degen*pi/180.0d0
         else
             fltxyz(2,4,i) = 90.d0*pi/180.d0
+        endif
+        ! Row 153 checkpoint 1: per-fault degeneration style/angle, derived
+        ! from C_degen exactly as fltxyz(2,4,i) above -- every fault gets the
+        ! SAME style/angle C_degen already gave it (uniform test), so this is
+        ! a pure refactor, not a behavior change.
+        if (C_degen>3.0d0) then
+            faultDegenStyle(i) = 1
+            faultDegenAngle(i) = C_degen
+        else
+            faultDegenStyle(i) = 0
+            faultDegenAngle(i) = 0.d0
         endif
     enddo
     

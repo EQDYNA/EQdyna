@@ -104,6 +104,7 @@ program EQdyna
     allocate(fxmin(ntotft),fxmax(ntotft),fymin(ntotft),fymax(ntotft),fzmin(ntotft),fzmax(ntotft),material(nmat,n2mat))
     allocate(nonfs(ntotft))
     allocate(fltxyz(2,4,ntotft))
+    allocate(faultDegenStyle(ntotft), faultDegenAngle(ntotft))
 
     call readfaultgeometry
     call readmaterial

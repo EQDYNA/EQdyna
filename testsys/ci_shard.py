@@ -235,6 +235,14 @@ SHARDS = {
                                  # build; one ~20-line standalone program
                                  # compile+link (no mpirun) + one Python
                                  # call -- sub-second beyond the shared build.
+        "test_row153_degen_range_refused.py",  # added 2026-10-07 (row 153
+                                 # checkpoint 1 audit fix): reuses the already-
+                                 # built bin/eqdyna, 7 one-rank mpirun launches
+                                 # against a 4-line bGlobal.txt (aborts at
+                                 # readglobal, before any mesh work) + one
+                                 # subprocess launch of case.setup -- well
+                                 # under this shard's other mpirun-heavy
+                                 # scripts.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
         "test_user_docs_commands.py",  # added 2026-09-25 (board row 126, docs

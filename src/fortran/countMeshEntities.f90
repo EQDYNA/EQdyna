@@ -10,6 +10,7 @@ subroutine countMeshEntities
     integer(kind = 8) :: nodeCount=0, elementCount=0, equationNumCount=0, eqNumIndexArrSizeCount=0
     integer(kind = 4) :: nxt, nyt, nzt, nx, ny, nz, ix, iy, iz, &
         edgex1,edgey1, iDof,edgezn, numOfDof, nxuni,nyuni,nzuni,ift,mex,mey,mez,isOnFt
+    integer (kind = 8) :: eCountBeforeDegen
     real (kind = dp) :: xcoor, ycoor, zcoor, xline(10000), yline(10000), zline(10000), modelBoundCoor(3,2), nodeCoor(10)
     ! Row 94: getLocalOneDimCoorArrAndSize now also returns the FULL global
     ! 1D grid it builds internally (see meshgen.f90); countMeshEntities has
@@ -66,12 +67,20 @@ subroutine countMeshEntities
                 
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
                 
-                    elementCount = elementCount + 1            
-                    
-                    if (C_degen > 3.d0) then 
-                        call wedge4num(xcoor-dx/2.0d0, ycoor-dy/2.0d0, zcoor-dz/2.0d0, elementCount)
-                    endif                 
-                endif 
+                    elementCount = elementCount + 1
+
+                    ! Row 153 checkpoint 1: generalized from the hardcoded
+                    ! fault-1-only C_degen>3.d0 test to a per-fault loop (see
+                    ! meshgen.f90's matching wedge() call site for why this is
+                    ! bit-identical on every existing case).
+                    do ift = 1, ntotft
+                        if (faultDegenStyle(ift) > 0) then
+                            eCountBeforeDegen = elementCount
+                            call wedge4num(xcoor-dx/2.0d0, ycoor-dy/2.0d0, zcoor-dz/2.0d0, elementCount, ift)
+                            if (elementCount > eCountBeforeDegen) exit
+                        endif
+                    enddo
+                endif
 
             enddo   
         enddo   

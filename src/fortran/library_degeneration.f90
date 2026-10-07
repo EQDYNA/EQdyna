@@ -1,18 +1,20 @@
 ! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
 ! MIT
-subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp) 
-    
+subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp, iFault)
+    ! Row 153 checkpoint 1: iFault added (was hardcoded "1" throughout this
+    ! subroutine, via fltxyz(...,1) and bare C_degen); every existing caller
+    ! passes iFault=1, so this is a pure refactor (see meshgen.f90 call site).
     use globalvar
     implicit none
-    
+
     integer (kind = 8) :: elemCount, stressDofCount
-    integer (kind = 4) :: iy, iz, nftndtmp, k, i, neworder(nen)
+    integer (kind = 4) :: iy, iz, nftndtmp, k, i, neworder(nen), iFault
     real (kind = dp) :: cenx, ceny, cenz, pointToFaultDist, tangentDip
-        tangentDip = dtan(C_degen/180.d0*pi)
+        tangentDip = dtan(faultDegenAngle(iFault)/180.d0*pi)
         pointToFaultDist = abs(ceny*tangentDip+cenz)/(1.d0+tangentDip**2)**0.5
-    if (cenx>fltxyz(1,1,1).and.cenx<fltxyz(2,1,1).and. &
-            ceny>fltxyz(1,2,1).and.ceny<fltxyz(2,2,1).and. &
-            cenz>fltxyz(1,3,1).and. &
+    if (cenx>fltxyz(1,1,iFault).and.cenx<fltxyz(2,1,iFault).and. &
+            ceny>fltxyz(1,2,iFault).and.ceny<fltxyz(2,2,iFault).and. &
+            cenz>fltxyz(1,3,iFault).and. &
             pointToFaultDist<tol) then
         ! Degenerate the brick element into two wedge elements.
         !       8
@@ -55,20 +57,22 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp)
     endif                 
 end subroutine
 
-subroutine wedge4num(cenx, ceny, cenz, elemCount) 
-    
+subroutine wedge4num(cenx, ceny, cenz, elemCount, iFault)
+    ! Row 153 checkpoint 1: iFault added (see wedge() above); every existing
+    ! caller passes iFault=1, so this is a pure refactor.
     use globalvar
     implicit none
-    
-    integer (kind = 8) :: elemCount    
+
+    integer (kind = 8) :: elemCount
+    integer (kind = 4) :: iFault
     real (kind = dp) :: cenx, ceny, cenz, tangentDip, pointToFaultDist
-    
-        tangentDip = dtan(C_degen/180.d0*pi)
+
+        tangentDip = dtan(faultDegenAngle(iFault)/180.d0*pi)
         pointToFaultDist = abs(ceny*tangentDip+cenz)/(1.d0+tangentDip**2)**0.5
 
-    if (cenx>fltxyz(1,1,1).and.cenx<fltxyz(2,1,1).and. &
-            ceny>fltxyz(1,2,1).and.ceny<fltxyz(2,2,1).and. &
-            cenz>fltxyz(1,3,1).and. &
+    if (cenx>fltxyz(1,1,iFault).and.cenx<fltxyz(2,1,iFault).and. &
+            ceny>fltxyz(1,2,iFault).and.ceny<fltxyz(2,2,iFault).and. &
+            cenz>fltxyz(1,3,iFault).and. &
             pointToFaultDist<dx/100.d0) then
 
         elemCount = elemCount + 1
