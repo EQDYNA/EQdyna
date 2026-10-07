@@ -57,16 +57,17 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 23. Fortran is the reference implementation; the port follows its NUMERICS, not its file layout.
 24. A release tag requires a committed local sweep at the exact SHA, not only green CI.
 24a. A release tag also requires the image-publish workflow's own green run for the exact SHA.
-25. `src/`, `testsys/`, and `.github/` reach master only through a merged pull request; everything else may still push direct.
+25. Every commit reaches master through a merged pull request; the lane it takes (fast or full) is decided by content.
+25a. A stale-base PR's merge safety is assessed with a three-dot diff or a trial squash dry run, never a two-dot diff.
 26. User-facing docs are written for users.
 27. Release cadence: release as soon as a physics or output change lands, or at the latest after a week or ~5 PRs, whichever comes first.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 27 numbered rules
-(1-27) plus thirty-one lettered sub-rules (1a, 2a, 3a, 3b, 3c, 4a, 4b, 4c,
+(1-27) plus thirty-two lettered sub-rules (1a, 2a, 3a, 3b, 3c, 4a, 4b, 4c,
 4d, 4e, 5a, 5b, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 15f, 15g, 20a, 20b,
-20c, 21a, 21b, 21c, 21d, 21e, 24a) — 58 `## ` headings total. Verify:
-`grep -c '^## ' PROJECT_RULES.md` reads 58; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
+20c, 21a, 21b, 21c, 21d, 21e, 24a, 25a) — 59 `## ` headings total. Verify:
+`grep -c '^## ' PROJECT_RULES.md` reads 59; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
 (numbered rules only, no letter suffix) reads 27.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
@@ -3361,6 +3362,45 @@ the guards named above. The full/fast LANE split still rests on
 `change_class`'s PHYSICS union — an owner decision, reviewable only; no
 guard can tell whether a future new top-level directory should have joined
 the gated set the day it was created.
+
+---
+
+## 25a. A stale-base PR's merge safety is assessed with a three-dot diff or a trial squash dry run, never a two-dot diff
+
+A squash-merge applies only the merge-base..head patch (`git diff
+origin/master...branch`, "three-dot") onto the CURRENT tip of the target
+branch — not the full tree-state difference (`git diff origin/master
+branch`, "two-dot"). A two-dot diff answers "how does this branch's whole
+tree differ from master today", which includes every master-only file added
+since the branch's fork point; a squash merge never touches those files
+unless the PR's own patch does. Reading the two-dot diff's size as revert
+risk from a stale base is reasoning about the wrong comparison.
+
+**Rationale**: a conductor diagnosed PRs #115, #118, #119 as liable to revert
+master-only files on squash-merge because their stale branch bases showed a
+large two-dot diff against master. A three-dot diff on PR #119 showed 0
+deletions (only the PR's own 116 insertions), and a trial `git merge --squash`
+onto the then-current master tip completed with 0 deletions and 0 conflicts —
+the diagnosis was wrong. The rebases performed were not harmful (final
+content was correct either way) but were unnecessary cost: an extra worktree
+build and a full e2e re-run per PR, for a revert risk that a cheaper check
+would have shown did not exist (pathway_forward.md rows 148/150/151).
+
+**How to apply**: before rebasing a stale-base PR to "be safe" against a
+revert, run `git diff <base>...<branch>` (three-dot) or `git merge --squash`
+as a dry run onto the current target tip, and read what it actually proposes
+to delete. Zero deletions outside the PR's own intended changes means the
+stale base is not a revert risk and no rebase is needed. Reserve a real
+rebase for a genuine content conflict, or for a case where CI must actually
+run against the combined tree (not merely diagnosed-from-a-two-dot-diff
+risk).
+
+**Tier**: norm, not mechanical — this is a diagnostic habit a human or agent
+applies when assessing a stale branch, not a thing CI can check on every PR
+(there is no failure state to gate on; a rebase that turns out unnecessary
+is wasted cost, not a wrong merge). No check is proposed here; this rule
+exists to be read before the next "this branch looks stale, better rebase"
+call, not to be enforced by a script.
 
 ---
 
