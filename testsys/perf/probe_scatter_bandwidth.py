@@ -56,7 +56,7 @@ does not ask about locality here, item 33's own compact/spread contrast
 already exists in `run_scaling.py`/`run_numa_scaling.py`).
 
 Usage:
-    JAX_PLATFORMS=cpu /home/utig5/dliu/gns/gns/venv_cotopaxi/bin/python3 \\
+    JAX_PLATFORMS=cpu <path-to-venv>/bin/python3 \\
         testsys/perf/probe_scatter_bandwidth.py [--cores 8,32]
         [--n-lo 30] [--n-hi 100] [--busy-ceiling 0.2]
         [--i-know-the-box-is-busy] [--dump-hlo]

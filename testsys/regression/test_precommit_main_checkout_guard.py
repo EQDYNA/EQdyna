@@ -4,7 +4,7 @@ Regression guard for pathway_forward.md item 68 (P2) -- PROJECT_RULES.md
 rules 21 and 21b.
 
 INCIDENT (relayed 2026-09-22): twice in one day an agent committed directly
-into the MAIN checkout /home/utig5/dliu/EQdyna instead of its own worktree,
+into the MAIN checkout <repo> instead of its own worktree,
 and a third session had HEAD move underneath it mid-run as a result. The
 failure is silent by construction -- the victim's next read of a source file
 returns different bytes, no error raised, nothing recording that the tree

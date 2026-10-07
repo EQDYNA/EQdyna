@@ -11,7 +11,8 @@
 # in the primary checkout and is never copied into a worktree. It is opened
 # READ-ONLY by every command below.
 set -e
-MAIN=${EQDYNA_MAIN:-/home/utig5/dliu/EQdyna}
+REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+MAIN=${EQDYNA_MAIN:-$REPO_ROOT}
 A=$MAIN/scec_archive
 OUT=${1:-scratch/scec_compare_proof}
 S=$(dirname "$0")/scec_compare.py

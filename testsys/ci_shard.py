@@ -150,6 +150,7 @@ SHARDS = {
         "test_station_gate.py",  # added 2026-09-24 (wei-lin, owner gate design): tempdir copies of committed refs, 10 scenarios, ~1 s
         "test_nstress_sign_convention.py",  # added 2026-09-24 (wei-lin, row 22a): 11 case-param subprocesses + tempdir gate checks, ~1 s
         "test_threadprobe.py",  # added 2026-09-24 (wei-lin, item 47a): pure function, <1 s
+        "test_no_hardcoded_paths.py",  # added 2026-10-07 (path scrub, owner decision 2026-10-06): one git grep subprocess, <1 s
     ],
     "2": [
         "test_check_input_consistency.py",  # added 2026-09-24 (mira-volkov,

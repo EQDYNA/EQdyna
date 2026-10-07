@@ -9,11 +9,15 @@ This compares serial python against a SERIAL FORTRAN reference: same
 decomposition on both sides, so the decomposition term is zero by construction
 and what remains is the port alone.
 """
+import os
 import sys
-sys.path.insert(0, '/home/utig5/dliu/EQdyna')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from testsys import compare, matrix
 
-S = '/tmp/claude-16759/-home-utig5-dliu-EQdyna/e618789a-38a5-4235-9ca3-c8a3a0fe9ba6/scratchpad'
+# Scratch dir holding the pre-generated drv_serial_fortran_ref.frt and
+# drv_py_{numpy,jax} run outputs this evidence script compares. Point
+# EQDYNA_EVIDENCE_SCRATCH at wherever those were (re)generated.
+S = os.environ.get('EQDYNA_EVIDENCE_SCRATCH', 'scratch/drv_a6_marginal_population')
 REF_SERIAL = S + '/drv_serial_fortran_ref.frt'
 CASE = 'test.drv.a6'
 
