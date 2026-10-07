@@ -1,0 +1,31 @@
+{
+ "tool": "run_e2e",
+ "sha": "7dd49b4",
+ "host": "cotopaxi",
+ "date": "2026-10-06 22:35",
+ "label": "explicit: cases=test.tpv26,test.tpv27 backends=python-jax",
+ "device": "cpu",
+ "jobs_budget": 3,
+ "tenancy_ceiling": 0.5,
+ "cells": [
+  {
+   "case": "test.tpv26",
+   "backend": "python-jax",
+   "ok": false,
+   "seconds": 117.89399456977844,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  },
+  {
+   "case": "test.tpv27",
+   "backend": "python-jax",
+   "ok": false,
+   "seconds": 145.2130434513092,
+   "ranks": 1,
+   "platform": "cpu",
+   "platform_evidence": "run_standalone pins JAX_PLATFORMS=cpu; jax cannot land on a GPU under that pin"
+  }
+ ],
+ "tree_dirty": true
+}

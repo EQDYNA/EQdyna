@@ -426,7 +426,13 @@ subroutine swtwNucleation(iFault, iFaultNodePair, fricCoeff)
         ! (p.5 "Material Properties") matches NUC_VS_FIXED exactly -- this
         ! is not a borrowed/impersonated formula (rule 17 step 3), it is
         ! this formula's own source benchmark.
-        if (TPV == 201 .or. TPV==36 .or. TPV==37 .or. TPV==29 .or. TPV==30 .or. TPV==22 .or. TPV==23) &
+        ! TPV26/27 (TPV26_27_Description_v13, Part 5, p.12) is the SAME
+        ! formula again -- r_crit=4000m, 0.081 taper coefficient, 0.7*Vs
+        ! rupture speed, t0=0.5s, all identical symbols/values. Confirmed by
+        ! direct spec read (row 150 investigation, 2026-10-06), not assumed
+        ! from the name.
+        if (TPV == 201 .or. TPV==36 .or. TPV==37 .or. TPV==29 .or. TPV==30 .or. TPV==22 .or. TPV==23 &
+            .or. TPV==26 .or. TPV==27) &
             tr = (radius+NUC_TAPER_COEF*nucR*(1.0d0/(1.0d0-(radius/nucR)**2)-1.0d0))/(NUC_VR_TO_VS*NUC_VS_FIXED)
         if (TPV == 202) tr = radius/nucRuptVel
     endif

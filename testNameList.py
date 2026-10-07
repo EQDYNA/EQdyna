@@ -3,8 +3,17 @@
 nameList = ['test.drv.a6',   'test.tpv8', 'test.tpv10', 'test.tpv104',
             'test.tpv1053d', 'test.meng2023a', 'test.meng2023cb',
             'test.tpv29', 'test.tpv36', 'test.tpv37', 'test.tpv30',
-            'test.tpv22', 'test.tpv23', 'test.tpv35', 'test.tpv34']
-coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+            'test.tpv22', 'test.tpv23', 'test.tpv35', 'test.tpv34',
+            'test.tpv26', 'test.tpv27']
+coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+# test.tpv26/test.tpv27 (SCEC TPV26/27, planar vertical strike-slip, TPV27
+# adding Drucker-Prager viscoplasticity) REGISTERED 2026-10-06 (board row
+# 150): 4 ranks (par.nx,ny,nz=2,1,2), fortran + python-jax, at the ONE 5 s
+# GATE_TERM_S and dx=500 m. Confirmed (TPV26_27_Description_v13, direct spec
+# read) these use ORDINARY smoothed forced-rupture nucleation (Part 5,
+# identical formula to TPV22/23/29/30/36/37/201) and SCEC Method 1/Method 2
+# initial-stress machinery EQdyna already has from TPV29/30 -- NOT the
+# row 149/TPV12-13 gravity-everywhere-with-C_elastic=1 gap.
 # test.tpv30 (rough fault + Drucker-Prager viscoplasticity) REGISTERED
 # 2026-09-23 on the owner's gating decision, at the ONE 5 s term and dx=500 m,
 # fortran + python-jax. The divergence that kept it out (numpy==jax, both !=

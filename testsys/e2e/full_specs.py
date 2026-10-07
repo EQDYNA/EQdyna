@@ -56,6 +56,34 @@ FULL_SPECS = {
                 "ny=1 keeps the fault plane off MPI partitions, same as "
                 "test.tpv29's own full-tier entry."),
     ),
+    'test.tpv26': dict(
+        # rule 17 step 5: recorded, not run. requireFaultGeometryResolution
+        # admits only dx=500 m today (the gate tier); no 100 m/50 m geometry
+        # file is shipped in case_input/test.tpv26/ -- a scheduling/storage
+        # decision, not a spec gap (this case's fault is planar, so the full
+        # tier needs only a finer on_fault_vars grid, not a downloaded
+        # surface the way tpv29/30's rough fault does).
+        dx=100.0, term=13.0, nx=4, ny=1, nz=4,
+        citation=("TPV26_27_Description_v13, Part 3 p.9: 'We request that "
+                "you run each of these two benchmarks using two resolutions: "
+                "100 meter resolution, and 50 meter resolution... If you are "
+                "unable to run the simulation with 50 m node spacing, then "
+                "it is OK to omit the 50 m case.' 'Run the model for times "
+                "from 0.0 to 13.0 seconds after nucleation.' ny=1 keeps the "
+                "fault plane off MPI partitions, same convention as every "
+                "other planar-fault full-tier entry here."),
+    ),
+    'test.tpv27': dict(
+        # Same geometry/term citation as test.tpv26 (spec Part 5 p.5:
+        # "material properties are the only difference" between the two
+        # benchmarks) -- the Drucker-Prager machinery is already wired via
+        # par.viscoplasticRelaxTime/devStrTaperDepthStart/End (confirmed
+        # present from test.tpv30, row 150 investigation).
+        dx=100.0, term=13.0, nx=4, ny=1, nz=4,
+        citation=("TPV26_27_Description_v13, Part 3 p.9 (TPV26 and TPV27 "
+                "share the resolution/term request -- see test.tpv26's own "
+                "entry for the full quote)."),
+    ),
     'test.tpv8': dict(
         dx=100., term=15., nx=4, ny=2, nz=2,
         citation=(
