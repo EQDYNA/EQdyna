@@ -13,14 +13,14 @@ is verified against, and measured performance.
 
 ## Where to go
 
-* Getting started -- installing EQdyna on Ubuntu, an HPC cluster, or macOS, and running a first case.
-* Running a case -- creating a case, configuring it, choosing an MPI rank count, and the Python/JAX backend.
-* Parameters -- every configurable default, generated from the code itself.
-* Output files -- what each output file contains and how its columns are defined.
-* Benchmarks -- the SCEC verification suite and how each case is checked.
-* Performance -- measured wall-clock and memory figures, with the hardware they were measured on.
-* Troubleshooting -- exit codes and what a failed run is telling you.
-* Citing -- how to cite EQdyna.
+* [Getting started](getting-started.md) -- installing EQdyna on Ubuntu, an HPC cluster, or macOS, and running a first case.
+* [Running a case](running-a-case.md) -- creating a case, configuring it, choosing an MPI rank count, and the Python/JAX backend.
+* [Parameters](parameters.md) -- every configurable default, generated from the code itself.
+* [Output files](outputs.md) -- what each output file contains and how its columns are defined.
+* [Benchmarks](benchmarks.md) -- the SCEC verification suite and how each case is checked.
+* [Performance](performance.md) -- measured wall-clock and memory figures, with the hardware they were measured on.
+* [Troubleshooting](troubleshooting.md) -- exit codes and what a failed run is telling you.
+* [Citing](citing.md) -- how to cite EQdyna.
 
 ## Getting the code
 

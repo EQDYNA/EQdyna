@@ -7,13 +7,10 @@ create.newcase $caseDirectoryName $predefinedCompset
 cd $caseDirectoryName
 ```
 
-`$predefinedCompset` is one of the pre-defined cases below, or your own
-copy of one with `user_defined_params.py` edited to match your fault and
-loading -- see the Parameters page for every setting that file can
-override.
-
-* test.drv.a6, for deterministic ground motion with a fractal fault and plasticity
-* test.tpv8, test.tpv10, test.tpv36, test.tpv37, test.tpv104, test.tpv1053d, test.tpv29, test.tpv30, test.tpv35, test.tpv34
+`$predefinedCompset` is one of the pre-defined cases on the Benchmarks page
+(e.g. `test.tpv8`), or your own copy of one with `user_defined_params.py`
+edited to match your fault and loading -- see the Parameters page for every
+setting that file can override.
 
 `TPV<number>` follows the naming convention of the SCEC/USGS Spontaneous
 Rupture Code Verification Project; see the Benchmarks page for what each
