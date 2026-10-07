@@ -274,6 +274,27 @@ GATE_STATIONS = {
                'faultstft2_050dp050.txt'),
         'off': ('body030st-050dp000.txt', 'body030st150dp000.txt'),
     },
+    'test.tpv26': {
+        # SCEC's own 12 on-fault / 6 off-fault stations and filenames are
+        # given VERBATIM in TPV26_27_Description_v13 Part 8/9 (p.21-26) --
+        # used directly, not derived. Hypocentre (-5,-10 km) is itself a
+        # listed station -> faultst-050dp100 exactly; shallowest buried away
+        # from the hypocentre (15,-5); farthest along strike at the
+        # hypocentre's own depth (-15,-10). Off-fault: near side (-3 km) at
+        # x=+5, far side (+3 km) at x=+15 -- different x so the pair also
+        # samples along-strike spread, same convention as tpv35's pick.
+        'on': ('faultst-050dp100.txt', 'faultst150dp050.txt',
+               'faultst-150dp100.txt'),
+        'off': ('body-030st050dp000.txt', 'body030st150dp000.txt'),
+    },
+    'test.tpv27': {
+        # Same station grid and hypocentre as tpv26 (TPV27 differs only in
+        # off-fault material, spec Part 5 p.5: "material properties are the
+        # only difference").
+        'on': ('faultst-050dp100.txt', 'faultst150dp050.txt',
+               'faultst-150dp100.txt'),
+        'off': ('body-030st050dp000.txt', 'body030st150dp000.txt'),
+    },
 }
 
 # STATION_ZERO_FLOOR -- the absolute floor a per-column scale S_q is clamped
@@ -338,6 +359,15 @@ STATION_BOUND = {
     # same smallest-bound-in-use floor as tpv29/tpv30.
     'test.tpv22': 1e-10,
     'test.tpv23': 1e-10,
+    # test.tpv26/test.tpv27: measured python-jax vs the fresh fortran
+    # reference (row 150, this PR) -- worst e 2.0598e-14 (tpv26, off h-disp,
+    # body030st150dp000) / 1.9130e-13 (tpv27, off h-vel, body-030st050dp000),
+    # both near-machine-epsilon; same smallest-bound-in-use floor as
+    # tpv29/tpv30/tpv22/tpv23 despite tpv27's looser CASE_BOUND (the frt/nc
+    # roundoff tpv27's extra Drucker-Prager arithmetic adds does not show up
+    # at the 3-on/2-off stations this gate reads).
+    'test.tpv26': 1e-10,
+    'test.tpv27': 1e-10,
 }
 
 # STATION_UNSUPPORTED -- (case, backend) cells whose station comparison is refused
@@ -416,6 +446,10 @@ NSTRESS_CONVENTION = {
     'test.tpv23': ('extension', 'TPV22_23_Description_v08.pdf Part 6 p.15 '
                    '(TPV22 and TPV23 share the format), "Positive means '
                    'extension."'),
+    'test.tpv26': ('extension', 'TPV26_27_Description_v13 Part 9 p.26 (on-fault '
+                   'field table), n-stress: "Positive means extension."'),
+    'test.tpv27': ('extension', 'TPV26_27_Description_v13 Part 9 p.26 (TPV26 '
+                   'and TPV27 share the format), "Positive means extension."'),
 }
 
 # python-jax-mpi is a FOURTH value on the `backend` axis: real MPI (one
@@ -720,6 +754,23 @@ CASE_BOUND = {
     # noise at that scale.
     'test.tpv22': 1e-10,
     'test.tpv23': 1e-10,
+    # test.tpv26/test.tpv27 (row 150, this PR): fortran cell bit-exact
+    # against its own freshly-frozen 4-rank reference (max|diff|=0.0, 3321
+    # fault nodes, ~42s wall each). Measured python-jax vs that reference:
+    # tpv26 worst 9.000000e-09 (frt row 1245 col 13, a peak-slip-rate-type
+    # component going from 7.508182e-03 to 7.508191e-03 -- roundoff on a
+    # near-threshold rupture-front node, same shape as tpv36/37's own
+    # observation); tpv27 (added Drucker-Prager return-map, more nonlinear
+    # per-step arithmetic) worst 1.974000e-07 (frt row 1231 col 13, 6.03e-04
+    # -> 6.03e-04, same near-zero-component roundoff pattern). Station gate
+    # is far tighter on both (worst e 2.06e-14 / 1.91e-13 respectively,
+    # comfortably inside 1e-10) -- it is only the frt/nc comparison that
+    # needs headroom. 1e-6 is the next bound-already-in-use at or above
+    # 9.0e-09 * ~121.5 (1.09e-6); 1e-4 is the next bound-already-in-use at
+    # or above 1.974e-07 * ~121.5 (2.40e-5) -- same headroom convention as
+    # every other case here, never a new tighter number with no margin.
+    'test.tpv26': 1e-6,
+    'test.tpv27': 1e-4,
 }
 # test.tpv30 was held out of the gate from 2026-09-17 to 2026-09-23 by a real
 # divergence (numpy==jax, both != Fortran by up to 4.0e8 Pa at t=20 s). It was
@@ -747,6 +798,8 @@ GATE = {
     'test.drv.a6': 'flip-budget',
     'test.tpv22': 'abs-max',
     'test.tpv23': 'abs-max',
+    'test.tpv26': 'abs-max',
+    'test.tpv27': 'abs-max',
 }
 
 # test.drv.a6's flip-budget gate. These numbers are measured, not chosen;
