@@ -130,6 +130,19 @@ FULL_SPECS = {
                 "convention as every other planar-fault full-tier entry "
                 "here."),
     ),
+    'test.tpv12': dict(
+        # rule 17 step 5: recorded, not run. requireFaultGeometryResolution
+        # admits only the gate-tier dx today; the spec's own 100 m tier is
+        # a scheduling decision, not a spec gap (planar dipping fault,
+        # needs only a finer on_fault_vars/material grid, not a downloaded
+        # surface).
+        dx=100.0, term=8.0, nx=4, ny=1, nz=4,
+        citation=("TPV12_13_Description_v6.pdf, Part 2/3: spec recommends "
+                "100 m node spacing on the fault plane; 'Run the model for "
+                "times from 0.0 to 8.0 seconds after nucleation.' ny=1 "
+                "keeps the fault plane off MPI partitions, same convention "
+                "as every other planar-fault full-tier entry here."),
+    ),
     'test.tpv8': dict(
         dx=100., term=15., nx=4, ny=2, nz=2,
         citation=(
