@@ -3164,7 +3164,8 @@ on before it may merge, not in whether a PR exists:
   it touches no gated path. Fix on the branch and re-audit only the new
   commit; loop until both pass. Squash-merge and delete the branch.
   **Serial**: the next full-lane PR opens only after this one merges.
-- **Fast lane**: light content checks only, no `victor-reyes` audit, never
+- **Fast lane**: `build` + `unit-regression` + light content checks, no
+  `e2e-ci-smoke`, no `victor-reyes` audit, never
   queued behind a full-lane PR (the two lanes do not share the serial slot).
   No local test run is required before opening it — no test reads a
   docs/board/evidence/notes-only path as code — except the one narrow
@@ -3176,10 +3177,16 @@ on before it may merge, not in whether a PR exists:
   testsys/regression/test_user_docs_coverage.py` (`test_user_docs_coverage.py`
   added 2026-10-03, PR #81, rule 15g). CI's `detect-lane` job classifies the
   PR's own diff (`testsys/pr_policy.py pr-lane <base> <head>`) and skips
-  `build`/`unit-regression`/`e2e-ci-smoke` when the lane is fast, running
-  only `fast-lane-checks` (the four content guards when the diff touches
+  only `e2e-ci-smoke` when the lane is fast, adding `fast-lane-checks`
+  (the four content guards when the diff touches
   `README.md`/`docs/user/`, otherwise a re-check that the diff really is
-  fast-lane as a safety net). No `victor-reyes` gate, because a fast-lane
+  fast-lane as a safety net). **`build` and `unit-regression` run on both
+  lanes (owner decision 2026-10-07)**: repo-wide guards such as
+  `test_no_hardcoded_paths.py` and the board/rule readers scan the whole
+  tree, so when the fast lane skipped them a docs-only PR merged green and
+  turned master red after the fact (`41ffebf`, `1515597`; fixed by PR #142).
+  Guarded by `testsys/regression/test_ci_fast_lane_unit_regression.py`. No
+  `victor-reyes` gate, because a fast-lane
   diff by definition touches nothing `change_class` calls PHYSICS and
   nothing under `GATED_PREFIXES`. `gh pr merge --auto --squash` is a
   green-gated merge: since 2026-10-04 branch protection names `merge-gate`
@@ -3236,9 +3243,9 @@ behind a full-lane PR, and merge once a human has confirmed the PR is green
 (`--auto`/`--squash` is not yet gated by branch protection on `merge-gate`;
 see the fast-lane paragraph above). **No local test run is needed
 before opening a docs/board/evidence/notes-only PR** (owner, 2026-09-30:
-"Just doc change", carried into the 2026-10-04 rewrite): no test reads
-those files as code, and CI's `detect-lane` job keeps `build`/
-`unit-regression`/`e2e-ci-smoke` off the PR entirely when the lane is fast.
+"Just doc change", carried into the 2026-10-04 rewrite): CI runs
+`build`/`unit-regression` on the PR anyway (since 2026-10-07) and keeps only
+`e2e-ci-smoke` off it when the lane is fast.
 The one narrow exception: a PR touching `README.md` or `docs/user/` runs
 their four content guards first (~30 s), either locally or via CI's
 `fast-lane-checks` job: `python3 testsys/regression/test_readme_commands.py
@@ -3296,7 +3303,8 @@ pr-lane <base-sha> <head-sha>` on every `pull_request` event (a pure
 function of `git diff --name-only base...head` against the same
 `GATED_PREFIXES`/classifier union, computed via the PR's own merge-base
 diff, not the push-range walk the other two modes use) and gates
-`build`/`unit-regression`/`e2e-ci-smoke` on the result; `fast-lane-checks`
+`e2e-ci-smoke` on the result (`build`/`unit-regression` run on both lanes
+since 2026-10-07); `fast-lane-checks`
 and `merge-gate` consume its output the same way. Guarded by
 `testsys/regression/test_pr_policy_guard.py`,
 `test_prepush_pr_policy_guard.py`, `test_ci_pr_policy_step.py`, and

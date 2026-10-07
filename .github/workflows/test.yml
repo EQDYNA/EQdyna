@@ -155,9 +155,15 @@ jobs:
   # (cancelled() and failure() are only true for cancellation/failure, not
   # skip), so the custom lane boolean after it is actually evaluated instead
   # of being pre-empted by the injected success() check.
+  #
+  # build and unit-regression run on BOTH lanes (owner decision 2026-10-07):
+  # repo-wide guards (the hardcoded-path guard, board/rule readers) scan the
+  # whole tree, so a fast-lane PR that skipped them passed merge-gate and
+  # turned master red after merge (41ffebf, 1515597). Only e2e-ci-smoke
+  # stays full-lane-only.
   build:
     needs: detect-lane
-    if: ${{ !cancelled() && !failure() && (github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full') }}
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-22.04
 
     steps:
@@ -216,7 +222,7 @@ jobs:
   # present or it SKIPS.
   unit-regression:
     needs: [build, detect-lane]
-    if: ${{ !cancelled() && !failure() && (github.event_name != 'pull_request' || needs.detect-lane.outputs.lane == 'full') }}
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-22.04
     strategy:
       # fail-fast: false -- one shard failing must not cancel the other two
@@ -488,15 +494,16 @@ jobs:
       run: cat testRunLog.txt
 
   # Fast lane (PR-for-everything, owner decision 2026-10-04): a PR
-  # detect-lane classified `fast` (no gated path touched) gets LIGHT content
-  # checks instead of the full build/unit-regression/e2e-ci-smoke tier --
+  # detect-lane classified `fast` (no gated path touched) skips only
+  # e2e-ci-smoke (build and unit-regression run on both lanes since
+  # 2026-10-07) and adds this job's content checks --
   # the four existing content guards rule 25 already names when the PR
   # touches README.md or docs/user/**, or, when it touches neither, a
   # SAFETY RE-CHECK that this PR's own diff still classifies LANE=fast (a
   # second pr-lane call against the same base/head, independent of
   # detect-lane's), so nothing gated can slip into what detect-lane called a
   # docs-only PR between that job running and this one. No victor-reyes
-  # audit, no queueing behind a code PR -- this job is the entire fast lane.
+  # audit, no queueing behind a code PR.
   fast-lane-checks:
     needs: detect-lane
     if: github.event_name == 'pull_request' && needs.detect-lane.outputs.lane == 'fast'
@@ -543,7 +550,7 @@ jobs:
   # merges -- see PROJECT_RULES.md rule 25) names ONE required check, this
   # job, so a required-check list does not itself have to vary by lane. It
   # reaches both lanes (`if: always()`, not the default success()-only
-  # condition, so a skipped heavy job in the fast lane or a skipped
+  # condition, so a skipped e2e-ci-smoke in the fast lane or a skipped
   # fast-lane-checks in the full lane does not short-circuit it away) and
   # fails unless the lane that actually ran, actually passed -- reading each
   # needed job's own `.result` explicitly rather than trusting that it ran
@@ -573,11 +580,11 @@ jobs:
             echo "FAIL: full lane requires build, unit-regression and e2e-ci-smoke to ALL succeed (skipped does not count as a pass)"
             exit 1 ;;
           fast)
-            if [ "$FAST_LANE_RESULT" = "success" ]; then
-              echo "PASS: fast lane -- fast-lane-checks succeeded"
+            if [ "$BUILD_RESULT" = "success" ] && [ "$UNIT_REGRESSION_RESULT" = "success" ] && [ "$FAST_LANE_RESULT" = "success" ]; then
+              echo "PASS: fast lane -- build, unit-regression and fast-lane-checks all succeeded"
               exit 0
             fi
-            echo "FAIL: fast lane requires fast-lane-checks to succeed (skipped does not count as a pass)"
+            echo "FAIL: fast lane requires build, unit-regression and fast-lane-checks to ALL succeed (skipped does not count as a pass)"
             exit 1 ;;
           *)
             echo "FAIL: detect-lane did not produce a recognized lane ('$LANE')"

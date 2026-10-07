@@ -25,12 +25,15 @@ test as before (`GATED_PREFIXES` in `testsys/pr_policy.py` unioned with
 a `victor-reyes` audit in parallel only when gate or physics logic changes,
 squash-merge only (repo settings disable merge-commit and rebase-merge),
 serial. **Fast lane** — everything else (docs, board, evidence, session
-logs, rule text) — light content checks only (README/docs/user/ run their
-four content guards, `test_user_docs_coverage.py` added 2026-10-03, PR #81),
+logs, rule text) — `build` + `unit-regression` + light content checks
+(README/docs/user/ run their four content guards, `test_user_docs_coverage.py`
+added 2026-10-03, PR #81),
 no audit, no serial wait; `gh pr merge --auto --squash`, which waits for
 the required `merge-gate` check; reference artifacts are PHYSICS so they
 are full lane (rule 7). CI's `detect-lane` job (`pr_policy.py pr-lane`)
-classifies each PR and skips the heavy jobs on a fast-lane one. GitHub
+classifies each PR and skips only `e2e-ci-smoke` on a fast-lane one
+(unit-regression runs on both lanes since 2026-10-07: its whole-tree guards
+reddened master after two fast-lane merges). GitHub
 branch protection (applied 2026-10-04) requires a PR and `merge-gate`,
 admins included, so a direct push to master is refused by GitHub itself;
 `pr_policy.py`'s push-guard and ci-check modes are the local and

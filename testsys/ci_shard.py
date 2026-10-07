@@ -88,6 +88,7 @@ SHARDS = {
     "1": [
         "test_ci_dependencies.py",
         "test_ci_pr_policy_step.py",  # added 2026-09-23 (Iris, pr-enforce): parses test.yml, one subprocess, <1 s
+        "test_ci_fast_lane_unit_regression.py",  # added 2026-10-07 (fast lane runs unit-regression): parses test.yml twice, <1 s
         "test_ci_push_trigger_filter.py",  # added 2026-09-24 (wei-lin, row 87): parses test.yml, <1 s
         "test_pr_policy_guard.py",  # added 2026-09-23 (Iris, pr-enforce): scratch git repo, no network, <1 s
         "test_prepush_pr_policy_guard.py",  # added 2026-09-23 (Iris, pr-enforce): bare remote + real pushes, ~1-2 s

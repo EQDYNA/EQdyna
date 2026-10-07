@@ -5,7 +5,8 @@ Decision logic for the PR-for-everything workflow (owner decision,
 implement): EVERY commit reaches master ONLY through a merged pull request
 (squash-merge on GitHub). There is no longer a direct-push path for ANYTHING
 -- docs, board, evidence, session logs, rule text and reference artifacts
-now also travel through a PR, just a FAST LANE one (light content checks,
+now also travel through a PR, just a FAST LANE one (build + unit-regression
++ light content checks, no e2e-ci-smoke,
 `gh pr merge --auto --squash`, no victor-reyes audit, never queued behind a
 code PR). "Gated path" (GATED_PREFIXES / is_gated_path / touches_gated_paths)
 is still a meaningful question -- it is now exactly the fast-lane/full-lane
