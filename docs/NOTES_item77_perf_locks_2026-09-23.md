@@ -1,7 +1,7 @@
 # Item 77 -- the three remaining perf-tool holes (iris, 2026-09-23)
 
 Branch `iris/item77-perf-locks`, worktree
-`/home/utig5/dliu/EQdyna/.claude/worktrees/iris-item77`, from `4ee171b`.
+`<repo>/EQdyna/.claude/worktrees/iris-item77`, from `4ee171b`.
 Finishes item 74. Nothing here runs a perf measurement or launches `mpirun`.
 
 ## 1. `run_scaling.build_py_case` -> lock on `testsys/perf/scaling_case`

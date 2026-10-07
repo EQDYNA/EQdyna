@@ -1,4 +1,4 @@
---- /home/utig5/dliu/EQdyna/scratch/legacy_import/Examples/EQdyna_3.1/code/qdcshg.f90	2018-11-26 12:25:40.000000000 -0600
+--- <repo>/scratch/legacy_import/Examples/EQdyna_3.1/code/qdcshg.f90	2018-11-26 12:25:40.000000000 -0600
 +++ qdcshg.f90	2026-09-22 14:18:34.754343890 -0500
 @@ -50,7 +50,7 @@
    if(det <= 0.0) then
@@ -9,7 +9,7 @@
    endif
    !...derivatives of global shape function
    shlg = shg
---- /home/utig5/dliu/EQdyna/scratch/legacy_import/Examples/EQdyna_3.1/code/eqdyna3d.f90	2018-11-26 12:25:42.000000000 -0600
+--- <repo>/scratch/legacy_import/Examples/EQdyna_3.1/code/eqdyna3d.f90	2018-11-26 12:25:42.000000000 -0600
 +++ eqdyna3d.f90	2026-09-22 14:18:34.757343906 -0500
 @@ -472,7 +472,7 @@
      if(abs(x(3,ien(5,i)))<1) then  !at surface
@@ -29,7 +29,7 @@
    !...write out rupture time for multiple faults.
    ! also, final slip strike, dip, normal components. B.D. 6/2/12 
    if(nftnd(1) > 0) then
---- /home/utig5/dliu/EQdyna/scratch/legacy_import/Examples/EQdyna_3.1/code/meshgen.f90	2018-11-26 12:25:40.000000000 -0600
+--- <repo>/scratch/legacy_import/Examples/EQdyna_3.1/code/meshgen.f90	2018-11-26 12:25:40.000000000 -0600
 +++ meshgen.f90	2026-09-22 14:18:34.760343921 -0500
 @@ -478,7 +478,7 @@
            if(nelement>nelement1) then

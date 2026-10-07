@@ -1,6 +1,6 @@
 # item 70 -- a lock on the rotated run tree (working notes, NOT committed)
 
-Branch `fix/item70-e2e-test-lock`, worktree `/home/utig5/dliu/EQdyna-wt-item70`.
+Branch `fix/item70-e2e-test-lock`, worktree `<repo>/EQdyna-wt-item70`.
 
 ## H1 -- flock beats an O_EXCL lockfile here. HELD.
 Both refuse a second holder; they differ on holder death. flock is released by

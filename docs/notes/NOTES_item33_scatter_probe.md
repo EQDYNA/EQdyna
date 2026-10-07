@@ -45,7 +45,7 @@ as a follow-up, not chased further here (out of this probe's scope).
 
 ## Numbers (all fresh, this session, 2026-09-18)
 
-Interpreter: `/home/utig5/dliu/gns/gns/venv_cotopaxi/bin/python3` (jax 0.6.2),
+Interpreter: `<repo>/gns/gns/venv_cotopaxi/bin/python3` (jax 0.6.2),
 `JAX_PLATFORMS=cpu`, `JAX_ENABLE_X64=1`. Host `cotopaxi`, repo sha `cacf738`.
 Method: per-iteration cost by difference over n_lo=30, n_hi=100 `lax.fori_loop`
 iterations, fresh process per (op, cores, n) — same discipline as
@@ -111,14 +111,14 @@ rather than a compile-time parallelization gap — see verdict above.
 ## Exact commands to reproduce
 
 ```
-cd /home/utig5/dliu/EQdyna/.claude/worktrees/agent-a437a272308248b00
+cd <repo>/EQdyna/.claude/worktrees/agent-a437a272308248b00
 export EQDYNAROOT=$(pwd)
-/home/utig5/dliu/gns/gns/venv_cotopaxi/bin/python3 \
+<repo>/gns/gns/venv_cotopaxi/bin/python3 \
     testsys/perf/probe_scatter_bandwidth.py --cores 8,32 --n-lo 30 --n-hi 100
 
 # with HLO dump corroboration (writes to a tempdir under $TMPDIR or /tmp,
 # path printed on the scatter@max-cores line):
-/home/utig5/dliu/gns/gns/venv_cotopaxi/bin/python3 \
+<repo>/gns/gns/venv_cotopaxi/bin/python3 \
     testsys/perf/probe_scatter_bandwidth.py --cores 8,32 --n-lo 30 --n-hi 100 --dump-hlo
 ```
 

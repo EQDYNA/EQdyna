@@ -29,7 +29,7 @@ against Fortran's measured 14.39x. Closes item 43. Not a board sweep.
 ## Agents
 
 - `mira-volkov` `ad64043fb3e42e07a` — ADOPTED, not respawned. Worktree
-  `/home/utig5/dliu/wt-jaxshard`, branch `jax-shardmap`, created 10:59
+  `<repo>/wt-jaxshard`, branch `jax-shardmap`, created 10:59
   (2 min before my first probe), base `8919405` = `v5.13.0`.
 - **Base staleness assessed, not waved past (gate axis 4):** her branch is 2
   commits behind `51b0fa1`, and both are DOCS ONLY — `ec4d464`
@@ -110,7 +110,7 @@ and does not bind explicit sharding — it is not grounds to decline the attempt
      were both absent from every interpreter on this box, so the redirect's
      primary path was unrunnable as stated. Open MPI 4.1.1 and `mpif90` do
      exist. Installed `mpi4py 4.1.2` (cp310 manylinux wheel) into the project's
-     actual jax interpreter — which is `/home/utig5/dliu/gns/gns/venv_cotopaxi`
+     actual jax interpreter — which is `<repo>/gns/gns/venv_cotopaxi`
      (`python3` resolves there; `sys.base_prefix` is `/usr`). **Environment
      change, declared:** additive only, offline from a cached wheel
      (`--no-deps --no-index --find-links`), so nothing else in that venv moved.
@@ -617,7 +617,7 @@ produces the number — see below.
 
 ## Decision: land the `EQDYNA_DUMP_EQUIL` diagnostic
 
-Mira's worktree `/home/utig5/dliu/wt-mira-tpv30v31` (branch `mira-tpv30-v31`),
+Mira's worktree `<repo>/wt-mira-tpv30v31` (branch `mira-tpv30-v31`),
 uncommitted, one file, +48 lines in `src/fortran/driver.f90`. Static since
 20:06 — mission complete, safe to salvage.
 
@@ -747,7 +747,7 @@ muddying a 30-cell parity artifact.
 
 Surveying all 13 worktrees for commits not on master turned up four candidates.
 `git cherry master <branch>` reported `-` (already upstream) for three and `+`
-for one: `a7d281f` in `/home/utig5/dliu/wt-zofia-v5140`, carrying **rules 2a and
+for one: `a7d281f` in `<repo>/wt-zofia-v5140`, carrying **rules 2a and
 15a**, neither of which was on master.
 
 Master had rule 15a's ENFORCEMENT — the pre-tag guard, landed at `a976ec7` this

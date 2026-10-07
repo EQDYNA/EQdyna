@@ -1,6 +1,6 @@
 # item 68 — pre-commit guard for rules 21 / 21b (worktree checkpoint log)
 
-Worktree: `/home/utig5/dliu/EQdyna/.claude/worktrees/iris-item68`
+Worktree: `<repo>/EQdyna/.claude/worktrees/iris-item68`
 Branch:   `iris/item68-precommit-hook`, branched from 894cdc1 (v5.16.0).
 Scope:    hook + installer config line + regression guard. No solver source,
           no reference, no bound touched. Not merged, not pushed.

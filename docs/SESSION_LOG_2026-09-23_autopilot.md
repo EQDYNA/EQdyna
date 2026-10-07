@@ -55,10 +55,10 @@ env marker, no role test — per item 68's own 2026-09-22 amendment.
 My own verification, both directions, because a hook that blocks worktree commits
 would stop every agent in this project:
 
-    # cwd = /home/utig5/dliu/EQdyna (the main checkout)
+    # cwd = <repo>/EQdyna (the main checkout)
     pre-commit: REFUSED -- this is the MAIN CHECKOUT, not a worktree.
-      --git-dir        = /home/utig5/dliu/EQdyna/.git
-      --git-common-dir = /home/utig5/dliu/EQdyna/.git
+      --git-dir        = <repo>/EQdyna/.git
+      --git-common-dir = <repo>/EQdyna/.git
 
     # cwd = a linked worktree
     git -c core.hooksPath=testsys/hooks commit --allow-empty  ->  exit 0

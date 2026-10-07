@@ -1,4 +1,4 @@
-/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+<repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
  
 PARAMETERS: positve dip angle to tilt the fault to y+
 PARAMETERS: negavtive dip to tilt the fault to y-
@@ -14,12 +14,12 @@ case test.tpv104  sha c4afa78  host cotopaxi  n_lo/n_hi 20/60  max-busy 0.50
 
 -- 1 rank(s) -- cpus [8]  busy {8: 0.0}  worst 0.00 (max-busy 0.50), whole-box load 19.5
 Traceback (most recent call last):
-  File "/home/utig5/dliu/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 298, in <module>
+  File "<repo>/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 298, in <module>
     main()
-  File "/home/utig5/dliu/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 232, in main
+  File "<repo>/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 232, in main
     r = per_step_jax_mpi(case_dir, cpus, n, a.n_lo, a.n_hi, sync)
-  File "/home/utig5/dliu/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 161, in per_step_jax_mpi
+  File "<repo>/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 161, in per_step_jax_mpi
     wait_ms=[d['wait_ms_per_step'] for d in hi[1]],
-  File "/home/utig5/dliu/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 161, in <listcomp>
+  File "<repo>/wt-jaxshard/testsys/perf/run_mpi_scaling.py", line 161, in <listcomp>
     wait_ms=[d['wait_ms_per_step'] for d in hi[1]],
 KeyError: 'wait_ms_per_step'

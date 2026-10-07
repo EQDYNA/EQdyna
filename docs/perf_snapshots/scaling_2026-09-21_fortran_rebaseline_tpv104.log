@@ -32,7 +32,7 @@ topology: 8 NUMA node(s) x 8 cpu(s)
   fortran np=16  compact           65.89 ms/step  speedup 14.23x  fixed   3.48s  n_lo/n_hi 40/160  wall 6.1/14.0s  cpus=[0, 1, 3, 4, 5, 6, 8, 10, 11, 12, 13, 15, 17, 18, 19, 20] nodes=[0, 1, 2]
 
 -- python-numpy --
-/home/utig5/dliu/EQdyna/testsys/perf/scaling_case/test.tpv104 test.tpv104
+<repo>/EQdyna/testsys/perf/scaling_case/test.tpv104 test.tpv104
  
 PARAMETERS: positve dip angle to tilt the fault to y+
 PARAMETERS: negavtive dip to tilt the fault to y-
@@ -46,7 +46,7 @@ Estimated total cells in the model is 231040
 Estimated memory required is about 0.35580160000000005 GBs
 
 -- python-jax --
-/home/utig5/dliu/EQdyna/testsys/perf/scaling_case/test.tpv104 test.tpv104
+<repo>/EQdyna/testsys/perf/scaling_case/test.tpv104 test.tpv104
  
 PARAMETERS: positve dip angle to tilt the fault to y+
 PARAMETERS: negavtive dip to tilt the fault to y-
@@ -59,5 +59,5 @@ VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) 
 Estimated total cells in the model is 231040
 Estimated memory required is about 0.35580160000000005 GBs
 
-provenance: test.tpv104 @ 8045db7 on cotopaxi, loadavg (27.384765625, 27.271484375, 29.83447265625); saved /home/utig5/dliu/EQdyna/testsys/perf/scaling_last.json
+provenance: test.tpv104 @ 8045db7 on cotopaxi, loadavg (27.384765625, 27.271484375, 29.83447265625); saved <repo>/EQdyna/testsys/perf/scaling_last.json
 2 configuration(s) SKIPPED as busy (not measured, not silently dropped): ['fortran np=4   compact', 'fortran np=8   compact']

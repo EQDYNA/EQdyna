@@ -433,7 +433,7 @@ the evidence manifest are accumulated real work, not one patch-sized change.
 - **branch** `worktree-agent-a715e2d874d6d2f05`, **commit** `b3364b5`,
   **base** `1f3df0b`
 - **worktree PRESERVED at
-  `/home/utig5/dliu/EQdyna/.claude/worktrees/agent-a715e2d874d6d2f05`** -- do
+  `<repo>/EQdyna/.claude/worktrees/agent-a715e2d874d6d2f05`** -- do
   not reap it. `docs/notes/NOTES_round6.md` is untracked on disk inside it.
 
 **The gate is already green, run by me, so the next session does not repeat

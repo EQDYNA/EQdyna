@@ -2,7 +2,7 @@
 
 Guidance for Claude Code working in this repository.
 
-NOTE: the `CLAUDE.md` one directory up (`/home/utig5/dliu/CLAUDE.md`) describes
+NOTE: the `CLAUDE.md` one directory up (`<repo>/CLAUDE.md`) describes
 **EQdyna.2Dcycle**, a different project. This file is the one for EQdyna (3D).
 
 `PROJECT_RULES.md` is authoritative, and they are enforced by

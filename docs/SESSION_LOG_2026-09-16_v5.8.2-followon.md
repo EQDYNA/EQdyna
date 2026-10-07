@@ -107,7 +107,7 @@ the reason already on the board.
 ## Constraints still in force
 
 Do not gate tpv36/tpv37 until the dynamics-kernel gap above closes. Do not
-touch `/home/utig5/dliu/consilium`. Do not delete
+touch `<repo>/consilium`. Do not delete
 `scratch/mira_g6debug/serial_noyield`. Item 33 needs an idle box (do not
 override `run_numa_scaling.py`'s refusal). Item 34: no fourth ringing
 mechanism without a controlled experiment. Item 29's stash: flag, don't pop.

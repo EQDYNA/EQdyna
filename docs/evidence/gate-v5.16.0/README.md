@@ -38,7 +38,7 @@ master in `88a4012`) and rotated this sweep's in-flight tree out from under it.
 The damage, as it appeared in the log:
 
     FileNotFoundError: [Errno 2] No such file or directory:
-      '/home/utig5/dliu/EQdyna/test/test.tpv1053d.python-numpy/frt.txt0'
+      '<repo>/EQdyna/test/test.tpv1053d.python-numpy/frt.txt0'
     -- cell: test.tpv1053d x python-numpy (1500.1s) --
     FAIL test.tpv1053d x python-numpy
 

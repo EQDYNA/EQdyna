@@ -59,7 +59,7 @@ testsys/parity/probe_case/
 # shape -- a trailing slash makes a gitignore pattern match a DIRECTORY only,
 # not a symlink of the same name (a worktree convenience for reusing the
 # shared archive without a private copy). `scec_archive/` left a `scec_archive
-# -> /home/utig5/dliu/EQdyna/scec_archive` symlink in this worktree genuinely
+# -> <repo>/EQdyna/scec_archive` symlink in this worktree genuinely
 # UNIGNORED (`git check-ignore` confirmed it), one `git add -A` away from
 # tracking a symlink that resolves outside this worktree entirely. Dropped
 # the trailing slash so the pattern matches the symlink too.

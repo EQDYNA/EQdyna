@@ -17,7 +17,7 @@ HEAD `cacf738` (master), clean tree, matches v5.11.1. Box: load ~quiet
 processes actually running at ~1 core each, not 4 as briefed — doesn't change
 the "box is free" conclusion). Confirmed live trap: ambient shell
 `PATH`/`VIRTUAL_ENV` resolves to the owner's unrelated `gns` venv
-(`/home/utig5/dliu/gns/gns/venv_cotopaxi`) whose jax defaults to CUDA GPU
+(`<repo>/gns/gns/venv_cotopaxi`) whose jax defaults to CUDA GPU
 devices. No dedicated EQdyna venv exists; the project's own perf tooling
 (`testsys/perf/run_scaling.py:322`, `run_numa_scaling.py:222`) already forces
 `JAX_PLATFORMS=cpu` on that same venv rather than using a separate one — used

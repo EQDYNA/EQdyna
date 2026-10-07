@@ -9,7 +9,7 @@ the branch — the branch's own transcript is not a substitute for this run.
 - `run_all_sweep_2026-09-22.log.gz` — `python3 testsys/run.py all`, 2,292,974
   bytes raw, md5 `5b9ac9352605714506b6c4917418281e`, round-trip verified.
   Built by `./install-eqdyna.sh -m ubuntu` in
-  `/home/utig5/dliu/EQdyna.wt-wei-roughnormal` at `64091b7`. Exit 0.
+  `<repo>/EQdyna.wt-wei-roughnormal` at `64091b7`. Exit 0.
   unit SUCCESS, regression SUCCESS, e2e SUCCESS; 31 of 40 cells ran, 31
   passed, 0 failed, 9 declared-unsupported (`python-jax-mpi` column),
   2706.1 s.
