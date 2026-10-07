@@ -152,17 +152,30 @@ subroutine meshgen
                     call checkPMLAlignment(elementCenterCoor)
                     call setElementMaterial(elemCount, elementCenterCoor)
                     
-                    if (C_degen > 3.0d0) then 
-                        call wedge(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, stressDofCount, iy, iz, nftnd0(1))
-                        isOnFt=0
-                        call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(1,elemCount)), 1, isOnFt)
-                        if (isOnFt==1 .and. elemTypeArr(elemCount)==1) elemTypeArr(elemCount) = 13
+                    ! Row 153 checkpoint 1: the old C_degen>3.0d0 block only
+                    ! ever tested/collapsed against fault 1 (hardcoded "1"
+                    ! below). Generalized to loop over every fault and use
+                    ! THAT fault's own faultDegenStyle/box, exiting on the
+                    ! first fault that actually collapses the element (an
+                    ! element can only belong to one fault's wedge pair). No
+                    ! existing case combines ntotft>1 with degeneration, so
+                    ! this loop executes exactly once, for fault 1, on every
+                    ! committed case -- bit-identical to the old hardcoded call.
+                    do ift = 1, ntotft
+                        if (faultDegenStyle(ift) > 0) then
+                            call wedge(elementCenterCoor(1), elementCenterCoor(2), elementCenterCoor(3), elemCount, stressDofCount, iy, iz, nftnd0(ift), ift)
+                            isOnFt=0
+                            call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(1,elemCount)), ift, isOnFt)
+                            if (isOnFt==1 .and. elemTypeArr(elemCount)==1) elemTypeArr(elemCount) = 13
 
-                        isOnFt=0
-                        call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(2,elemCount)), 1, isOnFt)
-                        if (isOnFt==1 .and. elemTypeArr(elemCount)==1) elemTypeArr(elemCount) = 13
+                            isOnFt=0
+                            call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(2,elemCount)), ift, isOnFt)
+                            if (isOnFt==1 .and. elemTypeArr(elemCount)==1) elemTypeArr(elemCount) = 13
 
-                    endif         
+                            if (elemTypeArr(elemCount)==11 .or. elemTypeArr(elemCount)==12 &
+                                .or. elemTypeArr(elemCount)==13) exit
+                        endif
+                    enddo
                     
                     call replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0) 
                     if (C_elastic == 0) call setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, elemCount)          
@@ -1175,14 +1188,19 @@ subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
         ! dy in use, so this is bit-identical at ntotft=1, fault 1 at y=0.
         ! The rough-fault y-blend (ycoort/meshCoor) is untouched -- this test
         ! runs against the UNBLENDED nodeCoor(2), exactly as before.
-        if (C_degen==0.0d0 .and. abs(nodeCoor(2) - fltxyz(1,2,iFault)) < tol) then
+        ! Row 153 checkpoint 1: per-fault faultDegenStyle(iFault)/
+        ! faultDegenAngle(iFault) replace the bare C_degen test -- derived
+        ! from C_degen identically for every fault (readfaultgeometry), so
+        ! this branch is bit-identical to the old C_degen==0.0d0/C_degen>3.
+        ! test on every existing case.
+        if (faultDegenStyle(iFault)==0 .and. abs(nodeCoor(2) - fltxyz(1,2,iFault)) < tol) then
             isOnFault = 1
-        elseif (C_degen>3.) then
+        elseif (faultDegenStyle(iFault)==1) then
             if (fltxyz(1,2,iFault)>=fltxyz(2,2,iFault)) write(*,*) 'ymax should be > ymin. Wrong geo, exit'
-            distToFault = abs(nodeCoor(3)+nodeCoor(2)*dtan(C_degen/180.d0*pi)) 
-            distToFault = distToFault/(1.d0+dtan(C_degen/180.d0*pi)**2)**0.5
-            if (distToFault < dx/100.d0) isOnFault = 1   
-    endif 
+            distToFault = abs(nodeCoor(3)+nodeCoor(2)*dtan(faultDegenAngle(iFault)/180.d0*pi))
+            distToFault = distToFault/(1.d0+dtan(faultDegenAngle(iFault)/180.d0*pi)**2)**0.5
+            if (distToFault < dx/100.d0) isOnFault = 1
+    endif
     endif
 end subroutine checkIsOnFault
 

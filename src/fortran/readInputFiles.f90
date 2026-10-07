@@ -147,10 +147,21 @@ subroutine readfaultgeometry
         fltxyz(1,3,i)=fzmin(i)
         fltxyz(2,3,i)=fzmax(i)
         fltxyz(1,4,i)=fstrike*pi/180.0d0
-        if (C_degen>3.0d0) then 
+        if (C_degen>3.0d0) then
             fltxyz(2,4,i) = C_degen*pi/180.0d0
         else
             fltxyz(2,4,i) = 90.d0*pi/180.d0
+        endif
+        ! Row 153 checkpoint 1: per-fault degeneration style/angle, derived
+        ! from C_degen exactly as fltxyz(2,4,i) above -- every fault gets the
+        ! SAME style/angle C_degen already gave it (uniform test), so this is
+        ! a pure refactor, not a behavior change.
+        if (C_degen>3.0d0) then
+            faultDegenStyle(i) = 1
+            faultDegenAngle(i) = C_degen
+        else
+            faultDegenStyle(i) = 0
+            faultDegenAngle(i) = 0.d0
         endif
     enddo
     

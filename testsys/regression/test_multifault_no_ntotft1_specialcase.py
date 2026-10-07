@@ -65,8 +65,15 @@ ALLOWLIST = [
     # `if (C_degen > 3.0d0)`, inactive for this mission's vertical-fault
     # scope. Left exactly as it was; not part of the multi-fault engine.
     ('meshgen.f90', 'call wedge(elementCenterCoor(1)'),
-    ('meshgen.f90', "call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(1,elemCount)), 1, isOnFt)"),
-    ('meshgen.f90', "call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(2,elemCount)), 1, isOnFt)"),
+    # Row 153 checkpoint 1: wedge()/checkIsOnFault here are now called inside
+    # a `do ift = 1, ntotft` / `if (faultDegenStyle(ift) > 0)` loop (see that
+    # commit) instead of a hardcoded fault index 1 -- still the SAME
+    # pre-existing, orthogonal C_degen>3 wedge-degeneration mechanism, just
+    # generalized to read any fault's own faultDegenStyle/box rather than
+    # fault 1's unconditionally. No literal fault-index-1 remains on these
+    # lines, so the old allowlist text is replaced, not kept stale.
+    ('meshgen.f90', "call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(1,elemCount)), ift, isOnFt)"),
+    ('meshgen.f90', "call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(2,elemCount)), ift, isOnFt)"),
     # insertFaultType rough-fault geometry (meshgen.f90/readInputFiles.f90):
     # the rough-fault y-blend is deliberately single-fault (CLAUDE.md,
     # checkIsOnFault's own comment) and orthogonal to multi-fault; the rough
@@ -87,10 +94,11 @@ ALLOWLIST = [
     ('readInputFiles.f90', "fltxyz(1,1,1), fltxyz(1,3,1)"),
     ('readInputFiles.f90', "spanx = (fltxyz(2,1,1) - fltxyz(1,1,1))/dx"),
     ('readInputFiles.f90', "spanz = (fltxyz(2,3,1) - fltxyz(1,3,1))/dz"),
-    # Same C_degen>3 wedge-degeneration exemption as the entries above --
-    # nftnd0(1) here is the pre-existing, single-fault-only wedge mechanism's
-    # own argument, not a missed generalization.
-    ('meshgen.f90', 'iy, iz, nftnd0(1))'),
+    # Row 153 checkpoint 1: the 'iy, iz, nftnd0(1))' entry that used to sit
+    # here is GONE along with the code -- wedge()'s call site now passes
+    # nftnd0(ift) (meshgen.f90), so there is no literal fault-index-1 left on
+    # that line to exempt. Deleted, not left stale (same precedent as the
+    # readInputFiles.f90 rough-fault entries above).
     # faultTag() (library_output.f90) IS the per-fault tagging convention
     # itself (CLAUDE.md: '' for fault 1, 'ft<N>_' for fault N>=2) -- it must
     # compare ntotft and ift against 1 to decide whether to tag at all. This
@@ -350,8 +358,11 @@ def check_allowlist_does_not_shield_a_different_bug_on_same_line():
 # violation on its OWN new line (not the allowlisted line), in a temp copy of
 # the file whose allowlist entry it exploits, and must still be caught.
 REGRESSION_PROBES_DIFFERENT_LINE_THAN_ALLOWLIST_ENTRY = [
-    # exploits meshgen.f90's 'iy, iz, nftnd0(1))' allowlist entry (the
-    # C_degen>3 wedge call) via bare substring match on 'nftnd0(1)'.
+    # Row 153 checkpoint 1: meshgen.f90's 'iy, iz, nftnd0(1))' allowlist
+    # entry is gone (wedge()'s call site now passes nftnd0(ift)) -- this
+    # probe is now a plain positive-detection check (no allowlist entry left
+    # to shield it by substring at all), kept so a FUTURE literal nftnd0(1)
+    # hardcode in this file is still caught.
     ('meshgen.f90', 'x = nftnd0(1)'),
     # Row 17 rebased: checkInputConsistency.f90's 'fxmin(i)-fxmin(1)' entry
     # (and the source line it allowlisted) are both gone -- this probe is now
