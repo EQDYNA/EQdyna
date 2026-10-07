@@ -63,7 +63,6 @@ cut.
 Skips with a LOUD notice, never a pass, if the binary is absent.
 """
 import os
-import shutil
 import subprocess
 import sys
 import tempfile

@@ -1743,7 +1743,7 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
     1-indexed conventions); arn is (nftnd+1,) float (row 0 unused).
     """
     p = params
-    nx, ny, nz = len(xline), len(yline), len(zline)
+    ny, nz = len(yline), len(zline)
     tol = p['tol']
     c_degen = p['C_degen']
     nftnd = nsmp.shape[0]

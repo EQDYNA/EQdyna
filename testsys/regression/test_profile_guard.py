@@ -28,7 +28,6 @@ Cheap (rule 9): no solver launch, no subprocess -- pure file/dict validation
 against already-committed fixtures. Milliseconds. Exits non-zero on any
 failure.
 """
-import copy
 import json
 import os
 import shutil
