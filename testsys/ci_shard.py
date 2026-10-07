@@ -120,6 +120,11 @@ SHARDS = {
                                  # testsys half); ~0.03 s, pure fixture/schema
                                  # checks, no subprocess -- negligible to
                                  # shard 1's timed 41.5 s total.
+        "test_hpc_scaling_suite.py",  # added 2026-10-06 (item 142, HPC scaling
+                                 # suite): pure in-memory collect/analyze
+                                 # arithmetic against a committed profile_guard
+                                 # fixture, no subprocess/sbatch/solver launch,
+                                 # <1 s -- negligible to shard 1's timed total.
         "test_profile_env_strict.py",  # added 2026-09-23 (profile-fix audit,
                                  # item 3 follow-up): EQDYNA_PROFILE strict
                                  # parse, both languages; ~1 s (one mpirun -np
