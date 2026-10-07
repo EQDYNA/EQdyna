@@ -105,47 +105,47 @@ rank 4/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19026 Ep=5875 halo_eqs=50079 ms_pe
 backend=jax device=cpu:0 (cpu)
 rank 1/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=0 Ep=12217 halo_eqs=126120 ms_per_step=238.86346512590535 mpi_ms_per_step=1.7514257167931646 wait_ms_per_step=124.61449259426445 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 14/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt14  Ei=19028 Ep=5874 halo_eqs=50292 ms_per_step=238.98017944884486 mpi_ms_per_step=4.632321221288294 wait_ms_per_step=37.36346966470592 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 14/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt14  Ei=19028 Ep=5874 halo_eqs=50292 ms_per_step=238.98017944884486 mpi_ms_per_step=4.632321221288294 wait_ms_per_step=37.36346966470592 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 rank 3/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19089 Ep=5853 halo_eqs=50079 ms_per_step=238.83697087294422 mpi_ms_per_step=2.1994912531226873 wait_ms_per_step=104.36404954525642 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 rank 2/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=8064 Ep=9529 halo_eqs=88104 ms_per_step=238.87481325073168 mpi_ms_per_step=1.9744594988878816 wait_ms_per_step=102.69758034846745 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 11/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt11  Ei=19791 Ep=5619 halo_eqs=50655 ms_per_step=238.95718145067804 mpi_ms_per_step=4.024236655095592 wait_ms_per_step=43.3632857457269 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 11/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt11  Ei=19791 Ep=5619 halo_eqs=50655 ms_per_step=238.95718145067804 mpi_ms_per_step=4.024236655095592 wait_ms_per_step=43.3632857457269 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 17/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt17  Ei=19026 Ep=5875 halo_eqs=50316 ms_per_step=238.9833106775768 mpi_ms_per_step=5.424793210113421 wait_ms_per_step=34.035787847824395 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 17/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt17  Ei=19026 Ep=5875 halo_eqs=50316 ms_per_step=238.9833106775768 mpi_ms_per_step=5.424793210113421 wait_ms_per_step=34.035787847824395 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 rank 24/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19749 Ep=5634 halo_eqs=50655 ms_per_step=239.01468934491277 mpi_ms_per_step=7.03864223905839 wait_ms_per_step=85.06501997471787 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 12/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt12  Ei=19029 Ep=5874 halo_eqs=50298 ms_per_step=239.0459362999536 mpi_ms_per_step=4.199224559124559 wait_ms_per_step=23.818381020100787 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 12/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt12  Ei=19029 Ep=5874 halo_eqs=50298 ms_per_step=239.0459362999536 mpi_ms_per_step=4.199224559124559 wait_ms_per_step=23.818381020100787 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 13/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt13  Ei=19028 Ep=5874 halo_eqs=50295 ms_per_step=239.05170024954714 mpi_ms_per_step=4.547312890645117 wait_ms_per_step=26.326616533333436 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 13/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt13  Ei=19028 Ep=5874 halo_eqs=50295 ms_per_step=239.05170024954714 mpi_ms_per_step=4.547312890645117 wait_ms_per_step=26.326616533333436 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 15/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt15  Ei=19892 Ep=5586 halo_eqs=49977 ms_per_step=239.06639662454836 mpi_ms_per_step=4.915532248560339 wait_ms_per_step=22.587368194945157 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 15/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt15  Ei=19892 Ep=5586 halo_eqs=49977 ms_per_step=239.06639662454836 mpi_ms_per_step=4.915532248560339 wait_ms_per_step=22.587368194945157 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 rank 5/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19026 Ep=5875 halo_eqs=50088 ms_per_step=238.99699979810975 mpi_ms_per_step=2.6734691113233566 wait_ms_per_step=68.27791894902475 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 rank 6/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19467 Ep=5728 halo_eqs=50664 ms_per_step=238.99887877632864 mpi_ms_per_step=2.8072512592189014 wait_ms_per_step=68.81494623958133 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 16/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt16  Ei=19026 Ep=5875 halo_eqs=49989 ms_per_step=239.0652693749871 mpi_ms_per_step=5.062978516798466 wait_ms_per_step=26.836277288384736 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 16/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt16  Ei=19026 Ep=5875 halo_eqs=49989 ms_per_step=239.0652693749871 mpi_ms_per_step=5.062978516798466 wait_ms_per_step=26.836277288384736 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 backend=jax device=cpu:0 (cpu)
 rank 7/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19440 Ep=5736 halo_eqs=50655 ms_per_step=239.05253974953666 mpi_ms_per_step=2.9303434770554304 wait_ms_per_step=56.78344776970334 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 rank 29/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=8124 Ep=9509 halo_eqs=88026 ms_per_step=239.06968457740732 mpi_ms_per_step=8.649863919708878 wait_ms_per_step=81.60415517631918 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
-rank 23/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt23  Ei=19154 Ep=5832 halo_eqs=50766 ms_per_step=239.1716618265491 mpi_ms_per_step=6.827335467096418 wait_ms_per_step=7.021825527772307 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 23/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt23  Ei=19154 Ep=5832 halo_eqs=50766 ms_per_step=239.1716618265491 mpi_ms_per_step=6.827335467096418 wait_ms_per_step=7.021825527772307 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 20/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt20  Ei=19398 Ep=5751 halo_eqs=50880 ms_per_step=239.16304539889097 mpi_ms_per_step=5.981849372619763 wait_ms_per_step=2.5536557019222528 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 20/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt20  Ei=19398 Ep=5751 halo_eqs=50880 ms_per_step=239.16304539889097 mpi_ms_per_step=5.981849372619763 wait_ms_per_step=2.5536557019222528 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 backend=jax device=cpu:0 (cpu)
-rank 8/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt8  Ei=19029 Ep=5874 halo_eqs=50184 ms_per_step=239.06612585415132 mpi_ms_per_step=3.1763041799422354 wait_ms_per_step=7.641530729597434 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
-rank 18/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt18  Ei=19026 Ep=5875 halo_eqs=50313 ms_per_step=239.0821254462935 mpi_ms_per_step=5.56415431201458 wait_ms_per_step=14.814113965258002 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 8/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt8  Ei=19029 Ep=5874 halo_eqs=50184 ms_per_step=239.06612585415132 mpi_ms_per_step=3.1763041799422354 wait_ms_per_step=7.641530729597434 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 18/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt18  Ei=19026 Ep=5875 halo_eqs=50313 ms_per_step=239.0821254462935 mpi_ms_per_step=5.56415431201458 wait_ms_per_step=14.814113965258002 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 22/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt22  Ei=19028 Ep=5874 halo_eqs=50295 ms_per_step=239.17216357658617 mpi_ms_per_step=6.6411560226697475 wait_ms_per_step=8.309377124533057 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 22/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt22  Ei=19028 Ep=5874 halo_eqs=50295 ms_per_step=239.17216357658617 mpi_ms_per_step=6.6411560226697475 wait_ms_per_step=8.309377124533057 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 rank 27/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19028 Ep=5874 halo_eqs=50070 ms_per_step=239.12635052693076 mpi_ms_per_step=7.808750600088388 wait_ms_per_step=70.40544778574258 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 21/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt21  Ei=19028 Ep=5874 halo_eqs=50298 ms_per_step=239.16623387485743 mpi_ms_per_step=6.423535960493609 wait_ms_per_step=4.0270641387905926 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 21/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt21  Ei=19028 Ep=5874 halo_eqs=50298 ms_per_step=239.16623387485743 mpi_ms_per_step=6.423535960493609 wait_ms_per_step=4.0270641387905926 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
 rank 28/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19875 Ep=5592 halo_eqs=50001 ms_per_step=239.12500027217902 mpi_ms_per_step=7.954634691122919 wait_ms_per_step=71.1625803494826 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
@@ -153,8 +153,8 @@ rank 25/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19028 Ep=5874 halo_eqs=50070 ms_p
 backend=jax device=cpu:0 (cpu)
 backend=jax device=cpu:0 (cpu)
 rank 26/32 wrote NO-FRT-OWNS-0-FAULT-NODES  Ei=19028 Ep=5874 halo_eqs=50070 ms_per_step=239.11137067480013 mpi_ms_per_step=7.543360738782212 wait_ms_per_step=70.8852341864258 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
-rank 19/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt19  Ei=19530 Ep=5706 halo_eqs=50886 ms_per_step=239.08567042672075 mpi_ms_per_step=5.85065470659174 wait_ms_per_step=15.362192271277308 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 19/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt19  Ei=19530 Ep=5706 halo_eqs=50886 ms_per_step=239.08567042672075 mpi_ms_per_step=5.85065470659174 wait_ms_per_step=15.362192271277308 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 9/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt9  Ei=19028 Ep=5874 halo_eqs=50295 ms_per_step=239.0699805750046 mpi_ms_per_step=3.575615881709382 wait_ms_per_step=6.07261250843294 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 9/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt9  Ei=19028 Ep=5874 halo_eqs=50295 ms_per_step=239.0699805750046 mpi_ms_per_step=3.575615881709382 wait_ms_per_step=6.07261250843294 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
 backend=jax device=cpu:0 (cpu)
-rank 10/32 wrote /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt10  Ei=19111 Ep=5847 halo_eqs=50652 ms_per_step=239.13464817451313 mpi_ms_per_step=3.5992716322652996 wait_ms_per_step=6.315602018730715 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1
+rank 10/32 wrote <repo>/EQdyna/.claude/worktrees/agent-ab87d1965ff24e21d/testsys/perf/scaling_case/test.tpv104/frt.txt10  Ei=19111 Ep=5847 halo_eqs=50652 ms_per_step=239.13464817451313 mpi_ms_per_step=3.5992716322652996 wait_ms_per_step=6.315602018730715 sync=halo device_peak_gb=-1.0 threads=10 cpus_allowed=1

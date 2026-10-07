@@ -2163,7 +2163,7 @@ re-running it, which is what caught this incident.
 ## 21. An agent's write surface is its own worktree; the main checkout belongs to the conductor
 
 An agent session working in a linked worktree (`.claude/worktrees/<name>/`)
-commits THERE and nowhere else. The main checkout — `/home/utig5/dliu/EQdyna`,
+commits THERE and nowhere else. The main checkout — `<repo>/EQdyna`,
 the tree whose `--git-dir` is the repository's own `.git` — is the conductor's:
 no agent commits in it, merges in it, moves its HEAD, or leaves modified
 tracked files in it. Wanting to "just land this one small thing" on master is
@@ -2187,7 +2187,7 @@ it, so the cost is paid in debugging the wrong thing.
 
 **Incident (2026-09-22, RELAYED by the conductor to this rule's author, not
 witnessed by the author and not independently re-derived)**: two agents
-committed directly into the main checkout `/home/utig5/dliu/EQdyna` instead of
+committed directly into the main checkout `<repo>/EQdyna` instead of
 their own worktrees, and a third had HEAD move underneath it mid-run as a
 result. Twice in one day, same shape — which is the frequency that makes this a
 rule rather than a note. The relayed provenance is stated here deliberately:
@@ -2210,7 +2210,7 @@ hortatory for everything else.** `testsys/hooks/pre-commit` refuses when
 `git config core.hooksPath testsys/hooks`, and
 `testsys/regression/test_precommit_main_checkout_guard.py` guards both halves.
 Verified by the conductor 2026-09-23, not inherited: the hook REFUSED with cwd
-at `/home/utig5/dliu/EQdyna` ("They are EQUAL, which means this tree is the
+at `<repo>/EQdyna` ("They are EQUAL, which means this tree is the
 shared main checkout"), and `git -c core.hooksPath=testsys/hooks commit
 --allow-empty` inside a linked worktree succeeded, exit 0 — the load-bearing
 case, since a hook that blocks legitimate worktree commits is a hook that gets
@@ -2314,7 +2314,7 @@ artifact dates it exactly
 (`docs/perf_snapshots/e2e_cells_2026-09-22_221220_2462614.json`, landed on
 master in `88a4012`). `test.tpv1053d x python-numpy` then ran **1500.1 s** and
 died with `FileNotFoundError: [Errno 2] No such file or directory:
-'/home/utig5/dliu/EQdyna/test/test.tpv1053d.python-numpy/frt.txt0'`. Four
+'<repo>/EQdyna/test/test.tpv1053d.python-numpy/frt.txt0'`. Four
 further python-numpy cells (`test.tpv29`, `test.tpv36`, `test.tpv37`,
 `test.drv.a6`) were already running into paths that no longer resolved, doomed
 for the same reason, and were killed by PID. 25 cells had reported SUCCESS
@@ -2325,7 +2325,7 @@ foreseen.
 **How to apply**: `git worktree add` a tree for the sweep and launch it from
 there — `git rev-parse --git-dir --git-common-dir` must differ (rule 21's own
 check settles this too), and the sweep's own `REPO_ROOT` must be that worktree,
-not `/home/utig5/dliu/EQdyna`. Before acting on ANY `FAIL` line, open that
+not `<repo>/EQdyna`. Before acting on ANY `FAIL` line, open that
 cell's log and confirm the failure is numeric: a `FileNotFoundError`, or a
 missing directory under `test/`, is a collision and not a result — nothing may
 be reverted, re-gated or held on it. If you must diagnose a collision after the
@@ -2411,7 +2411,7 @@ builders; the remainder is item 81.
 
 ## 21b. No session writes the main checkout — conductors branch too, and its HEAD moves only by fast-forward sync
 
-The main checkout `/home/utig5/dliu/EQdyna` — the tree whose `--git-dir` equals
+The main checkout `<repo>/EQdyna` — the tree whose `--git-dir` equals
 `--git-common-dir` — is written by NOBODY. No session, agent or conductor,
 commits there, merges there, runs a gate there (rule 21a), or leaves modified
 tracked files there. Every session works in a linked worktree, and a conductor
@@ -2454,7 +2454,7 @@ cost is one extra `git worktree add` per conductor session; the thing bought is
 that "may I write here" has the same answer for every session, always.
 
 **Incident (2026-09-22, the same night, demonstrated in BOTH halves)**: two
-conductor sessions shared `/home/utig5/dliu/EQdyna`.
+conductor sessions shared `<repo>/EQdyna`.
 
 - **Commits.** `88a4012` is a direct `commit:` entry in master's reflog, made
   by the second session in the main checkout — evidence of the commit half,

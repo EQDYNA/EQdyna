@@ -1,4 +1,4 @@
-/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+<repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
  
 PARAMETERS: positve dip angle to tilt the fault to y+
 PARAMETERS: negavtive dip to tilt the fault to y-
@@ -47,20 +47,20 @@ driver.run_mpi rank 0: 15.544 s, 388.597 ms/step (sync=halo: 0.481 ms/step excha
 driver.run_mpi rank 1: 15.545 s, 388.628 ms/step (sync=halo: 0.697 ms/step exchanging, 70.256 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [15]
 driver.run_mpi rank 3: 15.553 s, 388.818 ms/step (sync=halo: 1.282 ms/step exchanging, 75.089 ms/step waiting at the barrier), EFFECTIVE_CORES 0.93, threads=10, cpus_allowed=1 [63]
 driver.run_mpi rank 2: 15.553 s, 388.825 ms/step (sync=halo: 1.463 ms/step exchanging, 9.847 ms/step waiting at the barrier), EFFECTIVE_CORES 0.95, threads=10, cpus_allowed=1 [60]
-rank 1/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=388.6284091277048 mpi_ms_per_step=0.6970106507651508 wait_ms_per_step=70.25565763469785 sync=halo threads=10 cpus_allowed=1
-rank 2/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=388.82516062585637 mpi_ms_per_step=1.4626878895796835 wait_ms_per_step=9.846630436368287 sync=halo threads=10 cpus_allowed=1
+rank 1/4 wrote <repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=388.6284091277048 mpi_ms_per_step=0.6970106507651508 wait_ms_per_step=70.25565763469785 sync=halo threads=10 cpus_allowed=1
+rank 2/4 wrote <repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=388.82516062585637 mpi_ms_per_step=1.4626878895796835 wait_ms_per_step=9.846630436368287 sync=halo threads=10 cpus_allowed=1
 
 ine 196, in _run_module_as_main
     return _run_code(code, main_globals, None,
   File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
     exec(code, run_globals)
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+  File "<repo>/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
     main()
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
     path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
     library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+  File "<repo>/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
     raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
 ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
 Traceback (most recent call last):
@@ -68,13 +68,13 @@ Traceback (most recent call last):
     return _run_code(code, main_globals, None,
   File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
     exec(code, run_globals)
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+  File "<repo>/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
     main()
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
     path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
     library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+  File "<repo>/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
     raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
 ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
 --------------------------------------------------------------------------
@@ -97,20 +97,20 @@ driver.run_mpi rank 0: 38.646 s, 241.536 ms/step (sync=halo: 0.446 ms/step excha
 driver.run_mpi rank 1: 38.647 s, 241.544 ms/step (sync=halo: 0.652 ms/step exchanging, 41.073 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [15]
 driver.run_mpi rank 3: 38.649 s, 241.554 ms/step (sync=halo: 1.033 ms/step exchanging, 15.843 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [63]
 driver.run_mpi rank 2: 38.657 s, 241.604 ms/step (sync=halo: 1.310 ms/step exchanging, 1.100 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [60]
-rank 1/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=241.54418125690427 mpi_ms_per_step=0.6524891548906453 wait_ms_per_step=41.07311145780841 sync=halo threads=9 cpus_allowed=1
-rank 2/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=241.60354923224077 mpi_ms_per_step=1.3095587826683186 wait_ms_per_step=1.1000306025380269 sync=halo threads=9 cpus_allowed=1
+rank 1/4 wrote <repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=241.54418125690427 mpi_ms_per_step=0.6524891548906453 wait_ms_per_step=41.07311145780841 sync=halo threads=9 cpus_allowed=1
+rank 2/4 wrote <repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=241.60354923224077 mpi_ms_per_step=1.3095587826683186 wait_ms_per_step=1.1000306025380269 sync=halo threads=9 cpus_allowed=1
 
 ine 196, in _run_module_as_main
     return _run_code(code, main_globals, None,
   File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
     exec(code, run_globals)
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+  File "<repo>/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
     main()
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
     path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
     library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+  File "<repo>/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
     raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
 ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
 Traceback (most recent call last):
@@ -118,13 +118,13 @@ Traceback (most recent call last):
     return _run_code(code, main_globals, None,
   File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
     exec(code, run_globals)
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+  File "<repo>/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
     main()
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
     path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
     library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+  File "<repo>/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
     raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
 ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
 --------------------------------------------------------------------------
@@ -148,20 +148,20 @@ driver.run_mpi rank 0: 11.749 s, 293.728 ms/step (sync=allreduce: 33.991 ms/step
 driver.run_mpi rank 1: 11.750 s, 293.762 ms/step (sync=allreduce: 33.991 ms/step exchanging, 38.385 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [15]
 driver.run_mpi rank 3: 11.752 s, 293.806 ms/step (sync=allreduce: 34.534 ms/step exchanging, 6.751 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [63]
 driver.run_mpi rank 2: 11.754 s, 293.839 ms/step (sync=allreduce: 34.925 ms/step exchanging, 3.761 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [60]
-rank 1/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=293.76244322629645 mpi_ms_per_step=33.990720711881295 wait_ms_per_step=38.384920661337674 sync=allreduce threads=9 cpus_allowed=1
-rank 2/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=293.83851980092004 mpi_ms_per_step=34.92520182626322 wait_ms_per_step=3.761216945713386 sync=allreduce threads=9 cpus_allowed=1
+rank 1/4 wrote <repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=293.76244322629645 mpi_ms_per_step=33.990720711881295 wait_ms_per_step=38.384920661337674 sync=allreduce threads=9 cpus_allowed=1
+rank 2/4 wrote <repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=293.83851980092004 mpi_ms_per_step=34.92520182626322 wait_ms_per_step=3.761216945713386 sync=allreduce threads=9 cpus_allowed=1
 
 line 196, in _run_module_as_main
     return _run_code(code, main_globals, None,
   File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
     exec(code, run_globals)
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+  File "<repo>/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
     main()
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
     path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
     library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+  File "<repo>/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
     raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
 ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
 Traceback (most recent call last):
@@ -169,13 +169,13 @@ Traceback (most recent call last):
     return _run_code(code, main_globals, None,
   File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
     exec(code, run_globals)
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+  File "<repo>/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
     main()
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
     path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
     library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+  File "<repo>/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
     raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
 ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
 --------------------------------------------------------------------------
@@ -198,20 +198,20 @@ driver.run_mpi rank 0: 43.269 s, 270.430 ms/step (sync=allreduce: 35.646 ms/step
 driver.run_mpi rank 1: 43.269 s, 270.433 ms/step (sync=allreduce: 35.647 ms/step exchanging, 33.145 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [15]
 driver.run_mpi rank 3: 43.272 s, 270.453 ms/step (sync=allreduce: 36.377 ms/step exchanging, 3.707 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=10, cpus_allowed=1 [63]
 driver.run_mpi rank 2: 43.273 s, 270.459 ms/step (sync=allreduce: 36.597 ms/step exchanging, 1.688 ms/step waiting at the barrier), EFFECTIVE_CORES 1.00, threads=9, cpus_allowed=1 [60]
-rank 1/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=270.4332241875818 mpi_ms_per_step=35.646550882665906 wait_ms_per_step=33.144881244516 sync=allreduce threads=9 cpus_allowed=1
-rank 2/4 wrote /home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=270.45864557439927 mpi_ms_per_step=36.59654694638448 wait_ms_per_step=1.6884626442333683 sync=allreduce threads=9 cpus_allowed=1
+rank 1/4 wrote <repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt1  Ei=153936 Ep=46422 halo_eqs=49866 ms_per_step=270.4332241875818 mpi_ms_per_step=35.646550882665906 wait_ms_per_step=33.144881244516 sync=allreduce threads=9 cpus_allowed=1
+rank 2/4 wrote <repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104/frt.txt2  Ei=153216 Ep=46662 halo_eqs=50451 ms_per_step=270.45864557439927 mpi_ms_per_step=36.59654694638448 wait_ms_per_step=1.6884626442333683 sync=allreduce threads=9 cpus_allowed=1
 
 line 196, in _run_module_as_main
     return _run_code(code, main_globals, None,
   File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
     exec(code, run_globals)
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+  File "<repo>/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
     main()
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
     path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
     library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+  File "<repo>/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
     raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
 ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
 Traceback (most recent call last):
@@ -219,13 +219,13 @@ Traceback (most recent call last):
     return _run_code(code, main_globals, None,
   File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
     exec(code, run_globals)
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
+  File "<repo>/wt-jaxshard/src/python/eqdyna/__main__.py", line 7, in <module>
     main()
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 573, in main
     path, report = run_case_mpi(args.case_dir, comm, nsteps=args.nsteps,
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
+  File "<repo>/wt-jaxshard/src/python/eqdyna/eqdyna3d.py", line 467, in run_case_mpi
     library_output.write_frt(path, mesh['meshCoor'], mesh['nsmp'][rows],
-  File "/home/utig5/dliu/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
+  File "<repo>/wt-jaxshard/src/python/eqdyna/library_output.py", line 116, in write_frt
     raise ValueError('write_frt: nftnd==0 -- Fortran would skip writing '
 ValueError: write_frt: nftnd==0 -- Fortran would skip writing frt.txt entirely in this case; refusing to write an empty/misleading file
 --------------------------------------------------------------------------

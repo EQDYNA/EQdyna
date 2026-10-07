@@ -1,7 +1,7 @@
 # Session log — 2026-09-22 — rough-fault normal, TPV29/TPV30
 
 Conductor: wei-lin. Branch `wei/rough-fault-normal-2026-09-22`, worktree
-`/home/utig5/dliu/EQdyna.wt-wei-roughnormal`, branched from master `0e83e76`
+`<repo>/EQdyna.wt-wei-roughnormal`, branched from master `0e83e76`
 (v5.14.0 tagged, VERSION 5.15.0).
 
 **STATUS: NOT MERGED. Held at the gate for an owner decision.** The defect is

@@ -1,6 +1,6 @@
 # Item 71 — coverage for the generated (`insertFaultType=2`) fault surface
 
-Worktree `/home/utig5/dliu/eqdyna-wt-item71`, branch `item71-fractal-coverage`,
+Worktree `<repo>/eqdyna-wt-item71`, branch `item71-fractal-coverage`,
 from `5b7a278` (v5.16.1). 2026-09-23, iris-vermeulen.
 
 ## What was added

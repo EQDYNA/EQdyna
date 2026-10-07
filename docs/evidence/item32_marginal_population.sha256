@@ -6,7 +6,7 @@
 #       drv.a6 is one of the two largest cases in the project.
 #
 # WHY THIS EXISTS: until 2026-09-21 these lived ONLY in
-#       /tmp/claude-16759/.../scratchpad, a path scoped to a single agent
+#       <scratch>/.../scratchpad, a path scoped to a single agent
 #       session id. The script hardcodes that path. A /tmp reap, or simply a
 #       different session, would have made item 32's Command unrunnable and the
 #       row uncheckable -- with nothing anywhere recording the loss. That is

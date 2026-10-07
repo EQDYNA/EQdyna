@@ -53,7 +53,7 @@ box at start: 10/64 cpus busy over 0.50 -> 54 free; loadavg 10.79
   VERDICT 12 ranks arm a    0.950x vs base  (119.45 -> 125.69 ms/step; min eff base 1.00 arm 1.00)
   VERDICT 12 ranks arm ab   1.025x vs base  (119.45 -> 116.50 ms/step; min eff base 1.00 arm 1.00)
 
-snapshot /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab9486378831c8e09/docs/perf_snapshots/jaxmpi_ab_2026-09-22_204652.json
+snapshot <repo>/EQdyna/.claude/worktrees/agent-ab9486378831c8e09/docs/perf_snapshots/jaxmpi_ab_2026-09-22_204652.json
 12 ledger row(s) appended to docs/perf_ledger.jsonl
 
 ## run 2026-09-22 21:06  case test.tpv104  merged sha b183a1e  n_lo/n_hi 20/60  min-eff 0.95
@@ -176,7 +176,7 @@ exchange (arm b exchange rose to [12.9, 8.8, 8.4, 4.6] from base's [3.3, 2.0,
   VERDICT 12 ranks arm a    0.980x vs base  (121.52 -> 124.06 ms/step; min eff base 1.00 arm 1.00)
   VERDICT 12 ranks arm b    1.003x vs base  (121.52 -> 121.10 ms/step; min eff base 1.00 arm 1.00)
 
-snapshot /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab9486378831c8e09/docs/perf_snapshots/jaxmpi_ab_2026-09-22_210655.json
+snapshot <repo>/EQdyna/.claude/worktrees/agent-ab9486378831c8e09/docs/perf_snapshots/jaxmpi_ab_2026-09-22_210655.json
 12 ledger row(s) appended to docs/perf_ledger.jsonl
 
 ## run 2026-09-22 21:26  case test.tpv104  merged sha b183a1e  n_lo/n_hi 20/60  min-eff 0.95
@@ -233,7 +233,7 @@ box at start: 10/64 cpus busy over 0.50 -> 54 free; loadavg 21.31
   VERDICT 12 ranks arm ab   1.054x vs base  (119.63 -> 113.51 ms/step; min eff base 1.00 arm 1.00)
   VERDICT 12 ranks arm b    1.058x vs base  (119.63 -> 113.09 ms/step; min eff base 1.00 arm 0.99)
 
-snapshot /home/utig5/dliu/EQdyna/.claude/worktrees/agent-ab9486378831c8e09/docs/perf_snapshots/jaxmpi_ab_2026-09-22_212647.json
+snapshot <repo>/EQdyna/.claude/worktrees/agent-ab9486378831c8e09/docs/perf_snapshots/jaxmpi_ab_2026-09-22_212647.json
 12 ledger row(s) appended to docs/perf_ledger.jsonl
 
 ## run 2026-09-22 21:47  case test.tpv104  merged sha b183a1e  n_lo/n_hi 20/60  min-eff 0.95
@@ -309,7 +309,7 @@ it was argued at (32). The 16-rank base point was REJECTED by the filter:
 
 WHOSE LOAD. Not a foreign tenant: a SIBLING SESSION OF OURS started an e2e
 sweep at 21:50 (three `python3 -m eqdyna .../test/test.{meng2023a,tpv36,tpv10}
-.python-numpy --backend numpy` out of /home/utig5/dliu/EQdyna/test/), taking
+.python-numpy --backend numpy` out of <repo>/EQdyna/test/), taking
 the box from loadavg ~11 to ~35. I stopped MY 16/32 sweep rather than compete
 with it, and killed only processes I had started.
 

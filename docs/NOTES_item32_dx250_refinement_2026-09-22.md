@@ -1,8 +1,8 @@
 # Item 32 — drv.a6 mesh-refinement experiment (dx=500 -> dx=250)
 
-Worktree: /home/utig5/dliu/EQdyna/.claude/worktrees/agent-a062e5e0475453665
+Worktree: <repo>/EQdyna/.claude/worktrees/agent-a062e5e0475453665
 Branch: item32-dx250-refinement off master 23971a8
-Scratchpad: /tmp/claude-16759/-home-utig5-dliu-EQdyna/e618789a-38a5-4235-9ca3-c8a3a0fe9ba6/scratchpad
+Scratchpad: <scratch>/-home-utig5-dliu-EQdyna/e618789a-38a5-4235-9ca3-c8a3a0fe9ba6/scratchpad
 
 ## Question
 Is drv.a6's ~400-node marginal rupture-arrival population a discretisation

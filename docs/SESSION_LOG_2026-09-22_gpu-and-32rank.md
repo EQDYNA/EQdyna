@@ -226,7 +226,7 @@ The gate cell raised:
 
 ```
 OSError: JAX persistent compilation cache directory
-'/home/staff/dliu/.cache/eqdyna-jax' is unusable ([Errno 2] No such file or
+'<repo>/.cache/eqdyna-jax' is unusable ([Errno 2] No such file or
 directory: '.../.eqdyna-write-probe'). ... No fallback: running uncached
 without saying so adds ~14 s of XLA compile with nothing to attribute it to.
 ```
@@ -1164,7 +1164,7 @@ box by any route.
 ```bash
 #!/bin/bash
 # scaling32 mission wrapper: pin all writes (ledger, snapshots, cases) to THIS worktree.
-WT=/home/utig5/dliu/EQdyna/.claude/worktrees/agent-a2731503fec99fbd3
+WT=<repo>/EQdyna/.claude/worktrees/agent-a2731503fec99fbd3
 export EQDYNAROOT=$WT
 export PATH=$WT/bin:$WT/scripts:$PATH
 export EQDYNA_SNAPSHOT_TAG=$1; shift

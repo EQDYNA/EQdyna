@@ -2,7 +2,7 @@
 
 SLURM job `3480247`: `python3 testsys/run.py all --machine ls6 --submit` (the
 `--submit` sbatch path, PR #52 `f9931a5`), run end-to-end for the first time on
-a real SLURM system. Raw artifacts extracted at `/home/utig5/dliu/ls6/` from
+a real SLURM system. Raw artifacts extracted at `<repo>/ls6/` from
 `eqdyna_sweep_3480247.tgz`: `eqdyna_sweep_3480247.log` (42637 lines),
 `.ledger.jsonl` (22 rows), `.profiles.jsonl` (55 rows).
 

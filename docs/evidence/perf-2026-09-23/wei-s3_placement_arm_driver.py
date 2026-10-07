@@ -22,7 +22,12 @@ import subprocess
 import sys
 import time
 
-W = '/home/utig5/dliu/EQdyna/.claude/worktrees/wei-s3'
+# The worktree this arm actually ran in (named 'wei-s3' at the time). Point
+# EQDYNA_WORKTREE at the checkout to re-run; falls back to this file's own
+# repo root so the script at least imports and runs somewhere sane.
+W = os.environ.get(
+    'EQDYNA_WORKTREE',
+    os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 PERF = os.path.join(W, 'testsys', 'perf')
 OUT = os.path.dirname(os.path.abspath(__file__))
 NODES = {n: list(range(n * 8, n * 8 + 8)) for n in range(8)}

@@ -70,7 +70,7 @@ docs rule, README rewrite, docs site. Grant: merge + minor/patch tags on master 
   `create.newcase ~/runs/tpv8` failed in a fresh HOME; `pip install jax` was prose, not a step; and, in a clean user env,
   `pip install jax` pulled numpy 2.2.6 under apt-built netCDF4/cftime (`numpy.dtype size changed`), so the README now
   uses a rootless virtualenv. The full gate passes on 17cfe3c: 19 lines, exit 0, 77.8 s.
-- **Lessons:** my session's python3 is a venv (/home/utig5/dliu/gns/gns/venv_cotopaxi), so no earlier run of mine exercised
+- **Lessons:** my session's python3 is a venv (<repo>/gns/gns/venv_cotopaxi), so no earlier run of mine exercised
   the system python a new user gets. Twice a shared branch checked out in two worktrees left one tree stale under a
   moved ref: 'dirty' was an artifact, and a gate run on the stale tree was invalid.
 - Worktrees: 20 reaped after a per-tree check (no uncommitted or unpushed work). Kept: 2 pre-existing owner-held, 2 live.

@@ -1,4 +1,4 @@
-/home/utig5/dliu/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
+<repo>/wt-jaxshard/testsys/perf/scaling_case/test.tpv104 test.tpv104
  
 PARAMETERS: positve dip angle to tilt the fault to y+
 PARAMETERS: negavtive dip to tilt the fault to y-
@@ -34,4 +34,4 @@ ranks         fortran   speedup      jax_halo   speedup jax_allreduce   speedup 
 8                   -         -             -         -             -         -         -
 16                  -         -             -         -             -         -         -
 
-saved /home/utig5/dliu/wt-jaxshard/docs/perf_snapshots/mpi_scaling_2026-09-21_tpv104_mpi_vs_fortran_solvemetric.json
+saved <repo>/wt-jaxshard/docs/perf_snapshots/mpi_scaling_2026-09-21_tpv104_mpi_vs_fortran_solvemetric.json
