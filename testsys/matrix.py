@@ -313,6 +313,22 @@ GATE_STATIONS = {
                'faultst120dp120.txt'),
         'off': ('body-030st000dp000.txt', 'body-150st150dp024.txt'),
     },
+    'test.tpv33': {
+        # Filenames MEASURED (2026-10-07) from an actual fortran run of this
+        # case, not derived by hand: library_output.f90's on-fault filename
+        # is sign-aware-strike/100 + dp=depth/100 (dip=90), off-fault is
+        # body=<fault-normal offset/100>st=<strike/100>dp=<depth/100>.
+        # Hypocentre (-6,-6 km) is itself a listed station -> faultst-060dp060
+        # exactly (also the station with the largest slip at the 5 s gate
+        # term, 1.10 m); shallowest surface station at strike 0 for the
+        # free-surface rupture; farthest-from-hypocentre corner (strike 2,
+        # depth 8). Off-fault: one surface-transect station (strike 4, on the
+        # fault-normal=0 line) and one "other station" (strike -12, offset
+        # -10 km) for along-strike/fault-normal spread.
+        'on': ('faultst-060dp060.txt', 'faultst000dp020.txt',
+               'faultst020dp080.txt'),
+        'off': ('body000st040dp000.txt', 'body-100st-120dp000.txt'),
+    },
 }
 
 # STATION_ZERO_FLOOR -- the absolute floor a per-column scale S_q is clamped
@@ -393,6 +409,11 @@ STATION_BOUND = {
     # floor as tpv29/tpv30/tpv22/tpv23/tpv26/tpv27.
     'test.tpv31': 1e-10,
     'test.tpv32': 1e-10,
+    # test.tpv33 (row 152): measured python-jax vs the fresh fortran
+    # reference -- worst e 2.8436e-11 (off v-disp, body000st040dp000.txt),
+    # near-machine-epsilon; same smallest-bound-in-use floor as
+    # tpv29/tpv30/tpv22/tpv23/tpv26/tpv27/tpv31/tpv32.
+    'test.tpv33': 1e-10,
 }
 
 # STATION_UNSUPPORTED -- (case, backend) cells whose station comparison is refused
@@ -480,6 +501,9 @@ NSTRESS_CONVENTION = {
                    'extension."'),
     'test.tpv32': ('extension', 'TPV31_32_Description_v03 Part 5 p.15 '
                    '(TPV31 and TPV32 share the format), "Positive means '
+                   'extension."'),
+    'test.tpv33': ('extension', 'TPV33_Description_v04 Part 4 p.12 '
+                   '(on-fault field table, n-stress), "Positive means '
                    'extension."'),
 }
 
@@ -813,6 +837,13 @@ CASE_BOUND = {
     # on v-slip-rate at faultst000dp000.txt, comfortably inside 1e-10).
     'test.tpv31': 1e-6,
     'test.tpv32': 1e-6,
+    # test.tpv33 (row 152): fortran cell bit-exact against its own
+    # freshly-frozen 4-rank reference (max|diff|=0.0, 1066 fault nodes,
+    # ~30s wall). Measured python-jax vs that reference: worst 2.295967e-15
+    # (frt row 851 col 9, a near-zero v-slip-type component, roundoff).
+    # 1e-10 (the smallest bound in use) is already >4 orders of magnitude
+    # above this -- same near-machine-epsilon pattern as tpv22/23/26/27/29/30.
+    'test.tpv33': 1e-10,
 }
 # test.tpv30 was held out of the gate from 2026-09-17 to 2026-09-23 by a real
 # divergence (numpy==jax, both != Fortran by up to 4.0e8 Pa at t=20 s). It was
@@ -844,6 +875,7 @@ GATE = {
     'test.tpv27': 'abs-max',
     'test.tpv31': 'abs-max',
     'test.tpv32': 'abs-max',
+    'test.tpv33': 'abs-max',
 }
 
 # test.drv.a6's flip-budget gate. These numbers are measured, not chosen;
