@@ -84,6 +84,34 @@ FULL_SPECS = {
                 "share the resolution/term request -- see test.tpv26's own "
                 "entry for the full quote)."),
     ),
+    'test.tpv31': dict(
+        # rule 17 step 5: recorded, not run. requireFaultGeometryResolution
+        # admits only dx=500 m today (the gate tier); no 50 m geometry file
+        # is shipped in case_input/test.tpv31/ -- a scheduling/storage
+        # decision, not a spec gap (planar fault, needs only a finer
+        # on_fault_vars grid + material table, not a downloaded surface).
+        dx=50.0, term=15.0, nx=4, ny=1, nz=4,
+        citation=("TPV31_32_Description_v03, p.9: 'For TPV31, please submit "
+                "results using 50 m node spacing on the fault plane.' "
+                "'Run the model for times from 0.0 to 15.0 seconds after "
+                "nucleation.' ny=1 keeps the fault plane off MPI partitions, "
+                "same convention as every other planar-fault full-tier entry "
+                "here."),
+    ),
+    'test.tpv32': dict(
+        # Same geometry/term citation as test.tpv31 (identical fault/stress/
+        # nucleation/friction, spec Part 2 -- only the 1D velocity structure
+        # differs). TPV32's own spec gives a RANGE (25-50 m); 50 m (the
+        # coarser end) is recorded here as the scheduling choice (rule 17
+        # step 5 is a recording, not a claim this is the spec's preferred
+        # value -- see that compset's README).
+        dx=50.0, term=15.0, nx=4, ny=1, nz=4,
+        citation=("TPV31_32_Description_v03, p.9: 'For TPV32, please select "
+                "node spacing on the fault plane in the range of 25 m to "
+                "50 m, and submit results for your selected node spacing.' "
+                "'Run the model for times from 0.0 to 15.0 seconds after "
+                "nucleation.'"),
+    ),
     'test.tpv8': dict(
         dx=100., term=15., nx=4, ny=2, nz=2,
         citation=(
