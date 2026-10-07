@@ -276,7 +276,10 @@ def main():
             filetable='\n'.join(rows), standing=st,
             notes=('\n## Notes\n\n' + '\n\n'.join('- ' + n for n in notes)
                    + '\n') if notes else '')
-        open(os.path.join(e['dst'], 'PROVENANCE.md'), 'w').write(txt)
+        # dst is not stored in layout.json (it's a local absolute path and
+        # derivable from ARCHIVE/benchmark/dir) -- recompute it here.
+        dst = os.path.join(ARCHIVE, e['benchmark'], e['dir'])
+        open(os.path.join(dst, 'PROVENANCE.md'), 'w').write(txt)
         index.append(dict(bm=bm, dir=e['dir'], user=user, label=e['label'],
                           code=m['code'], ver=m['version'],
                           res=res_tag(m['element_size']), date=iso,

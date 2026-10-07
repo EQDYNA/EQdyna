@@ -367,8 +367,7 @@ def main():
                         meta=m, files=files, sizes=sizes,
                         preexisting=preexisting, header_diffs=diffs,
                         indenting_writer=indents,
-                        failed=e.get('failed', {}), dx_from_cplot=dxf,
-                        dst=dst))
+                        failed=e.get('failed', {}), dx_from_cplot=dxf))
     # the TPV36/37 surface-deformation files are not served by the CGI; they
     # were e-mailed and are published as zips linked from tpv3*_surfdef.html.
     # They carry the portal user id of the *_arc listing, so they attach to
@@ -381,7 +380,9 @@ def main():
         src = os.path.join(HERE, 'surfdef', zf)
         for e in idx:
             if e['benchmark'] == bm and e['user'] == user:
-                d = os.path.join(e['dst'], zf)
+                # dst is never stored in layout.json (it's a local absolute
+                # path and derivable from ARCHIVE/benchmark/dir) -- recompute it.
+                d = os.path.join(ARCHIVE, e['benchmark'], e['dir'], zf)
                 if not os.path.exists(d):
                     shutil.copy2(src, d)
                 e['surfdef_zip'] = zf
