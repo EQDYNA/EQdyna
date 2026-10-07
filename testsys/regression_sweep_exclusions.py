@@ -49,4 +49,13 @@ module docstring -- can import it without acquiring any new dependency.
 # Basenames only, matched against os.path.basename(<test_*.py path>).
 EXCLUDED_FROM_SWEEP = frozenset({
     'test_release_complete.py',
+    # Board item 148 (2026-10-07): a real 4-rank, 15s-term, two-fault
+    # python-jax-mpi SOLVE (test.tpv23 at its registered PY_MPI_RANKS=4) --
+    # measured ~375s wall (board item 145). A real, directly-runnable
+    # regression script, gated by hand and as part of the release process
+    # (paired with `run.py release`, which runs this exact RELEASE_ONLY
+    # cell); excluded here only so the everyday/CI regression sweep stays
+    # seconds-scale, same reasoning as test_release_complete.py above. See
+    # the file's own module docstring.
+    'test_row148_tpv23_jaxmpi_solve.py',
 })
