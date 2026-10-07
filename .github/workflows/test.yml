@@ -550,7 +550,7 @@ jobs:
   # merges -- see PROJECT_RULES.md rule 25) names ONE required check, this
   # job, so a required-check list does not itself have to vary by lane. It
   # reaches both lanes (`if: always()`, not the default success()-only
-  # condition, so a skipped heavy job in the fast lane or a skipped
+  # condition, so a skipped e2e-ci-smoke in the fast lane or a skipped
   # fast-lane-checks in the full lane does not short-circuit it away) and
   # fails unless the lane that actually ran, actually passed -- reading each
   # needed job's own `.result` explicitly rather than trusting that it ran

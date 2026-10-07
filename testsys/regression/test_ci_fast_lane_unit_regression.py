@@ -15,8 +15,9 @@ WHAT THIS PINS:
   2. `merge-gate` needs both jobs, and its `fast)` branch requires
      BUILD_RESULT and UNIT_REGRESSION_RESULT to be `success` (a skipped job
      never counts as a pass);
-  3. rule 14a: the same check, run on a copy of test.yml with the old
-     lane-gated `if:` restored, must FAIL -- proof it can come out both ways.
+  3. rule 14a: the same check must FAIL on three mutated copies of test.yml
+     (build lane-gated, unit-regression lane-gated, merge-gate's fast)
+     branch no longer requiring unit-regression) -- proof it can go red.
 
 Cheap (rule 9): two parses of test.yml with the shared stdlib parser.
 """
@@ -78,26 +79,33 @@ def main():
     for name in BOTH_LANE_JOBS:
         print('  %s if: %r' % (name, jobs.get(name, {}).get('if')))
 
-    # rule 14a: the old lane-gated condition must make the check go red.
+    # rule 14a: restoring the old lane-gated condition on either job, or
+    # dropping it from merge-gate's fast) branch, must make the check go red.
     text = open(WORKFLOW).read()
     old_if = ("if: ${{ !cancelled() && !failure() && (github.event_name != "
               "'pull_request' || needs.detect-lane.outputs.lane == 'full') }}")
-    mutated, n = re.subn(r'(\n  unit-regression:\n    needs: [^\n]*\n)    if: [^\n]*\n',
-                         lambda mm: mm.group(1) + '    ' + old_if + '\n', text)
-    if n != 1:
-        problems.append('could not build the rule-14a mutant (unit-regression '
-                        'job header not found in the expected shape)')
-    else:
+    mutants = {}
+    for name in BOTH_LANE_JOBS:
+        mutants['%s lane-gated again' % name] = re.subn(
+            r'(\n  %s:\n    needs: [^\n]*\n)    if: [^\n]*\n' % re.escape(name),
+            lambda mm: mm.group(1) + '    ' + old_if + '\n', text)
+    mutants['merge-gate fast) drops UNIT_REGRESSION_RESULT'] = re.subn(
+        r'\[ "\$UNIT_REGRESSION_RESULT" = "success" \] && (\[ "\$FAST_LANE_RESULT")',
+        r'\1', text)
+    for label, (mutated, n) in mutants.items():
+        if n != 1:
+            problems.append('could not build the rule-14a mutant %r (%d match(es))'
+                            % (label, n))
+            continue
         with tempfile.NamedTemporaryFile('w', suffix='.yml', delete=False) as f:
             f.write(mutated)
         try:
             red = check(f.name)
         finally:
             os.unlink(f.name)
-        print('  mutant (unit-regression lane-gated again): %d problem(s)' % len(red))
+        print('  mutant (%s): %d problem(s)' % (label, len(red)))
         if not red:
-            problems.append('the check passed a test.yml whose unit-regression '
-                            'is lane-gated -- it cannot go red')
+            problems.append('the check passed the mutant %r -- it cannot go red' % label)
 
     if problems:
         print('\nFAIL: %d problem(s):' % len(problems))
@@ -105,7 +113,7 @@ def main():
             print('  - %s' % p)
         return 1
     print('\nPASS: build and unit-regression run on both lanes, merge-gate '
-          'requires both on the fast lane, and the lane-gated mutant goes red')
+          'requires both on the fast lane, and every mutant goes red')
     return 0
 
 
