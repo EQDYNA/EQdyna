@@ -172,8 +172,17 @@ subroutine meshgen
                             call checkIsOnFault(meshCoor(1:3,nodeElemIdRelation(2,elemCount)), ift, isOnFt)
                             if (isOnFt==1 .and. elemTypeArr(elemCount)==1) elemTypeArr(elemCount) = 13
 
-                            if (elemTypeArr(elemCount)==11 .or. elemTypeArr(elemCount)==12 &
-                                .or. elemTypeArr(elemCount)==13) exit
+                            ! Row 153 checkpoint 2a audit fix: exit only on
+                            ! ACTUAL degeneration (type 11/12), not on a mere
+                            ! type-13 "brick adjacent to this fault's plane"
+                            ! match -- aligns this loop's stop condition with
+                            ! countMeshEntities.f90's (which only ever exits
+                            ! when wedge4num incremented elementCount, i.e.
+                            ! actual degeneration). No registered case has
+                            ! more than one fault with faultDegenStyle>0, so
+                            ! this loop still executes exactly one matching
+                            ! iteration everywhere it used to: bit-identical.
+                            if (elemTypeArr(elemCount)==11 .or. elemTypeArr(elemCount)==12) exit
                         endif
                     enddo
                     
@@ -1172,7 +1181,7 @@ subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
     use errorCodes
     implicit none
     integer (kind = 4) :: isOnFault, iFault
-    real (kind = dp) :: nodeCoor(10), distToFault
+    real (kind = dp) :: nodeCoor(10), distToFault, tangentDip, x0, pNorm
     isOnFault = 0
  
     if(nodeCoor(1)>=(fltxyz(1,1,iFault)-tol).and.nodeCoor(1)<=(fltxyz(2,1,iFault)+tol).and. &
@@ -1197,8 +1206,26 @@ subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)
             isOnFault = 1
         elseif (faultDegenStyle(iFault)==1) then
             if (fltxyz(1,2,iFault)>=fltxyz(2,2,iFault)) write(*,*) 'ymax should be > ymin. Wrong geo, exit'
-            distToFault = abs(nodeCoor(3)+nodeCoor(2)*dtan(faultDegenAngle(iFault)/180.d0*pi))
-            distToFault = distToFault/(1.d0+dtan(faultDegenAngle(iFault)/180.d0*pi)**2)**0.5
+            ! Row 153 checkpoint 2a audit fix: offset by THIS fault's own
+            ! y-origin (fltxyz(1,2,iFault) = fymin) before applying the dip
+            ! tilt -- previously hardcoded to assume the dip plane's trace
+            ! sits at y=0. Every committed dipping-fault case (TPV36/37) has
+            ! fymin==0.0d0 (see tpv36_37_common.py), so subtracting it is a
+            ! no-op there: bit-identical. A second dipping fault with
+            ! fymin!=0 (none registered yet) is now handled correctly too.
+            tangentDip = dtan(faultDegenAngle(iFault)/180.d0*pi)
+            distToFault = abs(nodeCoor(3)+(nodeCoor(2)-fltxyz(1,2,iFault))*tangentDip)
+            distToFault = distToFault/(1.d0+tangentDip**2)**0.5
+            if (distToFault < dx/100.d0) isOnFault = 1
+        elseif (faultDegenStyle(iFault)==2) then
+            ! Style 2: TPV24/25 branch fault, x-y strike tilt, z-extruded.
+            ! x0 is derived from this fault's own box (fxmin - dx, the one
+            ! cell gap that excludes the junction column -- see wedge()'s
+            ! matching comment in library_degeneration.f90).
+            tangentDip = dtan(faultDegenAngle(iFault)/180.d0*pi)
+            pNorm = (1.d0+tangentDip**2)**0.5
+            x0 = fltxyz(1,1,iFault) - dx
+            distToFault = abs(nodeCoor(2)+(nodeCoor(1)-x0)*tangentDip)/pNorm
             if (distToFault < dx/100.d0) isOnFault = 1
     endif
     endif

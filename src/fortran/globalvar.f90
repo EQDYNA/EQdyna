@@ -283,10 +283,13 @@ MODULE globalvar
     ! = 1 and faultDegenAngle(i) = C_degen for every fault when C_degen>3,
     ! else style 0 -- identical to today's uniform-C_degen test, so this is a
     ! pure refactor, byte-identical on every existing case. Style 1 is the
-    ! existing y-z dip-tilt pattern only; a style 2 (x-y strike-tilt,
-    ! z-extruded, for the TPV24/25 branch) is NOT added in this checkpoint.
+    ! y-z dip-tilt pattern (TPV36/37). Style 2 (row 153 checkpoint 2a) is the
+    ! x-y strike-tilt, z-extruded pattern for the TPV24/25 branch fault --
+    ! derived per-fault from bFaultGeometry.txt's new degen-code line
+    ! (readfaultgeometry): code in (3,100] -> style 1, angle=code; code>100
+    ! -> style 2, angle=code-100; else style 0.
     integer (kind = 4), allocatable, dimension(:) :: faultDegenStyle
-    real (kind = dp), allocatable, dimension(:) :: faultDegenAngle
+    real (kind = dp), allocatable, dimension(:) :: faultDegenAngle, faultDegenCodeIn
     ! Item 143: equation numbers, offsets into eqNumIndexArr/stressArr and
     ! node ids -- 64-bit (see the count declarations above).
     integer (kind = 8), allocatable, dimension(:) :: &

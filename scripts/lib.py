@@ -136,6 +136,52 @@ def resolveFaultGeom(par):
     return geom
 
 
+# Row 153 checkpoint 2a: C_degen accepted set, now checked PER FAULT (every
+# existing case still writes a single scalar, repeated ntotft times -- see
+# resolveFaultDegenCode below). code>100 (style 2, TPV24/25 branch) is
+# already inside the pre-existing "0 or >3" accepted set, so no new case is
+# newly accepted or refused here; this just makes the test reusable per-fault.
+def _isAcceptedDegenCode(code):
+    return code == 0.0 or code > 3.0
+
+
+def resolveFaultDegenCode(par):
+    """Row 153 checkpoint 2a: the per-fault degeneration code list
+    bFaultGeometry.txt needs, one integer per fault (readfaultgeometry.f90:
+    code in (3,100] -> style 1 dip angle=code (TPV36/37's existing wedge
+    pattern); code>100 -> style 2 strike-tilt angle=code-100 (the TPV24/25
+    branch fault); else style 0 (vertical planar)).
+
+    par.faultDegenCode is the per-fault override list. When absent (the
+    default), every fault gets par.C_degen repeated ntotft times -- EXACTLY
+    checkpoint 1's "every fault gets the SAME style/angle C_degen already
+    gave it" behaviour, so this is a no-op refactor on every case that does
+    not set the new override."""
+    codes = getattr(par, 'faultDegenCode', None)
+    if codes is None:
+        codes = [par.C_degen] * par.ntotft
+    if len(codes) != par.ntotft:
+        raise ValueError(
+            'case.setup: par.faultDegenCode has %d entries but par.ntotft = %d; '
+            'they must match.' % (len(codes), par.ntotft))
+    for i, code in enumerate(codes):
+        if not _isAcceptedDegenCode(code):
+            raise SystemExit(
+                'case.setup: par.faultDegenCode[%d]=%r is neither 0 nor >3, a '
+                'value neither Fortran\'s nor Python\'s checkIsOnFault takes a '
+                'branch for -- no fault node would be found on fault %d. Use 0 '
+                '(vertical planar), an integer in (3,100] (wedge-degeneration '
+                'dip angle in degrees), or an integer >100 (100 + branch '
+                'strike-tilt angle in degrees).' % (code, i, i + 1))
+        if code != int(code):
+            raise SystemExit(
+                'case.setup: par.faultDegenCode[%d]=%r is not an integer. '
+                'Fortran reads it as a real but readfaultgeometry truncates '
+                'the style-1/style-2 split at exact integer thresholds (3, '
+                '100); use an integer value.' % (code, i))
+    return [int(c) for c in codes]
+
+
 def resolveOnFaultStationsPerFault(par):
     """Row 17 (multi-fault): the list of ntotft (x, z) on-fault station lists
     bStations.txt needs, one list per fault, in the exact fault order

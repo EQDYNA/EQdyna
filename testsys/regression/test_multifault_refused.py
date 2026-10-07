@@ -90,13 +90,15 @@ def check_two_faults_case_setup_succeeds():
                 'resolveOnFaultVarsPerFault, resolveOnFaultStationsPerFault) and must work:\n%s'
                 % (r.returncode, (r.stdout + r.stderr)[-3000:]))
 
-        # bFaultGeometry.txt: two distinct boxes, second offset in y.
+        # bFaultGeometry.txt: two distinct boxes, second offset in y. Each
+        # block is 5 lines (header + x/y/z bounds + the Row 153 checkpoint 2a
+        # per-fault degeneration code), not 4.
         geom = open(os.path.join(case_dir, 'bFaultGeometry.txt')).read().split('\n')
         nonblank = [l for l in geom if l.strip()]
-        if 'For fault No. 1' not in nonblank[0] or 'For fault No. 2' not in nonblank[4]:
+        if 'For fault No. 1' not in nonblank[0] or 'For fault No. 2' not in nonblank[5]:
             raise AssertionError('bFaultGeometry.txt does not have two "For fault No." blocks:\n%s'
                                  % geom)
-        fault2_y = nonblank[6].split()
+        fault2_y = nonblank[7].split()
         if abs(float(fault2_y[0]) - 2000.0) > 1e-6 or abs(float(fault2_y[1]) - 2000.0) > 1e-6:
             raise AssertionError('bFaultGeometry.txt fault 2 y-line should be "2000.0 2000.0", '
                                  'got %r' % nonblank[6])

@@ -21,7 +21,7 @@ except ModuleNotFoundError as e:
                  'that file exists.' % (e.name, e.name, SHARED_COMPSET_FILES[e.name]))
     raise
 from lib import (ensureFaultRoughGeometryForCase, resolveNormalStressSign, resolveViscoplasticParams,
-                 faultTag, resolveFaultGeom, resolveOnFaultStationsPerFault, resolveOnFaultVarsPerFault)
+                 faultTag, resolveFaultGeom, resolveFaultDegenCode, resolveOnFaultStationsPerFault, resolveOnFaultVarsPerFault)
 from machines import machine, write_slurm_header
 import netCDF4 as nc
 import numpy as np
@@ -118,13 +118,18 @@ def create_model_input_file():
         # eqquasi-style list-of-boxes pattern), not the same box repeated --
         # see resolveFaultGeom for the ntotft==1 backward-compat fallback.
         faultgeom = resolveFaultGeom(par)
+        # Row 153 checkpoint 2a: one degeneration code per fault (par.
+        # faultDegenCode override, default par.C_degen repeated) -- see
+        # resolveFaultDegenCode for the ntotft==1 backward-compat fallback.
+        degencodes = resolveFaultDegenCode(par)
         for i in range(par.ntotft):
             fxmin_i, fxmax_i, fymin_i, fymax_i, fzmin_i, fzmax_i = faultgeom[i]
             f.write("For fault No. " + str(i+1) + "\n")
             f.write(str(fxmin_i) + "  " + str(fxmax_i) + "\n")
             f.write(str(fymin_i) + "  " + str(fymax_i) + "\n")
             f.write(str(fzmin_i) + "  " + str(fzmax_i) + "\n")
-            
+            f.write(str(degencodes[i]) + "\n")
+
     with open('bMaterial.txt', "w") as f:
         if par.nmat == 1:
             f.write(str(par.vp) + " " + str(par.vs) + " " + str(par.rou) + "\n")

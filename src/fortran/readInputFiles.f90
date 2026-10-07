@@ -141,16 +141,27 @@ subroutine readfaultgeometry
     include 'mpif.h'
 
     logical::file_exists
-    integer(kind=4)::i
-    
+    integer(kind=4)::i, ios
+    character (len=12) :: itoa153
+
     call requireInputFile("bFaultGeometry.txt")
-    
+
     open(unit = 1003, file = 'bFaultGeometry.txt', form = 'formatted', status = 'old')
         do i = 1, ntotft
-            read(1003,*) 
+            read(1003,*)
             read(1003,*) fxmin(i), fxmax(i)
             read(1003,*) fymin(i), fymax(i)
             read(1003,*) fzmin(i), fzmax(i)
+            ! Row 153 checkpoint 2a: per-fault degeneration code, one line
+            ! per fault, added after the box bounds. case.setup always
+            ! writes it (defaulting to par.C_degen for every fault when no
+            ! per-fault override is given -- see resolveFaultDegenCode in
+            ! scripts/lib.py), so every regenerated bFaultGeometry.txt has
+            ! this line; a file from an older case.setup is a stale file
+            ! (iostat-checked below, same contract as stopStaleGlobal).
+            read(1003,*,iostat=ios) faultDegenCodeIn(i)
+            if (ios /= 0) call stopStaleGlobal('bFaultGeometry.txt''s per-fault degeneration code ' // &
+                '(fault '//trim(itoa153(i))//'; re-run case.setup)')
         enddo
     close(1003)
 
@@ -161,26 +172,47 @@ subroutine readfaultgeometry
         fltxyz(2,2,i)=fymax(i)
         fltxyz(1,3,i)=fzmin(i)
         fltxyz(2,3,i)=fzmax(i)
-        fltxyz(1,4,i)=fstrike*pi/180.0d0
-        if (C_degen>3.0d0) then
-            fltxyz(2,4,i) = C_degen*pi/180.0d0
-        else
+        ! Row 153 checkpoint 2a: faultDegenStyle/faultDegenAngle now derived
+        ! from THIS fault's own per-fault code (faultDegenCodeIn), not the
+        ! single global C_degen -- code in (3,100] is style 1 (dip angle =
+        ! code, the pre-existing TPV36/37 pattern); code>100 is style 2 (TPV
+        ! 24/25 branch, strike-tilt angle = code-100); else style 0 (vertical
+        ! planar). Every existing case writes faultDegenCodeIn(i) = par.C_degen
+        ! for every fault (case.setup's default), so this reduces exactly to
+        ! checkpoint 1's "every fault gets the SAME style/angle C_degen
+        ! already gave it" behaviour: bit-identical.
+        if (faultDegenCodeIn(i) > 100.d0) then
+            faultDegenStyle(i) = 2
+            faultDegenAngle(i) = faultDegenCodeIn(i) - 100.d0
+            ! Style 2 is a VERTICAL fault (dip=90) tilted in STRIKE, not dip:
+            ! the branch's strike is the main fault's strike (fstrike) plus
+            ! its own tilt angle -- the TPV24/25 spec's "30-degree branch
+            ! angle", applied as a strike offset so un/us/ud (createMasterNode)
+            ! get the branch's own slip-vector frame automatically, with no
+            ! new input beyond the degen code itself.
+            fltxyz(1,4,i) = (fstrike + faultDegenAngle(i))*pi/180.0d0
             fltxyz(2,4,i) = 90.d0*pi/180.d0
-        endif
-        ! Row 153 checkpoint 1: per-fault degeneration style/angle, derived
-        ! from C_degen exactly as fltxyz(2,4,i) above -- every fault gets the
-        ! SAME style/angle C_degen already gave it (uniform test), so this is
-        ! a pure refactor, not a behavior change.
-        if (C_degen>3.0d0) then
+        elseif (faultDegenCodeIn(i) > 3.d0) then
             faultDegenStyle(i) = 1
-            faultDegenAngle(i) = C_degen
+            faultDegenAngle(i) = faultDegenCodeIn(i)
+            fltxyz(1,4,i) = fstrike*pi/180.0d0
+            fltxyz(2,4,i) = faultDegenAngle(i)*pi/180.0d0
         else
             faultDegenStyle(i) = 0
             faultDegenAngle(i) = 0.d0
+            fltxyz(1,4,i) = fstrike*pi/180.0d0
+            fltxyz(2,4,i) = 90.d0*pi/180.d0
         endif
     enddo
-    
+
 end subroutine readfaultgeometry
+
+function itoa153(n) result(s)
+    implicit none
+    integer (kind = 4), intent(in) :: n
+    character (len = 12) :: s
+    write(s,'(I0)') n
+end function itoa153
 
 ! #4 readmaterial --------------------------------------------------------
 subroutine readmaterial

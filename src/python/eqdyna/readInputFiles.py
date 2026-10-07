@@ -180,12 +180,17 @@ def faultTag(ift, ntotft):
 
 def read_bfaultgeometry(path, ntotft):
     """Port of readfaultgeometry. Returns a list of ntotft dicts, each with
-    fxmin/fxmax/fymin/fymax/fzmin/fzmax. Row 17 (multi-fault): every fault's
-    box is read structurally (always was); meshgen.py's builders now
+    fxmin/fxmax/fymin/fymax/fzmin/fzmax/degenCode. Row 17 (multi-fault): every
+    fault's box is read structurally (always was); meshgen.py's builders now
     consume more than the first entry for ntotft>1 -- see
     checkInputConsistency's multi-fault guards (C_degen==0, planar, dy-
     aligned, inside the uniform-y belt, distinct per-fault y, same x/z
-    extent as fault 1) for the scope this is actually exercised under."""
+    extent as fault 1) for the scope this is actually exercised under.
+
+    Row 153 checkpoint 2a: a 5th line per fault, the per-fault degeneration
+    code (readInputFiles.f90's faultDegenCodeIn(i)), added after the z
+    bounds -- mirrors the Fortran read exactly so a file written by the
+    current case.setup parses identically on both backends."""
     lines = list(_read_records(path))
     it = iter(lines)
     faults = []
@@ -197,8 +202,9 @@ def read_bfaultgeometry(path, ntotft):
         fymin, fymax = float(vals[0]), float(vals[1])
         vals = next(it).split()
         fzmin, fzmax = float(vals[0]), float(vals[1])
+        degenCode = float(next(it).split()[0])
         faults.append(dict(fxmin=fxmin, fxmax=fxmax, fymin=fymin, fymax=fymax,
-                            fzmin=fzmin, fzmax=fzmax))
+                            fzmin=fzmin, fzmax=fzmax, degenCode=degenCode))
     return faults
 
 
