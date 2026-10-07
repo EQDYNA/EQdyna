@@ -60,7 +60,6 @@ reference data; rule 4/rule 7), unless --no-plots / --no-json is given.
 """
 import argparse
 import datetime
-import glob
 import json
 import os
 import socket

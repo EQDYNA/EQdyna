@@ -9,9 +9,9 @@ This compares serial python against a SERIAL FORTRAN reference: same
 decomposition on both sides, so the decomposition term is zero by construction
 and what remains is the port alone.
 """
-import sys, numpy as np
+import sys
 sys.path.insert(0, '/home/utig5/dliu/EQdyna')
-from testsys import compare, matrix, frt_canonical
+from testsys import compare, matrix
 
 S = '/tmp/claude-16759/-home-utig5-dliu-EQdyna/e618789a-38a5-4235-9ca3-c8a3a0fe9ba6/scratchpad'
 REF_SERIAL = S + '/drv_serial_fortran_ref.frt'

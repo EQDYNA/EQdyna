@@ -35,7 +35,6 @@ NEW regression, defeating the guard's purpose.
 
 Cheap (rule 9): pure text scan of ~10 files, no build, sub-second.
 """
-import glob
 import os
 import re
 import shutil

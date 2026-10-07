@@ -66,7 +66,6 @@ Writes testsys/perf/scatter_bandwidth_last.json.
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile

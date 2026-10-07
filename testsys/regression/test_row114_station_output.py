@@ -30,7 +30,6 @@ Cheap (rule 9): one tiny serial test.tpv8 case (create.newcase + case.setup,
 ~2s measured by test_stress_i0_carry_aliasing.py's identical setup), 3 time
 steps on each backend -- no Fortran build, no MPI, no full-length run.
 """
-import glob
 import os
 import re
 import subprocess

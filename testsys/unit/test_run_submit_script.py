@@ -7,7 +7,6 @@ Both ways (rule 14a): a slurm machine with an account builds a script and a
 non-slurm machine (or a slurm one with no account) refuses.
 """
 import importlib.util
-import io
 import os
 
 import pytest
