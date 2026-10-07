@@ -94,6 +94,38 @@ than a different parallelization scheme, so no separate scaling curve is
 expected or measured here -- see [Core scaling](#core-scaling) above for the
 single-fault curve this case set shares.
 
+## HPC scaling suite
+
+`testsys/perf/hpc_scaling_suite.py` builds, submits, collects and analyzes a
+strong/weak/size scaling sweep on an HPC machine registered in
+`scripts/machines.py`:
+
+```
+python3 testsys/perf/hpc_scaling_suite.py --submit --machine ls6 --account <acct> \
+    --backend fortran --test strong --level medium
+python3 testsys/perf/hpc_scaling_suite.py --collect --suite-dir <dir from --submit>
+python3 testsys/perf/hpc_scaling_suite.py --analyze <tarball from --collect>
+```
+
+`--test strong` holds total element count fixed while ranks double (only
+`par.nx/ny/nz` change, not `par.dx`); `--test weak` holds elements-per-core
+fixed as the rank grid grows (`par.dx` refines); `--test size` holds core
+count fixed and sweeps `par.dx` to find the elements-per-core/bytes-per-element
+sweet spot before memory runs out. `--level big` (10^10 elements) refuses
+`--backend python-jax-mpi` in code -- Fortran only at that size. `--analyze`
+reports each rank's own per-step cost (via the one shared per-step-by-difference
+routine, `testsys/perf/run_numa_scaling.per_step_and_fixed`), a per-step bucket
+breakdown (element/fault/exchange/wait), the setup+io fixed cost read directly
+off the longer run (never differenced -- a one-time cost does not scale with
+step count), max/mean imbalance across ranks, the 128->256-node step boundary
+when present, and a parity check of the first strong-scaling point against its
+registered e2e reference via `testsys/compare.py`.
+
+The actual until-OOM `--test size` sweep and any real HPC submission are left
+to real HPC hardware; this box is memory-constrained and does not run them.
+`testsys/regression/test_hpc_scaling_suite.py` unit-tests the collect/analyze
+arithmetic against a committed profile fixture instead.
+
 ## Hardware assumptions
 
 The figures above were measured on a 64-core (2 sockets x 32 cores, 8 NUMA
