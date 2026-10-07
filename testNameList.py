@@ -5,8 +5,27 @@ nameList = ['test.drv.a6',   'test.tpv8', 'test.tpv10', 'test.tpv104',
             'test.tpv29', 'test.tpv36', 'test.tpv37', 'test.tpv30',
             'test.tpv22', 'test.tpv23', 'test.tpv35', 'test.tpv34',
             'test.tpv26', 'test.tpv27', 'test.tpv31', 'test.tpv32',
-            'test.tpv33']
-coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+            'test.tpv33', 'test.tpv12']
+coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+# test.tpv12 (SCEC TPV12, 60-degree dipping planar normal fault, linear
+# elastic) REGISTERED 2026-10-07 (board row 149, owner pairing decision):
+# TPV12 is the METHOD 1 (C_elastic=1, stress change, no gravity) half of the
+# TPV12/13 pair, built exactly as test.tpv29 is to test.tpv30's METHOD 2. 4
+# ranks (par.nx,ny,nz=2,2,1, test.tpv10's own partition), fortran +
+# python-jax, at the ONE 5 s GATE_TERM_S and dx=500 m. Confirmed (direct read
+# of TPV12_13_Description_v6.pdf) NOT blocked: nucleation is a reduced static
+# friction coefficient inside the nucleation patch (C_nuclea=0 -- no
+# forced-rupture code path at all, the SAME C_nuclea=0 convention test.tpv10
+# uses, though test.tpv10's own nucleation mechanism is an ELEVATED initial
+# shear stress in its patch, not reduced friction -- the two cases share the
+# "no forced-rupture code path" convention, not the specific mechanism).
+# Geometry is test.tpv10's already-gated insertFaultType=1 planar-dipping-
+# fault + mod4dip machinery verbatim, and
+# initial stress is per-node manual fault tractions (Method 1, no off-fault
+# stress tensor, so setPlasticStress is never called for this case). TPV13
+# (the Method 2 / Drucker-Prager sibling) is NOT added here -- see
+# case_input/test.tpv12/README.md and pathway_forward.md row 149 for the
+# still-open gap that blocks it.
 # test.tpv33 (SCEC TPV33, planar vertical strike-slip, fault-parallel
 # low-velocity zone) REGISTERED 2026-10-07 (board row 152): 4 ranks
 # (par.nx,ny,nz=2,1,2), fortran + python-jax, at the ONE 5 s GATE_TERM_S and

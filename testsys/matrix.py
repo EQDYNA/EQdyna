@@ -329,6 +329,17 @@ GATE_STATIONS = {
                'faultst020dp080.txt'),
         'off': ('body000st040dp000.txt', 'body-100st-120dp000.txt'),
     },
+    # test.tpv12 (row 149): filenames MEASURED from the fresh fortran
+    # reference run (test.tpv10's own insertFaultType=1 dipping-fault
+    # mechanism, same hypocentre/station-grid shape) -- hypocentre
+    # (0,-12 km down-dip) -> faultst000dp104 exactly; shallowest buried
+    # dp013; farthest strike (12 km) dp065. Off-fault: near (1 km) and far
+    # (3 km at strike 12 km) of this case's own list.
+    'test.tpv12': {
+        'on': ('faultst000dp104.txt', 'faultst000dp013.txt',
+               'faultst120dp065.txt'),
+        'off': ('body010st000dp000.txt', 'body030st120dp000.txt'),
+    },
 }
 
 # STATION_ZERO_FLOOR -- the absolute floor a per-column scale S_q is clamped
@@ -414,6 +425,11 @@ STATION_BOUND = {
     # near-machine-epsilon; same smallest-bound-in-use floor as
     # tpv29/tpv30/tpv22/tpv23/tpv26/tpv27/tpv31/tpv32.
     'test.tpv33': 1e-10,
+    # test.tpv12 (row 149): measured python-jax vs the fresh fortran
+    # reference -- worst e 1.0925e-07 (on n-stress, faultst120dp065.txt).
+    # 1e-5 is the next bound-already-in-use at or above 1.0925e-07 * ~121.5
+    # (1.33e-5), same headroom convention as every other case here.
+    'test.tpv12': 1e-5,
 }
 
 # STATION_UNSUPPORTED -- (case, backend) cells whose station comparison is refused
@@ -505,6 +521,8 @@ NSTRESS_CONVENTION = {
     'test.tpv33': ('extension', 'TPV33_Description_v04 Part 4 p.12 '
                    '(on-fault field table, n-stress), "Positive means '
                    'extension."'),
+    'test.tpv12': ('extension', 'TPV12_13_Description_v6.pdf on-fault field '
+                   'table, n-stress: "Positive means extension."'),
 }
 
 # python-jax-mpi is a FOURTH value on the `backend` axis: real MPI (one
@@ -844,6 +862,16 @@ CASE_BOUND = {
     # 1e-10 (the smallest bound in use) is already >4 orders of magnitude
     # above this -- same near-machine-epsilon pattern as tpv22/23/26/27/29/30.
     'test.tpv33': 1e-10,
+    # test.tpv12 (row 149, 60-degree dipping planar normal fault, elastic,
+    # SCEC's own TPV12/13 Method 1): fortran cell bit-exact against its own
+    # freshly-frozen 4-rank reference (max|diff|=0.0, 1891 fault nodes,
+    # 41.2s wall). Measured python-jax vs that reference: worst 4.194793e-07
+    # (frt row 959 col 12, a near-zero peak-slip-rate-type component, ref
+    # 3.908385e-07 vs run -2.864085e-08 -- roundoff on a marginally-ruptured
+    # node, same shape as tpv36/37's own observation). 1e-4 is the next
+    # bound-already-in-use at or above 4.194793e-07 * ~121.5 (5.10e-5), same
+    # headroom convention as every other case here.
+    'test.tpv12': 1e-4,
 }
 # test.tpv30 was held out of the gate from 2026-09-17 to 2026-09-23 by a real
 # divergence (numpy==jax, both != Fortran by up to 4.0e8 Pa at t=20 s). It was
@@ -876,6 +904,7 @@ GATE = {
     'test.tpv31': 'abs-max',
     'test.tpv32': 'abs-max',
     'test.tpv33': 'abs-max',
+    'test.tpv12': 'abs-max',
 }
 
 # test.drv.a6's flip-budget gate. These numbers are measured, not chosen;

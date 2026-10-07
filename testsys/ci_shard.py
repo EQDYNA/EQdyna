@@ -117,6 +117,13 @@ SHARDS = {
                                  # no case build/solver run, <1 s.
         "test_release_evidence_tree_clean.py",  # added 2026-09-23 (Iris, rule-24 tree_clean fix): 2 sandbox git-init scenarios, well under 1 s
         "test_content_key_sweep_evidence.py",  # added 2026-09-30 (PR #63): content-key evidence, 6 sandbox scenarios + mutation, ~1 s
+        "test_evidence_tpv12_both_ways.py",  # added 2026-10-07 (victor-reyes
+                                 # audit, PR #147): 3 subprocess invocations
+                                 # of testsys/parity/evidence_tpv12_scec_
+                                 # comparison.py against already-committed
+                                 # station text (real data, a scaled-column
+                                 # copy, a copy missing frt.canonical.txt),
+                                 # no network/build, well under a few seconds.
         "test_profile_guard.py",  # added 2026-09-23 (item 3, profile-guard
                                  # testsys half); ~0.03 s, pure fixture/schema
                                  # checks, no subprocess -- negligible to
