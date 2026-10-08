@@ -152,7 +152,12 @@ def forced_rupture_time(xp, finv):
     # TPV26/27 (TPV26_27_Description_v13 Part 5, p.12) is the same
     # formula again -- confirmed by direct spec read, not assumed from the
     # name (row 150, 2026-10-06).
-    if TPV in (29, 30, 36, 37, 201, 22, 23, 26, 27):
+    # TPV24/25 (TPV24_25_Description_v07.pdf, Part 5, p.13) is the same
+    # formula again -- same r_crit=4000 symbol/value, same 0.081 taper
+    # coefficient, same 0.7*Vs rupture speed, same Vs=3464 (matches
+    # NUC_VS_FIXED exactly), same t0=0.5s -- confirmed by direct spec read
+    # (row 153 checkpoint 2b), not borrowed/impersonated (rule 17 step 3).
+    if TPV in (29, 30, 36, 37, 201, 22, 23, 26, 27, 24, 25):
         ratio = xp.where(inside, radius / nucR, 0.0)
         taper = 1.0 / (1.0 - ratio ** 2) - 1.0
         tr = (radius + gv.NUC_TAPER_COEF * nucR * taper) / (
