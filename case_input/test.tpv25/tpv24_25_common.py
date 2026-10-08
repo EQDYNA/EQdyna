@@ -205,17 +205,31 @@ def build_on_fault_vars_branch(fx2, fz, nfx2, nfz, b22, b33, b23):
             v[iz, ix, 5] = TW_T0
             v[iz, ix, 7] = normal_coeff * sp
             v[iz, ix, 8] = shear_coeff * sp
-            # true borders unbreakable (rule: PDF Part 3-style border
-            # convention, matching every other TPV in this repo):
-            # left edge is the junction-adjacent column (excluded from the
-            # box already, so ix==0 here IS the first real branch node, one
-            # dx away from the junction -- still a true border of fault 2,
-            # per spec p.5 "slip goes to zero at the junction... like any
-            # other border"), right edge, and bottom.
-            on_left_edge = (ix == 0)
+            # Row 153 ckpt2 fix: only the TRUE free edges of fault 2's own
+            # box are locked unbreakable -- the far end (right edge,
+            # BRANCH_FXMAX, 10 km from the junction) and the bottom (the
+            # surface/top is a free-surface boundary, never locked, same
+            # convention as fault 1 above).
+            #
+            # The previous version ALSO locked ix==0 (BRANCH_FXMIN, the
+            # first real branch node, 1 dx = 1 km from the junction),
+            # reasoning that the spec's "slip goes to zero at the junction,
+            # like any other border" (p.5) applied to this node. It does
+            # NOT: the junction point itself is x0 = fxmin - dx = 0, which
+            # is EXCLUDED from fault 2's box entirely (owned by fault 1
+            # only, see module docstring) -- there is no fault-2 node AT
+            # the junction to lock. ix==0 is the first node *inside* the
+            # branch, not the junction, and per Barall's independent
+            # FaultMod reference (branchst010dp100, L=1 km from the
+            # junction) it is the node that ruptures FIRST (t=3.08-3.2 s),
+            # before every node farther down the branch -- it is where the
+            # main fault's rupture is supposed to jump onto the branch.
+            # Locking it with UNBREAKABLE_FS made that impossible: measured
+            # (this session, pre-fix gate rerun) 0/160 deduped branch nodes
+            # ruptured by 5 s, vs Barall's 62% by 5 s / 100% overall.
             on_right_edge = (ix == nfx2 - 1)
             on_bottom_edge = (iz == 0)
-            if on_left_edge or on_right_edge or on_bottom_edge:
+            if on_right_edge or on_bottom_edge:
                 v[iz, ix, 1] = UNBREAKABLE_FS
     return v
 
