@@ -20,7 +20,23 @@ re-implements its comparison) against:
   4. the synthetic archive's cplot rupture times collapsed to "never
      ruptured" for most non-barrier nodes, stations unmodified
      -> expect nonzero exit, with the FRACTION bound specifically FAILing
-        while the station peak-ratio bounds still PASS
+        while the station peak-ratio bounds still PASS (a total-collapse
+        scenario)
+  5. OUR OWN frt.canonical.txt with ~45% of its ruptured non-barrier nodes
+     un-ruptured (a PARTIAL STALL, our fraction drops to ~0.44, not a total
+     collapse down near 0), synthetic archive unmodified (its own fraction
+     stays 0.8051, the real reference value)
+     -> expect nonzero exit on the FRACTION_BOUND = 0.28 bound specifically
+        (finding 5, PR #155 audit: the original both-ways test only
+        exercised a TOTAL collapse of the reference side; a realistic
+        partial stall on OUR side, one a human reviewer might plausibly
+        mistake for "mostly working" (more than half the fault still
+        ruptures), must also fail under the tightened, measured bound.
+        Note: this fixture's delta is evaluated against the SYNTHETIC
+        archive's fixed 0.8051, not Barall's true 0.9834, so the stall
+        fraction needed here to cross FRACTION_BOUND=0.28 is deeper than
+        the ~0.60 a run against the real archive would need -- see the
+        evidence script's own docstring for the real-archive numbers.)
 
 Case 1 proves the script does not always fail; cases 2-4 prove it does not
 always pass, on three different bounds. Together they are the "can come out
@@ -32,6 +48,7 @@ solver run, no network.
 """
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -90,6 +107,30 @@ def _build_synthetic_archive(dest_dir, collapse_rupture=False):
     for archive_name, our_name in STATIONS:
         shutil.copy(os.path.join(REF_DIR, 'stations', our_name),
                     os.path.join(dest_dir, archive_name))
+
+
+def _build_partial_stall_frt(dest_path, stall_fraction=0.45):
+    """A copy of the real committed frt.canonical.txt with STALL_FRACTION of
+    its ruptured, non-barrier nodes un-ruptured (rupture time set past the
+    gate term) -- a PARTIAL stall (finding 5, PR #155 audit), distinct from
+    the existing total-collapse scenario in _build_synthetic_archive. Uses
+    the same barrier convention as the real script (exclude the two
+    along-strike edges and the deepest down-dip row)."""
+    frt = np.loadtxt(os.path.join(REF_DIR, 'frt.canonical.txt'))
+    x, z, t = frt[:, 0], frt[:, 2], frt[:, 3]
+    downdip = np.abs(z) / math.sin(math.radians(DIP_DEG))
+    xmin, xmax, dmax = x.min(), x.max(), downdip.max()
+    barrier = (np.isclose(x, xmin, atol=1.0) | np.isclose(x, xmax, atol=1.0) |
+               np.isclose(downdip, dmax, atol=1.0))
+    ruptured = (~barrier) & (t < 999.0)
+    idx = np.flatnonzero(ruptured)
+    # Deterministic selection (every Nth ruptured node), not random -- a
+    # both-ways test must be reproducible.
+    n_stall = int(round(stall_fraction * idx.size))
+    stall_idx = idx[np.linspace(0, idx.size - 1, n_stall, dtype=int)]
+    out = frt.copy()
+    out[stall_idx, 3] = 99999.0
+    np.savetxt(dest_path, out, fmt='%.6e')
 
 
 def _run(run_dir, gate_resolution=True, archive_dir=None):
@@ -183,6 +224,34 @@ def main():
             fails.append('collapsed-rupture fixture did not fail the '
                           'fraction bound (and only that bound) as '
                           'expected:\n' + out)
+
+        # 5. PARTIAL stall on OUR side (our fraction drops to ~0.44, not a
+        #    total collapse down near 0): archive unmodified (its own real
+        #    fraction, 0.8051), 45% of our ruptured non-barrier nodes
+        #    un-ruptured -> fraction ours drops from 0.8051 to ~0.44,
+        #    |delta| vs the archive's 0.8051 lands well past
+        #    FRACTION_BOUND = 0.28 (finding 5, PR #155 audit). Checking
+        #    frac_ours > 0.3 (rather than near 0) is what tells this apart
+        #    from scenario 4's TOTAL collapse.
+        stall_dir = os.path.join(tmp, 'stall')
+        os.makedirs(stall_dir, exist_ok=True)
+        shutil.copytree(os.path.join(REF_DIR, 'stations'),
+                         os.path.join(stall_dir, 'stations'))
+        _build_partial_stall_frt(os.path.join(stall_dir, 'frt.canonical.txt'))
+        rc, out = _run(stall_dir, archive_dir=archive)
+        frac_line = next((l for l in out.splitlines()
+                           if 'bound FRACTION_BOUND' in l), '')
+        frac_ours_line = next((l for l in out.splitlines()
+                                if l.strip().startswith('ours  :')), '')
+        m = re.search(r'\(([0-9.]+)\)', frac_ours_line)
+        frac_ours = float(m.group(1)) if m else None
+        ok = (rc != 0) and frac_line.rstrip().endswith('FAIL') and \
+            frac_ours is not None and 0.30 < frac_ours < 0.55
+        print('  partial stall (fraction ~0.44)     : rc=%d  %s' % (rc, 'ok' if ok else 'FAIL (expected FRACTION_BOUND FAIL at a partial, not total, fraction)'))
+        if not ok:
+            fails.append('partial-stall fixture did not fail the fraction '
+                          'bound at a partial (not total) fraction as '
+                          'expected:\n' + out)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -194,7 +263,8 @@ def main():
     print('\nSUCCESS test_evidence_tpv13_both_ways: PASS on real data vs a '
           'synthetic real-shaped archive, FAIL on a perturbed station file, '
           'raise on a missing frt.canonical.txt, FAIL on the fraction bound '
-          'alone with a collapsed-rupture fixture')
+          'alone with a total-collapse fixture, FAIL on the fraction bound '
+          'alone with a partial-stall (fraction ~0.44, not total) fixture')
     return 0
 
 
