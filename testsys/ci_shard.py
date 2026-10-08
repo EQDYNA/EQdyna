@@ -249,6 +249,11 @@ SHARDS = {
                                  # mpirun launch of a tiny (3-step) test.tpv24
                                  # fixture -- ~1-2 s, same cost class as its
                                  # row153 sibling above.
+        "test_row153_branch_junction_node.py",  # added 2026-10-07 (row 153
+                                 # checkpoint 2, physics defect: branch never
+                                 # ruptured): no solver run -- imports
+                                 # tpv24_25_common directly, well under a
+                                 # second.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
         "test_user_docs_commands.py",  # added 2026-09-25 (board row 126, docs
