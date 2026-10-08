@@ -143,6 +143,19 @@ UNBREAKABLE_FS = 1000.0
 _phi = BRANCH_ANGLE_DEG / 180.0 * pi
 _sinphi, _cosphi = sin(_phi), cos(_phi)
 BRANCH_TANPHI = tan(_phi)
+# checkIsOnFault's box pre-filter (meshgen.f90:1187-1189) tests a candidate
+# node's y against THIS fault's own (fymin, fymax) BEFORE the style-2 line
+# test ever runs -- fymin=fymax=0.0 (this case's original value, a copy of
+# fault 1's planar y=0 box) silently excludes every branch node (the branch
+# line is y=-(x-x0)*tan(phi) for x0=fxmin-dx=0, strictly negative y
+# everywhere in [BRANCH_FXMIN, BRANCH_FXMAX]), the way tpv36/37's style-1
+# dipping fault needs fymax=faultWidth*cos(dip), not 0. Measured directly
+# (manual gate run, row 153 ckpt2b): with fymin=fymax=0.0 the branch wrote
+# ZERO fault-2 nodes (frt had only fault 1's 464 rows; all 6 branch on-fault
+# stations dropped). Bound to the line's own extent, fymax=0.0 at the
+# junction end (x0=0, excluded but the bound is inclusive-safe).
+BRANCH_FYMIN = -BRANCH_FXMAX * BRANCH_TANPHI
+BRANCH_FYMAX = 0.0
 
 
 def SP(depth_m):
@@ -221,7 +234,7 @@ def build_params(tpv, b22, b33, b23):
 
     par.faultgeom = [
         (FAULT1_XRANGE[0], FAULT1_XRANGE[1], 0.0, 0.0, FZMIN, FZMAX),
-        (BRANCH_FXMIN, BRANCH_FXMAX, 0.0, 0.0, FZMIN, FZMAX),
+        (BRANCH_FXMIN, BRANCH_FXMAX, BRANCH_FYMIN, BRANCH_FYMAX, FZMIN, FZMAX),
     ]
     par.faultDegenCode = [0, int(100 + BRANCH_ANGLE_DEG)]  # style 0, style 2 @ 30 deg
 
