@@ -266,18 +266,68 @@ def build_params(tpv, b22, b33, b23):
     fault2_vars = build_on_fault_vars_branch(fx2, par.fz, nfx2, par.nfz, b22, b33, b23)
     par.onFaultVarsPerFault = [par.on_fault_vars, fault2_vars]
 
-    # On-fault stations: 3 on fault 1 (incl. near hypocenter, near junction,
-    # deep) + 3 on fault 2 (incl. one near-junction, one far, one deep) --
-    # gate-minimal set; full spec station table (p.9-11) not transcribed
-    # here (WIP -- flag in PR body).
-    fault1_stations = [[-8.0, -10.0], [-2.0, -5.0], [0.0, -10.0]]
-    fault2_stations = [[2.0, -5.0], [8.0, -5.0], [5.0, -10.0]]
+    # On-fault stations: SCEC spec Part 7 (TPV24_25_Description_v07.pdf,
+    # p.17-19), 8 stations on the main fault + 6 on the branch fault,
+    # transcribed verbatim as (x_km, z_km) pairs. Along-strike x is measured
+    # relative to the junction point (spec's own convention, p.17 Note),
+    # which is exactly code x=0 here -- so the main-fault stations need no
+    # conversion, and every one lands exactly on the dx=1000 m gate grid
+    # (x in {-8,-2,9} km, z in {0,-5,-10} km, all multiples of dx/dz=1 km):
+    #   faultst-080dp000, faultst-020dp000, faultst090dp000 (0 km down-dip)
+    #   faultst-080dp050 (5 km down-dip)
+    #   faultst-080dp100 (hypocenter), faultst-020dp100, faultst020dp100,
+    #   faultst090dp100 (10 km down-dip)
+    fault1_stations = [
+        [-8.0, 0.0], [-2.0, 0.0], [9.0, 0.0],
+        [-8.0, -5.0],
+        [-8.0, -10.0], [-2.0, -10.0], [2.0, -10.0], [9.0, -10.0],
+    ]
+    # Branch-fault stations (spec p.19): location is given as distance ALONG
+    # THE STRIKE OF THE BRANCH FAULT from the junction (L), but the gate
+    # mesh's fault-2 box (probe_branch_mesh.f90-verified; see module
+    # docstring) is parameterized by CODE-x, not along-strike arc length --
+    # x_code = L*cos(30deg). setOnFaultStation (meshgen.f90,
+    # report_dropped_onfault_st) matches a station's x AND z against a fault
+    # node EXACTLY within tol, so a raw L*cos(30) value (e.g. 2.0 km ->
+    # 1.732 km) would match no node and get silently dropped with no
+    # faultst* file. Snapped to the nearest dx=1000 m fault-2 node instead
+    # (spec's own explicit allowance, p.17/p.23: "you can move the station
+    # to the nearest node"):
+    #   L=1.0 km -> 0.866 km -> nearest node 1.0 km (== BRANCH_FXMIN, the
+    #               near-junction node)
+    #   L=2.0 km -> 1.732 km -> nearest node 2.0 km
+    #   L=9.0 km -> 7.794 km -> nearest node 8.0 km
+    # giving (snapped x_km, z_km):
+    #   branchst020dp000 -> faultstft2_020dp000 (2.0, 0 km down-dip)
+    #   branchst090dp000 -> faultstft2_080dp000 (2.0->8.0 snap, 0 km)
+    #   branchst020dp050 -> faultstft2_020dp050 (2.0, 5 km down-dip)
+    #   branchst010dp100 -> faultstft2_010dp100 (1.0, 10 km down-dip)
+    #   branchst020dp100 -> faultstft2_020dp100 (2.0, 10 km down-dip)
+    #   branchst090dp100 -> faultstft2_080dp100 (2.0->8.0 snap, 10 km)
+    fault2_stations = [
+        [2.0, 0.0], [8.0, 0.0],
+        [2.0, -5.0],
+        [1.0, -10.0], [2.0, -10.0], [8.0, -10.0],
+    ]
     par.st_coor_on_fault = fault1_stations
     par.st_coor_on_fault_per_fault = [fault1_stations, fault2_stations]
 
+    # Off-fault stations: SCEC spec Part 8 (p.23), 8 stations, all at the
+    # earth's surface (0 km depth). Station name's first number is the
+    # horizontal perpendicular offset from the MAIN fault (code y, since the
+    # main fault is the code y=0 plane); positive = far side (spec's own
+    # sign, carried directly into code y, no repo convention to reconcile --
+    # this case has no prior off-fault sign history to match). [x_km, y_km,
+    # z_km]:
+    #   body030st-020dp000  / body-030st-020dp000  (x=-2.0, y=+-3.0)
+    #   body030st020dp000   / body-006st020dp000   / body-042st020dp000 (x=2.0)
+    #   body030st080dp000   / body-023st080dp000   / body-076st080dp000 (x=8.0... )
+    # NOTE: spec's x for the x=8 group is written "st080" (8.0 km along
+    # strike) -- same junction-relative convention as the on-fault table.
     par.st_coor_off_fault = [
-        [-8.0, 3.0, 0.0], [4.0, 3.0, 0.0],
-        [-8.0, -3.0, 0.0], [4.0, -3.0, 0.0],
+        [-2.0, 3.0, 0.0], [-2.0, -3.0, 0.0],
+        [2.0, 3.0, 0.0], [2.0, -0.6, 0.0], [2.0, -4.2, 0.0],
+        [8.0, 3.0, 0.0], [8.0, -2.3, 0.0], [8.0, -7.6, 0.0],
     ]
     par.n_on_fault = len(par.st_coor_on_fault)
     par.n_off_fault = len(par.st_coor_off_fault)
