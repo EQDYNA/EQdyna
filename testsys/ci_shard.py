@@ -243,6 +243,12 @@ SHARDS = {
                                  # subprocess launch of case.setup -- well
                                  # under this shard's other mpirun-heavy
                                  # scripts.
+        "test_row153_style2_branch_mesh.py",  # added 2026-10-07 (row 153
+                                 # checkpoint 2, style-2 branch mesh): reuses
+                                 # the already-built bin/eqdyna, one 4-rank
+                                 # mpirun launch of a tiny (3-step) test.tpv24
+                                 # fixture -- ~1-2 s, same cost class as its
+                                 # row153 sibling above.
         "test_pretag_ci_negative.py",
         "test_readme_commands.py",
         "test_user_docs_commands.py",  # added 2026-09-25 (board row 126, docs
