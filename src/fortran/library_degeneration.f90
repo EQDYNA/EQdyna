@@ -70,15 +70,32 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp, 
         neworder = (/4,8,5,5,3,7,6,6/)
         call reorder(neworder, elemCount, iy, iz)
         else
-        ! Style 2 (x-y tilt, z-extruded): neworder11/neworder12, verified
-        ! by probe_branch_mesh.f90 (positive Jacobian on every wedge
-        ! element it builds).
+        ! Style 2 (x-y tilt, z-extruded). Row 153 ckpt2b fix: the probe
+        ! (testsys/parity/probe_branch_mesh.f90) built its own synthetic
+        ! z-grid with INCREASING iz -> MORE NEGATIVE z (zline(iz) =
+        ! -(iz-1)*pdz), and empirically flipped to
+        ! (/8,5,6,6,4,1,2,2/)/(/6,7,8,8,2,3,4,4/) to get a positive
+        ! Jacobian under THAT convention. Production's actual z-grid
+        ! (getLocalOneDimCoorArrAndSize, dimId==3) is built the OPPOSITE
+        ! way -- globalOneDimCoorArr(i) increases monotonically with i from
+        ! fltMin1 (FZMIN, the deepest z) upward, so INCREASING iz means
+        ! LESS NEGATIVE (shallower) z, the reverse of the probe's own grid.
+        ! Plugging the probe-tuned orders into production's opposite z
+        ! handedness inverted the wedge (measured: det=-36084391.8 on a
+        ! real test.tpv24 run, elements 1955/2553). The probe's own header
+        ! comment records its FIRST (untried-in-production, rejected by the
+        ! probe's own self-consistent but z-flipped check) derivation --
+        ! (/4,1,2,2,8,5,6,6/)/(/2,3,4,4,6,7,8,8/), the direct relabeling of
+        ! style 1's template with no extra flip -- which is the correct
+        ! pair for production's z handedness; confirmed by rerunning the
+        ! mesh build with it (det>0 on elements 1955/2553, and on every
+        ! other wedge element in the 4-rank test.tpv24 case).
         elemTypeArr(elemCount) = 11
-        neworder = (/8,5,6,6,4,1,2,2/)
+        neworder = (/4,1,2,2,8,5,6,6/)
         call reorder(neworder, elemCount, iy, iz)
         elemCount = elemCount + 1
         elemTypeArr(elemCount) = 12
-        neworder = (/6,7,8,8,2,3,4,4/)
+        neworder = (/2,3,4,4,6,7,8,8/)
         call reorder(neworder, elemCount, iy, iz)
         endif
 
