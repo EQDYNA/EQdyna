@@ -147,6 +147,19 @@ FULL_SPECS = {
                 "tpv31/32/33/35, which keep a vertical fault plane off a "
                 "y-normal MPI partition -- this fault is not vertical)."),
     ),
+    'test.tpv13': dict(
+        # rule 17 step 5: recorded, not run. Same geometry/partition as
+        # test.tpv12 (same fault, same mesh machinery) -- only the off-fault
+        # material/stress differs, which does not change the recommended
+        # spec resolution or partition.
+        dx=100.0, term=8.0, nx=4, ny=2, nz=2,
+        citation=("TPV12_13_Description_v6.pdf, Part 2/3 (TPV12 and TPV13 "
+                "share Part 2/3's geometry/resolution/duration text): "
+                "100 m node spacing on the fault plane; 'Run the model for "
+                "times from 0.0 to 8.0 seconds after nucleation.' "
+                "nx,ny,nz=4,2,2 follows test.tpv12's own partition "
+                "(test.tpv10's dipping-fault convention)."),
+    ),
     'test.tpv8': dict(
         dx=100., term=15., nx=4, ny=2, nz=2,
         citation=(

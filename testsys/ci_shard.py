@@ -124,6 +124,16 @@ SHARDS = {
                                  # station text (real data, a scaled-column
                                  # copy, a copy missing frt.canonical.txt),
                                  # no network/build, well under a few seconds.
+        "test_evidence_tpv13_both_ways.py",  # added 2026-10-07 (row 149
+                                 # follow-on): same pattern as test_evidence_
+                                 # tpv12_both_ways.py, 4 subprocess invocations
+                                 # of testsys/parity/evidence_tpv13_scec_
+                                 # comparison.py against already-committed
+                                 # station/frt text (real data, a scaled-
+                                 # column copy, a copy missing frt.canonical.
+                                 # txt, a collapsed-rupture fraction-bound
+                                 # fixture), no network/build, well under a
+                                 # few seconds.
         "test_profile_guard.py",  # added 2026-09-23 (item 3, profile-guard
                                  # testsys half); ~0.03 s, pure fixture/schema
                                  # checks, no subprocess -- negligible to

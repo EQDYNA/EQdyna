@@ -603,18 +603,41 @@ def build_solver_state(case_dir, part=None):
     # raise loudly (not silently default) if C_elastic==0 but this key is
     # somehow missing, rather than silently zero-initializing plastic runs.
     strVert = -(g['roumax'] - g['rhow'] * (g['gamar'] + 1.0)) * elem_depth * 9.8
-    # func_lib.dev_str_depth_taper is SCEC TPV29/30's Omega(depth), the port of
-    # func_lib.f90's devStrDepthTaper (pathway item 24(c)). It is exactly 1.0
-    # when the case does not configure a taper, so this is bit-for-bit the
-    # pre-v5.9.0 `np.abs(strVert) * ratio` for every such case.
-    devStr = np.abs(strVert) * g['devStrToStrVertRatio'] * func_lib.dev_str_depth_taper(
-        elem_depth, g['devStrTaperDepthStart'], g['devStrTaperDepthEnd'])
-    theta2 = 2.0 * g['str1ToFaultAngle']
     init_stress = np.zeros((E, 6))
-    init_stress[:, 0] = strVert - devStr * np.cos(theta2)  # xx
-    init_stress[:, 1] = strVert + devStr * np.cos(theta2)  # yy
-    init_stress[:, 2] = strVert  # zz
-    init_stress[:, 5] = devStr * np.sin(theta2)  # xy
+    if g['TPV'] == 13:
+        # meshgen.f90:setPlasticStress's TPV==13 branch (SCEC
+        # TPV12_13_Description_v6.pdf Part 2, p.4-6): TPV13's principal
+        # stresses already align with the model axes (szz=sigma1 vertical,
+        # syy=sigma3 horizontal normal to the fault trace, sxx=sigma2
+        # horizontal parallel to the fault trace) for this fault's
+        # strike-along-x, dip-in-y-z geometry -- no deviatoric rotation, no
+        # xy/xz/yz shear (unlike the TPV29/30 branch below). See the Fortran
+        # docstring for the 0.3496 ratio and 11951.15 m depth split
+        # provenance; both are TPV13-specific spec constants, not
+        # case-configurable, same as the Fortran side's local parameters.
+        TPV13_SIG3_RATIO = 0.3496
+        TPV13_DEPTH_SPLIT_M = 11951.15
+        sig1Eff = strVert  # == sigma1 - Pf (every depth; gamar=0 case)
+        sig3Eff = np.where(elem_depth < TPV13_DEPTH_SPLIT_M,
+                            TPV13_SIG3_RATIO * sig1Eff, sig1Eff)
+        sig2Eff = 0.5 * (sig1Eff + sig3Eff)
+        init_stress[:, 0] = sig2Eff  # xx
+        init_stress[:, 1] = sig3Eff  # yy
+        init_stress[:, 2] = sig1Eff  # zz
+        # init_stress[:, 5] (xy) stays 0, as do xz/yz -- no rotation term.
+    else:
+        # func_lib.dev_str_depth_taper is SCEC TPV29/30's Omega(depth), the
+        # port of func_lib.f90's devStrDepthTaper (pathway item 24(c)). It is
+        # exactly 1.0 when the case does not configure a taper, so this is
+        # bit-for-bit the pre-v5.9.0 `np.abs(strVert) * ratio` for every such
+        # case.
+        devStr = np.abs(strVert) * g['devStrToStrVertRatio'] * func_lib.dev_str_depth_taper(
+            elem_depth, g['devStrTaperDepthStart'], g['devStrTaperDepthEnd'])
+        theta2 = 2.0 * g['str1ToFaultAngle']
+        init_stress[:, 0] = strVert - devStr * np.cos(theta2)  # xx
+        init_stress[:, 1] = strVert + devStr * np.cos(theta2)  # yy
+        init_stress[:, 2] = strVert  # zz
+        init_stress[:, 5] = devStr * np.sin(theta2)  # xy
 
     # ---- convert to loading.load()'s 0-indexed convention ----
     # -1 fixed-boundary sentinel -> sink 0; see meshgen.pack_eq_ids (a
