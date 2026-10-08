@@ -1129,8 +1129,8 @@ end subroutine createElement
     implicit none
     integer (kind = 8) :: elemCount
     integer (kind = 4) :: iFault, iFaultNodePair, nftnd0(ntotft), k
-    real (kind = dp) :: nodeCoor(10)
-    logical :: isAboveSomeFaultPlane
+    real (kind = dp) :: nodeCoor(10), tangentDip, x0, planeY
+    logical :: aboveFaultPlane(ntotft), applyThisFault
     ! The default grids only contain slave nodes.
     ! This subroutine will replace slave nodes with corresponding master nodes.
 
@@ -1152,18 +1152,90 @@ end subroutine createElement
     ! fault at a time, not fault 1's x/z paired with any(...) fault's y.
     ! Reduces to the old any(...)-across-y test bit-for-bit at ntotft==1 (one
     ! fault, so "test fault i's own x/z and y" IS "test fault 1's x/z and y").
-    isAboveSomeFaultPlane = .false.
+    ! Row 153 checkpoint 2b bug3: this used to be a single isAboveSomeFaultPlane
+    ! bool, OR'd across every fault then applied as ONE blanket test for the
+    ! whole element. That is safe for the ordinary type-1 path (substitution
+    ! only actually fires per-fault, keyed on a corner id match against THAT
+    ! fault's own nsmp list), but the type-12/13 "always substitute,
+    ! regardless of plane position" branch used to apply to EVERY fault's
+    ! nsmp list unconditionally whenever the element was retagged 13 by ANY
+    ! ONE fault's checkIsOnFault test. With ntotft==1 that is harmless (the
+    ! only fault that exists is necessarily both the retagging fault and the
+    ! one being substituted). With a second, non-degenerating fault present
+    ! (TPV24/25's fault 1, planar, alongside fault 2's branch), an ordinary
+    ! "below fault 1" brick retagged to 13 by fault 2's proximity test had
+    ! its fault-1 slave corner unconditionally promoted to fault 1's master
+    ! too -- orphaning the true fault-1 slave node (zero mass -> NaN
+    ! velocity, measured at (1000, ~0, -14000) time step 2 on a real
+    ! test.tpv24 run, node ids 2140/2798 on ranks 3/2). Fixed by keeping a
+    ! PER-FAULT aboveFaultPlane array and gating the "always substitute"
+    ! branch to the fault(s) that actually have faultDegenStyle>0 (the
+    ! degenerating fault whose own retag/wedge produced this element type);
+    ! every OTHER fault is still gated by its own aboveFaultPlane(iFault),
+    ! exactly like a type-1 element. No registered case has more than one
+    ! fault with faultDegenStyle>0 (see the wedge-loop comment in
+    ! meshgen.f90 above), so at ntotft==1 this reduces bit-for-bit to the
+    ! old blanket test: the single fault is always the degenerating one
+    ! whenever type is 11/12/13, so applyThisFault is unconditionally true
+    ! there exactly as before, and aboveFaultPlane(1) alone gates type 1
+    ! exactly as isAboveSomeFaultPlane did.
+    aboveFaultPlane = .false.
     do iFault = 1, ntotft
+        ! Row 153 checkpoint 2b: planeY used to be the bare fltxyz(1,2,iFault)
+        ! (fymin) -- correct only when the fault's plane sits at a y CONSTANT
+        ! in x (style 0 planar at y=fymin, and style 1's y-z dip tilt, whose
+        ! plane trace is still at a fixed y regardless of x). Style 2's x-y
+        ! branch plane has a y that VARIES with x (y=-(x-x0)*tangentDip), so
+        ! using the fixed fymin here matched "one row above the plane" only
+        ! near the branch's far end (x=fxmax, where fymin is in fact the
+        ! plane's local y) and silently matched the WRONG row -- or no row at
+        ! all -- everywhere else along the branch, leaving some wedge
+        ! elements with a stale slave-node reference instead of the master.
+        ! Measured: with the branch-box fix landed (fymin/fymax bounding the
+        ! real y-footprint) but before this fix, elements 1955/2553 in a
+        ! 4-rank test.tpv24 run had a negative Jacobian determinant
+        ! (-36084391.8) -- a disconnected/malformed wedge, not a sliver.
+        ! Reduces to the old fltxyz(1,2,iFault) bit-for-bit at style 0/1
+        ! (planeY = fltxyz(1,2,iFault), tangentDip unused).
+        if (faultDegenStyle(iFault) == 2) then
+            tangentDip = dtan(faultDegenAngle(iFault)/180.d0*pi)
+            x0 = fltxyz(1,1,iFault) - dx
+            planeY = -(nodeCoor(1) - x0) * tangentDip
+            ! planeY + dy = tangentDip*(fltxyz(1,1,iFault) - nodeCoor(1)), which
+            ! is EXACTLY 0 at nodeCoor(1)==fltxyz(1,1,iFault) (fxmin) by
+            ! construction (x0 = fxmin - dx, dy = dx*tangentDip for this
+            ! case's grid) -- i.e. "one row above the branch" at the branch's
+            ! own first column always lands at y=0, the SAME location as
+            ! fault 1's own plane there, not a real above-the-branch position
+            ! (the branch's own wedge never triggers at this column either --
+            ! its box test is a STRICT cenx>fxmin, same bound applied here).
+            ! Without this exclusion, a fault-1 node meant to stay a slave
+            ! reference got wrongly promoted to fault 2's master, orphaning
+            ! the true slave node (zero mass -> NaN velocity, measured at
+            ! (1000, ~0, -14000) time step 2 on a real test.tpv24 run).
+            if (nodeCoor(1) < fltxyz(1,1,iFault) + tol) planeY = -huge(1.d0)
+        else
+            planeY = fltxyz(1,2,iFault)
+        endif
         if (nodeCoor(1)>(fltxyz(1,1,iFault)-tol) .and. nodeCoor(1)<(fltxyz(2,1,iFault)+dx+tol) .and. &
             nodeCoor(3)>(fltxyz(1,3,iFault)-tol) .and. &
-            abs(nodeCoor(2) - (fltxyz(1,2,iFault) + dy)) < tol) then
-            isAboveSomeFaultPlane = .true.
-            exit
+            abs(nodeCoor(2) - (planeY + dy)) < tol) then
+            aboveFaultPlane(iFault) = .true.
         endif
     enddo
-    if ((elemTypeArr(elemCount) == 1 .and. isAboveSomeFaultPlane) &
-         .or. elemTypeArr(elemCount)==12 .or. elemTypeArr(elemCount)==13 ) then
-        do iFault = 1, ntotft
+    do iFault = 1, ntotft
+        if (elemTypeArr(elemCount) == 1) then
+            applyThisFault = aboveFaultPlane(iFault)
+        elseif (elemTypeArr(elemCount)==12 .or. elemTypeArr(elemCount)==13) then
+            if (faultDegenStyle(iFault) > 0) then
+                applyThisFault = .true.
+            else
+                applyThisFault = aboveFaultPlane(iFault)
+            endif
+        else
+            applyThisFault = .false.
+        endif
+        if (applyThisFault) then
             do iFaultNodePair = 1, nftnd0(iFault)
                 do k = 1,nen
                     if(nodeElemIdRelation(k,elemCount)==nsmp(1,iFaultNodePair,iFault)) then
@@ -1171,9 +1243,9 @@ end subroutine createElement
                     endif
                 enddo
             enddo
-        enddo
-    endif      
-    
+        endif
+    enddo
+
 end subroutine replaceSlaveWithMasterNode
 
 subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)

@@ -1079,7 +1079,20 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
             _angle = acode - 100.0
             _x0 = afxmin - dx
             dist_wedge = _tilt_distance(cx - _x0, cy, _angle)
-            neworder11, neworder12 = [7, 4, 5, 5, 3, 0, 1, 1], [5, 6, 7, 7, 1, 2, 3, 3]
+            # Row 153 ckpt2b fix: these 0-indexed orders used to be
+            # [7,4,5,5,3,0,1,1]/[5,6,7,7,1,2,3,3] (the 1-indexed
+            # (8,5,6,6,4,1,2,2)/(6,7,8,8,2,3,4,4) that
+            # testsys/parity/probe_branch_mesh.f90 verified) -- that probe
+            # built its own synthetic z-grid with INCREASING iz -> MORE
+            # NEGATIVE z, the opposite of this port's actual z-grid
+            # (build_grid_lines/zline increases monotonically from FZMIN
+            # upward, matching meshgen.f90's getLocalOneDimCoorArrAndSize
+            # dimId==3), so the probe-tuned order inverted the wedge
+            # Jacobian here too (same det<0 measured on test.tpv24 before
+            # this fix). Fixed to the 0-indexed form of
+            # (4,1,2,2,8,5,6,6)/(2,3,4,4,6,7,8,8), library_degeneration.f90's
+            # matching fix (see that file's comment for the full derivation).
+            neworder11, neworder12 = [3, 0, 1, 1, 7, 4, 5, 5], [1, 2, 3, 3, 5, 6, 7, 7]
         else:
             # Style 1 (TPV36/37): deliberately RAW cy, no fymin offset --
             # library_degeneration.f90 wedge()'s style-1 branch was NOT given
@@ -1147,20 +1160,83 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     # ntotft==1 caller, including every pre-row-17 unit fixture), so this
     # reduces to the untouched single-fault mask bit-for-bit there.
     xcoor, ycoor, zcoor = xline[IX], yline[IY], zline[IZ]
-    faults = p.get('faults', [dict(fxmin=fxmin, fxmax=fxmax, fzmin=fzmin, fymin=fymin)])
-    one_cell_above_any_fault = np.zeros(xcoor.shape[0], dtype=bool)
+    _fallback_code = p.get('C_degen', 0.0)
+    _fallback_style = 2 if _fallback_code > 100.0 else (1 if _fallback_code > 3.0 else 0)
+    faults = p.get('faults', [dict(fxmin=fxmin, fxmax=fxmax, fzmin=fzmin, fymin=fymin,
+                                    degenCode=_fallback_code, degenStyle=_fallback_style)])
+    # Row 153 checkpoint 2b bug3: one_cell_above_any_fault / replace used to
+    # be computed as a SINGLE OR'd-across-every-fault mask, then applied via
+    # one combined slave->master `lut` built from every fault's nsmp rows
+    # together. That is safe for ordinary (type-1) substitution (a corner id
+    # only actually changes if it IS in some fault's slave set), but is
+    # wrong for the "always substitute regardless of plane position" type-13
+    # branch: an element retagged 13 by fault 2's proximity test had EVERY
+    # corner run through the combined lut, including a fault-1 slave corner
+    # that should only be promoted when truly "above" fault 1's OWN plane.
+    # Mirrors meshgen.f90's replaceSlaveWithMasterNode fix exactly (same
+    # bug, same orphaned-slave-node symptom, node coord (1000, ~0, -14000)
+    # on a real test.tpv24 run). Fixed by building a PER-FAULT boolean mask
+    # and a PER-FAULT lut (nsmp's 3rd column, fault_id), applying the
+    # "always" type-13/12 rule only for the fault(s) with degenStyle>0 (the
+    # degenerating fault whose own wedge/retag produced that element type)
+    # and gating every OTHER fault by its own one_cell_above test, exactly
+    # like type-1. No registered case has more than one fault with
+    # degenStyle>0, so at ntotft==1 this reduces bit-for-bit to the old
+    # combined-mask behavior (the single fault is always the degenerating
+    # one whenever elem_type is 11/12/13).
+    one_cell_above_per_fault = []
     for f in faults:
-        one_cell_above_any_fault |= (
+        # Row 153 checkpoint 2b: planeY used to be the bare f['fymin'] --
+        # correct only when the fault's plane sits at a y CONSTANT in x
+        # (style 0 planar at y=fymin, and style 1's y-z dip tilt, whose
+        # plane trace is still at a fixed y regardless of x). Style 2's x-y
+        # branch plane has a y that VARIES with x (y=-(x-x0)*tangentDip), so
+        # using the fixed fymin matched "one row above the plane" only near
+        # the branch's far end (x=fxmax) and silently matched the WRONG row
+        # (or none) everywhere else -- mirrors meshgen.f90's
+        # replaceSlaveWithMasterNode fix (same bug, same formula). Reduces
+        # to f['fymin'] bit-for-bit at style 0/1.
+        code = f.get('degenCode', 0.0)
+        if code > 100.0:
+            angle = code - 100.0
+            x0 = f['fxmin'] - dx
+            plane_y = -(xcoor - x0) * np.tan(np.deg2rad(angle))
+            # planeY + dy == tan(angle)*(fxmin - xcoor), exactly 0 at
+            # xcoor==fxmin by construction (x0=fxmin-dx, dy=dx*tan(angle) for
+            # this case's grid) -- "one row above the branch" at the
+            # branch's own first column always lands at y=0, the SAME
+            # location as fault 1's own plane there (the branch's own wedge
+            # never triggers at this column either -- its trigger test is a
+            # STRICT cx>fxmin, the same bound applied here). Without this
+            # exclusion a fault-1 node meant to stay a slave reference got
+            # wrongly promoted to fault 2's master, orphaning the true slave
+            # node (mirrors meshgen.f90's matching fix; same NaN measured
+            # there at (1000, ~0, -14000)).
+            plane_y = np.where(xcoor < f['fxmin'] + tol, -np.inf, plane_y)
+        else:
+            plane_y = f['fymin']
+        one_cell_above_per_fault.append(
             (xcoor > f['fxmin'] - tol) & (xcoor < f['fxmax'] + dx + tol) &
             (zcoor > f['fzmin'] - tol) &
-            (np.abs(ycoor - (f['fymin'] + dy)) < tol))
-    replace = ((elem_type == 1) & one_cell_above_any_fault) | (elem_type == 13)
-    lut = np.arange(meshCoor.shape[0], dtype=np.int64)
-    lut[nsmp[:, 0]] = nsmp[:, 1]
-    if replace.any():
-        conn[replace] = lut[conn[replace]]
-    if wedge12_conn is not None:
-        wedge12_conn = lut[wedge12_conn]
+            (np.abs(ycoor - (plane_y + dy)) < tol))
+
+    has_fault_id_col = nsmp.shape[1] >= 3
+    for f_id, f in enumerate(faults):
+        above_this_fault = one_cell_above_per_fault[f_id]
+        is_degen = f.get('degenStyle', 0) > 0
+        if is_degen:
+            apply_this_fault = (elem_type == 12) | (elem_type == 13) | \
+                                ((elem_type == 1) & above_this_fault)
+        else:
+            apply_this_fault = ((elem_type == 1) | (elem_type == 13)) & above_this_fault
+        if not apply_this_fault.any():
+            continue
+        rows = (nsmp[:, 2] == f_id) if has_fault_id_col else np.ones(nsmp.shape[0], dtype=bool)
+        lut = np.arange(meshCoor.shape[0], dtype=np.int64)
+        lut[nsmp[rows, 0]] = nsmp[rows, 1]
+        conn[apply_this_fault] = lut[conn[apply_this_fault]]
+        if wedge12_conn is not None and is_degen:
+            wedge12_conn = lut[wedge12_conn]
 
     # ---- setElementMaterial ----
     nmat, n2mat = material.shape
