@@ -250,7 +250,16 @@ def build_params(tpv, b22, b33, b23):
     par.term = 5.0       # GATE_TERM_S; spec's own 12.0s post-nucleation NOT
                           # used here -- see case docstring / PR body for the
                           # measured fraction of fault 2 ruptured at 5s.
-    par.dt = 0.5 * par.dx / par.vp
+    # CFL: the style-2 branch mesh is NON-isotropic (par.dy = par.dx*tan(30deg)
+    # < par.dx, see docstring), so dt must be set from the SMALLEST grid
+    # spacing, not dx alone -- same convention as test.tpv36/37's dipping
+    # style-1 mesh (tpv36_37_common.py: par.dt = 0.5*par.dz/par.vp, dz being
+    # that mesh's smallest dimension). Using dx alone here violated CFL on
+    # the finer dy spacing: measured exponential blow-up (alternating-sign
+    # traction growing ~x7/step from t~2.6s, 1e26 MPa by t=5s) at the
+    # hypocenter station, confirmed fixed by this min() (row 153 ckpt2,
+    # scratch manual run, both backends re-verified against it).
+    par.dt = 0.5 * min(par.dx, par.dy, par.dz) / par.vp
 
     par.C_elastic = 1
     par.C_nuclea = 1
