@@ -456,12 +456,13 @@ def fault_census(xline, yline, zline, params):
     p = params
     X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
     ny, nz = Y.shape[0], Z.shape[0]
-    dx = p['dx'] if p['C_degen'] > 3.0 else None
+    dx = p['dx']
     boxes = _fault_boxes(p)
+    codes = _fault_codes(p)
     count, key_sum = 0, 0
     for ix in range(X.shape[0]):
         masks = [_check_is_on_fault_vec(X[ix], Y[None, :], Z[:, None], *box,
-                                        p['tol'], p['C_degen'], dx) for box in boxes]
+                                        p['tol'], code, dx) for box, code in zip(boxes, codes)]
         m = masks[0]
         for mm in masks[1:]:
             m = m | mm
@@ -489,8 +490,9 @@ def equation_census(xline, yline, zline, params, pmlb, model_bound):
     fz = np.abs(Z - zmin) < tol
     py = (Y > pmlb['ymax0']) | (Y < pmlb['ymin0'])
     pz = Z < pmlb['zmin0']
-    dx = p['dx'] if p['C_degen'] > 3.0 else None
+    dx = p['dx']
     boxes = _fault_boxes(p)
+    codes = _fault_codes(p)
     total = 0
     for ix in range(X.shape[0]):
         x = X[ix]
@@ -499,7 +501,7 @@ def equation_census(xline, yline, zline, params, pmlb, model_bound):
         fixed = fx | fz[:, None] | fy[None, :]
         ndpn = np.where(px | pz[:, None] | py[None, :], 12, 3)
         masks = [_check_is_on_fault_vec(x, Y[None, :], Z[:, None], *box,
-                                        tol, p['C_degen'], dx) for box in boxes]
+                                        tol, code, dx) for box, code in zip(boxes, codes)]
         m = masks[0]
         for mm in masks[1:]:
             m = m | mm
@@ -507,24 +509,48 @@ def equation_census(xline, yline, zline, params, pmlb, model_bound):
     return total
 
 
+def _tilt_distance(a, b, angle_deg):
+    """Shared tilted-plane distance formula (meshgen.f90 checkIsOnFault /
+    library_degeneration.f90 wedge()): `abs(b + a*tan(angle_deg)) /
+    sqrt(1+tan(angle_deg)**2)`, parameterized over which two coordinates
+    play (a, b) so the SAME expression serves both degeneration styles:
+    style 1 (dip tilt, TPV36/37) is (a, b) = (y[-fymin offset], z); style 2
+    (strike tilt, TPV24/25, row 153 checkpoint 2a) is (a, b) = (x - x0, y).
+    `angle_deg` matches the Fortran's own `.../180.d0*pi` (division before
+    multiplication, reproduced in that order here even though it is exactly
+    commutative in double precision). Works elementwise on Python floats or
+    numpy arrays."""
+    tangent = np.tan((angle_deg / 180.0) * np.pi)
+    return np.abs(b + a * tangent) / (1.0 + tangent ** 2) ** 0.5
+
+
 def _dip_plane_distance(y, z, c_degen):
-    """checkIsOnFault/wedge()'s shared dipping-plane distance formula
-    (meshgen.f90:825-826, library_degeneration.f90:10-11):
-    `abs(z + y*tan(c_degen deg)) / sqrt(1+tan(c_degen deg)**2)`. `c_degen`
-    is in degrees, matching the Fortran's own `C_degen/180.d0*pi` (division
-    before multiplication, reproduced in that order here even though it is
-    exactly commutative in double precision). Works elementwise on Python
-    floats or numpy arrays."""
-    tangent = np.tan((c_degen / 180.0) * np.pi)
-    return np.abs(z + y * tangent) / (1.0 + tangent ** 2) ** 0.5
+    """Back-compat alias for `_tilt_distance(y, z, c_degen)` -- kept under
+    its old name because `build_elements`' style-1 wedge-trigger distance
+    (library_degeneration.f90 wedge()'s style-1 branch) deliberately uses
+    RAW `y` (no fymin offset -- see that call site's comment; the Fortran
+    wedge() itself was not given the checkIsOnFault offset fix, so this
+    port does not silently add one)."""
+    return _tilt_distance(y, z, c_degen)
 
 
 def _check_is_on_fault_vec(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax,
                             tol, c_degen, dx=None):
-    """Elementwise (broadcasting) port of checkIsOnFault -- the same two
+    """Elementwise (broadcasting) port of checkIsOnFault -- the same three
     branches `is_on_fault` implements, written so it also works on full
     grid-shaped arrays (used by `on_fault_grid_mask`) and on point arrays
-    (used by `build_elements`' type-13 retag test), not just Python floats."""
+    (used by `build_elements`' type-13 retag test), not just Python floats.
+
+    Row 153 checkpoint 2a: `c_degen` here is really THIS FAULT'S OWN
+    degeneration code (readInputFiles.read_bfaultgeometry's `degenCode`,
+    the per-fault bFaultGeometry.txt line), not the single global
+    bGlobal.txt `C_degen` -- callers with multiple faults pass each fault's
+    own code (see `_fault_codes`). The derivation mirrors
+    readInputFiles.f90's readfaultgeometry exactly: code>100 is style 2
+    (TPV24/25 x-y strike-tilt branch, angle=code-100); code in (3,100] is
+    style 1 (TPV36/37 y-z dip tilt, angle=code); code==0 is the planar
+    y-plane test. Every other code (0<code<=3, or negative) is refused the
+    same way readInputFiles.f90/case.setup refuse it at input time."""
     in_box = ((x >= fxmin - tol) & (x <= fxmax + tol) &
               (y >= fymin - tol) & (y <= fymax + tol) &
               (z >= fzmin - tol) & (z <= fzmax + tol))
@@ -539,15 +565,61 @@ def _check_is_on_fault_vec(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax,
         # matches) -- confirmed the same way src/fortran/meshgen.f90's own
         # row-17 commit documents its generalization.
         return in_box & (np.abs(y - fymin) < tol)
-    if c_degen > 3.0:
+    if c_degen > 100.0:
+        # Style 2 (row 153 checkpoint 2a): TPV24/25 branch fault, x-y
+        # strike tilt, z-extruded. x0 is derived from THIS fault's own box
+        # (fxmin - dx, the one-cell gap that excludes the junction column --
+        # see meshgen.f90 checkIsOnFault's matching comment).
         if dx is None:
-            raise ValueError('_check_is_on_fault_vec: dx is required for the C_degen>3 branch')
-        return in_box & (_dip_plane_distance(y, z, c_degen) < dx / 100.0)
+            raise ValueError('_check_is_on_fault_vec: dx is required for the code>100 (style 2) branch')
+        angle = c_degen - 100.0
+        x0 = fxmin - dx
+        return in_box & (_tilt_distance(x - x0, y, angle) < dx / 100.0)
+    if c_degen > 3.0:
+        # Style 1 (TPV36/37 dip tilt), with the row 153 checkpoint 2a audit
+        # fix: offset by THIS fault's own y-origin (fymin) before applying
+        # the tilt, matching meshgen.f90 checkIsOnFault's fix -- a no-op at
+        # fymin==0.0 (every registered style-1 case).
+        if dx is None:
+            raise ValueError('_check_is_on_fault_vec: dx is required for the code>3 (style 1) branch')
+        return in_box & (_tilt_distance(y - fymin, z, c_degen) < dx / 100.0)
     raise NotImplementedError(
-        '_check_is_on_fault_vec: only c_degen==0 or c_degen>3 are ported (got %r); '
-        'the Fortran checkIsOnFault itself takes neither if/elseif branch for '
-        '0<C_degen<=3, so isOnFault stays 0 unconditionally there -- not '
-        'silently mimicked here without a real case to pin it down' % c_degen)
+        '_check_is_on_fault_vec: only c_degen==0, 3<c_degen<=100 (style 1), or '
+        'c_degen>100 (style 2) are ported (got %r); the Fortran checkIsOnFault '
+        'itself takes no branch for 0<C_degen<=3, so isOnFault stays 0 '
+        'unconditionally there -- not silently mimicked here without a real '
+        'case to pin it down' % c_degen)
+
+
+def _fault_codes(params):
+    """Row 153 checkpoint 2a: the per-fault degeneration code list, in
+    `_fault_boxes` order -- `params['faults'][i]['degenCode']` when present
+    (every build_params-built case since checkpoint 2a), else the single
+    global `params['C_degen']` repeated once (the pre-row-17 unit-fixture
+    shorthand `_fault_boxes` itself already supports)."""
+    faults = params.get('faults')
+    if faults:
+        return [f['degenCode'] for f in faults]
+    return [params['C_degen']]
+
+
+def _fault_strike_dip(params):
+    """Row 153 checkpoint 2a: the per-fault (strikeDeg, dipDeg) list, in
+    `_fault_boxes` order -- `params['faults'][i]['strikeDeg']/['dipDeg']`
+    when present (readInputFiles.build_params derives these per fault,
+    mirroring readfaultgeometry exactly), else derived here from the single
+    global `params['fstrike']`/`params['C_degen']` with the IDENTICAL
+    formula (the pre-row-17 unit-fixture shorthand)."""
+    faults = params.get('faults')
+    if faults:
+        return [(f['strikeDeg'], f['dipDeg']) for f in faults]
+    code = params['C_degen']
+    fstrike = params['fstrike']
+    if code > 100.0:
+        return [(fstrike + (code - 100.0), 90.0)]
+    if code > 3.0:
+        return [(fstrike, code)]
+    return [(fstrike, 90.0)]
 
 
 def is_on_fault(x, y, z, fxmin, fxmax, fymin, fymax, fzmin, fzmax, tol, c_degen=0.0, dx=None):
@@ -596,14 +668,14 @@ def on_fault_grid_mask_with_id(xline, yline, zline, params):
     Returns (mask, fault_id), both (nx*nz*ny,) in traversal order."""
     p = params
     tol = p['tol']
-    c_degen = p['C_degen']
     X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
     Xg = X[:, None, None]
     Yg = Y[None, None, :]
     Zg = Z[None, :, None]
-    dx = p['dx'] if c_degen > 3.0 else None
+    dx = p['dx']
     boxes = _fault_boxes(p)
-    masks = [_check_is_on_fault_vec(Xg, Yg, Zg, *box, tol, c_degen, dx) for box in boxes]
+    codes = _fault_codes(p)
+    masks = [_check_is_on_fault_vec(Xg, Yg, Zg, *box, tol, code, dx) for box, code in zip(boxes, codes)]
     mask = masks[0]
     for m in masks[1:]:
         mask = mask | m
@@ -919,10 +991,25 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     dx, dy = p['dx'], p['dy']
     fxmin, fxmax, fzmin = p['fxmin'], p['fxmax'], p['fzmin']
     fymin, fymax, fzmax = p['fymin'], p['fymax'], p['fzmax']
-    c_degen = p['C_degen']
-    if not (c_degen == 0.0 or c_degen > 3.0):
-        raise NotImplementedError('build_elements: only C_degen==0 or C_degen>3 is ported '
-                                   '(got %r)' % c_degen)
+    # Row 153 checkpoint 2a: the active degenerating fault, if any -- Fortran
+    # (meshgen.f90's `do ift=1,ntotft` wedge loop, library_degeneration.f90's
+    # wedge()) supports every fault independently, but "No registered case
+    # has more than one fault with faultDegenStyle>0" (meshgen.f90's own
+    # comment) -- this port keeps that same documented assumption rather
+    # than building the general per-element multi-fault winner machinery for
+    # a case that does not exist; a future case needing it must widen this,
+    # not silently guess.
+    _boxes = _fault_boxes(p)
+    _codes = _fault_codes(p)
+    _active = [(box, code) for box, code in zip(_boxes, _codes) if code != 0.0]
+    if len(_active) > 1:
+        raise NotImplementedError(
+            'build_elements: more than one fault with a non-zero degeneration '
+            'code is not ported (got codes %r) -- no registered case needs this'
+            % ([c for _, c in _active],))
+    if _active and not (_active[0][1] > 3.0):
+        raise NotImplementedError('build_elements: only degenCode==0 or >3 is ported '
+                                   '(got %r)' % _active[0][1])
 
     # PMLb per getLocalOneDimCoorArrAndSize's mapping (build_grid_lines' pmlb dict).
     xmax0, xmin0 = pmlb['xmax0'], pmlb['xmin0']
@@ -978,14 +1065,31 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     wedge_trigger = np.zeros(n_elem, dtype=bool)
     retag13 = np.zeros(n_elem, dtype=bool)
     wedge11_conn = wedge12_conn = wedge12_mat_row = None
-    if c_degen > 3.0:
+    if _active:
+        (afxmin, afxmax, afymin, afymax, afzmin, afzmax), acode = _active[0]
         # wedge()'s OWN box test (library_degeneration.f90:12-15): strict
         # inequalities, NO +/-tol slop on the bounds (unlike checkIsOnFault's
         # box test below), and cenz bounded ONLY from below -- reproduced
         # exactly, not "fixed" to match checkIsOnFault's box test.
-        dist_wedge = _dip_plane_distance(cy, cz, c_degen)
-        wedge_trigger = ((cx > fxmin) & (cx < fxmax) & (cy > fymin) & (cy < fymax) &
-                          (cz > fzmin) & (dist_wedge < tol))
+        if acode > 100.0:
+            # Style 2 (row 153 checkpoint 2a): x0 offset, same formula as
+            # checkIsOnFault's style-2 branch (library_degeneration.f90
+            # wedge()'s style-2 branch IS offset, unlike its style-1 branch
+            # below).
+            _angle = acode - 100.0
+            _x0 = afxmin - dx
+            dist_wedge = _tilt_distance(cx - _x0, cy, _angle)
+            neworder11, neworder12 = [7, 4, 5, 5, 3, 0, 1, 1], [5, 6, 7, 7, 1, 2, 3, 3]
+        else:
+            # Style 1 (TPV36/37): deliberately RAW cy, no fymin offset --
+            # library_degeneration.f90 wedge()'s style-1 branch was NOT given
+            # the checkIsOnFault offset fix (see `_dip_plane_distance`'s
+            # docstring); reproduced as-is, not "fixed" to match
+            # checkIsOnFault.
+            dist_wedge = _dip_plane_distance(cy, cz, acode)
+            neworder11, neworder12 = [4, 0, 3, 3, 5, 1, 2, 2], [3, 7, 4, 4, 2, 6, 5, 5]
+        wedge_trigger = ((cx > afxmin) & (cx < afxmax) & (cy > afymin) & (cy < afymax) &
+                          (cz > afzmin) & (dist_wedge < tol))
 
         # meshgen.f90:93-99's retag-to-13 test: checkIsOnFault on THIS
         # element's (unmodified, since wedge didn't fire) corner1/corner2 --
@@ -993,19 +1097,21 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
         # plain interior (elemTypeArr==1); PML (2) is never retagged.
         n1 = meshCoor[conn[:, 0]]
         n2 = meshCoor[conn[:, 1]]
-        onfault1 = _check_is_on_fault_vec(n1[:, 0], n1[:, 1], n1[:, 2], fxmin, fxmax,
-                                           fymin, fymax, fzmin, fzmax, tol, c_degen, dx)
-        onfault2 = _check_is_on_fault_vec(n2[:, 0], n2[:, 1], n2[:, 2], fxmin, fxmax,
-                                           fymin, fymax, fzmin, fzmax, tol, c_degen, dx)
+        onfault1 = _check_is_on_fault_vec(n1[:, 0], n1[:, 1], n1[:, 2], afxmin, afxmax,
+                                           afymin, afymax, afzmin, afzmax, tol, acode, dx)
+        onfault2 = _check_is_on_fault_vec(n2[:, 0], n2[:, 1], n2[:, 2], afxmin, afxmax,
+                                           afymin, afymax, afzmin, afzmax, tol, acode, dx)
         retag13 = (~wedge_trigger) & (elem_type == 1) & (onfault1 | onfault2)
 
         # library_degeneration.f90:30-43's two `reorder` calls, vectorized:
-        # neworder=(5,1,4,4,6,2,3,3) for the type-11 (below-fault) wedge,
-        # (4,8,5,5,3,7,6,6) for type-12 (above-fault) -- corner k is
-        # `conn[:, k-1]`. Gathered from the conn snapshot ABOVE, i.e. before
-        # `replace` (built below) can mutate it in place.
-        wedge11_conn = conn[:, [4, 0, 3, 3, 5, 1, 2, 2]]
-        wedge12_conn = conn[:, [3, 7, 4, 4, 2, 6, 5, 5]]
+        # style 1: neworder=(5,1,4,4,6,2,3,3) for the type-11 (below-fault)
+        # wedge, (4,8,5,5,3,7,6,6) for type-12 (above-fault); style 2 (row
+        # 153 checkpoint 2a): (8,5,6,6,4,1,2,2)/(6,7,8,8,2,3,4,4) -- corner k
+        # is `conn[:, k-1]` (neworder values above are the 0-indexed form).
+        # Gathered from the conn snapshot ABOVE, i.e. before `replace` (built
+        # below) can mutate it in place.
+        wedge11_conn = conn[:, neworder11]
+        wedge12_conn = conn[:, neworder12]
         wedge12_mat_row = _wedge_material_row(material)
 
     elem_type = np.where(retag13, 13, elem_type)
@@ -1745,7 +1851,6 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
     p = params
     ny, nz = len(yline), len(zline)
     tol = p['tol']
-    c_degen = p['C_degen']
     nftnd = nsmp.shape[0]
     rough = p.get('rough')
     insert_fault_type = p.get('insertFaultType', 0)
@@ -1753,29 +1858,27 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
     ymin_m, ymax_m = ((yline[0], yline[-1]) if model_bound is None
                       else model_bound[1])
 
-    fstrike = p['fstrike'] * np.pi / 180.0
-    fdip = (p['C_degen'] * np.pi / 180.0) if p['C_degen'] > 3.0 else (90.0 * np.pi / 180.0)
-
-    # un/us/ud's angle-based default depends only on fstrike/fdip -- global
-    # bGlobal.txt scalars, the SAME for every fault in this release's scope
-    # (readInputFiles.py has no per-fault strike/dip reader) -- so the
-    # broadcast default is correct for every fault node regardless of which
-    # fault it belongs to, unconditionally.
+    # Row 153 checkpoint 2a: un/us/ud's angle-based default now comes from
+    # THIS FAULT's own (strikeDeg, dipDeg) (readfaultgeometry's
+    # fltxyz(1,4,iFault)/fltxyz(2,4,iFault), mirrored by `_fault_strike_dip`)
+    # -- not a single global broadcast -- so a style-2 branch fault (whose
+    # strike differs from the main fault's) gets its own un/us/ud. Reduces
+    # to the old single global broadcast bit-for-bit at ntotft==1 (and at
+    # ntotft>1 with every fault style 0, e.g. test.tpv22/test.tpv23).
     un = np.zeros((nftnd + 1, 3))
     us = np.zeros((nftnd + 1, 3))
     ud = np.zeros((nftnd + 1, 3))
-    un[1:] = (np.cos(fstrike) * np.sin(fdip), -np.sin(fstrike) * np.sin(fdip), np.cos(fdip))
-    us[1:] = (-np.sin(fstrike), -np.cos(fstrike), 0.0)
-    ud[1:] = (np.cos(fstrike) * np.cos(fdip), np.sin(fstrike) * np.cos(fdip), np.sin(fdip))
     arn = np.zeros(nftnd + 1)
 
     X, Y, Z = np.asarray(xline), np.asarray(yline), np.asarray(zline)
     Xg, Yg, Zg = X[:, None, None], Y[None, None, :], Z[None, :, None]
-    dx_for_fault = p['dx'] if c_degen > 3.0 else None
+    dx_for_fault = p['dx']
 
     seq_base = 0  # running row offset into the GLOBAL (grouped) arrays
-    for box in _fault_boxes(p):
+    for box, c_degen, (strikeDeg, dipDeg) in zip(_fault_boxes(p), _fault_codes(p), _fault_strike_dip(p)):
         fxmin, fxmax, fymin, fymax, fzmin, fzmax = box
+        fstrike = strikeDeg * np.pi / 180.0
+        fdip = dipDeg * np.pi / 180.0
         # Reproduce createMasterNode's fltrc(ifs,ifd) bookkeeping: ixfi/izfi
         # are each set ONCE, on this FAULT's very first node encounter
         # across the whole traversal (not reset per ix), then ifs/ifd are
@@ -1783,6 +1886,13 @@ def build_fault_geometry(xline, yline, zline, params, nsmp, model_bound=None):
         fault_mask = _check_is_on_fault_vec(Xg, Yg, Zg, fxmin, fxmax, fymin, fymax,
                                              fzmin, fzmax, tol, c_degen, dx_for_fault)
         fault_flat = np.nonzero(fault_mask.ravel())[0]
+        if fault_flat.size:
+            # This fault's own angle-based default (overwritten per-node
+            # below when insert_fault_type>0 -- see that branch's comment).
+            rows = slice(seq_base + 1, seq_base + 1 + fault_flat.size)
+            un[rows] = (np.cos(fstrike) * np.sin(fdip), -np.sin(fstrike) * np.sin(fdip), np.cos(fdip))
+            us[rows] = (-np.sin(fstrike), -np.cos(fstrike), 0.0)
+            ud[rows] = (np.cos(fstrike) * np.cos(fdip), np.sin(fstrike) * np.cos(fdip), np.sin(fdip))
         ix_of = fault_flat // (nz * ny)
         iz_of = (fault_flat % (nz * ny)) // ny
         iy_of = fault_flat % ny

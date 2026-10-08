@@ -87,10 +87,20 @@ def check(C_elastic, output_plastic, rat, C_Q=C_Q):
 
 
 def check_multifault(faults, dy, dis4uniF, dis4uniB, C_degen, tol=1.0e-5):
-    """checkInputConsistency.f90's row-17 multi-fault guards (only the
-    `C_degen == 0.0` branch -- C_degen>3's dipping/wedge-degeneration
-    mechanism is a different, pre-existing, single-fault-only path with a
-    legitimate fymin != fymax, orthogonal to this work).
+    """checkInputConsistency.f90's row-17 multi-fault guards -- per-fault,
+    style-aware since row 153 checkpoint 2a (mirrors
+    checkInputConsistency.f90's identical fix): each fault's own
+    degenStyle (0=planar, 1=dip-tilt, 2=x-y branch) decides whether the
+    fymin==fymax / distinct-y checks apply to IT, not the single global
+    `C_degen`. A global C_degen==0 no longer implies every fault is planar
+    once per-fault degenCode exists (bFaultGeometry.txt) -- gating the
+    whole function on C_degen alone would incorrectly refuse a valid
+    branched-fault case (tpv24/25) whose fault 1 is planar and fault 2 is
+    not. `faults` dicts built via readInputFiles.build_params carry their
+    own 'degenStyle'; a hand-built fixture without that key (pre-row-153
+    unit tests) falls back to the passed-in global C_degen translated the
+    same way Fortran's readfaultgeometry does (0.0 -> style 0, else -> non-
+    planar), so existing callers see bit-identical behaviour.
     No-op at ntotft==1 (every loop below is over a single fault, and the
     i<j distinctness loop does not execute for ntotft<2) -- bit-identical
     refusal behaviour to before this function existed.
@@ -107,10 +117,12 @@ def check_multifault(faults, dy, dis4uniF, dis4uniB, C_degen, tol=1.0e-5):
     Fortran's hard refuse inside getLocalOneDimCoorArrAndSize.
 
     `faults`: read_bfaultgeometry's return (list of ntotft dicts with
-    fxmin/fxmax/fymin/fymax/fzmin/fzmax)."""
-    if C_degen != 0.0:
-        return
-    for i, f in enumerate(faults, start=1):
+    fxmin/fxmax/fymin/fymax/fzmin/fzmax[/degenStyle])."""
+    fallback_style = 0.0 if C_degen == 0.0 else 1.0
+    styles = [f.get('degenStyle', fallback_style) for f in faults]
+    for i, (f, style) in enumerate(zip(faults, styles), start=1):
+        if style != 0.0:
+            continue
         if abs(f['fymax'] - f['fymin']) > tol:
             raise InputConsistencyError(
                 ERR_GEOM_MULTIFAULT_Y_BAD,
@@ -119,6 +131,8 @@ def check_multifault(faults, dy, dis4uniF, dis4uniB, C_degen, tol=1.0e-5):
                 "geometry is out of scope." % i)
     for i in range(len(faults)):
         for j in range(i + 1, len(faults)):
+            if styles[i] != 0.0 or styles[j] != 0.0:
+                continue
             if abs(faults[i]['fymin'] - faults[j]['fymin']) < tol:
                 raise InputConsistencyError(
                     ERR_GEOM_MULTIFAULT_Y_BAD,

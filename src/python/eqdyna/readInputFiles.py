@@ -348,6 +348,39 @@ def build_params(case_dir):
             % (g['ntotft'], g['insertFaultType']))
     mg = read_bmodelgeometry(os.path.join(case_dir, 'bModelGeometry.txt'))
     faults = read_bfaultgeometry(os.path.join(case_dir, 'bFaultGeometry.txt'), g['ntotft'])
+    # Row 153 checkpoint 2a: derive faultDegenStyle/faultDegenAngle/
+    # strikeDeg/dipDeg per fault from its own degenCode, mirroring
+    # readInputFiles.f90's readfaultgeometry EXACTLY (code>100 -> style 2,
+    # TPV24/25 x-y strike-tilt branch, angle=code-100, strike=fstrike+angle,
+    # dip=90; code in (3,100] -> style 1, the pre-existing TPV36/37 y-z
+    # dip-tilt, angle=code, strike=fstrike, dip=angle; else style 0,
+    # vertical planar, strike=fstrike, dip=90). A code outside {0} union
+    # (3, infinity) is refused here exactly like bGlobal.txt's C_degen (see
+    # readInputFiles.f90's accepted-set check) -- style alone cannot
+    # distinguish code==0 from 0<code<=3, so this must be checked BEFORE
+    # deriving style.
+    for f in faults:
+        code = f['degenCode']
+        if not (code == 0.0 or code > 3.0):
+            raise NotImplementedError(
+                'read_bfaultgeometry: fault degenCode must be 0 (vertical planar) '
+                'or >3 (wedge-degeneration angle, >100 for a style-2 strike-tilt '
+                'branch); checkIsOnFault takes neither branch for %r' % code)
+        if code > 100.0:
+            f['degenStyle'] = 2
+            f['degenAngle'] = code - 100.0
+            f['strikeDeg'] = g['fstrike'] + f['degenAngle']
+            f['dipDeg'] = 90.0
+        elif code > 3.0:
+            f['degenStyle'] = 1
+            f['degenAngle'] = code
+            f['strikeDeg'] = g['fstrike']
+            f['dipDeg'] = f['degenAngle']
+        else:
+            f['degenStyle'] = 0
+            f['degenAngle'] = 0.0
+            f['strikeDeg'] = g['fstrike']
+            f['dipDeg'] = 90.0
     fg = faults[0]
     rough = None
     if g['insertFaultType'] > 0:

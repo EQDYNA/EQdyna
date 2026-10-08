@@ -47,8 +47,18 @@ subroutine checkInputConsistency
     ! per-axis origin after the union, which this subroutine does not
     ! compute) -- still a hard stop, now correct for every axis instead of
     ! y-only-relative-to-a-hardcoded-0.
-    if (C_degen == 0.0d0) then
+    ! Row 153 checkpoint 2a: this guard is about checkIsOnFault's PLANAR
+    ! (style 0) branch only -- a fault with faultDegenStyle(i) > 0 (style 1
+    ! dip-tilt, e.g. tpv36/37; style 2 x-y branch, e.g. tpv24/25) legitimately
+    ! has fymin /= fymax (the tilted/branch plane sweeps a y-range by
+    ! construction) and is excluded from both checks below, per-fault, rather
+    ! than the whole block being gated on the single GLOBAL C_degen. A global
+    ! C_degen==0 no longer implies every fault is planar once per-fault
+    ! degenCode exists (bFaultGeometry.txt), so gating on it here would
+    ! incorrectly refuse a valid branched-fault case whose fault 1 is planar
+    ! and fault 2 is not.
     do i = 1, ntotft
+        if (faultDegenStyle(i) /= 0) cycle
         ! checkIsOnFault (meshgen.f90) assumes a PLANAR vertical fault: one
         ! y value per fault, tested via fltxyz(1,2,iFault). A fault whose
         ! fymin /= fymax is not representable by that test at all (it would
@@ -62,9 +72,12 @@ subroutine checkInputConsistency
 
     ! Distinct fault y-planes: two faults at the same y are not "two faults",
     ! they are one fault double-counted (and createMasterNode would build two
-    ! overlapping split-node pairs at the same physical location).
+    ! overlapping split-node pairs at the same physical location). Only
+    ! meaningful between two planar (style 0) faults -- a style>0 fault has a
+    ! y-RANGE, not a single y, so "same y" does not apply to it.
     do i = 1, ntotft-1
         do j = i+1, ntotft
+            if (faultDegenStyle(i) /= 0 .or. faultDegenStyle(j) /= 0) cycle
             if (abs(fymin(i) - fymin(j)) < tol) then
                 call abortRun(ERR_GEOM_MULTIFAULT_Y_BAD, &
                     'checkInputConsistency: faults '//trim(itoa(i))//' and '//trim(itoa(j))// &
@@ -72,7 +85,6 @@ subroutine checkInputConsistency
             endif
         enddo
     enddo
-    endif
 end subroutine checkInputConsistency
 
 function itoa(n) result(s)

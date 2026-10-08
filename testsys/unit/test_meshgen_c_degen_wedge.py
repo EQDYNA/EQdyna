@@ -65,11 +65,18 @@ class TestIsOnFaultCDegenBranch:
     C_degen>3 branch (meshgen.f90:763-767) -- no mesh construction needed."""
 
     def test_point_exactly_on_dipping_plane_is_on_fault(self):
+        # Row 153 checkpoint 2a audit fix: checkIsOnFault's style-1 branch
+        # now offsets by THIS fault's own fymin (fltxyz(1,2,iFault)) before
+        # applying the tilt (meshgen.f90:1209-1219), matching every
+        # registered dipping-fault case's fymin==0.0 convention. fymin must
+        # be 0.0 here for (y, z) to land exactly on the dip plane as before
+        # the fix (fymin=-1000 was an arbitrary synthetic bound that the
+        # pre-fix, offset-free formula happened not to care about).
         dip = 15.0
         dx = 500.0
         y, z = 300.0, -300.0 * np.tan(dip * np.pi / 180.0)
         assert meshgen.is_on_fault(
-            0.0, y, z, fxmin=-1000, fxmax=1000, fymin=-1000, fymax=1000,
+            0.0, y, z, fxmin=-1000, fxmax=1000, fymin=0.0, fymax=2000,
             fzmin=-1000, fzmax=1000, tol=1e-5, c_degen=dip, dx=dx) is True
 
     def test_point_far_from_dipping_plane_is_not_on_fault(self):
