@@ -906,8 +906,12 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     than (nx-1)*(ny-1)*(nz-1) by the number of wedge-triggered brick
     positions, one extra element per trigger),
     mat is (E,5) [vp,vs,rho,lambda,mu], and depth (E,) is
-    `-0.5*(zline[iz]+zline[iz-1]) + 7.3215` (meshgen.f90:103's argument to
-    setPlasticStress, verbatim including the 7.3215 magic-number shift --
+    `-0.5*(zline[iz]+zline[iz-1])` (meshgen.f90:103's argument to
+    setPlasticStress; the "+ 7.3215d0" magic-number shift this verbatim
+    comment used to describe was defect C -- an unexplained, unjustified
+    depth offset with no spec basis, which left a nonzero sigma_zz at the
+    true free surface and made every Method-2 case sink from step 1.
+    Removed 2026-10-09, board PR #164, both backends.
     ALWAYS computed, harmless when C_elastic==1 since no caller reads it
     then; consumed by main.py's build_solver_state only when C_elastic==0,
     to seed each interior/PML element's lithostatic pre-stress -- Milestone
@@ -1136,9 +1140,11 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
                                    'or nmat>1/n2mat==6 (3D structured grid) '
                                    'branches are ported')
 
-    # meshgen.f90:103 `setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0,
+    # meshgen.f90:103 `setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)),
     # elemCount)` -- same expression, same operand order, evaluated per element.
-    depth = -0.5 * (zline[IZ] + zline[IZ - 1]) + 7.3215
+    # (The "+ 7.3215d0" this comment used to carry was defect C, removed
+    # 2026-10-09, board PR #164 -- see Fortran meshgen.f90's comment there.)
+    depth = -0.5 * (zline[IZ] + zline[IZ - 1])
 
     if wedge_trigger.any():
         conn, elem_type, mat, depth = _splice_wedge_elements(
@@ -1362,7 +1368,7 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
                     if cx > xmax0 or cx < xmin0 or cy > ymax0 or cy < ymin0 or cz < zmin0:
                         etype = 2
 
-                    depth_val = -0.5 * (zline[iz] + zline[iz - 1]) + 7.3215
+                    depth_val = -0.5 * (zline[iz] + zline[iz - 1])  # defect C fix, PR #164
 
                     # ---- wedge degeneration (C_degen>3): verbatim scalar
                     # mirror of library_degeneration.f90's wedge() +

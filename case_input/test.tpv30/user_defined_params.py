@@ -58,10 +58,14 @@
 #     par.viscoplasticRelaxTime below is a real input now.
 #  G2 (off-fault deviatoric depth taper missing) -- RESOLVED 2026-09-17
 #     (item 24(c)): par.devStrTaperDepthStart/End below are real inputs.
-#  G3 (+7.3215 m element-centre depth offset in meshgen.f90) -- UNTOUCHED, per
-#     owner decision 2026-09-16 (item 24(d)); LOAD-BEARING (c7c4f5f measured
-#     that removing it moves the traction-check answer away from the correct
-#     ratio), so this case does not attempt to work around it.
+#  G3 (+7.3215 m element-centre depth offset in meshgen.f90) -- REMOVED
+#     universally 2026-10-09 (PR #164, Defect C), superseding the 2026-09-16
+#     item 24(d) "do not change" ruling: owner decision "it should be
+#     universal" / "we are setting stresses at the center of each cell".
+#     Measured impact on THIS case (gate dx, fortran + python-jax): deep
+#     (z<-2km) rupture-time median/p90 |dt| = 0.0000s, ruptured-fraction
+#     change 0.0000 -- see docs/evidence/ for the PR #164 table. This case
+#     does not work around the offset in any other way.
 #  G4 (plastic-strain output window hardcoded to 5x2x8 km, sized for
 #     test.drv.a6) -- RESOLVED 2026-09-17 (item 24(f)): par.plasticOutputHalfWidth
 #     below is set for THIS case's 40x20 km fault instead of left at the

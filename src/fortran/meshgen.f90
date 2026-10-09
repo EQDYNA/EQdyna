@@ -177,8 +177,28 @@ subroutine meshgen
                         endif
                     enddo
                     
-                    call replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0) 
-                    if (C_elastic == 0) call setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)) + 7.3215d0, elemCount)          
+                    call replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
+                    ! Defect C (board PR #164, 2026-10-09): this call used to add an
+                    ! unexplained "+ 7.3215d0" to the element-center depth below,
+                    ! uniformly shifting every Method-2 (C_elastic==0) element's
+                    ! lithostatic pre-stress as if the true free surface (z=0,
+                    ! depth=0) were 7.3215 m deeper than it is. That left a nonzero
+                    ! sigma_zz at the true free surface -- an unbalanced traction,
+                    ! since the free surface carries no boundary stress -- so the
+                    ! surface sank from step 1 at every dx (measured ~0.16-0.22 m/s^2
+                    ! residual nodal acceleration at nt==1, EQDYNA_DUMP_EQUIL=1, on
+                    ! test.tpv13's gate grid; g*(roumax-rhow)/roumax*7.3215 predicts
+                    ! the same order of magnitude). Method-1 (C_elastic==1) cases
+                    ! never call setPlasticStress and read exactly 0 here, which is
+                    ! what made the Method-2-only sink visible. Removing the offset
+                    ! (depth is simply the element-center depth, matching the grid
+                    ! exactly, zero at the true surface) dropped the measured
+                    ! surface residual acceleration to -0.029..0.015 m/s^2 (FEM
+                    ! constant-stress-element discretization noise, ~100x smaller,
+                    ! no longer a systematic one-sided sink). See
+                    ! docs/evidence/method2-stress-defects-2026-10-09/ for the
+                    ! before/after dumps.
+                    if (C_elastic == 0) call setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)), elemCount)
                  endif!if element
             enddo!iy
         enddo!iz
@@ -1435,10 +1455,13 @@ subroutine setPlasticStress(depth, elemCount)
     ! the stress regime becomes isotropic (== 13800 m down-dip distance at
     ! this benchmark's fixed 60-degree dip, converted to vertical depth: the
     ! spec states both numbers directly, p.5 "depths less than 11951.15
-    ! meters"). Both are TPV12/13-specific physical constants of the spec,
-    ! not case-configurable knobs (same precedent as the 7.3215d0 magic
-    ! shift at this subroutine's call site, meshgen.f90:168) -- local
-    ! parameters, not globalvar fields.
+    ! meters"). Both are TPV12/13-specific physical constants of the spec --
+    ! local parameters, not globalvar fields. (This comment used to cite the
+    ! call site's "7.3215d0 magic shift" as precedent for a hardcoded
+    ! spec constant; that shift was defect C -- an unexplained, unjustified
+    ! depth offset with no spec basis, removed 2026-10-09, board PR #164.
+    ! TPV13_SIG3_RATIO and TPV13_DEPTH_SPLIT_M are unaffected; they are
+    ! genuine spec constants, unlike the removed shift.)
     real(kind = dp), parameter :: TPV13_SIG3_RATIO = 0.3496d0
     real(kind = dp), parameter :: TPV13_DEPTH_SPLIT_M = 11951.15d0
     integer(kind = 8) :: elemCount
