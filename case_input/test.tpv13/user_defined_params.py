@@ -69,12 +69,15 @@
 #                  exceed the (lower) yield stress inside the patch -- exactly
 #                  the spec's own "What's New" mechanism, and exactly
 #                  test.tpv10's established pattern (also C_nuclea=0).
-#   strength       nodes at the along-strike edges (|x| = fxmax) and the
-#   barrier        down-dip edge (z = fzmin, the deepest row) are given
-#                  mu_s = 1000 (unbreakable) -- same border convention
-#                  test.tpv10 already uses for this exact fault footprint.
-#                  The free surface (z = 0 row) is NOT a border (spec: the
-#                  fault reaches the surface and surface nodes may rupture).
+#   strength       the rupture-allowed rectangle IS the fault grid (par.fx/
+#   barrier        par.fz stop at fxmax/fzmin), so the strength barrier is
+#                  outside this grid entirely and no node on it is pinned
+#                  unbreakable. Spec (Part 2 "Fault Geometry", p.3): a node
+#                  exactly on the 30000 m x 15000 m rectangle's border is
+#                  INSIDE the rectangle and must be permitted to rupture --
+#                  fixed 2026-10-09 (board), see case README.md item B. This
+#                  is a different border convention from test.tpv10/tpv8/
+#                  tpv34/tpv35, each spec'd separately.
 #   run time       0 - 8 s after nucleation (spec: "you only need to run the
 #                  model for 8 seconds" -- a powerful supershear rupture)
 #   resolution     spec recommends 100 m node spacing; par.dx below (500 m)
@@ -258,10 +261,17 @@ for ix, xcoor in enumerate(par.fx):
         mu_s = par.fric_sw_fs                   # fully outside: 0.70
     par.on_fault_vars[iz,ix,1] = mu_s
 
-    # strength barrier: along-strike edges and the deepest (down-dip) row;
-    # the free surface (iz at zcoor==0) is NOT a border.
-    if abs(abs(xcoor) - par.fxmax) < 0.01 or abs(zcoor - par.fzmin) < 0.01:
-        par.on_fault_vars[iz,ix,1] = 1000.
+    # Spec (TPV12_13_Description_v6.pdf Part 2, "Fault Geometry", p.3): "A
+    # node which lies exactly on the border of the 30000 m x 15000 m
+    # rectangle is considered to be inside the rectangle, and so should be
+    # permitted to rupture." The strength barrier is OUTSIDE the rectangle
+    # (par.fx/par.fz do not extend past fxmax/fzmin), so no node on this
+    # fault grid is ever a barrier node; there is no hard unbreakable pin
+    # here, unlike test.tpv10/tpv8/tpv34/tpv35's own border conventions
+    # (each spec'd separately, untouched by this fix). A border node's mu_s
+    # is whatever the nucleation-zone weighting above already gave it (0.70
+    # here, since the fault border is far outside the 3 km nucleation
+    # patch).
 
     par.on_fault_vars[iz,ix,2] = par.fric_sw_fd
     par.on_fault_vars[iz,ix,3] = par.fric_sw_D0
