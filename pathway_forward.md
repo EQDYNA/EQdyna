@@ -89,6 +89,8 @@ first, and that is item 76, owner-scoped.
 
 **OWNER DECISION 2026-10-09 (main session), repo tidy:** offered (1) delete uncited scratch dirs, (2) move root `pastReleaseNotes.md` to `docs/`, (3) consolidate `docs/NOTES_*`/`docs/SESSION_LOG_*` into `docs/notes/`, (4) a board row for the root layout, (5) a 125 m TPV24 run, the owner said "do 1, 2, 3 4." (5 not approved).
 
+**OWNER DECISION 2026-10-09 (main session), dev notes, amends item (3) above:** "most md no need to go out. they in the end in release notes already" -- `docs/NOTES_*`/`docs/SESSION_LOG_*` are removed from the tracked tree (git history kept) instead of consolidated into `docs/notes/`; release notes are the shipped record.
+
 **OWNER DECISION 2026-10-09 (main session), SCEC overlays:** "we have existing tools to do scec overlays" / "please don't ask me about this again" / "can you clear up that part then you can keep using and dev a single set of scripts for that purposes?" / "it should support new formats and backward compatible" / "refactor that part" -- the per-TPV `scripts/figures/make_tpv*_overlay.py` one-offs fold into one refactored `scripts/figures/scec_compare.py` (new formats added, every old layout still read identically); every new TPV gets cplot + on/off-fault time-series overlays against the FaultMod CVWS submission with that tool, without asking.
 
 **OWNER DECISION 2026-10-09 (main session), release cadence:** "and release tpvs at a good pace?" / "after your veification" -- cut a release of the TPVs landed since v5.24.0 (TPV12/13/26/27/31/32/33) once their FaultMod CVWS overlays are verified, and keep releasing TPVs as each batch is verified.
