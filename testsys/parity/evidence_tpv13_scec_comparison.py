@@ -3,7 +3,7 @@
 Independent cross-code validation for TPV13 (rule 17 step 6), owner directive
 board PR #146: a committed comparison SCRIPT and figure against Michael
 Barall's public SCEC cvws FaultMod submission, same pattern as
-scripts/figures/make_tpv22_tpv23_overlay.py /
+scripts/figures/scec_compare.py /
 testsys/parity/evidence_tpv22_23_scec_comparison.py.
 
 ASSERTING (victor-reyes audit, PR #147, rule 14a / rule 17 step 6): unlike
@@ -173,10 +173,8 @@ Two comparisons:
 
   1. CPLOT (rupture-time field) -- this script reports the ruptured-node-
      count numbers in text form (no contour-overlay figure is built here;
-     unlike test.tpv12, which already had scripts/figures/
-     make_tpv12_overlay.py from an earlier mission, no such figure script
-     exists for test.tpv13 yet -- not built as part of this mission, which
-     asked for the comparison script, not a new figure tool).
+     the figure is scripts/figures/scec_compare.py --plot cplot, the one
+     SCEC overlay tool, which reads every layout this case uses).
 
   2. OFF-FAULT BODY STATIONS -- body010st000dp000 / body030st120dp000.
      These names match ours byte-for-byte (both follow the TPV12/13 spec's
