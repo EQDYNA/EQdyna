@@ -3,7 +3,7 @@
 Independent cross-code validation for TPV12 (rule 17 step 6), owner directive
 board PR #146: a committed comparison SCRIPT and figure against Michael
 Barall's public SCEC cvws FaultMod submission, same pattern as
-scripts/figures/make_tpv22_tpv23_overlay.py /
+scripts/figures/scec_compare.py /
 testsys/parity/evidence_tpv22_23_scec_comparison.py.
 
 ASSERTING (victor-reyes audit, PR #147, rule 14a / rule 17 step 6): unlike
@@ -113,7 +113,7 @@ this repo yet (pathway_forward.md row 149).
 
 Two comparisons:
 
-  1. CPLOT (rupture-time field) -- scripts/figures/make_tpv12_overlay.py
+  1. CPLOT (rupture-time field) -- scripts/figures/scec_compare.py --plot cplot
      produces the contour overlay figure. This script reports the same
      ruptured-node-count numbers in text form and does not re-plot.
 
@@ -415,8 +415,8 @@ def main():
           f'nodes ruptured ({rc["frac_barall"]:.4f})')
     print(f'  |delta| = {rc["frac_delta"]:.4f}  bound FRACTION_BOUND = '
           f'{FRACTION_BOUND}  -> {"PASS" if rc["frac_pass"] else "FAIL"}')
-    print('  (figure: run scripts/figures/make_tpv12_overlay.py '
-          '--run-dir <run_dir> for the contour overlay)')
+    print('  (figure: run scripts/figures/scec_compare.py --plot cplot '
+          '--models <run_dir> <barall_dir> for the contour overlay)')
 
     print(f'\n==== source: barall (Michael Barall, FaultMod, 100 m, 2009 -- '
           f'INDEPENDENT of EQdyna) ====')
