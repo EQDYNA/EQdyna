@@ -125,6 +125,7 @@ SHARDS = {
                                  # copy, a copy missing frt.canonical.txt),
                                  # no network/build, well under a few seconds.
         "test_evidence_tpv13_both_ways.py",  # added 2026-10-07 (row 149
+        "test_tpv12_tpv13_border_rupture_eligible.py",  # added 2026-10-09 (defect B): imports case params, no solver, <1 s
                                  # follow-on): same pattern as test_evidence_
                                  # tpv12_both_ways.py, 4 subprocess invocations
                                  # of testsys/parity/evidence_tpv13_scec_
