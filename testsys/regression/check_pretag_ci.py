@@ -130,7 +130,7 @@ EVIDENCE_GLOB = os.path.join('docs', 'evidence', 'sweep-*', 'summary.json')
 # Exactly the allowed set for rule 15d's two-commit release order: the
 # board-only Tasks-done-row commit touches only pathway_forward.md, and the
 # evidence itself lands as its own commit touching only these evidence/ledger
-# paths. VERSION/README/pastReleaseNotes.md are deliberately NOT here -- if
+# paths. VERSION/README/docs/pastReleaseNotes.md are deliberately NOT here -- if
 # those changed after the sweep, the sweep no longer describes the tagged
 # tree's physics-relevant content and must be re-run.
 # docs/run_profiles.jsonl added 2026-09-24: the release sweep appends its own

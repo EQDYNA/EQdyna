@@ -10,6 +10,10 @@ belongs; an allowlisted entry that is no longer tracked fails too (so a
 broken enumeration cannot pass). Changing the root is a deliberate edit to
 ALLOWED.
 
+`pastReleaseNotes.md` moved to `docs/pastReleaseNotes.md` 2026-10-09 (repo
+tidy, item 2) and was dropped from ALLOWED the same commit -- a root-level
+copy reappearing here is exactly the "new tracked root entry" case above.
+
 Both ways (rule 14a): before checking the real tree, the checker is run on a
 synthetic listing with one stray NOTES file and one stray evidence file and
 must flag exactly those two; a checker that cannot go red fails first.
@@ -23,7 +27,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 ALLOWED = frozenset({
     'case_input', 'CLAUDE.md', 'Dockerfile', 'Docker.guide.md', '.dockerignore',
     'docs', '.github', '.gitignore', 'install-eqdyna.sh', 'LICENSE',
-    'pastReleaseNotes.md', 'pathway_forward.md', 'PROJECT_RULES.md',
+    'pathway_forward.md', 'PROJECT_RULES.md',
     'README.md', 'scripts', 'src', 'testNameList.py', 'test.reference.results',
     'testsys', 'ubuntu.env.sh', 'VERSION',
 })

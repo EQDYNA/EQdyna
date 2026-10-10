@@ -47,7 +47,7 @@ def readme_news_leads_with(readme_text, v):
     """(ok, message) -- does `readme_text`'s LEADING '* YYYYMMDD vX.Y.Z
     release notes' block already name version `v`? Same regex and rule
     (rule 15 step 3: the current release leads README, the previous one
-    moves to pastReleaseNotes.md) as the original
+    moves to docs/pastReleaseNotes.md) as the original
     check_readme_news_leads_with_this_version."""
     m = README_NEWS_LEAD_RE.search(readme_text)
     if not m:

@@ -127,10 +127,14 @@ USER_FACING_EXACT = frozenset({
 USER_FACING_PREFIXES = ('docs/user/',)
 
 # --- INTERNAL: a short, explicit list, checked SECOND. Everything else is
-# PHYSICS by default (see module docstring). `LICENSE`, `pastReleaseNotes.md`,
-# `.gitignore` added 2026-09-30 (victor-reyes audit of PR #62, finding 2):
+# PHYSICS by default (see module docstring). `LICENSE`, `.gitignore`
+# added 2026-09-30 (victor-reyes audit of PR #62, finding 2):
 # plain doc/meta files outside src/testsys/.github that the PHYSICS-default
 # was newly gating for a PR with no physics content to review at all.
+# `pastReleaseNotes.md` moved to `docs/pastReleaseNotes.md` 2026-10-09 (repo
+# tidy, item 2) and dropped from this exact list the same day: it already
+# classifies INTERNAL via the `docs/` prefix below, so the exact entry was
+# redundant even before the move and is now also stale by path.
 INTERNAL_PREFIXES = ('testsys/unit/', 'testsys/regression/', 'testsys/hooks/',
                      'docs/', '.github/')
 INTERNAL_EXACT = frozenset({
@@ -138,7 +142,7 @@ INTERNAL_EXACT = frozenset({
     'testsys/check_board_separation.py',
     'testsys/check_git_config_no_credential.py',
     'pathway_forward.md', 'PROJECT_RULES.md', 'CLAUDE.md',
-    'LICENSE', 'pastReleaseNotes.md', '.gitignore',
+    'LICENSE', '.gitignore',
 })
 
 # --- default-PHYSICS, but not UNREVIEWED (victor-reyes audit of PR #62,
