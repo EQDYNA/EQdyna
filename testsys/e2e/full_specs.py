@@ -258,13 +258,13 @@ EXCLUDED = {
     'test.drv.a6': (
         'Internal case, no SCEC spec. No published full-resolution run '
         '(different dx/term than the gated test config) discoverable in '
-        'README.md or pastReleaseNotes.md -- both only document the case at '
+        'README.md or docs/pastReleaseNotes.md -- both only document the case at '
         'its current test parameters (dx=500m, term=5s). Excluded rather '
         'than invented.'
     ),
     'test.meng2023a': (
         'Internal case, no SCEC spec, no published full-resolution figure '
-        'in README.md/pastReleaseNotes.md beyond the current test config '
+        'in README.md/docs/pastReleaseNotes.md beyond the current test config '
         '(dx=400m, term=5s). Excluded rather than invented.'
     ),
     'test.meng2023cb': (

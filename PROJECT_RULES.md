@@ -172,9 +172,9 @@ missing — not on whether some expected substring still appears somewhere in
 it. A substring check passes even when the edit deleted everything else.
 
 **Rationale**: 2026-09-21, a scripted regex meant to move a `README.md`
-release-notes block into `pastReleaseNotes.md` had a tail pattern that matched
+release-notes block into `docs/pastReleaseNotes.md` had a tail pattern that matched
 to end-of-file. `README.md` went from 317 lines to 8, with its entire
-remaining body appended into `pastReleaseNotes.md`. The editor's own
+remaining body appended into `docs/pastReleaseNotes.md`. The editor's own
 post-edit assertion passed anyway, because it tested for a substring (the
 moved block's own text landing in the right file) rather than the shape of
 what was left behind — a check that would have failed instantly on a line-count
@@ -334,7 +334,7 @@ reverted proves a triggering case exists, because the guard is running on one.
 
 ## 4. Only fresh runs are evidence
 
-A number in `README.md` or `pastReleaseNotes.md` is a hypothesis until
+A number in `README.md` or `docs/pastReleaseNotes.md` is a hypothesis until
 reproduced on the hardware and git SHA it's attached to.
 
 **Rationale**: README's news section cites "512 cores... 4 hours and 40
@@ -672,7 +672,7 @@ a diff review that can see which PR came first.
 
 Machine (`ls6`/`ubuntu`/`macos`/`grace` per `src/makefile`), core count,
 compiler (`mpif90`/`mpiifort`), NETCDF_LIB/NETCDF_INC versions, and git SHA
-travel with any wall-clock number, in `README.md` or `pastReleaseNotes.md`.
+travel with any wall-clock number, in `README.md` or `docs/pastReleaseNotes.md`.
 
 **Rationale**: same TPV36 512-core figure as rule 4 — without the SHA it is
 unfalsifiable against the current `src/`.
@@ -885,7 +885,7 @@ saying why behaviour was not reachable.
 current one.
 
 **How to apply**: a file or subroutine rename updates every reference in
-`README.md`, `pastReleaseNotes.md`, and the `src/makefile` dependency list in
+`README.md`, `docs/pastReleaseNotes.md`, and the `src/makefile` dependency list in
 the same commit — and deletes the old file (rule 1) rather than archiving it.
 
 ---
@@ -934,14 +934,14 @@ committing, run `git diff --summary` and confirm it prints no
 `pathway_forward.md` is the one file recording every open issue and
 standing claim for this repo, each with a re-check interval, the date it was
 last checked, and the exact command whose output was read. It is present
-tense — history belongs in `pastReleaseNotes.md`, not here.
+tense — history belongs in `docs/pastReleaseNotes.md`, not here.
 
-**Rationale**: `pastReleaseNotes.md` and README's news entries are
+**Rationale**: `docs/pastReleaseNotes.md` and README's news entries are
 append-only and accretive by design; neither one states whether a past claim
 still holds today.
 
 **How to apply**: before citing a "this already works" or "already fixed"
-claim from `README.md` or `pastReleaseNotes.md`, check `pathway_forward.md`
+claim from `README.md` or `docs/pastReleaseNotes.md`, check `pathway_forward.md`
 first, and re-run the cited command rather than trusting the recorded line.
 
 ---
@@ -1040,17 +1040,17 @@ The release workflow, in order:
 3. Release notes: add a `* YYYYMMDD vX.Y.Z release notes` POINTER LINE under
    a `# News in <year>` heading at the TOP of `README.md`, linking to the
    GitHub Release for that tag, plus the standing pointer line "For past
-   release notes, please refer to pastReleaseNotes.md." The full notes go in
-   the GitHub Release body and in `pastReleaseNotes.md` under that release's
+   release notes, please refer to docs/pastReleaseNotes.md." The full notes go in
+   the GitHub Release body and in `docs/pastReleaseNotes.md` under that release's
    own entry — never as a block of bullets inside `README.md` itself.
 
    **Corrected 2026-09-25 (rule 26)**: this step used to read "add a `* ...
    release notes` **block** under a `# News in <year>` heading ... Move the
-   previous release's block from `README.md` into `pastReleaseNotes.md`" —
+   previous release's block from `README.md` into `docs/pastReleaseNotes.md`" —
    i.e. it kept the CURRENT release's full notes in `README.md` until
    superseded by the next one. Rule 26 (2026-09-24) caps `README.md` at
    ~150 lines and requires: "Release history lives in the GitHub Release for
-   that tag and in `pastReleaseNotes.md`; `README.md` carries at most a
+   that tag and in `docs/pastReleaseNotes.md`; `README.md` carries at most a
    3-line 'latest release' pointer to them, never the notes themselves." PR
    #31 followed rule 26, not this step, when it cut `README.md` from 382 to
    127 lines, so the two texts had disagreed since 26 landed. This is a
@@ -1170,7 +1170,7 @@ changes at release time; rule 15f states how those changes actually reach
 master and in what commits.
 
 **Rationale**: v5.3.4 (2026-09-09) was cut with its notes appended to
-`pastReleaseNotes.md` instead of leading `README.md`, because the
+`docs/pastReleaseNotes.md` instead of leading `README.md`, because the
 convention existed only in the files' shape, not as a rule — the release
 agent followed the wrong precedent and nothing could catch it.
 
@@ -1182,7 +1182,7 @@ is the only per-tag home for that detail; see step 7's "Why `--verify-tag`
 and `check_tag_is_annotated` are both gone" note.)
 
 **How to apply**: at release time, `head README.md` must show the version
-being released; `pastReleaseNotes.md` must contain every prior version and
+being released; `docs/pastReleaseNotes.md` must contain every prior version and
 not the current one.
 
 ---
@@ -1581,7 +1581,7 @@ does get one).
    15 step 4) as its own board-only fast-lane PR (rule 21c, rule 25), BEFORE
    the release PR merges, so the tagged tree already contains it.
 2. **Release PR.** `VERSION`, the runtime banner (rule 11), the README
-   notes move, `pastReleaseNotes.md`. Small non-physics items may batch into
+   notes move, `docs/pastReleaseNotes.md`. Small non-physics items may batch into
    it. Squash-merge it; call the result **M**.
 3. **Sweep only on a physics change.** If `change_class.is_release_physics_path`
    matches nothing since the last swept release, the last evidence carries
@@ -3428,7 +3428,7 @@ PR reviewer. Concretely:
   prose, not a bullet.
 - `README.md` has a hard cap of about 150 lines.
 - Release history lives in the GitHub Release for that tag and in
-  `pastReleaseNotes.md`; `README.md` carries at most a 3-line "latest
+  `docs/pastReleaseNotes.md`; `README.md` carries at most a 3-line "latest
   release" pointer to them, never the notes themselves.
 
 **The owner's own bar, verbatim (2026-09-25)**: "README is user facing,

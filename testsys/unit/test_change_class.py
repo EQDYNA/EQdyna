@@ -103,7 +103,7 @@ def test_representative_internal_paths():
              '.github/workflows/test.yml',
              'scripts/gmMain.m', 'scripts/calc_shear_mod.m',
              'scripts/figures/scec_compare.py',
-             'LICENSE', 'pastReleaseNotes.md', '.gitignore'):
+             'LICENSE', 'docs/pastReleaseNotes.md', '.gitignore'):
         assert change_class.classify_path(p) == change_class.INTERNAL, p
 
 
