@@ -1,0 +1,8 @@
+test.tpv13     deep     n= 1586 ruptured_old=1200 ruptured_new=1200 frac_old=0.7566 frac_new=0.7566 Delta_frac=+0.0000  dt_med=0.0000 dt_p90=0.0000
+test.tpv13     shallow  n=  305 ruptured_old=225 ruptured_new=225 frac_old=0.7377 frac_new=0.7377 Delta_frac=+0.0000  dt_med=0.0000 dt_p90=0.0000
+test.tpv27     deep     n= 2916 ruptured_old=1643 ruptured_new=1640 frac_old=0.5634 frac_new=0.5624 Delta_frac=-0.0010  dt_med=0.0000 dt_p90=0.0000
+test.tpv27     shallow  n=  405 ruptured_old=58 ruptured_new=58 frac_old=0.1432 frac_new=0.1432 Delta_frac=+0.0000  dt_med=0.0000 dt_p90=0.0417
+test.tpv30     deep     n= 2916 ruptured_old=1671 ruptured_new=1671 frac_old=0.5730 frac_new=0.5730 Delta_frac=+0.0000  dt_med=0.0000 dt_p90=0.0000
+test.tpv30     shallow  n=  405 ruptured_old=95 ruptured_new=95 frac_old=0.2346 frac_new=0.2346 Delta_frac=+0.0000  dt_med=0.0000 dt_p90=0.0417
+test.drv.a6    deep     n= 4646 ruptured_old=1069 ruptured_new=1069 frac_old=0.2301 frac_new=0.2301 Delta_frac=+0.0000  dt_med=0.0417 dt_p90=0.2917
+test.drv.a6    shallow  n=  505 ruptured_old=159 ruptured_new=140 frac_old=0.3149 frac_new=0.2772 Delta_frac=-0.0376  dt_med=0.2500 dt_p90=1.1667

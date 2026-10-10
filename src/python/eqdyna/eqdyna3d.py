@@ -59,7 +59,7 @@ S-dict provenance, field by field:
                                     in. Flagged, not silently worked around.
 
 C_elastic==0 (test.drv.a6) additionally needs ccosphi/sinphi/tv
-(readInputFiles.f90's readmaterial) and init_stress (meshgen.f90:104's
+(readInputFiles.f90's readmaterial) and init_stress (meshgen.f90:201's
 setPlasticStress lithostatic pre-stress). Both are computed here, once,
 before the loop, exactly as the Fortran does; assembleGlobalKU.build gates
 their USE on C_elastic==0 and raises loudly if they are missing rather than
@@ -374,7 +374,7 @@ def build_solver_state(case_dir, part=None):
     if not (params['C_degen'] == 0.0 or params['C_degen'] > 3.0):
         raise NotImplementedError('build_solver_state: only C_degen==0 or C_degen>3 is '
                                    'supported (got %r)' % params['C_degen'])
-    # C_degen>3 + C_elastic==0 (plastic): NOT supported. meshgen.f90:104 only
+    # C_degen>3 + C_elastic==0 (plastic): NOT supported. meshgen.f90:201 only
     # calls setPlasticStress once per (ix,iy,iz) grid point, using whichever
     # `elemCount` is current AFTER wedge() has (possibly) split it into two
     # sub-elements -- so the type-11 (below-fault) sub-element's lithostatic
@@ -387,7 +387,7 @@ def build_solver_state(case_dir, part=None):
     if params['C_degen'] > 3.0 and g['C_elastic'] == 0:
         raise NotImplementedError(
             'build_solver_state: C_degen>3 (wedge-degenerate elements) combined with '
-            'C_elastic==0 (plastic) is not supported -- meshgen.f90:104\'s '
+            'C_elastic==0 (plastic) is not supported -- meshgen.f90:201\'s '
             'setPlasticStress is never called for the type-11 wedge sub-element '
             '(it runs once per grid point, against whichever elemCount wedge() left '
             'current -- the type-12 slot), a depth-assignment quirk this port has not '
@@ -595,7 +595,7 @@ def build_solver_state(case_dir, part=None):
     sinphi = np.sin(np.arctan(g['bulk']))
     tv = g['tv']
 
-    # meshgen.f90:104's setPlasticStress (called for EVERY element, both
+    # meshgen.f90:201's setPlasticStress (called for EVERY element, both
     # interior and PML, only when C_elastic==0): lithostatic per-element
     # pre-stress, Voigt order [xx,yy,zz,yz,xz,xy] (calcB.f90's b(4,*)/
     # b(5,*)/b(6,*) confirm 4=yz,5=xz,6=xy) -- ALWAYS computed (cheap,

@@ -43,10 +43,15 @@ That collapse is what makes this a clean one-line check for THIS case; a case
 with a different str1ToFaultAngle needs the full rotation and this probe would
 have to be extended rather than reused.
 
-The +7.3215 m offset in meshgen.f90:104's depth argument is undocumented
-(item 24(d)) and is ADOPTED here because the measurement needs it to land at
-1.0018 -- i.e. it is load-bearing, not cosmetic. That is evidence for 24(d)
-mattering, not against it.
+The +7.3215 m offset in meshgen.f90:201's depth argument (item 24(d)) was
+REMOVED universally 2026-10-09 (PR #164, Defect C; owner decision superseding
+24(d): "it should be universal" / "we are setting stresses at the center of
+each cell") -- depth is now exactly the element-centre depth everywhere, with
+no additive constant. DEPTH_OFFSET_M below is kept at 0.0 to match; it is no
+longer load-bearing for this probe's 1.0018 figure (that figure was measured
+against the pre-fix behavior and has not been re-measured here since the
+removal -- this probe is report-only and not re-run as part of PR #164's
+gate).
 
 Usage:
     python3 testsys/parity/probe_plastic_traction.py [case_dir]
@@ -71,7 +76,7 @@ import perflib                                             # noqa: E402
 
 CASE_NAME = 'test.drv.a6'
 DEFAULT_CASE = os.path.join(TESTSYS, 'parity', 'probe_case', CASE_NAME)
-DEPTH_OFFSET_M = 7.3215          # meshgen.f90:104, undocumented -- item 24(d)
+DEPTH_OFFSET_M = 0.0             # meshgen.f90:201 offset removed, PR #164 (Defect C)
 MIN_DEPTH_M = 2000.0             # skip the free-surface nodes
 HALF_TOLERANCE = 0.05
 

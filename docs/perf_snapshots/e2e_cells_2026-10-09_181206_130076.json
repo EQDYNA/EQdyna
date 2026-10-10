@@ -1,0 +1,49 @@
+{
+ "tool": "run_e2e",
+ "sha": "9cac0fd",
+ "host": "cotopaxi",
+ "date": "2026-10-09 18:12",
+ "label": "explicit: cases=test.tpv13,test.tpv27,test.tpv30,test.drv.a6 backends=fortran",
+ "device": "cpu",
+ "jobs_budget": 50,
+ "tenancy_ceiling": 0.5,
+ "cells": [
+  {
+   "case": "test.drv.a6",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 90.35747218132019,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv30",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 44.90872263908386,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv27",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 50.03685784339905,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv13",
+   "backend": "fortran",
+   "ok": true,
+   "seconds": 52.347705602645874,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  }
+ ],
+ "tree_dirty": false
+}
