@@ -1,0 +1,114 @@
+$SCRATCH/test.tpv13 test.tpv13
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+ 
+DIP: dz is     433.0127018922193
+DIP: fzmin is  -12990.381056766579
+DIP: ysource, zsource are 6000.000000000001 -10392.304845413264
+DIP: dt is     0.03787724824109686
+The fractal surface may be too rough that dy/dx or dy/dz is over 0.2
+Maximum dSurface_dx and dSurface_dz are  0.0 -0.5773502691896253
+Peak roughness of the fractal surface is  7500.000000000002  m
+Dip of the fault is  60
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+ 
+DIP: dz is     433.0127018922193
+DIP: fzmin is  -12990.381056766579
+DIP: ysource, zsource are 6000.000000000001 -10392.304845413264
+DIP: dt is     0.03787724824109686
+VISCOPLASTIC: Tv = 1e-05 s, par.viscoplasticRelaxTime
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (20000.0, 25000.0, 20000.0) m
+case.setup: station n-stress sign = +1 (positive means extension)
+Estimated total cells in the model is 168000
+Estimated memory required is about 0.25872 GBs
+validateFaultRoughGeometry: bFault_Rough_Geometry.txt OK -- nnx=61, nnz=31, dx=500.0 m, corner=(-15000.0, -12990.381057) m, y in [0.0, 7500.0] m, max|slope|=0.5774, max per-cell offset=0.5 cell
+validateFaultRoughGeometry: source -- generated: planar dipping fault (native spacing 500 m)
+validateFaultRoughGeometry: WARNING - maximum |dy/dx| or |dy/dz| is 0.5774 > 0.2: the surface is rough enough to distort elements (the same threshold scripts/generateFaultInterface warns at). Every gated case that inserts a fault interface sits here (test.drv.a6 0.38, test.tpv29 0.65, test.tpv10 0.577 = cot 60 for its dipping plane), so this is a note, not a defect. The hard limit is the per-cell offset, checked above: the surface climbs 0.5 of a fault-normal cell between adjacent fault nodes.
+ensureFaultRoughGeometry: bFault_Rough_Geometry.txt already matches this case; left untouched.
+before test.tpv13     mean|a_z|=0.2066  signed mean a_z=0.2066  n=8392
+$SCRATCH/test.tpv27 test.tpv27
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.03 s, par.viscoplasticRelaxTime
+VISCOPLASTIC: deviatoric-stress depth taper 15000.0 -> 20000.0 m, par.devStrTaperDepthStart/End
+VISCOPLASTIC: plastic-strain output window half-widths (25000.0, 20000.0, 20500.0) m
+case.setup: station n-stress sign = +1 (positive means extension)
+Estimated total cells in the model is 196000
+Estimated memory required is about 0.30184 GBs
+before test.tpv27     mean|a_z|=0.1795  signed mean a_z=0.1795  n=10206
+$SCRATCH/test.tpv30 test.tpv30
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+VISCOPLASTIC: Tv = 0.05 s, par.viscoplasticRelaxTime
+VISCOPLASTIC: deviatoric-stress depth taper 17000.0 -> 22000.0 m, par.devStrTaperDepthStart/End
+VISCOPLASTIC: plastic-strain output window half-widths (25000.0, 20000.0, 22000.0) m
+case.setup: station n-stress sign = +1 (positive means extension)
+Estimated total cells in the model is 196000
+Estimated memory required is about 0.30184 GBs
+insertFaultType=3: the case supplies its own fault geometry; scripts/generateFaultInterface is not called. bFault_Rough_Geometry.txt is handled below.
+ensureFaultRoughGeometry: generating bFault_Rough_Geometry.txt for this case.
+validateFaultRoughGeometry: bFault_Rough_Geometry.txt OK -- nnx=81, nnz=41, dx=500.0 m, corner=(-20000.0, -20000.0) m, y in [-1718.3, 1590.1] m, max|slope|=0.6056, max per-cell offset=0.6056 cell
+validateFaultRoughGeometry: source -- bFault_Rough_Geometry.tpv29.100m.txt (shipped with this compset) (native spacing 100 m)
+validateFaultRoughGeometry: WARNING - maximum |dy/dx| or |dy/dz| is 0.6056 > 0.2: the surface is rough enough to distort elements (the same threshold scripts/generateFaultInterface warns at). Every gated case that inserts a fault interface sits here (test.drv.a6 0.38, test.tpv29 0.65, test.tpv10 0.577 = cot 60 for its dipping plane), so this is a note, not a defect. The hard limit is the per-cell offset, checked above: the surface climbs 0.6056 of a fault-normal cell between adjacent fault nodes.
+before test.tpv30     mean|a_z|=0.1795  signed mean a_z=0.1795  n=10206
+$SCRATCH/test.drv.a6 test.drv.a6
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+Layers for velocity structure is  17
+-8.502712851567528e-23 1.6363656146635617e-05
+The fractal surface may be too rough that dy/dx or dy/dz is over 0.2
+Maximum dSurface_dx and dSurface_dz are  0.3301503643786721 0.3794470721504669
+Peak roughness of the fractal surface is  532.610792611444  m
+Dip of the fault is  90.0
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+Layers for velocity structure is  17
+VISCOPLASTIC: Tv = 0.28868360277136257 s, derived as 2*dz/3464 (the pre-v5.9.0 hardcode)
+VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a fixed fraction of |strVert| at every depth)
+VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
+case.setup: station n-stress sign = +1 (positive means extension)
+Estimated total cells in the model is 256000
+Estimated memory required is about 0.39424 GBs
+validateFaultRoughGeometry: bFault_Rough_Geometry.txt OK -- nnx=101, nnz=51, dx=500.0 m, corner=(-25000.0, -25000.0) m, y in [-876.2, 532.6] m, max|slope|=0.3794, max per-cell offset=0.3794 cell
+validateFaultRoughGeometry: source -- generated: synthetic fractal surface, Hurst 1, seedId=1 (native spacing 500 m)
+validateFaultRoughGeometry: WARNING - maximum |dy/dx| or |dy/dz| is 0.3794 > 0.2: the surface is rough enough to distort elements (the same threshold scripts/generateFaultInterface warns at). Every gated case that inserts a fault interface sits here (test.drv.a6 0.38, test.tpv29 0.65, test.tpv10 0.577 = cot 60 for its dipping plane), so this is a note, not a defect. The hard limit is the per-cell offset, checked above: the surface climbs 0.3794 of a fault-normal cell between adjacent fault nodes.
+ensureFaultRoughGeometry: bFault_Rough_Geometry.txt already matches this case; left untouched.
+before test.drv.a6    mean|a_z|=0.1581  signed mean a_z=0.1581  n=19702
+after  test.tpv13     mean|a_z|=0.0206  signed mean a_z=-0.0020  n=8392
+after  test.tpv27     mean|a_z|=0.0000  signed mean a_z=-0.0000  n=10206
+after  test.tpv30     mean|a_z|=0.0078  signed mean a_z=-0.0000  n=10206
+after  test.drv.a6    mean|a_z|=0.0481  signed mean a_z=0.0481  n=19702
+
+src/fortran/meshgen.f90 restored to the committed tree and bin/eqdyna rebuilt from it (verified clean via git status).
+
+case           mean|az| before mean|az| after  signed before   signed after
+test.tpv13             0.2066         0.0206         0.2066        -0.0020
+test.tpv27             0.1795         0.0000         0.1795        -0.0000
+test.tpv30             0.1795         0.0078         0.1795        -0.0000
+test.drv.a6            0.1581         0.0481         0.1581         0.0481

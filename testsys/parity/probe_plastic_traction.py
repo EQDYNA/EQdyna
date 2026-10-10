@@ -43,7 +43,7 @@ That collapse is what makes this a clean one-line check for THIS case; a case
 with a different str1ToFaultAngle needs the full rotation and this probe would
 have to be extended rather than reused.
 
-The +7.3215 m offset in meshgen.f90:104's depth argument (item 24(d)) was
+The +7.3215 m offset in meshgen.f90:201's depth argument (item 24(d)) was
 REMOVED universally 2026-10-09 (PR #164, Defect C; owner decision superseding
 24(d): "it should be universal" / "we are setting stresses at the center of
 each cell") -- depth is now exactly the element-centre depth everywhere, with
@@ -76,7 +76,7 @@ import perflib                                             # noqa: E402
 
 CASE_NAME = 'test.drv.a6'
 DEFAULT_CASE = os.path.join(TESTSYS, 'parity', 'probe_case', CASE_NAME)
-DEPTH_OFFSET_M = 0.0             # meshgen.f90:104 offset removed, PR #164 (Defect C)
+DEPTH_OFFSET_M = 0.0             # meshgen.f90:201 offset removed, PR #164 (Defect C)
 MIN_DEPTH_M = 2000.0             # skip the free-surface nodes
 HALF_TOLERANCE = 0.05
 

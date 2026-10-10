@@ -1,0 +1,40 @@
+{
+ "tool": "run_e2e",
+ "sha": "6eb64ba",
+ "host": "cotopaxi",
+ "date": "2026-10-09 15:29",
+ "label": "explicit: cases=test.tpv13,test.tpv27,test.tpv30 backends=fortran",
+ "device": "cpu",
+ "jobs_budget": 50,
+ "tenancy_ceiling": 0.5,
+ "cells": [
+  {
+   "case": "test.tpv30",
+   "backend": "fortran",
+   "ok": false,
+   "seconds": 39.89329671859741,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv27",
+   "backend": "fortran",
+   "ok": false,
+   "seconds": 39.694021224975586,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  },
+  {
+   "case": "test.tpv13",
+   "backend": "fortran",
+   "ok": false,
+   "seconds": 41.1371386051178,
+   "ranks": 4,
+   "platform": "cpu",
+   "platform_evidence": "fortran solver: CPU-only, src/fortran has no GPU path"
+  }
+ ],
+ "tree_dirty": true
+}

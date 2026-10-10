@@ -33,14 +33,19 @@ PYTHON_SRC = os.path.join(REPO_ROOT, 'src', 'python', 'eqdyna', 'meshgen.py')
 # The one call site in Fortran that feeds setPlasticStress its depth.
 FORTRAN_CALL_RE = re.compile(
     r'call\s+setPlasticStress\(\s*([^,]+?)\s*,\s*elemCount\)')
-# The three sites in Python that compute the same quantity (docstring
-# example, the vectorized build_elements assignment, and the scalar mirror).
+# The two CODE sites that compute the same quantity (the vectorized
+# build_elements assignment and the scalar mirror). The offset group is a
+# GENERIC trailing "+ <number>" -- not literal "7.3215" -- so a regression
+# that re-adds any other nonzero additive constant (not just the historical
+# one) is caught too, not just a verbatim re-insertion of 7.3215.
 PYTHON_DEPTH_RE = re.compile(
-    r'depth(?:_val)?\s*=\s*(-0\.5\s*\*\s*\([^)]*\))(\s*\+\s*7\.3215)?')
+    r'depth(?:_val)?\s*=\s*(-0\.5\s*\*\s*\([^)]*\))(\s*\+\s*[0-9]+(?:\.[0-9]*)?)?')
 # The two CODE sites (the vectorized build_elements assignment and the
 # scalar mirror); the docstring's prose example (`-0.5*(zline[iz]+...`) is
-# backtick-quoted text, not an assignment, and is covered by the blanket
-# FORBIDDEN_SUBSTR check below instead.
+# backtick-quoted text, not an assignment, and is NOT matched by
+# PYTHON_DEPTH_RE at all (no `depth(_val) =` prefix there) -- it carries no
+# live offset to catch a regression in, so it is intentionally left
+# unchecked by this function rather than covered by some other check.
 MIN_PYTHON_SITES = 2
 
 EXPECTED_FORTRAN = '-0.5d0*(zline(iz)+zline(iz-1))'
@@ -70,8 +75,10 @@ def check_python_text(text):
         return False, 'expected >= %d depth-expression CODE sites in meshgen.py, found %d' % (
             MIN_PYTHON_SITES, len(sites))
     for base, offset in sites:
-        if offset:
-            return False, 'a depth expression still carries the removed 7.3215 offset: %r%r' % (base, offset)
+        if offset and float(offset.replace('+', '').strip()) != 0.0:
+            return False, (
+                'a depth expression still carries a nonzero additive offset '
+                '(not necessarily the historical 7.3215): %r%r' % (base, offset))
     return True, 'ok'
 
 
@@ -116,6 +123,24 @@ def main():
         if ok:
             failures.append('REVERTED FIXTURE (Python, should FAIL): checker '
                              'passed a tree with the 7.3215 offset reinstated')
+
+    # A SEPARATE both-ways fixture, a DIFFERENT additive constant (3.0, never
+    # historically present) -- proves the checker catches ANY nonzero offset
+    # reappearing, not merely a verbatim re-insertion of the literal 7.3215
+    # this regression happened to be filed under.
+    reverted_python_other = python_text.replace(
+        'depth = -0.5 * (zline[IZ] + zline[IZ - 1])',
+        'depth = -0.5 * (zline[IZ] + zline[IZ - 1]) + 3.0')
+    if reverted_python_other == python_text:
+        failures.append('could not construct the reverted-Python (other-constant) '
+                         'fixture -- the depth-expression text this test substitutes '
+                         'against has drifted out from under it')
+    else:
+        ok, msg = check_python_text(reverted_python_other)
+        if ok:
+            failures.append('REVERTED FIXTURE (Python, +3.0, should FAIL): checker '
+                             'passed a tree with a NEW nonzero offset (not 7.3215) -- '
+                             'the generalization this test is for did not land')
 
     if failures:
         for f in failures:

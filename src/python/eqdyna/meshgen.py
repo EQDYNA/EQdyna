@@ -906,7 +906,7 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     than (nx-1)*(ny-1)*(nz-1) by the number of wedge-triggered brick
     positions, one extra element per trigger),
     mat is (E,5) [vp,vs,rho,lambda,mu], and depth (E,) is
-    `-0.5*(zline[iz]+zline[iz-1])` (meshgen.f90:103's argument to
+    `-0.5*(zline[iz]+zline[iz-1])` (meshgen.f90:201's argument to
     setPlasticStress; the "+ 7.3215d0" magic-number shift this verbatim
     comment used to describe was defect C -- an unexplained, unjustified
     depth offset with no spec basis, which left a nonzero sigma_zz at the
@@ -1140,7 +1140,7 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
                                    'or nmat>1/n2mat==6 (3D structured grid) '
                                    'branches are ported')
 
-    # meshgen.f90:103 `setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)),
+    # meshgen.f90:201 `setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)),
     # elemCount)` -- same expression, same operand order, evaluated per element.
     # (The "+ 7.3215d0" this comment used to carry was defect C, removed
     # 2026-10-09, board PR #164 -- see Fortran meshgen.f90's comment there.)
@@ -1185,7 +1185,7 @@ def _splice_wedge_elements(conn, elem_type, mat, depth, wedge_trigger,
     non-degenerating path. The type-11 row REUSES that position's own
     mat/depth verbatim: wedge() never overwrites `mat(elemCount,:)` for the
     FIRST sub-element (only the type-12 slot gets an explicit mat write, see
-    `_wedge_material_row`) and meshgen.f90:104's setPlasticStress call runs
+    `_wedge_material_row`) and meshgen.f90:201's setPlasticStress call runs
     once per ix/iy/iz point using whatever `elemCount` is AFTER the wedge
     split (i.e. the type-12 slot) -- both facts mean this port's depth value
     for the type-11 row is not the literal Fortran value (which is simply
