@@ -297,6 +297,7 @@ SHARDS = {
         "test_drucker_prager_kernel.py",
         "test_fractal_fault_geometry_derivatives.py",
         "test_multifault_item7_fix.py",
+        "test_multifault_restart_eqquasi_layout.py",  # added 2026-10-10: same build as item7, 3 tiny reads, <5 s
         "test_perf_ledger.py",
         "test_perf_tool_locks.py",
         "test_pml_region_axes.py",

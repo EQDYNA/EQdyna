@@ -165,81 +165,67 @@ def finalSurfDisp():
     plt.savefig("cFinalSurfDisp.png", dpi=300)
     plt.close()
 
-def generateNcRestart(faultVarArr, fx, fz, nfx, nfz, suffix=''):
-    # input fault_arr(nfx, nfz,) and make netCDF file fault.r.4eqquasi.nc for EQquasi.
-    # According to EQquasi subroutine netcdf_read_on_fault_restart(infile1, infile2),
-    # or according to EQquasi subroutine netcdf_write_on_fault(outfile) in netcdf_io.f90,
-    # The variables transferred include:
-    # infile1:  5, a, b, Dc, v0, r0
-    # infile2/outfile: 12, shear_strike,, shear_dip, effective_normal, slip_rate, state_variable, state_normal, vxm, vym, vzm, vxs, vys, vzs
-    # infile1 will be provided by EQquasi.
-    # Therefore, we need to generate infile2 from frt.txt* from EQdyna.
-    # frt.txt* are processed by function ruptureDynamics() in this Python script.
+RESTART_VARS = [('shear_strike', 'Pa'), ('shear_dip', 'Pa'), ('effective_normal', 'Pa'),
+                ('slip_rate', 'm/s'), ('state_variable', 'unit'), ('state_normal', 'Pa'),
+                ('vxm', 'm/s'), ('vym', 'm/s'), ('vzm', 'm/s'),
+                ('vxs', 'm/s'), ('vys', 'm/s'), ('vzs', 'm/s')]
+
+def generateNcRestart(faults):
+    # Write fault.dyna.r.nc, the restart file EQquasi's
+    # netcdf_read_on_fault_restart(infile1, infile2) reads as infile2: the 12
+    # RESTART_VARS, gridded from frt.txt* by loadFrtData. infile1 (a, b, Dc,
+    # v0, r0) is provided by EQquasi.
     #
-    # Row 17 (multi-fault): fx/fz/nfx/nfz are THIS fault's own strike/dip
-    # grid (ruptureDynamics' per-fault loadFrtData output), not par.fx/par.
-    # nfx/par.fz/par.nfz directly -- those are fault-1-only fallback fields
-    # and would be wrong for fault 2+. `suffix` ('' for fault 1/ntotft==1,
-    # '_ft2' etc otherwise) keeps fault 1's restart file named exactly
-    # 'fault.dyna.r.nc' (byte-identical at ntotft<=1, and the one name
-    # testsys/compare.py's nc gate reads for every case) while giving
-    # fault 2+ their own file instead of overwriting fault 1's.
+    # faults is ruptureDynamics' list of (fVarArr, fx, fz, nfx, nfz, suffix),
+    # one per fault, each on that fault's own strike/dip grid. One fault keeps
+    # the 2-D (dip, strike) layout. More than one uses EQquasi's own
+    # netcdf_write_on_fault layout, the same one EQdyna reads fault.r.nc in:
+    # one file, untagged variables, dims (nid_fault, dip, strike), each fault
+    # at the (0, 0) corner of its own slice, zero-padded to the largest
+    # fault's extent.
 
-    ds         = nc.Dataset("fault.dyna.r%s.nc" % suffix, "w", format="NETCDF4")
+    ds = nc.Dataset("fault.dyna.r.nc", "w", format="NETCDF4")
 
-    dip        = ds.createDimension('dip',    nfz)
-    strike     = ds.createDimension('strike', nfx)
-    dip_var    = ds.createVariable('dip', np.float64, ('dip',))
-    strike_var = ds.createVariable('strike', np.float64, ('strike',))
+    if len(faults) == 1:
+        faultVarArr, fx, fz, nfx, nfz, _ = faults[0]
+        dip        = ds.createDimension('dip',    nfz)
+        strike     = ds.createDimension('strike', nfx)
+        dip_var    = ds.createVariable('dip', np.float64, ('dip',))
+        strike_var = ds.createVariable('strike', np.float64, ('strike',))
+        dims       = ('dip', 'strike',)
+    else:
+        nfxMax     = max(f[3] for f in faults)
+        nfzMax     = max(f[4] for f in faults)
+        ds.createDimension('nid_fault', len(faults))
+        ds.createDimension('dip',       nfzMax)
+        ds.createDimension('strike',    nfxMax)
+        flt_var    = ds.createVariable('nid_fault', np.int32, ('nid_fault',))
+        dims       = ('nid_fault', 'dip', 'strike',)
 
-    var0       = ds.createVariable('shear_strike',     np.float64, ('dip','strike',))
-    var1       = ds.createVariable('shear_dip',        np.float64, ('dip','strike',))
-    var2       = ds.createVariable('effective_normal', np.float64, ('dip','strike',))
-    var3       = ds.createVariable('slip_rate',        np.float64, ('dip','strike',))
-    var4       = ds.createVariable('state_variable',   np.float64, ('dip','strike',))
-    var5       = ds.createVariable('state_normal',     np.float64, ('dip','strike',))
-    var6       = ds.createVariable('vxm',              np.float64, ('dip','strike',))
-    var7       = ds.createVariable('vym',              np.float64, ('dip','strike',))
-    var8       = ds.createVariable('vzm',              np.float64, ('dip','strike',))
-    var9       = ds.createVariable('vxs',              np.float64, ('dip','strike',))
-    var10      = ds.createVariable('vys',              np.float64, ('dip','strike',))
-    var11      = ds.createVariable('vzs',              np.float64, ('dip','strike',))
-    var0.units = 'Pa'
-    var1.units = 'Pa'
-    var2.units = 'Pa'
-    var3.units = 'm/s'
-    var4.units = 'unit'
-    var5.units = 'Pa'
-    var6.units = 'm/s'
-    var7.units = 'm/s'
-    var8.units = 'm/s'
-    var9.units = 'm/s'
-    var10.units = 'm/s'
-    var11.units = 'm/s'
+    var = [ds.createVariable(name, np.float64, dims) for name, _ in RESTART_VARS]
+    for v, (_, unit) in zip(var, RESTART_VARS):
+        v.units = unit
 
-    strike_var[:] = fx[:]
-    dip_var[:]    = fz[:]
-    var0[:,:]     = faultVarArr[:,:,0]
-    var1[:,:]     = faultVarArr[:,:,1]
-    var2[:,:]     = faultVarArr[:,:,2]
-    var3[:,:]     = faultVarArr[:,:,3]
-    var4[:,:]     = faultVarArr[:,:,4]
-    var5[:,:]     = faultVarArr[:,:,5]
-    var6[:,:]     = faultVarArr[:,:,6]
-    var7[:,:]     = faultVarArr[:,:,7]
-    var8[:,:]     = faultVarArr[:,:,8]
-    var9[:,:]     = faultVarArr[:,:,9]
-    var10[:,:]    = faultVarArr[:,:,10]
-    var11[:,:]    = faultVarArr[:,:,11]
+    if len(faults) == 1:
+        strike_var[:] = fx[:]
+        dip_var[:]    = fz[:]
+        for k, v in enumerate(var):
+            v[:,:] = faultVarArr[:,:,k]
+    else:
+        flt_var[:] = np.arange(1, len(faults) + 1)
+        for k, v in enumerate(var):
+            arr = np.zeros((len(faults), nfzMax, nfxMax))
+            for ift, (faultVarArr, fx, fz, nfx, nfz, _) in enumerate(faults):
+                arr[ift, :nfz, :nfx] = faultVarArr[:nfz, :nfx, k]
+            v[:,:,:] = arr
 
     ds.close()
   
 def _main_func(description):
     results = ruptureDynamics()
     print('Generating rupture dynamics figure ...')
-    for fVarArr, fx, fz, nfx, nfz, suffix in results:
-        generateNcRestart(fVarArr, fx, fz, nfx, nfz, suffix)
-        print('Generating restart file fault.dyna.r%s.nc ...' % suffix)
+    generateNcRestart(results)
+    print('Generating restart file fault.dyna.r.nc ...')
 
     if par.outputFinalSurfDisp==1:
         if '--skip-final-surf-disp' in sys.argv[1:]:

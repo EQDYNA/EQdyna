@@ -59,8 +59,11 @@ untouched -- a single-fault case's files are byte-for-byte unaffected:
   fault 1, `ft2_` for fault 2 (e.g. `faultstft2_000dp100.txt`).
 * `src_evol<tag><rank>` -- source-time-function restart data, same `tag`
   convention, per rank.
-* `fault.dyna.r<suffix>.nc` -- the NetCDF field file (see above), `suffix`
-  empty for fault 1 or `_ft2` for fault 2.
+* `fault.dyna.r.nc` is the exception to the tags: ONE file for all faults, in
+  EQquasi's restart layout -- untagged variables with dims
+  `(nid_fault, dip, strike)`, each fault at the `(0, 0)` corner of its own
+  slice, zero-padded to the largest fault. A fully dynamic cycle (`mode = 2`)
+  reads EQquasi's `fault.r.nc` in the same layout.
 * `SCECRuptureTime<suffix>.txt` and `cRuptureDynamics<suffix>.png`, written by
   `plotRuptureDynamics` -- same `suffix` convention.
 
