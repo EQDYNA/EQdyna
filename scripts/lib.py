@@ -467,7 +467,7 @@ def loadFrtData(par):
       rupt      -- (na*ma, 3) flat [xcoor, along-dip distance, rupture time]
       rupt2d    -- (ma, na, 100) gridded rupture-time/slip/stress panels
       fVarArr   -- (ma, na, 100) gridded fault-restart variables, passed
-                   to generateNcRestart(faultVarArr, fx, fz, nfx, nfz)
+                   to generateNcRestart via ruptureDynamics
       magnitude -- moment magnitude computed from summed slip*area*shearMod
       fx, fz, nfx, nfz -- THIS fault's own strike/dip grid (generateNcRestart
                    needs these per fault instead of reading par.fx/par.nfx

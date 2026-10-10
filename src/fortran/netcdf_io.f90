@@ -129,49 +129,65 @@ end subroutine netcdf_read_on_fault_eqdyna
 subroutine netcdf_read_on_fault_eqdyna_restart
     use netcdf
     use globalvar
+    use errorCodes
     implicit none 
     character (len = 50 ) :: infile
-    integer (kind = 4) :: ncid,  var_id(20), i, j, nvar, fnx, fnz, ii, jj, ift
+    integer (kind = 4) :: ncid,  var_id(20), i, j, nvar, fnx, fnz, ii, jj, ift, ndims_var
+    integer (kind = 4) :: dimids3(3), nftFile
     real (kind = dp), allocatable, dimension(:,:,:) :: on_fault_vars
     real (kind = dp)   :: xcord, zcord
-    character (len = 8) :: tag, faultTag
+    character (len = 48) :: ntotftStr
 
     infile = "fault.r.nc"
     nvar = 12
 
-    ! NOTE. the array structure is different than loading python generated nc file.
-    ! here we follow the structure of subroutine netcdf_write_on_fault.
-    ! on_fault_vars is now nxt by nzt!!!
+    ! fault.r.nc is written by EQquasi's netcdf_write_on_fault: one set of
+    ! untagged variables, dims (nid_strike, nid_dip, nid_fault) in Fortran
+    ! order, each fault's (strike, dip) grid starting at (1,1) of its own
+    ! nid_fault slice, padded with zeros to the largest fault's extent.
+    ! Fault ift is read as the (fnx, fnz) corner of slice ift. A rank-2 file
+    ! (EQquasi before nid_fault) holds one fault only.
     ! Open the file. NF90_NOWRITE tells netCDF we want read-only access to the file.
     call check( nf90_open(infile, NF90_NOWRITE, ncid))
 
-    ! Row 17 (multi-fault): same fix and same reasoning as
-    ! netcdf_read_on_fault_eqdyna above -- re-size and re-read per fault,
-    ! faultTag()-prefixed variable names, bit-identical at ntotft==1.
+    ! Get the varid of the data variables, based on their names.
+    ! 'shear_strike', 'shear_dip', 'effective_normal', 'slip_rate' , 'state_variable', 'vxm', 'vym', 'vzm', 'vxs', 'vys', 'vzs'
+    call check( nf90_inq_varid(ncid, "shear_strike",     var_id(1)))
+    call check( nf90_inq_varid(ncid, "shear_dip",        var_id(2)))
+    call check( nf90_inq_varid(ncid, "effective_normal", var_id(3)))
+    call check( nf90_inq_varid(ncid, "slip_rate",        var_id(4)))
+    call check( nf90_inq_varid(ncid, "state_variable",   var_id(5)))
+    call check( nf90_inq_varid(ncid, "state_normal",     var_id(6)))
+    call check( nf90_inq_varid(ncid, "vxm",              var_id(7)))
+    call check( nf90_inq_varid(ncid, "vym",              var_id(8)))
+    call check( nf90_inq_varid(ncid, "vzm",              var_id(9)))
+    call check( nf90_inq_varid(ncid, "vxs",              var_id(10)))
+    call check( nf90_inq_varid(ncid, "vys",              var_id(11)))
+    call check( nf90_inq_varid(ncid, "vzs",              var_id(12)))
+    dimids3 = 0
+    call check( nf90_inquire_variable(ncid, var_id(1), ndims = ndims_var, dimids = dimids3))
+    nftFile = 1
+    if (ndims_var == 3) call check( nf90_inquire_dimension(ncid, dimids3(3), len = nftFile))
+    if (nftFile < ntotft) then
+        write(ntotftStr, '(I0,A,I0)') nftFile, ' fault(s) but ntotft = ', ntotft
+        call abortRun(ERR_INPUT_FILE_STALE, 'fault.r.nc holds '//trim(ntotftStr)// &
+            '; write it with an EQquasi that carries the nid_fault dimension')
+    endif
+
     do ift = 1, ntotft
-        tag = faultTag(ift)
         fnx  = nint((fxmax(ift) - fxmin(ift))/dx)+1
         fnz  = nint((fzmax(ift) - fzmin(ift))/dz)+1
         if (allocated(on_fault_vars)) deallocate(on_fault_vars)
         allocate(on_fault_vars(fnx,fnz,nvar))
 
-        ! Get the varid of the data variables, based on their names.
-        ! 'shear_strike', 'shear_dip', 'effective_normal', 'slip_rate' , 'state_variable', 'vxm', 'vym', 'vzm', 'vxs', 'vys', 'vzs'
-        call check( nf90_inq_varid(ncid, trim(tag)//"shear_strike",     var_id(1)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"shear_dip",        var_id(2)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"effective_normal", var_id(3)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"slip_rate",        var_id(4)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"state_variable",   var_id(5)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"state_normal",     var_id(6)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"vxm",              var_id(7)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"vym",              var_id(8)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"vzm",              var_id(9)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"vxs",              var_id(10)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"vys",              var_id(11)))
-        call check( nf90_inq_varid(ncid, trim(tag)//"vzs",              var_id(12)))
         ! Read the data
         do i = 1, nvar
-            call check( nf90_get_var(ncid, var_id(i), on_fault_vars(:,:,i)))
+            if (ndims_var == 3) then
+                call check( nf90_get_var(ncid, var_id(i), on_fault_vars(:,:,i), &
+                    start = (/1, 1, ift/), count = (/fnx, fnz, 1/)))
+            else
+                call check( nf90_get_var(ncid, var_id(i), on_fault_vars(:,:,i)))
+            endif
         enddo
 
         do i = 1, nftnd(ift)
