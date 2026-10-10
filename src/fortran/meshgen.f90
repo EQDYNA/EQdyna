@@ -193,11 +193,11 @@ subroutine meshgen
                     ! what made the Method-2-only sink visible. Removing the offset
                     ! (depth is simply the element-center depth, matching the grid
                     ! exactly, zero at the true surface) dropped the measured
-                    ! surface residual acceleration to -0.029..0.015 m/s^2 (FEM
-                    ! constant-stress-element discretization noise, ~100x smaller,
-                    ! no longer a systematic one-sided sink). See
-                    ! docs/evidence/method2-stress-defects-2026-10-09/ for the
-                    ! before/after dumps.
+                    ! mean |a_z| at the surface from 0.21 to 0.021 m/s^2 on
+                    ! test.tpv13 (signed mean 0.21 -> -0.002: no longer a
+                    ! one-sided sink). See
+                    ! docs/evidence/method2-stress-defects-2026-10-09/
+                    ! surface_residual_output.txt for every case.
                     if (C_elastic == 0) call setPlasticStress(-0.5d0*(zline(iz)+zline(iz-1)), elemCount)
                  endif!if element
             enddo!iy
