@@ -11,7 +11,7 @@ from os.path import exists
 import matplotlib.pyplot as plt
 from matplotlib import animation, rc
 import netCDF4 as nc
-from lib import loadFrtData, faultTag
+from lib import loadFrtData, faultTag, requireMultiFaultRestartDzEqualsDx
 #
 SMALL_SIZE = 12
 
@@ -184,6 +184,10 @@ def generateNcRestart(faults):
     # one file, untagged variables, dims (nid_fault, dip, strike), each fault
     # at the (0, 0) corner of its own slice, zero-padded to the largest
     # fault's extent.
+
+    # A multi-fault cycle with dz != dx would write a file EQquasi reads
+    # misaligned along dip; refuse before creating it.
+    requireMultiFaultRestartDzEqualsDx(par, where='plotRuptureDynamics')
 
     ds = nc.Dataset("fault.dyna.r.nc", "w", format="NETCDF4")
 

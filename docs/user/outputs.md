@@ -147,7 +147,13 @@ untouched -- a single-fault case's files are byte-for-byte unaffected:
   EQquasi's restart layout -- untagged variables with dims
   `(nid_fault, dip, strike)`, each fault at the `(0, 0)` corner of its own
   slice, zero-padded to the largest fault. A fully dynamic cycle (`mode = 2`)
-  reads EQquasi's `fault.r.nc` in the same layout.
+  reads EQquasi's `fault.r.nc` in the same layout. A multi-fault cycle needs
+  `dz` equal to `dx`: EQquasi spaces the restart file's dip rows by `dx` and
+  EQdyna by `dz`, so any other `dz` would read or write the file misaligned
+  along dip. `case.setup` refuses such a case before writing anything,
+  `plotRuptureDynamics` refuses to write `fault.dyna.r.nc` for it, and the
+  solver refuses to read `fault.r.nc` for it (exit code 19). A single-fault
+  restart is not checked.
 * `SCECRuptureTime<suffix>.txt` and `cRuptureDynamics<suffix>.png`, written by
   `plotRuptureDynamics` -- `suffix` empty for fault 1, `_ft2` for fault 2
   (e.g. `SCECRuptureTime_ft2.txt`).

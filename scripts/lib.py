@@ -136,6 +136,38 @@ def resolveFaultGeom(par):
     return geom
 
 
+def requireMultiFaultRestartDzEqualsDx(par, where='case.setup'):
+    """Refuse a multi-fault (ntotft > 1) EQquasi/EQdyna restart (mode = 2)
+    whose dz differs from dx.
+
+    EQquasi's fault is vertical and it spaces the dip rows of its restart
+    file by dx; EQdyna grids them by dz (netcdf_read_on_fault_eqdyna_restart
+    on the read side, loadFrtData/generateNcRestart on the write side). With
+    dz != dx the two codes disagree about which node every dip row past the
+    first belongs to: dz > dx reads the wrong nodes silently, dz < dx runs
+    past the end of the file. EQquasi is not changed; this side refuses.
+
+    The comparison is exact on purpose. case.setup writes par.dx and par.dz
+    to bGlobal.txt with str(), which round-trips a float exactly, so the
+    Fortran reader's own `dz /= dx` guard compares the same two doubles this
+    does; and any nonzero difference misplaces nodes deep enough along dip.
+
+    Single-fault restarts (ntotft == 1) and every mode other than 2 are left
+    unchanged: the function returns without looking at dx or dz."""
+    if getattr(par, 'ntotft', 1) <= 1 or getattr(par, 'mode', 1) != 2:
+        return
+    dx, dz = float(par.dx), float(par.dz)
+    if dz != dx:
+        raise ValueError(
+            '%s: multi-fault restart (mode = 2, ntotft = %d) refused: dz = %r '
+            'but dx = %r.\n'
+            '  EQquasi spaces the dip rows of its restart file by dx and EQdyna '
+            'by dz, so with dz != dx the restart file would be read or written '
+            'misaligned along dip.\n'
+            '  Set par.dz equal to par.dx for a multi-fault cycle.'
+            % (where, par.ntotft, dz, dx))
+
+
 def resolveOnFaultStationsPerFault(par):
     """Row 17 (multi-fault): the list of ntotft (x, z) on-fault station lists
     bStations.txt needs, one list per fault, in the exact fault order

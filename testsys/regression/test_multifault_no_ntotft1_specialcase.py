@@ -105,6 +105,12 @@ ALLOWLIST = [
     # is the one place in the engine where naming fault 1 specifically is the
     # whole point, not a missed generalization.
     ('library_output.f90', 'ntotft > 1 .and. ift > 1'),
+    # Multi-fault restart dz == dx refusal (netcdf_io.f90, owner decision
+    # 2026-10-11): EQquasi spaces fault.r.nc dip rows by dx, EQdyna by dz,
+    # so a multi-fault restart with dz /= dx is refused. Single-fault
+    # restarts are deliberately left as they were, so this one condition
+    # must name the multi-fault case; it is a refusal, not a code path.
+    ('netcdf_io.f90', 'if (ntotft > 1 .and. dz /= dx) then'),
 ]
 
 # `ntotft` (or the reversed operand order `1 == ntotft`) compared, by ANY

@@ -34,6 +34,7 @@ authoritative; the specific number is advisory under `srun`.
 | 16 | `ERR_CFG_MATERIAL_TABLE_INVALID` | bMaterial.txt's two-sided (n2mat=5) table needs one vertical planar fault, side column -1/+1, ascending per-side layer bottoms |
 | 17 | `ERR_CFG_MATERIAL_GRID_INVALID` | bMaterial.txt's 3D material grid (n2mat=6, rows x y z vp vs rho) must be a complete uniform nx*ny*nz block, every cell once, on-grid coordinates, positive vp/vs/rho |
 | 18 | `ERR_CFG_FAULT_TS_INVALID` | bGlobal.txt's fault time-series switch (par.outputFaultTimeSeries) is neither 0 nor 1 |
+| 19 | `ERR_CFG_RESTART_DZ_NE_DX` | a multi-fault (ntotft > 1) restart (mode = 2) needs dz == dx: EQquasi spaces fault.r.nc dip rows by dx, EQdyna by dz, so any other dz reads a misaligned file |
 
 **Input files** (21-29)
 
