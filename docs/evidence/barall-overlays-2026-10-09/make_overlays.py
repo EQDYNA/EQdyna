@@ -1,8 +1,9 @@
 #! /usr/bin/env python3
-"""Rebuild this directory's FaultMod CVWS overlays and the verdict numbers.
+"""Rebuild the cross-code / own-archive overlays and the verdict numbers.
 
     python3 make_overlays.py figures RESULTS OUTDIR [case ...]
     python3 make_overlays.py numbers RESULTS [case ...]
+    python3 make_overlays.py table RESULTS OUTDIR [case ...]
     python3 make_overlays.py resolution RUNS OUTDIR [--no-figures] [case ...]
 
 RUNS/<case>_dx<dx>/ (resolution mode) are runs of one case at several dx,
@@ -14,6 +15,14 @@ RESULTS/<case>/ holds one fortran run's station files plus frt.canonical.txt
 (python3 -m testsys.frt_canonical <run_dir>). The FaultMod submissions are read,
 read-only, from the shared-dataset store ($SCEC_CVWS, default
 ~/shared_dataset). Figures come from scripts/figures/scec_compare.py only.
+
+BASELINE (owner decision 2026-10-10, board PR #175): a case listed in ARCHIVE
+is overlaid against EQdyna's own archived SCEC submission (EQdyna-archive),
+read-only from scec_archive/ ($SCEC_ARCHIVE, default: the main checkout's
+scec_archive/, which is gitignored); every other case keeps FaultMod. The
+"FaultMod" wording in field names (t_fm, faultmod_ruptured) means "the
+baseline" for an ARCHIVE case. `table` writes table.md + metrics.json for the
+named cases at their gate term (case_metrics, vector arrivals, MATCH below).
 
 `numbers` is the verdict table in README.md. It is computed on EXACTLY-shared
 node coordinates and station names, with no spatial interpolation. One
@@ -44,6 +53,40 @@ FAULTMOD = {
     'tpv24': 'scec_cvws.tpv2425/raw/tpv24/barall-faultmod-100m-2013',
     'tpv25': 'scec_cvws.tpv2425/raw/tpv25/barall-faultmod-100m-2013',
 }
+# EQdyna-archive baseline per case: the finest-resolution submission in the
+# benchmark's main listing, its -nstress-corrected copy where one exists.
+ARCHIVE = {
+    'tpv29': 'tpv29/eqdyna-v3.1-50m-2015',
+    'tpv30': 'tpv30/eqdyna-v3.1-25m-2015',
+    'tpv34': 'tpv34/eqdyna3d-v4.0-25m-2016',
+    'tpv35': 'tpv35/eqdyna3d-v4.1.3-100m-2017',
+    'tpv36': 'tpv36/eqdyna-v5.3.3-50m-2024-nstress-corrected',
+    'tpv37': 'tpv37/eqdyna-v5.3.3-50m-2024-nstress-corrected',
+    'tpv104': 'tpv104/eqdyna3d-v4.1-100m-2016-nstress-corrected',
+    'tpv1053d': 'tpv105-3d/eqdyna3d-v5.1.0-100m-2020',
+}
+
+
+def _archive_root():
+    if os.environ.get('SCEC_ARCHIVE'):
+        return os.environ['SCEC_ARCHIVE']
+    common = subprocess.run(['git', '-C', ROOT, 'rev-parse', '--path-format=absolute',
+                             '--git-common-dir'], capture_output=True, text=True).stdout.strip()
+    for r in (ROOT, os.path.dirname(common) if common else ROOT):
+        if os.path.isdir(os.path.join(r, 'scec_archive')):
+            return os.path.join(r, 'scec_archive')
+    raise SystemExit('scec_archive/ not found; set SCEC_ARCHIVE')
+
+
+def baseline(c):
+    """(path, legend label, short name) of case c's overlay baseline."""
+    if c in ARCHIVE:
+        d = os.path.join(_archive_root(), ARCHIVE[c])
+        ver, res, yr = os.path.basename(d).split('-')[1:4]
+        return d, f'EQdyna-archive {ver} {res} ({yr})', 'EQdyna-archive'
+    return os.path.join(SD, FAULTMOD[c]), 'FaultMod', 'FaultMod'
+
+
 DX = {'tpv33': 400, 'tpv24': 250}            # every other case: 500 m
 TERM = {'tpv24': 12.0, 'tpv25': 12.0}        # every other case: the 5 s gate term
 JUNCTION_X = {'tpv24': 750, 'tpv25': 500}    # measured from the runs' frt
@@ -53,8 +96,11 @@ def faults(c):
     return [1, 2] if c in ('tpv24', 'tpv25') else [None]
 
 
-def note(c, f):
+def note(c, f, results=None):
     dx, term = DX.get(c, 500), TERM.get(c, 5.0)
+    if c in ARCHIVE:
+        import scec_readers as R
+        dx = R.Model(os.path.join(results, c), 0).load_rupture()['dx_m']
     s = (f'EQdyna fortran, gate config dx {dx} m, run to {term:g} s '
          + ('(5 s gate term; spec term is longer)' if term == 5.0
             else '(branch-feature run, not a gated case yet)'))
@@ -79,8 +125,14 @@ def figures(results, out, cases):
                     cmd += ['--component', 'h', 'v', 'n']
                 if f:
                     cmd += ['--fault', str(f)]
-                cmd += ['--models', os.path.join(results, c), os.path.join(SD, FAULTMOD[c]),
-                        '--dpi', '200', '--note', note(c, f),
+                if mode != 'cplot' and c == 'tpv35':
+                    continue            # archive stations: faultst*dp081 (8.1 km, off our 500 m
+                    #                     grid) and named receivers only -- none exactly shared
+                bpath, blabel, _ = baseline(c)
+                cmd += ['--models', os.path.join(results, c), bpath]
+                if c in ARCHIVE:
+                    cmd += ['--labels', 'EQdyna (this run)', blabel]
+                cmd += ['--dpi', '200', '--note', note(c, f, results),
                         '--out', os.path.join(out, f'{tag}_{mode.replace("-", "_")}.png')]
                 r = subprocess.run(cmd, capture_output=True, text=True)
                 print(c, f, mode, 'rc', r.returncode)
@@ -111,14 +163,14 @@ def _dt_metrics(to, tb, term):
     return m
 
 
-def _dt_stats(to, tb, term):
+def _dt_stats(to, tb, term, who='FaultMod'):
     m = _dt_metrics(to, tb, term)
-    s = (f'FaultMod ruptured {m["faultmod_ruptured"]}, ours also {m["both"]} '
-         f'({m["ruptured_pct"]:.1f}%), ours ruptured where FaultMod '
+    s = (f'{who} ruptured {m["faultmod_ruptured"]}, ours also {m["both"]} '
+         f'({m["ruptured_pct"]:.1f}%), ours ruptured where {who} '
          f'is not by term+0.25 s: {m["ours_only"]}')
     if 'median' in m:
         s += (f'; |dt| median {m["median"]:.3f} p90 {m["p90"]:.3f} '
-              f'max {m["max"]:.3f} s, mean(ours-FaultMod) {m["mean"]:+.3f} s')
+              f'max {m["max"]:.3f} s, mean(ours-{who}) {m["mean"]:+.3f} s')
     return s
 
 
@@ -129,25 +181,26 @@ def numbers(results, cases):
         term = TERM.get(c, 5.0)
         for f in faults(c):
             o = R.Model(os.path.join(results, c), 0, fault=f)
-            b = R.Model(os.path.join(SD, FAULTMOD[c]), 1, fault=f)
+            bpath, _, who = baseline(c)
+            b = R.Model(bpath, 1, fault=f)
             fo, fb = o.load_rupture(), b.load_rupture()
             tag = c + (f' fault {f}' if f else '')
             if f == 2:
                 B = np.column_stack([fb['strike'], fb['downdip']])
                 d, i = cKDTree(B).query(np.column_stack([fo['strike'], fo['downdip']]))
                 print(f'## {tag} (nearest FaultMod node, max {d.max():.0f} m): '
-                      + _dt_stats(fo['t'], fb['t'][i], term))
+                      + _dt_stats(fo['t'], fb['t'][i], term, who))
                 continue
             kb = {(round(x, 1), round(y, 1)): t for x, y, t in zip(fb['strike'], fb['downdip'], fb['t'])}
             keys = [(round(x, 1), round(y, 1)) for x, y in zip(fo['strike'], fo['downdip'])]
             sh = np.array([k in kb for k in keys])
             to = fo['t'][sh]
             tb = np.array([kb[k] for k, s in zip(keys, sh) if s])
-            print(f'## {tag} (shared nodes {sh.sum()}): ' + _dt_stats(to, tb, term))
+            print(f'## {tag} (shared nodes {sh.sum()}): ' + _dt_stats(to, tb, term, who))
             if f == 1:
                 xs = fo['strike'][sh]
                 for lab, sel in (('x<0', xs < 0), ('x>=0', xs >= 0)):
-                    print(f'   main fault {lab}: ' + _dt_stats(to[sel], tb[sel], term))
+                    print(f'   main fault {lab}: ' + _dt_stats(to[sel], tb[sel], term, who))
             dx = fo['dx_m']
             for which, thr in (('fault', 1e-3), ('body', 1e-2)):
                 po, pb = o.station_files(which), b.station_files(which)
@@ -193,7 +246,7 @@ def case_metrics(run_dir, c, term, grid_dx):
     dx of one case is scored on the same station set."""
     import scec_readers as R
     o = R.Model(run_dir, 0)
-    b = R.Model(os.path.join(SD, FAULTMOD[c]), 1)
+    b = R.Model(baseline(c)[0], 1)
     fo, fb = o.load_rupture(), b.load_rupture()
     kb = {(round(x, 1), round(y, 1)): t for x, y, t in zip(fb['strike'], fb['downdip'], fb['t'])}
     keys = [(round(x, 1), round(y, 1)) for x, y in zip(fo['strike'], fo['downdip'])]
@@ -205,7 +258,7 @@ def case_metrics(run_dir, c, term, grid_dx):
     for which, thr in (('fault', 1e-3), ('body', 1e-2)):
         po, pb = o.station_files(which), b.station_files(which)
         for k in sorted(set(po) & set(pb)):
-            if not (_on_grid(k, grid_dx) and _on_grid(k, fo['dx_m'])):
+            if not (_on_grid(k, grid_dx or fo['dx_m']) and _on_grid(k, fo['dx_m'])):
                 continue
             ao, _ = R.load_station(po[k], which)
             ab, _ = R.load_station(pb[k], which)
@@ -266,6 +319,32 @@ def _nan_to_none(v):
     return v
 
 
+def table(results, out, cases):
+    """README verdict rows + metrics.json: case_metrics at each case's gate
+    term on its own node grid, against baseline(c)."""
+    import json
+    os.makedirs(out, exist_ok=True)
+    allm = []
+    md = ['| case | baseline | verdict | ruptured | median \\|dt\\| (s) | p90 (s) | mean (s) '
+          '| one-code-only stations | fault-st dt median (s) | slip ratio | body pv ratio |',
+          '|---|---|---|---|---|---|---|---|---|---|---|']
+    for c in cases:
+        m = case_metrics(os.path.join(results, c), c, TERM.get(c, 5.0), None)
+        m['baseline'] = ARCHIVE.get(c) or FAULTMOD[c]
+        allm.append(m)
+        md.append(f'| {c} | {baseline(c)[1]} | **{"MATCH" if m["match"] else "DIVERGES"}** '
+                  f'| {m["ruptured_pct"]:.1f}% ({m["both"]}/{m["faultmod_ruptured"]}) '
+                  f'| {_f(m.get("median"), ".3f")} | {_f(m.get("p90"), ".3f")} | {_f(m.get("mean"), "+.3f")} '
+                  f'| {len(m["one_code_only"])} {" ".join(m["one_code_only"])} '
+                  f'| {_f(m["fault_station_dt_median"], "+.2f")} | {_f(m["fault_slip_ratio_median"], ".2f")} '
+                  f'| {_f(m["body_pv_ratio_median"], ".2f")} |')
+        print(md[-1], flush=True)
+    with open(os.path.join(out, 'metrics.json'), 'w') as fh:
+        json.dump(_nan_to_none(allm), fh, indent=1, default=float)
+    with open(os.path.join(out, 'table.md'), 'w') as fh:
+        fh.write('\n'.join(md) + '\n')
+
+
 def resolution(runs, out, cases, do_figures=True):
     """Per case and per window (5 s gate term, spec term): metrics for every
     dx found under RUNS, a markdown table, metrics.json, and one overlay set
@@ -318,11 +397,13 @@ def resolution(runs, out, cases, do_figures=True):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3 or sys.argv[1] not in ('figures', 'numbers', 'resolution'):
+    if len(sys.argv) < 3 or sys.argv[1] not in ('figures', 'numbers', 'resolution', 'table'):
         raise SystemExit(__doc__)
     mode, results = sys.argv[1], os.path.abspath(sys.argv[2])
     if mode == 'figures':
         figures(results, os.path.abspath(sys.argv[3]), sys.argv[4:] or list(FAULTMOD))
+    elif mode == 'table':
+        table(results, os.path.abspath(sys.argv[3]), sys.argv[4:] or list(ARCHIVE))
     elif mode == 'resolution':
         rest = [a for a in sys.argv[4:] if a != '--no-figures']
         resolution(results, os.path.abspath(sys.argv[3]), rest or list(SPEC_TERM),
