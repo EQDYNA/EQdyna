@@ -75,3 +75,14 @@ docs/user-site/
 # console log now land under test/ or test.prev/ instead (owner, 2026-09-29:
 # logs live with the run, same place on every machine), both already
 # ignored wholesale above.
+
+# Repo tidy 2026-10-09 (item 3, owner amendment: "most md no need to go out,
+# they in the end in release notes already"): the ~30 root-level
+# docs/NOTES_*.md / docs/SESSION_LOG_*.md dev notes were removed from the
+# tracked tree (content already summarised in docs/pastReleaseNotes.md;
+# git history keeps the old files, nothing was rewritten). A new one of
+# either shape stays local from here on rather than landing at the root of
+# docs/ again; docs/notes/ (the earlier, already-consolidated batch) is
+# untouched by this pattern.
+docs/NOTES_*.md
+docs/SESSION_LOG_*.md

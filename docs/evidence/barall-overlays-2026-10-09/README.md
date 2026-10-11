@@ -21,6 +21,9 @@ here will rebuild.
 
 - **Gated cases.** Each gated case's `frt.canonical.txt` is byte-identical to the committed
   reference in `test.reference.results/test.<case>/`. No reference was regenerated.
+- **Refreshed 2026-10-10.** The tpv12, tpv13 and tpv27 figures and numbers were rebuilt
+  against the references re-frozen by PR #165 (tpv12 border unpin) and PR #167 (Method-2
+  +7.3215 m depth offset removed, tpv13/27/30). See "Refresh 2026-10-10" below.
 - **Term.** Each figure states its own term on the figure.
 - **Comparison window.** FaultMod's arrivals are windowed to our term. Only nodes that FaultMod
   ruptures before term − 0.25 s are compared.
@@ -62,10 +65,10 @@ mean of (ours − FaultMod). Times are in seconds.
 
 | case | verdict | ruptured | median \|dt\| | p90 | mean | where it diverges |
 |---|---|---|---|---|---|---|
-| tpv12 | **DIVERGES** | 90.5% (1681/1857) | 0.39 | 0.57 | +0.45 | ours is late. See note 1. |
-| tpv13 | **DIVERGES** | 80.0% (1425/1781) | 0.32 | 0.52 | +0.35 | See note 2. |
+| tpv12 | **DIVERGES** | 92.0% (1709/1857) | 0.391 | 0.567 | +0.449 | ours is late; bottom edge. See note 1. |
+| tpv13 | **DIVERGES** | 80.0% (1425/1781) | 0.320 | 0.519 | +0.352 | See note 2. |
 | tpv26 | **DIVERGES** (core matches) | 100% (1383) | 0.069 | 0.36 | −0.09 | ours leads at the front. See note 3. |
-| tpv27 | **DIVERGES** | 100% (1199) | 0.235 | 0.59 | −0.25 | See note 4. |
+| tpv27 | **DIVERGES** | 100% (1199) | 0.231 | 0.593 | −0.251 | See note 4. |
 | tpv31 | **DIVERGES** | 97.4% (1196/1228) | 0.335 | 0.54 | +0.35 | See note 5. |
 | tpv32 | **DIVERGES** | 97.9% (1186/1212) | 0.345 | 0.53 | +0.37 | See note 6. |
 | tpv33 | **DIVERGES** | 82.5% (539/653) | 1.00 | 1.39 | +1.01 | See note 7. |
@@ -78,21 +81,25 @@ Notes:
 
 1. **tpv12.**
    - Rupture: max |dt| is 3.43 s.
+   - Of the 148 nodes FaultMod ruptures in-window and ours does not, 114 are at depth ≥ 14 km
+     (the bottom edge, FaultMod arrivals from 2.2 s) and the rest at |x| ≥ 12 km.
    - Fault stations: arrivals are 0.27–0.44 s late, and slip is within −23% to +19%.
 2. **tpv13.**
    - faultst120dp000: FaultMod ruptures at 3.16 s with −2.19 m of slip. Ours does not rupture by
      5 s.
    - faultst120dp075: slip is 0.09 m in ours vs 0.50 m in FaultMod.
    - body-030st000dp000: ours reaches 0.10 m/s, while FaultMod is about 0.
+   - Defect A (the Method-2 lateral-boundary stress imbalance, `resolution/README.md`) is
+     still open, and the TPV13 fault border is still pinned (PR #165 unpinned TPV12 only).
 3. **tpv26.**
    - 158 nodes are ruptured in ours that FaultMod ruptures only after 5.25 s.
    - faultst100dp100: ours arrives at 4.67 s with 0.62 m of slip, vs 5.54 s in FaultMod.
    - Body stations: arrivals are within 0.06 s, and peak velocity is within 8–18%.
 4. **tpv27.**
-   - 310 nodes rupture early in ours.
-   - st100dp100 is 1.16 s early.
-   - Slip at st±050/−150dp100 is 1.66 m vs 1.07 m (+55%).
-   - Body peak velocity is 0.138 vs 0.094 m/s (+47%).
+   - 307 nodes rupture early in ours.
+   - st100dp100 is 1.12 s early.
+   - Slip at st±050/−150dp100 is 1.65 m vs 1.07 m (+54%).
+   - Body peak velocity is 0.137 vs 0.094 m/s (+46%).
 5. **tpv31.**
    - st060dp000: FaultMod ruptures at 4.64 s, ours does not.
    - Slip is 10–30% low.
@@ -126,7 +133,35 @@ Notes:
   TPV13's own PR re-measured at dx 250 m, and median |dt| fell from 0.32 to 0.12 s. That points
   to resolution, but the other cases have not been re-run finer.
 
+## Refresh 2026-10-10 (after PR #165 and PR #167)
+
+Fresh fortran runs, 4 ranks, gate dx, 5 s gate term, built from `fe36128`. Each run's
+`frt.canonical.txt` is byte-identical to its committed reference:
+
+| case | rows | sha256 |
+|---|---|---|
+| tpv12 | 1891 | `ae2764ff0181e056d265eceec4dd75cdaa4de7f00fdd945b035eed0a847dc38b` |
+| tpv13 | 1891 | `3c31b2514a6369736f685ac8e75d30780d0eedadff875184eefa6703d2f12dc7` |
+| tpv27 | 3321 | `bce624bec7c0b381b056508be5c92ceb3765fa72527a2c5523e68cfc8fb6e097` |
+| tpv30 | 3321 | `e024a8a3f0b98c9f5a1a2737c45a75dce1498530477661436bd95602f6528625` |
+
+Old (2026-10-09 figures) vs new, gate dx, 5 s window. The gate verdict uses the declared MATCH
+criteria above. The class is the resolution study's (`resolution/README.md`). It was not re-run
+here, so it is carried over, and amended only where a fix changes what it rests on.
+
+| case | ruptured old → new | median \|dt\| old → new | p90 old → new | gate verdict | class |
+|---|---|---|---|---|---|
+| tpv12 | 90.5% (1681) → 92.0% (1709) of 1857 | 0.39 → 0.391 | 0.57 → 0.567 | DIVERGES → DIVERGES | DEFECT B → fixed by PR #165 (+28 nodes at gate dx). Timing is RESOLUTION (study). Whether 95% is now reached at finer dx is not re-measured. |
+| tpv13 | 80.0% (1425/1781) → unchanged | 0.32 → 0.320 | 0.52 → 0.519 | DIVERGES → DIVERGES | DEFECT → DEFECT. Defect A is open, and the border is still pinned. Defect C removal leaves all four numbers unchanged to 3 decimals. |
+| tpv27 | 100% (1199) → 100% (1199) | 0.235 → 0.231 | 0.59 → 0.593 | DIVERGES → DIVERGES | RESOLUTION → RESOLUTION. The "carries Defect C" caveat is cleared by PR #167. |
+| tpv30 | — | — | — | not overlaid | No FaultMod (or any CVWS) TPV30 submission is in `~/shared_dataset`, so there is no overlay. None was fetched. |
+
+The TPV13/TPV27 stability matches PR #167's own measurement: the deep rupture-time change was
+0.0000 s on both.
+
 ## Not overlaid, and why
+
+- **TPV30.** The shared-dataset store holds no CVWS submission for TPV30.
 
 - **Body stations that FaultMod puts elsewhere (TPV12/13).** Eight body stations are not
   overlaid. They sit at different points in the two codes: ours are at -0.3 km / 0.4 km depth,
