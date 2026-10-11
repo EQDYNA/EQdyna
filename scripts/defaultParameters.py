@@ -178,6 +178,14 @@ class parameters:
     outputGroundMotion = 0 # output big vel GM time series for all the surface stations?
     outputFinalSurfDisp = 0 # output final surface displacement of all the surface stations?
 
+    # 1 = every time step, write every time-varying on-fault quantity (slip,
+    # slip rate, tractions, plus rate-and-state and thermal-pressurization
+    # variables when friclaw uses them) at every fault node, to src_ts<rank>
+    # (binary) with a text header src_ts_hdr<rank>; read them with
+    # scripts/readFaultTimeSeries.py. Costs 8 bytes per field per node per
+    # step. 0 = off (no change to any other output). Fortran solver only.
+    outputFaultTimeSeries = 0
+
     # currently supported cases
     # 104  (SCEC-TPV104)
     # 105  (SCEC-TPV1053D)

@@ -48,6 +48,87 @@ A NetCDF file of the whole fault plane's slip, slip rate, and traction,
 sampled every `nt_out` time steps, for visualization and for resuming a
 later stage of a multicycle run.
 
+## Whole-fault time series: `src_ts<rank>`
+
+Set `outputFaultTimeSeries = 1` in `user_defined_params.py` (default `0`,
+off) to record every time-varying on-fault quantity at every fault node on
+every time step -- the full history behind the station files and
+`frt.txt`, so a later analysis does not need a rerun. Fortran solver only;
+the Python solver refuses the setting. Each MPI rank that owns fault nodes
+writes two files:
+
+* `src_ts<rank>` -- binary, 64-bit floats in the machine's native byte order
+  (little-endian on x86 and ARM), no record markers. One record per time
+  step; inside a record, all fields of node 1, then all fields of node 2, and
+  so on. Record `k` (counting from 0) is at time `(k + 1) * dt`.
+* `src_ts_hdr<rank>` -- text. Lines starting with `#` give `nnode`, `nfield`,
+  `dt`, `nstep`, `friclaw`, `byteorder`, and one `# field <index> <name> <unit> <meaning>`
+  line per field; the remaining rows are the `x y z` coordinates (m) of each
+  node, in the binary's node order.
+
+Fields, in file order:
+
+| # | name | unit | meaning |
+|---|------|------|---------|
+| 0 | `sliprate` | m/s | slip-rate magnitude, the value in `src_evol` (see below) |
+| 1 | `sliprate_strike` | m/s | slip rate along strike |
+| 2 | `sliprate_dip` | m/s | slip rate along dip |
+| 3 | `slip_strike` | m | slip along strike |
+| 4 | `slip_dip` | m | slip along dip |
+| 5 | `slip_normal` | m | fault-normal relative displacement (opening) |
+| 6 | `slip_path` | m | path-integrated slip, running sum of the 3-component slip-rate magnitude times `dt` |
+| 7 | `sliprate_peak` | m/s | running maximum of the 3-component slip-rate magnitude |
+| 8 | `traction_normal` | Pa | normal traction, negative in compression (see below) |
+| 9 | `traction_strike` | Pa | shear traction along strike |
+| 10 | `traction_dip` | Pa | shear traction along dip |
+| 11 | `traction_shear` | Pa | shear-traction magnitude |
+
+Rate-and-state friction (`friclaw` 3, 4, 5) adds `rsf_state` (the state
+variable: theta in s for the ageing law, psi, dimensionless, for the slip
+law) and the particle velocities of the two split nodes, `vel_master_x/y/z`
+and `vel_slave_x/y/z` (m/s). `friclaw` 3 and 4 then add `theta_pc` (Pa), the
+normal-stress memory variable, and `theta_pc_dot` (Pa/s), its rate evaluated
+at the trial slip rate before the step's Newton solve. Thermal
+pressurization (`friclaw = 5`) holds `theta_pc` fixed, so it is left out;
+instead it adds `tp_pore_change` (Pa, pore-pressure change from its initial
+value) and `tp_temperature` (K). That makes 12 fields for slip weakening
+and 21 for rate-and-state. Constant inputs such as the friction parameters
+and initial stresses are not repeated per step.
+
+What some fields hold depends on the friction law:
+
+* `sliprate` (field 0): for slip weakening (`friclaw` 1, 2), the magnitude
+  of the 3-component slip-rate vector, opening included. For rate-and-state,
+  the strike/dip slip rate the friction solver converged to, including the
+  background slip rate. So under rate-and-state it is not exactly
+  `hypot(sliprate_strike, sliprate_dip)`.
+* `sliprate_strike`, `sliprate_dip`, `slip_*`, `slip_path` and
+  `sliprate_peak` come from the node motion and never include the background
+  slip rate. The station files add that rate to slip and slip rate along
+  strike; these fields do not.
+* `traction_normal`: for slip weakening, the solver's normal traction, which
+  can be positive (tension). For rate-and-state, the effective normal stress
+  the friction law uses: pore-pressure change added (`friclaw = 5`), held
+  between the solver's fixed minimum and maximum normal-stress levels in
+  elastic cases with `insertFaultType > 0`, then limited to zero or below.
+
+The tractions are the solver's values in Pa; the station files print the
+same quantities in MPa with the case's sign convention.
+
+The size is 8 bytes per field per node per step: a 12-field slip-weakening
+run with 10,000 fault nodes and 3,000 steps writes about 2.9 GB. Read the
+files with `scripts/readFaultTimeSeries.py`:
+
+```python
+from readFaultTimeSeries import read_fault_ts
+ts = read_fault_ts('src_ts_hdr0')      # the header names its binary
+ts['slip_strike'].shape                # (nstep, nnode)
+ts['xyz'], ts['t']                     # node coordinates, record times
+```
+
+or `python3 scripts/readFaultTimeSeries.py <case_dir>` for a per-file
+summary. Every other output is unchanged by this setting.
+
 ## Multiple faults
 
 A case with `par.ntotft > 1` (see [Parameters](parameters.md#multiple-faults);
@@ -57,8 +138,11 @@ untouched -- a single-fault case's files are byte-for-byte unaffected:
 
 * `faultst<tag><strike>dp<depth>.txt` -- on-fault stations, `tag` empty for
   fault 1, `ft2_` for fault 2 (e.g. `faultstft2_000dp100.txt`).
-* `src_evol<tag><rank>` -- source-time-function restart data, same `tag`
-  convention, per rank.
+* `src_evol<tag><rank>` -- slip-rate magnitude at every fault node, every
+  time step (64-bit floats, node order as in `src_ts`), written when
+  `outputGroundMotion` is set; same `tag` convention, per rank.
+* `src_ts<tag><rank>` and `src_ts_hdr<tag><rank>` -- the whole-fault time
+  series above, same `tag` convention, per rank.
 * `fault.dyna.r.nc` is the exception to the tags: ONE file for all faults, in
   EQquasi's restart layout -- untagged variables with dims
   `(nid_fault, dip, strike)`, each fault at the `(0, 0)` corner of its own

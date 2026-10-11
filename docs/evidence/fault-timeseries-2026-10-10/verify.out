@@ -1,0 +1,175 @@
+=== tpv8gm
+check                                                           n    max|diff|     max|ref| ok
+src_evol0 == sliprate (bitwise)                            109554    0.000e+00    6.519e+00 True
+src_evol2 == sliprate (bitwise)                            109554    0.000e+00    6.519e+00 True
+frt last step slip_strike                                    1922    4.999e-07    3.829e+00 True
+frt last step slip_dip                                       1922    4.988e-09    7.510e-02 True
+frt last step slip_normal                                    1922    4.631e-23    1.665e-16 True
+frt last step sliprate_strike                                1922    4.975e-07    1.801e+00 True
+frt last step sliprate_dip                                   1922    4.946e-09    8.038e-02 True
+frt last step sliprate_peak                                  1922    4.989e-07    6.519e+00 True
+frt last step sliprate                                       1922    4.874e-07    1.801e+00 True
+frt last step traction_normal                                1922    4.856e+01    1.107e+08 True
+frt last step traction_strike                                1922    4.954e+01    1.393e+08 True
+frt last step traction_dip                                   1922    4.996e-01    7.750e+06 True
+nc last step shear_strike                                    1922    4.954e+01    1.393e+08 True
+nc last step shear_dip                                       1922    4.996e-01    7.750e+06 True
+nc last step effective_normal                                1922    4.856e+01    1.107e+08 True
+nc last step slip_rate                                       1922    4.874e-07    1.801e+00 True
+station time (8 files)                                        912    4.947e-13    4.986e+00 True
+station slip_strike (8 files)                                 912    4.985e-07    3.829e+00 True
+station sliprate_strike (8 files)                             912    4.920e-07    6.447e+00 True
+station traction_strike (8 files)                             912    4.995e-06    6.829e+01 True
+station slip_dip (8 files)                                    912    4.835e-09    2.391e-02 True
+station sliprate_dip (8 files)                                912    4.975e-09    8.902e-02 True
+station traction_dip (8 files)                                912    4.644e-07    3.455e+00 True
+station traction_normal (8 files)                             912    4.967e-06    8.854e+01 True
+fault1 slip_path == cumsum(sliprate)*dt                    219108    0.000e+00    3.829e+00 -
+fault1 slip_strike vs cumsum(sliprate_strike)*dt           219108    4.441e-15    3.829e+00 -
+fault1 slip_dip vs cumsum(sliprate_dip)*dt                 219108    1.110e-16    7.510e-02 -
+fault1 traction_shear vs hypot                             219108    2.980e-08    1.393e+08 -
+fault1: 1922 nodes (all ranks), 12 fields, 114 steps; 8 bytes per field per node per step
+=== tpv1053d
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+check                                                           n    max|diff|     max|ref| ok
+frt last step slip_strike                                    4050    4.993e-07    3.520e+00 True
+frt last step slip_dip                                       4050    4.970e-09    8.456e-02 True
+frt last step slip_normal                                    4050    4.384e-24    5.551e-17 True
+frt last step sliprate_strike                                4050    4.141e-07    1.291e+00 True
+frt last step sliprate_dip                                   4050    4.951e-09    8.998e-02 True
+frt last step sliprate_peak                                  4050    4.961e-07    6.158e+00 True
+frt last step sliprate                                       4050    4.149e-07    1.249e+00 True
+frt last step traction_normal                                4050    4.983e+00    4.500e+07 True
+frt last step traction_strike                                4050    4.994e+00    3.401e+07 True
+frt last step traction_dip                                   4050    4.881e-01    4.512e+06 True
+frt last step vel_master_x                                   4050    4.951e-08    7.598e-01 True
+frt last step vel_master_y                                   4050    4.942e-08    1.600e-01 True
+frt last step vel_master_z                                   4050    4.924e-09    6.873e-02 True
+frt last step vel_slave_x                                    4050    4.951e-08    7.598e-01 True
+frt last step vel_slave_y                                    4050    4.942e-08    1.600e-01 True
+frt last step vel_slave_z                                    4050    4.924e-09    6.873e-02 True
+frt last step rsf_state                                      4050    4.974e-08    8.705e-01 True
+nc last step shear_strike                                    4050    4.994e+00    3.401e+07 True
+nc last step shear_dip                                       4050    4.881e-01    4.512e+06 True
+nc last step effective_normal                                4050    4.983e+00    4.500e+07 True
+nc last step slip_rate                                       4050    4.149e-07    1.249e+00 True
+nc last step state_variable                                  4050    4.974e-08    8.705e-01 True
+nc last step vxm                                             4050    4.951e-08    7.598e-01 True
+nc last step vym                                             4050    4.942e-08    1.600e-01 True
+nc last step vzm                                             4050    4.924e-09    6.873e-02 True
+nc last step vxs                                             4050    4.951e-08    7.598e-01 True
+nc last step vys                                             4050    4.942e-08    1.600e-01 True
+nc last step vzs                                             4050    4.924e-09    6.873e-02 True
+station time (13 files)                                       936    3.335e-13    3.000e+00 True
+station slip_strike (+VINI*t) (13 files)                      936    4.901e-07    1.137e+00 True
+station sliprate_strike (+VINI) (13 files)                    936    4.807e-07    1.817e+00 True
+station traction_strike (13 files)                            936    4.984e-06    3.408e+01 True
+station slip_dip (13 files)                                   936    4.987e-12    4.126e-05 True
+station sliprate_dip (13 files)                               936    4.092e-11    3.215e-04 True
+station traction_dip (13 files)                               936    4.938e-08    9.286e-01 True
+station traction_normal (13 files)                            936    4.925e-06    4.500e+01 True
+station rsf_state (13 files)                                  936    4.989e-08    8.705e-01 True
+station tp_temperature (13 files)                             936    4.859e-05    6.246e+02 True
+station tp_pore (+ initial, MPa) (13 files)                   936    4.925e-06    8.902e+01 True
+fault1 slip_strike vs cumsum(sliprate_strike)*dt           291600    2.665e-15    3.520e+00 -
+fault1 slip_dip vs cumsum(sliprate_dip)*dt                 291600    9.714e-17    8.584e-02 -
+fault1 traction_shear vs hypot                             291600    7.451e-09    3.430e+07 -
+fault1: 4050 nodes (all ranks), 21 fields, 72 steps; 8 bytes per field per node per step
+=== tpv104
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+check                                                           n    max|diff|     max|ref| ok
+frt last step slip_strike                                    2738    4.954e-07    5.951e+00 True
+frt last step slip_dip                                       2738    4.930e-08    1.340e-01 True
+frt last step slip_normal                                    2738    4.384e-24    1.110e-16 True
+frt last step sliprate_strike                                2738    4.912e-07    7.683e+00 True
+frt last step sliprate_dip                                   2738    4.950e-08    4.967e-01 True
+frt last step sliprate_peak                                  2738    4.753e-06    1.216e+01 True
+frt last step sliprate                                       2738    4.948e-07    6.084e+00 True
+frt last step traction_normal                                2738    2.126e-02    1.200e+08 True
+frt last step traction_strike                                2738    4.998e+00    8.152e+07 True
+frt last step traction_dip                                   2738    4.528e+00    1.070e+07 True
+frt last step vel_master_x                                   2738    4.783e-07    3.902e+00 True
+frt last step vel_master_y                                   2738    4.991e-08    7.814e-01 True
+frt last step vel_master_z                                   2738    3.920e-08    3.827e-01 True
+frt last step vel_slave_x                                    2738    4.783e-07    3.902e+00 True
+frt last step vel_slave_y                                    2738    4.991e-08    7.814e-01 True
+frt last step vel_slave_z                                    2738    3.920e-08    3.827e-01 True
+frt last step rsf_state                                      2738    4.916e-08    7.939e-01 True
+frt last step theta_pc                                       2738    1.490e-08    1.200e+08 True
+nc last step shear_strike                                    2738    4.998e+00    8.152e+07 True
+nc last step shear_dip                                       2738    4.528e+00    1.070e+07 True
+nc last step effective_normal                                2738    2.126e-02    1.200e+08 True
+nc last step slip_rate                                       2738    4.948e-07    6.084e+00 True
+nc last step state_variable                                  2738    4.916e-08    7.939e-01 True
+nc last step state_normal                                    2738    1.490e-08    1.200e+08 True
+nc last step vxm                                             2738    4.783e-07    3.902e+00 True
+nc last step vym                                             2738    4.991e-08    7.814e-01 True
+nc last step vzm                                             2738    3.920e-08    3.827e-01 True
+nc last step vxs                                             2738    4.783e-07    3.902e+00 True
+nc last step vys                                             2738    4.991e-08    7.814e-01 True
+nc last step vzs                                             2738    3.920e-08    3.827e-01 True
+station time (13 files)                                       936    3.335e-13    3.000e+00 True
+station slip_strike (+VINI*t) (13 files)                      936    4.764e-07    5.951e+00 True
+station sliprate_strike (+VINI) (13 files)                    936    4.791e-07    6.615e+00 True
+station traction_strike (13 files)                            936    4.984e-06    8.148e+01 True
+station slip_dip (13 files)                                   936    3.356e-23    1.800e-16 True
+station sliprate_dip (13 files)                               936    3.152e-22    1.484e-15 True
+station traction_dip (13 files)                               936    4.541e-10    2.412e-03 True
+station traction_normal (13 files)                            936    2.126e-08    1.200e+02 True
+station rsf_state (13 files)                                  936    4.895e-08    7.939e-01 True
+fault1 slip_strike vs cumsum(sliprate_strike)*dt           197136    4.441e-15    5.951e+00 -
+fault1 slip_dip vs cumsum(sliprate_dip)*dt                 197136    1.110e-16    1.547e-01 -
+fault1 traction_shear vs hypot                             197136    1.490e-08    8.290e+07 -
+fault1: 2738 nodes (all ranks), 21 fields, 72 steps; 8 bytes per field per node per step
+=== tpv22
+check                                                           n    max|diff|     max|ref| ok
+src_evol0 == sliprate (bitwise)                            529200    0.000e+00    1.820e+00 True
+src_evol1 == sliprate (bitwise)                           1013040    0.000e+00    1.875e+00 True
+src_evol2 == sliprate (bitwise)                            109200    0.000e+00    2.410e-15 True
+src_evol3 == sliprate (bitwise)                            209040    0.000e+00    3.072e-15 True
+src_evolft2_0 == sliprate (bitwise)                        109200    0.000e+00    3.072e-15 True
+src_evolft2_1 == sliprate (bitwise)                        209040    0.000e+00    3.141e-15 True
+src_evolft2_2 == sliprate (bitwise)                        529200    0.000e+00    3.048e-15 True
+src_evolft2_3 == sliprate (bitwise)                       1013040    0.000e+00    3.072e-15 True
+frt last step slip_strike                                   31008    4.973e-08    8.261e-01 True
+frt last step slip_dip                                      31008    4.997e-10    8.450e-03 True
+frt last step slip_normal                                   31008    4.992e-24    4.163e-17 True
+frt last step sliprate_strike                               31008    4.996e-07    1.875e+00 True
+frt last step sliprate_dip                                  31008    4.946e-09    6.685e-02 True
+frt last step sliprate_peak                                 31008    4.989e-07    1.875e+00 True
+frt last step sliprate                                      31008    4.961e-07    1.875e+00 True
+frt last step traction_normal                               31008    5.000e+00    6.037e+07 True
+frt last step traction_strike                               31008    4.997e+00    3.288e+07 True
+frt last step traction_dip                                  31008    4.945e-01    2.066e+06 True
+nc last step shear_strike                                   31008    4.997e+00    3.288e+07 True
+nc last step shear_dip                                      31008    4.945e-01    2.066e+06 True
+nc last step effective_normal                               31008    5.000e+00    6.037e+07 True
+nc last step slip_rate                                      31008    4.961e-07    1.875e+00 True
+station time (17 files)                                      2040    3.335e-13    2.000e+00 True
+station slip_strike (17 files)                               2040    4.998e-08    8.261e-01 True
+station sliprate_strike (17 files)                           2040    4.981e-08    6.081e-01 True
+station traction_strike (17 files)                           2040    4.969e-06    3.288e+01 True
+station slip_dip (17 files)                                  2040    4.702e-25    4.560e-18 True
+station sliprate_dip (17 files)                              2040    4.973e-24    4.682e-17 True
+station traction_dip (17 files)                              2040    4.981e-13    2.397e-06 True
+station traction_normal (17 files)                           2040    4.930e-06    6.000e+01 True
+fault1 slip_path == cumsum(sliprate)*dt                   1860480    0.000e+00    8.261e-01 -
+fault1 slip_strike vs cumsum(sliprate_strike)*dt          1860480    6.661e-16    8.261e-01 -
+fault1 slip_dip vs cumsum(sliprate_dip)*dt                1860480    6.072e-18    8.463e-03 -
+fault1 traction_shear vs hypot                            1860480    3.725e-09    3.288e+07 -
+faultft2_ slip_path == cumsum(sliprate)*dt                1860480    0.000e+00    1.233e-15 -
+faultft2_ slip_strike vs cumsum(sliprate_strike)*dt       1860480    1.157e-17    2.615e-16 -
+faultft2_ slip_dip vs cumsum(sliprate_dip)*dt             1860480    1.518e-18    2.173e-19 -
+faultft2_ traction_shear vs hypot                         1860480    3.725e-09    2.947e+07 -
+fault1: 15504 nodes (all ranks), 12 fields, 120 steps; 8 bytes per field per node per step
+faultft2_: 15504 nodes (all ranks), 12 fields, 120 steps; 8 bytes per field per node per step

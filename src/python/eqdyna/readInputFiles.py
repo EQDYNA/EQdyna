@@ -27,7 +27,7 @@ now proving the reader itself, not just the builders.
 """
 import numpy as np
 
-from .checkInputConsistency import ERR_CFG_NSTRESS_SIGN_INVALID, InputConsistencyError
+from .checkInputConsistency import ERR_CFG_FAULT_TS_INVALID, ERR_CFG_NSTRESS_SIGN_INVALID, InputConsistencyError
 
 
 def _read_records(path):
@@ -137,6 +137,18 @@ def read_bglobal(path):
             ERR_CFG_NSTRESS_SIGN_INVALID,
             'bGlobal.txt station normal-stress sign must be +1 (extension) or -1 '
             '(compression); re-run case.setup. (read %d from %s)' % (g['nStressOutSign'], path))
+    # Whole-fault time-series switch, the file's last line (Fortran
+    # output_fault_ts). Same stale/invalid verdicts as readglobal.
+    try:
+        g['outputFaultTimeSeries'] = int(nxtOrStale(
+            'the fault time-series output switch, 0 off / 1 on (par.outputFaultTimeSeries)')[0])
+    except (IndexError, ValueError):
+        raise stale('a valid fault time-series output switch')
+    if g['outputFaultTimeSeries'] not in (0, 1):
+        raise InputConsistencyError(
+            ERR_CFG_FAULT_TS_INVALID,
+            'bGlobal.txt fault time-series output switch must be 0 or 1; re-run '
+            'case.setup. (read %d from %s)' % (g['outputFaultTimeSeries'], path))
 
     g['str1ToFaultAngle'] = g['str1ToFaultAngle'] * np.pi / 180.0
     # nstep = idnint(totalSimuTime/dt) -- Fortran round-half-away-from-zero.

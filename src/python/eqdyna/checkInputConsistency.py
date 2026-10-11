@@ -57,6 +57,7 @@ ERR_CFG_PLASTIC_OUTPUT = 13    # output_plastic=1 requires C_elastic=0
 ERR_CFG_NSTRESS_SIGN_INVALID = 15  # bGlobal.txt's station n-stress sign is neither +1 nor -1 (raised by readInputFiles.read_bglobal)
 ERR_CFG_MATERIAL_TABLE_INVALID = 16  # bMaterial.txt's two-sided (n2mat=5) table needs one vertical planar fault, side column -1/+1, ascending per-side layer bottoms (raised by check_two_sided_material)
 ERR_CFG_MATERIAL_GRID_INVALID = 17  # bMaterial.txt's 3D material grid (n2mat=6, rows x y z vp vs rho) must be a complete uniform nx*ny*nz block, every cell once, on-grid coordinates, positive vp/vs/rho (raised by build_material_grid3d)
+ERR_CFG_FAULT_TS_INVALID = 18  # bGlobal.txt's fault time-series switch (par.outputFaultTimeSeries) is neither 0 nor 1 (raised by readInputFiles.read_bglobal)
 ERR_GEOM_MULTIFAULT_Y_BAD = 32  # a fault's y-plane is not vertical/planar, coincides with another fault's, or (row 17 rebased) a fault's y bound is not an integer multiple of dy from the union-derived uniform-y belt origin (raised by meshgen.py's one_dim_coor_array)
 ERR_GEOM_MULTIFAULT_XZ_BAD = 33  # (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line (raised as InputConsistencyError by meshgen.py's one_dim_coor_array)
 

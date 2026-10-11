@@ -119,6 +119,7 @@ MODULE globalvar
         ! which this flip does not participate in either.
     integer (kind = 4) :: outputGroundMotion       ! 1 = write ground-motion output
     integer (kind = 4) :: outputFinalSurfDisp = 0 ! 1 = write final surface displacement
+    integer (kind = 4) :: outputFaultTimeSeries = 0 ! 1 = write whole-fault time series of every time-varying on-fault field (src_ts*, output_fault_ts); bGlobal.txt last line
 
     !=====================================================================
     ! Mesh & geometry
