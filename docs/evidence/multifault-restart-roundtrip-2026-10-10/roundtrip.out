@@ -1,0 +1,63 @@
+== inputs
+EQdyna HEAD      d579ab21651217792d730ed21e9b0c798772f871 (dirty tracked files)
+EQquasi HEAD     524a5236b411c38fa216cff97bc6949bd83721e1 (clean)
+sha256 788b568594a32b8f5bb53af53fdf32d2cef8a88d32f5e52f1e5ab4b7257042d8  EQdyna src/fortran/netcdf_io.f90
+sha256 e04823cc26bc1aea0818bb7cf68d8298f4a94fc9cc5d1593bdc2dc17c821dc52  EQdyna scripts/plotRuptureDynamics
+sha256 bc958dd9b0ab02ab6fe414568952ab78d5dbf8eeabef4085c21a25414fa6397b  EQdyna scripts/lib.py
+sha256 e204e20e5295361f88a16875bdd9302502d1afc479adc97dc6780fe0a18cfd4f  EQdyna case_input/test.tpv22/user_defined_params.py
+sha256 323a03a333c936511fe1791feb06eca0abccde150769ab470fb133c7b9ee9a38  EQdyna case_input/test.tpv22/tpv22_23_common.py
+sha256 99b54076f721f9137bb697f06197a947573d2750525e5e9b1f2f591638741f01  EQquasi src/netcdf_io.f90
+sha256 2f088ecf685e726ee47d599acf14b2ff5e58fba75feac6ed4f10409d4825944e  EQquasi src/globalvar.f90
+== 1. build: 7 s, sha256 d2b02380fa62334a3c4d1cdf2693e791407602cb9dbd1b16480f0e1eae2d811a  eqdyna
+ 
+PARAMETERS: positve dip angle to tilt the fault to y+
+PARAMETERS: negavtive dip to tilt the fault to y-
+PARAMETERS: par.fzmin, par.ysource, par.zsource, par.dz, par.dt will be modified by mod4dip for dipping faults
+If insertFaultType==2, an integer seedId to generate fractal fault is needed;
+Please assign par.seedId accordingly.
+== 2. test.tpv22: ntotft=2 dx=200 dz=200 term=0.333333 s (20 x dt=0.0166667), 4 ranks, solve 26 s, plotRuptureDynamics 5 s
+   frt files: 4; fault nodes per fault: [15251, 15251]
+   fault.dyna.r.nc dims {'nid_fault': 2, 'dip': 101, 'strike': 151}, sha256 fcc8005822d56d9b0b88fd43fae66f29dc387a1b67a6287a3a4a5c7088cc282a
+== 4. EQquasi netcdf_read_on_fault_restart -> netcdf_write_on_fault: dims {'nid_dip': 101, 'nid_strike': 151, 'nid_fault': 2}, shear_strike dtype float32, sha256 3a317bda92176de47512404691499e8befbe320534213dc58abd94db1aa0f293
+== 6. EQdyna netcdf_read_on_fault_eqdyna_restart vs frt.txt* (original float64)
+   fault   nodes       max|ref|   max|got-ref|      max rel    nonzero !=f32(ref)
+   1       15251   6.000000e+07   6.250000e-03    5.918e-08      46395          0
+      shear_strike      max|ref|  2.980063e+07  max|got-ref|  0.000000e+00  !=f32 0
+      shear_dip         max|ref|  1.870419e+05  max|got-ref|  6.250000e-03  !=f32 0
+      effective_normal  max|ref|  6.000000e+07  max|got-ref|  0.000000e+00  !=f32 0
+      slip_rate         max|ref|  2.726682e-01  max|got-ref|  1.265221e-08  !=f32 0
+      state_variable    max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      state_normal      max|ref|  6.000000e+07  max|got-ref|  0.000000e+00  !=f32 0
+      vxm               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vym               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vzm               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vxs               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vys               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vzs               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+   2       15251   6.000000e+07   0.000000e+00    0.000e+00      45753          0
+      shear_strike      max|ref|  2.938000e+07  max|got-ref|  0.000000e+00  !=f32 0
+      shear_dip         max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      effective_normal  max|ref|  6.000000e+07  max|got-ref|  0.000000e+00  !=f32 0
+      slip_rate         max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      state_variable    max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      state_normal      max|ref|  6.000000e+07  max|got-ref|  0.000000e+00  !=f32 0
+      vxm               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vym               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vzm               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vxs               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vys               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+      vzs               max|ref|  0.000000e+00  max|got-ref|  0.000000e+00  !=f32 0
+float32 unit roundoff 2^-24 = 5.960e-08
+RESULT PASS -- every restart value EQdyna reads back equals float32(original) exactly
+wall 40.5 s (time(1) on the invocation)
+
+notes
+  * "dirty tracked files": the run used the zero-moment guard before it was
+    committed; it is the commit that adds this file. The scripts/lib.py
+    sha256 above pins the exact content (check: sha256sum scripts/lib.py).
+  * An earlier run of this script (same day, before the guard) stopped at
+    plotRuptureDynamics: scripts/lib.py magnitude = log10(moment) raised for
+    fault 2 (zero slip at 20 steps), so no fault.dyna.r.nc was written.
+  * Stand-ins as listed in roundtrip.py's docstring (zero EQquasi steps,
+    synthetic infile1). Columns vxm..vzs and state_variable are 0 at 20 steps
+    for this case; the nonzero column counts how many checked values are not 0.
