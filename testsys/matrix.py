@@ -901,7 +901,17 @@ CASE_BOUND = {
     # already >3 orders of magnitude above 4.896690e-14 * ~121.5 (5.95e-12),
     # same near-machine-epsilon pattern/headroom convention as
     # tpv22/23/26/29/30/33.
-    'test.tpv13': 1e-10,
+    # Recalibrated 2026-10-11 with the defect-A reference regeneration
+    # (rule 5b: cause named first). Measured python-jax vs the new
+    # fortran reference: worst 1.247106e-07 (frt row 960 col 12, shear_strike
+    # in nc too), all 31 nodes > 1e-10 on the x=0 symmetry plane where the
+    # strike traction is zero by symmetry (|ref| <= 4.99e-08 Pa against a
+    # 3.29e8 Pa column scale, relative ~4e-16: summation-order roundoff).
+    # The rupture now crosses more of x=0 than the old reference did, so
+    # the residue grew. Stations stay at 1.25e-14. 1e-4 is the next
+    # bound-already-in-use at or above 1.247106e-07 * ~121.5 (1.52e-5), as
+    # for test.tpv12's same-shape roundoff.
+    'test.tpv13': 1e-4,
 }
 # test.tpv30 was held out of the gate from 2026-09-17 to 2026-09-23 by a real
 # divergence (numpy==jax, both != Fortran by up to 4.0e8 Pa at t=20 s). It was

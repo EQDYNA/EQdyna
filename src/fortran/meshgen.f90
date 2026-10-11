@@ -148,8 +148,8 @@ subroutine meshgen
                 
                 ! Create element
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
-                    call createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
-                    call checkPMLAlignment(elementCenterCoor)
+                    call createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor, &
+                                       xline(ix-1:ix), yline(iy-1:iy), zline(iz-1:iz))
                     call setElementMaterial(elemCount, elementCenterCoor)
                     
                     ! Row 153 checkpoint 1: the old C_degen>3.0d0 block only
@@ -1091,13 +1091,15 @@ subroutine setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equati
 end subroutine setEquationNumber
 
 
-subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
+subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor, xg, yg, zg)
+    ! xg/yg/zg: the element's two bounding grid lines per axis (xline/yline/
+    ! zline), i.e. its corners BEFORE insertFaultInterface's y-blend.
     use globalvar
     use errorCodes
     implicit none
     integer (kind = 8) :: elemCount, stressDofCount
     integer (kind = 4) :: iy, iz, i, j 
-    real (kind = dp) :: elementCenterCoor(3)
+    real (kind = dp) :: elementCenterCoor(3), xg(2), yg(2), zg(2), gridCenterCoor(3)
     
     elementCenterCoor = 0.0d0 
     
@@ -1120,9 +1122,26 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     enddo
     elementCenterCoor = elementCenterCoor/8.0d0
     
-    if (elementCenterCoor(1)>PMLb(1).or.elementCenterCoor(1)<PMLb(2) &
-    .or.elementCenterCoor(2)>PMLb(3).or.elementCenterCoor(2)<PMLb(4) &
-    .or.elementCenterCoor(3)<PMLb(5)) then
+    ! Defect A (TPV13, 2026-10-11): an element is PML iff its GRID-LINE
+    ! centre lies in the PML -- the same unblended coordinates setNumDof
+    ! uses to give a node 12 dofs. It used to test elementCenterCoor, the
+    ! mean of meshCoor, which for insertFaultType>0 carries the y-blend.
+    ! That blend stretches the whole footwall from y=ymin (the outer PML
+    ! face) to the fault, so on a dipping fault (shift 0.23*peak at the
+    ! y-min PML interface of test.tpv13, peak up to 7.5 km) a PML-column
+    ! element's centre moved past PMLb(4) and the element became a REGULAR
+    ! element holding 12-dof nodes. assembleGlobalKU adds a regular
+    ! element's force to a node's dofs 1-3 -- for a 12-dof node, its three
+    ! split x-components -- so that element's y/z force was lost and the
+    ! initial stress at the interface was out of balance at t=0 (residual
+    ! up to 90 m/s^2 at nt==1, EQDYNA_DUMP_EQUIL=1), launching a P wave
+    ! from the y-min PML. With the grid-line test, node and element
+    ! classification agree by construction, as they do with no blend.
+    gridCenterCoor = (/ 0.5d0*(xg(1)+xg(2)), 0.5d0*(yg(1)+yg(2)), 0.5d0*(zg(1)+zg(2)) /)
+    call checkPMLAlignment(gridCenterCoor)
+    if (gridCenterCoor(1)>PMLb(1).or.gridCenterCoor(1)<PMLb(2) &
+    .or.gridCenterCoor(2)>PMLb(3).or.gridCenterCoor(2)<PMLb(4) &
+    .or.gridCenterCoor(3)<PMLb(5)) then
         elemTypeArr(elemCount) = 2
         stressDofCount        = stressDofCount+15+6
     else

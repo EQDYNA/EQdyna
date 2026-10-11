@@ -47,13 +47,14 @@ end subroutine driver
 
 subroutine dumpNodalAccel
 ! DIAGNOSTIC ONLY. Writes per-node coordinates and the residual acceleration
-! of the initial state, plus a fault-node tag and the node's dof count (so
-! 12-dof PML nodes can be excluded in analysis). One file per MPI rank.
+! of the initial state, plus a fault-node tag and the node's dof count. For a
+! 12-dof PML node the acceleration is its dofs 10-12 (see below). One file
+! per MPI rank.
     use globalvar
     implicit none
 
     integer (kind = 8) :: i, eqn
-    integer (kind = 4) :: j, ift, ifn
+    integer (kind = 4) :: j, k, ift, ifn
     real (kind = dp) :: acc(3)
     character (len = 64) :: fname
     character (len = 8)  :: envval
@@ -76,10 +77,29 @@ subroutine dumpNodalAccel
     open(9911, file = trim(fname), status = 'replace')
     do i = 1, totalNumOfNodes
         acc = 0.0d0
-        do j = 1, 3
-            eqn = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
-            if (eqn > 0) acc(j) = nodalForceArr(eqn)
-        enddo
+        if (numOfDofPerNodeArr(i) == 12) then
+            ! 12-dof PML node: its velocity component j is the sum of the
+            ! three split dofs 3(j-1)+1..3j and the unsplit dof 9+j
+            ! (driver's velArr update), so the residual is the same sum.
+            ! Reading dofs 1-3 here, as this dump used to for every node,
+            ! reports three split x-components and hid the whole y-min PML
+            ! imbalance of defect A.
+            ! Every lookup is guarded: a constrained dof has eqn 0 and
+            ! must contribute nothing, never index nodalForceArr(0).
+            do j = 1, 3
+                eqn = eqNumIndexArr(eqNumStartIndexLoc(i)+9+j)
+                if (eqn > 0) acc(j) = acc(j) + nodalForceArr(eqn)
+                do k = 1, 3
+                    eqn = eqNumIndexArr(eqNumStartIndexLoc(i)+3*(j-1)+k)
+                    if (eqn > 0) acc(j) = acc(j) + nodalForceArr(eqn)
+                enddo
+            enddo
+        else
+            do j = 1, 3
+                eqn = eqNumIndexArr(eqNumStartIndexLoc(i)+j)
+                if (eqn > 0) acc(j) = nodalForceArr(eqn)
+            enddo
+        endif
         write(9911,'(6E22.13,2I4)') meshCoor(1,i), meshCoor(2,i), meshCoor(3,i), &
             acc(1), acc(2), acc(3), faultTag(i), numOfDofPerNodeArr(i)
     enddo
