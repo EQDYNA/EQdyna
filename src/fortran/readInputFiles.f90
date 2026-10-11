@@ -82,6 +82,12 @@ subroutine readglobal
         if (ios /= 0) call stopStaleGlobal('the station normal-stress sign convention, +1 extension / -1 compression (par.faultStNormalStressSign)')
         if (nStressOutSign /= 1 .and. nStressOutSign /= -1) call abortRun(ERR_CFG_NSTRESS_SIGN_INVALID, &
             'bGlobal.txt station normal-stress sign must be +1 (extension) or -1 (compression); re-run case.setup.')
+        ! Whole-fault time-series switch (output_fault_ts, library_output.f90),
+        ! the file's last line. Same stale/invalid verdicts as the line above.
+        read(1001,*,iostat=ios) outputFaultTimeSeries
+        if (ios /= 0) call stopStaleGlobal('the fault time-series output switch, 0 off / 1 on (par.outputFaultTimeSeries)')
+        if (outputFaultTimeSeries /= 0 .and. outputFaultTimeSeries /= 1) call abortRun(ERR_CFG_FAULT_TS_INVALID, &
+            'bGlobal.txt fault time-series output switch must be 0 or 1; re-run case.setup.')
 
     close(1001)
     str1ToFaultAngle = str1ToFaultAngle*pi/180.0d0 !convert degrees to radian

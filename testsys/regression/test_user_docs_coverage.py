@@ -43,6 +43,7 @@ OUTPUTS_MD = os.path.join(ROOT, 'docs', 'user', 'outputs.md')
 OUTPUT_PATTERNS = (
     'faultst',
     'src_evol',
+    'src_ts',
     'fault.dyna.r',
     'SCECRuptureTime',
     'cRuptureDynamics',

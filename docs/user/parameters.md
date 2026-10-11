@@ -212,6 +212,10 @@ Every entry below is an attribute of the `parameters` class in `scripts/defaultP
 
   output final surface displacement of all the surface stations?
 
+* **`outputFaultTimeSeries`** -- default `0`
+
+  1 = every time step, write every time-varying on-fault quantity (slip, slip rate, tractions, plus rate-and-state and thermal-pressurization variables when friclaw uses them) at every fault node, to src_ts<rank> (binary) with a text header src_ts_hdr<rank>; read them with scripts/readFaultTimeSeries.py. Costs 8 bytes per field per node per step. 0 = off (no change to any other output). Fortran solver only.
+
 ## Nucleation
 
 * **`nucR`** -- default `1500.0`

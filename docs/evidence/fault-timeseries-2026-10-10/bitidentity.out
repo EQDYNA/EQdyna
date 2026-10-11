@@ -1,0 +1,25 @@
+tpv8gm.base done 9.97 s
+tpv8gm.off done 9.86 s
+tpv8gm.on done 9.89 s
+tpv1053d.base done 23.79 s
+tpv1053d.on done 23.49 s
+tpv104.base done 19.33 s
+tpv104.on done 19.00 s
+tpv22.base done 132.92 s
+tpv22.on done 132.30 s
+tpv8gm.base vs tpv8gm.off: 59 files byte-identical, 23 identical except the "# date =" header line, only-a [], only-b [], DIFFERING []
+tpv8gm.base vs tpv8gm.on: 59 files byte-identical, 23 identical except the "# date =" header line, only-a [], only-b [], DIFFERING []
+tpv1053d.base vs tpv1053d.on: 49 files byte-identical, 19 identical except the "# date =" header line, only-a [], only-b [], DIFFERING []
+tpv104.base vs tpv104.on: 49 files byte-identical, 19 identical except the "# date =" header line, only-a [], only-b [], DIFFERING []
+tpv22.base vs tpv22.on: 65 files byte-identical, 23 identical except the "# date =" header line, only-a [], only-b [], DIFFERING []
+src_evol identical: tpv8gm.base/src_evol0 vs tpv8gm.on
+src_evol identical: tpv8gm.base/src_evol2 vs tpv8gm.on
+src_evol identical: tpv22.base/src_evol0 vs tpv22.on
+src_evol identical: tpv22.base/src_evol1 vs tpv22.on
+src_evol identical: tpv22.base/src_evol2 vs tpv22.on
+src_evol identical: tpv22.base/src_evol3 vs tpv22.on
+src_evol identical: tpv22.base/src_evolft2_0 vs tpv22.on
+src_evol identical: tpv22.base/src_evolft2_1 vs tpv22.on
+src_evol identical: tpv22.base/src_evolft2_2 vs tpv22.on
+src_evol identical: tpv22.base/src_evolft2_3 vs tpv22.on
+BITID_DONE

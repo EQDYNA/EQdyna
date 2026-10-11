@@ -102,6 +102,15 @@ def create_model_input_file():
         # read unconditionally by readglobal and read_bglobal, which refuse a
         # file without it as stale.
         f.write(str(resolveNormalStressSign(par)) + "\n")
+        # Whole-fault time-series switch (output_fault_ts): the LAST line,
+        # read unconditionally after the sign line, same stale refusal.
+        # getattr: a case's user_defined_params.py carrying an old
+        # defaultParameters copy keeps the default (off).
+        outputFaultTimeSeries = getattr(par, 'outputFaultTimeSeries', 0)
+        if outputFaultTimeSeries not in (0, 1):
+            sys.exit('case.setup: par.outputFaultTimeSeries=%r must be 0 (off) or 1 (on).'
+                     % (outputFaultTimeSeries,))
+        f.write(str(int(outputFaultTimeSeries)) + "\n")
 
 
     with open('bModelGeometry.txt', "w") as f:

@@ -352,6 +352,12 @@ def build_solver_state(case_dir, part=None):
     if g['friclaw'] not in SUPPORTED_FRICLAW:
         raise NotImplementedError('build_solver_state: friclaw=%d is not implemented '
                                    '(implemented: %r)' % (g['friclaw'], list(SUPPORTED_FRICLAW)))
+    if g.get('outputFaultTimeSeries', 0) == 1:
+        # library_output.f90's output_fault_ts (src_ts*) is Fortran-only;
+        # refuse rather than run without the requested output.
+        raise NotImplementedError('build_solver_state: outputFaultTimeSeries=1 '
+                                   '(src_ts* whole-fault time series) is written by the '
+                                   'Fortran solver only; set it to 0 for this port')
     case_decomp = (g['npx'], g['npy'], g['npz'])
     if part is None and case_decomp != (1, 1, 1):
         raise NotImplementedError('build_solver_state: only serial (npx=npy=npz=1) is supported '

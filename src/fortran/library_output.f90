@@ -12,6 +12,7 @@
 ! 7. output_gm
 ! 8. output_finalSurfDisp
 ! 9. output_src_evol
+! 9b. output_fault_ts (+ faultTsFields helper)
 ! 10. output_profile (+ readCpusAllowed, computeNumaNodes, parseRangeList,
 !     readHostname, readPid, jsonNum helpers) -- docs/run_profile.md
 ! 11. report_dropped_offfault_st
@@ -516,6 +517,146 @@ subroutine output_src_evol
     endif
     enddo
 end subroutine output_src_evol
+
+!#9b
+subroutine output_fault_ts
+    ! Whole-fault time series of every time-varying on-fault quantity,
+    ! written every time step when par.outputFaultTimeSeries = 1 (default 0:
+    ! nothing here runs and every other output is unchanged). Same per-rank /
+    ! per-fault split (faultTag) and node order (i = 1..nftnd(ift)) as
+    ! output_src_evol, which is left exactly as it was.
+    !
+    !   src_ts<tag><rank>      binary, native-endian float64, no record
+    !                          markers; one record per time step holding
+    !                          nftnd(ift) x nField values, node-major:
+    !                          [step][node][field] in C order.
+    !   src_ts_hdr<tag><rank>  text, written once at nt == 1: '#' lines with
+    !                          nnode, nfield, dt and one 'field' line per field
+    !                          (index, name, unit, meaning), then one x y z row
+    !                          per node in the binary's node order.
+    !
+    ! The field list depends only on friclaw (faultTsFields below). Constant
+    ! inputs (friction parameters, initial stresses) are not repeated per step.
+    ! The binary is truncated at nt == 1 rather than appended to, so a rerun in
+    ! the same directory does not silently concatenate onto an old run.
+    use globalvar
+    implicit none
+    integer (kind = 4), parameter :: N_FIELD_MAX = 23
+    integer (kind = 4) :: i, k, ift, nField, u
+    integer (kind = 4) :: slot(N_FIELD_MAX)
+    character (len = 16) :: fname(N_FIELD_MAX), funit(N_FIELD_MAX)
+    character (len = 72) :: fdesc(N_FIELD_MAX)
+    character (len = 8) :: tag, faultTag
+    real (kind = dp), allocatable :: rec(:,:)
+
+    call faultTsFields(nField, slot, fname, funit, fdesc)
+
+    do ift = 1, ntotft
+    if (nftnd(ift) > 0) then
+        tag = faultTag(ift)
+        if (nt == 1) then
+            open(newunit=u, file='src_ts_hdr'//trim(tag)//mm, status='replace', form='formatted')
+            write(u,'(A)') '# EQdyna whole-fault time series header'
+            write(u,'(A)') '# binary = src_ts'//trim(tag)//trim(mm)
+            write(u,'(A)') '# format = float64, native byte order, no record markers'
+            write(u,'(A)') '# layout = [step][node][field], one record per time step'
+            write(u,'(A,I0)') '# fault = ', ift
+            write(u,'(A,I0)') '# rank = ', me
+            write(u,'(A,I0)') '# friclaw = ', friclaw
+            write(u,'(A,I0)') '# nnode = ', nftnd(ift)
+            write(u,'(A,I0)') '# nfield = ', nField
+            write(u,'(A,ES24.16E3)') '# dt = ', dt
+            write(u,'(A,I0)') '# nstep = ', nstep
+            write(u,'(A)') '# time of record k (0-based) = (k + 1) * dt'
+            do k = 1, nField
+                write(u,'(A,I0,4A)') '# field ', k-1, ' '//trim(fname(k)), ' ', trim(funit(k)), ' '//trim(fdesc(k))
+            enddo
+            write(u,'(A)') '# rows below: x y z (m) of each fault node, in binary node order'
+            do i = 1, nftnd(ift)
+                write(u,'(3ES25.16E3)') (meshCoor(k,nsmp(1,i,ift)), k = 1,3)
+            enddo
+            close(u)
+        endif
+
+        allocate(rec(nField, nftnd(ift)))
+        do i = 1, nftnd(ift)
+            do k = 1, nField
+                if (slot(k) > 0) then
+                    rec(k,i) = fric(slot(k),i,ift)
+                else
+                    ! slot 0: in-plane shear-traction magnitude, from the
+                    ! strike and dip tractions -- the same expression solveRSF
+                    ! stores in FRIC_SLOT_SHEAR_MAG, which solveSWTW never sets.
+                    rec(k,i) = sqrt(fric(FRIC_SLOT_TRACT_STRIKE,i,ift)**2 + fric(FRIC_SLOT_TRACT_DIP,i,ift)**2)
+                endif
+            enddo
+        enddo
+        if (nt == 1) then
+            open(newunit=u, file='src_ts'//trim(tag)//mm, status='replace', access='stream', form='unformatted')
+        else
+            open(newunit=u, file='src_ts'//trim(tag)//mm, status='old', position='append', access='stream', form='unformatted')
+        endif
+        write(u) rec
+        close(u)
+        deallocate(rec)
+    endif
+    enddo
+end subroutine output_fault_ts
+
+subroutine faultTsFields(nField, slot, fname, funit, fdesc)
+    ! The output_fault_ts field table: fric slot (0 = computed shear
+    ! magnitude), name, unit and meaning of each field, in file order.
+    ! Every friction law gets fields 0-11; rate-and-state (friclaw >= 3) adds
+    ! 12-20; thermal pressurization (friclaw == 5) adds 21-22.
+    use globalvar
+    implicit none
+    integer (kind = 4), intent(out) :: nField, slot(*)
+    character (len = 16), intent(out) :: fname(*), funit(*)
+    character (len = 72), intent(out) :: fdesc(*)
+
+    nField = 0
+    call add(FRIC_SLOT_PEAK_SLIPRATE,   'sliprate',        'm/s', 'slip-rate magnitude (the value src_evol holds)')
+    call add(FRIC_SLOT_SLIPRATE_STRIKE, 'sliprate_strike', 'm/s', 'slip rate, along strike')
+    call add(FRIC_SLOT_SLIPRATE_DIP,    'sliprate_dip',    'm/s', 'slip rate, along dip')
+    call add(FRIC_SLOT_SLIP_STRIKE,     'slip_strike',     'm',   'slip, along strike')
+    call add(FRIC_SLOT_SLIP_DIP,        'slip_dip',        'm',   'slip, along dip')
+    call add(FRIC_SLOT_SLIP_NORM,       'slip_normal',     'm',   'fault-normal relative displacement (opening)')
+    call add(FRIC_SLOT_CUM_SLIP,        'slip_path',       'm',   'path-integrated slip, running sum of sliprate * dt')
+    call add(FRIC_SLOT_SLIPRATE_MAX,    'sliprate_peak',   'm/s', 'running maximum slip-rate magnitude so far')
+    call add(FRIC_SLOT_TRACT_NORM,      'traction_normal', 'Pa',  'normal traction, negative in compression')
+    call add(FRIC_SLOT_TRACT_STRIKE,    'traction_strike', 'Pa',  'shear traction, along strike')
+    call add(FRIC_SLOT_TRACT_DIP,       'traction_dip',    'Pa',  'shear traction, along dip')
+    call add(0,                         'traction_shear',  'Pa',  'shear-traction magnitude, sqrt(traction_strike^2 + traction_dip^2)')
+    if (friclaw >= 3) then
+        if (friclaw == 3) then
+            call add(FRIC_SLOT_STATE,   'rsf_state',       's',   'rate-and-state state variable theta (ageing law)')
+        else
+            call add(FRIC_SLOT_STATE,   'rsf_state',       '1',   'rate-and-state state variable psi (slip law)')
+        endif
+        call add(FRIC_SLOT_THETA_PC,     'theta_pc',        'Pa',   'normal-stress memory variable (Shi and Day, 2013)')
+        call add(FRIC_SLOT_THETA_PC_DOT, 'theta_pc_dot',    'Pa/s', 'time derivative of theta_pc')
+        call add(FRIC_SLOT_VEL_MASTER_X, 'vel_master_x',    'm/s',  'particle velocity, x, master-side node')
+        call add(FRIC_SLOT_VEL_MASTER_Y, 'vel_master_y',    'm/s',  'particle velocity, y, master-side node')
+        call add(FRIC_SLOT_VEL_MASTER_Z, 'vel_master_z',    'm/s',  'particle velocity, z, master-side node')
+        call add(FRIC_SLOT_VEL_SLAVE_X,  'vel_slave_x',     'm/s',  'particle velocity, x, slave-side node')
+        call add(FRIC_SLOT_VEL_SLAVE_Y,  'vel_slave_y',     'm/s',  'particle velocity, y, slave-side node')
+        call add(FRIC_SLOT_VEL_SLAVE_Z,  'vel_slave_z',     'm/s',  'particle velocity, z, slave-side node')
+    endif
+    if (friclaw == 5) then
+        call add(FRIC_SLOT_TP_NORM_TP,   'tp_pore_change',  'Pa',   'pore-pressure change from its initial value')
+        call add(FRIC_SLOT_TP_TEMP,      'tp_temperature',  'K',    'fault temperature')
+    endif
+contains
+    subroutine add(s, n, un, d)
+        integer (kind = 4), intent(in) :: s
+        character (len = *), intent(in) :: n, un, d
+        nField = nField + 1
+        slot(nField) = s
+        fname(nField) = n
+        funit(nField) = un
+        fdesc(nField) = d
+    end subroutine add
+end subroutine faultTsFields
 
 !#10
 subroutine output_profile(setupBucket, elementBucket, faultBucket, exchangeBucket, &

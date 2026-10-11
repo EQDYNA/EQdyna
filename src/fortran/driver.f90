@@ -40,6 +40,7 @@ subroutine driver
             call output_gm
             call output_src_evol
         endif 
+        if (outputFaultTimeSeries == 1) call output_fault_ts
     enddo 
 
 end subroutine driver

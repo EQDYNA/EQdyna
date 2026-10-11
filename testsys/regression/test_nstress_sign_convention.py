@@ -44,7 +44,10 @@ BGLOBAL = ('1\n1\n1\n0\n0\n1\n1\n1\n8\n0\n0\n0\n \n2 2 1\n \n5.0\n'
            '0.043736878936319105\n \n1 3\n2670.0 1000.0 0.66\n0.1 6000.0\n \n'
            '0.0 0.0 -12000.0\n1500.0 -9999.0 50000000.0 1.0\n45.0 0.33\n'
            '0.75 5000000.0\n270.0 90.0\n0.001\n \n0.28868360277136257\n'
-           '0.0 0.0\n5000.0 2000.0 8000.0\n1\n')
+           '0.0 0.0\n5000.0 2000.0 8000.0\n1\n0\n')
+# Everything before the sign line; the file then ends with the sign line and
+# the fault time-series switch (par.outputFaultTimeSeries), in that order.
+HEAD = BGLOBAL[:-len('1\n0\n')]
 
 
 def write_station(d, name, nstress):
@@ -151,23 +154,30 @@ def main():
         path = os.path.join(d, 'bGlobal.txt')
         # A missing line is a stale file (ValueError, as before); an invalid
         # value is refused with Fortran's numbered code 15 (rule 23).
-        variants = [('as written (+1)', BGLOBAL, 1),
-                    ('compression (-1)', BGLOBAL[:-2] + '-1\n', -1),
-                    ('MUTATION last line missing', BGLOBAL[:-2], 'stale'),
-                    ('MUTATION value 0', BGLOBAL[:-2] + '0\n', 'exit 15'),
-                    ('MUTATION value 2', BGLOBAL[:-2] + '2\n', 'exit 15')]
-        for label, text, want in variants:
+        # The time-series switch after it is pinned the same way: missing is
+        # stale, anything but 0/1 is refused with code 18.
+        variants = [('nStressOutSign', 'as written (+1)', BGLOBAL, 1),
+                    ('nStressOutSign', 'compression (-1)', HEAD + '-1\n0\n', -1),
+                    ('nStressOutSign', 'MUTATION last two lines missing', HEAD, 'stale'),
+                    ('nStressOutSign', 'MUTATION value 0', HEAD + '0\n0\n', 'exit 15'),
+                    ('nStressOutSign', 'MUTATION value 2', HEAD + '2\n0\n', 'exit 15'),
+                    ('outputFaultTimeSeries', 'as written (0)', BGLOBAL, 0),
+                    ('outputFaultTimeSeries', 'on (1)', HEAD + '1\n1\n', 1),
+                    ('outputFaultTimeSeries', 'MUTATION last line missing', HEAD + '1\n', 'stale'),
+                    ('outputFaultTimeSeries', 'MUTATION value 2', HEAD + '1\n2\n', 'exit 18'),
+                    ('outputFaultTimeSeries', 'MUTATION value -1', HEAD + '1\n-1\n', 'exit 18')]
+        for key, label, text, want in variants:
             with open(path, 'w') as f:
                 f.write(text)
             try:
-                got = readInputFiles.read_bglobal(path)['nStressOutSign']
+                got = readInputFiles.read_bglobal(path)[key]
             except checkInputConsistency.InputConsistencyError as e:
                 got = 'exit %d' % e.code
             except ValueError:
                 got = 'stale'
-            checks.append(('read_bglobal ' + label, got, want))
+            checks.append(('read_bglobal %s %s' % (key, label), got, want))
             if got != want:
-                fails.append('read_bglobal %s: got %r, want %r' % (label, got, want))
+                fails.append('read_bglobal %s %s: got %r, want %r' % (key, label, got, want))
 
     for f in fails:
         print('FAIL', f)
