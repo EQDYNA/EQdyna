@@ -63,7 +63,8 @@ def ruptureDynamics():
         ax21 = fig.add_subplot(334)
         plt.contourf(xx,zz,rupt2d[:,:,2])
         plt.colorbar()
-        plt.title('Peak slip rate (m/s); Mag = '+str(magnitude))
+        plt.title('Peak slip rate (m/s); Mag = '+
+                  ('n/a (no slip)' if magnitude is None else str(magnitude)))
 
         ax22 = fig.add_subplot(335)
         plt.contourf(xx,zz,rupt2d[:,:,3])

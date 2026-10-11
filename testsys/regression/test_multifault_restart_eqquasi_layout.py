@@ -25,6 +25,10 @@ aliased onto the other all read a different number. Three files go in:
   2. fault.dyna.r.nc from the REAL scripts/plotRuptureDynamics
      generateNcRestart, read back through the same reader -- the writer must
      produce the nid_fault layout, not a second per-fault file;
+  2b. fault.dyna.r.nc through the whole post-process (frt.txt0 ->
+     loadFrtData -> ruptureDynamics -> generateNcRestart) with fault 2 at
+     ZERO slip: still written, nid_fault layout, read back per fault (before
+     the zero-moment guard, log10(0) in loadFrtData wrote no file at all);
   3. a rank-2 (pre-nid_fault) file with ntotft=2, which must abort non-zero
      rather than give fault 2 fault 1's data (file has FEWER faults);
   4. an EQquasi-layout file with nid_fault = 3 and ntotft=2, which must abort
@@ -168,10 +172,10 @@ def write_rank2(path):
             ds.createVariable(name, 'f8', ('dip', 'strike'))[:] = a[:, :, k]
 
 
-def write_with_plotRuptureDynamics(tmp):
-    """fault.dyna.r.nc from the real generateNcRestart. The script imports
-    user_defined_params.par and lib at module level; par is not used by
-    generateNcRestart, so a stub module is enough."""
+def load_plotRuptureDynamics():
+    """The real scripts/plotRuptureDynamics as a module. It imports
+    user_defined_params.par and lib at module level; a stub par is enough to
+    import it, and callers that need one set mod.par."""
     sys.modules.setdefault('user_defined_params',
                            types.SimpleNamespace(par=types.SimpleNamespace()))
     sys.path.insert(0, os.path.join(ROOT, 'scripts'))
@@ -182,6 +186,76 @@ def write_with_plotRuptureDynamics(tmp):
     spec = importlib.util.spec_from_loader('plotRuptureDynamics', loader)
     mod = importlib.util.module_from_spec(spec)
     loader.exec_module(mod)
+    return mod
+
+
+def take_single_restart_file(tmp):
+    names = sorted(n for n in os.listdir(tmp) if n.startswith('fault.dyna.r'))
+    if names != ['fault.dyna.r.nc']:
+        raise RuntimeError(f'generateNcRestart wrote {names}, expected one fault.dyna.r.nc')
+    os.replace(os.path.join(tmp, 'fault.dyna.r.nc'), os.path.join(tmp, 'fault.r.nc'))
+
+
+# frt.txt<rank> column (0-based) holding each restart variable, in VAR_NAMES
+# order -- loadFrtData's fVarArr assignments.
+FRT_COL = [12, 13, 11, 10, 20, 21, 14, 15, 16, 17, 18, 19]
+FAULT_Y = [0.0, 500.0]   # each fault's own y-plane in the zero-slip case
+
+
+def write_via_frt_zero_slip(tmp):
+    """fault.dyna.r.nc through the WHOLE post-process: frt.txt0 ->
+    loadFrtData -> ruptureDynamics -> generateNcRestart. Fault 1's node has
+    slip; fault 2's node has ZERO slip (its stresses and state still set) --
+    a two-fault event where the second fault never ruptured. Before the
+    zero-moment guard loadFrtData raised on log10(0) and no restart file was
+    written at all."""
+    mod = load_plotRuptureDynamics()
+    mod.par = types.SimpleNamespace(
+        nx=1, ny=1, nz=1, dx=1.0, dz=1.0, dip=90.0, ntotft=2,
+        faultgeom=[(f['box'][0], f['box'][1], y, y, f['box'][2], f['box'][3])
+                   for f, y in zip(FAULTS, FAULT_Y)],
+        fxmin=0.0, fxmax=1.0, fzmin=0.0, fzmax=0.0,
+        fx=np.linspace(0.0, 1.0, 2), fz=np.zeros(1),
+        nmat=1, vp=6.0e3, vs=3.464e3, rou=2.67e3)
+    rows = []
+    for ift, (f, y) in enumerate(zip(FAULTS, FAULT_Y), start=1):
+        xlo, _, zlo, _ = f['box']
+        i = int(round(f['node'][0] - xlo)) + 1
+        j = int(round(f['node'][1] - zlo)) + 1
+        row = np.zeros(22)
+        row[0], row[1], row[2] = f['node'][0], y, f['node'][1]
+        row[3] = 1.0 if ift == 1 else 0.0
+        row[4], row[5] = (3.0, 4.0) if ift == 1 else (0.0, 0.0)   # fault 2: no slip
+        for k, col in enumerate(FRT_COL):
+            row[col] = value(ift, k + 1, i, j)
+        rows.append(row)
+    np.savetxt(os.path.join(tmp, 'frt.txt0'), np.array(rows))
+    cwd = os.getcwd()
+    os.chdir(tmp)
+    try:
+        faults = mod.loadFrtData(mod.par)
+        mags = [f[5] for f in faults]
+        if mags[0] is None or mags[1] is not None:
+            raise RuntimeError(f'magnitudes {mags!r}: expected a number for fault 1 '
+                               'and None (no slip) for fault 2')
+        mod.generateNcRestart(mod.ruptureDynamics())
+    finally:
+        os.chdir(cwd)
+        os.remove(os.path.join(tmp, 'frt.txt0'))
+    import netCDF4
+    with netCDF4.Dataset(os.path.join(tmp, 'fault.dyna.r.nc')) as ds:
+        dims = {k: len(v) for k, v in ds.dimensions.items()}
+    if dims.get('nid_fault') != 2:
+        raise RuntimeError(f'fault.dyna.r.nc dims {dims!r}: expected nid_fault = 2')
+    for n in os.listdir(tmp):
+        if n.startswith(('SCECRuptureTime', 'cRuptureDynamics')):
+            os.remove(os.path.join(tmp, n))
+    take_single_restart_file(tmp)
+
+
+def write_with_plotRuptureDynamics(tmp):
+    """fault.dyna.r.nc from the real generateNcRestart, fed arrays directly."""
+    mod = load_plotRuptureDynamics()
     faults = []
     for f, a in zip(FAULTS, fault_arrays()):
         nfx, nfz = grid(f)
@@ -194,10 +268,7 @@ def write_with_plotRuptureDynamics(tmp):
         mod.generateNcRestart(faults)
     finally:
         os.chdir(cwd)
-    names = sorted(n for n in os.listdir(tmp) if n.startswith('fault.dyna.r'))
-    if names != ['fault.dyna.r.nc']:
-        raise RuntimeError(f'generateNcRestart wrote {names}, expected one fault.dyna.r.nc')
-    os.replace(os.path.join(tmp, 'fault.dyna.r.nc'), os.path.join(tmp, 'fault.r.nc'))
+    take_single_restart_file(tmp)
 
 
 def expected():
@@ -265,6 +336,19 @@ def main():
             check('generateNcRestart output', got, fails)
 
         os.remove(nc)
+        try:
+            write_via_frt_zero_slip(tmp)
+        except Exception as e:   # the pre-guard log10(0) ValueError lands here
+            fails.append(f'zero-slip fault 2 via frt -> plotRuptureDynamics: '
+                         f'{type(e).__name__}: {e}')
+        else:
+            r, got = run(binary, tmp)
+            if r.returncode != 0:
+                fails.append(f'zero-slip fault 2 restart: driver exited {r.returncode}:\n{r.stdout}\n{r.stderr}')
+            else:
+                check('zero-slip fault 2 restart', got, fails)
+            os.remove(nc)
+
         write_rank2(nc)
         r, got = run(binary, tmp)
         if r.returncode == 0:
@@ -292,7 +376,7 @@ def main():
             print('  -', f)
         return 1
     print(f'SUCCESS {NAME} (EQquasi nid_fault layout read per fault; '
-          'generateNcRestart writes the same layout; 1-fault and 3-fault files refused at ntotft=2)')
+          'generateNcRestart writes the same layout, also with a zero-slip fault 2; 1-fault and 3-fault files refused at ntotft=2)')
     return 0
 
 

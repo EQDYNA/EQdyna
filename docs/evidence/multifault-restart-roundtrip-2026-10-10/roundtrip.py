@@ -260,12 +260,13 @@ def main():
 
     def write_nodes(path, with_dz):
         with open(path, 'w') as f:
-            f.write('%d %r%s\n' % (ntotft, par.dx, (' %r' % par.dz) if with_dz else ''))
+            # %.17g: exact float64 round trip (numpy 2's %r gives 'np.float64(..)')
+            f.write('%d %.17g%s\n' % (ntotft, par.dx, (' %.17g' % par.dz) if with_dz else ''))
             for g, n in zip(geom, nodes):
-                f.write('%r %r %r %r %d\n' % (g[0], g[1], g[4], g[5], len(n)))
+                f.write('%.17g %.17g %.17g %.17g %d\n' % (g[0], g[1], g[4], g[5], len(n)))
             for n in nodes:
                 for (x, z) in n:
-                    f.write('%r %r\n' % (x, z))
+                    f.write('%.17g %.17g\n' % (x, z))
 
     # 3. EQquasi stage: fault.dyna.r.nc -> fault.r.nc (case.setup:370-371), synthetic infile1.
     qd = os.path.join(wd, 'eqquasi_stage')

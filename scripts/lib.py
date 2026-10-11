@@ -468,7 +468,8 @@ def loadFrtData(par):
       rupt2d    -- (ma, na, 100) gridded rupture-time/slip/stress panels
       fVarArr   -- (ma, na, 100) gridded fault-restart variables, passed
                    to generateNcRestart via ruptureDynamics
-      magnitude -- moment magnitude computed from summed slip*area*shearMod
+      magnitude -- moment magnitude computed from summed slip*area*shearMod,
+                   or None for a fault with zero moment (no slip)
       fx, fz, nfx, nfz -- THIS fault's own strike/dip grid (generateNcRestart
                    needs these per fault instead of reading par.fx/par.nfx
                    directly, which are fault-1-only fallback fields)
@@ -539,7 +540,17 @@ def loadFrtData(par):
         [xx,zz] = np.meshgrid(fx, fz/sin(par.dip/180.*pi))
         xx = xx/1.e3
         zz = zz/1.e3#/sin(par.dip/180.*pi) # along dip distance
-        magnitude = 2/3*log10(s['moment']*1.e7)-10.7
+        # A fault that has not slipped (moment 0: e.g. fault 2 of a two-fault
+        # event before -- or without -- triggering) has no moment magnitude;
+        # log10(0) used to raise here and cost the whole post-process,
+        # fault.dyna.r.nc included. Record it as no-slip (None), never a
+        # stand-in number; its restart variables are kept as read.
+        if s['moment'] > 0.0:
+            magnitude = 2/3*log10(s['moment']*1.e7)-10.7
+        else:
+            magnitude = None
+            print('loadFrtData: fault %d has zero moment (no slip); '
+                  'magnitude not defined' % ift)
         out.append((xx, zz, s['rupt'], s['rupt2d'], s['fVarArr'], magnitude, fx, fz, nfx, nfz))
 
     return out
