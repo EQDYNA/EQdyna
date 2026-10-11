@@ -54,7 +54,7 @@ subroutine dumpNodalAccel
     implicit none
 
     integer (kind = 8) :: i, eqn
-    integer (kind = 4) :: j, ift, ifn
+    integer (kind = 4) :: j, k, ift, ifn
     real (kind = dp) :: acc(3)
     character (len = 64) :: fname
     character (len = 8)  :: envval
@@ -84,12 +84,15 @@ subroutine dumpNodalAccel
             ! Reading dofs 1-3 here, as this dump used to for every node,
             ! reports three split x-components and hid the whole y-min PML
             ! imbalance of defect A.
+            ! Every lookup is guarded: a constrained dof has eqn 0 and
+            ! must contribute nothing, never index nodalForceArr(0).
             do j = 1, 3
                 eqn = eqNumIndexArr(eqNumStartIndexLoc(i)+9+j)
-                if (eqn > 0) acc(j) = nodalForceArr(eqn) &
-                    + nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+3*(j-1)+1)) &
-                    + nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+3*(j-1)+2)) &
-                    + nodalForceArr(eqNumIndexArr(eqNumStartIndexLoc(i)+3*(j-1)+3))
+                if (eqn > 0) acc(j) = acc(j) + nodalForceArr(eqn)
+                do k = 1, 3
+                    eqn = eqNumIndexArr(eqNumStartIndexLoc(i)+3*(j-1)+k)
+                    if (eqn > 0) acc(j) = acc(j) + nodalForceArr(eqn)
+                enddo
             enddo
         else
             do j = 1, 3
