@@ -205,8 +205,8 @@ def require_root_is_this_checkout():
 
 
 def main():
-    # GATE -1 (item 77): before argparse, because --notes defaults to a path
-    # under ROOT and every write below -- the vault, the staged arm files, the
+    # GATE -1 (item 77): before argparse, because the notes transcript
+    # defaults to a path under ROOT and every write below -- the vault, the staged arm files, the
     # snapshot, the notes -- is resolved from it.
     require_root_is_this_checkout()
     ap = argparse.ArgumentParser()
@@ -219,8 +219,15 @@ def main():
     ap.add_argument('--min-eff', type=float, default=0.95)
     ap.add_argument('--exclude-cpus', default=ms.DEFAULT_EXCLUDE_CPUS)
     ap.add_argument('--merged-ref', default='HEAD')
-    ap.add_argument('--notes', default=os.path.join(
-        ROOT, 'docs/NOTES_jaxmpi_ab_2026-09-22.md'))
+    # The transcript defaults to a file of its own beside this run's JSON
+    # snapshot (same stem, .log). It used to append to
+    # docs/NOTES_jaxmpi_ab_2026-09-22.md, a dev note removed from the tree in
+    # PR #170 (git show 0f5f23b^:docs/NOTES_jaxmpi_ab_2026-09-22.md) and
+    # gitignored since, so the default silently recreated an untracked file.
+    ap.add_argument('--notes', default=None,
+                    help='transcript file to append to (default: '
+                         'docs/perf_snapshots/jaxmpi_ab_<stamp>.log, beside '
+                         'the JSON snapshot)')
     a = ap.parse_args()
 
     # GATE 0 (item 74): the exclusive lock on the package this tool STAGES
@@ -254,7 +261,7 @@ def main():
     out = os.path.join(ROOT, 'docs', 'perf_snapshots',
                        'jaxmpi_ab_%s.json' % time.strftime('%Y-%m-%d_%H%M%S'))
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    note = open(a.notes, 'a')
+    note = open(a.notes or os.path.splitext(out)[0] + '.log', 'a')
 
     def say(s):
         print(s, flush=True)

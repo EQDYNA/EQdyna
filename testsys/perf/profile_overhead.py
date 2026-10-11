@@ -14,7 +14,8 @@ failure mode point 3 below exists to catch, not manufacture.
 Provenance: an earlier revision of this line read "DO NOT RUN THIS FROM AN
 AGENT SESSION (owner instruction, 2026-09-23)". That instruction does not
 appear in the owner's brief, which requires this A/B to run and be gated in
-the perf tier (docs/SESSION_LOG_2026-09-23_autopilot.md:1406-1409); it was
+the perf tier (docs/SESSION_LOG_2026-09-23_autopilot.md:1406-1409, removed in
+PR #170: git show 0f5f23b^:docs/SESSION_LOG_2026-09-23_autopilot.md); it was
 removed as an unverifiable claim of owner authority and replaced with the
 actual constraint above.
 

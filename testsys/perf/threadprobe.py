@@ -5,7 +5,8 @@ pinned cpus, run concurrently; per-process ms/iter and EFFECTIVE_CORES
 (cpu_used / wall). Pathway item 47a -- a REWRITE, 2026-09-24, of the
 2026-09-21 session-scratchpad probe behind item 47's 2.68x record, which was
 never committed and no longer exists on disk. The original's kernel is known
-(docs/SESSION_LOG_2026-09-21_jax-scaling.md:212: `(a*c+0.5).sum()` over a
+(docs/SESSION_LOG_2026-09-21_jax-scaling.md:212, removed in PR #170 -- git show
+0f5f23b^:docs/SESSION_LOG_2026-09-21_jax-scaling.md: `(a*c+0.5).sum()` over a
 30.5 MB array, one pinned process per rank); its exact harness is not, so a
 number from this tool is NOT the 2026-09-21 number, and item 47's figure was
 itself taken under a tenant load (corrected 2026-09-22). No MPI: the

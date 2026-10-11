@@ -316,8 +316,13 @@ def check_run_jaxmpi_ab_refuses_and_does_not_stage_into_the_package():
     before = {p: _sha(p) for p in staged}
     cache = os.path.join(pkg, '__pycache__')
     sentinel = os.path.join(cache, 'item74_lock_guard_%d.marker' % os.getpid())
-    notes = os.path.join(ROOT, 'docs/NOTES_jaxmpi_ab_2026-09-22.md')
-    notes_existed = os.path.exists(notes)
+    # The tool's default transcript and its JSON snapshot both land in
+    # docs/perf_snapshots/ as jaxmpi_ab_<stamp>.*; a refused run adds neither.
+    snaps = os.path.join(ROOT, 'docs', 'perf_snapshots')
+    def _snapshot_files():
+        return set(n for n in (os.listdir(snaps) if os.path.isdir(snaps) else [])
+                   if n.startswith('jaxmpi_ab_'))
+    snaps_before = _snapshot_files()
     held = _hold(PKG_RESOURCE)
     created = not os.path.isdir(cache)
     try:
@@ -358,9 +363,11 @@ def check_run_jaxmpi_ab_refuses_and_does_not_stage_into_the_package():
         assert os.path.isfile(sentinel), (
             'run_jaxmpi_ab.py deleted %s despite refusing -- stage() ran '
             'before Gate 0' % cache)
-        assert notes_existed or not os.path.exists(notes), (
-            'run_jaxmpi_ab.py created %s despite refusing -- it is opening '
-            'its notes file before the lock' % notes)
+        new_snaps = sorted(_snapshot_files() - snaps_before)
+        assert not new_snaps, (
+            'run_jaxmpi_ab.py created %s in %s despite refusing -- it is '
+            'opening its notes transcript or snapshot before the lock'
+            % (new_snaps, snaps))
         print('  PASS  run_jaxmpi_ab.py refused in %.2f s, exited %d, named '
               'the holder, left both staged files byte-identical, and built '
               'no vault ($TMPDIR still empty)' % (elapsed, proc.returncode))

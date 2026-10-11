@@ -2,7 +2,8 @@
 """
 Regression guard: the 2026-09-23 speed-campaign tenancy fix (rules 2, 10).
 
-BEFORE (docs/SESSION_LOG_2026-09-23_autopilot.md section NN): the sweep
+BEFORE (docs/SESSION_LOG_2026-09-23_autopilot.md section NN; removed in PR #170,
+git show 0f5f23b^:docs/SESSION_LOG_2026-09-23_autopilot.md): the sweep
 billed every python cell at 1 core while a python-jax cell MEASURED 252-259%
 CPU (this repo's own /usr/bin/time -v, cited on matrix.JAX_MEASURED_CORES;
 corroborates the 249% figure section NN attributes to an earlier run), and

@@ -20,7 +20,7 @@ Two changes land together:
    on every rank, then restrict".
 
 Motivation (measured elsewhere, not re-derived here): the 1D slab tracks Fortran to 4
-ranks and turns over between 4 and 8 (`docs/SESSION_LOG_2026-09-23_autopilot.md` §EE) —
+ranks and turns over between 4 and 8 (`docs/SESSION_LOG_2026-09-23_autopilot.md` §EE; removed in PR #170, `git show 0f5f23b^:docs/SESSION_LOG_2026-09-23_autopilot.md`) —
 halo holds ~50 ms/step at both 8 and 16 ranks while compute halves, which is what a
 slab's non-shrinking surface does. Expected return from rank-local (item 64 Stage 0,
 settled): **≤ 7.92 s of setup per run and ~51 GB of peak memory at 32 ranks, with NO
