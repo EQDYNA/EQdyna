@@ -1,7 +1,7 @@
  # location = 3.0 km off fault, 12.0 km along strike, 0.0 km depth
  # Project=San-Ti                        
  # Author=Sophon                        
- # date =  9/24/2026 15:30:29
+ # date = 10/11/2026  9:19:53
  # code = EQdyna
  # element_size =   500.00000000000000     
   # time_step=  0.0379  s
