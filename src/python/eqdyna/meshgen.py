@@ -892,10 +892,11 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     material: (nmat, n2mat) array (n2mat==3: homogeneous [vp,vs,rho];
         n2mat==4: 1D layered [depth_bottom,vp,vs,rho], see setElementMaterial).
     meshCoor: (N+1,3) from build_node_coordinates -- Milestone 9 addition:
-        element-center classification (PML alignment/type, material depth)
-        reads the ACTUAL node coordinates here (matching createElement.f90's
-        `meshCoor(j,nodeElemIdRelation(i,elemCount))`), not the grid lines
-        directly, so insertFaultType>0's y-morph is correctly reflected.
+        element-center MATERIAL classification reads the ACTUAL node
+        coordinates here (matching createElement.f90's
+        `meshCoor(j,nodeElemIdRelation(i,elemCount))`), so insertFaultType>0's
+        y-morph is reflected there; the PML type/alignment test reads the
+        grid-line centre instead, as setNumDof's node test does (defect A).
 
     Returns (conn, elem_type, mat, depth) where conn is (E,8) 1-indexed node
     ids in the Fortran nodeElemIdRelation column order (0-unused row NOT
@@ -961,16 +962,32 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     centers = meshCoor[conn].mean(axis=1)  # (E,3)
     cx, cy, cz = centers[:, 0], centers[:, 1], centers[:, 2]
 
-    on_bound = ((cx == xmax0) | (cx == xmin0) | (cy == ymax0) | (cy == ymin0) |
-                (cz == zmin0))
+    # ---- PML classification: from the GRID-LINE centre (defect A) ----
+    # meshgen.f90:createElement. An element is PML iff its unblended
+    # grid-line centre is in the PML -- the same coordinates
+    # build_equation_numbers' num_dof_for gives a node 12 dofs by. Testing
+    # the morphed centre (cx, cy, cz above) let insertFaultInterface's
+    # y-blend, which stretches the footwall from the outer PML face to the
+    # fault, carry a PML-column element of test.tpv13 past the y-min
+    # interface: a REGULAR element holding 12-dof nodes, whose y/z force
+    # the assembly drops into those nodes' split x dofs. That unbalanced
+    # the initial stress at the interface at t=0 and sent a P wave in from
+    # the y-min PML.
+    xl, yl, zl = np.asarray(xline), np.asarray(yline), np.asarray(zline)
+    gx = 0.5 * (xl[IX - 1] + xl[IX])
+    gy = 0.5 * (yl[IY - 1] + yl[IY])
+    gz = 0.5 * (zl[IZ - 1] + zl[IZ])
+
+    on_bound = ((gx == xmax0) | (gx == xmin0) | (gy == ymax0) | (gy == ymin0) |
+                (gz == zmin0))
     if on_bound.any():
         b = int(np.argmax(on_bound))
         raise ValueError('checkPMLAlignment: element center exactly on a '
                           'PML bound at (%r,%r,%r) (element %d)'
-                          % (cx[b], cy[b], cz[b], b))
+                          % (gx[b], gy[b], gz[b], b))
 
-    elem_type = np.where((cx > xmax0) | (cx < xmin0) | (cy > ymax0) | (cy < ymin0) |
-                          (cz < zmin0), 2, 1).astype(np.int64)
+    elem_type = np.where((gx > xmax0) | (gx < xmin0) | (gy > ymax0) | (gy < ymin0) |
+                          (gz < zmin0), 2, 1).astype(np.int64)
 
     # ---- wedge degeneration (C_degen>3): library_degeneration.f90's wedge()
     # + meshgen.f90:91-101's type-13 retag, both gathered from the ORIGINAL
@@ -1358,14 +1375,19 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
 
                     corners = meshCoor[c]  # (8,3)
                     cx, cy, cz = corners.mean(axis=0)
+                    # PML type from the grid-line centre (defect A; see
+                    # build_elements and meshgen.f90:createElement).
+                    gx = 0.5 * (xline[ix - 1] + xline[ix])
+                    gy = 0.5 * (yline[iy - 1] + yline[iy])
+                    gz = 0.5 * (zline[iz - 1] + zline[iz])
 
-                    if cx == xmax0 or cx == xmin0 or cy == ymax0 or cy == ymin0 or cz == zmin0:
+                    if gx == xmax0 or gx == xmin0 or gy == ymax0 or gy == ymin0 or gz == zmin0:
                         raise ValueError(
                             'checkPMLAlignment: element center exactly on a '
-                            'PML bound at (%r,%r,%r)' % (cx, cy, cz))
+                            'PML bound at (%r,%r,%r)' % (gx, gy, gz))
 
                     etype = 1
-                    if cx > xmax0 or cx < xmin0 or cy > ymax0 or cy < ymin0 or cz < zmin0:
+                    if gx > xmax0 or gx < xmin0 or gy > ymax0 or gy < ymin0 or gz < zmin0:
                         etype = 2
 
                     depth_val = -0.5 * (zline[iz] + zline[iz - 1])  # defect C fix, PR #164
