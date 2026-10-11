@@ -550,7 +550,8 @@ is specific to this box and easy to miss, because it looks like an
 implementation detail of the measurement tool rather than a variable of the
 experiment.
 
-**Incident (2026-09-23)**: `docs/SESSION_LOG_2026-09-23_autopilot.md` section
+**Incident (2026-09-23)**: `docs/SESSION_LOG_2026-09-23_autopilot.md` (removed in PR
+#170; `git show 0f5f23b^:docs/SESSION_LOG_2026-09-23_autopilot.md`) section
 EE read a 1D-slab jax-MPI-vs-Fortran table (ranks 1/2/4/8/16, ratios
 0.83x/1.07x/1.07x/1.56x/1.58x) and attributed the turn at 8 ranks to the
 slab's halo surface no longer shrinking with rank count — a real per-rank
