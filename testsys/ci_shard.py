@@ -165,7 +165,7 @@ SHARDS = {
         "test_stop_exit_status.py",
         "test_symlink_integrity.py",
         "test_shared_compset_file_loud.py",  # added 2026-09-24 (wei-lin, item 44): 3 create.newcase/case.setup subprocesses, ~3 s
-        "test_pml_element_type_grid_centre.py",  # added 2026-10-11 (TPV13 defect A): 1 create.newcase/case.setup at dx 1500 m + port mesh builders, no solver, ~5 s
+        "test_pml_element_type_grid_centre.py",  # added 2026-10-11 (TPV13 defect A): 2 create.newcase/case.setup at dx 1500 m + port mesh builders + incremental src/fortran make + one 4-rank 4-step eqdyna run (EQUIL dump), ~11 s; needs the MPI toolchain
         "test_term_axis.py",
         "test_station_gate.py",  # added 2026-09-24 (wei-lin, owner gate design): tempdir copies of committed refs, 10 scenarios, ~1 s
         "test_nstress_sign_convention.py",  # added 2026-09-24 (wei-lin, row 22a): 11 case-param subprocesses + tempdir gate checks, ~1 s

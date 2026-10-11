@@ -16,20 +16,37 @@ to ~90 m/s^2 on one slanted node column before, 2.9e-2 m/s^2 (the generic
 free-surface value) after. Outcome: TPV13 vs FaultMod at 8 s, slip ratio
 0.61 -> 0.95, body peak-velocity ratio 4.24 -> 1.01, p90 |dt| 2.84 -> 0.53 s.
 
-RULE 14a, both ways:
-  PASS  the port's build_elements types a coarse test.tpv13 mesh with ZERO
-        regular elements holding a 12-dof node, and meshgen.f90's
-        createElement tests gridCenterCoor against PMLb.
-  FAIL  the same invariant checker, fed the historical blended-centre typing
-        of the SAME mesh, must find > 0 such elements; and the Fortran
-        checker, fed a synthetic copy of createElement testing
-        elementCenterCoor, must reject it.
+RULE 14a, both ways -- each half asserts BEHAVIOUR (rule 10a):
+  python   PASS: the port's build_elements types a coarse test.tpv13 mesh
+           with ZERO regular elements holding a 12-dof node.
+           FAIL: the same invariant checker, fed the historical
+           blended-centre typing of the SAME mesh, must find > 0 (every run).
+  fortran  PASS: src/fortran/eqdyna, run at 4 ranks on the same coarse case
+           with EQDYNA_DUMP_EQUIL=1, writes an nt==1 residual whose max over
+           NON-fault nodes is below RESIDUAL_MAX_MS2 (an initial state in
+           equilibrium up to the free-surface truncation residual).
+           FAIL: `--mutant` builds a copy of src/fortran in a tempdir with
+           createElement's PML test switched back to elementCenterCoor and
+           runs the SAME check on it; it must go red. Not run by default
+           only for cost (a second full Fortran build, ~+11 s); the mutant is
+           constructed by text substitution and refuses loudly if the
+           substitution site has moved, but nothing is ASSERTED on source
+           text. Measured 2026-10-11 at dx 1500 m, 4 ranks, term 0.5 s:
+           fixed max non-fault |a| 0.0695 m/s^2, 0 nodes > 1 m/s^2;
+           mutant 131.2 m/s^2, 880 nodes > 1 m/s^2 (all 12-dof, in the
+           y-min PML interface). The e2e gates on test.tpv10/12/13 (whose
+           references were regenerated on this fix) also catch a revert of
+           either implementation.
 
-Cheap (rule 9): no solver run. One case.setup at dx 1500 m plus the port's
-mesh builders, a few seconds.
+Cheap (rule 9): one case.setup at dx 1500 m, the port's mesh builders, an
+incremental `make` of src/fortran (never bin/eqdyna, which other processes
+on this box may be running) and one ~2 s 4-rank solver launch of 4 steps:
+~11 s wall here, ~22 s with --mutant (measured 2026-10-11).
 """
 import os
+import glob
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,11 +55,21 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
-FORTRAN_SRC = os.path.join(ROOT, 'src', 'fortran', 'meshgen.f90')
+sys.path.insert(0, ROOT)
+from testsys.common import MACHINE  # noqa: E402
+SRC = os.path.join(ROOT, 'src', 'fortran')
+MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 CASE = 'test.tpv13'
 COARSE_DX = 1500.0
-
-FORTRAN_TEST_RE = re.compile(r'if\s*\(\s*(\w+)\(1\)\s*>\s*PMLb\(1\)')
+COARSE_TERM = 0.5   # dt 0.114 s at dx 1500 m -> 4 steps; the dump is at nt==1
+NRANKS = 4          # the case's own par.nx*ny*nz (2,2,1)
+# Fixed 0.0695, mutant 131.2 (see docstring): 1 m/s^2 sits 14x above the
+# fixed tree's free-surface truncation residual and 131x below the defect.
+RESIDUAL_MAX_MS2 = 1.0
+# The fixed createElement PML test, and the historical one the mutant restores.
+FIXED_TEST = 'if (gridCenterCoor(1)>PMLb(1).or.gridCenterCoor(1)<PMLb(2) &\n' \
+             '    .or.gridCenterCoor(2)>PMLb(3).or.gridCenterCoor(2)<PMLb(4) &\n' \
+             '    .or.gridCenterCoor(3)<PMLb(5)) then'
 
 
 def _env():
@@ -54,7 +81,7 @@ def _env():
     return env
 
 
-def _coarse_case(tmp):
+def _coarse_case(tmp, term=None):
     case_dir = os.path.join(tmp, 'case')
     subprocess.run([sys.executable, os.path.join(ROOT, 'scripts', 'create.newcase'),
                     case_dir, CASE], env=_env(), check=True, capture_output=True)
@@ -63,6 +90,10 @@ def _coarse_case(tmp):
     text, n = re.subn(r'^par\.dx = [0-9.]+', 'par.dx = %r' % COARSE_DX, text, flags=re.M)
     if n != 1:
         raise RuntimeError('could not override par.dx in %s' % p)
+    if term is not None:
+        text, n = re.subn(r'^par\.term = [0-9.]+', 'par.term = %r' % term, text, flags=re.M)
+        if n != 1:
+            raise RuntimeError('could not override par.term in %s' % p)
     open(p, 'w').write(text)
     subprocess.run([sys.executable, 'case.setup'], cwd=case_dir, env=_env(),
                    check=True, capture_output=True)
@@ -110,32 +141,87 @@ def check_python():
     return fails
 
 
-def check_fortran_text(text):
-    names = FORTRAN_TEST_RE.findall(text)  # setNumDof's nodeCoor test also matches
-    if 'elementCenterCoor' in names:
-        return False, 'an element is typed PML by its blended elementCenterCoor'
-    if 'gridCenterCoor' not in names:
-        return False, 'createElement grid-centre PML test not found (PMLb tests on: %s)' % names
-    return True, 'ok (PMLb tests on: %s)' % ', '.join(names)
+def build(src_dir):
+    """Incremental `make` of src_dir (a src/fortran tree); returns the binary."""
+    env = dict(os.environ)
+    env['MACHINE'] = MACHINE
+    r = subprocess.run(['make'], cwd=src_dir, env=env, capture_output=True,
+                       text=True, timeout=600)
+    exe = os.path.join(src_dir, 'eqdyna')
+    if r.returncode != 0 or not os.path.exists(exe):
+        raise RuntimeError('build of %s failed (exit %d)\n%s%s'
+                           % (src_dir, r.returncode, r.stdout[-2000:], r.stderr[-2000:]))
+    return exe
 
 
-def check_fortran():
-    text = open(FORTRAN_SRC).read()
+def make_mutant(tmp):
+    """A copy of src/fortran whose createElement types PML by the blended
+    elementCenterCoor again, built in tmp/src/fortran (the makefile calls
+    ../../scripts/src_hash.py, hence the scripts symlink)."""
+    dst = os.path.join(tmp, 'src', 'fortran')
+    shutil.copytree(SRC, dst, ignore=shutil.ignore_patterns('*.o', '*.mod', 'eqdyna'))
+    os.symlink(os.path.join(ROOT, 'scripts'), os.path.join(tmp, 'scripts'))
+    p = os.path.join(dst, 'meshgen.f90')
+    text = open(p).read()
+    if text.count(FIXED_TEST) != 1:
+        raise RuntimeError('--mutant: the fixed createElement PML test is not '
+                           'where this test expects it; update FIXED_TEST')
+    open(p, 'w').write(text.replace(FIXED_TEST, FIXED_TEST.replace(
+        'gridCenterCoor', 'elementCenterCoor')))
+    return build(dst)
+
+
+def residual(exe, tmp):
+    """(n nodes, n 12-dof, max non-fault |a|, n non-fault |a| > bound) of the
+    nt==1 EQDYNA_DUMP_EQUIL residual of a coarse test.tpv13 run of exe."""
+    cd = _coarse_case(tmp, term=COARSE_TERM)
+    env = _env()
+    env['EQDYNA_DUMP_EQUIL'] = '1'
+    env['OMP_NUM_THREADS'] = '1'
+    r = subprocess.run([MPIRUN, '-np', str(NRANKS), exe], cwd=cd, env=env,
+                       capture_output=True, text=True, timeout=300)
+    files = sorted(glob.glob(os.path.join(glob.escape(cd), 'equilibriumDump.*.txt')))
+    if r.returncode != 0 or len(files) != NRANKS:
+        raise RuntimeError('%s exited %d with %d of %d dump files\n%s'
+                           % (exe, r.returncode, len(files), NRANKS,
+                              (r.stdout + r.stderr)[-2000:]))
+    a = np.vstack([np.loadtxt(f, ndmin=2) for f in files])
+    acc = np.linalg.norm(a[:, 3:6], axis=1)
+    off = a[:, 6] == 0   # fault-node tag 0: not a split-node fault node
+    return (len(a), int((a[:, 7] == 12).sum()), float(acc[off].max()),
+            int((acc[off] > RESIDUAL_MAX_MS2).sum()))
+
+
+def check_fortran_binary(exe, label):
+    with tempfile.TemporaryDirectory() as tmp:
+        n, n12, amax, nbad = residual(exe, tmp)
+    print('  fortran %s: %d nodes, %d 12-dof; nt==1 non-fault max|a| = %.4g m/s^2, '
+          '%d nodes > %g' % (label, n, n12, amax, nbad, RESIDUAL_MAX_MS2))
     fails = []
-    ok, msg = check_fortran_text(text)
-    print('  fortran: live meshgen.f90 -> %s' % msg)
-    if not ok:
-        fails.append(msg)
-    bad = text.replace('if (gridCenterCoor(1)>PMLb(1)', 'if (elementCenterCoor(1)>PMLb(1)')
-    ok_bad, msg_bad = check_fortran_text(bad)
-    print('  fortran: synthetic blended-centre copy -> %s' % msg_bad)
-    if ok_bad:
-        fails.append('the Fortran checker accepted the synthetic blended-centre copy')
+    if n12 == 0:
+        fails.append('fortran %s: no 12-dof nodes -- the check tested nothing' % label)
+    if nbad:
+        fails.append('fortran %s: %d non-fault nodes out of equilibrium at nt==1 '
+                     '(max %.4g m/s^2 > %g)' % (label, nbad, amax, RESIDUAL_MAX_MS2))
+    return fails
+
+
+def check_fortran(mutant=False):
+    if shutil.which('mpif90') is None or shutil.which(MPIRUN) is None:
+        return ['mpif90/%s not on PATH (this guard needs a real MPI build; it '
+                'does not skip silently)' % MPIRUN]
+    fails = check_fortran_binary(build(SRC), 'src/fortran')
+    if mutant:
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = check_fortran_binary(make_mutant(tmp), 'MUTANT (blended-centre typing)')
+        if not bad:
+            fails.append('the residual check passed the blended-centre mutant -- '
+                         'it cannot come out both ways')
     return fails
 
 
 def main():
-    fails = check_python() + check_fortran()
+    fails = check_python() + check_fortran(mutant='--mutant' in sys.argv[1:])
     if fails:
         print('\nFAIL test_pml_element_type_grid_centre (%d)' % len(fails))
         for f in fails:
