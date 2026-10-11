@@ -172,6 +172,13 @@ subroutine netcdf_read_on_fault_eqdyna_restart
         write(ntotftStr, '(I0,A,I0)') nftFile, ' fault(s) but ntotft = ', ntotft
         call abortRun(ERR_INPUT_FILE_STALE, 'fault.r.nc holds '//trim(ntotftStr)// &
             '; write it with an EQquasi that carries the nid_fault dimension')
+    elseif (nftFile > ntotft) then
+        ! More faults in the file than this case declares: the file belongs
+        ! to a different case geometry, so reading its first ntotft slices
+        ! would silently drop the rest.
+        write(ntotftStr, '(I0,A,I0)') nftFile, ' fault(s) but ntotft = ', ntotft
+        call abortRun(ERR_INPUT_FILE_STALE, 'fault.r.nc holds '//trim(ntotftStr)// &
+            '; it was written for a case with more faults than this one')
     endif
 
     do ift = 1, ntotft

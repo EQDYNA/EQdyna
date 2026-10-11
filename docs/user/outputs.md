@@ -65,7 +65,8 @@ untouched -- a single-fault case's files are byte-for-byte unaffected:
   slice, zero-padded to the largest fault. A fully dynamic cycle (`mode = 2`)
   reads EQquasi's `fault.r.nc` in the same layout.
 * `SCECRuptureTime<suffix>.txt` and `cRuptureDynamics<suffix>.png`, written by
-  `plotRuptureDynamics` -- same `suffix` convention.
+  `plotRuptureDynamics` -- `suffix` empty for fault 1, `_ft2` for fault 2
+  (e.g. `SCECRuptureTime_ft2.txt`).
 
 `frt.txt<rank>` is the one exception: it is NOT split per fault. One file per
 MPI rank still covers every fault that rank owns nodes on, same as the

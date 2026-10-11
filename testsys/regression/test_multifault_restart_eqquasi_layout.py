@@ -26,9 +26,11 @@ aliased onto the other all read a different number. Three files go in:
      generateNcRestart, read back through the same reader -- the writer must
      produce the nid_fault layout, not a second per-fault file;
   3. a rank-2 (pre-nid_fault) file with ntotft=2, which must abort non-zero
-     rather than give fault 2 fault 1's data.
+     rather than give fault 2 fault 1's data (file has FEWER faults);
+  4. an EQquasi-layout file with nid_fault = 3 and ntotft=2, which must abort
+     non-zero rather than silently drop fault 3 (file has MORE faults).
 
-Cheap (rule 9): four small .f90 compiles and three tiny netCDF reads, a few
+Cheap (rule 9): four small .f90 compiles and four tiny netCDF reads, a few
 seconds. Fails loudly (rule 2) if mpif90/netCDF-Fortran are unavailable.
 """
 import importlib.machinery
@@ -133,11 +135,14 @@ def fault_arrays():
     return out
 
 
-def write_eqquasi_layout(path):
+def write_eqquasi_layout(path, extra_faults=0):
     """fault.r.nc as EQquasi's netcdf_write_on_fault writes it: NF90_REAL,
-    C-order dims (nid_fault, nid_dip, nid_strike), zero padding."""
+    C-order dims (nid_fault, nid_dip, nid_strike), zero padding.
+    extra_faults appends copies of the last fault (a file for a case with
+    more faults than the driver's ntotft=2)."""
     import netCDF4
     arrs = fault_arrays()
+    arrs += [arrs[-1]] * extra_faults
     nfxMax = max(a.shape[1] for a in arrs)
     nfzMax = max(a.shape[0] for a in arrs)
     with netCDF4.Dataset(path, 'w') as ds:
@@ -265,6 +270,19 @@ def main():
         if r.returncode == 0:
             fails.append('rank-2 file with ntotft=2: reader returned 0 '
                          f'instead of aborting (fric: {got!r})')
+        elif 'fault.r.nc holds 1 fault(s) but ntotft = 2' not in r.stdout + r.stderr:
+            fails.append('rank-2 file with ntotft=2: aborted, but not with the '
+                         f'fault-count message:\n{r.stdout}\n{r.stderr}')
+
+        os.remove(nc)
+        write_eqquasi_layout(nc, extra_faults=1)
+        r, got = run(binary, tmp)
+        if r.returncode == 0:
+            fails.append('nid_fault=3 file with ntotft=2: reader returned 0 '
+                         f'instead of aborting (fric: {got!r})')
+        elif 'fault.r.nc holds 3 fault(s) but ntotft = 2' not in r.stdout + r.stderr:
+            fails.append('nid_fault=3 file with ntotft=2: aborted, but not with the '
+                         f'fault-count message:\n{r.stdout}\n{r.stderr}')
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -274,7 +292,7 @@ def main():
             print('  -', f)
         return 1
     print(f'SUCCESS {NAME} (EQquasi nid_fault layout read per fault; '
-          'generateNcRestart writes the same layout; rank-2 multi-fault file refused)')
+          'generateNcRestart writes the same layout; 1-fault and 3-fault files refused at ntotft=2)')
     return 0
 
 
