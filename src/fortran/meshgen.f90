@@ -148,8 +148,8 @@ subroutine meshgen
                 
                 ! Create element
                 if(ix>=2 .and. iy>=2 .and. iz>=2) then
-                    call createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
-                    call checkPMLAlignment(elementCenterCoor)
+                    call createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor, &
+                                       xline(ix-1:ix), yline(iy-1:iy), zline(iz-1:iz))
                     call setElementMaterial(elemCount, elementCenterCoor)
                     
                     ! Row 153 checkpoint 1: the old C_degen>3.0d0 block only
@@ -177,7 +177,7 @@ subroutine meshgen
                         endif
                     enddo
                     
-                    call replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
+                    call replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0, xline(ix-1))
                     ! Defect C (board PR #164, 2026-10-09): this call used to add an
                     ! unexplained "+ 7.3215d0" to the element-center depth below,
                     ! uniformly shifting every Method-2 (C_elastic==0) element's
@@ -1091,13 +1091,15 @@ subroutine setEquationNumber(nodeXyzIndex, nodeCoor, eqNumIndexArrLocTag, equati
 end subroutine setEquationNumber
 
 
-subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
+subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor, xg, yg, zg)
+    ! xg/yg/zg: the element's two bounding grid lines per axis (xline/yline/
+    ! zline), i.e. its corners BEFORE insertFaultInterface's y-blend.
     use globalvar
     use errorCodes
     implicit none
     integer (kind = 8) :: elemCount, stressDofCount
     integer (kind = 4) :: iy, iz, i, j 
-    real (kind = dp) :: elementCenterCoor(3)
+    real (kind = dp) :: elementCenterCoor(3), xg(2), yg(2), zg(2), gridCenterCoor(3)
     
     elementCenterCoor = 0.0d0 
     
@@ -1120,9 +1122,26 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     enddo
     elementCenterCoor = elementCenterCoor/8.0d0
     
-    if (elementCenterCoor(1)>PMLb(1).or.elementCenterCoor(1)<PMLb(2) &
-    .or.elementCenterCoor(2)>PMLb(3).or.elementCenterCoor(2)<PMLb(4) &
-    .or.elementCenterCoor(3)<PMLb(5)) then
+    ! Defect A (TPV13, 2026-10-11): an element is PML iff its GRID-LINE
+    ! centre lies in the PML -- the same unblended coordinates setNumDof
+    ! uses to give a node 12 dofs. It used to test elementCenterCoor, the
+    ! mean of meshCoor, which for insertFaultType>0 carries the y-blend.
+    ! That blend stretches the whole footwall from y=ymin (the outer PML
+    ! face) to the fault, so on a dipping fault (shift 0.23*peak at the
+    ! y-min PML interface of test.tpv13, peak up to 7.5 km) a PML-column
+    ! element's centre moved past PMLb(4) and the element became a REGULAR
+    ! element holding 12-dof nodes. assembleGlobalKU adds a regular
+    ! element's force to a node's dofs 1-3 -- for a 12-dof node, its three
+    ! split x-components -- so that element's y/z force was lost and the
+    ! initial stress at the interface was out of balance at t=0 (residual
+    ! up to 90 m/s^2 at nt==1, EQDYNA_DUMP_EQUIL=1), launching a P wave
+    ! from the y-min PML. With the grid-line test, node and element
+    ! classification agree by construction, as they do with no blend.
+    gridCenterCoor = (/ 0.5d0*(xg(1)+xg(2)), 0.5d0*(yg(1)+yg(2)), 0.5d0*(zg(1)+zg(2)) /)
+    call checkPMLAlignment(gridCenterCoor)
+    if (gridCenterCoor(1)>PMLb(1).or.gridCenterCoor(1)<PMLb(2) &
+    .or.gridCenterCoor(2)>PMLb(3).or.gridCenterCoor(2)<PMLb(4) &
+    .or.gridCenterCoor(3)<PMLb(5)) then
         elemTypeArr(elemCount) = 2
         stressDofCount        = stressDofCount+15+6
     else
@@ -1134,13 +1153,13 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor)
     ! update elemCount, stressDofCount
 end subroutine createElement
 
- subroutine replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
+ subroutine replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0, xLow)
     use globalvar
     use errorCodes
     implicit none
     integer (kind = 8) :: elemCount
     integer (kind = 4) :: iFault, iFaultNodePair, nftnd0(ntotft), k
-    real (kind = dp) :: nodeCoor(10)
+    real (kind = dp) :: nodeCoor(10), xLow
     logical :: isAboveSomeFaultPlane
     ! The default grids only contain slave nodes.
     ! This subroutine will replace slave nodes with corresponding master nodes.
@@ -1165,7 +1184,17 @@ end subroutine createElement
     ! fault, so "test fault i's own x/z and y" IS "test fault 1's x/z and y").
     isAboveSomeFaultPlane = .false.
     do iFault = 1, ntotft
-        if (nodeCoor(1)>(fltxyz(1,1,iFault)-tol) .and. nodeCoor(1)<(fltxyz(2,1,iFault)+dx+tol) .and. &
+        ! Fault-edge fix (2026-10-11): the +x test used to be
+        ! nodeCoor(1) < fxmax+dx+tol on the element's UPPER x grid line,
+        ! which assumes the cell beyond fxmax is exactly dx wide. Where the
+        ! grid grades right at the fault edge (test.tpv13: 15000 -> 15512.5 m)
+        ! the hanging-wall element beyond x=+fxmax kept the SLAVE edge node,
+        ! so the +x edge pair carried a spurious strike shear (Method 2:
+        ! |tau|/|sigma_n| 0.81 > mu_s 0.70 at t=0, an acausal border break)
+        ! while the -x edge (tested on the upper line, always inside) was
+        ! right. Test the element's LOWER x grid line instead: identical to
+        ! the old test wherever that cell is dx wide.
+        if (nodeCoor(1)>(fltxyz(1,1,iFault)-tol) .and. xLow<(fltxyz(2,1,iFault)+tol) .and. &
             nodeCoor(3)>(fltxyz(1,3,iFault)-tol) .and. &
             abs(nodeCoor(2) - (fltxyz(1,2,iFault) + dy)) < tol) then
             isAboveSomeFaultPlane = .true.

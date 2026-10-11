@@ -11,12 +11,12 @@ this fix, case_input/test.tpv12/user_defined_params.py set mu_s = 1000
 (z == fzmin) node: 121 border nodes at the gate dx (500 m). Unpinning them
 newly ruptures 28 nodes, all on the border, none acausally.
 
-test.tpv13 is deliberately NOT covered yet. Unpinning its border makes the
-x = +/-15 km edge break at t = 0.076 s, before any P wave from the
-nucleation patch could arrive (~2.85 s) -- 219 acausal nodes in that run.
-That is the Method-2 boundary stress imbalance (defect A) showing through,
-not rupture, so TPV13 keeps its pin until defect A lands; then TPV13_HELD
-is emptied and the case joins CASES.
+test.tpv13 was held out until defect A landed: with its border unpinned the
+x = +/-15 km edge broke at t = 0.076 s, before any P wave from the
+nucleation patch could arrive (~2.85 s) -- 219 acausal nodes in that run --
+because elements in the y-min PML interface were typed by their BLENDED
+centre (resolution README defect A). With elements typed by grid-line centre
+in both backends, TPV13's border is unpinned too and the case is in CASES.
 This test does not run the solver (rule 9): it
 only imports each case's user_defined_params.py (the same module
 scripts/case.setup imports) and inspects the mu_s (on_fault_vars[...,1])
@@ -35,8 +35,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 UNBREAKABLE = 1000.0
-CASES = ('test.tpv12',)
-TPV13_HELD = ('test.tpv13',)  # pinned until defect A (Method-2 boundary stress) lands
+CASES = ('test.tpv12', 'test.tpv13')
 
 
 def _load_par(case):
