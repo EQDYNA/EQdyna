@@ -32,7 +32,16 @@ aliased onto the other all read a different number. Three files go in:
   3. a rank-2 (pre-nid_fault) file with ntotft=2, which must abort non-zero
      rather than give fault 2 fault 1's data (file has FEWER faults);
   4. an EQquasi-layout file with nid_fault = 3 and ntotft=2, which must abort
-     non-zero rather than silently drop fault 3 (file has MORE faults).
+     non-zero rather than silently drop fault 3 (file has MORE faults);
+  5. the dz != dx refusal (owner decision 2026-10-11): EQquasi spaces dip
+     rows by dx, EQdyna by dz, so a multi-fault restart with dz != dx is
+     refused, not read misaligned. The reader must abort with the dz/dx
+     message at dz > dx (which otherwise reads silently wrong) and dz < dx
+     (which otherwise dies in a raw NetCDF bounds error), and must NOT
+     refuse at ntotft = 1 (single-fault restarts are out of scope). On the
+     Python side scripts/lib.py requireMultiFaultRestartDzEqualsDx refuses
+     the same set, generateNcRestart refuses before creating the file, and
+     case.setup calls the check before it writes anything.
 
 Cheap (rule 9): four small .f90 compiles and four tiny netCDF reads, a few
 seconds. Fails loudly (rule 2) if mpif90/netCDF-Fortran are unavailable.
@@ -71,10 +80,16 @@ program restart_layout_driver
     use globalvar
     implicit none
     integer :: ift, k
+    character(len=32) :: arg
 
+    ! Optional argv: ntotft dz (default 2 and 1.0, dx is always 1.0).
     ntotft = 2
     dx = 1.0d0
     dz = 1.0d0
+    if (command_argument_count() >= 2) then
+        call get_command_argument(1, arg); read(arg, *) ntotft
+        call get_command_argument(2, arg); read(arg, *) dz
+    endif
 
     allocate(fxmin(2), fxmax(2), fzmin(2), fzmax(2))
 %(boxes)s
@@ -281,8 +296,8 @@ def expected():
     return out
 
 
-def run(binary, tmp):
-    r = subprocess.run([binary], cwd=tmp, capture_output=True, text=True, timeout=30)
+def run(binary, tmp, args=()):
+    r = subprocess.run([binary, *args], cwd=tmp, capture_output=True, text=True, timeout=30)
     got = {}
     for line in r.stdout.splitlines():
         parts = line.split()
@@ -300,6 +315,63 @@ def check(label, got, fails):
         for name, e, v in zip(VAR_NAMES, exp, g):
             if abs(v - e) > 1e-3:
                 fails.append(f'{label}: fault {ift} {name} = {v!r}, expected {e!r}')
+
+
+def python_side_dz_checks(tmp):
+    """scripts/lib.py requireMultiFaultRestartDzEqualsDx, its call in
+    generateNcRestart (no file created when refused) and its call as the
+    first statement of case.setup's _main_func."""
+    import ast
+    fails = []
+    sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+    import lib
+    check_fn = getattr(lib, 'requireMultiFaultRestartDzEqualsDx', None)
+    if check_fn is None:
+        return ['scripts/lib.py has no requireMultiFaultRestartDzEqualsDx']
+    P = types.SimpleNamespace
+    for par, refuse in ((P(ntotft=2, mode=2, dx=200.0, dz=173.2), True),
+                        (P(ntotft=2, mode=2, dx=200.0, dz=400.0), True),
+                        (P(ntotft=2, mode=2, dx=200.0, dz=200.0), False),
+                        (P(ntotft=2, mode=2, dx=200, dz=200.0), False),
+                        (P(ntotft=1, mode=2, dx=200.0, dz=173.2), False),
+                        (P(ntotft=2, mode=1, dx=200.0, dz=173.2), False)):
+        try:
+            check_fn(par)
+            raised = None
+        except ValueError as e:
+            raised = str(e)
+        if refuse and not (raised and 'dz = ' in raised and 'dx = ' in raised
+                           and 'misaligned' in raised):
+            fails.append(f'requireMultiFaultRestartDzEqualsDx({par}) did not refuse '
+                         f'with the dz/dx message (got {raised!r})')
+        if not refuse and raised:
+            fails.append(f'requireMultiFaultRestartDzEqualsDx({par}) refused: {raised}')
+
+    mod = load_plotRuptureDynamics()
+    mod.par = P(ntotft=2, mode=2, dx=1.0, dz=2.0)
+    faults = [(np.zeros((nfz, nfx, 100)), None, None, nfx, nfz, '')
+              for nfx, nfz in map(grid, FAULTS)]
+    cwd = os.getcwd()
+    os.chdir(tmp)
+    try:
+        mod.generateNcRestart(faults)
+        fails.append('generateNcRestart wrote a 2-fault mode-2 restart at dz=2 dx=1')
+    except ValueError as e:
+        if 'plotRuptureDynamics' not in str(e):
+            fails.append(f'generateNcRestart refused, but not via the dz/dx check: {e}')
+    finally:
+        os.chdir(cwd)
+    if os.path.exists(os.path.join(tmp, 'fault.dyna.r.nc')):
+        fails.append('generateNcRestart refused but left fault.dyna.r.nc behind')
+
+    tree = ast.parse(open(os.path.join(ROOT, 'scripts', 'case.setup')).read())
+    main = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_main_func']
+    first = main[0].body[0] if main else None
+    if not (isinstance(first, ast.Expr) and isinstance(first.value, ast.Call)
+            and getattr(first.value.func, 'id', '') == 'requireMultiFaultRestartDzEqualsDx'):
+        fails.append("case.setup's _main_func does not call "
+                     'requireMultiFaultRestartDzEqualsDx before writing anything')
+    return fails
 
 
 def main():
@@ -367,6 +439,29 @@ def main():
         elif 'fault.r.nc holds 3 fault(s) but ntotft = 2' not in r.stdout + r.stderr:
             fails.append('nid_fault=3 file with ntotft=2: aborted, but not with the '
                          f'fault-count message:\n{r.stdout}\n{r.stderr}')
+
+        # 5. dz != dx. Without the guard dz = 2 reads every node at jj = 1
+        # (silently wrong) and dz = 0.5 asks for 3-5 dip rows of a 3-row
+        # file (raw NetCDF bounds error) -- neither carries this message.
+        os.remove(nc)
+        write_eqquasi_layout(nc)
+        for dz in ('2.0', '0.5'):
+            r, got = run(binary, tmp, ('2', dz))
+            out = r.stdout + r.stderr
+            if r.returncode == 0:
+                fails.append(f'ntotft=2 dz={dz} dx=1: reader returned 0 instead of '
+                             f'refusing (fric: {got!r})')
+            elif not ('multi-fault restart (mode = 2) refused' in out
+                      and 'dz = ' in out and 'but dx = ' in out and 'set dz equal to dx' in out):
+                fails.append(f'ntotft=2 dz={dz} dx=1: aborted, but not with the dz/dx '
+                             f'refusal:\n{r.stdout}\n{r.stderr}')
+        os.remove(nc)
+        write_rank2(nc)
+        r, got = run(binary, tmp, ('1', '2.0'))
+        if r.returncode != 0 or 'refused' in r.stdout + r.stderr:
+            fails.append('ntotft=1 dz=2 dx=1: single-fault restart must be left '
+                         f'unchanged (exit {r.returncode}):\n{r.stdout}\n{r.stderr}')
+        fails += python_side_dz_checks(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -376,7 +471,8 @@ def main():
             print('  -', f)
         return 1
     print(f'SUCCESS {NAME} (EQquasi nid_fault layout read per fault; '
-          'generateNcRestart writes the same layout, also with a zero-slip fault 2; 1-fault and 3-fault files refused at ntotft=2)')
+          'generateNcRestart writes the same layout, also with a zero-slip fault 2; 1-fault and 3-fault files refused at ntotft=2; '
+          'dz != dx refused at ntotft=2 by reader, writer and case.setup, 1-fault dz != dx untouched)')
     return 0
 
 

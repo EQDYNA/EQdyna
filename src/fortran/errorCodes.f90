@@ -68,6 +68,7 @@ MODULE errorCodes
     integer, parameter :: ERR_CFG_MATERIAL_TABLE_INVALID = 16 ! bMaterial.txt's two-sided (n2mat=5) table needs one vertical planar fault, side column -1/+1, ascending per-side layer bottoms
     integer, parameter :: ERR_CFG_MATERIAL_GRID_INVALID = 17 ! bMaterial.txt's 3D material grid (n2mat=6, rows x y z vp vs rho) must be a complete uniform nx*ny*nz block, every cell once, on-grid coordinates, positive vp/vs/rho
     integer, parameter :: ERR_CFG_FAULT_TS_INVALID = 18 ! bGlobal.txt's fault time-series switch (par.outputFaultTimeSeries) is neither 0 nor 1
+    integer, parameter :: ERR_CFG_RESTART_DZ_NE_DX = 19 ! a multi-fault (ntotft > 1) restart (mode = 2) needs dz == dx: EQquasi spaces fault.r.nc dip rows by dx, EQdyna by dz, so any other dz reads a misaligned file
 
     ! --- 21-29 input files --------------------------------------------
     integer, parameter :: ERR_INPUT_FILE_MISSING     = 21  ! a required FE_*.txt / data file is absent

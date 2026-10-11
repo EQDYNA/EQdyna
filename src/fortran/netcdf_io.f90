@@ -137,9 +137,25 @@ subroutine netcdf_read_on_fault_eqdyna_restart
     real (kind = dp), allocatable, dimension(:,:,:) :: on_fault_vars
     real (kind = dp)   :: xcord, zcord
     character (len = 48) :: ntotftStr
+    character (len = 160) :: dzdxStr
 
     infile = "fault.r.nc"
     nvar = 12
+
+    ! Multi-fault restarts need dz == dx. EQquasi's fault is vertical and it
+    ! spaces the dip rows of fault.r.nc by dx; this reader indexes them by dz.
+    ! With dz /= dx every dip row past the first lands on the wrong node (dz >
+    ! dx) or past the end of the file (dz < dx). Exact equality on purpose:
+    ! dx and dz are read from the same bGlobal.txt that case.setup writes, so
+    ! the two sides compare the same doubles, and any difference at all
+    ! misplaces nodes deep enough along dip. Single-fault restarts are left as
+    ! they were. EQquasi itself is not changed.
+    if (ntotft > 1 .and. dz /= dx) then
+        write(dzdxStr, '(A,G0,A,G0)') 'dz = ', dz, ' but dx = ', dx
+        call abortRun(ERR_CFG_RESTART_DZ_NE_DX, 'multi-fault restart (mode = 2) refused: '// &
+            trim(dzdxStr)//'; EQquasi spaces fault.r.nc dip rows by dx, EQdyna by dz, so the file would be '// &
+            'read misaligned -- set dz equal to dx')
+    endif
 
     ! fault.r.nc is written by EQquasi's netcdf_write_on_fault: one set of
     ! untagged variables, dims (nid_strike, nid_dip, nid_fault) in Fortran

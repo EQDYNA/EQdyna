@@ -21,7 +21,8 @@ except ModuleNotFoundError as e:
                  'that file exists.' % (e.name, e.name, SHARED_COMPSET_FILES[e.name]))
     raise
 from lib import (ensureFaultRoughGeometryForCase, resolveNormalStressSign, resolveViscoplasticParams,
-                 faultTag, resolveFaultGeom, resolveOnFaultStationsPerFault, resolveOnFaultVarsPerFault)
+                 faultTag, resolveFaultGeom, resolveOnFaultStationsPerFault, resolveOnFaultVarsPerFault,
+                 requireMultiFaultRestartDzEqualsDx)
 from machines import machine, write_slurm_header
 import netCDF4 as nc
 import numpy as np
@@ -435,6 +436,9 @@ def estimate_HPC_resource():
     #print("Estimated number of CPUs to be requested is " + str(estimate_ncpu))
 
 def _main_func(description):
+    # Refuse before writing anything: a multi-fault cycle with dz != dx
+    # would hand EQquasi/EQdyna a misaligned restart file.
+    requireMultiFaultRestartDzEqualsDx(par)
     create_model_input_file()
     create_LS6batch_script()
     create_run_sh()

@@ -446,6 +446,14 @@ with the mesh spacing `par.dx` -- a stepover distance that is not an integer
 multiple of `par.dx` on both faults produces a mesh seam that silently cuts
 a fault node in two.
 
+A multi-fault earthquake cycle (`mode = 2` with `ntotft > 1`) also needs
+`par.dz == par.dx`, compared exactly. EQquasi spaces the dip rows of the
+restart file it exchanges with EQdyna by `dx`, and EQdyna spaces them by `dz`,
+so `case.setup` refuses any other `dz` and names both values. This applies
+only to multi-fault cycles: single-fault restarts and `mode = 1` runs are not
+checked. The Python backends do not read a restart file (`mode = 2` is
+outside their scope), so the check is on the Fortran path only.
+
 Every per-fault output file (rupture time, on-fault stations, the NetCDF
 restart) is tagged `ft<N>_` for fault `N >= 2` and untagged for fault 1 --
 see [Outputs](outputs.md#multiple-faults) for the exact filenames, and
