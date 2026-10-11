@@ -22,6 +22,10 @@ that is a defect in the board -- raise it there, do not track it here.
 Read `pathway_forward.md` first. Come here only when a row's outcome is not
 enough and you need the working.
 
+The `docs/NOTES_*.md` and `docs/SESSION_LOG_*.md` files the blocks below cite
+were removed from the tracked tree in PR #170 (2026-10-09); each is still in git
+history as `git show 0f5f23b^:<cited path>`. The blocks are left verbatim.
+
 
 ### Item 19(b)
 

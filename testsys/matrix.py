@@ -1079,7 +1079,8 @@ CI_RUNNER_RAM_GB = 7.0
 # 2026-09-23 speed campaign) undercounts every concurrent jax cell by
 # ~2.5x -- exactly what let the BEFORE sweep run every cell at 2-3x its solo
 # time (docs/SESSION_LOG_2026-09-23_autopilot.md section NN: tpv8 numpy
-# 209.4s in-sweep vs 66s solo, tpv29 numpy 648.7 vs ~312, box load 35-58).
+# 209.4s in-sweep vs 66s solo, tpv29 numpy 648.7 vs ~312, box load 35-58;
+# removed in PR #170: git show 0f5f23b^:docs/SESSION_LOG_2026-09-23_autopilot.md).
 #
 # MEASURED directly this session (not merely re-cited): `/usr/bin/time -v`
 # around `python3 -m eqdyna <serial test.tpv8 case> --backend jax`, gate term
