@@ -62,7 +62,7 @@ writes two files:
   step; inside a record, all fields of node 1, then all fields of node 2, and
   so on. Record `k` (counting from 0) is at time `(k + 1) * dt`.
 * `src_ts_hdr<rank>` -- text. Lines starting with `#` give `nnode`, `nfield`,
-  `dt`, `nstep`, `friclaw`, and one `# field <index> <name> <unit> <meaning>`
+  `dt`, `nstep`, `friclaw`, `byteorder`, and one `# field <index> <name> <unit> <meaning>`
   line per field; the remaining rows are the `x y z` coordinates (m) of each
   node, in the binary's node order.
 
@@ -70,32 +70,50 @@ Fields, in file order:
 
 | # | name | unit | meaning |
 |---|------|------|---------|
-| 0 | `sliprate` | m/s | slip-rate magnitude (the value in `src_evol`) |
+| 0 | `sliprate` | m/s | slip-rate magnitude, the value in `src_evol` (see below) |
 | 1 | `sliprate_strike` | m/s | slip rate along strike |
 | 2 | `sliprate_dip` | m/s | slip rate along dip |
 | 3 | `slip_strike` | m | slip along strike |
 | 4 | `slip_dip` | m | slip along dip |
 | 5 | `slip_normal` | m | fault-normal relative displacement (opening) |
-| 6 | `slip_path` | m | path-integrated slip, running sum of slip rate times `dt` |
-| 7 | `sliprate_peak` | m/s | running maximum slip-rate magnitude |
-| 8 | `traction_normal` | Pa | normal traction, negative in compression |
+| 6 | `slip_path` | m | path-integrated slip, running sum of the 3-component slip-rate magnitude times `dt` |
+| 7 | `sliprate_peak` | m/s | running maximum of the 3-component slip-rate magnitude |
+| 8 | `traction_normal` | Pa | normal traction, negative in compression (see below) |
 | 9 | `traction_strike` | Pa | shear traction along strike |
 | 10 | `traction_dip` | Pa | shear traction along dip |
 | 11 | `traction_shear` | Pa | shear-traction magnitude |
 
 Rate-and-state friction (`friclaw` 3, 4, 5) adds `rsf_state` (the state
 variable: theta in s for the ageing law, psi, dimensionless, for the slip
-law), `theta_pc` (Pa) and `theta_pc_dot` (Pa/s), the normal-stress memory
-variable and its rate, and the particle velocities of the two split nodes,
-`vel_master_x/y/z` and `vel_slave_x/y/z` (m/s). Thermal pressurization
-(`friclaw = 5`) also adds `tp_pore_change` (Pa, pore-pressure change from
-its initial value) and `tp_temperature` (K). Constant inputs such as the
-friction parameters and initial stresses are not repeated per step.
+law) and the particle velocities of the two split nodes, `vel_master_x/y/z`
+and `vel_slave_x/y/z` (m/s). `friclaw` 3 and 4 then add `theta_pc` (Pa), the
+normal-stress memory variable, and `theta_pc_dot` (Pa/s), its rate evaluated
+at the trial slip rate before the step's Newton solve. Thermal
+pressurization (`friclaw = 5`) holds `theta_pc` fixed, so it is left out;
+instead it adds `tp_pore_change` (Pa, pore-pressure change from its initial
+value) and `tp_temperature` (K). That makes 12 fields for slip weakening
+and 21 for rate-and-state. Constant inputs such as the friction parameters
+and initial stresses are not repeated per step.
+
+What some fields hold depends on the friction law:
+
+* `sliprate` (field 0): for slip weakening (`friclaw` 1, 2), the magnitude
+  of the 3-component slip-rate vector, opening included. For rate-and-state,
+  the strike/dip slip rate the friction solver converged to, including the
+  background slip rate. So under rate-and-state it is not exactly
+  `hypot(sliprate_strike, sliprate_dip)`.
+* `sliprate_strike`, `sliprate_dip`, `slip_*`, `slip_path` and
+  `sliprate_peak` come from the node motion and never include the background
+  slip rate. The station files add that rate to slip and slip rate along
+  strike; these fields do not.
+* `traction_normal`: for slip weakening, the solver's normal traction, which
+  can be positive (tension). For rate-and-state, the effective normal stress
+  the friction law uses: pore-pressure change added (`friclaw = 5`), held
+  between the solver's fixed minimum and maximum normal-stress levels in
+  elastic cases with `insertFaultType > 0`, then limited to zero or below.
 
 The tractions are the solver's values in Pa; the station files print the
-same quantities in MPa with the case's sign convention. With rate-and-state
-friction and a nonzero background slip rate, the station files add that
-background rate to slip and slip rate; these files do not.
+same quantities in MPa with the case's sign convention.
 
 The size is 8 bytes per field per node per step: a 12-field slip-weakening
 run with 10,000 fault nodes and 3,000 steps writes about 2.9 GB. Read the

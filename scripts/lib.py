@@ -203,7 +203,8 @@ def resolveOnFaultVarsPerFault(par):
 
 
 def resolveNormalStressSign(par):
-    """The integer case.setup writes as bGlobal.txt's last line: +1 when the
+    """The integer case.setup writes after the plastic block in bGlobal.txt
+    (second-to-last line, before the fault time-series switch): +1 when the
     case's station files report n-stress positive in extension, -1 when
     positive in compression (par.faultStNormalStressSign; board row 22a).
     Anything else RAISES (rule 2) -- the sign is the case's spec convention and

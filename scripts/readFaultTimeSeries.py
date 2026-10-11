@@ -3,7 +3,8 @@
 Reads the whole-fault time series EQdyna writes when
 par.outputFaultTimeSeries = 1: per MPI rank and fault, a text header
 src_ts_hdr<tag><rank> and a binary src_ts<tag><rank> (float64, native byte
-order, no record markers, layout [step][node][field]). See
+order, no record markers, layout [step][node][field]; the header's
+byteorder line names the order). See
 docs/user/outputs.md for the field list.
 
     from readFaultTimeSeries import read_fault_ts, read_case
@@ -19,6 +20,7 @@ import glob
 import os
 import re
 import sys
+import warnings
 
 import numpy as np
 
@@ -59,20 +61,24 @@ def read_fault_ts(hdr_path, fields=None, mmap=False):
     next to it). Returns a dict: one (nstep_written, nnode) array per field
     name, plus 'xyz', 't', 'dt', 'meta', 'fields'. `fields` limits which
     field arrays are returned; mmap=True maps the binary instead of reading
-    it (the arrays are then strided views into it)."""
+    it (the arrays are then strided views into it). A trailing partial
+    record (a run killed mid-write) is dropped with a warning; the complete
+    records before it are returned."""
     meta, flist, xyz = read_header(hdr_path)
     bin_path = os.path.join(os.path.dirname(hdr_path), meta['binary'])
     nnode, nfield = meta['nnode'], meta['nfield']
+    dtype = {'little': '<f8', 'big': '>f8'}[meta.get('byteorder', 'little')]
     rec = nnode * nfield
     nbytes = os.path.getsize(bin_path)
-    if nbytes % (8 * rec):
-        raise ValueError('%s: %d bytes is not a whole number of %d-value records'
-                         % (bin_path, nbytes, rec))
     nrec = nbytes // (8 * rec)
+    if nbytes % (8 * rec):
+        warnings.warn('%s: %d bytes is not a whole number of %d-value records; '
+                      'reading the %d complete records and dropping the partial last one'
+                      % (bin_path, nbytes, rec, nrec))
     if mmap:
-        raw = np.memmap(bin_path, dtype='<f8', mode='r')
+        raw = np.memmap(bin_path, dtype=dtype, mode='r', shape=(nrec * rec,))
     else:
-        raw = np.fromfile(bin_path, dtype='<f8')
+        raw = np.fromfile(bin_path, dtype=dtype, count=nrec * rec)
     data = raw.reshape(nrec, nnode, nfield)
     out = dict(xyz=xyz, dt=meta['dt'], t=(np.arange(nrec) + 1) * meta['dt'],
                meta=meta, fields=flist)

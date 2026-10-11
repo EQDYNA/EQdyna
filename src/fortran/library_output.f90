@@ -559,6 +559,11 @@ subroutine output_fault_ts
             write(u,'(A)') '# EQdyna whole-fault time series header'
             write(u,'(A)') '# binary = src_ts'//trim(tag)//trim(mm)
             write(u,'(A)') '# format = float64, native byte order, no record markers'
+            if (ichar(transfer(1_4, 'a')) == 1) then
+                write(u,'(A)') '# byteorder = little'
+            else
+                write(u,'(A)') '# byteorder = big'
+            endif
             write(u,'(A)') '# layout = [step][node][field], one record per time step'
             write(u,'(A,I0)') '# fault = ', ift
             write(u,'(A,I0)') '# rank = ', me
@@ -606,8 +611,14 @@ end subroutine output_fault_ts
 subroutine faultTsFields(nField, slot, fname, funit, fdesc)
     ! The output_fault_ts field table: fric slot (0 = computed shear
     ! magnitude), name, unit and meaning of each field, in file order.
-    ! Every friction law gets fields 0-11; rate-and-state (friclaw >= 3) adds
-    ! 12-20; thermal pressurization (friclaw == 5) adds 21-22.
+    ! Every friction law gets fields 0-11; rate-and-state adds the state
+    ! variable and the split-node velocities, friclaw 3/4 the normal-stress
+    ! memory variable (which friclaw 5 holds fixed, so it is left out there),
+    ! and friclaw 5 the thermal-pressurization fields.
+    ! Field 0 is fric(FRIC_SLOT_PEAK_SLIPRATE) exactly as src_evol writes it:
+    ! the 3-component kinematic slip-rate magnitude for friclaw 1/2, the
+    ! Newton-solved strike/dip slip rate (background rate VINI included) for
+    ! friclaw >= 3. Fields 1, 2, 6, 7 are kinematic, before VINI is added.
     use globalvar
     implicit none
     integer (kind = 4), intent(out) :: nField, slot(*)
@@ -615,15 +626,15 @@ subroutine faultTsFields(nField, slot, fname, funit, fdesc)
     character (len = 72), intent(out) :: fdesc(*)
 
     nField = 0
-    call add(FRIC_SLOT_PEAK_SLIPRATE,   'sliprate',        'm/s', 'slip-rate magnitude (the value src_evol holds)')
+    call add(FRIC_SLOT_PEAK_SLIPRATE,   'sliprate',        'm/s', 'slip-rate magnitude, as in src_evol (meaning depends on friclaw)')
     call add(FRIC_SLOT_SLIPRATE_STRIKE, 'sliprate_strike', 'm/s', 'slip rate, along strike')
     call add(FRIC_SLOT_SLIPRATE_DIP,    'sliprate_dip',    'm/s', 'slip rate, along dip')
     call add(FRIC_SLOT_SLIP_STRIKE,     'slip_strike',     'm',   'slip, along strike')
     call add(FRIC_SLOT_SLIP_DIP,        'slip_dip',        'm',   'slip, along dip')
     call add(FRIC_SLOT_SLIP_NORM,       'slip_normal',     'm',   'fault-normal relative displacement (opening)')
-    call add(FRIC_SLOT_CUM_SLIP,        'slip_path',       'm',   'path-integrated slip, running sum of sliprate * dt')
-    call add(FRIC_SLOT_SLIPRATE_MAX,    'sliprate_peak',   'm/s', 'running maximum slip-rate magnitude so far')
-    call add(FRIC_SLOT_TRACT_NORM,      'traction_normal', 'Pa',  'normal traction, negative in compression')
+    call add(FRIC_SLOT_CUM_SLIP,        'slip_path',       'm',   'path-integrated slip, running sum of 3-component |slip rate| * dt')
+    call add(FRIC_SLOT_SLIPRATE_MAX,    'sliprate_peak',   'm/s', 'running maximum of the 3-component |slip rate| so far')
+    call add(FRIC_SLOT_TRACT_NORM,      'traction_normal', 'Pa',  'normal traction, negative in compression (RSF: effective, clipped)')
     call add(FRIC_SLOT_TRACT_STRIKE,    'traction_strike', 'Pa',  'shear traction, along strike')
     call add(FRIC_SLOT_TRACT_DIP,       'traction_dip',    'Pa',  'shear traction, along dip')
     call add(0,                         'traction_shear',  'Pa',  'shear-traction magnitude, sqrt(traction_strike^2 + traction_dip^2)')
@@ -633,14 +644,16 @@ subroutine faultTsFields(nField, slot, fname, funit, fdesc)
         else
             call add(FRIC_SLOT_STATE,   'rsf_state',       '1',   'rate-and-state state variable psi (slip law)')
         endif
-        call add(FRIC_SLOT_THETA_PC,     'theta_pc',        'Pa',   'normal-stress memory variable (Shi and Day, 2013)')
-        call add(FRIC_SLOT_THETA_PC_DOT, 'theta_pc_dot',    'Pa/s', 'time derivative of theta_pc')
         call add(FRIC_SLOT_VEL_MASTER_X, 'vel_master_x',    'm/s',  'particle velocity, x, master-side node')
         call add(FRIC_SLOT_VEL_MASTER_Y, 'vel_master_y',    'm/s',  'particle velocity, y, master-side node')
         call add(FRIC_SLOT_VEL_MASTER_Z, 'vel_master_z',    'm/s',  'particle velocity, z, master-side node')
         call add(FRIC_SLOT_VEL_SLAVE_X,  'vel_slave_x',     'm/s',  'particle velocity, x, slave-side node')
         call add(FRIC_SLOT_VEL_SLAVE_Y,  'vel_slave_y',     'm/s',  'particle velocity, y, slave-side node')
         call add(FRIC_SLOT_VEL_SLAVE_Z,  'vel_slave_z',     'm/s',  'particle velocity, z, slave-side node')
+    endif
+    if (friclaw == 3 .or. friclaw == 4) then
+        call add(FRIC_SLOT_THETA_PC,     'theta_pc',        'Pa',   'normal-stress memory variable (Shi and Day, 2013)')
+        call add(FRIC_SLOT_THETA_PC_DOT, 'theta_pc_dot',    'Pa/s', 'rate of theta_pc at the trial slip rate, before the Newton solve')
     endif
     if (friclaw == 5) then
         call add(FRIC_SLOT_TP_NORM_TP,   'tp_pore_change',  'Pa',   'pore-pressure change from its initial value')

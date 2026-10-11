@@ -20,13 +20,15 @@ NAMES = ['sliprate', 'sliprate_strike', 'sliprate_dip', 'slip_strike', 'slip_dip
          'traction_strike', 'traction_dip', 'traction_shear']
 
 
-def write_case(d, tag, rank, data, xyz, dt=0.04, nstep=None, friclaw=1, names=NAMES):
+def write_case(d, tag, rank, data, xyz, dt=0.04, nstep=None, friclaw=1, names=NAMES,
+               byteorder='little'):
     """data: (nrec, nnode, nfield) array -> src_ts<tag><rank> + header."""
     nrec, nnode, nfield = data.shape
     with open(os.path.join(d, 'src_ts_hdr%s%d' % (tag, rank)), 'w') as f:
         f.write('# EQdyna whole-fault time series header\n')
         f.write('# binary = src_ts%s%d\n' % (tag, rank))
         f.write('# format = float64, native byte order, no record markers\n')
+        f.write('# byteorder = %s\n' % byteorder)
         f.write('# layout = [step][node][field], one record per time step\n')
         f.write('# fault = %d\n# rank = %d\n# friclaw = %d\n' % (2 if tag else 1, rank, friclaw))
         f.write('# nnode = %d\n# nfield = %d\n' % (nnode, nfield))
@@ -37,7 +39,7 @@ def write_case(d, tag, rank, data, xyz, dt=0.04, nstep=None, friclaw=1, names=NA
         f.write('# rows below: x y z (m) of each fault node, in binary node order\n')
         for row in xyz:
             f.write(' %24.16E %24.16E %24.16E\n' % tuple(row))
-    data.astype('<f8').tofile(os.path.join(d, 'src_ts%s%d' % (tag, rank)))
+    data.astype('<f8' if byteorder == 'little' else '>f8').tofile(os.path.join(d, 'src_ts%s%d' % (tag, rank)))
 
 
 def test_layout_is_step_node_field(tmp_path):
@@ -65,13 +67,22 @@ def test_partial_run_reads_written_steps_only(tmp_path):
     assert ts['t'].size == 4 and ts['meta']['nstep'] == 100
 
 
-def test_truncated_binary_is_refused(tmp_path):
-    data = np.ones((3, 2, len(NAMES)))
+def test_partial_last_record_is_dropped_with_a_warning(tmp_path):
+    data = np.random.default_rng(2).normal(size=(3, 2, len(NAMES)))
     write_case(str(tmp_path), '', 0, data, np.zeros((2, 3)))
     with open(tmp_path / 'src_ts0', 'ab') as f:
-        f.write(b'\0' * 8)
-    with pytest.raises(ValueError, match='whole number'):
-        rfts.read_fault_ts(str(tmp_path / 'src_ts_hdr0'))
+        f.write(b'\1' * 8)
+    for mm in (False, True):
+        with pytest.warns(UserWarning, match='whole number'):
+            ts = rfts.read_fault_ts(str(tmp_path / 'src_ts_hdr0'), mmap=mm)
+        np.testing.assert_array_equal(ts['slip_dip'], data[:, :, 4])
+
+
+def test_big_endian_file_named_by_header_reads_back(tmp_path):
+    data = np.random.default_rng(3).normal(size=(2, 3, len(NAMES)))
+    write_case(str(tmp_path), '', 0, data, np.zeros((3, 3)), byteorder='big')
+    ts = rfts.read_fault_ts(str(tmp_path / 'src_ts_hdr0'))
+    np.testing.assert_array_equal(ts['traction_shear'], data[:, :, 11])
 
 
 def test_read_case_concatenates_ranks_per_fault(tmp_path):

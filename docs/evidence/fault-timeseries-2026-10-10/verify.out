@@ -54,13 +54,11 @@ frt last step vel_slave_x                                    4050    4.951e-08  
 frt last step vel_slave_y                                    4050    4.942e-08    1.600e-01 True
 frt last step vel_slave_z                                    4050    4.924e-09    6.873e-02 True
 frt last step rsf_state                                      4050    4.974e-08    8.705e-01 True
-frt last step theta_pc                                       4050    7.451e-09    4.500e+07 True
 nc last step shear_strike                                    4050    4.994e+00    3.401e+07 True
 nc last step shear_dip                                       4050    4.881e-01    4.512e+06 True
 nc last step effective_normal                                4050    4.983e+00    4.500e+07 True
 nc last step slip_rate                                       4050    4.149e-07    1.249e+00 True
 nc last step state_variable                                  4050    4.974e-08    8.705e-01 True
-nc last step state_normal                                    4050    7.451e-09    4.500e+07 True
 nc last step vxm                                             4050    4.951e-08    7.598e-01 True
 nc last step vym                                             4050    4.942e-08    1.600e-01 True
 nc last step vzm                                             4050    4.924e-09    6.873e-02 True
@@ -81,7 +79,7 @@ station tp_pore (+ initial, MPa) (13 files)                   936    4.925e-06  
 fault1 slip_strike vs cumsum(sliprate_strike)*dt           291600    2.665e-15    3.520e+00 -
 fault1 slip_dip vs cumsum(sliprate_dip)*dt                 291600    9.714e-17    8.584e-02 -
 fault1 traction_shear vs hypot                             291600    7.451e-09    3.430e+07 -
-fault1: 4050 nodes (all ranks), 23 fields, 72 steps; 8 bytes per field per node per step
+fault1: 4050 nodes (all ranks), 21 fields, 72 steps; 8 bytes per field per node per step
 === tpv104
  
 PARAMETERS: positve dip angle to tilt the fault to y+

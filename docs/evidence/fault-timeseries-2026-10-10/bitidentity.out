@@ -1,12 +1,12 @@
-tpv8gm.base done 9.97 s
-tpv8gm.off done 9.86 s
-tpv8gm.on done 9.89 s
-tpv1053d.base done 23.79 s
-tpv1053d.on done 23.49 s
-tpv104.base done 19.33 s
-tpv104.on done 19.00 s
-tpv22.base done 132.92 s
-tpv22.on done 132.30 s
+tpv8gm.base done 10.02 s
+tpv8gm.off done 10.04 s
+tpv8gm.on done 10.14 s
+tpv1053d.base done 24.12 s
+tpv1053d.on done 23.78 s
+tpv104.base done 19.45 s
+tpv104.on done 19.43 s
+tpv22.base done 133.84 s
+tpv22.on done 132.45 s
 tpv8gm.base vs tpv8gm.off: 59 files byte-identical, 23 identical except the "# date =" header line, only-a [], only-b [], DIFFERING []
 tpv8gm.base vs tpv8gm.on: 59 files byte-identical, 23 identical except the "# date =" header line, only-a [], only-b [], DIFFERING []
 tpv1053d.base vs tpv1053d.on: 49 files byte-identical, 19 identical except the "# date =" header line, only-a [], only-b [], DIFFERING []

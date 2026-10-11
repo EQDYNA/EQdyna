@@ -34,4 +34,4 @@ A 7 s test.tpv22 run (420 steps, 15504 nodes per fault) gave the same verdicts
 does not nucleate in this case within 7 s (slip rate ~1e-15 m/s), so its
 time-varying content is the tractions, which match the fault-2 station files.
 
-Wall time on vs off: tpv8 9.89 s vs 9.86 s; tpv22 132.3 s vs 132.9 s (base).
+Wall time on vs off: tpv8 10.14 s vs 10.04 s; tpv22 132.5 s on vs 133.8 s base.
