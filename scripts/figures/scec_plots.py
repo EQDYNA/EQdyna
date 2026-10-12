@@ -174,7 +174,14 @@ def _contour(ax, m, f, g, levels, label_every=None):
     kw = dict(levels=levels, colors=[st['color']], linestyles=[st['linestyle']],
               linewidths=st['linewidth'])
     if g is None:
-        cs = ax.tricontour(f['strike'] / 1e3, f['downdip'] / 1e3, f['t'], **kw)
+        # never-ruptured nodes are NaN: mask every triangle touching one so no
+        # contour bridges an unruptured patch (a field with no NaN is unchanged)
+        from matplotlib.tri import Triangulation
+        tri = Triangulation(f['strike'] / 1e3, f['downdip'] / 1e3)
+        bad = ~np.isfinite(f['t'])
+        if bad.any():
+            tri.set_mask(bad[tri.triangles].any(axis=1))
+        cs = ax.tricontour(tri, np.where(bad, 0.0, f['t']), **kw)
     else:
         X, Y, T = g
         cs = ax.contour(X / 1e3, Y / 1e3, T, **kw)
