@@ -1,0 +1,258 @@
+[
+ {
+  "case": "tpv13",
+  "run": "tpv13_dx100",
+  "dx": 100.0,
+  "term": 5.0,
+  "shared_nodes": 45451,
+  "faultmod_ruptured": 43730,
+  "both": 43575,
+  "ruptured_pct": 99.64555225245827,
+  "ours_only": 322,
+  "median": 0.03203099999999992,
+  "p90": 0.06692899999999964,
+  "max": 1.431168,
+  "mean": -0.06501262670338497,
+  "stations": [
+   {
+    "name": "faultst000dp000",
+    "kind": "fault",
+    "t_ours": 2.181729498687,
+    "t_fm": 2.15,
+    "slip_ours": 10.50438,
+    "slip_fm": 10.467058506238969,
+    "tauh0_ours": 0.0,
+    "tauh0_fm": -4.775394e-12,
+    "tauv0_ours": 0.2026763,
+    "tauv0_fm": 0.203035,
+    "sn0_ours": -0.3692163,
+    "sn0_fm": -0.3695271
+   },
+   {
+    "name": "faultst045dp000",
+    "kind": "fault",
+    "t_ours": 2.333238491652,
+    "t_fm": 2.305,
+    "slip_ours": 10.107967577934987,
+    "slip_fm": 10.023286257243909,
+    "tauh0_ours": 0.0,
+    "tauh0_fm": -8.603818e-12,
+    "tauv0_ours": 0.2026763,
+    "tauv0_fm": 0.203035,
+    "sn0_ours": -0.3692163,
+    "sn0_fm": -0.3695271
+   },
+   {
+    "name": "faultst120dp000",
+    "kind": "fault",
+    "t_ours": 3.166537952956,
+    "t_fm": 3.16,
+    "slip_ours": 4.852373227149989,
+    "slip_fm": 4.6681891192019975,
+    "tauh0_ours": 0.0,
+    "tauh0_fm": -8.600475e-12,
+    "tauv0_ours": 0.2026763,
+    "tauv0_fm": 0.203035,
+    "sn0_ours": -0.3692163,
+    "sn0_fm": -0.3695271
+   },
+   {
+    "name": "body-030st000dp000",
+    "kind": "body",
+    "t_ours": 2.363540290244,
+    "t_fm": 2.32,
+    "pv_ours": 2.198611,
+    "pv_fm": 2.115726
+   },
+   {
+    "name": "body-030st120dp000",
+    "kind": "body",
+    "t_ours": 3.196839751549,
+    "t_fm": 3.165,
+    "pv_ours": 1.522794,
+    "pv_fm": 1.436618
+   },
+   {
+    "name": "body-020st000dp000",
+    "kind": "body",
+    "t_ours": 2.280210344114,
+    "t_fm": 2.22,
+    "pv_ours": 2.270465,
+    "pv_fm": 2.198614
+   },
+   {
+    "name": "body-010st000dp000",
+    "kind": "body",
+    "t_ours": 2.189304948335,
+    "t_fm": 2.145,
+    "pv_ours": 2.46126,
+    "pv_fm": 2.418908
+   },
+   {
+    "name": "body010st000dp000",
+    "kind": "body",
+    "t_ours": 2.015069606426,
+    "t_fm": 1.975,
+    "pv_ours": 3.58047,
+    "pv_fm": 3.479738
+   },
+   {
+    "name": "body020st000dp000",
+    "kind": "body",
+    "t_ours": 1.909013311351,
+    "t_fm": 1.87,
+    "pv_ours": 3.139007,
+    "pv_fm": 3.139327
+   },
+   {
+    "name": "body030st000dp000",
+    "kind": "body",
+    "t_ours": 1.833258814869,
+    "t_fm": 1.8,
+    "pv_ours": 3.16545,
+    "pv_fm": 3.175334
+   },
+   {
+    "name": "body030st120dp000",
+    "kind": "body",
+    "t_ours": 2.825642718786,
+    "t_fm": 2.795,
+    "pv_ours": 3.29325,
+    "pv_fm": 3.306221
+   }
+  ],
+  "one_code_only": [],
+  "fault_station_dt_median": 0.028238491651999986,
+  "fault_slip_ratio_median": 1.008448458770683,
+  "body_pv_ratio_median": 1.0232284417600814,
+  "match": true
+ },
+ {
+  "case": "tpv13",
+  "run": "tpv13_dx100",
+  "dx": 100.0,
+  "term": 8.0,
+  "shared_nodes": 45451,
+  "faultmod_ruptured": 45280,
+  "both": 44756,
+  "ruptured_pct": 98.84275618374558,
+  "ours_only": 44,
+  "median": 0.03354199999999996,
+  "p90": 0.0696690000000002,
+  "max": 2.6232310000000005,
+  "mean": -0.0802556801456788,
+  "stations": [
+   {
+    "name": "faultst000dp000",
+    "kind": "fault",
+    "t_ours": 2.181729498687,
+    "t_fm": 2.15,
+    "slip_ours": 14.69718000348404,
+    "slip_fm": 14.775795626964614,
+    "tauh0_ours": 0.0,
+    "tauh0_fm": -4.775394e-12,
+    "tauv0_ours": 0.2026763,
+    "tauv0_fm": 0.203035,
+    "sn0_ours": -0.3692163,
+    "sn0_fm": -0.3695271
+   },
+   {
+    "name": "faultst045dp000",
+    "kind": "fault",
+    "t_ours": 2.333238491652,
+    "t_fm": 2.305,
+    "slip_ours": 14.796729893536869,
+    "slip_fm": 14.893182767681509,
+    "tauh0_ours": 0.0,
+    "tauh0_fm": -8.603818e-12,
+    "tauv0_ours": 0.2026763,
+    "tauv0_fm": 0.203035,
+    "sn0_ours": -0.3692163,
+    "sn0_fm": -0.3695271
+   },
+   {
+    "name": "faultst120dp000",
+    "kind": "fault",
+    "t_ours": 3.166537952956,
+    "t_fm": 3.16,
+    "slip_ours": 12.172127508629048,
+    "slip_fm": 12.500846683469215,
+    "tauh0_ours": 0.0,
+    "tauh0_fm": -8.600475e-12,
+    "tauv0_ours": 0.2026763,
+    "tauv0_fm": 0.203035,
+    "sn0_ours": -0.3692163,
+    "sn0_fm": -0.3695271
+   },
+   {
+    "name": "body-030st000dp000",
+    "kind": "body",
+    "t_ours": 2.363540290244,
+    "t_fm": 2.32,
+    "pv_ours": 2.198611,
+    "pv_fm": 2.115726
+   },
+   {
+    "name": "body-030st120dp000",
+    "kind": "body",
+    "t_ours": 3.196839751549,
+    "t_fm": 3.165,
+    "pv_ours": 2.115464,
+    "pv_fm": 2.046959
+   },
+   {
+    "name": "body-020st000dp000",
+    "kind": "body",
+    "t_ours": 2.280210344114,
+    "t_fm": 2.22,
+    "pv_ours": 2.270465,
+    "pv_fm": 2.198614
+   },
+   {
+    "name": "body-010st000dp000",
+    "kind": "body",
+    "t_ours": 2.189304948335,
+    "t_fm": 2.145,
+    "pv_ours": 2.46126,
+    "pv_fm": 2.418908
+   },
+   {
+    "name": "body010st000dp000",
+    "kind": "body",
+    "t_ours": 2.015069606426,
+    "t_fm": 1.975,
+    "pv_ours": 3.58047,
+    "pv_fm": 3.479738
+   },
+   {
+    "name": "body020st000dp000",
+    "kind": "body",
+    "t_ours": 1.909013311351,
+    "t_fm": 1.87,
+    "pv_ours": 3.139007,
+    "pv_fm": 3.139327
+   },
+   {
+    "name": "body030st000dp000",
+    "kind": "body",
+    "t_ours": 1.833258814869,
+    "t_fm": 1.8,
+    "pv_ours": 3.16545,
+    "pv_fm": 3.175334
+   },
+   {
+    "name": "body030st120dp000",
+    "kind": "body",
+    "t_ours": 2.825642718786,
+    "t_fm": 2.795,
+    "pv_ours": 3.323756,
+    "pv_fm": 3.32376
+   }
+  ],
+  "one_code_only": [],
+  "fault_station_dt_median": 0.028238491651999986,
+  "fault_slip_ratio_median": 0.9935236896203312,
+  "body_pv_ratio_median": 1.0232284417600814,
+  "match": true
+ }
+]
