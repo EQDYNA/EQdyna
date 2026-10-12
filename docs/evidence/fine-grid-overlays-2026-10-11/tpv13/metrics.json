@@ -29,6 +29,76 @@
     "sn0_fm": -0.3695271
    },
    {
+    "name": "faultst000dp015",
+    "kind": "fault",
+    "t_ours": 2.022645056075,
+    "t_fm": 1.995,
+    "slip_ours": 11.63097,
+    "slip_fm": 11.5231676100634,
+    "tauh0_ours": 0.0,
+    "tauh0_fm": 1.157611e-12,
+    "tauv0_ours": 6.095063,
+    "tauv0_fm": 6.095141,
+    "sn0_ours": -11.08502,
+    "sn0_fm": -11.08517
+   },
+   {
+    "name": "faultst000dp030",
+    "kind": "fault",
+    "t_ours": 1.757504318387,
+    "t_fm": 1.74,
+    "slip_ours": 12.70184,
+    "slip_fm": 12.54140183631579,
+    "tauh0_ours": -3.992395e-16,
+    "tauh0_fm": -9.508011e-12,
+    "tauv0_ours": 12.19013,
+    "tauv0_fm": 12.1902,
+    "sn0_ours": -22.17004,
+    "sn0_fm": -22.17018
+   },
+   {
+    "name": "faultst000dp045",
+    "kind": "fault",
+    "t_ours": 1.484788131051,
+    "t_fm": 1.47,
+    "slip_ours": 13.35772,
+    "slip_fm": 13.189436557171739,
+    "tauh0_ours": 1.058064e-16,
+    "tauh0_fm": -6.417697e-11,
+    "tauv0_ours": 18.28519,
+    "tauv0_fm": 18.28526,
+    "sn0_ours": -33.25505,
+    "sn0_fm": -33.2552
+   },
+   {
+    "name": "faultst000dp075",
+    "kind": "fault",
+    "t_ours": 0.9242048570828,
+    "t_fm": 0.91,
+    "slip_ours": 13.64945,
+    "slip_fm": 13.481301920926324,
+    "tauh0_ours": -1.352181e-15,
+    "tauh0_fm": 4.844806e-11,
+    "tauv0_ours": 30.47532,
+    "tauv0_fm": 30.47538,
+    "sn0_ours": -55.42509,
+    "sn0_fm": -55.42523
+   },
+   {
+    "name": "faultst000dp120",
+    "kind": "fault",
+    "t_ours": 0.01515089929644,
+    "t_fm": 0.005,
+    "slip_ours": 10.60526,
+    "slip_fm": 10.587940627000906,
+    "tauh0_ours": 1.772859e-15,
+    "tauh0_fm": -6.999116e-13,
+    "tauv0_ours": 48.08728,
+    "tauv0_fm": 48.76055,
+    "sn0_ours": -88.68015,
+    "sn0_fm": -88.68027
+   },
+   {
     "name": "faultst045dp000",
     "kind": "fault",
     "t_ours": 2.333238491652,
@@ -43,6 +113,20 @@
     "sn0_fm": -0.3695271
    },
    {
+    "name": "faultst045dp075",
+    "kind": "fault",
+    "t_ours": 1.44691088281,
+    "t_fm": 1.46,
+    "slip_ours": 12.943488466972864,
+    "slip_fm": 12.779357596157848,
+    "tauh0_ours": -1.352181e-15,
+    "tauh0_fm": 5.523725e-11,
+    "tauv0_ours": 30.47532,
+    "tauv0_fm": 30.47538,
+    "sn0_ours": -55.42509,
+    "sn0_fm": -55.42523
+   },
+   {
     "name": "faultst120dp000",
     "kind": "fault",
     "t_ours": 3.166537952956,
@@ -55,6 +139,20 @@
     "tauv0_fm": 0.203035,
     "sn0_ours": -0.3692163,
     "sn0_fm": -0.3695271
+   },
+   {
+    "name": "faultst120dp075",
+    "kind": "fault",
+    "t_ours": 3.886205669537,
+    "t_fm": 3.925,
+    "slip_ours": 7.87572630822569,
+    "slip_fm": 7.625328159912274,
+    "tauh0_ours": -1.352181e-15,
+    "tauh0_fm": 6.020086e-11,
+    "tauv0_ours": 30.47532,
+    "tauv0_fm": 30.47538,
+    "sn0_ours": -55.42509,
+    "sn0_fm": -55.42523
    },
    {
     "name": "body-030st000dp000",
@@ -122,8 +220,8 @@
    }
   ],
   "one_code_only": [],
-  "fault_station_dt_median": 0.028238491651999986,
-  "fault_slip_ratio_median": 1.008448458770683,
+  "fault_station_dt_median": 0.014496494066900012,
+  "fault_slip_ratio_median": 1.012615822317396,
   "body_pv_ratio_median": 1.0232284417600814,
   "match": true
  },
@@ -157,6 +255,76 @@
     "sn0_fm": -0.3695271
    },
    {
+    "name": "faultst000dp015",
+    "kind": "fault",
+    "t_ours": 2.022645056075,
+    "t_fm": 1.995,
+    "slip_ours": 15.764290001340079,
+    "slip_fm": 15.759101967837612,
+    "tauh0_ours": 0.0,
+    "tauh0_fm": 1.157611e-12,
+    "tauv0_ours": 6.095063,
+    "tauv0_fm": 6.095141,
+    "sn0_ours": -11.08502,
+    "sn0_fm": -11.08517
+   },
+   {
+    "name": "faultst000dp030",
+    "kind": "fault",
+    "t_ours": 1.757504318387,
+    "t_fm": 1.74,
+    "slip_ours": 16.754190000385417,
+    "slip_fm": 16.718077414344396,
+    "tauh0_ours": -3.992395e-16,
+    "tauh0_fm": -9.508011e-12,
+    "tauv0_ours": 12.19013,
+    "tauv0_fm": 12.1902,
+    "sn0_ours": -22.17004,
+    "sn0_fm": -22.17018
+   },
+   {
+    "name": "faultst000dp045",
+    "kind": "fault",
+    "t_ours": 1.484788131051,
+    "t_fm": 1.47,
+    "slip_ours": 17.41633000021034,
+    "slip_fm": 17.392060100260107,
+    "tauh0_ours": 1.058064e-16,
+    "tauh0_fm": -6.417697e-11,
+    "tauv0_ours": 18.28519,
+    "tauv0_fm": 18.28526,
+    "sn0_ours": -33.25505,
+    "sn0_fm": -33.2552
+   },
+   {
+    "name": "faultst000dp075",
+    "kind": "fault",
+    "t_ours": 0.9242048570828,
+    "t_fm": 0.91,
+    "slip_ours": 17.742220000028755,
+    "slip_fm": 17.76083912064689,
+    "tauh0_ours": -1.352181e-15,
+    "tauh0_fm": 4.844806e-11,
+    "tauv0_ours": 30.47532,
+    "tauv0_fm": 30.47538,
+    "sn0_ours": -55.42509,
+    "sn0_fm": -55.42523
+   },
+   {
+    "name": "faultst000dp120",
+    "kind": "fault",
+    "t_ours": 0.01515089929644,
+    "t_fm": 0.005,
+    "slip_ours": 13.887460000002106,
+    "slip_fm": 14.034779686996854,
+    "tauh0_ours": 1.772859e-15,
+    "tauh0_fm": -6.999116e-13,
+    "tauv0_ours": 48.08728,
+    "tauv0_fm": 48.76055,
+    "sn0_ours": -88.68015,
+    "sn0_fm": -88.68027
+   },
+   {
     "name": "faultst045dp000",
     "kind": "fault",
     "t_ours": 2.333238491652,
@@ -171,6 +339,20 @@
     "sn0_fm": -0.3695271
    },
    {
+    "name": "faultst045dp075",
+    "kind": "fault",
+    "t_ours": 1.44691088281,
+    "t_fm": 1.46,
+    "slip_ours": 17.755724458091695,
+    "slip_fm": 17.7449367601133,
+    "tauh0_ours": -1.352181e-15,
+    "tauh0_fm": 5.523725e-11,
+    "tauv0_ours": 30.47532,
+    "tauv0_fm": 30.47538,
+    "sn0_ours": -55.42509,
+    "sn0_fm": -55.42523
+   },
+   {
     "name": "faultst120dp000",
     "kind": "fault",
     "t_ours": 3.166537952956,
@@ -183,6 +365,20 @@
     "tauv0_fm": 0.203035,
     "sn0_ours": -0.3692163,
     "sn0_fm": -0.3695271
+   },
+   {
+    "name": "faultst120dp075",
+    "kind": "fault",
+    "t_ours": 3.886205669537,
+    "t_fm": 3.925,
+    "slip_ours": 13.363700398271138,
+    "slip_fm": 13.748171416099357,
+    "tauh0_ours": -1.352181e-15,
+    "tauh0_fm": 6.020086e-11,
+    "tauv0_ours": 30.47532,
+    "tauv0_fm": 30.47538,
+    "sn0_ours": -55.42509,
+    "sn0_fm": -55.42523
    },
    {
     "name": "body-030st000dp000",
@@ -250,8 +446,8 @@
    }
   ],
   "one_code_only": [],
-  "fault_station_dt_median": 0.028238491651999986,
-  "fault_slip_ratio_median": 0.9935236896203312,
+  "fault_station_dt_median": 0.014496494066900012,
+  "fault_slip_ratio_median": 0.9968155538756869,
   "body_pv_ratio_median": 1.0232284417600814,
   "match": true
  }
