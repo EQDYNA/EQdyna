@@ -1,4 +1,4 @@
- # location = on fault, 12.0 km along strike, 6.5 km down-dip
+ # location = on fault, 12.0 km along strike, 7.5 km down-dip
  # Project=San-Ti                        
  # Author=Sophon                        
  # date = 10/11/2026  8:45:35

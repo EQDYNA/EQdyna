@@ -443,6 +443,15 @@ def build_solver_state(case_dir, part=None):
     # params['C_degen']) rather than plumbed through that builder's return.
     fault_dip_rad = (params['C_degen'] * np.pi / 180.0 if params['C_degen'] > 3.0
                       else 90.0 * np.pi / 180.0)
+    # library_output.f90 output_onfault_st: a planar dipping fault inserted
+    # by mesh shear (insertFaultType>0, C_degen==0) has fltxyz dip 90 deg, so
+    # the station dp field would be vertical depth, not the SCEC down-dip
+    # distance. Use the declared dip fdip (bGlobal.txt, degrees) there.
+    if params.get('insertFaultType', 0) > 0 and params['C_degen'] == 0.0:
+        # fdip is bGlobal.txt's declared dip (degrees), passed through
+        # readInputFiles.build_params; a dipping insertFaultType case
+        # without it must fail loudly, not fall back to depth-named files.
+        fault_dip_rad = abs(params['fdip']) * np.pi / 180.0
 
     model_bound = None
     zline_global = zline

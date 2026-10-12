@@ -169,12 +169,12 @@ GATE_STATIONS = {
         'off': ('body010st000dp000.txt', 'body060st120dp000.txt'),
     },
     'test.tpv10': {
-        # hypocentre zsource = -12.0e3 (down-dip) -> faultst000dp104 (the
+        # hypocentre zsource = -12.0e3 (down-dip) -> faultst000dp120 (the
         # station grid snaps to the nearest fault node, not the raw
-        # coordinate); shallowest buried dp013; farthest strike dp065 at
+        # coordinate); shallowest buried dp015; farthest strike dp075 at
         # strike 12 km.
-        'on': ('faultst000dp104.txt', 'faultst000dp013.txt',
-               'faultst120dp065.txt'),
+        'on': ('faultst000dp120.txt', 'faultst000dp015.txt',
+               'faultst120dp075.txt'),
         'off': ('body010st000dp000.txt', 'body030st120dp000.txt'),
     },
     'test.meng2023a': {
@@ -332,12 +332,12 @@ GATE_STATIONS = {
     # test.tpv12 (row 149): filenames MEASURED from the fresh fortran
     # reference run (test.tpv10's own insertFaultType=1 dipping-fault
     # mechanism, same hypocentre/station-grid shape) -- hypocentre
-    # (0,-12 km down-dip) -> faultst000dp104 exactly; shallowest buried
-    # dp013; farthest strike (12 km) dp065. Off-fault: near (1 km) and far
+    # (0,-12 km down-dip) -> faultst000dp120 exactly; shallowest buried
+    # dp015; farthest strike (12 km) dp075. Off-fault: near (1 km) and far
     # (3 km at strike 12 km) of this case's own list.
     'test.tpv12': {
-        'on': ('faultst000dp104.txt', 'faultst000dp013.txt',
-               'faultst120dp065.txt'),
+        'on': ('faultst000dp120.txt', 'faultst000dp015.txt',
+               'faultst120dp075.txt'),
         'off': ('body010st000dp000.txt', 'body030st120dp000.txt'),
     },
     # test.tpv13 (row 149): identical geometry/hypocentre/station grid to
@@ -345,8 +345,8 @@ GATE_STATIONS = {
     # off-fault material differs), so the SAME station selection applies and
     # was confirmed present verbatim in a fresh fortran run of this case.
     'test.tpv13': {
-        'on': ('faultst000dp104.txt', 'faultst000dp013.txt',
-               'faultst120dp065.txt'),
+        'on': ('faultst000dp120.txt', 'faultst000dp015.txt',
+               'faultst120dp075.txt'),
         'off': ('body010st000dp000.txt', 'body030st120dp000.txt'),
     },
 }
@@ -392,7 +392,7 @@ STATION_ZERO_FLOOR = 1e-6
 # fortran_vs_jax.json. "floor" = the scale was STATION_ZERO_FLOOR-clamped.
 STATION_BOUND = {
     'test.tpv8': 1e-7,       # 1.00e-10 local, 1.72e-10 CI runner (on v-slip-rate, dp120, floor)
-    'test.tpv10': 1e-7,      # 1.98e-10 (on h-slip-rate, dp104, floor)
+    'test.tpv10': 1e-7,      # 1.98e-10 (on h-slip-rate, dp120, floor)
     'test.tpv104': 1e-5,     # 3.25e-08 (on v-slip-rate, dp030, floor) -> 4.0e-6
     'test.tpv1053d': 1e-10,  # 3.06e-16 (on v-slip-rate, dp075, floor) -> 3.7e-14
     'test.meng2023a': 1e-8,  # 1.12e-11 (on v-slip-rate, dp036, floor) -> 1.4e-9
@@ -435,12 +435,12 @@ STATION_BOUND = {
     # tpv29/tpv30/tpv22/tpv23/tpv26/tpv27/tpv31/tpv32.
     'test.tpv33': 1e-10,
     # test.tpv12 (row 149): measured python-jax vs the fresh fortran
-    # reference -- worst e 1.0925e-07 (on n-stress, faultst120dp065.txt).
+    # reference -- worst e 1.0925e-07 (on n-stress, faultst120dp075.txt).
     # 1e-5 is the next bound-already-in-use at or above 1.0925e-07 * ~121.5
     # (1.33e-5), same headroom convention as every other case here.
     'test.tpv12': 1e-5,
     # test.tpv13 (row 149): measured python-jax vs the fresh fortran
-    # reference -- worst e 1.3649e-14 (on h-slip-rate, faultst000dp013.txt).
+    # reference -- worst e 1.3649e-14 (on h-slip-rate, faultst000dp015.txt).
     # 1e-10 (the smallest bound already in use) is already >3 orders of
     # magnitude above 1.3649e-14 * ~121.5 (1.66e-12), same headroom
     # convention as every other near-machine-epsilon case here.

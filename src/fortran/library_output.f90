@@ -45,10 +45,25 @@ subroutine output_onfault_st
 
     integer (kind = 4) :: i, j
     character (len = 8) :: tag, faultTag
+    real (kind = dp) :: dipRadForName
 
     if(numOfOnFaultStCount>0) then
         do i=1,numOfOnFaultStCount
             j=anonfs(3,i)
+            ! SCEC station names carry DOWN-DIP distance (TPV10/11 and
+            ! TPV12/13 specs: "faultst000dp075 = 7.5 km down-dip"). For a
+            ! planar dipping fault inserted by mesh shear (insertFaultType>0,
+            ! C_degen==0) fltxyz(2,4,j) is forced to 90 deg (readInputFiles
+            ! .f90), so dividing by its sine named the file by vertical DEPTH
+            ! (dp065 for the 7.5 km station, dp013 for 1.5 km) and the 100 m
+            ! name rounding made that irrecoverable downstream. Use the
+            ! declared dip fdip (bGlobal.txt, degrees) in that case; every
+            ! other geometry keeps fltxyz(2,4,j) exactly as before.
+            if (insertFaultType > 0 .and. C_degen == 0.0d0) then
+                dipRadForName = abs(fdip)*pi/180.0d0
+            else
+                dipRadForName = fltxyz(2,4,j)
+            endif
             ! BLOCKER FIX (victor-reyes audit of 2df46aa, 2026-09-30):
             ! the filename below used to be built from strike/depth alone,
             ! with no per-fault tag -- the same faultTag() convention
@@ -87,7 +102,7 @@ subroutine output_onfault_st
             else
                 write(sttmp,'(i3.3)') nint(xonfs(1,anonfs(2,i),j)/100.d0)
             endif
-            write(dptmp,'(i3.3)') nint(abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,j))/100.d0)
+            write(dptmp,'(i3.3)') nint(abs(xonfs(2,anonfs(2,i),j))/dsin(dipRadForName)/100.d0)
             open(51,file='faultst'//trim(tag)//trim(adjustl(sttmp))//'dp'//trim(adjustl(dptmp))//'.txt',status='unknown')
 
             sttmp = '      '
@@ -104,7 +119,7 @@ subroutine output_onfault_st
             ! 90 regardless of the true mesh dip) -- test.tpv36/test.tpv37
             ! (C_degen=15) do have on-fault stations and would have printed
             ! vertical depth mislabeled "down-dip" had this shipped unfixed.
-            write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j))/dsin(fltxyz(2,4,j))/1000.d0
+            write(dptmp,'(f5.1)') abs(xonfs(2,anonfs(2,i),j))/dsin(dipRadForName)/1000.d0
             stLocStamp = '# location = on fault, '//trim(adjustl(sttmp))//' km along strike, '//trim(adjustl(dptmp))//' km down-dip'
             ! pathway item 85: stLocStamp was computed every call and never
             ! written -- pathway item 67's own evidence command looked for
