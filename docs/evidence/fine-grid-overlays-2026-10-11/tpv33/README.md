@@ -10,22 +10,22 @@ This is a scratch run of `case_input/test.tpv33` with `par.dx` changed from 400 
 
 ## Numbers (shared nodes only, no interpolation)
 
-| window | dx (m) | ruptured | median \|dt\| | p90 | mean | max | ours-only nodes | one-code-only stations | fault-st dt median | slip ratio | body pv ratio | MATCH |
+| window | dx (m) | ruptured | median \|dt\| | p90 | mean | max | ours-only nodes | one-code-only stations | fault-st dt median | slip ratio | body pv ratio | verdict |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 5 s | 100 | 99.2% (10472/10553) | 0.049 | 0.110 | +0.005 | 0.86 | 2 | 0  | -0.01 | 1.01 | 0.96 | yes |
-| 13 s | 100 | 98.0% (11481/11713) | 0.052 | 0.114 | -0.002 | 2.66 | 9 | 0  | -0.01 | 1.00 | 0.93 | yes |
+| 5 s | 100 | 99.2% (10472/10553) | 0.049 | 0.110 | +0.005 | 0.86 | 2 | 0  | -0.01 | 1.01 | 0.96 | not yet accepted |
+| 13 s | 100 | 98.0% (11481/11713) | 0.052 | 0.114 | -0.002 | 2.66 | 9 | 0  | -0.01 | 1.00 | 0.93 | not yet accepted |
 
 Station ratios over all shared stations, ours / FaultMod, on [0, 13 s], as median [min-max]: final slip 1.000 [0.908-1.012], peak slip rate 0.707 [0.464-0.923], body peak velocity 0.962 [0.492-1.155]. They come from `../tpv31/station_ratios.py`, stored in `station_ratios_faultmod.json`. Final slip and peak slip rate use |(h, v)|. Body peak velocity is max |v| over three components; a station is skipped when the baseline peak is < 1e-3.
 
 ## Verdict (visual, every PNG inspected)
 
-**cplot: MATCH, close but not line-for-line.** The 1-3 s contours overlay. On the +x side, our 4 s contour leads FaultMod's by about 0.2-0.3 km. The 2-3 s contours lag up-dip by about 0.2 km (2 s top at 1.9 against 1.65 km depth). The free-surface (1 km) and bottom (9 km) arrest lines and the late 5 s lobe overlay. 98.0% of the baseline's ruptured shared nodes ruptured in ours. The 232 that did not sit on the arrest edges, and max |dt| is 2.66 s.
+**not yet accepted: contour offset up to ~0.7 km, peak slip rate 0.71×; finer run pending.** The owner's acceptance criterion is a fine-grid cplot and time series that visibly match "really well". TPV33 at 100 m does not meet it yet; TPV31 and TPV32 do (line for line). The gaps against FaultMod 12.5 m:
 
-**ts-fault: MATCH on slip and stress, LOW on peak slip rate.** Final slip and stress drops match (slip ratio median 1.00). Peak slip rate is median 0.71 of FaultMod's, as low as 0.46 (e.g. about 2.3 against 3.8-4.1 m/s at faultst-100dp020 and faultst020dp080). This is the expected under-resolution of the slip-rate peak at 100 m against 12.5 m: the stress drop and slip are unchanged. faultst020dp080's final h-shear is about 0.6 MPa lower than FaultMod's.
+- cplot: the 3 s and 4 s contours sit 0.2-0.4 km inside FaultMod's, and the 5 s contour on +x lags by about 0.7 km. 98.0% of the baseline's ruptured shared nodes ruptured in ours (max |dt| 2.66 s, on the arrest edges).
+- ts-fault: peak slip rate is median 0.71 of FaultMod's (as low as 0.46), and v-slip at faultst-100dp020 is about 25% high. Final slip matches (ratio median 1.00).
+- ts-body: waveforms overlay through about 8 s; after about 9 s the static displacements at the far stations (body-100st-120dp000, body100st040dp000) drift apart by up to about 0.02 m (not yet explained).
 
-**ts-body: MATCH through about 8 s.** The waveforms overlay. After about 9 s, the static h/v/n displacements at the far stations (body-100st-120dp000, body100st040dp000) drift apart by up to about 0.02 m. This is consistent with this case's smaller domain (x -26..18 km, y ±22 km, z 20 km) and absorbing-boundary arrivals, but it has not been measured.
-
-**Overall: MATCHES FaultMod 12.5 m in rupture time, slip and waveforms.** The visible differences are peak slip rate (100 m against 12.5 m) and the late-time static offsets at far body stations.
+Whether these gaps are resolution (100 m against 12.5 m) or something in the setup is open: a finer (50 m) run and a spec check of the setup are pending.
 
 ## Reproduce
 
