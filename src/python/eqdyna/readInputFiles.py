@@ -366,7 +366,7 @@ def build_params(case_dir):
         xmin=mg['xmin'], xmax=mg['xmax'], ymin=mg['ymin'], ymax=mg['ymax'],
         zmin=mg['zmin'], zmax=mg['zmax'],
         rat=mg['rat'], nPML=6, tol=1.0e-5, R=0.01,
-        fstrike=g['fstrike'], C_degen=g['C_degen'],
+        fstrike=g['fstrike'], fdip=g['fdip'], C_degen=g['C_degen'],
         insertFaultType=g['insertFaultType'], rough=rough,
         # Row 17 (multi-fault): every fault's own box, and the one per-fault
         # scalar (the y-plane) the C_degen==0 builders actually branch on.
