@@ -4,7 +4,7 @@
     python3 make_overlays.py figures RESULTS OUTDIR [case ...]
     python3 make_overlays.py numbers RESULTS [case ...]
     python3 make_overlays.py table RESULTS OUTDIR [case ...]
-    python3 make_overlays.py resolution RUNS OUTDIR [--no-figures] [case ...]
+    python3 make_overlays.py resolution RUNS OUTDIR [--no-figures] [--baseline DIR LABEL TAG] [case ...]
 
 RUNS/<case>_dx<dx>/ (resolution mode) are runs of one case at several dx,
 each run to its spec term; see resolution/README.md. Resolution mode times
@@ -240,13 +240,13 @@ def _on_grid(k, dx):
     return all(abs(v) % dx < 1e-6 or abs(abs(v) % dx - dx) < 1e-6 for v in k)
 
 
-def case_metrics(run_dir, c, term, grid_dx):
+def case_metrics(run_dir, c, term, grid_dx, base=None):
     """Verdict numbers for one run of case `c` on the window [0, term].
     Stations are restricted to the `grid_dx` node grid (the gate dx), so every
     dx of one case is scored on the same station set."""
     import scec_readers as R
     o = R.Model(run_dir, 0)
-    b = R.Model(baseline(c)[0], 1)
+    b = R.Model(base or baseline(c)[0], 1)
     fo, fb = o.load_rupture(), b.load_rupture()
     kb = {(round(x, 1), round(y, 1)): t for x, y, t in zip(fb['strike'], fb['downdip'], fb['t'])}
     keys = [(round(x, 1), round(y, 1)) for x, y in zip(fo['strike'], fo['downdip'])]
@@ -345,10 +345,20 @@ def table(results, out, cases):
         fh.write('\n'.join(md) + '\n')
 
 
-def resolution(runs, out, cases, do_figures=True):
+def _ranks(d):
+    """MPI rank count of a run: one compTime<rank> file per rank."""
+    n = len([f for f in os.listdir(d) if f.startswith('compTime') and f[8:].isdigit()])
+    return n or None
+
+
+def resolution(runs, out, cases, do_figures=True, base=None):
     """Per case and per window (5 s gate term, spec term): metrics for every
     dx found under RUNS, a markdown table, metrics.json, and one overlay set
-    per case with every dx plus FaultMod."""
+    per case with every dx plus FaultMod.
+
+    base = (dir, label, tag) swaps FaultMod for another baseline (e.g. a
+    published CVWS submission dir); outputs then carry `_<tag>` and every
+    metrics row records the baseline label."""
     import json
     os.makedirs(out, exist_ok=True)
     allm, md = [], []
@@ -363,7 +373,8 @@ def resolution(runs, out, cases, do_figures=True):
                '|---|---|---|---|---|---|---|---|---|---|---|---|---|']
         for term in sorted({5.0, SPEC_TERM[c]}):
             for dx, d in rs:
-                m = case_metrics(d, c, term, GATE_DX[c])
+                m = case_metrics(d, c, term, GATE_DX[c], base[0] if base else None)
+                m['baseline'] = base[1] if base else 'FaultMod'
                 allm.append(m)
                 md.append(f'| {term:g} s | {dx:g} | {m["ruptured_pct"]:.1f}% ({m["both"]}/{m["faultmod_ruptured"]}) '
                           f'| {_f(m.get("median"), ".3f")} | {_f(m.get("p90"), ".3f")} '
@@ -379,20 +390,22 @@ def resolution(runs, out, cases, do_figures=True):
                 cmd = [sys.executable, os.path.join(FIG, 'scec_compare.py'), '--plot', mode]
                 if mode != 'cplot':
                     cmd += ['--component', 'h', 'v', 'n']
-                cmd += ['--models'] + [d for _, d in rs] + [os.path.join(SD, FAULTMOD[c])]
-                cmd += ['--labels'] + ['EQdyna'] * len(rs) + ['FaultMod']   # the tool appends ', dx N m'
+                cmd += ['--models'] + [d for _, d in rs] + [base[0] if base else os.path.join(SD, FAULTMOD[c])]
+                cmd += ['--labels'] + ['EQdyna'] * len(rs) + [base[1] if base else 'FaultMod']   # the tool appends ', dx N m'
+                ranks = sorted({_ranks(d) for _, d in rs} - {None})
                 cmd += ['--dpi', '200', '--note',
-                        f'EQdyna fortran, 4 ranks, scratch runs at dx '
+                        f'EQdyna fortran, {"/".join(map(str, ranks)) or "?"} ranks, scratch runs at dx '
                         f'{", ".join("%g" % dx for dx, _ in rs)} m, each run to the spec term '
                         f'{spec:g} s (not gated cells)',
-                        '--out', os.path.join(out, f'{c}_{mode.replace("-", "_")}_res.png')]
+                        '--out', os.path.join(out, f'{c}_{mode.replace("-", "_")}_{base[2] if base else "res"}.png')]
                 r = subprocess.run(cmd, capture_output=True, text=True)
                 print(c, mode, 'rc', r.returncode, flush=True)
                 if r.returncode:
                     print(r.stderr[-400:])
-    with open(os.path.join(out, 'metrics.json'), 'w') as fh:
+    sfx = f'_{base[2]}' if base else ''
+    with open(os.path.join(out, f'metrics{sfx}.json'), 'w') as fh:
         json.dump(_nan_to_none(allm), fh, indent=1, default=float)
-    with open(os.path.join(out, 'table.md'), 'w') as fh:
+    with open(os.path.join(out, f'table{sfx}.md'), 'w') as fh:
         fh.write('\n'.join(md) + '\n')
 
 
@@ -406,7 +419,12 @@ if __name__ == '__main__':
         table(results, os.path.abspath(sys.argv[3]), sys.argv[4:] or list(ARCHIVE))
     elif mode == 'resolution':
         rest = [a for a in sys.argv[4:] if a != '--no-figures']
+        base = None
+        if '--baseline' in rest:          # --baseline DIR LABEL TAG
+            i = rest.index('--baseline')
+            base = (os.path.abspath(rest[i + 1]), rest[i + 2], rest[i + 3])
+            del rest[i:i + 4]
         resolution(results, os.path.abspath(sys.argv[3]), rest or list(SPEC_TERM),
-                   '--no-figures' not in sys.argv)
+                   '--no-figures' not in sys.argv, base)
     else:
         numbers(results, sys.argv[3:] or list(FAULTMOD))

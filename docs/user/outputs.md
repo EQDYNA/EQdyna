@@ -163,6 +163,21 @@ MPI rank still covers every fault that rank owns nodes on, same as the
 single-fault case (`library_output.f90`'s `output_frt`); the per-rank/per-node
 row data already carries each row's own fault id.
 
+## Packaging a SCEC CVWS submission
+
+`scripts/scec_submission.py RUN_DIR --tpv <N> --out <zip>` packs a finished
+run's station files and rupture time into a zip laid out like
+`scec_archive/<tpv>/<version-dx-year>/`: bare-named `faultst*` / `body*`
+files and a `cplot` (`cplot_<N>` per fault on a multi-fault run), plus a
+`PROVENANCE.md`. Station data rows are copied verbatim; only the header is
+rewritten (code `EQdyna`, `code_version` from `VERSION`, the commit SHA,
+the source stamp from the run banner, `element_size`, `time_step`,
+`num_time_steps`). A never-ruptured node is written as `1.0E+09`, the value
+the SCEC specs name. **The `author=` field is left as `<FILL IN>`**: set it
+in every file before upload. The script refuses when the run's banner
+version differs from `VERSION`, or the station headers' dx/dt disagree with
+each other, with the measured time step, or with the frt node spacing.
+
 ## Other outputs
 
 * `compTime<rank>` -- a per-rank wall-clock breakdown by simulation phase.
