@@ -30,3 +30,19 @@ Whether these gaps are resolution (100 m against 12.5 m) or something in the set
 ## Reproduce
 
 `python3 -m testsys.frt_canonical RUNS/tpv33_dx100`, then `docs/evidence/barall-overlays-2026-10-09/make_overlays.py resolution RUNS <out> tpv33 --baseline <FaultMod dir> FaultMod faultmod`. That driver is the PR #190 version, and every figure comes from `scripts/figures/scec_compare.py`. Files: `tpv33_cplot_faultmod.png`, `tpv33_ts_fault_faultmod.png` (4 sampled stations), `tpv33_ts_body_faultmod.png` (4 sampled stations), `metrics_faultmod.json`, `table_faultmod.md`.
+
+## 50 m run (2026-10-12): match
+
+A 50 m run, `RUNS/tpv33_dx50` (12 ranks, 13 s spec term, fortran, commit `c84a21b`, wall 5279 s), was built with the same driver, `make_overlays.py resolution RUNS <out> tpv33`. Against FaultMod 12.5 m:
+
+| window | dx (m) | ruptured | median \|dt\| | p90 | slip ratio | body pv ratio | verdict |
+|---|---|---|---|---|---|---|---|
+| 5 s | 50 | 99.9% (42125/42174) | 0.017 | 0.058 | 1.01 | 1.03 | match |
+| 13 s | 50 | 99.3% (46501/46850) | 0.019 | 0.065 | 1.01 | 1.00 | match |
+
+**Verdict (visual, every PNG inspected): match at 50 m.**
+- The 1-4 s contours lie on FaultMod's line for line. The arrest front on the right side halves its 100 m offset and now sits within ~0.2 km.
+- The fault series (slip, shear and normal stress) overlay FaultMod. The peak slip-rate spikes stay below FaultMod's 12.5 m spikes, as expected at 4x the grid spacing.
+- The body series overlay through ~10 s. After that FaultMod's static displacement drifts away from both EQdyna runs alike, so the cause is not resolution.
+
+The median rupture-time difference falls from 52 ms to 19 ms when dx halves, so EQdyna converges toward FaultMod. TPV33 is accepted at 50 m, the same resolution TPV27 needed. Files: `tpv33_{cplot,ts_fault,ts_body}_faultmod_50m.png`, `metrics_faultmod_50m.json`, `table_faultmod_50m.md`.
