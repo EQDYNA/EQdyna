@@ -343,3 +343,51 @@ def test_plot_mode_smoke(tmp_path, mode, capsys):
     text = capsys.readouterr().out
     assert 'reader=eqdyna-frt-canonical' in text and 'reader=cvws-cplot' in text
     assert 'CVWS Barall (2013), FaultMod 100 m' in text
+
+
+# ------------------------------------------------- named off-fault receivers
+
+def _write_body(path, header_tag):
+    tt = np.linspace(0.0, 1.9, 20)
+    a = np.column_stack([tt] + [np.sin(tt + k) for k in range(1, 7)])
+    with open(path, 'w') as fh:
+        if header_tag:
+            fh.write(' # %s\n' % header_tag)
+        fh.write(' # Time series in 7 columns in format e15.7\n')
+        fh.write(' t h-disp h-vel v-disp v-vel n-disp n-vel\n')
+        for row in a:
+            fh.write(' '.join('%15.7e' % v for v in row) + '\n')
+
+
+def test_named_receiver_paired_by_official_list(tmp_path, capsys):
+    """TPV35's published `4064_donna` is (z 4875, x -13363) m in the official
+    list, so it pairs with our writer's body049st-134dp000 -- and a
+    coordinate-named file in the same directory still parses as before."""
+    _write_body(tmp_path / '4064_donna', 'SCECTPV35')
+    _write_body(tmp_path / 'body002st-310dp000', 'SCECTPV35')
+    found, bad = R.discover_stations(str(tmp_path), 'body')
+    assert found[(4900.0, -13400.0, 0.0)].endswith('4064_donna')
+    assert (200.0, -31000.0, 0.0) in found and len(found) == 2 and bad == []
+    assert '1 of 1 paired' in capsys.readouterr().out
+
+
+def test_named_receiver_without_tag_or_list_is_not_invented(tmp_path):
+    _write_body(tmp_path / '4064_donna', None)            # no benchmark tag
+    _write_body(tmp_path / '9999_nowhere', 'SCECTPV35')   # not in the list
+    found, bad = R.discover_stations(str(tmp_path), 'body')
+    assert found == {} and sorted(bad) == ['4064_donna', '9999_nowhere']
+
+
+def test_named_receivers_sharing_a_key_are_refused(tmp_path):
+    lst = tmp_path / 'case_input' / 'test.tpv35'
+    lst.mkdir(parents=True)
+    (lst / 'tpv35_station_locations.txt').write_text(
+        'station_name map_code z x\n1_a A 4875 -13363\n2_b B 4880 -13390\n3_c C 0 0\n')
+    d = tmp_path / 'arc'
+    d.mkdir()
+    for n in ('1_a', '2_b', '3_c'):
+        _write_body(d / n, 'SCECTPV35')
+    found, unresolved, report = R.resolve_named_receivers(
+        str(d), ['1_a', '2_b', '3_c'], root=str(tmp_path))
+    assert list(found) == [(0.0, 0.0, 0.0)] and sorted(unresolved) == ['1_a', '2_b']
+    assert '2 refused' in report
