@@ -340,3 +340,69 @@ def test_refuses_dx_disagreeing_with_frt_spacing(tmp_path):
     with pytest.raises(SystemExit, match='spacing'):
         P.package(d, '26', os.path.join(str(tmp_path), 'x.zip'), SHA, DATE,
                   allow_no_log=True)
+
+
+# ---- TPV103/104: emit exactly the upload spec's 9 on-fault columns ----------
+REF104 = os.path.join(ROOT, 'test.reference.results', 'test.tpv104')
+SPEC104 = 't h-slip h-slip-rate h-shear-stress v-slip v-slip-rate v-shear-stress n-stress psi'
+
+
+def _data_rows(path):
+    _, _, data = P.split_station(path)
+    return data
+
+
+def test_tpv104_on_fault_files_carry_exactly_the_spec_columns(tmp_path):
+    r, out, sub = _package(REF104, tmp_path, tpv='104')
+    src = sorted(glob.glob(os.path.join(REF104, 'stations', 'faultst*.txt')))
+    assert len(src) == 3
+    nrows = 0
+    for f in src:
+        name = os.path.basename(f)[:-4]
+        txt = open(os.path.join(sub, name)).read().splitlines()
+        assert SPEC104 in txt
+        assert '# Time series in 9 columns' in txt
+        assert '# Column #9 = state variable psi (dimensionless)' in txt
+        assert sum(l.startswith('# Column #') for l in txt) == 9
+        assert not any('emperature' in l or 'ressure' in l for l in txt)
+        got = [l for l in txt if not l.startswith('#') and l != SPEC104]
+        want = _data_rows(f)
+        assert len(got) == len(want) > 1
+        for g, w in zip(got, want):
+            cells = re.findall(r'\s*\S+', w)
+            assert len(cells) == 11
+            # the first 9 source cells, byte for byte; psi is source column 9
+            assert g == ''.join(cells[:9])
+        nrows += len(got)
+    print(f'tpv104: 3 on-fault files, {nrows} rows, 9 spec columns each')
+    with zipfile.ZipFile(out) as z:
+        prov = [n for n in z.namelist() if n.endswith('PROVENANCE.md')][0]
+        p = z.read(prov).decode()
+    assert 'columns dropped' in p and 'pressure, temperature' in p
+
+
+def test_tpv104_body_files_are_unchanged(tmp_path):
+    _, _, sub = _package(REF104, tmp_path, tpv='104')
+    for f in glob.glob(os.path.join(REF104, 'stations', 'body*.txt')):
+        got = open(os.path.join(sub, os.path.basename(f)[:-4])).read().splitlines()
+        want = _data_rows(f)
+        assert got[-len(want):] == want
+
+
+def test_extra_columns_still_refused_outside_tpv103_104(tmp_path):
+    with pytest.raises(SystemExit, match='no spec wording'):
+        P.package(REF104, '26', os.path.join(str(tmp_path), 'x.zip'), SHA,
+                  DATE, allow_no_log=True)
+
+
+def test_tpv104_refuses_a_missing_spec_column():
+    with pytest.raises(SystemExit, match=r"missing from the run: \['psi'\]"):
+        P.select_spec_columns('104', 'fault', SPEC104.replace(' psi', ' temperature'),
+                              ['  1.0' * 9])
+
+
+def test_no_columns_dropped_for_other_tpvs(tmp_path):
+    _, out, _ = _package(REF, tmp_path)
+    with zipfile.ZipFile(out) as z:
+        prov = [n for n in z.namelist() if n.endswith('PROVENANCE.md')][0]
+        assert 'columns dropped' not in z.read(prov).decode()
