@@ -223,8 +223,15 @@ def numbers(results, cases):
 # resolution study (resolution/README.md): the same numbers, per dx, per window
 # ---------------------------------------------------------------------------
 SPEC_TERM = {'tpv12': 8.0, 'tpv13': 8.0, 'tpv26': 13.0, 'tpv27': 13.0,
-             'tpv31': 15.0, 'tpv32': 15.0, 'tpv33': 13.0}
-GATE_DX = {c: DX.get(c, 500) for c in SPEC_TERM}
+             'tpv31': 15.0, 'tpv32': 15.0, 'tpv33': 13.0,
+             # EQdyna-archive cases (fine-grid acceptance, 2026-10-13): spec terms
+             # from scratch/specs (TPV29_30 v06, TPV34 v10, TPV35 v05, TPV36_37 v12,
+             # TPV103_104, TPV105_3D), as recorded in testsys/e2e/full_specs.py.
+             'tpv30': 20.0, 'tpv34': 20.0, 'tpv35': 18.0, 'tpv36': 22.0,
+             'tpv37': 22.0, 'tpv104': 12.0, 'tpv1053d': 15.0}
+# Archive cases are single-dx fine runs: stations are scored on the run's own
+# node grid (None), not on a 500 m gate grid no run of theirs shares.
+GATE_DX = {c: (None if c in ARCHIVE else DX.get(c, 500)) for c in SPEC_TERM}
 
 
 def _arrival_vec(a, which, thr):
