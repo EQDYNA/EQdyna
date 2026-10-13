@@ -71,6 +71,8 @@ first, and that is item 76, owner-scoped.
 
 ## A. Open work -- something to do, P1 first
 
+**OWNER DECISION 2026-10-13 (typed in the main session), on row 149:** told that the TPV12/13 surface-stress misfit is the hourglass force on the free-surface corner elements next to the dipping fault (0.06-0.16x the stress-divergence force at 500 m, 4.9-6.2x at 100 m; element stresses decay smoothly), and offered A (local fix on those elements, both codes), B (reformulate hourglass everywhere) or C (record a known limitation), with A recommended and waiting for Go, the owner answered "keep going" -- reading: proceed with A.
+
 **OWNER DECISION 2026-10-06 (typed in the main session):** "/autopilot clear the board" -- every open row in sections A and B is in scope for the conductor, in prio order; item 140 stays owner-held per the standing 2026-10-03 ruling ("140: why? Not yours"). Same session, added: "Also, refactor the src and test sys" and "Refactor docs" -- a refactor of `src/`, `testsys/` and the docs is committed scope for this run. Then: "Yeah, clear the things you can clear" -- includes the two no-row follow-ups recommended in the main session the same day: the TPV34 n2mat==6 grid-covers-mesh assertion and a 2-rank tpv23 python-jax-mpi solve cell.
 
 **OWNER DECISION 2026-10-07 (typed in the main session):** asked whether to scrub the 4 `docs/BOARD_HISTORY.md` cells that still carry local paths (the file calls itself a verbatim archive): "Scrub them (Recommended)" -- placeholders in those 4 cells plus a dated note, and the guard's named exemption for that file removed.
