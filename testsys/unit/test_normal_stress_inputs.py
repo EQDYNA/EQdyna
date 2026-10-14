@@ -78,6 +78,9 @@ def test_resolve_fric_pc_L_modes(L, want):
 
 @pytest.mark.parametrize('kw', [
     dict(fric_pc_L=float('nan')),
+    dict(fric_pc_L=float('inf')),
+    dict(fric_pc_L=-float('inf')),
+    dict(fric_pc_L='nan'),
     dict(fric_pc_L='x'),
     dict(fric_pc_L=[0.1]),
     dict(fric_pc_L=True),
@@ -203,12 +206,12 @@ def test_L_modes_under_jax_match_numpy():
 def test_latch_keeps_the_first_event_and_lowest_row():
     z = np.zeros(driver.NSVIOL_LEN)
     ok = np.array([-1e6, -2e6, -3e6, -4e6])
-    assert np.array_equal(driver.latch_normal_stress(np, z, ok, 0.1), z)
+    assert np.array_equal(driver.latch_normal_stress(np, z, ok, 0.1, 1), z)
     # the boundary value 0 counts (Fortran stops at >= 0)
-    s1 = driver.latch_normal_stress(np, z, np.array([-1e6, 0.0, 2e6, -4e6]), 0.2)
-    assert s1.tolist() == [1.0, 0.2, 1.0, 0.0]
+    s1 = driver.latch_normal_stress(np, z, np.array([-1e6, 0.0, 2e6, -4e6]), 0.2, 2)
+    assert s1.tolist() == [1.0, 0.2, 2.0, 1.0, 0.0]
     # a later step with another bad row does not overwrite it
-    s2 = driver.latch_normal_stress(np, s1, np.array([3e6, -2e6, -3e6, -4e6]), 0.3)
+    s2 = driver.latch_normal_stress(np, s1, np.array([3e6, -2e6, -3e6, -4e6]), 0.3, 3)
     assert np.array_equal(s2, s1)
 
 
@@ -221,18 +224,26 @@ def _fake_S():
 
 
 def test_latched_error_none_when_nothing_latched():
-    assert driver.latched_normal_stress_error(_fake_S(), np.zeros(4)) is None
+    assert driver.latched_normal_stress_error(_fake_S(), np.zeros(driver.NSVIOL_LEN)) is None
 
 
 def test_latched_error_names_time_node_and_value():
     err = driver.latched_normal_stress_error(
-        _fake_S(), np.array([1.0, 0.75, 4.0, 3.5e6]), rank=2)
+        _fake_S(), np.array([1.0, 0.75, 6.0, 4.0, 3.5e6]), rank=2)
     assert isinstance(err, InputConsistencyError)
     assert err.code == 65
     msg = str(err)
     assert 'rank 2, friclaw 5' in msg
-    assert 'time 7.50000000e-01 s' in msg
+    assert 'time 7.50000000e-01 s, step 6,' in msg
     assert 'fault 2, fault node 2' in msg          # row 4 is fault 1's 2nd row
     x, y, z = _fake_S()['meshCoor'][9]
     assert 'node x, y, z (m) %.8e %.8e %.8e' % (x, y, z) in msg
     assert 'normal traction 3.50000000e+00 MPa' in msg
+
+
+def test_latched_error_refuses_S_without_fault_of():
+    S = _fake_S()
+    del S['fault_of']
+    with pytest.raises(ValueError, match='fault_of'):
+        driver.latched_normal_stress_error(
+            S, np.array([1.0, 0.75, 6.0, 4.0, 3.5e6]))

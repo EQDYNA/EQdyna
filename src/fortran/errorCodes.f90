@@ -61,7 +61,7 @@ MODULE errorCodes
     integer, parameter :: ERR_GENERIC                = 1   ! unclassified fatal error
 
     ! --- 10-19 configuration and parameter consistency ----------------
-    integer, parameter :: ERR_CFG_NORMAL_STRESS_CAPS_INVALID = 10 ! bGlobal.txt's rate-and-state normal-stress caps are invalid: switch (par.C_normal_stress_caps) not -1, 0 or 1, or not max_norm <= min_norm < 0
+    integer, parameter :: ERR_CFG_NORMAL_STRESS_INPUTS_INVALID = 10 ! bGlobal.txt's rate-and-state normal-stress inputs are invalid: fric_pc_L set but not finite, caps switch (par.C_normal_stress_caps) not -1, 0 or 1, or not max_norm <= min_norm < 0
     integer, parameter :: ERR_CFG_Q_NEEDS_ELASTIC    = 11  ! C_Q=1 requires C_elastic=1
     integer, parameter :: ERR_CFG_Q_NEEDS_UNIFORM    = 12  ! C_Q=1 requires rat=1.0 (uniform elements)
     integer, parameter :: ERR_CFG_PLASTIC_OUTPUT     = 13  ! output_plastic=1 requires C_elastic=0

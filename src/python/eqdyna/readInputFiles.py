@@ -27,7 +27,7 @@ now proving the reader itself, not just the builders.
 """
 import numpy as np
 
-from .checkInputConsistency import (ERR_CFG_FAULT_TS_INVALID, ERR_CFG_NORMAL_STRESS_CAPS_INVALID,
+from .checkInputConsistency import (ERR_CFG_FAULT_TS_INVALID, ERR_CFG_NORMAL_STRESS_INPUTS_INVALID,
                                     ERR_CFG_NSTRESS_SIGN_INVALID, InputConsistencyError)
 
 
@@ -164,6 +164,12 @@ def read_bglobal(path):
         raise stale('a valid theta_pc relaxation length line "set L" (par.fric_pc_L)')
     if setL not in (0, 1):
         raise stale('a valid theta_pc relaxation length line "set L" (par.fric_pc_L)')
+    if setL == 1 and not np.isfinite(L):
+        raise InputConsistencyError(
+            ERR_CFG_NORMAL_STRESS_INPUTS_INVALID,
+            'bGlobal.txt theta_pc relaxation length (par.fric_pc_L) is set but not '
+            "finite; use None (each node's Dc), <= 0 (no relaxation) or a length in m, "
+            'and re-run case.setup. (read %r from %s)' % (L, path))
     g['fric_pc_L'] = L if setL == 1 else None
     try:
         vals = nxtOrStale('the normal-stress caps switch and min_norm max_norm, Pa '
@@ -174,13 +180,13 @@ def read_bglobal(path):
         raise stale('a valid normal-stress caps line (par.C_normal_stress_caps/min_norm/max_norm)')
     if g['C_normal_stress_caps'] not in (-1, 0, 1):
         raise InputConsistencyError(
-            ERR_CFG_NORMAL_STRESS_CAPS_INVALID,
+            ERR_CFG_NORMAL_STRESS_INPUTS_INVALID,
             'bGlobal.txt normal-stress caps switch must be -1 (caps iff insertFaultType>0 and '
             'C_elastic==1), 0 (off) or 1 (on); re-run case.setup. (read %d from %s)'
             % (g['C_normal_stress_caps'], path))
     if not (g['max_norm'] <= g['min_norm'] < 0.0):
         raise InputConsistencyError(
-            ERR_CFG_NORMAL_STRESS_CAPS_INVALID,
+            ERR_CFG_NORMAL_STRESS_INPUTS_INVALID,
             'bGlobal.txt normal-stress caps need max_norm <= min_norm < 0 (Pa, negative is '
             'compressive); re-run case.setup. (read min_norm %r, max_norm %r from %s)'
             % (g['min_norm'], g['max_norm'], path))

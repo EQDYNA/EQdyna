@@ -26,7 +26,7 @@ authoritative; the specific number is advisory under `srun`.
 
 | code | name | meaning |
 |-----:|------|---------|
-| 10 | `ERR_CFG_NORMAL_STRESS_CAPS_INVALID` | bGlobal.txt's rate-and-state normal-stress caps are invalid: switch (par.C_normal_stress_caps) not -1, 0 or 1, or not max_norm <= min_norm < 0 |
+| 10 | `ERR_CFG_NORMAL_STRESS_INPUTS_INVALID` | bGlobal.txt's rate-and-state normal-stress inputs are invalid: fric_pc_L set but not finite, caps switch (par.C_normal_stress_caps) not -1, 0 or 1, or not max_norm <= min_norm < 0 |
 | 11 | `ERR_CFG_Q_NEEDS_ELASTIC` | C_Q=1 requires C_elastic=1 |
 | 12 | `ERR_CFG_Q_NEEDS_UNIFORM` | C_Q=1 requires rat=1.0 (uniform elements) |
 | 13 | `ERR_CFG_PLASTIC_OUTPUT` | output_plastic=1 requires C_elastic=0 |

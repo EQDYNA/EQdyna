@@ -51,7 +51,7 @@ class InputConsistencyError(RuntimeError):
 
 
 # --- 10-19 configuration and parameter consistency (errorCodes.f90:63-72) -
-ERR_CFG_NORMAL_STRESS_CAPS_INVALID = 10  # bGlobal.txt's rate-and-state normal-stress caps: switch (par.C_normal_stress_caps) not -1, 0 or 1, or not max_norm <= min_norm < 0 (raised by readInputFiles.read_bglobal)
+ERR_CFG_NORMAL_STRESS_INPUTS_INVALID = 10  # bGlobal.txt's rate-and-state normal-stress inputs: fric_pc_L set but not finite, caps switch (par.C_normal_stress_caps) not -1, 0 or 1, or not max_norm <= min_norm < 0 (raised by readInputFiles.read_bglobal)
 ERR_CFG_Q_NEEDS_ELASTIC = 11   # C_Q=1 requires C_elastic=1
 ERR_CFG_Q_NEEDS_UNIFORM = 12   # C_Q=1 requires rat=1.0 (uniform elements)
 ERR_CFG_PLASTIC_OUTPUT = 13    # output_plastic=1 requires C_elastic=0

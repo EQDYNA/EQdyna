@@ -240,6 +240,7 @@ class parameters:
     #          11), the value EQdyna used before this input existed.
     #   <= 0 : no relaxation; theta_pc = |sigma_n| at once.
     #   > 0  : one L, in m, for every fault node.
+    # A NaN or infinite value is refused.
     fric_pc_L = None
 
     # Normal-stress caps for rate-and-state (friclaw 3/4/5), Pa, negative

@@ -96,11 +96,17 @@ subroutine readglobal
         read(1001,*,iostat=ios) C_fric_pc_L, fric_pc_L
         if (ios /= 0 .or. C_fric_pc_L < 0 .or. C_fric_pc_L > 1) call stopStaleGlobal( &
             'the theta_pc relaxation length line "set L": set 0 = unset (each node''s Dc), set 1 = L, m (<= 0 no relaxation) (par.fric_pc_L)')
+        ! A set L must be finite (NaN /= NaN; |inf| > huge), as case.setup
+        ! requires: the file is current but the value is not one.
+        if (C_fric_pc_L == 1 .and. (fric_pc_L /= fric_pc_L .or. abs(fric_pc_L) > huge(fric_pc_L))) &
+            call abortRun(ERR_CFG_NORMAL_STRESS_INPUTS_INVALID, &
+            'bGlobal.txt theta_pc relaxation length (par.fric_pc_L) is set but not finite; ' // &
+            'use None (each node''s Dc), <= 0 (no relaxation) or a length in m, and re-run case.setup.')
         read(1001,*,iostat=ios) C_normal_stress_caps, min_norm, max_norm
         if (ios /= 0) call stopStaleGlobal('the normal-stress caps switch and min_norm max_norm, Pa (par.C_normal_stress_caps/min_norm/max_norm)')
-        if (C_normal_stress_caps < -1 .or. C_normal_stress_caps > 1) call abortRun(ERR_CFG_NORMAL_STRESS_CAPS_INVALID, &
+        if (C_normal_stress_caps < -1 .or. C_normal_stress_caps > 1) call abortRun(ERR_CFG_NORMAL_STRESS_INPUTS_INVALID, &
             'bGlobal.txt normal-stress caps switch must be -1 (caps iff insertFaultType>0 and C_elastic==1), 0 (off) or 1 (on); re-run case.setup.')
-        if (.not. (max_norm <= min_norm .and. min_norm < 0.0d0)) call abortRun(ERR_CFG_NORMAL_STRESS_CAPS_INVALID, &
+        if (.not. (max_norm <= min_norm .and. min_norm < 0.0d0)) call abortRun(ERR_CFG_NORMAL_STRESS_INPUTS_INVALID, &
             'bGlobal.txt normal-stress caps need max_norm <= min_norm < 0 (Pa, negative is compressive); re-run case.setup.')
 
     close(1001)

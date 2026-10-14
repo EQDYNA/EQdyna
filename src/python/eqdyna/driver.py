@@ -109,12 +109,12 @@ def _device_peak_gb(jax):
 FORCE = 3
 
 # The non-compressive-normal latch, the carry's last entry:
-# [hit (0/1), time (s), fault row, normal traction (Pa)]. See part_b.
-NSVIOL_LEN = 4
+# [hit (0/1), time (s), step, fault row, normal traction (Pa)]. See part_b.
+NSVIOL_LEN = 5
 
 
-def latch_normal_stress(xp, nsviol, tn, timeElapsed):
-    """nsviol after one step: [1, time, row, tn[row]] for the lowest fault
+def latch_normal_stress(xp, nsviol, tn, timeElapsed, nt):
+    """nsviol after step nt: [1, time, nt, row, tn[row]] for the lowest fault
     row whose normal traction tn is >= 0, if nothing is latched yet; else
     nsviol unchanged. The first event (earliest step, then lowest row -- the
     order faulting.f90's loops meet it) is kept. Traceable: no Python branch
@@ -124,6 +124,7 @@ def latch_normal_stress(xp, nsviol, tn, timeElapsed):
     hit = xp.logical_and(xp.any(bad), nsviol[0] == 0.0)
     rec = xp.stack([xp.asarray(1.0, dtype=tn.dtype),
                     xp.asarray(timeElapsed, dtype=tn.dtype),
+                    xp.asarray(nt, dtype=tn.dtype),
                     xp.asarray(row, dtype=tn.dtype),
                     tn[row]])
     return xp.where(hit, rec, nsviol)
@@ -133,7 +134,8 @@ def latched_normal_stress_error(S, nsviol, rank=None):
     """The ERR 65 error for a latched non-compressive normal traction, or None.
 
     Port of faulting.f90's stopNonCompressiveNormal: the same verdict, exit
-    code and printed fields (time, fault, node coordinates, value in MPa).
+    code and printed fields (time, step, fault, node coordinates, value in
+    MPa).
     Departure, stated: the Fortran stops in the step it happens; the jitted
     Python loop runs to its end and this is raised after it, so the run
     costs the full step count but no output is written (the caller raises
@@ -143,24 +145,29 @@ def latched_normal_stress_error(S, nsviol, rank=None):
                                         InputConsistencyError)
     if nsviol[0] == 0.0:
         return None
-    row = int(nsviol[2])
+    row = int(nsviol[3])
     # Fault id and the node's index ON that fault (Fortran's iFault and
-    # iFaultNodePair, 1-based): rows are grouped fault by fault.
-    fault_of = np.asarray(S.get('fault_of', np.zeros(row + 1, dtype=np.int64)))
+    # iFaultNodePair, 1-based): rows are grouped fault by fault. No
+    # 'fault_of' means no way to name the fault, so refuse rather than
+    # label every node fault 1.
+    if S.get('fault_of') is None:
+        raise ValueError("latched_normal_stress_error: S has no 'fault_of', "
+                         "so the fault of row %d cannot be named" % row)
+    fault_of = np.asarray(S['fault_of'])
     fault = int(fault_of[row]) + 1
     pair = int(np.count_nonzero(fault_of[:row] == fault_of[row])) + 1
     node = int(np.asarray(S['nsmp1'])[row])
     x, y, z = (float(c) for c in np.asarray(S['meshCoor'])[node, :3])
     where = '' if rank is None else 'rank %d, ' % rank
     msg = ('Non-compressive normal traction on the fault: %sfriclaw %d, '
-           'time %.8e s, fault %d, fault node %d, node x, y, z (m) %.8e %.8e '
+           'time %.8e s, step %d, fault %d, fault node %d, node x, y, z (m) %.8e %.8e '
            '%.8e, normal traction %.8e MPa (>= 0). Rate-and-state needs a '
            'compressive normal stress; for friclaw 5 the pore pressure '
            'reached the normal stress. Check the initial normal stress, '
            'fric_tp_pini, or set the normal-stress caps '
            '(par.C_normal_stress_caps, par.min_norm, par.max_norm).'
-           % (where, int(S['friclaw']), float(nsviol[1]), fault, pair,
-              x, y, z, float(nsviol[3]) / 1.0e6))
+           % (where, int(S['friclaw']), float(nsviol[1]), int(nsviol[2]),
+              fault, pair, x, y, z, float(nsviol[4]) / 1.0e6))
     return InputConsistencyError(ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE, msg)
 
 
@@ -272,7 +279,7 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
         # caller after the loop (latched_normal_stress_error).
         if nsv_check:
             nsviol = latch_normal_stress(xp, nsviol, fric[:, gv.TRACT_NORM],
-                                         timeElapsed)
+                                         timeElapsed, nt)
 
         # faulting.f90:24 storeOnFaultStationQuantSCEC -- recorded right
         # after faulting (so fric holds THIS step's post-friction-law

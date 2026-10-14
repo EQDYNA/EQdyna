@@ -16,7 +16,14 @@ numpy`):
   2. the same tension with par.C_normal_stress_caps = 1 -> both exit 0 (the
      cap lifts +5 MPa to min_norm = -10 MPa, so the switch reaches the
      solver and the stop sits AFTER the caps, as in the Fortran);
-  3. a control with no tension node                     -> both exit 0.
+  3. a control with no tension node                     -> both exit 0;
+  4. friclaw 5 (thermal pressurization), every node at -30 MPa normal and
+     NO tension node: the pore pressure grows until the effective normal
+     traction (tnrm + TP pore pressure, faulting.f90 solveRSF) turns
+     positive -> both exit 65 at the same step, time, node and value, and
+     the value is > 0 although the raw normal never is. Goes red if the
+     stop moves above the TP offset (raw -30 MPa never stops) or if Python
+     latches the pre-offset traction.
 
 Slip-weakening (friclaw 1/2) is NOT stopped: solveSWTW keeps effNorm = 0
 under tension (strength = cohesion), the SCEC treatment. That path is not
@@ -105,6 +112,45 @@ par.n_off_fault = len(par.st_coor_off_fault)
 '''
 
 
+# Case 4: friclaw 5, uniform -30 MPa normal / 20 MPa shear, TP on, no
+# tension node. TP_LAMBDA (on_fault_vars col 19) sets how fast the pore
+# pressure rises; with it the effective normal turns positive at step 3.
+TP_LAMBDA = 1.0e7
+TP_NSTEPS = 5
+TP_LOOP = """    v = par.on_fault_vars[iz,ix]
+    v[1], v[2], v[3] = par.fric_sw_fs, par.fric_sw_fd, par.fric_sw_D0
+    v[7] = -30.0e6
+    v[8] = 20.0e6
+    v[9]  = par.fric_rsf_a
+    v[10] = par.fric_rsf_b
+    v[11] = par.fric_rsf_Dc
+    v[12] = par.fric_rsf_v0
+    v[13] = par.fric_rsf_r0
+    v[14] = par.fric_rsf_fw
+    v[15] = par.fric_rsf_vw
+    v[16] = par.fric_tp_a_hy
+    v[17] = par.fric_tp_a_th
+    v[18] = par.fric_tp_rouc
+    v[19] = %r
+    v[40] = par.fric_tp_h
+    v[41] = par.fric_tp_Tini
+    v[42] = par.fric_tp_pini
+    v[46] = par.creep_slip_rate
+    v[20] = state_steady_state(v[9], v[10], v[11], v[12], v[13], v[8], v[7],
+                               1.0, par.friclaw)
+
+""" % TP_LAMBDA
+
+
+def _tp_params():
+    """USER_PARAMS for case 4: friclaw 5 and the TP loop body."""
+    up = USER_PARAMS.replace('par.friclaw = 4\npar.tpv = 104',
+                             'par.friclaw = 5\npar.tpv = 105')
+    i, j = up.index('    v = par.on_fault_vars[iz,ix]'), up.index('par.st_coor_on_fault')
+    assert 'friclaw = 5' in up and j > i
+    return up[:i] + TP_LOOP + up[j:]
+
+
 def _env():
     env = dict(os.environ)
     env['EQDYNAROOT'] = ROOT
@@ -115,8 +161,9 @@ def _env():
     return env
 
 
-def _make_case(tmp, name, tension, caps, nsteps=NSTEPS, extra=''):
-    """extra: user_defined_params lines appended after the caps switch."""
+def _make_case(tmp, name, tension, caps, nsteps=NSTEPS, extra='', params=None):
+    """extra: user_defined_params lines appended after the caps switch.
+    params: the user_defined_params template (default USER_PARAMS)."""
     case_dir = os.path.join(tmp, 'case_%s' % name)
     r = subprocess.run([sys.executable, os.path.join(ROOT, 'scripts', 'create.newcase'),
                         case_dir, CASE_NAME], env=_env(), capture_output=True, text=True)
@@ -124,7 +171,7 @@ def _make_case(tmp, name, tension, caps, nsteps=NSTEPS, extra=''):
         raise RuntimeError('create.newcase failed (%d):\n%s'
                            % (r.returncode, r.stdout[-2000:] + r.stderr[-2000:]))
     with open(os.path.join(case_dir, 'user_defined_params.py'), 'w') as f:
-        f.write(USER_PARAMS.replace('par.C_normal_stress_caps = %(caps)d\n',
+        f.write((params or USER_PARAMS).replace('par.C_normal_stress_caps = %(caps)d\n',
                                     'par.C_normal_stress_caps = %(caps)d\n' + extra)
                 % dict(nsteps=nsteps, caps=caps, tension=int(tension),
                        bx=BAD_X, bz=BAD_Z, btn=BAD_TN))
@@ -207,6 +254,59 @@ def check_stop_both_codes():
           '(%g, %g, %g), %.4f MPa' % (xf[0], xf[1], xf[2], vf))
 
 
+def _parse_report(tag, out):
+    """(friclaw, time, step, (x, y, z), value MPa) from either code's report."""
+    if tag == 'fortran':
+        fl = re.search(r'friclaw (\d+)', out)
+        ts = re.search(r'time \(s\)\s*:\s*' + NUM + r'\s+step\s+(\d+)', out)
+        m = re.search(r'node x, y, z \(m\):\s*' + NUM + r'\s*' + NUM + r'\s*' + NUM, out)
+        v = re.search(r'normal traction :\s*' + NUM + r' MPa', out)
+    else:
+        fl = re.search(r'friclaw (\d+)', out)
+        ts = re.search(r'time ' + NUM + r' s, step (\d+)', out, re.I)
+        m = re.search(r'node x, y, z \(m\) ' + NUM + ' ' + NUM + ' ' + NUM, out, re.I)
+        v = re.search(r'normal traction ' + NUM + ' MPa', out, re.I)
+    if not (fl and ts and m and v):
+        raise AssertionError('%s: stop report lacks friclaw/time/step/coordinates/'
+                             'value:\n%s' % (tag, out[-2000:]))
+    return (int(fl.group(1)), float(ts.group(1)), int(ts.group(2)),
+            tuple(float(g) for g in m.groups()), float(v.group(1)))
+
+
+def check_tp_stop_both_codes():
+    """Case 4: the stop sees the TP-offset traction, in both codes."""
+    with tempfile.TemporaryDirectory() as tmp:
+        case_dir = _make_case(tmp, 'tp', tension=False, caps=-1,
+                              nsteps=TP_NSTEPS, params=_tp_params())
+        reps = {}
+        for tag, run in (('fortran', lambda: _run_fortran(case_dir)),
+                         ('python', lambda: _run_python(case_dir, nsteps=TP_NSTEPS))):
+            rc, out = run()
+            if rc != ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE:
+                raise AssertionError(
+                    '%s exited %d on friclaw 5 with the pore pressure past a -30 MPa '
+                    'normal, expected %d (does the stop see the TP offset?):\n%s'
+                    % (tag, rc, ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE, out[-2000:]))
+            reps[tag] = _parse_report(tag, out)
+    (lf, tf, sf, xf, vf), (lp, tp, sp, xp_, vp) = reps['fortran'], reps['python']
+    if lf != 5 or lp != 5:
+        raise AssertionError('friclaw printed %d (Fortran) / %d (python), expected 5'
+                             % (lf, lp))
+    if not vf > 0.0:
+        raise AssertionError('Fortran stop value %g MPa is not > 0: the raw normal '
+                             'is -30 MPa, only the TP offset makes it >= 0' % vf)
+    if sf != sp or abs(tf - tp) > 1e-12 * max(1.0, abs(tf)):
+        raise AssertionError('stop at step %d, t=%.8e (Fortran) vs step %d, t=%.8e '
+                             '(python)' % (sf, tf, sp, tp))
+    if max(abs(a - b) for a, b in zip(xf, xp_)) > 1e-3:
+        raise AssertionError('stop node %r (Fortran) vs %r (python)' % (xf, xp_))
+    if abs(vf - vp) > 1e-6 * max(1.0, abs(vf)):
+        raise AssertionError('Fortran value %.8e MPa != python %.8e MPa' % (vf, vp))
+    print('  PASS  friclaw 5 TP: both exit 65 at step %d, t=%.4e s, node '
+          '(%g, %g, %g), %+.4f MPa (raw normal -30 MPa)'
+          % (sf, tf, xf[0], xf[1], xf[2], vf))
+
+
 def check_caps_and_control_run():
     for name, tension, caps in (('caps_on', True, 1), ('control', False, -1)):
         with tempfile.TemporaryDirectory() as tmp:
@@ -228,7 +328,8 @@ def main():
         print('FAIL: %s not found' % MPIRUN)
         return 1
     fails = 0
-    for check in (check_stop_both_codes, check_caps_and_control_run):
+    for check in (check_stop_both_codes, check_caps_and_control_run,
+                  check_tp_stop_both_codes):
         try:
             check()
         except Exception as e:  # noqa: BLE001 -- report every check

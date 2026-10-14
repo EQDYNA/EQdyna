@@ -264,7 +264,7 @@ def resolveNormalStressInputs(par):
     A missing attribute (a case carrying an old defaultParameters copy) takes
     the default, which reproduces the behaviour before these inputs existed.
     An invalid value RAISES, with the same rule readglobal and read_bglobal
-    apply (caps switch -1/0/1, max_norm <= min_norm < 0)."""
+    apply (a set L finite, caps switch -1/0/1, max_norm <= min_norm < 0)."""
     L = getattr(par, 'fric_pc_L', None)
     if L is not None:
         if isinstance(L, bool):
@@ -278,9 +278,10 @@ def resolveNormalStressInputs(par):
     caps = getattr(par, 'C_normal_stress_caps', -1)
     min_norm = float(getattr(par, 'min_norm', -10.0e6))
     max_norm = float(getattr(par, 'max_norm', -40.0e6))
-    if L is not None and L != L:
-        raise ValueError('case.setup: par.fric_pc_L is NaN; use None (each '
-                         "node's Dc), <= 0 (no relaxation) or a length in m.")
+    if L is not None and not np.isfinite(L):
+        raise ValueError('case.setup: par.fric_pc_L is %r, not finite; use None '
+                         "(each node's Dc), <= 0 (no relaxation) or a length in m."
+                         % (L,))
     if caps not in (-1, 0, 1) or caps != int(caps):
         raise ValueError(
             'case.setup: par.C_normal_stress_caps must be -1 (caps iff '

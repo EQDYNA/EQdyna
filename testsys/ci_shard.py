@@ -196,6 +196,10 @@ SHARDS = {
         "test_fric_pc_L_modes.py",  # added 2026-10-14 (#189): 5 tiny
                                  # case.setup + 5 1-rank 10-step runs each on
                                  # Fortran and python-numpy, ~6 s.
+        "test_bglobal_normal_stress_reader.py",  # added 2026-10-14 (#189/
+                                 # #200): one case.setup + 10 1-rank 3-step
+                                 # runs each on Fortran and python-numpy
+                                 # (most stop in the reader), ~10 s.
         "test_offfault_station_depth_selection.py",  # added 2026-09-25
                                  # (mira-volkov, row 94 audit finding 3): one
                                  # serial case.setup + one 3-step 1-rank
