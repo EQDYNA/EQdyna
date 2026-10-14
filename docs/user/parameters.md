@@ -310,9 +310,9 @@ Every entry below is an attribute of the `parameters` class in `scripts/defaultP
 
   m/s
 
-* **`fric_pc_L`** -- default `0.0`
+* **`fric_pc_L`** -- default `None`
 
-  Slip distance L (m) over which the rate-and-state normal-stress state variable theta_pc relaxes towards |sigma_n| (Shi and Day 2013, eq B8; friclaw 3/4 only -- friclaw 5 does not evolve theta_pc). <= 0 : default. L is each node's Dc (on_fault_vars column 11), the value EQdyna used before this input existed. > 0  : one L, in m, for every fault node. Note: EQquasi's fric_pc_L <= 0 means NO relaxation (theta_pc equals |sigma_n| at once), not Dc. Set the same positive value in both codes to match them.
+  Slip distance L (m) over which the rate-and-state normal-stress state variable theta_pc relaxes towards |sigma_n| (Shi and Day 2013, eq B8; friclaw 3/4 only -- friclaw 5 does not evolve theta_pc). The same input means the same thing in EQquasi: None : default (unset). L is each node's Dc (on_fault_vars column 11), the value EQdyna used before this input existed. <= 0 : no relaxation; theta_pc = |sigma_n| at once. > 0  : one L, in m, for every fault node.
 
 * **`C_normal_stress_caps`** -- default `-1`
 

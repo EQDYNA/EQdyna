@@ -7,14 +7,17 @@ and the non-compressive stop (#201).
     behaviour before the inputs existed (L = Dc, caps iff insertFaultType>0
     and C_elastic==1, the old -10/-40 MPa constants);
   - faulting.normal_stress_caps_on: the tri-state switch;
-  - fric.rate_state_normal_stress: L_pc <= 0 is bitwise the Dc form,
-    L_pc > 0 is the closed form with that L;
+  - fric.rate_state_normal_stress, the three fric_pc_L modes (EQquasi's
+    meaning): unset (None) is bitwise the Dc form; <= 0 is no relaxation,
+    theta_pc = |tnrm| exactly with no division (L = 0 included); > 0 is the
+    update with that L;
   - driver.latch_normal_stress / latched_normal_stress_error: the latch keeps
     the first event and the message names time, node, coordinates and value.
 
 The end-to-end parse (bGlobal.txt -> both readers, stale and invalid lines)
 is testsys/regression/test_nstress_sign_convention.py; the end-to-end stop
-is testsys/regression/test_rsf_noncompressive_stop.py.
+is testsys/regression/test_rsf_noncompressive_stop.py; the three modes end
+to end in both codes are testsys/regression/test_fric_pc_L_modes.py.
 """
 import types
 
@@ -35,7 +38,11 @@ def _par(**kw):
 # --- defaults --------------------------------------------------------------
 
 def test_resolve_defaults_on_an_empty_namespace():
-    assert lib.resolveNormalStressInputs(_par()) == (0.0, -1, -10.0e6, -40.0e6)
+    assert lib.resolveNormalStressInputs(_par()) == (None, -1, -10.0e6, -40.0e6)
+
+
+def test_default_fric_pc_L_is_unset():
+    assert dp.parameters.fric_pc_L is None
 
 
 def test_default_parameters_equal_the_resolver_defaults():
@@ -58,10 +65,22 @@ def test_resolve_passes_valid_values_through():
     assert isinstance(got[1], int)
 
 
+@pytest.mark.parametrize('L,want', [(None, None), (0, 0.0), (0.0, 0.0),
+                                    (-1, -1.0), (-0.5, -0.5), (0.004, 0.004),
+                                    (2, 2.0), (np.float64(0.1), 0.1)])
+def test_resolve_fric_pc_L_modes(L, want):
+    got = lib.resolveNormalStressInputs(_par(fric_pc_L=L))[0]
+    assert got == want
+    assert got is None if want is None else type(got) is float
+
+
 # --- refusals --------------------------------------------------------------
 
 @pytest.mark.parametrize('kw', [
     dict(fric_pc_L=float('nan')),
+    dict(fric_pc_L='x'),
+    dict(fric_pc_L=[0.1]),
+    dict(fric_pc_L=True),
     dict(C_normal_stress_caps=2),
     dict(C_normal_stress_caps=-2),
     dict(C_normal_stress_caps=0.5),
@@ -100,20 +119,58 @@ def _fric(n, dc):
     return f
 
 
-def test_L_default_is_bitwise_the_dc_form():
-    rng = np.random.default_rng(189)
-    n = 64
+def _state(n, seed):
+    rng = np.random.default_rng(seed)
     dc = rng.uniform(0.1, 0.6, n)
     V2, th, tn = rng.uniform(0, 3, n), rng.uniform(5e7, 2e8, n), -rng.uniform(5e7, 2e8, n)
+    return dc, V2, th, tn
+
+
+def test_L_unset_is_bitwise_the_dc_form():
+    n = 64
+    dc, V2, th, tn = _state(n, 189)
     dt = 0.0125
     f = _fric(n, dc)
     ref_dot = -V2 / dc * (th - np.abs(tn))
     ref = th + ref_dot * dt
-    for L_pc in (0.0, -1.0):
-        got, got_dot = fric.rate_state_normal_stress(np, V2, th, tn, f, dt, L_pc)
+    for args in ((None,), ()):          # explicit None and the default
+        got, got_dot = fric.rate_state_normal_stress(np, V2, th, tn, f, dt, *args)
         assert np.array_equal(got, ref) and np.array_equal(got_dot, ref_dot)
-    got, _ = fric.rate_state_normal_stress(np, V2, th, tn, f, dt)
-    assert np.array_equal(got, ref)
+
+
+def test_L_unset_equals_L_given_as_a_uniform_dc():
+    # unset reads each node's Dc; giving that same Dc as the number is the
+    # same arithmetic, so the same bits.
+    n = 16
+    _, V2, th, tn = _state(n, 7)
+    f = _fric(n, np.full(n, 0.4))
+    a = fric.rate_state_normal_stress(np, V2, th, tn, f, 0.01, None)
+    b = fric.rate_state_normal_stress(np, V2, th, tn, f, 0.01, 0.4)
+    assert np.array_equal(a[0], b[0]) and np.array_equal(a[1], b[1])
+
+
+@pytest.mark.parametrize('L_pc', [0.0, -0.0, -1.0, -1e30])
+def test_L_nonpositive_is_no_relaxation(L_pc):
+    # EQquasi's meaning: theta_pc = |tnrm| at once, whatever theta_pc and the
+    # slip rate were; a branch, so L = 0 never divides (no warning raised).
+    n = 32
+    dc, V2, th, tn = _state(n, 200)
+    V2[0] = 0.0                          # V = 0 and L = 0: would be 0/0
+    dt = 0.0125
+    f = _fric(n, dc)
+    with np.errstate(all='raise'):
+        got, got_dot = fric.rate_state_normal_stress(np, V2, th, tn, f, dt, L_pc)
+    assert np.array_equal(got, np.abs(tn))
+    assert np.all(np.isfinite(got_dot))
+    assert np.array_equal(got_dot, (np.abs(tn) - th) / dt)
+
+
+def test_L_nonpositive_does_not_depend_on_dc_or_slip_rate():
+    n = 8
+    _, V2, th, tn = _state(n, 5)
+    a, _ = fric.rate_state_normal_stress(np, V2, th, tn, _fric(n, np.full(n, 0.1)), 0.01, 0.0)
+    b, _ = fric.rate_state_normal_stress(np, 3 * V2, th, tn, _fric(n, np.full(n, 0.9)), 0.01, -2.0)
+    assert np.array_equal(a, b)
 
 
 def test_L_positive_uses_that_length_for_every_node():
@@ -124,6 +181,21 @@ def test_L_positive_uses_that_length_for_every_node():
     # -V/L*(theta - |tn|) = -2/0.4*(1e8 - 1.2e8) = +1e8 per s
     assert np.allclose(dot, 1.0e8, rtol=0, atol=1e-6)
     assert np.allclose(got, 1.0e8 + 1.0e8 * dt, rtol=0, atol=1e-6)
+
+
+def test_L_modes_under_jax_match_numpy():
+    jnp = pytest.importorskip('jax.numpy')
+    import jax
+    jax.config.update('jax_enable_x64', True)
+    n = 16
+    dc, V2, th, tn = _state(n, 31)
+    f = _fric(n, dc)
+    for L_pc in (None, 0.0, -1.0, 0.25):
+        a = fric.rate_state_normal_stress(np, V2, th, tn, f, 0.01, L_pc)
+        b = fric.rate_state_normal_stress(jnp, jnp.asarray(V2), jnp.asarray(th),
+                                          jnp.asarray(tn), jnp.asarray(f), 0.01, L_pc)
+        assert np.allclose(a[0], np.asarray(b[0]), rtol=1e-15, atol=0)
+        assert np.allclose(a[1], np.asarray(b[1]), rtol=1e-13, atol=1e-9)
 
 
 # --- the non-compressive latch ---------------------------------------------

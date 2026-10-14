@@ -181,7 +181,8 @@ MODULE globalvar
     real (kind = dp) :: max_norm = -40.0d6         ! most compressive normal traction solveRSF allows when caps apply, Pa
     real (kind = dp) :: min_norm = -10.0d6         ! least compressive normal traction solveRSF allows when caps apply, Pa
     integer (kind = 4) :: C_normal_stress_caps = -1 ! -1 = caps iff insertFaultType>0 and C_elastic==1 (the old rule); 0 = off; 1 = on
-    real (kind = dp) :: fric_pc_L = 0.0d0          ! theta_pc relaxation length, m; <= 0 = each node's Dc (fric slot FRIC_SLOT_RSF_DC)
+    integer (kind = 4) :: C_fric_pc_L = 0          ! 0 = par.fric_pc_L unset: L is each node's Dc (fric slot FRIC_SLOT_RSF_DC); 1 = use fric_pc_L
+    real (kind = dp) :: fric_pc_L = 0.0d0          ! theta_pc relaxation length, m, when C_fric_pc_L == 1; <= 0 = no relaxation (theta_pc = |tnrm|)
 
     !=====================================================================
     ! Plasticity / off-fault material response

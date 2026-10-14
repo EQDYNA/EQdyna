@@ -151,14 +151,20 @@ def read_bglobal(path):
             'case.setup. (read %d from %s)' % (g['outputFaultTimeSeries'], path))
     # Rate-and-state normal-stress inputs, the file's last two lines (port
     # of readglobal's matching reads; used by fric.rate_state_normal_stress
-    # and faulting.solveRSF). The defaults case.setup writes -- L <= 0 (each
+    # and faulting.solveRSF). The defaults case.setup writes -- L unset (each
     # node's Dc) and caps switch -1 (caps iff insertFaultType>0 and
     # C_elastic==1, at -10/-40 MPa) -- are the behaviour before the inputs.
+    # The L line is "set L": set 0 = par.fric_pc_L unset (None here, each
+    # node's Dc); set 1 = L as given (<= 0 no relaxation, > 0 L in m).
     try:
-        g['fric_pc_L'] = float(nxtOrStale(
-            "the theta_pc relaxation length L, m, <= 0 for each node's Dc (par.fric_pc_L)")[0])
+        vals = nxtOrStale(
+            "the theta_pc relaxation length line \"set L\" (par.fric_pc_L)")
+        setL, L = int(vals[0]), float(vals[1])
     except (IndexError, ValueError):
-        raise stale('a valid theta_pc relaxation length L (par.fric_pc_L)')
+        raise stale('a valid theta_pc relaxation length line "set L" (par.fric_pc_L)')
+    if setL not in (0, 1):
+        raise stale('a valid theta_pc relaxation length line "set L" (par.fric_pc_L)')
+    g['fric_pc_L'] = L if setL == 1 else None
     try:
         vals = nxtOrStale('the normal-stress caps switch and min_norm max_norm, Pa '
                           '(par.C_normal_stress_caps/min_norm/max_norm)')

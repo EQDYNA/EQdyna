@@ -115,7 +115,8 @@ def _env():
     return env
 
 
-def _make_case(tmp, name, tension, caps):
+def _make_case(tmp, name, tension, caps, nsteps=NSTEPS, extra=''):
+    """extra: user_defined_params lines appended after the caps switch."""
     case_dir = os.path.join(tmp, 'case_%s' % name)
     r = subprocess.run([sys.executable, os.path.join(ROOT, 'scripts', 'create.newcase'),
                         case_dir, CASE_NAME], env=_env(), capture_output=True, text=True)
@@ -123,8 +124,10 @@ def _make_case(tmp, name, tension, caps):
         raise RuntimeError('create.newcase failed (%d):\n%s'
                            % (r.returncode, r.stdout[-2000:] + r.stderr[-2000:]))
     with open(os.path.join(case_dir, 'user_defined_params.py'), 'w') as f:
-        f.write(USER_PARAMS % dict(nsteps=NSTEPS, caps=caps, tension=int(tension),
-                                   bx=BAD_X, bz=BAD_Z, btn=BAD_TN))
+        f.write(USER_PARAMS.replace('par.C_normal_stress_caps = %(caps)d\n',
+                                    'par.C_normal_stress_caps = %(caps)d\n' + extra)
+                % dict(nsteps=nsteps, caps=caps, tension=int(tension),
+                       bx=BAD_X, bz=BAD_Z, btn=BAD_TN))
     r = subprocess.run([sys.executable, 'case.setup'], cwd=case_dir,
                        env=_env(), capture_output=True, text=True)
     if r.returncode != 0:
@@ -145,8 +148,8 @@ def _run_fortran(case_dir):
     return mpirun_capture.run_rank_files(MPIRUN, _binary(), case_dir, env=_env())
 
 
-def _run_python(case_dir):
-    r = subprocess.run([sys.executable, '-u', '-m', 'eqdyna', case_dir, str(NSTEPS),
+def _run_python(case_dir, nsteps=NSTEPS):
+    r = subprocess.run([sys.executable, '-u', '-m', 'eqdyna', case_dir, str(nsteps),
                         '--backend', 'numpy'],
                        cwd=ROOT, env=_env(), capture_output=True, text=True, timeout=300)
     return r.returncode, r.stdout + r.stderr

@@ -92,9 +92,10 @@ subroutine readglobal
         ! (faulting.f90's rate_state_normal_stress and solveRSF). Until these
         ! lines existed L was always the node's Dc and the caps were fixed
         ! -10/-40 MPa applied iff insertFaultType>0 and C_elastic==1; the
-        ! defaults case.setup writes (L <= 0, switch -1) keep exactly that.
-        read(1001,*,iostat=ios) fric_pc_L
-        if (ios /= 0) call stopStaleGlobal('the theta_pc relaxation length L, m, <= 0 for each node''s Dc (par.fric_pc_L)')
+        ! defaults case.setup writes (L unset, switch -1) keep exactly that.
+        read(1001,*,iostat=ios) C_fric_pc_L, fric_pc_L
+        if (ios /= 0 .or. C_fric_pc_L < 0 .or. C_fric_pc_L > 1) call stopStaleGlobal( &
+            'the theta_pc relaxation length line "set L": set 0 = unset (each node''s Dc), set 1 = L, m (<= 0 no relaxation) (par.fric_pc_L)')
         read(1001,*,iostat=ios) C_normal_stress_caps, min_norm, max_norm
         if (ios /= 0) call stopStaleGlobal('the normal-stress caps switch and min_norm max_norm, Pa (par.C_normal_stress_caps/min_norm/max_norm)')
         if (C_normal_stress_caps < -1 .or. C_normal_stress_caps > 1) call abortRun(ERR_CFG_NORMAL_STRESS_CAPS_INVALID, &

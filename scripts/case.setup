@@ -114,10 +114,14 @@ def create_model_input_file():
                      % (outputFaultTimeSeries,))
         f.write(str(int(outputFaultTimeSeries)) + "\n")
         # Rate-and-state normal-stress inputs (issues #189, #200): the LAST
-        # two lines -- L (fric_pc_L, <= 0 = each node's Dc), then the caps
-        # switch and min_norm max_norm. Same stale/invalid refusals.
+        # two lines -- "set L" for fric_pc_L (set 0: unset, each node's Dc;
+        # set 1: L as given, <= 0 = no relaxation, > 0 = L in m), then the
+        # caps switch and min_norm max_norm. Same stale/invalid refusals.
         fricPcL, capsSwitch, minNorm, maxNorm = resolveNormalStressInputs(par)
-        f.write(str(fricPcL) + "\n")
+        if fricPcL is None:
+            f.write("0 0.0\n")
+        else:
+            f.write("1 " + str(fricPcL) + "\n")
         f.write(str(capsSwitch) + " " + str(minNorm) + " " + str(maxNorm) + "\n")
 
 

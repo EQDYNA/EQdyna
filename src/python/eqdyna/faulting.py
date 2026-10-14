@@ -85,7 +85,7 @@ def build(S):
         # read_bglobal). Static Python scalars, so the caps rule and the L
         # choice below are trace-time branches, as in the Fortran. The
         # defaults are the behaviour before the inputs existed.
-        fric_pc_L=float(S.get('fric_pc_L', 0.0)),
+        fric_pc_L=(None if S.get('fric_pc_L') is None else float(S['fric_pc_L'])),
         C_normal_stress_caps=int(S.get('C_normal_stress_caps', -1)),
         min_norm=float(S.get('min_norm', gv.MIN_NORM)),
         max_norm=float(S.get('max_norm', gv.MAX_NORM)),
@@ -449,7 +449,7 @@ def rsfNucleation(xp, finv, fric, Tn, Ts, Td, srS, srD, timeElapsed, nt):
 # faulting.f90:443-506  NewtonRaphson
 # ---------------------------------------------------------------------------
 def NewtonRaphson(xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm,
-                  trialMag, T_coeff, dt, L_pc=0.0):
+                  trialMag, T_coeff, dt, L_pc=None):
     """faulting.f90:443-506 -- solve for next-step slip rate.
 
     A fixed 20-iteration loop with a per-node `done` mask, which reproduces
@@ -613,7 +613,7 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
 
     v_trial, taoc_new, state_out, thetaPc_out = NewtonRaphson(
         xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm, trialMag,
-        T_coeff, dt, finv.get('fric_pc_L', 0.0))
+        T_coeff, dt, finv.get('fric_pc_L'))
 
     # faulting.f90:501 -- creeping-rate floor. Only TPV==105 reaches it; for
     # every other TPV this is a documented no-op, evaluated as a trace-time

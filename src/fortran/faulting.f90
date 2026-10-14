@@ -36,20 +36,30 @@ end subroutine faulting
 ! Input: slip_rate, L_pc, theta_pc, tnrm. 
 ! Output: theta_pc, the state variable which is used to calculate shear stress in eq B2
 ! B2: abs(traction) = friction * theta_pc.
-! L_pc is the input fric_pc_L (bGlobal.txt) when it is > 0, else the node's
-! Dc -- the only choice before the input existed. EQquasi's fric_pc_L <= 0
-! instead means no relaxation (theta_pc = abs(tnrm)); a positive value means
-! the same thing in both codes.
+! L_pc comes from bGlobal.txt's "C_fric_pc_L fric_pc_L" line (par.fric_pc_L),
+! with the same meaning as EQquasi's fric_pc_L for every number given:
+!   C_fric_pc_L == 0 (par.fric_pc_L unset, the default): L_pc is the node's
+!       Dc -- the only choice before the input existed.
+!   C_fric_pc_L == 1, fric_pc_L <= 0: no relaxation, theta_pc = abs(tnrm)
+!       at once (a branch, so L_pc = 0 never divides). theta_pc_dot is the
+!       step's realised rate (abs(tnrm) - theta_pc)/dt.
+!   C_fric_pc_L == 1, fric_pc_L > 0: L_pc = fric_pc_L, m.
+! The update below is EQdyna's explicit form; EQquasi uses the exponential
+! form of the same ODE (equal to first order in V*dt/L_pc).
 subroutine rate_state_normal_stress(V2, theta_pc, theta_pc_dot, tnrm, fricsgl)
     use globalvar
     implicit none
     real (kind = dp) :: V2, theta_pc, theta_pc_dot, tnrm, L
     real (kind = dp),dimension(100) :: fricsgl
     
-    if (fric_pc_L > 0.0d0) then
-        L = fric_pc_L
-    else
+    if (C_fric_pc_L == 0) then
         L = fricsgl(FRIC_SLOT_RSF_DC) ! Use Dc in RSF as L_pc
+    elseif (fric_pc_L <= 0.0d0) then
+        theta_pc_dot = (abs(tnrm) - theta_pc)/dt
+        theta_pc = abs(tnrm)
+        return
+    else
+        L = fric_pc_L
     endif
     
     theta_pc_dot = - V2/L*(theta_pc - abs(tnrm))
