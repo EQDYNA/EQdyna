@@ -352,9 +352,105 @@ BODY_STATION_LAYOUTS = [
 ]
 
 
+# Named receivers. Some benchmarks name their off-fault receivers instead of
+# coding coordinates into the file name (TPV35: `4064_donna`, ...). A name is
+# paired to a coordinate ONLY through the benchmark's official receiver list,
+# chosen by the benchmark tag in the file's own header (`# SCECTPV35`). The
+# list is the one the case's mesh is built from (case_input/<case>/), so the
+# pairing uses exactly the coordinates our writer snapped to. Columns:
+# `station_name map_code z x`, metres, z = the SCEC fault-normal offset.
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+RECEIVER_LISTS = {
+    'TPV35': os.path.join('case_input', 'test.tpv35', 'tpv35_station_locations.txt'),
+}
+RE_NAMED_RECEIVER = re.compile(r'^\d+_[A-Za-z0-9]+$')
+RE_BENCHMARK_TAG = re.compile(r'#\s*SCEC\s*(TPV\w+)', re.I)
+
+
+def _benchmark_tag(path, nlines=5):
+    with open(path, errors='replace') as fh:
+        for _ in range(nlines):
+            m = RE_BENCHMARK_TAG.search(fh.readline())
+            if m:
+                return m.group(1).upper()
+    return None
+
+
+def load_receiver_list(path):
+    """-> {name: (offset_m, strike_m)} from a `station_name map_code z x` list."""
+    out = {}
+    with open(path) as fh:
+        for line in fh:
+            s = line.split()
+            if len(s) < 4 or s[0] == 'station_name':
+                continue
+            out[s[0]] = (float(s[2]), float(s[3]))
+    return out
+
+
+def _receiver_key(offset_m, strike_m):
+    """The coordinate key a coordinate-named body file for this receiver
+    carries: offset and strike rounded to the 100 m name unit, at the surface
+    (dp000). This is the rounding _sccode applies when naming, so the pairing
+    tolerance is half a name unit (50 m)."""
+    return (round(offset_m / STATION_UNIT_M) * STATION_UNIT_M,
+            round(strike_m / STATION_UNIT_M) * STATION_UNIT_M, 0.0)
+
+
+def resolve_named_receivers(d, names, root=REPO_ROOT):
+    """Pair named receiver files in `d` to coordinate keys via the official
+    list. -> (found {key: path}, unresolved [basename], report str|None).
+    A key two receivers share is refused for both, never merged."""
+    if not names:
+        return {}, [], None
+    lists, keyed, unresolved = {}, {}, []
+    for base in names:
+        tag = _benchmark_tag(os.path.join(d, base))
+        rel = RECEIVER_LISTS.get(tag)
+        if rel is None or not os.path.isfile(os.path.join(root, rel)):
+            unresolved.append(base)
+            continue
+        if rel not in lists:
+            lists[rel] = load_receiver_list(os.path.join(root, rel))
+        if base not in lists[rel]:
+            unresolved.append(base)
+            continue
+        keyed.setdefault(_receiver_key(*lists[rel][base]), []).append(base)
+    found, clash = {}, []
+    for k, bs in keyed.items():
+        if len(bs) == 1:
+            found[k] = os.path.join(d, bs[0])
+        else:
+            clash.extend(bs)
+    unresolved.extend(clash)
+    report = (f'named receivers in {d}: {len(found)} of {len(names)} paired by '
+              f'coordinate via {", ".join(sorted(lists)) or "no list"}'
+              + (f'; {len(clash)} refused (share a 100 m key: {", ".join(sorted(clash))})'
+                 if clash else '')
+              + (f'; {len(unresolved) - len(clash)} not in any list'
+                 if len(unresolved) > len(clash) else ''))
+    return found, unresolved, report
+
+
 def discover_stations(d, which, fault=None):
     """-> (found {coord-tuple-in-m: path}, bad [unparseable basenames]).
-    Stations are discovered by PARSING names, never from a list."""
+    Stations are discovered by PARSING names, never from a list -- except a
+    benchmark's NAMED off-fault receivers, which are paired by the official
+    receiver list (resolve_named_receivers) and reported when they are."""
+    if which == 'body':
+        found, bad = _discover_by_name(d, which, fault)
+        named = [b for b in sorted(os.listdir(d))
+                 if RE_NAMED_RECEIVER.match(b) and os.path.isfile(os.path.join(d, b))]
+        nf, unresolved, report = resolve_named_receivers(d, named)
+        if report:
+            print('  ' + report)
+        for k, p in nf.items():
+            found.setdefault(k, p)
+        return found, bad + unresolved
+    return _discover_by_name(d, which, fault)
+
+
+def _discover_by_name(d, which, fault=None):
     layouts = fault_station_layouts(fault) if which == 'fault' else BODY_STATION_LAYOUTS
     found, bad, seen = {}, [], set()
     for _, pats, rx, exclude_prefix in layouts:
