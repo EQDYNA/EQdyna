@@ -32,7 +32,7 @@
 ! CODE RANGES  (1-125; 126, 127 and 128+n are reserved by the shell)
 !
 !    1- 9   reserved (1 = generic/unclassified)
-!   11-19   configuration and parameter consistency
+!   10-19   configuration and parameter consistency
 !   21-29   input files
 !   31-39   fault geometry
 !   41-49   mesh generation and element quality
@@ -41,7 +41,8 @@
 !   71-79   external libraries
 !
 ! Decade 0 is left free in every range so a related code can be added
-! next to its neighbours instead of at the end of the list.
+! next to its neighbours instead of at the end of the list. The
+! configuration range has used its spare (10) since 11-19 filled up.
 !
 ! ADDING A CODE
 !   1. Add the parameter below, in its range, with a one-line comment.
@@ -59,7 +60,8 @@ MODULE errorCodes
     ! --- generic ------------------------------------------------------
     integer, parameter :: ERR_GENERIC                = 1   ! unclassified fatal error
 
-    ! --- 11-19 configuration and parameter consistency ----------------
+    ! --- 10-19 configuration and parameter consistency ----------------
+    integer, parameter :: ERR_CFG_NORMAL_STRESS_CAPS_INVALID = 10 ! bGlobal.txt's rate-and-state normal-stress caps are invalid: switch (par.C_normal_stress_caps) not -1, 0 or 1, or not max_norm <= min_norm < 0
     integer, parameter :: ERR_CFG_Q_NEEDS_ELASTIC    = 11  ! C_Q=1 requires C_elastic=1
     integer, parameter :: ERR_CFG_Q_NEEDS_UNIFORM    = 12  ! C_Q=1 requires rat=1.0 (uniform elements)
     integer, parameter :: ERR_CFG_PLASTIC_OUTPUT     = 13  ! output_plastic=1 requires C_elastic=0
@@ -101,6 +103,7 @@ MODULE errorCodes
     integer, parameter :: ERR_NUM_PML_DAMPING        = 62  ! negative PML damping vector component
     integer, parameter :: ERR_NUM_VELOCITY_NAN       = 63  ! NaN velocity during time stepping
     integer, parameter :: ERR_NUM_NEGATIVE_DEPTH     = 64  ! negative depth passed to a B-function
+    integer, parameter :: ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE = 65 ! rate-and-state (friclaw 3/4/5) normal traction on the fault became >= 0 (not compressive); time, fault node coordinates and value are printed
 
     ! --- 71-79 external libraries -------------------------------------
     integer, parameter :: ERR_NETCDF                 = 71  ! a NetCDF call returned an error

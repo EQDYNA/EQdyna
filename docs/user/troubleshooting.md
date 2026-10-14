@@ -22,10 +22,11 @@ authoritative; the specific number is advisory under `srun`.
 |-----:|------|---------|
 | 1 | `ERR_GENERIC` | unclassified fatal error |
 
-**Configuration and parameters** (11-19)
+**Configuration and parameters** (10-19)
 
 | code | name | meaning |
 |-----:|------|---------|
+| 10 | `ERR_CFG_NORMAL_STRESS_CAPS_INVALID` | bGlobal.txt's rate-and-state normal-stress caps are invalid: switch (par.C_normal_stress_caps) not -1, 0 or 1, or not max_norm <= min_norm < 0 |
 | 11 | `ERR_CFG_Q_NEEDS_ELASTIC` | C_Q=1 requires C_elastic=1 |
 | 12 | `ERR_CFG_Q_NEEDS_UNIFORM` | C_Q=1 requires rat=1.0 (uniform elements) |
 | 13 | `ERR_CFG_PLASTIC_OUTPUT` | output_plastic=1 requires C_elastic=0 |
@@ -82,6 +83,7 @@ authoritative; the specific number is advisory under `srun`.
 | 62 | `ERR_NUM_PML_DAMPING` | negative PML damping vector component |
 | 63 | `ERR_NUM_VELOCITY_NAN` | NaN velocity during time stepping |
 | 64 | `ERR_NUM_NEGATIVE_DEPTH` | negative depth passed to a B-function |
+| 65 | `ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE` | rate-and-state (friclaw 3/4/5) normal traction on the fault became >= 0 (not compressive); time, fault node coordinates and value are printed |
 
 **External libraries** (71-79)
 

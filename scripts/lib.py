@@ -236,7 +236,8 @@ def resolveOnFaultVarsPerFault(par):
 
 def resolveNormalStressSign(par):
     """The integer case.setup writes after the plastic block in bGlobal.txt
-    (second-to-last line, before the fault time-series switch): +1 when the
+    (before the fault time-series switch and the normal-stress inputs of
+    resolveNormalStressInputs): +1 when the
     case's station files report n-stress positive in extension, -1 when
     positive in compression (par.faultStNormalStressSign; board row 22a).
     Anything else RAISES (rule 2) -- the sign is the case's spec convention and
@@ -251,6 +252,35 @@ def resolveNormalStressSign(par):
     print('case.setup: station n-stress sign = %+d (positive means %s)'
           % (signs[value], value))
     return signs[value]
+
+
+def resolveNormalStressInputs(par):
+    """The rate-and-state normal-stress inputs case.setup writes as the last
+    two lines of bGlobal.txt: par.fric_pc_L, then par.C_normal_stress_caps,
+    par.min_norm and par.max_norm. Returns (L, caps, min_norm, max_norm).
+
+    A missing attribute (a case carrying an old defaultParameters copy) takes
+    the default, which reproduces the behaviour before these inputs existed.
+    An invalid value RAISES, with the same rule readglobal and read_bglobal
+    apply (caps switch -1/0/1, max_norm <= min_norm < 0)."""
+    L = float(getattr(par, 'fric_pc_L', 0.0))
+    caps = getattr(par, 'C_normal_stress_caps', -1)
+    min_norm = float(getattr(par, 'min_norm', -10.0e6))
+    max_norm = float(getattr(par, 'max_norm', -40.0e6))
+    if L != L:
+        raise ValueError('case.setup: par.fric_pc_L is NaN; use <= 0 (each '
+                         "node's Dc) or a length in m.")
+    if caps not in (-1, 0, 1) or caps != int(caps):
+        raise ValueError(
+            'case.setup: par.C_normal_stress_caps must be -1 (caps iff '
+            'insertFaultType > 0 and C_elastic == 1), 0 (off) or 1 (on); got %r.'
+            % (caps,))
+    if not (max_norm <= min_norm < 0.0):
+        raise ValueError(
+            'case.setup: the normal-stress caps need max_norm <= min_norm < 0 '
+            '(Pa, negative is compressive); got min_norm=%r, max_norm=%r.'
+            % (min_norm, max_norm))
+    return L, int(caps), min_norm, max_norm
 
 
 def resolveViscoplasticParams(par):

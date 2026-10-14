@@ -190,6 +190,9 @@ SHARDS = {
                                  # build + 2 tiny 1-rank runs each on Fortran
                                  # and python-numpy, same cost profile as
                                  # test_check_input_consistency.py above.
+        "test_rsf_noncompressive_stop.py",  # added 2026-10-14 (#201): 3 tiny
+                                 # case.setup + 3 1-rank 3-step runs each on
+                                 # Fortran and python-numpy, ~4 s.
         "test_offfault_station_depth_selection.py",  # added 2026-09-25
                                  # (mira-volkov, row 94 audit finding 3): one
                                  # serial case.setup + one 3-step 1-rank

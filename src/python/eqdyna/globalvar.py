@@ -62,10 +62,12 @@ NUC_VS_FIXED = 3464.0    # fixed shear-wave speed, m/s
 NUC_TAPER_COEF = 0.081   # rupture-time taper coefficient
 NUC_VR_TO_VS = 0.7       # nucleation rupture-speed-to-Vs ratio
 
-# --- normal-stress caps, globalvar.f90:153-154 ---------------------------
-# NOT case parameters. min_norm > max_norm, so faulting.f90's if/elseif
-# branches are mutually exclusive and values strictly between max_norm and
-# min_norm pass through untouched -- that gap is deliberate, reproduce it.
+# --- normal-stress caps defaults, globalvar.f90 min_norm/max_norm ---------
+# The case value comes from bGlobal.txt (par.min_norm/max_norm, read by
+# readInputFiles.read_bglobal); these are only the defaults, the fixed values
+# before the inputs existed. max_norm <= min_norm, so faulting.f90's
+# if/elseif branches are mutually exclusive and values strictly between
+# max_norm and min_norm pass through untouched -- that gap is deliberate.
 MAX_NORM = -40.0e6
 MIN_NORM = -10.0e6
 

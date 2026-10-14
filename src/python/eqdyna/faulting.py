@@ -81,6 +81,14 @@ def build(S):
         nucT=S.get('nucT', 0.0), nucdtau0=S.get('nucdtau0', 0.0),
         insertFaultType=S.get('insertFaultType', 0),
         slipRateThres=S['slipRateThres'],
+        # Rate-and-state normal-stress inputs (bGlobal.txt's last two lines,
+        # read_bglobal). Static Python scalars, so the caps rule and the L
+        # choice below are trace-time branches, as in the Fortran. The
+        # defaults are the behaviour before the inputs existed.
+        fric_pc_L=float(S.get('fric_pc_L', 0.0)),
+        C_normal_stress_caps=int(S.get('C_normal_stress_caps', -1)),
+        min_norm=float(S.get('min_norm', gv.MIN_NORM)),
+        max_norm=float(S.get('max_norm', gv.MAX_NORM)),
     )
 
 
@@ -441,7 +449,7 @@ def rsfNucleation(xp, finv, fric, Tn, Ts, Td, srS, srD, timeElapsed, nt):
 # faulting.f90:443-506  NewtonRaphson
 # ---------------------------------------------------------------------------
 def NewtonRaphson(xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm,
-                  trialMag, T_coeff, dt):
+                  trialMag, T_coeff, dt, L_pc=0.0):
     """faulting.f90:443-506 -- solve for next-step slip rate.
 
     A fixed 20-iteration loop with a per-node `done` mask, which reproduces
@@ -476,13 +484,14 @@ def NewtonRaphson(xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm,
             # thetaPcTmp is re-seeded from the frozen baseline every iteration
             # (faulting.f90:470), not carried forward.
             thetaPc_this, _ = F.rate_state_normal_stress(
-                xp, v_trial, thetaPc0, tnrm, fric, dt)
+                xp, v_trial, thetaPc0, tnrm, fric, dt, L_pc)
             taoc_this = xmu * thetaPc_this
             drsfeqdv = 1.0 + T_coeff * (dxmudv * thetaPc_this) * 0.5
         else:
             # faulting.f90:476-478. MIN(tnrm, 0) is written literally to match
-            # the source's own guard, even though tnrm is already clamped <= 0
-            # upstream, so it is a no-op here rather than a divergence.
+            # the source's own guard. A tnrm > 0 reaching here is fatal
+            # (ERR 65, latched in driver.part_b), so it changes no result
+            # that is reported.
             thetaPc_this = thetaPc0
             tn0 = xp.minimum(tnrm, 0.0)
             taoc_this = fric[:, gv.COHESION] - xmu * tn0
@@ -502,6 +511,18 @@ def NewtonRaphson(xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm,
         done = done_after
 
     return v_trial, taoc_new, state_out, thetaPc_out
+
+
+def normal_stress_caps_on(finv):
+    """Whether solveRSF applies the normal-stress caps (faulting.f90).
+
+    par.C_normal_stress_caps: 1 on, 0 off, -1 (the default) the rule before
+    the switch existed -- on iff the fault is non-planar (insertFaultType>0)
+    and the medium elastic (C_elastic==1). A per-run trace-time test.
+    """
+    sw = finv.get('C_normal_stress_caps', -1)
+    return sw == 1 or (sw == -1 and finv['insertFaultType'] > 0
+                       and finv['C_elastic'] == 1)
 
 
 # ---------------------------------------------------------------------------
@@ -538,23 +559,28 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
         fric, Ts = rsfNucleation(xp, finv, fric, Tn, Ts, Td, srS0, srD0,
                                  timeElapsed, nt)
 
-    # --- normal traction: TP offset, geometry caps, positivity clamp ---
+    # --- normal traction: TP offset, normal-stress caps ---
     if friclaw == 5:
-        tnrm = Tn + fric[:, gv.TP_NORM_TP]        # faulting.f90:198-199
+        tnrm = Tn + fric[:, gv.TP_NORM_TP]        # faulting.f90 solveRSF
     else:
         tnrm = Tn
-    if finv['insertFaultType'] > 0 and finv['C_elastic'] == 1:
-        # faulting.f90:205-212. min_norm > max_norm, so the two arms are
-        # mutually exclusive and values strictly between max_norm and
+    if normal_stress_caps_on(finv):
+        # faulting.f90 solveRSF caps. max_norm <= min_norm, so the two arms
+        # are mutually exclusive and values strictly between max_norm and
         # min_norm pass through UNTOUCHED. That gap is the Fortran's, kept.
         #
         # This clamp was present in the friclaw-4 port and MISSING from the
         # friclaw-5 one, which is why the pre-restructure entry point refused
         # insertFaultType>0 combined with friclaw==5. Unifying solveRSF
         # closes that gap by construction rather than by a second edit.
-        tnrm = xp.where(tnrm >= gv.MIN_NORM, gv.MIN_NORM,
-                        xp.where(tnrm <= gv.MAX_NORM, gv.MAX_NORM, tnrm))
-    tnrm = xp.where(tnrm > 0.0, 0.0, tnrm)        # faulting.f90:215
+        min_norm, max_norm = finv['min_norm'], finv['max_norm']
+        tnrm = xp.where(tnrm >= min_norm, min_norm,
+                        xp.where(tnrm <= max_norm, max_norm, tnrm))
+    # No positivity clamp any more: a tnrm >= 0 here is a fatal state
+    # (faulting.f90's stopNonCompressiveNormal, ERR 65). The value is stored
+    # in fric[:, TRACT_NORM] below and driver.part_b latches the first such
+    # node; driver.run/run_mpi raise after the loop. Until then the step runs
+    # on the unclamped value, which nothing downstream of the latch reports.
 
     # --- background (creep) slip rate on top, faulting.f90:219-222 ---
     vini_n = fric[:, gv.VINI_N]; vini_s = fric[:, gv.VINI_X]
@@ -587,7 +613,7 @@ def solveRSF(xp, finv, fric, comps, force, timeElapsed, dt, nt, friclaw):
 
     v_trial, taoc_new, state_out, thetaPc_out = NewtonRaphson(
         xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm, trialMag,
-        T_coeff, dt)
+        T_coeff, dt, finv.get('fric_pc_L', 0.0))
 
     # faulting.f90:501 -- creeping-rate floor. Only TPV==105 reaches it; for
     # every other TPV this is a documented no-op, evaluated as a trace-time

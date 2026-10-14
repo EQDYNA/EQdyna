@@ -119,7 +119,7 @@ MODULE globalvar
         ! which this flip does not participate in either.
     integer (kind = 4) :: outputGroundMotion       ! 1 = write ground-motion output
     integer (kind = 4) :: outputFinalSurfDisp = 0 ! 1 = write final surface displacement
-    integer (kind = 4) :: outputFaultTimeSeries = 0 ! 1 = write whole-fault time series of every time-varying on-fault field (src_ts*, output_fault_ts); bGlobal.txt last line
+    integer (kind = 4) :: outputFaultTimeSeries = 0 ! 1 = write whole-fault time series of every time-varying on-fault field (src_ts*, output_fault_ts); bGlobal.txt, after the sign line
 
     !=====================================================================
     ! Mesh & geometry
@@ -175,8 +175,13 @@ MODULE globalvar
     real (kind = dp) :: nucR, nucRuptVel, nucdtau0, nucT ! nucleation patch radius (m), forced rupture velocity (m/s), stress-perturbation amplitude (Pa), duration (s)
     real (kind = dp) :: xsource, ysource, zsource  ! hypocenter/nucleation-patch coordinates, m
     real (kind = dp) :: fdip, fstrike              ! fault dip / strike angles, degrees
-    real (kind = dp) :: max_norm = -40.0d6         ! upper normal-stress cap enforced on non-planar/elastic faults, Pa
-    real (kind = dp) :: min_norm = -10.0d6         ! lower normal-stress cap enforced on non-planar/elastic faults, Pa
+    ! Rate-and-state normal-stress inputs, the last two lines of bGlobal.txt
+    ! (readglobal; par.fric_pc_L, par.C_normal_stress_caps/min_norm/max_norm).
+    ! The initial values here are the defaults case.setup writes.
+    real (kind = dp) :: max_norm = -40.0d6         ! most compressive normal traction solveRSF allows when caps apply, Pa
+    real (kind = dp) :: min_norm = -10.0d6         ! least compressive normal traction solveRSF allows when caps apply, Pa
+    integer (kind = 4) :: C_normal_stress_caps = -1 ! -1 = caps iff insertFaultType>0 and C_elastic==1 (the old rule); 0 = off; 1 = on
+    real (kind = dp) :: fric_pc_L = 0.0d0          ! theta_pc relaxation length, m; <= 0 = each node's Dc (fric slot FRIC_SLOT_RSF_DC)
 
     !=====================================================================
     ! Plasticity / off-fault material response

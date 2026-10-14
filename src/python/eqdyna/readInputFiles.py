@@ -27,7 +27,8 @@ now proving the reader itself, not just the builders.
 """
 import numpy as np
 
-from .checkInputConsistency import ERR_CFG_FAULT_TS_INVALID, ERR_CFG_NSTRESS_SIGN_INVALID, InputConsistencyError
+from .checkInputConsistency import (ERR_CFG_FAULT_TS_INVALID, ERR_CFG_NORMAL_STRESS_CAPS_INVALID,
+                                    ERR_CFG_NSTRESS_SIGN_INVALID, InputConsistencyError)
 
 
 def _read_records(path):
@@ -137,8 +138,7 @@ def read_bglobal(path):
             ERR_CFG_NSTRESS_SIGN_INVALID,
             'bGlobal.txt station normal-stress sign must be +1 (extension) or -1 '
             '(compression); re-run case.setup. (read %d from %s)' % (g['nStressOutSign'], path))
-    # Whole-fault time-series switch, the file's last line (Fortran
-    # output_fault_ts). Same stale/invalid verdicts as readglobal.
+    # Whole-fault time-series switch (Fortran output_fault_ts). Same stale/invalid verdicts as readglobal.
     try:
         g['outputFaultTimeSeries'] = int(nxtOrStale(
             'the fault time-series output switch, 0 off / 1 on (par.outputFaultTimeSeries)')[0])
@@ -149,6 +149,35 @@ def read_bglobal(path):
             ERR_CFG_FAULT_TS_INVALID,
             'bGlobal.txt fault time-series output switch must be 0 or 1; re-run '
             'case.setup. (read %d from %s)' % (g['outputFaultTimeSeries'], path))
+    # Rate-and-state normal-stress inputs, the file's last two lines (port
+    # of readglobal's matching reads; used by fric.rate_state_normal_stress
+    # and faulting.solveRSF). The defaults case.setup writes -- L <= 0 (each
+    # node's Dc) and caps switch -1 (caps iff insertFaultType>0 and
+    # C_elastic==1, at -10/-40 MPa) -- are the behaviour before the inputs.
+    try:
+        g['fric_pc_L'] = float(nxtOrStale(
+            "the theta_pc relaxation length L, m, <= 0 for each node's Dc (par.fric_pc_L)")[0])
+    except (IndexError, ValueError):
+        raise stale('a valid theta_pc relaxation length L (par.fric_pc_L)')
+    try:
+        vals = nxtOrStale('the normal-stress caps switch and min_norm max_norm, Pa '
+                          '(par.C_normal_stress_caps/min_norm/max_norm)')
+        g['C_normal_stress_caps'] = int(vals[0])
+        g['min_norm'], g['max_norm'] = float(vals[1]), float(vals[2])
+    except (IndexError, ValueError):
+        raise stale('a valid normal-stress caps line (par.C_normal_stress_caps/min_norm/max_norm)')
+    if g['C_normal_stress_caps'] not in (-1, 0, 1):
+        raise InputConsistencyError(
+            ERR_CFG_NORMAL_STRESS_CAPS_INVALID,
+            'bGlobal.txt normal-stress caps switch must be -1 (caps iff insertFaultType>0 and '
+            'C_elastic==1), 0 (off) or 1 (on); re-run case.setup. (read %d from %s)'
+            % (g['C_normal_stress_caps'], path))
+    if not (g['max_norm'] <= g['min_norm'] < 0.0):
+        raise InputConsistencyError(
+            ERR_CFG_NORMAL_STRESS_CAPS_INVALID,
+            'bGlobal.txt normal-stress caps need max_norm <= min_norm < 0 (Pa, negative is '
+            'compressive); re-run case.setup. (read min_norm %r, max_norm %r from %s)'
+            % (g['min_norm'], g['max_norm'], path))
 
     g['str1ToFaultAngle'] = g['str1ToFaultAngle'] * np.pi / 180.0
     # nstep = idnint(totalSimuTime/dt) -- Fortran round-half-away-from-zero.

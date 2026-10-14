@@ -36,13 +36,21 @@ end subroutine faulting
 ! Input: slip_rate, L_pc, theta_pc, tnrm. 
 ! Output: theta_pc, the state variable which is used to calculate shear stress in eq B2
 ! B2: abs(traction) = friction * theta_pc.
+! L_pc is the input fric_pc_L (bGlobal.txt) when it is > 0, else the node's
+! Dc -- the only choice before the input existed. EQquasi's fric_pc_L <= 0
+! instead means no relaxation (theta_pc = abs(tnrm)); a positive value means
+! the same thing in both codes.
 subroutine rate_state_normal_stress(V2, theta_pc, theta_pc_dot, tnrm, fricsgl)
     use globalvar
     implicit none
     real (kind = dp) :: V2, theta_pc, theta_pc_dot, tnrm, L
     real (kind = dp),dimension(100) :: fricsgl
     
-    L  = fricsgl(FRIC_SLOT_RSF_DC) ! Use Dc in RSF as L_pc
+    if (fric_pc_L > 0.0d0) then
+        L = fric_pc_L
+    else
+        L = fricsgl(FRIC_SLOT_RSF_DC) ! Use Dc in RSF as L_pc
+    endif
     
     theta_pc_dot = - V2/L*(theta_pc - abs(tnrm))
     ! the following eq is to update theta_pc with theta_pc_doc.
@@ -210,9 +218,11 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     else
     endif
 
-    ! If non-planar fault geometry and elastic material, enforce normal stress caps.
-    ! max_norm/min_norm are module-level constants initialized in globalvar.f90.
-    if (insertFaultType >0 .and. C_elastic == 1) then
+    ! Normal-stress caps (bGlobal.txt: C_normal_stress_caps, min_norm,
+    ! max_norm). Switch -1, the default, keeps the old rule: caps on a
+    ! non-planar fault (insertFaultType>0) in an elastic medium only.
+    if (C_normal_stress_caps == 1 .or. &
+        (C_normal_stress_caps == -1 .and. insertFaultType >0 .and. C_elastic == 1)) then
         !tnrm = min(min_norm, tnrm) ! Maintain a minimum normal stress level.
         if (nsdTractionVector(1)>=min_norm) then
             nsdTractionVector(1) = min_norm
@@ -221,8 +231,12 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
         endif
     endif 
 
-    ! avoid positive effective normal stress.
-    if (nsdTractionVector(1) > 0.0d0) nsdTractionVector(1) = 0.0d0
+    ! Rate-and-state needs a compressive normal traction: strength is
+    ! f*theta_pc (friclaw 3/4) or c - f*tnrm (friclaw 5), and the split-node
+    ! solve below holds the fault closed (zero opening), so a tensile or zero
+    ! value is a state the model does not describe. This used to be clamped
+    ! to 0 silently; stop instead, as EQquasi's check_effective_normal does.
+    if (nsdTractionVector(1) >= 0.0d0) call stopNonCompressiveNormal(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector(1))
 
     !-----------------
     ! Add the background slip rate on top. 
@@ -312,6 +326,32 @@ subroutine solveRSF(iFault, iFaultNodePair, iFrictionLaw, nsdSlipVector, nsdSlip
     enddo
     
 end subroutine solveRSF
+
+subroutine stopNonCompressiveNormal(iFault, iFaultNodePair, iFrictionLaw, tnrm)
+! Fatal diagnostic for solveRSF: the normal traction (after the friclaw 5
+! pore-pressure offset and any caps) is >= 0 at this fault node. Prints the
+! time, the node and the value, then ends the whole job with
+! ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE.
+    use globalvar
+    use errorCodes
+    implicit none
+    integer (kind = 4) :: iFault, iFaultNodePair, iFrictionLaw
+    real (kind = dp) :: tnrm
+
+    write(*,*) '====================================================='
+    write(*,*) '= Non-compressive normal traction on the fault      ='
+    write(*,'(A,I0,A,I0)') ' =   rank ', me, ', friclaw ', iFrictionLaw
+    write(*,'(A,ES16.8,A,I0)') ' =   time (s)        : ', timeElapsed, '   step ', nt
+    write(*,'(A,I0,A,I0)') ' =   fault ', iFault, ', fault node ', iFaultNodePair
+    write(*,'(A,3ES16.8)') ' =   node x, y, z (m): ', meshCoor(1:3,nsmp(1,iFaultNodePair,iFault))
+    write(*,'(A,ES16.8,A)') ' =   normal traction : ', tnrm/1.0d6, ' MPa (>= 0)'
+    write(*,*) '====================================================='
+    call abortRun(ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE, &
+        'rate-and-state normal traction became >= 0 (time, node and value printed above). ' // &
+        'Rate-and-state needs a compressive normal stress; for friclaw 5 the pore pressure ' // &
+        'reached the normal stress. Check the initial normal stress, fric_tp_pini, or set the ' // &
+        'normal-stress caps (par.C_normal_stress_caps, par.min_norm, par.max_norm).')
+end subroutine stopNonCompressiveNormal
 
 subroutine storeRuptureTime(iFault, iFaultNodePair, nsdSliprateVector)
     use globalvar

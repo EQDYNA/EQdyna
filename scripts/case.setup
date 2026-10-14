@@ -21,6 +21,7 @@ except ModuleNotFoundError as e:
                  'that file exists.' % (e.name, e.name, SHARED_COMPSET_FILES[e.name]))
     raise
 from lib import (ensureFaultRoughGeometryForCase, resolveNormalStressSign, resolveViscoplasticParams,
+                 resolveNormalStressInputs,
                  faultTag, resolveFaultGeom, resolveOnFaultStationsPerFault, resolveOnFaultVarsPerFault,
                  requireMultiFaultRestartDzEqualsDx)
 from machines import machine, write_slurm_header
@@ -99,12 +100,12 @@ def create_model_input_file():
         f.write(str(tv) + "\n")
         f.write(str(taperStart) + " " + str(taperEnd) + "\n")
         f.write(str(plasticWindow[0]) + " " + str(plasticWindow[1]) + " " + str(plasticWindow[2]) + "\n")
-        # Station n-stress sign convention (board row 22a): the LAST line,
-        # read unconditionally by readglobal and read_bglobal, which refuse a
+        # Station n-stress sign convention (board row 22a), read
+        # unconditionally by readglobal and read_bglobal, which refuse a
         # file without it as stale.
         f.write(str(resolveNormalStressSign(par)) + "\n")
-        # Whole-fault time-series switch (output_fault_ts): the LAST line,
-        # read unconditionally after the sign line, same stale refusal.
+        # Whole-fault time-series switch (output_fault_ts), read
+        # unconditionally after the sign line, same stale refusal.
         # getattr: a case's user_defined_params.py carrying an old
         # defaultParameters copy keeps the default (off).
         outputFaultTimeSeries = getattr(par, 'outputFaultTimeSeries', 0)
@@ -112,6 +113,12 @@ def create_model_input_file():
             sys.exit('case.setup: par.outputFaultTimeSeries=%r must be 0 (off) or 1 (on).'
                      % (outputFaultTimeSeries,))
         f.write(str(int(outputFaultTimeSeries)) + "\n")
+        # Rate-and-state normal-stress inputs (issues #189, #200): the LAST
+        # two lines -- L (fric_pc_L, <= 0 = each node's Dc), then the caps
+        # switch and min_norm max_norm. Same stale/invalid refusals.
+        fricPcL, capsSwitch, minNorm, maxNorm = resolveNormalStressInputs(par)
+        f.write(str(fricPcL) + "\n")
+        f.write(str(capsSwitch) + " " + str(minNorm) + " " + str(maxNorm) + "\n")
 
 
     with open('bModelGeometry.txt', "w") as f:
