@@ -121,6 +121,15 @@ COLUMN_LABELS = {
     'psi': 'state variable psi (dimensionless)',
 }
 
+# Thermal-pressurization columns. Labelled ONLY for a TPV whose on-fault spec
+# lists them (SPEC_FAULT_FIELDS); any other TPV still refuses them as "no spec
+# wording". Wording: TPV105_3D_formats, example file header, "# Column #10 =
+# temperature (K)", "# Column #11 = pore pressure (MPa)".
+TP_COLUMN_LABELS = {
+    'temperature': 'temperature (K)',
+    'pressure': 'pore pressure (MPa)',
+}
+
 # A spec whose on-fault field list is SHORTER than what our run writes. The
 # packager emits exactly these columns, in this order, and drops the rest
 # (recorded in PROVENANCE.md). TPV103/104 upload spec, Section 2, "On-Fault
@@ -133,6 +142,9 @@ SPEC_FAULT_FIELDS = {
           'v-slip-rate', 'v-shear-stress', 'n-stress', 'psi')
     for tpv in ('103', '104')
 }
+# TPV105-3D formats, on-fault field list (lines 154-156 and the example file,
+# lines 210-219): the 9 above plus temperature and pore pressure, 11 in all.
+SPEC_FAULT_FIELDS['105-3D'] = SPEC_FAULT_FIELDS['104'] + ('temperature', 'pressure')
 RE_CELL = re.compile(r'\s*\S+')
 
 RE_FAULT = re.compile(r'^faultst(?:ft(\d+)_)?(-?\d+)dp(-?\d+)\.txt$')
@@ -308,10 +320,14 @@ def select_spec_columns(tpv, kind, field, data):
     kept cell is copied with its own bytes (padding included), never
     re-formatted. Refuses when a spec column is missing. Anything else is
     returned unchanged."""
-    spec = SPEC_FAULT_FIELDS.get(str(tpv))
+    spec = SPEC_FAULT_FIELDS.get(str(tpv).upper())
+    tokens = field.split()
+    if kind == 'fault' and spec is None:
+        tp = [k for k in tokens if k in TP_COLUMN_LABELS]
+        if tp:
+            raise SystemExit(f'field-name tokens with no spec wording: {tp}')
     if kind != 'fault' or spec is None:
         return field, data, []
-    tokens = field.split()
     missing = [k for k in spec if k not in tokens]
     if missing:
         raise SystemExit(f'TPV{tpv} on-fault spec columns missing from the run: '
@@ -330,13 +346,14 @@ def select_spec_columns(tpv, kind, field, data):
 def station_text(meta, hdr, field, data, kind):
     location = [h for h in hdr if re.match(r'#\s*location', h, re.I)]
     tokens = field.split()
-    unknown = [k for k in tokens if k not in COLUMN_LABELS]
+    labels = {**COLUMN_LABELS, **TP_COLUMN_LABELS}
+    unknown = [k for k in tokens if k not in labels]
     if unknown:
         raise SystemExit(f'field-name tokens with no spec wording: {unknown}')
     ncol = len(data[0].split())
     if ncol != len(tokens):
         raise SystemExit(f'{ncol} data columns but {len(tokens)} field names: {field}')
-    columns = [f'# Column #{i} = {COLUMN_LABELS[k]}' for i, k in enumerate(tokens, 1)]
+    columns = [f'# Column #{i} = {labels[k]}' for i, k in enumerate(tokens, 1)]
     lines = [f'# problem={meta["problem"]}',
              f'# author={AUTHOR_PLACEHOLDER}',
              f'# date={meta["date"]}',
@@ -474,7 +491,7 @@ def package(run_dir, tpv, out, commit=None, date=None, label=None,
     date = date or datetime.date.today().strftime('%Y/%m/%d')
     year = date.split('/')[0]
     label = label or f'eqdyna-v{version}-{dx:g}m-{year}'
-    meta = dict(problem=f'TPV{tpv}', date=date, version=version,
+    meta = dict(problem=f'TPV{str(tpv).upper()}', date=date, version=version,
                 commit=commit, stamp=stamp, dx=dx, dt=dt)
 
     members, dropped = [], set()
