@@ -77,7 +77,11 @@ OUT = os.path.join(TESTSYS, 'perf', 'numa_scaling_last.json')
 
 sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(TESTSYS, 'perf'))
+sys.path.insert(0, PYTHON_PKG)
 import perflib  # noqa: E402  (acquire_case_lock, rebuild_serial_case)
+from eqdyna.profile_emit import host_label  # noqa: E402  (item 3a follow-up: one shared
+                                             # host-label helper, never a bare
+                                             # socket.gethostname()/os.uname())
 
 # What a second concurrent invocation costs, printed by the refusal (item 77).
 LOCK_CONSEQUENCE = [
@@ -483,7 +487,7 @@ def main():
         item='pathway_forward 33', case=a.case, steps=[n_lo, n_hi],
         topology={str(k): v for k, v in nodes.items()},
         busy_ceiling=a.busy_ceiling, skipped=skipped,
-        host=socket.gethostname(), platform=platform.platform(),
+        host=host_label(), platform=platform.platform(),
         timestamp=time.strftime('%Y-%m-%d %H:%M:%S'),
         overridden=bool(a.i_know_the_box_is_busy), results=results)
     with open(OUT, 'w') as f:

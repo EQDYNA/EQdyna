@@ -48,6 +48,10 @@ import perflib  # noqa: E402  (acquire_case_lock, rebuild_serial_case)
 import profile_record  # noqa: E402  (append-only per-rank profile totals)
 
 PYTHON_PKG = os.path.join(REPO_ROOT, 'src', 'python')
+sys.path.insert(0, PYTHON_PKG)
+from eqdyna.profile_emit import host_label  # noqa: E402  (item 3a follow-up: one shared
+                                             # host-label helper, never a bare
+                                             # socket.gethostname()/os.uname())
 PERF_CASE_NAME = 'test.tpv8'
 # Built fresh under testsys/perf/ rather than test/, so a perf run never
 # collides with an e2e sweep's tree (they can run concurrently on this box).
@@ -200,7 +204,7 @@ def provenance():
     load1, load5, load15 = os.getloadavg()
     compiler = subprocess.run(['mpif90', '--version'], capture_output=True, text=True).stdout.splitlines()
     compiler = compiler[0] if compiler else 'unknown'
-    return dict(git_sha=sha, hostname=socket.gethostname(), platform=platform.platform(),
+    return dict(git_sha=sha, hostname=host_label(), platform=platform.platform(),
                 load_avg=f'{load1:.2f} {load5:.2f} {load15:.2f}', compiler=compiler,
                 pinned_core=CORE, timestamp=time.strftime('%Y-%m-%d %H:%M:%S'))
 

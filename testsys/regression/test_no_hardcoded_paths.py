@@ -80,6 +80,11 @@ EMAIL_EXEMPT = {'LICENSE', 'README.md', 'docs/user/citing.md'}
 # EXEMPTION" above.
 HOST_EXEMPT = {'docs/perf_ledger.jsonl'}
 
+# The ledger path HOST_EXEMPT covers -- named again here so the "new rows
+# only" check below (new_ledger_rows_are_clean) can scope itself to exactly
+# the same file, not a second hand-maintained path.
+PERF_LEDGER_PATH = 'docs/perf_ledger.jsonl'
+
 # Built from fragments so this file's own source never matches its own
 # check (a plain scan for the literal pattern strings would self-trip).
 _TMP_SCRATCH = '/' + 'tmp/claude-'
@@ -117,6 +122,46 @@ def git_grep_matches(pattern):
     return hits
 
 
+def new_ledger_rows_are_clean():
+    """HOST_EXEMPT covers docs/perf_ledger.jsonl's PAST rows only (item 3a
+    follow-up, 2026-10-14: the writers now record host_label() instead of the
+    real hostname, so no row appended from here on should carry it). Narrow
+    the exemption's actual scope by diffing the committed HEAD row count
+    against the working-tree row count and scanning only the rows past that
+    point -- never editing, never re-reading, the historical rows the
+    append-only guard (test_perf_ledger.py check 6) protects.
+
+    Returns (ok, message). ok is False if a NEW row (appended past HEAD's
+    row count) carries the real hostname; the historical rows are never
+    inspected by this check at all."""
+    path = os.path.join(ROOT, PERF_LEDGER_PATH)
+    if not os.path.exists(path):
+        return True, 'docs/perf_ledger.jsonl not present in working tree -- nothing to check'
+    r = subprocess.run(['git', 'show', 'HEAD:%s' % PERF_LEDGER_PATH],
+                        cwd=ROOT, capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise RuntimeError('git show HEAD:%s failed (exit %d): %s'
+                           % (PERF_LEDGER_PATH, r.returncode, r.stderr))
+    head_lines = r.stdout.splitlines()
+    with open(path) as f:
+        work_lines = f.read().splitlines()
+    new_lines = work_lines[len(head_lines):]
+    if not new_lines:
+        return True, ('0 new row(s) past HEAD\'s %d committed row(s) -- '
+                      'nothing new to check' % len(head_lines))
+    bad = [i for i, line in enumerate(new_lines, start=len(head_lines) + 1)
+           if _HOST in line]
+    if bad:
+        return False, ('%d new row(s) past HEAD\'s %d committed row(s) carry '
+                       'the real hostname at line(s) %s -- the ledger '
+                       'writers must record host_label() (see '
+                       'src/python/eqdyna/profile_emit.py), not the real '
+                       'hostname, for any row appended from here on'
+                       % (len(bad), len(head_lines), bad))
+    return True, ('PASS  %d new row(s) past HEAD\'s %d committed row(s), '
+                  '0 carry the real hostname' % (len(new_lines), len(head_lines)))
+
+
 def main():
     hits = git_grep_matches(PATTERN)
     host_hits = git_grep_matches(HOST_PATTERN)
@@ -148,8 +193,15 @@ def main():
     if unexpected_email:
         problems.append(('email', EMAIL_PATTERN, unexpected_email))
 
+    ledger_ok, ledger_msg = new_ledger_rows_are_clean()
+    if not ledger_ok:
+        problems.append(('new-ledger-row-hostname', _HOST, {PERF_LEDGER_PATH: ledger_msg}))
+
     if problems:
         for label, pattern, bad in problems:
+            if label == 'new-ledger-row-hostname':
+                print('FAIL test_no_hardcoded_paths: %s' % bad[PERF_LEDGER_PATH])
+                continue
             print('FAIL test_no_hardcoded_paths: %d tracked file(s) carry a '
                   'leaked %s (pattern %r):' % (len(bad), label, pattern))
             for path in sorted(bad):
@@ -180,6 +232,7 @@ def main():
           'exemption(s): %s)'
           % (len(email_hits), len(email_exempted_present),
              email_exempted_present or 'none'))
+    print('  %s' % ledger_msg)
     print('SUCCESS test_no_hardcoded_paths')
     return 0
 
