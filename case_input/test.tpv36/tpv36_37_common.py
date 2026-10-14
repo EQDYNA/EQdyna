@@ -79,7 +79,7 @@ def buildParams(tpv, cohesionSlope):
     par.HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
     par.HPC_time  = "02:00:00" # WALLTIME, in hh:mm:ss format.
     par.HPC_account = "EAR22012" # Project account to be charged SUs against.
-    par.HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
+    par.HPC_email = ""#"user@example.edu" # Email to receive job status.
 
     # Creating the fault interface
     par.nfx = round((par.fxmax - par.fxmin)/par.dx + 1)

@@ -18,7 +18,7 @@
   "min": 1.0,
   "sum": 32.0
  },
- "host": "cotopaxi",
+ "host": "workstation",
  "mem_gb_total": 42.916,
  "nsteps": 2400,
  "ranks": 32,

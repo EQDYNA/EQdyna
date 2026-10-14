@@ -1,4 +1,4 @@
-! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! Copyright (C) 2006 Benchun Duan, Dunyu Liu
 ! MIT
 subroutine calcQAttenuationCoeff(Q,rtaok,rwk,k,c1)
     use globalvar

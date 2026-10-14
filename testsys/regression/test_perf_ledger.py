@@ -67,7 +67,7 @@ def check(ok, what):
 
 def good_row(i=0, proc=0):
     return dict(ts_utc='2026-09-21T12:00:00Z', snapshot_date_local='2026-09-21 12:00',
-                sha='0123abc', host='cotopaxi', tool='run_scaling',
+                sha='0123abc', host='workstation', tool='run_scaling',
                 case='test.tpv104', backend='fortran', ranks=4,
                 ms_per_step=100.0 + i, rank_ms_min=90.0, rank_ms_max=110.0,
                 rank_ms_mean=100.0, effective_cores=3.8, threads_per_rank=1,
@@ -194,7 +194,7 @@ def main():
     # 4b. snapshot->ledger converters, on synthetic recorded-shape input
     # (the committed mpi snapshot is all-SKIPPED, so without this the jax-mpi
     # converter path would be green-by-absence).
-    mpi_meta = dict(case='test.tpv104', sha='abc1234', host='cotopaxi',
+    mpi_meta = dict(case='test.tpv104', sha='abc1234', host='workstation',
                     date='2026-09-21 16:37', n_lo=40, n_hi=160, max_busy=0.6,
                     rows=[dict(ranks=2, skipped=True, cpus=[2, 3]),
                           dict(ranks=4, cpus=[8, 9, 16, 17], n_lo=40, n_hi=160,
@@ -221,7 +221,7 @@ def main():
     check(frow['ms_per_step'] == 101.5 and frow['rank_ms_min'] is None,
           'converter(mpi): fortran row ms_per_step=%r, per-rank fields null'
           % frow['ms_per_step'])
-    sc_meta = dict(case='test.tpv104', sha='abc1234', host='cotopaxi',
+    sc_meta = dict(case='test.tpv104', sha='abc1234', host='workstation',
                    date='2026-09-21 11:35', busy_ceiling=0.45,
                    rows=[dict(engine='python-numpy', n=8, policy='spread',
                               ms_per_step=250.25, n_lo=20, n_hi=60,
@@ -379,7 +379,7 @@ def main():
             check(False, 'cell-wall-clock: %s raises ValueError' % what)
         except ValueError:
             check(True, 'cell-wall-clock: %s raises ValueError' % what)
-    e2e_meta = dict(tool='run_e2e', sha='abc1234', host='cotopaxi',
+    e2e_meta = dict(tool='run_e2e', sha='abc1234', host='workstation',
                     date='2026-09-22 07:00', label='default', device='cpu',
                     jobs_budget=8, tenancy_ceiling=0.5, tree_dirty=False,
                     cells=[dict(case='test.tpv8', backend='fortran', ok=True,

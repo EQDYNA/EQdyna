@@ -41,7 +41,7 @@ below uses dp180 plus `faultst000dp120` / `faultst040dp180`, which do.
 
 All Fortran, 4 ranks (`taskset -c 2-5|6-9 mpirun --bind-to none -np 4`),
 `par.term = 5.0`, dx = 500 m unless stated, worktree `research/ringing-36-37`
-at `c9531d6`, cotopaxi (AMD EPYC 7532, load average 85-100 throughout:
+at `c9531d6`, workstation (AMD EPYC 7532, load average 85-100 throughout:
 timings are not reported, physics is deterministic), gfortran 11.4.0,
 Open MPI 4.1.1, `OMP_NUM_THREADS=1`. `C_hg`/`kapa_hg` are compiled in
 (`src/fortran/globalvar.f90:105,191`); each variant is a scratch copy of

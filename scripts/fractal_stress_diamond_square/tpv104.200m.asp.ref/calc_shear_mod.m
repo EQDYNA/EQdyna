@@ -1,6 +1,6 @@
 function [shear_mod] = calc_shear_mod(depth, TPV)
 %CALC_SHEAR_MOD Summary of this function goes here
-%   Created on 09/05/2021 by Dunyu Liu (dliu@ig.utexas.edu)
+%   Created on 09/05/2021 by Dunyu Liu
 % The script is to calculate shear modulus given a velocity structure.
 
 if depth<0 

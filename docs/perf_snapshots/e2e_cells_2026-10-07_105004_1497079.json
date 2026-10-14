@@ -1,7 +1,7 @@
 {
  "tool": "run_e2e",
  "sha": "43a2389",
- "host": "cotopaxi",
+ "host": "workstation",
  "date": "2026-10-07 10:50",
  "label": "explicit: cases=test.tpv30 backends=fortran,python-jax",
  "device": "cpu",

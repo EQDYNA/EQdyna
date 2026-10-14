@@ -129,7 +129,7 @@ def main():
     led = os.path.join(tmp, 'ledger.jsonl')
     base_row = dict(
         ts_utc='2026-09-23T12:00:00Z', snapshot_date_local='2026-09-23 12:00',
-        sha='0123abc', host='cotopaxi', tool='run_mpi_scaling',
+        sha='0123abc', host='workstation', tool='run_mpi_scaling',
         case='test.tpv104', backend='python-jax-mpi', ranks=16,
         ms_per_step=52.5, rank_ms_min=50.1, rank_ms_max=55.2,
         rank_ms_mean=52.4, effective_cores=3.9, threads_per_rank=1,
@@ -187,7 +187,7 @@ def main():
         check(False, 'legacy run_mpi_scaling row validates when READ (%s)' % e)
 
     # 6. converter propagation from a synthetic snapshot.
-    mpi_meta = dict(case='test.tpv104', sha='abc1234', host='cotopaxi',
+    mpi_meta = dict(case='test.tpv104', sha='abc1234', host='workstation',
                     date='2026-09-23 16:37', n_lo=40, n_hi=160, max_busy=0.6,
                     rows=[dict(ranks=16, cpus=list(range(16)), n_lo=40, n_hi=160,
                                placement='spread',

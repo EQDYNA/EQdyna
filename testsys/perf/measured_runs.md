@@ -343,7 +343,7 @@ configuration at a time and writes `scaling_last.json`.
 
 - **Elements-per-rank sweep and its fits**: `test.tpv8`, EQdyna at `12c8274`
   with `src/` dirty (the fault-MPI-boundary fix in the working tree) plus
-  `writeCompTime = 1`; host `cotopaxi`, 2 × AMD EPYC 7532 32-core (64 cores,
+  `writeCompTime = 1`; host `workstation`, 2 × AMD EPYC 7532 32-core (64 cores,
   8 NUMA nodes, 16 MB L3 per 4-core CCX), Linux 6.8.0-107, Ubuntu 22.04;
   `mpif90` GNU Fortran 11.4.0, `FFLAGS = -fopenmp -ffree-line-length-none -O3`
   (`src/makefile`, `MACHINE=ubuntu`); Open MPI 4.1.1, netCDF 4.8.1;

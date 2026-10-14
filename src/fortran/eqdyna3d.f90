@@ -1,4 +1,4 @@
-! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! Copyright (C) 2006 Benchun Duan, Dunyu Liu
 ! MIT
 module srcStampMod
     ! Source stamp of this build: sha256 of the src/fortran/*.f90 + makefile
@@ -82,8 +82,8 @@ program EQdyna
         write(*,*) '====================================================================='
         write(*,*) '==================   Welcome to EQdyna 5.25.0 ======================='
         write(*,*) '==================   (src ', srcStampTag(18:29), ')   =========================='
-        write(*,*) '===== Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>           ====' 
-        write(*,*) '====    & Dunyu Liu <dliu@ig.utexas.edu> under MIT License.      ===='
+        write(*,*) '===== Copyright (C) 2006 Benchun Duan           ====' 
+        write(*,*) '====    & Dunyu Liu under MIT License.      ===='
         write(*,*) '============== https://github.com/EQDYNA/EQdyna.git   ==============='
         write(*,*) '=                                                                   ='
         write(*,*) '=   EQdyna is a parallel finite element software to simulate        ='

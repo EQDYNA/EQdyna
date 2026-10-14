@@ -207,7 +207,7 @@ HPC_nnode = int(floor(HPC_ncpu/128)) + 1 # Number of computing nodes. On LS6, on
 HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
 HPC_time  = "02:00:00" # WALLTIME, in hh:mm:ss format.
 HPC_account = "EAR22012" # Project account to be charged SUs against.
-HPC_email = "dliu@ig.utexas.edu" # Email to receive job status.
+HPC_email = "user@example.edu" # Email to receive job status.
 
 ##############################################
 ##### Single station time series output ######

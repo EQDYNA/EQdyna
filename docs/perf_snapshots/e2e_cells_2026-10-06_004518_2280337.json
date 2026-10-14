@@ -1,7 +1,7 @@
 {
  "tool": "run_e2e",
  "sha": "c31cf40",
- "host": "cotopaxi",
+ "host": "workstation",
  "date": "2026-10-06 00:45",
  "label": "default: every supported cell of the table minus matrix.RELEASE_ONLY (everyday)",
  "device": "cpu",

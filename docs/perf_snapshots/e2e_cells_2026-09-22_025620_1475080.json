@@ -1,7 +1,7 @@
 {
  "tool": "run_e2e",
  "sha": "d3762cd",
- "host": "cotopaxi",
+ "host": "workstation",
  "date": "2026-09-22 02:56",
  "label": "default: every cell of the table",
  "device": "cpu",

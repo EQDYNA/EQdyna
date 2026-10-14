@@ -1,4 +1,4 @@
-! Copyright (C) 2006 Benchun Duan <bduan@tamu.edu>, Dunyu Liu <dliu@ig.utexas.edu>
+! Copyright (C) 2006 Benchun Duan, Dunyu Liu
 ! MIT
 subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp, iFault)
     ! Row 153 checkpoint 1: iFault added (was hardcoded "1" throughout this

@@ -45,8 +45,8 @@ as a follow-up, not chased further here (out of this probe's scope).
 
 ## Numbers (all fresh, this session, 2026-09-18)
 
-Interpreter: `<repo>/gns/gns/venv_cotopaxi/bin/python3` (jax 0.6.2),
-`JAX_PLATFORMS=cpu`, `JAX_ENABLE_X64=1`. Host `cotopaxi`, repo sha `cacf738`.
+Interpreter: `<repo>/gns/gns/venv_workstation/bin/python3` (jax 0.6.2),
+`JAX_PLATFORMS=cpu`, `JAX_ENABLE_X64=1`. Host `workstation`, repo sha `cacf738`.
 Method: per-iteration cost by difference over n_lo=30, n_hi=100 `lax.fori_loop`
 iterations, fresh process per (op, cores, n) — same discipline as
 `run_scaling.py`. Pinning: `numactl --physcpubind=... --membind=...`, compact
@@ -113,12 +113,12 @@ rather than a compile-time parallelization gap — see verdict above.
 ```
 cd <repo>/EQdyna/.claude/worktrees/agent-a437a272308248b00
 export EQDYNAROOT=$(pwd)
-<repo>/gns/gns/venv_cotopaxi/bin/python3 \
+<repo>/gns/gns/venv_workstation/bin/python3 \
     testsys/perf/probe_scatter_bandwidth.py --cores 8,32 --n-lo 30 --n-hi 100
 
 # with HLO dump corroboration (writes to a tempdir under $TMPDIR or /tmp,
 # path printed on the scatter@max-cores line):
-<repo>/gns/gns/venv_cotopaxi/bin/python3 \
+<repo>/gns/gns/venv_workstation/bin/python3 \
     testsys/perf/probe_scatter_bandwidth.py --cores 8,32 --n-lo 30 --n-hi 100 --dump-hlo
 ```
 
@@ -134,7 +134,7 @@ export EQDYNAROOT=$(pwd)
 Per this project's own merge discipline, a subagent's report is a hypothesis
 until re-run against the real oracle. Re-ran the identical committed script
 fresh, three more times (same interpreter, same worktree/sha), before landing.
-Box is a genuinely shared multi-tenant login node (`cotopaxi`) — the script's
+Box is a genuinely shared multi-tenant login node (`workstation`) — the script's
 own busy-check printed a live tenant roster each run (`cisco-amp-scan-svc,
 cosmo, cshyu, enze, junlin, lp, markw, messagebus, rdomeyko, ron, yukoo,
 zjia`), not just the owner's two `train.py` jobs the dispatch brief named.
