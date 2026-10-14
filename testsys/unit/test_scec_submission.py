@@ -406,3 +406,46 @@ def test_no_columns_dropped_for_other_tpvs(tmp_path):
     with zipfile.ZipFile(out) as z:
         prov = [n for n in z.namelist() if n.endswith('PROVENANCE.md')][0]
         assert 'columns dropped' not in z.read(prov).decode()
+
+
+# ---- TPV105-3D: the spec's 11 on-fault columns, thermal pressurization kept --
+REF1053D = os.path.join(ROOT, 'test.reference.results', 'test.tpv1053d')
+SPEC1053D = SPEC104 + ' temperature pressure'
+
+
+def test_tpv1053d_on_fault_files_keep_all_11_spec_columns(tmp_path):
+    r, out, sub = _package(REF1053D, tmp_path, tpv='105-3D')
+    src = sorted(glob.glob(os.path.join(REF1053D, 'stations', 'faultst*.txt')))
+    assert len(src) == 3
+    nrows = 0
+    for f in src:
+        txt = open(os.path.join(sub, os.path.basename(f)[:-4])).read().splitlines()
+        assert '# problem=TPV105-3D' in txt
+        assert SPEC1053D in txt
+        assert sum(l.startswith('# Column #') for l in txt) == 11
+        assert '# Column #9 = state variable psi (dimensionless)' in txt
+        assert '# Column #10 = temperature (K)' in txt
+        assert '# Column #11 = pore pressure (MPa)' in txt
+        got = [l for l in txt if not l.startswith('#') and l != SPEC1053D]
+        want = _data_rows(f)
+        assert len(got) == len(want) > 1
+        assert got == want          # all 11 columns, byte for byte
+        nrows += len(got)
+    print(f'tpv105-3D: 3 on-fault files, {nrows} rows, 11 spec columns each')
+    with zipfile.ZipFile(out) as z:
+        prov = [n for n in z.namelist() if n.endswith('PROVENANCE.md')][0]
+        assert 'columns dropped' not in z.read(prov).decode()
+
+
+def test_tpv1053d_key_is_case_insensitive():
+    a = P.select_spec_columns('105-3d', 'fault', SPEC1053D, ['  1.0' * 11])
+    b = P.select_spec_columns('105-3D', 'fault', SPEC1053D, ['  1.0' * 11])
+    assert a == b and a[0] == SPEC1053D and a[2] == []
+
+
+def test_tp_columns_refused_for_a_tpv_whose_spec_lacks_them(tmp_path):
+    # the TP labels exist for TPV105-3D only; a TPV26 package of the same
+    # 11-column run must still refuse them
+    with pytest.raises(SystemExit, match=r"no spec wording: \['temperature', 'pressure'\]"):
+        P.package(REF1053D, '26', os.path.join(str(tmp_path), 'x.zip'), SHA,
+                  DATE, allow_no_log=True)
