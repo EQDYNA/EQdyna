@@ -1,6 +1,6 @@
 clear all; close all;
 % The script is created on 08/26/2021 to estimate the memory used by EQdyna
-% Dunyu Liu (dliu@ig.utexas.edu)
+% Dunyu Liu
 
 x = 70e3; 
 y = 50e3;

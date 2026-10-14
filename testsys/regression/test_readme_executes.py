@@ -34,7 +34,7 @@ never two implementations to keep in sync.
 
 WHY env -i-EQUIVALENT, NOT THE REAL SHELL. This developer's own login shell
 carries PYTHONPATH, EQDYNAROOT and a project venv already exported (this
-very box's ambient `sys.executable` is `.../venv_cotopaxi/bin/python3`, not
+very box's ambient `sys.executable` is `.../venv_workstation/bin/python3`, not
 `/usr/bin/python3`) -- running the README through THAT environment would
 silently paper over exactly the class of bug this gate exists to catch (a
 README step that only works because the tester's shell was already

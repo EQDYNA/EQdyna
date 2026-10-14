@@ -10,7 +10,7 @@ VISCOPLASTIC: deviatoric-stress depth taper 0.0 -> 0.0 m, no taper (devStr is a 
 VISCOPLASTIC: plastic-strain output window half-widths (5000.0, 2000.0, 8000.0) m
 Estimated total cells in the model is 231040
 Estimated memory required is about 0.35580160000000005 GBs
-case test.tpv104  sha c4afa78  host cotopaxi  n_lo/n_hi 20/60  max-busy 0.50
+case test.tpv104  sha c4afa78  host workstation  n_lo/n_hi 20/60  max-busy 0.50
 
 -- 1 rank(s) -- cpus [8]  busy {8: 0.0}  worst 0.00 (max-busy 0.50), whole-box load 19.5
 Traceback (most recent call last):

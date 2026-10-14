@@ -178,6 +178,9 @@ CASE = 'test.tpv104'  # tpv8 runs out of parallel work early (prior session note
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(TESTSYS)),
                                 'src', 'python'))
 from eqdyna.MPI4NodalQuant import DECOMP   # noqa: E402
+from eqdyna.profile_emit import host_label  # noqa: E402  (item 3a follow-up: one shared
+                                             # host-label helper, never a bare
+                                             # socket.gethostname()/os.uname())
 FORTRAN_RANKS = [1, 2, 4, 8, 16, 32]
 PY_THREADS = [1, 2, 4, 8, 16, 32]  # F1: was [1,2,4,8]; now matches FORTRAN_RANKS, both backends
 
@@ -548,7 +551,7 @@ def main():
     print('topology: %d NUMA node(s) x %d cpu(s)' % (len(nodes), per_node))
 
     sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
-    host = os.uname().nodename
+    host = host_label()
     work = tempfile.mkdtemp(prefix='scaling.', dir=os.environ.get('TMPDIR', '/tmp'))
     rows = []
     skipped = []

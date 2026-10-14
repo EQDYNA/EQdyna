@@ -1,6 +1,6 @@
 function gmPlotRSA(dx, np, T, range, xLimit, RBinSize, Rmin, Rmax)
     % gmPlotRSA.m plots RSA distribution on the surface.
-    % Dunyu Liu <dliu@ig.utexas.edu>, 20210715.
+    % Dunyu Liu, 20210715.
     % It loads rsa*.mat, where * is MPI process ID. rsa*.mat is processed by
     % gmGetRSA.m, which calls ResSpecRotD50.m and ResSpecTimeDomVectorized_3.m by Dr. Steven Day.
     % It calls sa_Rrupt.m to get SA vs. rupture distance.

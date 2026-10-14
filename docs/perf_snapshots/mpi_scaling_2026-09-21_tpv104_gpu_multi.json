@@ -1,7 +1,7 @@
 {
  "case": "test.tpv104",
  "sha": "813b952",
- "host": "cotopaxi",
+ "host": "workstation",
  "date": "2026-09-21 22:06",
  "n_lo": 40,
  "n_hi": 200,

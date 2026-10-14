@@ -2,7 +2,7 @@
 % The script plots on fault rupture dynamics from EQdyna.
 % Input: frt.txt* from EQdyna.
 % Last update: 20230511.
-% Author: Dunyu Liu (dliu@ig.utexas.edu).
+% Author: Dunyu Liu.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clear all; close all;
 %%

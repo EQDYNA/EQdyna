@@ -1,7 +1,7 @@
 # DESIGN — item 43 (3D decomposition) + item 64 Stages 1-3 (rank-local mesh)
 
 Date: 2026-09-23. Branch base: `2e1624d`. Status: **DESIGN ONLY, nothing implemented.**
-Author: dliu (agent). Everything below was read out of the tree at `2e1624d`; every
+Everything below was read out of the tree at `2e1624d`; every
 number is labelled measured-elsewhere or not-yet-measured. No run was made for this
 document.
 

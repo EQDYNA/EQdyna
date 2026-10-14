@@ -1,6 +1,6 @@
 function gmGetRSA(dx, dt, gamma, np, T, range, stCoorList)
     % gmGetRSA.m converts binary ground motion output gm* from EQdyna to MATLAB
-    % .mat format. Dunyu Liu <dliu@ig.utexas.edu>, 20210715.
+    % .mat format. Dunyu Liu, 20210715.
     % It calls ResSpecRotD50.m and ResSpecTimeDomVectorized_3.m written by Dr. Steven Day.
 
     NintMax = 5;

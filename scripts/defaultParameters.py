@@ -322,7 +322,7 @@ class parameters:
     HPC_queue = "normal" # q status. Depending on systems, job WALLTIME and Node requested.
     HPC_time  = "00:10:00" # WALLTIME, in hh:mm:ss format.
     HPC_account = "" # Project account to be charged SUs against; set yours -- case.submit refuses an empty one.
-    HPC_email = ""#"dliu@ig.utexas.edu" # Email to receive job status.
+    HPC_email = ""#"user@example.edu" # Email to receive job status.
     
     ##############################################
     ##### Single station time series output ######

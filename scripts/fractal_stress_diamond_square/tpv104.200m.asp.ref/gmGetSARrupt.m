@@ -10,7 +10,7 @@ function [RSAstats, R, numSA, r, sa_rec] = gmGetSARrupt(coor, sa, xLimit, RBinSi
     %   -stat, with a dimension of nr by 2, that stores the mean and std of
     %       PSA for differnet Rrupt.
     %   -R, with a dimension of nr, stores the Rrupt.
-    % Dunyu Liu <dliu@ig.utexas.edu>, 07/22/2021.
+    % Dunyu Liu, 07/22/2021.
     
     nStation = size(coor,1);
     coor     = coor/1e3; % convert to km

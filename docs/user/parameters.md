@@ -358,7 +358,7 @@ Every entry below is an attribute of the `parameters` class in `scripts/defaultP
 
 * **`HPC_email`** -- default `''`
 
-  "dliu@ig.utexas.edu" # Email to receive job status.
+  "user@example.edu" # Email to receive job status.
 
 ## Single station time series output
 

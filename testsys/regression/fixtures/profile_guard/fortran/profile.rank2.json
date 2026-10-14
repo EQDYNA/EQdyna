@@ -3,7 +3,7 @@
 "backend": "fortran",
 "rank": 2,
 "nranks": 4,
-"host": "cotopaxi",
+"host": "workstation",
 "pid": 2052325,
 "cpus_allowed": [16,17,18,19,20,21,22,23],
 "numa_nodes": [2],

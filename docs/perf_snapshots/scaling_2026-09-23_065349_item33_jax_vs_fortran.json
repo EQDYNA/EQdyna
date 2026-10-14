@@ -1,7 +1,7 @@
 {
  "case": "test.tpv104",
  "sha": "078bb4f",
- "host": "cotopaxi",
+ "host": "workstation",
  "loadavg": [
   10.994140625,
   10.23046875,

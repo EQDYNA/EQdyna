@@ -105,5 +105,5 @@ Spec: 50 m preferred / 100 m acceptable, 0-20 s
 https://strike.scec.org/cvws/metric_cvv1_u1/tpv29/metric_cvv1_tpv29_ac_0.html
 Past submissions archived in `scec_archive/tpv29/`.
 
-Provenance: reference frozen from EQdyna at the fault-MPI fix, cotopaxi,
+Provenance: reference frozen from EQdyna at the fault-MPI fix, workstation,
 gfortran 11.4.0 / Open MPI 4.1.1, 2026-09-14.

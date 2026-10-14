@@ -58,6 +58,22 @@ import re
 SCHEMA_ID = 'eqdyna-profile/1'
 BUCKET_KEYS = ('setup', 'element', 'fault', 'exchange', 'wait', 'io')
 OFF_ENV = 'EQDYNA_PROFILE'
+HOST_LABEL_ENV = 'EQDYNA_HOST_LABEL'
+HOST_LABEL_DEFAULT = 'workstation'
+
+
+def host_label():
+    """The host label recorded in every profile/perf-ledger row that this
+    process writes: EQDYNA_HOST_LABEL if set and non-empty, else the neutral
+    default 'workstation' -- never the real hostname by default (item 3a
+    follow-up, 2026-10-14: a bare os.uname()/socket.gethostname() here was
+    how this box's name kept re-leaking into every newly committed
+    perf/profile artifact after the 2026-10-14 scrub of the historical
+    ones). The single helper four call sites share: profile_emit.build_row
+    (this file), testsys/perf/run_perf.py, run_numa_scaling.py,
+    run_scaling.py -- all four import it from here rather than keeping
+    their own os.uname()/socket.gethostname() call."""
+    return os.environ.get(HOST_LABEL_ENV) or HOST_LABEL_DEFAULT
 
 _RANGE_RE = re.compile(r'(\d+)(?:-(\d+))?')
 
@@ -147,7 +163,7 @@ def build_row(backend, rank, nranks, nsteps, buckets_s, loop_s, total_s,
         'backend': backend,
         'rank': int(rank),
         'nranks': int(nranks),
-        'host': os.uname().nodename,
+        'host': host_label(),
         'pid': os.getpid(),
         'cpus_allowed': cpus,
         'numa_nodes': numa_nodes(cpus),

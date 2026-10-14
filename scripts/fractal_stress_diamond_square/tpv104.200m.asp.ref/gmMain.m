@@ -1,7 +1,7 @@
 close all;
 % main program to postproess GM data.
 % It calls gmGetRSA.m and gmPlotRSA.m.
-% Dunyu Liu <dliu@ig.utexas.edu>, 20240109.
+% Dunyu Liu, 20240109.
 addpath('D:\GitHub\EQdyna\gm_utils_steve');
 
 processRawGM = 1; % 1: yes, 2: no;

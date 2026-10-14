@@ -1,6 +1,6 @@
 {
   "git_sha": "f3518a5",
-  "hostname": "cotopaxi",
+  "hostname": "workstation",
   "platform": "Linux-6.8.0-107-generic-x86_64-with-glibc2.35",
   "load_avg": "4.87 5.00 4.90",
   "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",

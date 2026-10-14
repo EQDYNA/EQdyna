@@ -76,7 +76,7 @@ def good_row(**kw):
     """A row shaped like what an emitter produces, with the discriminator."""
     r = dict(ts_utc='2026-09-23T12:00:00Z',
              snapshot_date_local='2026-09-23 12:00',
-             sha='0123abc', host='cotopaxi', tool='run_scaling',
+             sha='0123abc', host='workstation', tool='run_scaling',
              case='test.tpv104', backend='fortran', ranks=16,
              ms_per_step=64.74, rank_ms_min=None, rank_ms_max=None,
              rank_ms_mean=None, effective_cores=None, threads_per_rank=None,
@@ -94,7 +94,7 @@ def good_row(**kw):
 
 
 SCALING_META = dict(
-    case='test.tpv104', sha='abc1234', host='cotopaxi',
+    case='test.tpv104', sha='abc1234', host='workstation',
     date='2026-09-23 11:35', busy_ceiling=0.45,
     rows=[dict(engine='fortran', n=16, policy='compact', ms_per_step=64.74,
                n_lo=20, n_hi=60, cpus=list(range(16)),
@@ -107,7 +107,7 @@ SCALING_META = dict(
                busy={c: 0.0 for c in (0, 8, 16, 24, 32, 40, 48, 56)})])
 
 MPI_META = dict(
-    case='test.tpv104', sha='abc1234', host='cotopaxi',
+    case='test.tpv104', sha='abc1234', host='workstation',
     date='2026-09-23 16:37', n_lo=40, n_hi=160, max_busy=0.6,
     rows=[dict(ranks=4, cpus=[8, 9, 16, 17], n_lo=40, n_hi=160,
                busy={'8': 0.0, '9': 0.0, '16': 0.0, '17': 0.0},
@@ -117,7 +117,7 @@ MPI_META = dict(
                fortran=dict(ms_per_step=101.5))])
 
 E2E_META = dict(
-    tool='run_e2e', sha='abc1234', host='cotopaxi', date='2026-09-23 07:00',
+    tool='run_e2e', sha='abc1234', host='workstation', date='2026-09-23 07:00',
     label='default', device='cpu', jobs_budget=8, tenancy_ceiling=0.5,
     cells=[dict(case='test.tpv8', backend='fortran', ok=True, seconds=41.2,
                 ranks=4, platform='cpu',

@@ -1,7 +1,7 @@
 {
  "tool": "run_e2e",
  "sha": "dbd254a",
- "host": "cotopaxi",
+ "host": "workstation",
  "date": "2026-10-06 00:17",
  "label": "explicit: cases=test.tpv34 backends=fortran",
  "device": "cpu",
