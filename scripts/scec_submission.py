@@ -67,6 +67,10 @@ no run log (without --no-run-log), the frt and the station files disagree
 on the fault count, the frt node spacing disagrees with element_size, a
 field-name token has no spec wording, or a station name cannot be parsed.
 
+COLUMN SELECTION (TPV103/104 only, SPEC_FAULT_FIELDS): the spec lists 9
+on-fault fields ending in psi; our friclaw-4 files also write temperature and
+pore pressure. Those two are dropped; each kept cell keeps its own bytes.
+
 NEVER MODIFIES the run directory.
 """
 import argparse
@@ -112,7 +116,24 @@ COLUMN_LABELS = {
     'v-vel': 'vertical velocity (m/s)',
     'n-disp': 'normal displacement (m)',
     'n-vel': 'normal velocity (m/s)',
+    # TPV103/104 upload spec (uploadTPV103, Section 2): "psi  State variable.
+    # Units: Dimensionless."
+    'psi': 'state variable psi (dimensionless)',
 }
+
+# A spec whose on-fault field list is SHORTER than what our run writes. The
+# packager emits exactly these columns, in this order, and drops the rest
+# (recorded in PROVENANCE.md). TPV103/104 upload spec, Section 2, "On-Fault
+# Time Series Data Fields for TPV103 and TPV104": 9 fields ending in psi. Our
+# friclaw-4 station files add temperature and pore pressure (thermal
+# pressurization), which that spec does not list. Every other TPV keeps every
+# column the run wrote.
+SPEC_FAULT_FIELDS = {
+    tpv: ('t', 'h-slip', 'h-slip-rate', 'h-shear-stress', 'v-slip',
+          'v-slip-rate', 'v-shear-stress', 'n-stress', 'psi')
+    for tpv in ('103', '104')
+}
+RE_CELL = re.compile(r'\s*\S+')
 
 RE_FAULT = re.compile(r'^faultst(?:ft(\d+)_)?(-?\d+)dp(-?\d+)\.txt$')
 RE_BODY = re.compile(r'^body(-?\d+)st(-?\d+)dp(-?\d+)\.txt$')
@@ -281,6 +302,31 @@ def one_value(values, what):
 
 # ------------------------------------------------------------- writers
 
+def select_spec_columns(tpv, kind, field, data):
+    """-> (field, data, dropped). For a TPV in SPEC_FAULT_FIELDS, an
+    on-fault file keeps exactly the spec's columns in the spec's order; each
+    kept cell is copied with its own bytes (padding included), never
+    re-formatted. Refuses when a spec column is missing. Anything else is
+    returned unchanged."""
+    spec = SPEC_FAULT_FIELDS.get(str(tpv))
+    if kind != 'fault' or spec is None:
+        return field, data, []
+    tokens = field.split()
+    missing = [k for k in spec if k not in tokens]
+    if missing:
+        raise SystemExit(f'TPV{tpv} on-fault spec columns missing from the run: '
+                         f'{missing} (run writes: {field})')
+    idx = [tokens.index(k) for k in spec]
+    out = []
+    for row in data:
+        cells = RE_CELL.findall(row)
+        if len(cells) != len(tokens):
+            raise SystemExit(f'{len(cells)} data columns but {len(tokens)} '
+                             f'field names: {field}')
+        out.append(''.join(cells[i] for i in idx))
+    return ' '.join(spec), out, [k for k in tokens if k not in spec]
+
+
 def station_text(meta, hdr, field, data, kind):
     location = [h for h in hdr if re.match(r'#\s*location', h, re.I)]
     tokens = field.split()
@@ -431,8 +477,10 @@ def package(run_dir, tpv, out, commit=None, date=None, label=None,
     meta = dict(problem=f'TPV{tpv}', date=date, version=version,
                 commit=commit, stamp=stamp, dx=dx, dt=dt)
 
-    members = []
+    members, dropped = [], set()
     for kind, ft, coords, path, (hdr, field, data) in parsed:
+        field, data, drop = select_spec_columns(tpv, kind, field, data)
+        dropped.update(drop)
         members.append((submission_name(kind, ft, coords, nft),
                         station_text(meta, hdr, field, data, kind), path))
     for ft, strike, dd, t, _, _ in cplots:
@@ -453,8 +501,12 @@ def package(run_dir, tpv, out, commit=None, date=None, label=None,
             f'- author: {AUTHOR_PLACEHOLDER} -- set in every file header before upload',
             f'- files: {sum(1 for n in names if n.startswith("fault"))} on-fault, '
             f'{sum(1 for n in names if n.startswith("body"))} off-fault, '
-            f'{len(cplots)} cplot', '',
-            'sha256 of each packaged file:', '']
+            f'{len(cplots)} cplot']
+    if dropped:
+        prov.append(f'- on-fault columns dropped (not in the TPV{tpv} upload '
+                    f'spec): {", ".join(sorted(dropped))}')
+    prov += ['',
+             'sha256 of each packaged file:', '']
     prov += [f'    {hashlib.sha256(txt.encode()).hexdigest()}  {n}'
              for n, txt, _ in members]
     members.append(('PROVENANCE.md', '\n'.join(prov) + '\n', None))
