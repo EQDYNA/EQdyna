@@ -99,7 +99,7 @@ def scan_sources():
 
 RANGES = [
     (1, 9,  'Generic'),
-    (11, 19, 'Configuration and parameters'),
+    (10, 19, 'Configuration and parameters'),
     (21, 29, 'Input files'),
     (31, 39, 'Fault geometry'),
     (41, 49, 'Mesh generation and element quality'),

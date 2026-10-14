@@ -50,7 +50,8 @@ class InputConsistencyError(RuntimeError):
         self.code = code
 
 
-# --- 11-19 configuration and parameter consistency (errorCodes.f90:63-65) -
+# --- 10-19 configuration and parameter consistency (errorCodes.f90:63-72) -
+ERR_CFG_NORMAL_STRESS_INPUTS_INVALID = 10  # bGlobal.txt's rate-and-state normal-stress inputs: fric_pc_L set but not finite, caps switch (par.C_normal_stress_caps) not -1, 0 or 1, or not max_norm <= min_norm < 0 (raised by readInputFiles.read_bglobal)
 ERR_CFG_Q_NEEDS_ELASTIC = 11   # C_Q=1 requires C_elastic=1
 ERR_CFG_Q_NEEDS_UNIFORM = 12   # C_Q=1 requires rat=1.0 (uniform elements)
 ERR_CFG_PLASTIC_OUTPUT = 13    # output_plastic=1 requires C_elastic=0
@@ -60,6 +61,7 @@ ERR_CFG_MATERIAL_GRID_INVALID = 17  # bMaterial.txt's 3D material grid (n2mat=6,
 ERR_CFG_FAULT_TS_INVALID = 18  # bGlobal.txt's fault time-series switch (par.outputFaultTimeSeries) is neither 0 nor 1 (raised by readInputFiles.read_bglobal)
 ERR_GEOM_MULTIFAULT_Y_BAD = 32  # a fault's y-plane is not vertical/planar, coincides with another fault's, or (row 17 rebased) a fault's y bound is not an integer multiple of dy from the union-derived uniform-y belt origin (raised by meshgen.py's one_dim_coor_array)
 ERR_GEOM_MULTIFAULT_XZ_BAD = 33  # (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line (raised as InputConsistencyError by meshgen.py's one_dim_coor_array)
+ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE = 65  # rate-and-state (friclaw 3/4/5) normal traction on the fault became >= 0 (not compressive); raised by driver.run/run_mpi after the time loop with time, fault node coordinates and value
 
 # C_Q is never a case-input field (see module docstring) -- hardcoded here
 # exactly as globalvar.f90:104 hardcodes its default, never overridden by

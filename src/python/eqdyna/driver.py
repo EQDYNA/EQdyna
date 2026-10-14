@@ -108,6 +108,68 @@ def _device_peak_gb(jax):
 # integer literal in two places is one place for them to disagree.
 FORCE = 3
 
+# The non-compressive-normal latch, the carry's last entry:
+# [hit (0/1), time (s), step, fault row, normal traction (Pa)]. See part_b.
+NSVIOL_LEN = 5
+
+
+def latch_normal_stress(xp, nsviol, tn, timeElapsed, nt):
+    """nsviol after step nt: [1, time, nt, row, tn[row]] for the lowest fault
+    row whose normal traction tn is >= 0, if nothing is latched yet; else
+    nsviol unchanged. The first event (earliest step, then lowest row -- the
+    order faulting.f90's loops meet it) is kept. Traceable: no Python branch
+    on array values."""
+    bad = tn >= 0.0
+    row = xp.argmax(bad)
+    hit = xp.logical_and(xp.any(bad), nsviol[0] == 0.0)
+    rec = xp.stack([xp.asarray(1.0, dtype=tn.dtype),
+                    xp.asarray(timeElapsed, dtype=tn.dtype),
+                    xp.asarray(nt, dtype=tn.dtype),
+                    xp.asarray(row, dtype=tn.dtype),
+                    tn[row]])
+    return xp.where(hit, rec, nsviol)
+
+
+def latched_normal_stress_error(S, nsviol, rank=None):
+    """The ERR 65 error for a latched non-compressive normal traction, or None.
+
+    Port of faulting.f90's stopNonCompressiveNormal: the same verdict, exit
+    code and printed fields (time, step, fault, node coordinates, value in
+    MPa).
+    Departure, stated: the Fortran stops in the step it happens; the jitted
+    Python loop runs to its end and this is raised after it, so the run
+    costs the full step count but no output is written (the caller raises
+    before any writer runs).
+    """
+    from .checkInputConsistency import (ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE,
+                                        InputConsistencyError)
+    if nsviol[0] == 0.0:
+        return None
+    row = int(nsviol[3])
+    # Fault id and the node's index ON that fault (Fortran's iFault and
+    # iFaultNodePair, 1-based): rows are grouped fault by fault. No
+    # 'fault_of' means no way to name the fault, so refuse rather than
+    # label every node fault 1.
+    if S.get('fault_of') is None:
+        raise ValueError("latched_normal_stress_error: S has no 'fault_of', "
+                         "so the fault of row %d cannot be named" % row)
+    fault_of = np.asarray(S['fault_of'])
+    fault = int(fault_of[row]) + 1
+    pair = int(np.count_nonzero(fault_of[:row] == fault_of[row])) + 1
+    node = int(np.asarray(S['nsmp1'])[row])
+    x, y, z = (float(c) for c in np.asarray(S['meshCoor'])[node, :3])
+    where = '' if rank is None else 'rank %d, ' % rank
+    msg = ('Non-compressive normal traction on the fault: %sfriclaw %d, '
+           'time %.8e s, step %d, fault %d, fault node %d, node x, y, z (m) %.8e %.8e '
+           '%.8e, normal traction %.8e MPa (>= 0). Rate-and-state needs a '
+           'compressive normal stress; for friclaw 5 the pore pressure '
+           'reached the normal stress. Check the initial normal stress, '
+           'fric_tp_pini, or set the normal-stress caps '
+           '(par.C_normal_stress_caps, par.min_norm, par.max_norm).'
+           % (where, int(S['friclaw']), float(nsviol[1]), int(nsviol[2]),
+              fault, pair, x, y, z, float(nsviol[4]) / 1.0e6))
+    return InputConsistencyError(ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE, msg)
+
 
 def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
     """The step, split at driver.f90:27 -- MPI4NodalQuant's position.
@@ -141,7 +203,7 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
 
     def part_a(carry, nt):
         (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
-         sliprate_hist, shear_hist, on_st_hist, off_st_hist) = carry
+         sliprate_hist, shear_hist, on_st_hist, off_st_hist, nsviol) = carry
         timeElapsed = timeElapsed + dt                       # driver.f90:12
 
         v1, velArr, dispArr = velDispUpdate(xp, inv, v1, velArr, dispArr,
@@ -178,16 +240,20 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
         # run_mpi's real MPI exchange). Nothing is exchanged inside part_a;
         # see make_step for what happens at the seam and why it sits here.
         return (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft,
-                timeElapsed, sliprate_hist, shear_hist, on_st_hist, off_st_hist)
+                timeElapsed, sliprate_hist, shear_hist, on_st_hist, off_st_hist,
+                nsviol)
 
     st_on_idx = finv['st_on_idx']
     n_on_st = st_on_idx.shape[0]
     st_ncols_on = finv['st_ncols_on']
     st_sign = finv['st_sign']
+    # Static: only rate-and-state stops on a non-compressive normal traction
+    # (slip-weakening uses an effective normal stress of 0 under tension).
+    nsv_check = friclaw >= 3 and int(finv['nftnd']) > 0
 
     def part_b(carry, nt):
         (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
-         sliprate_hist, shear_hist, on_st_hist, off_st_hist) = carry
+         sliprate_hist, shear_hist, on_st_hist, off_st_hist, nsviol) = carry
 
         if friclaw == 5:                                   # driver.f90:28
             fric = TP.updateThermalPressurization(
@@ -203,6 +269,17 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
             fric, fnft, force = FLT.faulting(xp, finv, fric, fnft, velArr,
                                              dispArr, force, dt, timeElapsed,
                                              tr, nt)
+
+        # faulting.f90 solveRSF's stopNonCompressiveNormal (ERR 65): a
+        # rate-and-state normal traction >= 0 (after the friclaw 5 TP offset
+        # and any caps, i.e. fric[:, TRACT_NORM] as solveRSF stores it) ends
+        # the run. A jitted loop cannot stop mid-loop, so the FIRST such
+        # event -- earliest step, then lowest fault row, the order the
+        # Fortran's do-loops meet it -- is latched here and raised by the
+        # caller after the loop (latched_normal_stress_error).
+        if nsv_check:
+            nsviol = latch_normal_stress(xp, nsviol, fric[:, gv.TRACT_NORM],
+                                         timeElapsed, nt)
 
         # faulting.f90:24 storeOnFaultStationQuantSCEC -- recorded right
         # after faulting (so fric holds THIS step's post-friction-law
@@ -257,7 +334,8 @@ def make_step_parts(xp, inv, finv, tp, mass, scratch, fault_timer=None):
         force = B.setat(xp, force, 0, 0.0)
 
         return (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft,
-                timeElapsed, sliprate_hist, shear_hist, on_st_hist, off_st_hist)
+                timeElapsed, sliprate_hist, shear_hist, on_st_hist, off_st_hist,
+                nsviol)
 
     return part_a, part_b
 
@@ -377,7 +455,8 @@ def run(S, nsteps=None, verbose=True, xp=np):
               xp.full(nftnd, gv.FNFT_SENTINEL),
               xp.asarray(0.0),
               z((nftnd, hist_w)), z((nftnd, hist_w)),
-              z((n_on_st, st_ncols_on, nsteps)), z((n_off_st, 7, nsteps)))
+              z((n_on_st, st_ncols_on, nsteps)), z((n_off_st, 7, nsteps)),
+              z(NSVIOL_LEN))
 
     if verbose:
         print('driver.run: %d steps, backend=%s, friclaw=%d'
@@ -404,7 +483,10 @@ def run(S, nsteps=None, verbose=True, xp=np):
     fault_s = fault_timer['s'] if fault_timer is not None else 0.0
 
     (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
-     sliprate_hist, shear_hist, on_st_hist, off_st_hist) = carry
+     sliprate_hist, shear_hist, on_st_hist, off_st_hist, nsviol) = carry
+    err = latched_normal_stress_error(S, np.asarray(nsviol))
+    if err is not None:
+        raise err
     return dict(velArr=np.asarray(velArr), dispArr=np.asarray(dispArr),
                 fnft=np.asarray(fnft), fric=np.asarray(fric),
                 force=np.asarray(force), fault_s=fault_s,
@@ -529,13 +611,14 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
              xp.full(nftnd_l, gv.FNFT_SENTINEL),
              xp.asarray(0.0),
              z((nftnd_l, hist_w)), z((nftnd_l, hist_w)),
-             z((n_on_st_l, st_ncols_on_l, nsteps)), z((n_off_st_l, 7, nsteps)))
+             z((n_on_st_l, st_ncols_on_l, nsteps)), z((n_off_st_l, 7, nsteps)),
+             z(NSVIOL_LEN))
     # Per-rank carry bytes, from the ALLOCATED arrays rather than recomputed
     # from shapes: the primary check that the subdomain really shrank.
     carry_bytes = {n: int(a.nbytes) for n, a in zip(
         ('v1', 'velArr', 'dispArr', 'force', 'stress_i', 's_p', 'fric',
          'fnft', 'timeElapsed', 'sliprate_hist', 'shear_hist',
-         'on_st_hist', 'off_st_hist'), carry)}
+         'on_st_hist', 'off_st_hist', 'nsviol'), carry)}
     carry_bytes['mass'] = int(mass.nbytes)
 
     # PER-RANK CACHE DIRECTORY. Every rank traces part_a/part_b against its
@@ -564,7 +647,7 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
         return part_b(c, nt)
 
     # DONATE THE CARRY. Without donation each of the two calls allocates a
-    # fresh buffer for every one of the 11 carry entries -- ~120 MB of copy
+    # fresh buffer for every one of the 14 carry entries -- ~120 MB of copy
     # per step on test.tpv104 -- because XLA may not write into an input it
     # does not own. The fused fori_loop of the serial path updates its carry
     # in place and pays none of that, which is why breaking the loop open for
@@ -735,7 +818,21 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
     eff = ((c1[0] - c0[0]) + (c1[1] - c0[1])) / elapsed if elapsed > 0 else 0.0
 
     (v1, velArr, dispArr, force, stress_i, s_p, fric, fnft, timeElapsed,
-     sliprate_hist, shear_hist, on_st_hist, off_st_hist) = carry
+     sliprate_hist, shear_hist, on_st_hist, off_st_hist, nsviol) = carry
+    # ERR 65 on ANY rank stops EVERY rank, with the same message: each rank
+    # contributes its own latch, the earliest event wins (ties: lowest rank),
+    # and all ranks raise it -- one rank raising alone would leave the
+    # others waiting in the next collective.
+    mine = np.asarray(nsviol)
+    msg = None
+    if mine[0] != 0.0:
+        msg = str(latched_normal_stress_error(S, mine, rank=rank))
+    every = comm.allgather((float(mine[1]) if msg else None, rank, msg))
+    hits = sorted(e for e in every if e[2] is not None)
+    if hits:
+        from .checkInputConsistency import (ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE,
+                                            InputConsistencyError)
+        raise InputConsistencyError(ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE, hits[0][2])
     rep = dict(rep, ms_per_step=elapsed / nsteps * 1e3, solve_s=elapsed,
                mpi_ms_per_step=t_mpi / nsteps * 1e3,
                wait_ms_per_step=t_wait / nsteps * 1e3,

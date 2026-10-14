@@ -82,12 +82,32 @@ subroutine readglobal
         if (ios /= 0) call stopStaleGlobal('the station normal-stress sign convention, +1 extension / -1 compression (par.faultStNormalStressSign)')
         if (nStressOutSign /= 1 .and. nStressOutSign /= -1) call abortRun(ERR_CFG_NSTRESS_SIGN_INVALID, &
             'bGlobal.txt station normal-stress sign must be +1 (extension) or -1 (compression); re-run case.setup.')
-        ! Whole-fault time-series switch (output_fault_ts, library_output.f90),
-        ! the file's last line. Same stale/invalid verdicts as the line above.
+        ! Whole-fault time-series switch (output_fault_ts, library_output.f90).
+        ! Same stale/invalid verdicts as the line above.
         read(1001,*,iostat=ios) outputFaultTimeSeries
         if (ios /= 0) call stopStaleGlobal('the fault time-series output switch, 0 off / 1 on (par.outputFaultTimeSeries)')
         if (outputFaultTimeSeries /= 0 .and. outputFaultTimeSeries /= 1) call abortRun(ERR_CFG_FAULT_TS_INVALID, &
             'bGlobal.txt fault time-series output switch must be 0 or 1; re-run case.setup.')
+        ! Rate-and-state normal-stress inputs, the file's last two lines
+        ! (faulting.f90's rate_state_normal_stress and solveRSF). Until these
+        ! lines existed L was always the node's Dc and the caps were fixed
+        ! -10/-40 MPa applied iff insertFaultType>0 and C_elastic==1; the
+        ! defaults case.setup writes (L unset, switch -1) keep exactly that.
+        read(1001,*,iostat=ios) C_fric_pc_L, fric_pc_L
+        if (ios /= 0 .or. C_fric_pc_L < 0 .or. C_fric_pc_L > 1) call stopStaleGlobal( &
+            'the theta_pc relaxation length line "set L": set 0 = unset (each node''s Dc), set 1 = L, m (<= 0 no relaxation) (par.fric_pc_L)')
+        ! A set L must be finite (NaN /= NaN; |inf| > huge), as case.setup
+        ! requires: the file is current but the value is not one.
+        if (C_fric_pc_L == 1 .and. (fric_pc_L /= fric_pc_L .or. abs(fric_pc_L) > huge(fric_pc_L))) &
+            call abortRun(ERR_CFG_NORMAL_STRESS_INPUTS_INVALID, &
+            'bGlobal.txt theta_pc relaxation length (par.fric_pc_L) is set but not finite; ' // &
+            'use None (each node''s Dc), <= 0 (no relaxation) or a length in m, and re-run case.setup.')
+        read(1001,*,iostat=ios) C_normal_stress_caps, min_norm, max_norm
+        if (ios /= 0) call stopStaleGlobal('the normal-stress caps switch and min_norm max_norm, Pa (par.C_normal_stress_caps/min_norm/max_norm)')
+        if (C_normal_stress_caps < -1 .or. C_normal_stress_caps > 1) call abortRun(ERR_CFG_NORMAL_STRESS_INPUTS_INVALID, &
+            'bGlobal.txt normal-stress caps switch must be -1 (caps iff insertFaultType>0 and C_elastic==1), 0 (off) or 1 (on); re-run case.setup.')
+        if (.not. (max_norm <= min_norm .and. min_norm < 0.0d0)) call abortRun(ERR_CFG_NORMAL_STRESS_INPUTS_INVALID, &
+            'bGlobal.txt normal-stress caps need max_norm <= min_norm < 0 (Pa, negative is compressive); re-run case.setup.')
 
     close(1001)
     str1ToFaultAngle = str1ToFaultAngle*pi/180.0d0 !convert degrees to radian

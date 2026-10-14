@@ -44,10 +44,18 @@ BGLOBAL = ('1\n1\n1\n0\n0\n1\n1\n1\n8\n0\n0\n0\n \n2 2 1\n \n5.0\n'
            '0.043736878936319105\n \n1 3\n2670.0 1000.0 0.66\n0.1 6000.0\n \n'
            '0.0 0.0 -12000.0\n1500.0 -9999.0 50000000.0 1.0\n45.0 0.33\n'
            '0.75 5000000.0\n270.0 90.0\n0.001\n \n0.28868360277136257\n'
-           '0.0 0.0\n5000.0 2000.0 8000.0\n1\n0\n')
-# Everything before the sign line; the file then ends with the sign line and
-# the fault time-series switch (par.outputFaultTimeSeries), in that order.
-HEAD = BGLOBAL[:-len('1\n0\n')]
+           '0.0 0.0\n5000.0 2000.0 8000.0\n1\n0\n0 0.0\n-1 -10000000.0 -40000000.0\n')
+# The file's last two lines: the theta_pc relaxation length as "set L"
+# (par.fric_pc_L; set 0 = unset, each node's Dc; set 1 = L, <= 0 no
+# relaxation) and the normal-stress caps switch and values
+# (par.C_normal_stress_caps, min_norm, max_norm), as case.setup writes the
+# defaults.
+TAIL = '0 0.0\n-1 -10000000.0 -40000000.0\n'
+# Everything before the sign line; the file then has the sign line, the
+# fault time-series switch (par.outputFaultTimeSeries) and TAIL, in that order.
+HEAD = BGLOBAL[:-len('1\n0\n' + TAIL)]
+# Everything before TAIL.
+PRE_TAIL = HEAD + '1\n0\n'
 
 
 def write_station(d, name, nstress):
@@ -145,8 +153,8 @@ def main():
         if got != want:
             fails.append('%s: gate returned %s' % (label, got))
 
-    # 4. read_bglobal: the new last line is read, and a missing or invalid one
-    # is REFUSED, not defaulted (rule 2). BGLOBAL is test.tpv8's real
+    # 4. read_bglobal: the trailing lines are read, and a missing or invalid
+    # one is REFUSED, not defaulted (rule 2). BGLOBAL is test.tpv8's real
     # case.setup output (5 s gate term), verbatim.
     sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
     from eqdyna import checkInputConsistency, readInputFiles
@@ -157,15 +165,43 @@ def main():
         # The time-series switch after it is pinned the same way: missing is
         # stale, anything but 0/1 is refused with code 18.
         variants = [('nStressOutSign', 'as written (+1)', BGLOBAL, 1),
-                    ('nStressOutSign', 'compression (-1)', HEAD + '-1\n0\n', -1),
-                    ('nStressOutSign', 'MUTATION last two lines missing', HEAD, 'stale'),
-                    ('nStressOutSign', 'MUTATION value 0', HEAD + '0\n0\n', 'exit 15'),
-                    ('nStressOutSign', 'MUTATION value 2', HEAD + '2\n0\n', 'exit 15'),
+                    ('nStressOutSign', 'compression (-1)', HEAD + '-1\n0\n' + TAIL, -1),
+                    ('nStressOutSign', 'MUTATION sign line onward missing', HEAD, 'stale'),
+                    ('nStressOutSign', 'MUTATION value 0', HEAD + '0\n0\n' + TAIL, 'exit 15'),
+                    ('nStressOutSign', 'MUTATION value 2', HEAD + '2\n0\n' + TAIL, 'exit 15'),
                     ('outputFaultTimeSeries', 'as written (0)', BGLOBAL, 0),
-                    ('outputFaultTimeSeries', 'on (1)', HEAD + '1\n1\n', 1),
-                    ('outputFaultTimeSeries', 'MUTATION last line missing', HEAD + '1\n', 'stale'),
-                    ('outputFaultTimeSeries', 'MUTATION value 2', HEAD + '1\n2\n', 'exit 18'),
-                    ('outputFaultTimeSeries', 'MUTATION value -1', HEAD + '1\n-1\n', 'exit 18')]
+                    ('outputFaultTimeSeries', 'on (1)', HEAD + '1\n1\n' + TAIL, 1),
+                    ('outputFaultTimeSeries', 'MUTATION switch line onward missing', HEAD + '1\n', 'stale'),
+                    ('outputFaultTimeSeries', 'MUTATION value 2', HEAD + '1\n2\n' + TAIL, 'exit 18'),
+                    ('outputFaultTimeSeries', 'MUTATION value -1', HEAD + '1\n-1\n' + TAIL, 'exit 18'),
+                    # The rate-and-state normal-stress lines (issues 189/200):
+                    # missing is stale, an invalid switch or caps order is
+                    # refused with code 10, as readglobal does.
+                    ('fric_pc_L', 'as written (unset, each node Dc)', BGLOBAL, None),
+                    ('fric_pc_L', 'set (0.004 m)', PRE_TAIL + '1 0.004\n-1 -10000000.0 -40000000.0\n', 0.004),
+                    ('fric_pc_L', 'set 0 (no relaxation)', PRE_TAIL + '1 0.0\n-1 -10000000.0 -40000000.0\n', 0.0),
+                    ('fric_pc_L', 'set -1 (no relaxation)', PRE_TAIL + '1 -1.0\n-1 -10000000.0 -40000000.0\n', -1.0),
+                    ('fric_pc_L', 'unset ignores the value', PRE_TAIL + '0 0.5\n-1 -10000000.0 -40000000.0\n', None),
+                    ('fric_pc_L', 'MUTATION both lines missing', PRE_TAIL, 'stale'),
+                    ('fric_pc_L', 'MUTATION not a number', PRE_TAIL + '1 x\n-1 -1e7 -4e7\n', 'stale'),
+                    ('fric_pc_L', 'MUTATION old one-number line', PRE_TAIL + '0.004\n-1 -1e7 -4e7\n', 'stale'),
+                    ('fric_pc_L', 'MUTATION set flag 2', PRE_TAIL + '2 0.1\n-1 -1e7 -4e7\n', 'stale'),
+                    ('fric_pc_L', 'MUTATION set nan', PRE_TAIL + '1 nan\n-1 -1e7 -4e7\n', 'exit 10'),
+                    ('fric_pc_L', 'MUTATION set inf', PRE_TAIL + '1 inf\n-1 -1e7 -4e7\n', 'exit 10'),
+                    ('fric_pc_L', 'MUTATION set -inf', PRE_TAIL + '1 -inf\n-1 -1e7 -4e7\n', 'exit 10'),
+                    ('fric_pc_L', 'unset ignores a nan', PRE_TAIL + '0 nan\n-1 -1e7 -4e7\n', None),
+                    ('C_normal_stress_caps', 'as written (-1)', BGLOBAL, -1),
+                    ('C_normal_stress_caps', 'on (1)', PRE_TAIL + '0 0.0\n1 -5e6 -60e6\n', 1),
+                    ('min_norm', 'set (-5 MPa)', PRE_TAIL + '0 0.0\n1 -5e6 -60e6\n', -5e6),
+                    ('max_norm', 'set (-60 MPa)', PRE_TAIL + '0 0.0\n1 -5e6 -60e6\n', -60e6),
+                    ('max_norm', 'equal to min_norm', PRE_TAIL + '0 0.0\n1 -5e6 -5e6\n', -5e6),
+                    ('C_normal_stress_caps', 'MUTATION caps line missing', PRE_TAIL + '0 0.0\n', 'stale'),
+                    ('C_normal_stress_caps', 'MUTATION caps line short', PRE_TAIL + '0 0.0\n-1 -1e7\n', 'stale'),
+                    ('C_normal_stress_caps', 'MUTATION switch 2', PRE_TAIL + '0 0.0\n2 -1e7 -4e7\n', 'exit 10'),
+                    ('C_normal_stress_caps', 'MUTATION switch -2', PRE_TAIL + '0 0.0\n-2 -1e7 -4e7\n', 'exit 10'),
+                    ('C_normal_stress_caps', 'MUTATION min_norm < max_norm', PRE_TAIL + '0 0.0\n-1 -4e7 -1e7\n', 'exit 10'),
+                    ('C_normal_stress_caps', 'MUTATION min_norm 0', PRE_TAIL + '0 0.0\n-1 0.0 -4e7\n', 'exit 10'),
+                    ('C_normal_stress_caps', 'MUTATION min_norm tensile', PRE_TAIL + '0 0.0\n0 1e6 -4e7\n', 'exit 10')]
         for key, label, text, want in variants:
             with open(path, 'w') as f:
                 f.write(text)

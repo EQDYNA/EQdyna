@@ -693,6 +693,12 @@ def build_solver_state(case_dir, part=None):
         # extension-positive / -1 compression-positive, read from bGlobal.txt
         # exactly as readInputFiles.f90 reads it (board row 22a, PR #20).
         nStressOutSign=float(g['nStressOutSign']),
+        # Rate-and-state normal-stress inputs (bGlobal.txt's last two lines):
+        # theta_pc relaxation length L (None: unset, each node's Dc; <= 0: no
+        # relaxation; > 0: L in m) and the caps switch/values, read exactly
+        # as readInputFiles.f90's readglobal does.
+        fric_pc_L=g['fric_pc_L'], C_normal_stress_caps=int(g['C_normal_stress_caps']),
+        min_norm=float(g['min_norm']), max_norm=float(g['max_norm']),
         st_on_idx=st_on_idx, st_on_strike_m=st_on_strike_m, st_on_depth_m=st_on_depth_m,
         st_on_fault=st_on_fault,
         st_off_idx=st_off_idx, st_off_x_m=st_off_x_m, st_off_y_m=st_off_y_m,

@@ -116,14 +116,25 @@ def rate_state_slip_law(xp, V2, psi, fric, dt):
     return xmu, dxmudv, psi_new
 
 
-def rate_state_normal_stress(xp, V2, theta_pc, tnrm, fric, dt):
-    """faulting.f90:39-56 -- Shi & Day (2013) eq. B8 normal-stress state.
+def rate_state_normal_stress(xp, V2, theta_pc, tnrm, fric, dt, L_pc=None):
+    """faulting.f90 rate_state_normal_stress -- Shi & Day (2013) eq. B8
+    normal-stress state.
 
     Lives in faulting.f90 rather than fric.f90 in the Fortran, but it is a
     constitutive update like the three above and is only ever called from
     the RSF solver, so it is kept with them. Returns (theta_pc_new,
-    theta_pc_dot); L is Dc, reused as L_pc (the Fortran's own comment).
+    theta_pc_dot). L_pc is par.fric_pc_L, a static Python value with
+    EQquasi's meaning for every number:
+      None (default, unset): each node's Dc, the only choice before the
+          input existed;
+      <= 0: no relaxation, theta_pc = |tnrm| at once (a branch, so L = 0
+          never divides); theta_pc_dot is the step's realised rate;
+      > 0: one L, in m, for every node.
+    A trace-time branch, as in the Fortran.
     """
-    L = fric[:, gv.RSF_DC]
+    if L_pc is not None and L_pc <= 0.0:
+        tabs = xp.abs(tnrm)
+        return tabs, (tabs - theta_pc) / dt
+    L = fric[:, gv.RSF_DC] if L_pc is None else L_pc
     theta_pc_dot = -V2 / L * (theta_pc - xp.abs(tnrm))
     return theta_pc + theta_pc_dot * dt, theta_pc_dot
