@@ -85,6 +85,18 @@ HOST_EXEMPT = {'docs/perf_ledger.jsonl'}
 # the same file, not a second hand-maintained path.
 PERF_LEDGER_PATH = 'docs/perf_ledger.jsonl'
 
+# PINNED cutoff (item 3a follow-up, 2026-10-14): the row count of
+# docs/perf_ledger.jsonl at the moment the writers stopped recording the real
+# hostname (profile_emit.host_label(), PR #209 follow-up). A row index below
+# this is historical and covered by HOST_EXEMPT; every row at or past it is
+# from here on and must never carry the real hostname. This MUST be a fixed
+# constant, not a HEAD-vs-working-tree diff: the two are identical in CI and
+# right after any commit, so a diff-based check can never fail on a newly
+# COMMITTED leak (the bug rule 14a exists to catch -- a command that can only
+# ever come out one way). Bump this only when the owner re-confirms the
+# historical boundary is being moved; never bump it to make a new leak pass.
+HISTORICAL_HOST_ROWS = 1675
+
 # Built from fragments so this file's own source never matches its own
 # check (a plain scan for the literal pattern strings would self-trip).
 _TMP_SCRATCH = '/' + 'tmp/claude-'
@@ -123,43 +135,39 @@ def git_grep_matches(pattern):
 
 
 def new_ledger_rows_are_clean():
-    """HOST_EXEMPT covers docs/perf_ledger.jsonl's PAST rows only (item 3a
-    follow-up, 2026-10-14: the writers now record host_label() instead of the
-    real hostname, so no row appended from here on should carry it). Narrow
-    the exemption's actual scope by diffing the committed HEAD row count
-    against the working-tree row count and scanning only the rows past that
-    point -- never editing, never re-reading, the historical rows the
-    append-only guard (test_perf_ledger.py check 6) protects.
+    """HOST_EXEMPT covers docs/perf_ledger.jsonl's rows [0, HISTORICAL_HOST_ROWS)
+    only (item 3a follow-up, 2026-10-14: the writers now record host_label()
+    instead of the real hostname, so no row at or past that pinned index
+    should ever carry it). The cutoff is the fixed constant
+    HISTORICAL_HOST_ROWS, not a HEAD-vs-working-tree diff -- a diff-based
+    check is identical on both sides once a row is committed (in CI, or right
+    after `git commit` locally), so it can never fail on a newly COMMITTED
+    leak; rule 14a forbids exactly that shape of check. Reads the CURRENT
+    working-tree file directly (whatever is checked out, committed or not)
+    and never edits it, never re-reads HEAD -- the historical rows the
+    append-only guard (test_perf_ledger.py check 6) protects are rows
+    [0, HISTORICAL_HOST_ROWS) by construction and are never inspected here.
 
-    Returns (ok, message). ok is False if a NEW row (appended past HEAD's
-    row count) carries the real hostname; the historical rows are never
-    inspected by this check at all."""
+    Returns (ok, message). ok is False if any row at index >=
+    HISTORICAL_HOST_ROWS carries the real hostname."""
     path = os.path.join(ROOT, PERF_LEDGER_PATH)
     if not os.path.exists(path):
         return True, 'docs/perf_ledger.jsonl not present in working tree -- nothing to check'
-    r = subprocess.run(['git', 'show', 'HEAD:%s' % PERF_LEDGER_PATH],
-                        cwd=ROOT, capture_output=True, text=True, timeout=60)
-    if r.returncode != 0:
-        raise RuntimeError('git show HEAD:%s failed (exit %d): %s'
-                           % (PERF_LEDGER_PATH, r.returncode, r.stderr))
-    head_lines = r.stdout.splitlines()
     with open(path) as f:
-        work_lines = f.read().splitlines()
-    new_lines = work_lines[len(head_lines):]
-    if not new_lines:
-        return True, ('0 new row(s) past HEAD\'s %d committed row(s) -- '
-                      'nothing new to check' % len(head_lines))
-    bad = [i for i, line in enumerate(new_lines, start=len(head_lines) + 1)
+        lines = f.read().splitlines()
+    new_lines = lines[HISTORICAL_HOST_ROWS:]
+    bad = [i for i, line in enumerate(new_lines, start=HISTORICAL_HOST_ROWS)
            if _HOST in line]
     if bad:
-        return False, ('%d new row(s) past HEAD\'s %d committed row(s) carry '
-                       'the real hostname at line(s) %s -- the ledger '
-                       'writers must record host_label() (see '
-                       'src/python/eqdyna/profile_emit.py), not the real '
-                       'hostname, for any row appended from here on'
-                       % (len(bad), len(head_lines), bad))
-    return True, ('PASS  %d new row(s) past HEAD\'s %d committed row(s), '
-                  '0 carry the real hostname' % (len(new_lines), len(head_lines)))
+        return False, ('%d row(s) at or past the pinned historical cutoff '
+                       '(index %d) carry the real hostname, at row index(es) '
+                       '%s -- the ledger writers must record host_label() '
+                       '(see src/python/eqdyna/profile_emit.py), not the '
+                       'real hostname, for any row at or past that cutoff'
+                       % (len(bad), HISTORICAL_HOST_ROWS, bad))
+    return True, ('PASS  %d row(s) at or past the pinned historical cutoff '
+                  '(index %d), 0 carry the real hostname'
+                  % (len(new_lines), HISTORICAL_HOST_ROWS))
 
 
 def main():
