@@ -90,7 +90,8 @@ def build(S):
         min_norm=float(S.get('min_norm', gv.MIN_NORM)),
         max_norm=float(S.get('max_norm', gv.MAX_NORM)),
         # faulting.f90 solveSWTW's trace-corner test, precomputed: the node is
-        # on the free surface (z > -1e-3) of a non-vertical fault.
+        # on the free surface (z > -1e-3) of a non-vertical fault -- dipping
+        # planar or rough (TPV29/30's trace has un_z != 0).
         on_trace=(coords[:, 2] > -1.0e-3) & (np.abs(np.asarray(S['un'])[:, 2]) > 1.0e-6),
     )
 

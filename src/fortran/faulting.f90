@@ -206,8 +206,10 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, ns
     ! this cap the no-opening constraint force at the corner node is reported
     ! and applied as a tensile Tn that GROWS with refinement (TPV13 dp000 at
     ! 4 s: -11.76/+1.96/+8.43 MPa at 500/200/100 m; four other codes at 100 m
-    ! 0.70..1.91; FD codes in 2D at <=25 m 0.10..0.39). Vertical faults
-    ! (un_z = 0) and every node below the surface are untouched.
+    ! 0.70..1.91; FD codes in 2D at <=25 m 0.10..0.39). Planar vertical
+    ! faults (un_z = 0) and every node below the surface are untouched; a
+    ! rough fault's trace (TPV29/30, un_z /= 0, us_z = 0) is capped too. The
+    ! cap is a bound, not t_z = 0 imposed: a tensile Tn below it is kept.
     if (nsdTractionVector(1) > 0.0d0 .and. meshCoor(3,nsmp(1,iFaultNodePair,iFault)) > -1.0d-3 &
         .and. abs(un(3,iFaultNodePair,iFault)) > 1.0d-6) then
         nsdTractionVector(1) = min(nsdTractionVector(1), &
