@@ -318,10 +318,33 @@ TIERS = ('unit', 'regression', 'e2e')
 sys.stdout.reconfigure(line_buffering=True)
 
 
+def _banner(name):
+    print('\n==== testsys: %s ====' % name)
+
+
+def _run_script(*args, env=None):
+    """subprocess.call of `sys.executable <args>` from REPO_ROOT -- the one
+    shape shared by every RUNNER below that is a single bare subprocess
+    invocation (run_unit, run_scaling, run_perf, run_e2e_full, run_readme).
+    Runners with extra per-call logic (run_regression's exclusion filter and
+    per-script banner, run_profile_overhead's per-backend loop, _e2e's env
+    merge) keep their own subprocess.call."""
+    return subprocess.call([sys.executable] + list(args), cwd=REPO_ROOT, env=env)
+
+
+def _report(rc, label):
+    """The SUCCESS/FAIL(exit N) line shared by run_regression,
+    run_profile_overhead, and main()'s final SUMMARY loop. Returns rc
+    unchanged so a caller can fold it straight into `overall = overall or
+    _report(rc, label)`."""
+    print(f'{"SUCCESS" if rc == 0 else "FAIL"} {label} (exit {rc})')
+    return rc
+
+
 def run_unit():
     d = os.path.join(TESTSYS, 'unit')
-    print('\n==== testsys: unit ====')
-    return subprocess.call([sys.executable, '-m', 'pytest', '-v', d], cwd=REPO_ROOT)
+    _banner('unit')
+    return _run_script('-m', 'pytest', '-v', d)
 
 
 def run_regression():
@@ -344,7 +367,7 @@ def run_regression():
     part of THIS sweep. Paired with check_pretag_ci.py (rule 15/25) as the
     explicit release-time check instead."""
     from testsys import regression_sweep_exclusions
-    print('\n==== testsys: regression ====')
+    _banner('regression')
     scripts = sorted(
         p for p in glob.glob(os.path.join(TESTSYS, 'regression', 'test_*.py'))
         if os.path.basename(p) not in regression_sweep_exclusions.EXCLUDED_FROM_SWEEP)
@@ -355,9 +378,8 @@ def run_regression():
     for script in scripts:
         name = os.path.basename(script)
         print(f'-- {name} --')
-        rc = subprocess.call([sys.executable, script], cwd=REPO_ROOT)
-        print(f'{"SUCCESS" if rc == 0 else "FAIL"} {name} (exit {rc})')
-        overall = overall or rc
+        rc = _run_script(script)
+        overall = _report(rc, name) or overall
     return overall
 
 
@@ -391,7 +413,7 @@ def run_e2e():
     test.tpv23, held out for wall-clock cost only -- see matrix.RELEASE_ONLY's
     own comment), at matrix.gate_term_for(case) (matrix.GATE_TERM_S for every
     case not in matrix.CASE_TERM_OVERRIDE)."""
-    print('\n==== testsys: e2e ====')
+    _banner('e2e')
     return _e2e()
 
 
@@ -403,7 +425,7 @@ def run_e2e_ci():
     not physics coverage -- that job belongs to `e2e` and `release` now. This
     is a declared selection, not a magic env var: the run prints which cells
     it covered and which it did not."""
-    print('\n==== testsys: e2e-ci ====')
+    _banner('e2e-ci')
     return _e2e('--ci')
 
 
@@ -513,7 +535,7 @@ def run_release():
     required to run standalone; nothing before it in the same invocation
     is known to dirty the tree, and if that ever changes the release
     evidence will say so rather than silently passing."""
-    print('\n==== testsys: release ====')
+    _banner('release')
     skip, msg = _release_sweep_carry_forward()
     print('testsys: release: %s' % msg)
     if skip:
@@ -526,7 +548,7 @@ def run_gpu():
     not a tier of its own: JAX_PLATFORMS=cuda, same cases, same references,
     same per-case bounds. Fails loudly if there is no CUDA device -- "no GPU
     here" and "the GPU column passed" must not share an exit code (rule 2)."""
-    print('\n==== testsys: gpu ====')
+    _banner('gpu')
     try:
         import jax
     except Exception as exc:                        # noqa: BLE001
@@ -555,30 +577,25 @@ def run_readme():
     non-empty. ~2-4 minutes -- opt-in, never swept into `all`, for the same
     reason e2e-full and perf are not (rule 9: a fresh checkout's `run.py
     regression` must stay seconds-scale)."""
-    print('\n==== testsys: readme ====')
+    _banner('readme')
     env = dict(os.environ)
     env['EQDYNA_README_GATE'] = 'full'
-    return subprocess.call(
-        [sys.executable, os.path.join(TESTSYS, 'regression', 'test_readme_executes.py')],
-        cwd=REPO_ROOT, env=env)
+    return _run_script(os.path.join(TESTSYS, 'regression', 'test_readme_executes.py'), env=env)
 
 
 def run_e2e_full():
-    print('\n==== testsys: e2e-full ====')
-    return subprocess.call(
-        [sys.executable, os.path.join(TESTSYS, 'e2e', 'run_e2e.py'), '--full'],
-        cwd=REPO_ROOT)
+    _banner('e2e-full')
+    return _run_script(os.path.join(TESTSYS, 'e2e', 'run_e2e.py'), '--full')
 
 
 def run_scaling():
-    print('\n==== testsys: scaling ====')
-    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'perf', 'run_scaling.py')], cwd=REPO_ROOT)
+    _banner('scaling')
+    return _run_script(os.path.join(TESTSYS, 'perf', 'run_scaling.py'))
 
 
 def run_perf():
-    print('\n==== testsys: perf ====')
-    return subprocess.call([sys.executable, os.path.join(TESTSYS, 'perf', 'run_perf.py')],
-                            cwd=REPO_ROOT)
+    _banner('perf')
+    return _run_script(os.path.join(TESTSYS, 'perf', 'run_perf.py'))
 
 
 def run_profile_overhead():
@@ -595,7 +612,7 @@ def run_profile_overhead():
     (profile_overhead.py's own module docstring). `EQDYNA_PROFILE_OVERHEAD_CASE`
     defaults to test.tpv8 (the case this gate's owner measured against).
     `EQDYNA_PROFILE_OVERHEAD_RANKS` defaults to 4 for the two MPI backends."""
-    print('\n==== testsys: profile-overhead ====')
+    _banner('profile-overhead')
     cpus = os.environ.get('EQDYNA_PROFILE_OVERHEAD_CPUS')
     if not cpus:
         print('profile-overhead: FAIL - EQDYNA_PROFILE_OVERHEAD_CPUS is not '
@@ -613,8 +630,7 @@ def run_profile_overhead():
         if backend in ('fortran', 'python-jax-mpi'):
             cmd += ['--ranks', ranks]
         rc = subprocess.call(cmd, cwd=REPO_ROOT)
-        print(f'{"SUCCESS" if rc == 0 else "FAIL"} profile-overhead {backend} (exit {rc})')
-        overall = overall or rc
+        overall = _report(rc, 'profile-overhead %s' % backend) or overall
     return overall
 
 
@@ -905,9 +921,7 @@ def main(argv):
         print('tiers run: %s' % ', '.join(selected))
         overall = 0
         for tier in selected:
-            rc = results[tier]
-            print(f'{"SUCCESS" if rc == 0 else "FAIL"} {tier} (exit {rc})')
-            overall = overall or rc
+            overall = _report(results[tier], tier) or overall
 
         return 1 if overall else 0
     finally:
