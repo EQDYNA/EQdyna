@@ -89,6 +89,10 @@ def build(S):
         C_normal_stress_caps=int(S.get('C_normal_stress_caps', -1)),
         min_norm=float(S.get('min_norm', gv.MIN_NORM)),
         max_norm=float(S.get('max_norm', gv.MAX_NORM)),
+        # faulting.f90 solveSWTW's trace-corner test, precomputed: the node is
+        # on the free surface (z > -1e-3) of a non-vertical fault -- dipping
+        # planar or rough (TPV29/30's trace has un_z != 0).
+        on_trace=(coords[:, 2] > -1.0e-3) & (np.abs(np.asarray(S['un'])[:, 2]) > 1.0e-6),
     )
 
 
@@ -337,6 +341,15 @@ def solveSWTW(xp, finv, fric, fnft, comps, force, timeElapsed, tr, friclaw):
     scale = xp.where(over, trialShear / xp.where(Tmag == 0, 1.0, Tmag), 1.0)
     Ts = Ts * scale
     Td = Td * scale
+
+    # faulting.f90 solveSWTW, free-surface trace corner (item 149): on a
+    # non-vertical fault's surface trace, t_z = 0 caps a tensile Tn at
+    # |Td*ud_z/un_z| (same operand order as the Fortran). on_trace is the
+    # static node mask built in build().
+    trace = finv['on_trace']
+    unz = xp.where(trace, un[:, 2], 1.0)
+    Tn = xp.where(trace & (Tn > 0.0),
+                  xp.minimum(Tn, xp.abs(Td * ud[:, 2] / unz)), Tn)
 
     xTrac = xp.stack(list(_unrot(Tn, Ts, Td, un, us, ud)), axis=1) * arn[:, None]
     iN = fric[:, gv.INIT_NORM]; iS = fric[:, gv.INIT_STRIKE_SHEAR]

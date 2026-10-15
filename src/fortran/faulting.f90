@@ -195,7 +195,27 @@ subroutine solveSWTW(iFault, iFaultNodePair, iFrictionLaw, nsdTractionVector, ns
         ! adjust dip shear traction
         nsdTractionVector(3) = nsdTractionVector(3)*trialShearTraction/nsdTractionVector(4)
     endif
-    
+
+    ! Free-surface trace corner (item 149, TPV12/13 st000dp000). A fault node
+    ! ON the free surface z=0 of a NON-vertical fault sits where the
+    ! traction-free condition sigma.e_z = 0 meets the fault: the fault-face
+    ! traction t = sigma.n then has t_z = 0, i.e. Tn*un_z + Td*ud_z = 0
+    ! (us_z = 0 on the trace), so Tn = |Td*ud_z/un_z| at most. In tension the
+    ! spec (TPV12_13_Description_v6 p.10) zeroes the effective normal stress,
+    ! so |Td| <= c0 and Tn <= c0*tan(dip) (0.35 MPa for TPV12/13). Without
+    ! this cap the no-opening constraint force at the corner node is reported
+    ! and applied as a tensile Tn that GROWS with refinement (TPV13 dp000 at
+    ! 4 s: -11.76/+1.96/+8.43 MPa at 500/200/100 m; four other codes at 100 m
+    ! 0.70..1.91; FD codes in 2D at <=25 m 0.10..0.39). Planar vertical
+    ! faults (un_z = 0) and every node below the surface are untouched; a
+    ! rough fault's trace (TPV29/30, un_z /= 0, us_z = 0) is capped too. The
+    ! cap is a bound, not t_z = 0 imposed: a tensile Tn below it is kept.
+    if (nsdTractionVector(1) > 0.0d0 .and. meshCoor(3,nsmp(1,iFaultNodePair,iFault)) > -1.0d-3 &
+        .and. abs(un(3,iFaultNodePair,iFault)) > 1.0d-6) then
+        nsdTractionVector(1) = min(nsdTractionVector(1), &
+            abs(nsdTractionVector(3)*ud(3,iFaultNodePair,iFault)/un(3,iFaultNodePair,iFault)))
+    endif
+
     xyzTractionVector(1:3) = (nsdTractionVector(1)*un(1:3,iFaultNodePair,iFault) &
                             + nsdTractionVector(2)*us(1:3,iFaultNodePair,iFault) &
                             + nsdTractionVector(3)*ud(1:3,iFaultNodePair,iFault)) * arn(iFaultNodePair,iFault) !x,y,z
