@@ -72,16 +72,20 @@ and is linked, not copied, from the "details" column below.
 | test.tpv33 | strike-slip, single vertical planar fault, fault-parallel low-velocity zone (n2mat==6 grid, single-axis variation), constant-amplitude initial stress, static nucleation patch | [TPV33](https://strike.scec.org/cvws/tpv33docs.html) | 12.5-25 m / 13 s | [README](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv33/README.md) |
 | test.tpv12 | 60-degree dipping normal fault, linear elastic, reduced-static-friction nucleation patch, SCEC Method 1 (stress change, no gravity) | [TPV12/13](https://strike.scec.org/cvws/tpv12_13docs.html) | 100 m / 8 s | [README](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv12/README.md) |
 | test.tpv13 | same geometry/nucleation as test.tpv12, adding off-fault Drucker-Prager viscoplasticity, SCEC Method 2 (explicit gravity, full stress tensor) | [TPV12/13](https://strike.scec.org/cvws/tpv12_13docs.html) | 100 m / 8 s | [README](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv13/README.md) |
+| test.tpv36 | dipping thrust fault, wedge degeneration, slip-weakening | [TPV36/37](https://strike.scec.org/cvws/tpv36_37docs.html) | 100 m / 5 s (gate term) | [params](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv36/user_defined_params.py) |
+| test.tpv37 | same geometry/nucleation as test.tpv36, differs in hypocentre/station grid per spec | [TPV36/37](https://strike.scec.org/cvws/tpv36_37docs.html) | 100 m / 5 s (gate term) | [params](https://github.com/EQDYNA/EQdyna/blob/master/case_input/test.tpv37/user_defined_params.py) |
 
 `test.tpv22`/`test.tpv23` run at their own 15.0 s gate term, not the everyday
 5.0 s one (the spec requires 15 s post-nucleation for fault #2 to rupture at
 all), and are checked only before a release, not in the everyday sweep,
 because running two faults at that longer term costs measurably more than
 the everyday cases. They ship with no `README.md` yet (see the
-`user_defined_params.py` link above instead), same gap as the two below.
+`user_defined_params.py` link above instead), same gap as the two above.
 
-`test.tpv36` and `test.tpv37` (dipping thrust, wedge degeneration) are also
-gated on both solvers but do not yet have their own case README.
+`test.tpv36` and `test.tpv37` are gated on both solvers at the everyday 5.0 s
+gate term (not their own SCEC full-duration term; see the "There is ONE
+test" section of this repo's top-level `CLAUDE.md` for what that gives up)
+and do not yet have their own case README, same gap as `test.tpv22`/`test.tpv23`.
 
 ## Validation against SCEC submissions
 
