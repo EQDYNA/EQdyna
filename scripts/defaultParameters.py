@@ -248,6 +248,12 @@ class parameters:
     # min_norm; one at or below max_norm becomes max_norm; one between them
     # is unchanged. Requires max_norm <= min_norm < 0. Slip-weakening
     # (friclaw 1/2) never applies caps.
+    # The -10/-40 MPa caps exist for fully dynamic cycle (FDC) runs that
+    # couple EQdyna with EQquasi through EQsimu; for every other use they
+    # are meant to be off. The -1 rule below fires on no shipped test case
+    # (drv.a6 is viscoplastic, C_elastic 0; every other rate-and-state case
+    # is planar, insertFaultType 0). Set 0 for a non-planar elastic
+    # rate-and-state case that is not an FDC run.
     #   -1 : default. Caps apply when insertFaultType > 0 and C_elastic == 1
     #        (non-planar fault in an elastic medium), the rule EQdyna used
     #        before this input existed.
