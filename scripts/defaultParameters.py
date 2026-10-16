@@ -250,12 +250,9 @@ class parameters:
     # (friclaw 1/2) never applies caps.
     # The -10/-40 MPa caps exist for fully dynamic cycle (FDC) runs that
     # couple EQdyna with EQquasi through EQsimu; for every other use they
-    # are meant to be off. PR #214 measured that the -1 rule fires on no
-    # shipped test case (drv.a6 is viscoplastic, C_elastic 0; every other
-    # rate-and-state case is planar, insertFaultType 0), so the owner
-    # (board commit 68fe99a) made the explicit-off value the default: a
-    # case that does not set this gets caps off unless it opts into an FDC
-    # run via EQsimu by setting 1 (or reproduces the old auto-rule with -1).
+    # are meant to be off. A case that does not set this gets caps off
+    # unless it opts into an FDC run via EQsimu by setting 1 (or reproduces
+    # the old auto-rule with -1).
     #   -1 : caps apply when insertFaultType > 0 and C_elastic == 1
     #        (non-planar fault in an elastic medium), the rule EQdyna used
     #        before this input existed. Still accepted, no longer default.
