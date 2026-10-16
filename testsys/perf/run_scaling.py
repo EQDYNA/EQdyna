@@ -192,6 +192,14 @@ def sh(cmd, **kw):
     return r
 
 
+def git_short_sha():
+    """`git -C ROOT rev-parse --short HEAD`, stripped -- one copy of the
+    exact expression that was repeated three times in this file (the
+    fortran-path profile capture, the python-path profile capture, and
+    main()'s own provenance line)."""
+    return sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
+
+
 # --------------------------------------------------------------------------
 # placement: compact / spread cpu lists from `numa_topology()`'s {node: [cpu,...]}
 # --------------------------------------------------------------------------
@@ -364,7 +372,7 @@ def run_fortran(work, n, policy, cpus, node_map, term, nsteps):
     # the ms/step figure, not profile coverage (unlike run_e2e's per-cell
     # hook, which deliberately CAN fail a cell -- see its own comment).
     try:
-        _sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
+        _sha = git_short_sha()
         profile_record.capture_run(d, case=CASE, backend='fortran', ranks=n,
                                    term='perf-scaling-probe', sha=_sha,
             tree_dirty=profile_record.ledger.tree_dirty_once())
@@ -504,7 +512,7 @@ def per_step_py(case_dir, cpus, node_map, backend, n_lo, n_hi):
     # Warn-only: this tool's verdict is the ms/step figure, not profile
     # coverage.
     try:
-        _sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
+        _sha = git_short_sha()
         profile_record.capture_run(case_dir, case=CASE,
                                    backend='python-%s' % backend, ranks=1,
                                    term='perf-scaling-probe', sha=_sha,
@@ -550,7 +558,7 @@ def main():
     per_node = len(nodes[min(nodes)])
     print('topology: %d NUMA node(s) x %d cpu(s)' % (len(nodes), per_node))
 
-    sha = sh(f'git -C {ROOT} rev-parse --short HEAD').stdout.strip()
+    sha = git_short_sha()
     host = host_label()
     work = tempfile.mkdtemp(prefix='scaling.', dir=os.environ.get('TMPDIR', '/tmp'))
     rows = []
