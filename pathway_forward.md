@@ -75,6 +75,8 @@ first, and that is item 76, owner-scoped.
 
 **OWNER DECISION 2026-10-13, later (typed in the main session), on row 149:** told that option A found no hourglass defect (the KF78 phi vectors are already the Flanagan-Belytschko projection, giving ~1e-14 force for a linear field on the real 60-degree corner elements; stiffness/(E dx) is resolution-independent), that no hourglass variant converges dp000 n-stress to FaultMod +1.52 MPa (as-is -11.8/+2.0/+8.4, corner-off -11.8/-7.0/-2.4 at 500/200/100 m), and offered A (drop hourglass work; investigate the fault-traction / free-surface conflict at the trace node), B (corner hourglass-off heuristic) or C (known limitation), the owner answered "A".
 
+**OWNER DECISION 2026-10-15d (typed in the main session as /autopilot arguments):** "continue the refactor round" -- refactor scope added to the running cleanup run.
+
 **OWNER DECISION 2026-10-15c (typed in the main session), on decision 2 (rate-and-state normal-stress caps default -1 -> 0, after the "why" answer: -1 auto-enables the -10/-40 MPa caps for any non-planar elastic rate-and-state case, contradicting "for others, it is default off"; 0 = off unless a run sets 1, as EQquasi):** "go"
 
 **OWNER DECISION 2026-10-15b (typed in the main session), on three brief decisions (1: fresh cleanup run that actually deletes dead docs/notes/files and reports lines/files/docs removed; 2: caps default -1 -> 0; 3: TPV12/13 non-cap trace-node fix):** "1a. why 2? 3 hold for lower priority" -- 1A Go; 2 not decided (owner asked why); 3 held at lower priority (row 149 stays open, not worked).
