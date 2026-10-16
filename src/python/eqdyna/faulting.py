@@ -84,7 +84,10 @@ def build(S):
         # Rate-and-state normal-stress inputs (bGlobal.txt's last two lines,
         # read_bglobal). Static Python scalars, so the caps rule and the L
         # choice below are trace-time branches, as in the Fortran. The
-        # defaults are the behaviour before the inputs existed.
+        # -1 fallback for C_normal_stress_caps is the behaviour before the
+        # input existed, for an S dict that lacks the key entirely -- not
+        # defaultParameters.py's shipped default, which is 0 (caps off)
+        # since board commit 68fe99a / PR #214; see lib.resolveNormalStressInputs.
         fric_pc_L=(None if S.get('fric_pc_L') is None else float(S['fric_pc_L'])),
         C_normal_stress_caps=int(S.get('C_normal_stress_caps', -1)),
         min_norm=float(S.get('min_norm', gv.MIN_NORM)),
@@ -516,9 +519,13 @@ def NewtonRaphson(xp, friclaw, fric, v_trial, state0, thetaPc0, tnrm,
 def normal_stress_caps_on(finv):
     """Whether solveRSF applies the normal-stress caps (faulting.f90).
 
-    par.C_normal_stress_caps: 1 on, 0 off, -1 (the default) the rule before
-    the switch existed -- on iff the fault is non-planar (insertFaultType>0)
-    and the medium elastic (C_elastic==1). A per-run trace-time test.
+    par.C_normal_stress_caps: 1 on, 0 off (defaultParameters.py's shipped
+    default since board commit 68fe99a / PR #214), -1 the rule before the
+    switch existed -- on iff the fault is non-planar (insertFaultType>0) and
+    the medium elastic (C_elastic==1), still accepted but no longer the
+    default. The -1 here is this function's own missing-key fallback (an
+    `finv` dict built without the key at all), not the shipped default.
+    A per-run trace-time test.
     """
     sw = finv.get('C_normal_stress_caps', -1)
     return sw == 1 or (sw == -1 and finv['insertFaultType'] > 0

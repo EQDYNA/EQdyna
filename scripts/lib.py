@@ -261,10 +261,16 @@ def resolveNormalStressInputs(par):
     L is None when par.fric_pc_L is unset (each node's Dc), else a float
     (<= 0: no relaxation, theta_pc = |sigma_n|; > 0: L in m).
 
-    A missing attribute (a case carrying an old defaultParameters copy) takes
-    the default, which reproduces the behaviour before these inputs existed.
-    An invalid value RAISES, with the same rule readglobal and read_bglobal
-    apply (a set L finite, caps switch -1/0/1, max_norm <= min_norm < 0)."""
+    A missing attribute (a case carrying an old defaultParameters copy that
+    predates these inputs entirely) takes the -1 fallback below for caps,
+    which reproduces the auto-rule EQdyna used before C_normal_stress_caps
+    existed. This is deliberately NOT the same as defaultParameters.py's
+    shipped default (0, since board commit 68fe99a / PR #214): a case built
+    from the current defaultParameters.py gets caps off unless it opts in;
+    only a case object that lacks the attribute altogether falls back to -1
+    here. An invalid value RAISES, with the same rule readglobal and
+    read_bglobal apply (a set L finite, caps switch -1/0/1, max_norm <=
+    min_norm < 0)."""
     L = getattr(par, 'fric_pc_L', None)
     if L is not None:
         if isinstance(L, bool):

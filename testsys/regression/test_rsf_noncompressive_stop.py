@@ -11,8 +11,10 @@ One tiny planar friclaw-4 case (dx=500 m, 3 steps, no nucleation), uniform
 (bin/eqdyna) and the REAL Python port (`python3 -m eqdyna ... --backend
 numpy`):
 
-  1. tension, default caps (-1: off on a planar fault)  -> both exit 65 and
-     name the node (500, 0, -1000) and a value near +5 MPa;
+  1. tension, explicit caps=-1 (off on a planar fault; the pre-board-commit-
+     68fe99a default, still a valid explicit input, just no longer what a
+     bare case gets)  -> both exit 65 and name the node (500, 0, -1000) and
+     a value near +5 MPa;
   2. the same tension with par.C_normal_stress_caps = 1 -> both exit 0 (the
      cap lifts +5 MPa to min_norm = -10 MPa, so the switch reaches the
      solver and the stop sits AFTER the caps, as in the Fortran);
