@@ -314,9 +314,7 @@ Every entry below is an attribute of the `parameters` class in `scripts/defaultP
 
   Slip distance L (m) over which the rate-and-state normal-stress state variable theta_pc relaxes towards |sigma_n| (Shi and Day 2013, eq B8; friclaw 3/4 only -- friclaw 5 does not evolve theta_pc). The same input means the same thing in EQquasi: None : default (unset). L is each node's Dc (on_fault_vars column 11), the value EQdyna used before this input existed. <= 0 : no relaxation; theta_pc = |sigma_n| at once. > 0  : one L, in m, for every fault node. A NaN or infinite value is refused.
 
-* **`C_normal_stress_caps`** -- default `-1`
-
-  Normal-stress caps for rate-and-state (friclaw 3/4/5), Pa, negative is compressive. A normal traction at or above min_norm becomes min_norm; one at or below max_norm becomes max_norm; one between them is unchanged. Requires max_norm <= min_norm < 0. Slip-weakening (friclaw 1/2) never applies caps. The -10/-40 MPa caps exist for fully dynamic cycle (FDC) runs that couple EQdyna with EQquasi through EQsimu; for every other use they are meant to be off. The -1 rule below fires on no shipped test case (drv.a6 is viscoplastic, C_elastic 0; every other rate-and-state case is planar, insertFaultType 0). Set 0 for a non-planar elastic rate-and-state case that is not an FDC run. -1 : default. Caps apply when insertFaultType > 0 and C_elastic == 1 (non-planar fault in an elastic medium), the rule EQdyna used before this input existed. 0 : caps off. 1 : caps on for every geometry and material. EQquasi's C_normal_stress_caps has only 0 (its default) and 1.
+* **`C_normal_stress_caps`** -- default `0`
 
 * **`min_norm`** -- default `-10000000.0`
 

@@ -2,10 +2,15 @@
 and the non-compressive stop (#201).
 
   - lib.resolveNormalStressInputs: the defaults and the refusals case.setup
-    applies before it writes bGlobal.txt;
-  - defaultParameters: the default values, which must reproduce the
-    behaviour before the inputs existed (L = Dc, caps iff insertFaultType>0
-    and C_elastic==1, the old -10/-40 MPa constants);
+    applies before it writes bGlobal.txt. Its own missing-attribute fallback
+    for C_normal_stress_caps is -1 (true back-compat with a case object that
+    predates the input entirely), deliberately NOT the same value as
+    defaultParameters.py's shipped default (0, since board commit 68fe99a /
+    PR #214: caps off unless a run opts in with 1, or reproduces the old
+    auto-rule by setting -1 explicitly);
+  - defaultParameters: fric_pc_L unset (each node's Dc) and the old -10/-40
+    MPa constants reproduce the behaviour before the inputs existed; caps
+    default to 0 (off), not the resolver's own -1 fallback above;
   - faulting.normal_stress_caps_on: the tri-state switch;
   - fric.rate_state_normal_stress, the three fric_pc_L modes (EQquasi's
     meaning): unset (None) is bitwise the Dc form; <= 0 is no relaxation,
@@ -45,10 +50,28 @@ def test_default_fric_pc_L_is_unset():
     assert dp.parameters.fric_pc_L is None
 
 
-def test_default_parameters_equal_the_resolver_defaults():
+def test_default_parameters_equal_the_resolver_defaults_except_caps():
+    # fric_pc_L/min_norm/max_norm still match the resolver's own
+    # missing-attribute fallback; C_normal_stress_caps deliberately does not
+    # (shipped default 0, resolver fallback -1 -- see module docstring).
     p = dp.parameters
-    assert (p.fric_pc_L, p.C_normal_stress_caps, p.min_norm, p.max_norm) == \
-        lib.resolveNormalStressInputs(_par())
+    resolved = lib.resolveNormalStressInputs(_par())
+    assert (p.fric_pc_L, p.min_norm, p.max_norm) == \
+        (resolved[0], resolved[2], resolved[3])
+    assert p.C_normal_stress_caps == 0
+    assert resolved[1] == -1
+
+
+def test_default_parameters_caps_is_off():
+    assert dp.parameters.C_normal_stress_caps == 0
+
+
+def test_resolve_explicit_minus_one_reproduces_the_old_auto_rule():
+    # -1 stays a valid explicit input, and resolves through unchanged, even
+    # though it is no longer what a bare case (no attribute at all) gets
+    # from defaultParameters.py.
+    got = lib.resolveNormalStressInputs(_par(C_normal_stress_caps=-1))
+    assert got == (None, -1, -10.0e6, -40.0e6)
 
 
 def test_defaults_equal_the_old_python_constants():
