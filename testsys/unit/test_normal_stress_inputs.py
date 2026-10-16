@@ -58,7 +58,8 @@ def test_default_parameters_equal_the_resolver_defaults_except_caps():
     resolved = lib.resolveNormalStressInputs(_par())
     assert (p.fric_pc_L, p.min_norm, p.max_norm) == \
         (resolved[0], resolved[2], resolved[3])
-    assert p.C_normal_stress_caps == 0
+    # p.C_normal_stress_caps == 0 is covered on its own by
+    # test_default_parameters_caps_is_off below; redundant here.
     assert resolved[1] == -1
 
 

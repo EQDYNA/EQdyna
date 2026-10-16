@@ -18,7 +18,9 @@ numpy`):
   2. the same tension with par.C_normal_stress_caps = 1 -> both exit 0 (the
      cap lifts +5 MPa to min_norm = -10 MPa, so the switch reaches the
      solver and the stop sits AFTER the caps, as in the Fortran);
-  3. a control with no tension node                     -> both exit 0;
+  3. a control with no tension node, caps=-1 and, separately, caps=0
+     explicit (the shipped default, off, run end to end rather than only
+     via the unit-level resolver) -> both exit 0;
   4. friclaw 5 (thermal pressurization), every node at -30 MPa normal and
      NO tension node: the pore pressure grows until the effective normal
      traction (tnrm + TP pore pressure, faulting.f90 solveRSF) turns
@@ -310,7 +312,8 @@ def check_tp_stop_both_codes():
 
 
 def check_caps_and_control_run():
-    for name, tension, caps in (('caps_on', True, 1), ('control', False, -1)):
+    for name, tension, caps in (('caps_on', True, 1), ('control', False, -1),
+                                ('caps_explicit_zero', False, 0)):
         with tempfile.TemporaryDirectory() as tmp:
             case_dir = _make_case(tmp, name, tension=tension, caps=caps)
             rc_f, out_f = _run_fortran(case_dir)
