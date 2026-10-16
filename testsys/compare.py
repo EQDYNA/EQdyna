@@ -404,8 +404,9 @@ def nstress_sign_gate(case, run_dir):
     -- a check that examined nothing must not read as a pass (rule 2)."""
     convention, citation = matrix.NSTRESS_CONVENTION[case]
     expected = -1.0 if convention == 'extension' else 1.0
+    onfault_station_files = sorted(glob.glob(os.path.join(run_dir, 'faultst*.txt')))
     buried, unparsed = [], []
-    for p in sorted(glob.glob(os.path.join(run_dir, 'faultst*.txt'))):
+    for p in onfault_station_files:
         m = ONFAULT_STATION_RE.match(os.path.basename(p))
         if not m:
             unparsed.append(os.path.basename(p))
