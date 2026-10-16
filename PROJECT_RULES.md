@@ -199,13 +199,14 @@ which this rule does not replace.
 Named commands, named pass criteria:
 
 - Build: `cd src/fortran && make` (via `./install-eqdyna.sh -m <machine>`) must exit 0.
-- Test: `python3 testsys/run.py all` — the sweep (11 cases x {fortran,
-  python-jax} = 22 cells, plus one opt-in `python-jax-mpi` cell = 23, as of
-  2026-09-23; numpy dropped from the gate and `test.tpv30` was registered,
-  both that day — see rule 17 step 7 and `pathway_forward.md` item 19(b) —
-  and numpy stays runnable by hand (`--backend numpy`), ungated. The
-  table itself is `testsys/matrix.py`, which is authoritative over this
-  count).
+- Test: `python3 testsys/run.py all` — the sweep (every case in
+  `testNameList.nameList` x {fortran, python-jax}, plus the opt-in
+  `python-jax-mpi` cells registered in `matrix.PY_MPI_RANKS`; numpy stays
+  runnable by hand (`--backend numpy`), ungated per rule 17 step 7. Don't
+  quote a case/cell count here — it drifts (22 cases as of 2026-10-15,
+  stale "11 cases"/"23 cells" counts removed from this file the same day).
+  `testsys/matrix.py` is authoritative over the count: `len(matrix.CASE_BOUND)
+  * 2 + len(matrix.PY_MPI_RANKS)`.
   Pass means every
   printed line for every `testid` in `testNameList.nameList` reads `SUCCESS`,
   with **no** `FAIL` string, for every file in `fileNameList`.
@@ -801,8 +802,9 @@ will otherwise overwrite `test.prev/`.
 `testNameList.py` already sequences small, fast, low-core cases
 (`test.drv.a6`, `test.tpv8`, `test.tpv10`, `test.tpv104`, `test.tpv1053d`,
 `test.meng2023a`, `test.meng2023cb`, `test.tpv29`, `test.tpv36`,
-`test.tpv37`, `test.tpv30` (registered 2026-09-23, PR #5) — 11 cases, 4 ranks
-each, in that order) ahead of any HPC-scale
+`test.tpv37`, `test.tpv30` (registered 2026-09-23, PR #5), and others added
+since — don't quote a case count here, it drifts (22 as of 2026-10-15) — 4
+ranks each, in that order) ahead of any HPC-scale
 allocation. Read the order from `testNameList.nameList`, not from this list.
 
 **Rationale**: a TPV36-class run at 512 cores on Lonestar6 costs hours of
@@ -1010,10 +1012,10 @@ have looked like has found a rule-14a violation, not a clean row.
 The release workflow, in order:
 
 1. Green gate first (rule 3): `./install-eqdyna.sh -m ubuntu` exits 0 and
-   `python3 testsys/run.py all` reports every cell in the table SUCCESS —
-   23/23 as of 2026-09-23 (11 cases x {fortran, python-jax}, plus one opt-in
-   `python-jax-mpi` cell — `test.tpv30` was registered the same day, PR #5
-   `567e723`, taking the case count from 10 to 11). The number is
+   `python3 testsys/run.py all` reports every cell in the table SUCCESS.
+   Don't quote a cell count here — it drifts (the "23/23 as of 2026-09-23 /
+   11 cases" figure this line used to carry was stale by 11 cases as of
+   2026-10-15; nobody noticed until this pass). The number is
    `len(matrix.CASE_BOUND) * 2 + len(matrix.PY_MPI_RANKS)`, not a constant in
    this rule: a releaser who accepts a green count smaller than the current
    table has accepted a partial sweep. Never tag over a
