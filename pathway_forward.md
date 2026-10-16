@@ -75,6 +75,8 @@ first, and that is item 76, owner-scoped.
 
 **OWNER DECISION 2026-10-13, later (typed in the main session), on row 149:** told that option A found no hourglass defect (the KF78 phi vectors are already the Flanagan-Belytschko projection, giving ~1e-14 force for a linear field on the real 60-degree corner elements; stiffness/(E dx) is resolution-independent), that no hourglass variant converges dp000 n-stress to FaultMod +1.52 MPa (as-is -11.8/+2.0/+8.4, corner-off -11.8/-7.0/-2.4 at 500/200/100 m), and offered A (drop hourglass work; investigate the fault-traction / free-surface conflict at the trace node), B (corner hourglass-off heuristic) or C (known limitation), the owner answered "A".
 
+**OWNER DECISION 2026-10-16b (typed in the main session as /autopilot arguments):** "refactor round." -- a fresh refactor round; it also carries the 2026-10-16 caps test follow-up.
+
 **OWNER DECISION 2026-10-16 (typed in the main session), on two brief decisions (1: follow-up PR adding the two test gaps the PR #220 audit flagged -- caps=0 never run end-to-end in test_rsf_noncompressive_stop.py, one redundant assertion in test_normal_stress_inputs.py; 2: delete the wip/fine1053d worktree and branch, all commits already on master):** "Yes, on both."
 
 **OWNER DECISION 2026-10-15d (typed in the main session as /autopilot arguments):** "continue the refactor round" -- refactor scope added to the running cleanup run.
