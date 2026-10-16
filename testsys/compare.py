@@ -428,7 +428,7 @@ def nstress_sign_gate(case, run_dir):
     # station eqdyna3d.f90's allocInitAfterMeshGen used to make a rank with no
     # matched station write (faultst000dp000.txt, requested by nobody).
     empty = []
-    for p in sorted(glob.glob(os.path.join(run_dir, 'faultst*.txt'))):
+    for p in onfault_station_files:
         names, data = read_station_file(p)
         if not np.any(data[:, 1:]):
             empty.append(os.path.basename(p))
