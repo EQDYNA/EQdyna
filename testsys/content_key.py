@@ -80,21 +80,15 @@ def path_allowed(path):
     return any(path.startswith(prefix) for prefix in ALLOWED_PATH_PREFIXES)
 
 
-def compute(repo_root, sha):
-    """sha256 hex digest over every tracked (path, mode, object-sha) triple
-    at `sha`
-    NOT covered by `path_allowed` (mode included so a mode-only change,
-    e.g. a lost exec bit on a script, moves the key exactly as it shows up
-    in the ancestor rule's `git diff --name-only`), sorted so the result depends only on
-    CONTENT, never on `git ls-tree`'s own (already-sorted, but not
-    guaranteed stable across git versions for every locale) output order.
+def _ls_tree_entries(repo_root, sha):
+    """Parsed (path, mode, blob) triples from `git ls-tree -r --full-tree
+    sha`, blank lines skipped. The subprocess call and line parsing shared
+    by compute() and compute_release_physics() below -- same command, same
+    parsing, so the two keys can never read the tree differently.
 
     Raises `subprocess.CalledProcessError` if `sha` is not a readable git
-    object in `repo_root` -- this function is only ever called with a sha
-    this checkout is known to have (the tag commit itself); a caller that
-    wants to compare against a swept sha that might be GONE (a rewritten
-    history) reads that side's key from the committed JSON string instead
-    of calling this a second time (see check_pretag_ci.py)."""
+    object in `repo_root` -- see compute()'s docstring for why that is the
+    right behaviour here."""
     out = subprocess.run(
         ['git', '-C', repo_root, 'ls-tree', '-r', '--full-tree', sha],
         capture_output=True, text=True, check=True).stdout
@@ -104,14 +98,40 @@ def compute(repo_root, sha):
             continue
         meta, path = line.split('\t', 1)
         mode, _otype, blob = meta.split()
-        if not path_allowed(path):
-            entries.append('%s\0%s\0%s' % (path, mode, blob))
-    entries.sort()
+        entries.append((path, mode, blob))
+    return entries
+
+
+def _hash_entries(entries):
+    """sha256 hex digest over `entries` (already-formatted '%s\\0%s\\0%s'
+    strings), sorted so the result depends only on CONTENT, never on `git
+    ls-tree`'s own (already-sorted, but not guaranteed stable across git
+    versions for every locale) output order. Shared final step of compute()
+    and compute_release_physics()."""
     h = hashlib.sha256()
-    for entry in entries:
+    for entry in sorted(entries):
         h.update(entry.encode('utf-8', errors='surrogateescape'))
         h.update(b'\n')
     return h.hexdigest()
+
+
+def compute(repo_root, sha):
+    """sha256 hex digest over every tracked (path, mode, object-sha) triple
+    at `sha`
+    NOT covered by `path_allowed` (mode included so a mode-only change,
+    e.g. a lost exec bit on a script, moves the key exactly as it shows up
+    in the ancestor rule's `git diff --name-only`).
+
+    Raises `subprocess.CalledProcessError` if `sha` is not a readable git
+    object in `repo_root` -- this function is only ever called with a sha
+    this checkout is known to have (the tag commit itself); a caller that
+    wants to compare against a swept sha that might be GONE (a rewritten
+    history) reads that side's key from the committed JSON string instead
+    of calling this a second time (see check_pretag_ci.py)."""
+    entries = ['%s\0%s\0%s' % (path, mode, blob)
+               for path, mode, blob in _ls_tree_entries(repo_root, sha)
+               if not path_allowed(path)]
+    return _hash_entries(entries)
 
 
 def compute_release_physics(repo_root, sha):
@@ -135,15 +155,8 @@ def compute_release_physics(repo_root, sha):
 
     Raises `subprocess.CalledProcessError` under the same conditions as
     `compute` above (sha not a readable object in repo_root)."""
-    out = subprocess.run(
-        ['git', '-C', repo_root, 'ls-tree', '-r', '--full-tree', sha],
-        capture_output=True, text=True, check=True).stdout
     entries = []
-    for line in out.splitlines():
-        if not line.strip():
-            continue
-        meta, path = line.split('\t', 1)
-        mode, _otype, blob = meta.split()
+    for path, mode, blob in _ls_tree_entries(repo_root, sha):
         if not change_class.is_release_physics_path(path):
             continue
         if path.replace(os.sep, '/') == change_class.VERSION_BANNER_FILE:
@@ -157,9 +170,4 @@ def compute_release_physics(repo_root, sha):
             entries.append('%s\0%s\0N:%s' % (path, mode, normalized_digest))
         else:
             entries.append('%s\0%s\0%s' % (path, mode, blob))
-    entries.sort()
-    h = hashlib.sha256()
-    for entry in entries:
-        h.update(entry.encode('utf-8', errors='surrogateescape'))
-        h.update(b'\n')
-    return h.hexdigest()
+    return _hash_entries(entries)
