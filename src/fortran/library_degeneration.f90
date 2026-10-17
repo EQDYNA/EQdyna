@@ -1,5 +1,19 @@
 ! Copyright (C) 2006 Benchun Duan, Dunyu Liu
 ! MIT
+
+! pointToFaultDistance -- the perpendicular distance from (ceny, cenz) to
+! fault iFault's dipping plane, shared by wedge() and wedge4num() below
+! (previously two copies of the identical two-line formula). Extracted
+! verbatim: same operations, same order, no numeric change.
+function pointToFaultDistance(ceny, cenz, iFault) result(d)
+    use globalvar
+    implicit none
+    real (kind = dp) :: ceny, cenz, d, tangentDip
+    integer (kind = 4) :: iFault
+    tangentDip = dtan(faultDegenAngle(iFault)/180.d0*pi)
+    d = abs(ceny*tangentDip+cenz)/(1.d0+tangentDip**2)**0.5
+end function pointToFaultDistance
+
 subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp, iFault)
     ! Row 153 checkpoint 1: iFault added (was hardcoded "1" throughout this
     ! subroutine, via fltxyz(...,1) and bare C_degen); every existing caller
@@ -9,9 +23,8 @@ subroutine wedge(cenx, ceny, cenz, elemCount, stressDofCount, iy, iz, nftndtmp, 
 
     integer (kind = 8) :: elemCount, stressDofCount
     integer (kind = 4) :: iy, iz, nftndtmp, k, i, neworder(nen), iFault
-    real (kind = dp) :: cenx, ceny, cenz, pointToFaultDist, tangentDip
-        tangentDip = dtan(faultDegenAngle(iFault)/180.d0*pi)
-        pointToFaultDist = abs(ceny*tangentDip+cenz)/(1.d0+tangentDip**2)**0.5
+    real (kind = dp) :: cenx, ceny, cenz, pointToFaultDist, pointToFaultDistance
+        pointToFaultDist = pointToFaultDistance(ceny, cenz, iFault)
     if (cenx>fltxyz(1,1,iFault).and.cenx<fltxyz(2,1,iFault).and. &
             ceny>fltxyz(1,2,iFault).and.ceny<fltxyz(2,2,iFault).and. &
             cenz>fltxyz(1,3,iFault).and. &
@@ -65,10 +78,9 @@ subroutine wedge4num(cenx, ceny, cenz, elemCount, iFault)
 
     integer (kind = 8) :: elemCount
     integer (kind = 4) :: iFault
-    real (kind = dp) :: cenx, ceny, cenz, tangentDip, pointToFaultDist
+    real (kind = dp) :: cenx, ceny, cenz, pointToFaultDist, pointToFaultDistance
 
-        tangentDip = dtan(faultDegenAngle(iFault)/180.d0*pi)
-        pointToFaultDist = abs(ceny*tangentDip+cenz)/(1.d0+tangentDip**2)**0.5
+        pointToFaultDist = pointToFaultDistance(ceny, cenz, iFault)
 
     if (cenx>fltxyz(1,1,iFault).and.cenx<fltxyz(2,1,iFault).and. &
             ceny>fltxyz(1,2,iFault).and.ceny<fltxyz(2,2,iFault).and. &
