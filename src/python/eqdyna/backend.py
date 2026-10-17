@@ -169,7 +169,6 @@ def enable_compilation_cache(subdir=None):
     same rank count re-traces the same shapes and hits its own warm entry.
     """
     global _cache_enabled, _cache_path
-    import os
     if _cache_enabled:
         # Loud on a second, DIFFERENT request. Returning silently would leave
         # the MPI path sharing the directory it asked not to share, which is
@@ -213,7 +212,6 @@ def _resolved_cache_path(subdir=None):
     """The directory enable_compilation_cache would use. Separate so the
     already-enabled check above compares the same string the setter stores,
     rather than re-deriving it slightly differently."""
-    import os
     want = os.environ.get(_CACHE_ENV)
     if want == 'off':
         return 'off'
