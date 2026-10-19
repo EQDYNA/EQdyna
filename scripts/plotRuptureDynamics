@@ -190,6 +190,13 @@ def generateNcRestart(faults):
     requireMultiFaultRestartDzEqualsDx(par, where='plotRuptureDynamics')
 
     ds = nc.Dataset("fault.dyna.r.nc", "w", format="NETCDF4")
+    # In a cycle (mode 2) this file is EQquasi's restart, and EQquasi
+    # (>= 1.21.3) refuses one without this attribute: it checks the file's
+    # dip-row spacing against its own dx, since a shape check cannot see
+    # dz != dx. EQdyna's dip rows are dz apart. Mode 1 files (every
+    # test.reference.results case) are not restarts and stay as they were.
+    if getattr(par, 'mode', 1) == 2:
+        ds.dip_node_spacing = float(par.dz)
 
     if len(faults) == 1:
         faultVarArr, fx, fz, nfx, nfz, _ = faults[0]
