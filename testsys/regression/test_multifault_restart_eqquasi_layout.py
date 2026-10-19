@@ -269,8 +269,11 @@ def write_via_frt_zero_slip(tmp):
 
 
 def write_with_plotRuptureDynamics(tmp):
-    """fault.dyna.r.nc from the real generateNcRestart, fed arrays directly."""
+    """fault.dyna.r.nc from the real generateNcRestart, fed arrays directly.
+    In mode 2 it must carry dip_node_spacing = par.dz: EQquasi >= 1.21.3
+    refuses a restart without it."""
     mod = load_plotRuptureDynamics()
+    mod.par = types.SimpleNamespace(mode=2, ntotft=2, dx=1.0, dz=1.0)
     faults = []
     for f, a in zip(FAULTS, fault_arrays()):
         nfx, nfz = grid(f)
@@ -283,7 +286,34 @@ def write_with_plotRuptureDynamics(tmp):
         mod.generateNcRestart(faults)
     finally:
         os.chdir(cwd)
+    import netCDF4
+    with netCDF4.Dataset(os.path.join(tmp, 'fault.dyna.r.nc')) as ds:
+        spacing = getattr(ds, 'dip_node_spacing', None)
+    if spacing != 1.0:
+        raise RuntimeError(f'fault.dyna.r.nc dip_node_spacing = {spacing!r}, expected par.dz = 1.0')
     take_single_restart_file(tmp)
+
+
+def mode1_restart_has_no_dip_spacing(tmp):
+    """Mode 1 output is not a restart: generateNcRestart must not add the
+    attribute there, or every mode-1 test.reference.results file would fail
+    compare.py's attribute check."""
+    mod = load_plotRuptureDynamics()
+    mod.par = types.SimpleNamespace(mode=1, dz=1.0)
+    nfx, nfz = grid(FAULTS[0])
+    cwd = os.getcwd()
+    os.chdir(tmp)
+    try:
+        mod.generateNcRestart([(np.zeros((nfz, nfx, 100)), np.arange(nfx), np.arange(nfz),
+                                nfx, nfz, '')])
+        import netCDF4
+        with netCDF4.Dataset('fault.dyna.r.nc') as ds:
+            names = ds.ncattrs()
+        os.remove('fault.dyna.r.nc')
+    finally:
+        os.chdir(cwd)
+    return [] if 'dip_node_spacing' not in names else \
+        ['generateNcRestart stamped dip_node_spacing on a mode-1 file']
 
 
 def expected():
@@ -462,6 +492,7 @@ def main():
             fails.append('ntotft=1 dz=2 dx=1: single-fault restart must be left '
                          f'unchanged (exit {r.returncode}):\n{r.stdout}\n{r.stderr}')
         fails += python_side_dz_checks(tmp)
+        fails += mode1_restart_has_no_dip_spacing(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
