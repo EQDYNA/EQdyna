@@ -273,6 +273,9 @@ SHARDS = {
                                  # under this shard's other mpirun-heavy
                                  # scripts.
         "test_pretag_ci_negative.py",
+        "test_row160_carry_forward_verdict.py",  # added 2026-11-02 (board
+                                 # row 160): tmp git repo + a few JSON files,
+                                 # no solver, no mpirun -- well under 1 s.
         "test_readme_commands.py",
         "test_user_docs_commands.py",  # added 2026-09-25 (board row 126, docs
                                  # site): reuses test_readme_commands.py's own

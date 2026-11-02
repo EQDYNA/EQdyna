@@ -219,6 +219,33 @@ def find_sweep_summaries(repo_root):
     return out
 
 
+def sweep_verdict_reasons(path, data):
+    """Reasons this summary.json is NOT all-green (empty list means it is):
+    n_success == n_runnable and every cell verdict == 'SUCCESS'. A missing
+    or malformed field ("cells" not a list, a non-integer count) is a reason,
+    never a default. Shared by evaluate_sweep_candidate below and by
+    testsys/run.py's _release_sweep_carry_forward (board row 160), so the
+    tag-time gate and the carry-forward decision cannot judge a sweep two
+    ways."""
+    cells = data.get('cells')
+    if not isinstance(cells, list):
+        return ['%s: "cells" is %r, want a list' % (path, cells)]
+    n_runnable = data.get('n_runnable')
+    n_success = data.get('n_success')
+    reasons = []
+    for name, val in (('n_runnable', n_runnable), ('n_success', n_success)):
+        if isinstance(val, bool) or not isinstance(val, int):
+            reasons.append('%s: %s is %r, want an integer' % (path, name, val))
+    if n_success != n_runnable:
+        reasons.append('%s: n_success=%r != n_runnable=%r' % (path, n_success, n_runnable))
+    bad = [c for c in cells if not isinstance(c, dict) or c.get('verdict') != 'SUCCESS']
+    if bad:
+        names = ['%s/%s=%s' % (c.get('case'), c.get('backend'), c.get('verdict'))
+                 if isinstance(c, dict) else repr(c) for c in bad]
+        reasons.append('%s: %d cell(s) not SUCCESS: %s' % (path, len(bad), ', '.join(names)))
+    return reasons
+
+
 def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count,
                              runnable_cells=None):
     """Reasons this ONE summary.json fails to justify tagging `tag_sha`
@@ -235,8 +262,7 @@ def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count
         reasons.append('%s: tree_clean is %r, want true' % (path, data.get('tree_clean')))
     cells = data.get('cells')
     if not isinstance(cells, list):
-        reasons.append('%s: "cells" is %r, want a list' % (path, cells))
-        cells = []
+        cells = []  # sweep_verdict_reasons below reports the malformed field
     expected = full_runnable_count()
     n_runnable = data.get('n_runnable')
     n_success = data.get('n_success')
@@ -247,8 +273,6 @@ def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count
     if len(cells) != n_runnable:
         reasons.append('%s: %d cell record(s) but n_runnable=%r'
                        % (path, len(cells), n_runnable))
-    if n_success != n_runnable:
-        reasons.append('%s: n_success=%r != n_runnable=%r' % (path, n_success, n_runnable))
     # Item 106(2): the SET, not just the count -- a sweep that ran the wrong
     # cells at the right total must not justify a tag.
     want_set = (runnable_cells or default_runnable_cells)()
@@ -259,11 +283,7 @@ def evaluate_sweep_candidate(path, data, tag_sha, repo_root, full_runnable_count
         reasons.append('%s: swept cell SET differs from the tagged tree\'s '
                        'matrix.py runnable set -- missing %s, extra %s'
                        % (path, missing or 'none', extra or 'none'))
-    bad = [c for c in cells if not isinstance(c, dict) or c.get('verdict') != 'SUCCESS']
-    if bad:
-        names = ['%s/%s=%s' % (c.get('case'), c.get('backend'), c.get('verdict'))
-                 if isinstance(c, dict) else repr(c) for c in bad]
-        reasons.append('%s: %d cell(s) not SUCCESS: %s' % (path, len(bad), ', '.join(names)))
+    reasons.extend(sweep_verdict_reasons(path, data))
     # Item 2b: evidence carrying a `content_key` is judged on CONTENT alone
     # -- does every tracked path outside content_key.ALLOWED_* have the same
     # blob at the swept sha as at the tag commit -- recomputed from the TAG

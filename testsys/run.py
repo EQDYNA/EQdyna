@@ -444,6 +444,12 @@ def _release_sweep_carry_forward():
     git/HEAD resolution error -- rule 2, same posture as check_pretag_ci.py's
     own error handling.
 
+    A key match alone does not carry: the matching summary must also be
+    ALL-GREEN (n_success == n_runnable, every cell SUCCESS, via
+    check_pretag_ci.sweep_verdict_reasons -- the tag-time gate's own
+    predicate, board row 160). A failed or malformed-verdict summary adds a
+    reason ("FAILED sweep: n_success/n_runnable ...") and the loop goes on.
+
     Advisory only for THIS function's caller (run_release, deciding whether
     to spend the minutes-to-hours re-running run_e2e.py): the actual GATE
     enforced at tag time is testsys/regression/check_pretag_ci.py's
@@ -460,6 +466,7 @@ def _release_sweep_carry_forward():
     that gate with an ImportError instead of the REFUSED it expects, for a
     tier -- `release` -- that sandboxed run never even selects)."""
     from testsys import content_key
+    from testsys.regression import check_pretag_ci
     found = sorted(glob.glob(os.path.join(REPO_ROOT, 'docs', 'evidence',
                                           'sweep-*', 'summary.json')))
     if not found:
@@ -489,6 +496,19 @@ def _release_sweep_carry_forward():
             reasons.append('%s: no release_physics_key recorded (older evidence)' % p)
             continue
         if swept_key == head_key:
+            # Row 160: a key match is not enough, the sweep must be ALL-GREEN
+            # by the very predicate check_pretag_ci judges a tag with. A
+            # malformed verdict field is a refusal-to-carry, not a default.
+            if not isinstance(data.get('cells'), list):
+                reasons.append('%s: FAILED sweep: "cells" is not a list, '
+                               'verdict unreadable' % p)
+                continue
+            verdict_bad = check_pretag_ci.sweep_verdict_reasons(p, data)
+            if verdict_bad:
+                reasons.append('%s: FAILED sweep: %s/%s (%s)' % (
+                    p, data.get('n_success'), data.get('n_runnable'),
+                    '; '.join(verdict_bad)))
+                continue
             return True, ('%s (swept sha %s) already covers this tree\'s '
                          'release-physics content (release_physics_key %s) '
                          '-- carrying that evidence forward, not re-running '
