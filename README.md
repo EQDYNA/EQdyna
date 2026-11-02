@@ -11,6 +11,10 @@ the multicycle earthquake simulator EQsimu
 
 Released under the MIT License (`LICENSE`).
 
+## News
+
+* 20261102 v5.25.1 release notes. See the [GitHub Release](https://github.com/EQDYNA/EQdyna/releases/tag/v5.25.1) for the full notes, and `docs/pastReleaseNotes.md` for earlier releases.
+
 ## Requirements
 
 * A Fortran compiler (gfortran or Intel Fortran), MPI (mpich or Intel MPI) and netCDF (libnetcdf, libnetcdff).
