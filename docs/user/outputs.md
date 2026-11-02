@@ -48,6 +48,12 @@ A NetCDF file of the whole fault plane's slip, slip rate, and traction,
 sampled every `nt_out` time steps, for visualization and for resuming a
 later stage of a multicycle run.
 
+Under slip-weakening and time-weakening friction (`friclaw` 1, 2) the file's
+`state_variable` and the six particle-velocity variables `vxm`, `vym`, `vzm`,
+`vxs`, `vys`, `vzs` are exactly zero by design: only the rate-and-state solver
+(`friclaw` 3, 4, 5) computes them, and the file carries them for restarting a
+rate-and-state stage.
+
 ## Whole-fault time series: `src_ts<rank>`
 
 Set `outputFaultTimeSeries = 1` in `user_defined_params.py` (default `0`,

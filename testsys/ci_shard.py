@@ -98,6 +98,7 @@ SHARDS = {
         "test_multifault_refused.py",
         "test_multifault_no_ntotft1_specialcase.py",  # added row 17: pure text scan, sub-second
         "test_tpv2223_multifault_routing.py",  # replaces test_multifault_two_fault_smoke.py (item 17 section A, test.multifault2 retired): serial (1 rank, both faults) Fortran routing check on test.tpv22's own real compset, ~2.3 min
+        "test_tpv2223_stations_on_grid.py",  # added 2026-11-02 (mira-volkov, rows 3a/3b): pure case-param/text check of the fault-2 station nodes, no solver, <1 s
         "test_perf_parallelism_discriminator.py",
         "test_perf_item91_guards.py",  # added 2026-09-24 (Iris, item 91 perf-
                                  # tool defects): pure monkeypatched

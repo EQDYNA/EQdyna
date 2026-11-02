@@ -148,6 +148,13 @@ def build_on_fault_vars(fx, fz, nfx, nfz):
     return v
 
 
+def snap_to_node(x_km, x0_m, dx_m):
+    """Nearest node of the grid x0_m + k*dx_m to x_km (km), in km; a tie goes
+    to the larger x (floor(u + 0.5), for x >= x0 the same as Fortran nint)."""
+    k = floor((x_km * 1000.0 - x0_m) / dx_m + 0.5)
+    return (x0_m + k * dx_m) / 1000.0
+
+
 def build_params(tpv, fault2_z):
     """fault2_z is the stepover offset in CODE y (== spec z): -1600 (TPV22,
     extensional right step) or +1000 (TPV23, compressional left step), taken
@@ -256,6 +263,17 @@ def build_params(tpv, fault2_z):
         [0.0, -10.0], [5.0, -10.0], [6.5, -10.0], [10.0, -10.0], [20.0, -10.0],
         [5.0, -15.0],
     ]
+    # The spec lists fault #2's station 8 at 6.5 km (TPV22_23_Description_v08
+    # Part 6 p.11, fault2st065dp100) and permits "move the station to the
+    # nearest node" when the mesh has no node there (p.12). Fault #2's nodes
+    # sit at FAULT2_XRANGE[0] + k*dx, so 6.5 km is a node at dx=250 (TPV23)
+    # but falls midway between two nodes at dx=200 (TPV22): setOnFaultStation
+    # (meshgen.f90) and its port match x within tol=1e-5 m, so the station
+    # matched nothing and was never written. Snap every fault #2 x to its
+    # nearest node, ties away from zero (Fortran nint); a station already on
+    # a node (all the others, and 6.5 km at dx=250) is unchanged.
+    fault2_stations = [[snap_to_node(x, FAULT2_XRANGE[0], par.dx), z]
+                       for x, z in fault2_stations]
     par.st_coor_on_fault = fault1_stations
     par.st_coor_on_fault_per_fault = [fault1_stations, fault2_stations]
 
