@@ -83,6 +83,9 @@ Writes a timestamped JSON snapshot to testsys/parity/evidence_output/
 (gitignored -- a number tied to whatever run directory was passed is
 evidence-of-a-run, not golden reference data; rule 4/rule 7).
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import datetime
 import json
@@ -193,7 +196,7 @@ def provenance():
     dirty = bool(subprocess.run(['git', 'status', '--porcelain'], cwd=REPO_ROOT,
                                  capture_output=True, text=True).stdout.strip())
     return dict(date_utc=datetime.datetime.utcnow().isoformat() + 'Z',
-                host=socket.gethostname(), sha=sha, dirty=dirty)
+                host=host_label(), sha=sha, dirty=dirty)
 
 
 def main():

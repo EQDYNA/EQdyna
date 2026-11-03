@@ -30,6 +30,9 @@ Usage:
     python3 testsys/e2e/run_e2e_full.py
     python3 testsys/e2e/run_e2e.py --full   # equivalent entry point
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import json
 import os
 import re
@@ -137,7 +140,7 @@ def main():
 
     sha = subprocess.check_output(['git', '-C', REPO_ROOT, 'rev-parse', '--short', 'HEAD'],
                                    text=True).strip()
-    host = os.uname().nodename
+    host = host_label()
     load = os.getloadavg()
 
     test_dir = os.path.join(REPO_ROOT, 'test.full')

@@ -885,16 +885,17 @@ contains
 end subroutine output_profile
 
 subroutine readHostname(hostStr)
-    ! /proc/sys/kernel/hostname, read directly (no shell-out).
+    ! The host LABEL recorded in the profile, never the real hostname (board
+    ! row 162, owner 2026-11-03): EQDYNA_HOST_LABEL if set and non-empty,
+    ! else 'workstation' -- the same contract as the python writers'
+    ! profile_emit.host_label(). The real node name is deliberately not read
+    ! (the kernel hostname file is never opened), so a committed profile cannot carry it.
     implicit none
     character(len=256), intent(out) :: hostStr
-    integer :: u, ios
-    hostStr = 'unknown'
-    open(newunit=u, file='/proc/sys/kernel/hostname', status='old', action='read', iostat=ios)
-    if (ios == 0) then
-        read(u,'(A)',iostat=ios) hostStr
-        close(u)
-    endif
+    integer :: n, ios
+    hostStr = 'workstation'
+    call get_environment_variable('EQDYNA_HOST_LABEL', length=n, status=ios)
+    if (ios == 0 .and. n > 0) call get_environment_variable('EQDYNA_HOST_LABEL', value=hostStr)
 end subroutine readHostname
 
 subroutine readPid(pid)

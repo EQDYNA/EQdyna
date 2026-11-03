@@ -173,6 +173,7 @@ SHARDS = {
         "test_nstress_sign_convention.py",  # added 2026-09-24 (wei-lin, row 22a): 11 case-param subprocesses + tempdir gate checks, ~1 s
         "test_threadprobe.py",  # added 2026-09-24 (wei-lin, item 47a): pure function, <1 s
         "test_no_hardcoded_paths.py",  # added 2026-10-07 (path scrub, owner decision 2026-10-06): one git grep subprocess, <1 s
+        "test_host_label_writers.py",  # added 2026-11-03 (row 162, owner 1A): one git ls-files + two tiny interpreters, <2 s
         "test_defect_c_depth_offset_removed.py",  # added 2026-10-09 (mira-volkov,
                                  # board PR #164, Defect C): pure regex/text
                                  # checks over already-committed meshgen.f90/

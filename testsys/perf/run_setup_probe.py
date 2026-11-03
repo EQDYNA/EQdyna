@@ -32,6 +32,9 @@ PARTIAL-LOSS SAFE (rule 20a). Every child writes its own JSON the moment it
 finishes and the parent rewrites the snapshot after every repetition, so a
 killed run keeps everything already measured.
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import json
 import os
@@ -176,7 +179,7 @@ def main():
 
     def snap():
         json.dump(dict(case=a.case, case_dir=case_dir, sha=sha,
-                       host=os.uname().nodename,
+                       host=host_label(),
                        date=time.strftime('%Y-%m-%d %H:%M'),
                        excluded_cpus=sorted(excl), usable_cpus=cpus,
                        reps=a.reps, waves=waves,

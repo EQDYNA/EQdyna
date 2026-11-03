@@ -7,6 +7,9 @@ porting src/fortran/library_degeneration.f90's wedge()/reorder() +
 meshgen.f90:91-101's type-13 retag + meshgen.f90:763-767's checkIsOnFault
 C_degen>3 branch), on test.tpv36 (dx=500, C_degen=par.dip=15).
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import datetime
 import json
 import os
@@ -45,7 +48,7 @@ def provenance():
     load1, load5, load15 = os.getloadavg()
     return dict(
         date_utc=datetime.datetime.utcnow().isoformat() + 'Z',
-        host=socket.gethostname(), sha=sha, dirty=dirty,
+        host=host_label(), sha=sha, dirty=dirty,
         loadavg='%.2f %.2f %.2f' % (load1, load5, load15), ncpu=os.cpu_count(),
         gfortran=first_line(['gfortran', '--version']),
         mpif90=first_line(['mpif90', '--version']),

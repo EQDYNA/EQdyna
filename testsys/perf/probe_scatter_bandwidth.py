@@ -63,6 +63,9 @@ Usage:
 
 Writes testsys/perf/scatter_bandwidth_last.json.
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import json
 import os
@@ -273,13 +276,13 @@ def main():
 
     sha = subprocess.run(['git', '-C', ROOT, 'rev-parse', '--short', 'HEAD'],
                          capture_output=True, text=True).stdout.strip()
-    meta = dict(sha=sha, host=os.uname().nodename, date=time.strftime('%Y-%m-%d %H:%M'),
+    meta = dict(sha=sha, host=host_label(), date=time.strftime('%Y-%m-%d %H:%M'),
                n_source=N_SOURCE, n_target=N_TARGET, multiplicity=MULTIPLICITY,
                n_lo=a.n_lo, n_hi=a.n_hi, busy_ceiling=a.busy_ceiling,
                overridden=bool(a.i_know_the_box_is_busy), rows=rows,
                speedup_8_to_32=verdicts)
     json.dump(meta, open(OUT, 'w'), indent=1)
-    print('\nprovenance: sha=%s host=%s; saved %s' % (sha, os.uname().nodename, OUT))
+    print('\nprovenance: sha=%s host=%s; saved %s' % (sha, host_label(), OUT))
 
 
 if __name__ == '__main__':

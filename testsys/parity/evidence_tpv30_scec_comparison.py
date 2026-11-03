@@ -94,6 +94,9 @@ Writes a timestamped JSON snapshot to testsys/parity/evidence_output/
 (gitignored -- rule 4/rule 7: a number tied to a specific archive resolution
 choice is evidence-of-a-comparison, not golden reference data).
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import datetime
 import glob
@@ -345,7 +348,7 @@ def provenance():
     dirty = bool(subprocess.run(['git', 'status', '--porcelain'], cwd=REPO_ROOT,
                                  capture_output=True, text=True).stdout.strip())
     return dict(date_utc=datetime.datetime.utcnow().isoformat() + 'Z',
-                host=socket.gethostname(), sha=sha, dirty=dirty)
+                host=host_label(), sha=sha, dirty=dirty)
 
 
 def print_report(res, submission_res, submission_dir):

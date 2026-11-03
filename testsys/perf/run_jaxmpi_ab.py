@@ -34,6 +34,9 @@ rejected" is a complete outcome. Ratios are formed only between two ACCEPTED
 arms: a speedup whose numerator and denominator ran at different effective
 core counts is not a speedup.
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import json
 import os
@@ -269,7 +272,7 @@ def main():
         note.flush()
 
     def snap(rws):
-        json.dump(dict(case=a.case, sha=sha, host=os.uname().nodename,
+        json.dump(dict(case=a.case, sha=sha, host=host_label(),
                        date=time.strftime('%Y-%m-%d %H:%M'), rows=rws,
                        n_lo=a.n_lo, n_hi=a.n_hi, max_busy=a.max_busy,
                        min_eff=a.min_eff, excluded_cpus=excl,
@@ -362,7 +365,7 @@ def main():
     # LEDGER: one row per measured arm, through the project's own writer.
     # REJECTED points are recorded too, with the rejection on the row -- a
     # point that was measured and thrown away is evidence about this box.
-    meta = dict(case=a.case, sha=sha, host=os.uname().nodename,
+    meta = dict(case=a.case, sha=sha, host=host_label(),
                 date=time.strftime('%Y-%m-%d %H:%M'))
     lrows = []
     for row in rows:

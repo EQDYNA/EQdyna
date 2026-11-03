@@ -71,6 +71,9 @@ too, at 500 m they are dp025 (paired by the run's rounding rule, printed).
 Writes a timestamped JSON snapshot to testsys/parity/evidence_output/
 (gitignored), like the TPV29/TPV35 scripts.
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import datetime
 import glob
@@ -219,7 +222,7 @@ def provenance():
             return 'unavailable (%s)' % ex
     return dict(git_sha=git('rev-parse', 'HEAD'), git_dirty=bool(git('status', '--porcelain')),
                 when_utc=datetime.datetime.utcnow().isoformat(timespec='seconds'),
-                host=os.uname().nodename)
+                host=host_label())
 
 
 def _stats(v):
