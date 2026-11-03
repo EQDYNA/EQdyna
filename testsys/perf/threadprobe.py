@@ -25,6 +25,9 @@ allowed cpu.
     python3 testsys/perf/threadprobe.py --k 16 --iters 200
 Writes docs/perf_snapshots/threadprobe_<YYYY-mm-dd_HHMMSS>.json (rule 19).
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import json
 import os
@@ -193,7 +196,7 @@ def finish(a, cpus, results, s):
                        'threadprobe_%s_k%d_%s.json'
                        % (time.strftime('%Y-%m-%d_%H%M%S'), a.k, a.policy))
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    json.dump(dict(sha=sha_r.stdout.strip(), host=os.uname().nodename,
+    json.dump(dict(sha=sha_r.stdout.strip(), host=host_label(),
                    date=time.strftime('%Y-%m-%d %H:%M'), loadavg=os.getloadavg(),
                    args=vars(a), cpus=cpus, results=results, summary=s,
                    below_min_effective_cores=low), open(out, 'w'), indent=1)

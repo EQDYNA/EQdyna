@@ -68,6 +68,9 @@ shared box and dynamic-rupture runs are slow when it is busy, which is
 exactly why the deadline is 3x a MEASURED cost rather than a fixed number
 tight enough to false-positive on a merely-busy box.
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import datetime
 import json
@@ -1185,7 +1188,7 @@ def _perf_meta(results, label, device, budget, sha, tree_dirty):
         cells.append(dict(case=case, backend=backend, ok=bool(ok),
                           seconds=dt, ranks=ranks, platform=plat,
                           platform_evidence=ev))
-    return dict(tool='run_e2e', sha=sha, host=os.uname().nodename,
+    return dict(tool='run_e2e', sha=sha, host=host_label(),
                 date=time.strftime('%Y-%m-%d %H:%M'), label=label,
                 device=device, jobs_budget=budget,
                 tenancy_ceiling=ledger.TENANCY_REFERENCE_CEILING, cells=cells,

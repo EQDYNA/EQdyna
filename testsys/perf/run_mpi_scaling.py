@@ -48,6 +48,9 @@ Usage:
         [--ranks 1,2,4,8,16] [--n-lo 20] [--n-hi 60] [--max-busy 0.5]
         [--skip-fortran] [--repeats 1]
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import json
 import os
@@ -619,7 +622,7 @@ def main():
         shutil.rmtree(d0, ignore_errors=True)
 
     print('case %s  sha %s  host %s  n_lo/n_hi %d/%d  max-busy %.2f'
-          % (a.case, sha, os.uname().nodename, a.n_lo, a.n_hi, a.max_busy),
+          % (a.case, sha, host_label(), a.n_lo, a.n_hi, a.max_busy),
           flush=True)
     rows = []
     for n in ranks:
@@ -766,7 +769,7 @@ def main():
         print(line)
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    meta = dict(case=a.case, sha=sha, host=os.uname().nodename,
+    meta = dict(case=a.case, sha=sha, host=host_label(),
                 date=time.strftime('%Y-%m-%d %H:%M'), n_lo=a.n_lo,
                 n_hi=a.n_hi, max_busy=a.max_busy, excluded_cpus=excl,
                 placement=placement_label, rows=rows)

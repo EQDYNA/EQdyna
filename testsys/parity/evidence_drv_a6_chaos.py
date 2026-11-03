@@ -65,6 +65,9 @@ Writes a timestamped JSON snapshot to testsys/parity/evidence_output/
 (gitignored -- a fresh chaotic sample is evidence-of-a-run, not golden
 reference data; rule 4/rule 7) alongside the printed table.
 """
+import os as _hl_os, sys as _hl_sys  # row 162: neutral host label, never the real hostname
+_hl_sys.path.insert(0, _hl_os.path.join(_hl_os.path.dirname(_hl_os.path.abspath(__file__)), '..', '..', 'src', 'python'))
+from eqdyna.profile_emit import host_label  # noqa: E402
 import argparse
 import datetime
 import json
@@ -108,7 +111,7 @@ def provenance():
     load1, load5, load15 = os.getloadavg()
     return dict(
         date_utc=datetime.datetime.utcnow().isoformat() + 'Z',
-        host=socket.gethostname(), sha=sha, dirty=dirty,
+        host=host_label(), sha=sha, dirty=dirty,
         loadavg=f'{load1:.2f} {load5:.2f} {load15:.2f}', ncpu=os.cpu_count(),
         gfortran=first_line(['gfortran', '--version']),
         mpif90=first_line(['mpif90', '--version']),
