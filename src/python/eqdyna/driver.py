@@ -449,7 +449,7 @@ def run(S, nsteps=None, verbose=True, xp=np):
 
     N = S['N']; NEQ = S['NEQ']; nftnd = S['nftnd']
     z = (lambda *a: xp.zeros(*a))
-    carry0 = (z(NEQ + 1), z((N, 3)), z((N, 3)), z(NEQ + 1),
+    carry0 = (xp.concatenate([xp.zeros(1), xp.asarray(S['v1_init'])]), z((N, 3)), z((N, 3)), z(NEQ + 1),
               xp.asarray(inv['stress_i0']).copy(), z((inv['Ep'], 15)),
               xp.asarray(S['fric_init'].copy()),
               xp.full(nftnd, gv.FNFT_SENTINEL),
@@ -569,6 +569,12 @@ def run_mpi(S, comm, part, plan, nsteps=None, verbose=True, xp=np):
             'holds only its own subdomain, so the ranks\' force arrays have '
             'different lengths and there is nothing an Allreduce could '
             'reduce. Use %s=halo.' % (MQ.SYNC_ENV, MQ.SYNC_ENV))
+
+    if S['mode'] == 2:
+        raise NotImplementedError(
+            'run_mpi: mode = 2 (restart) is not wired into the MPI path -- its carry '
+            'starts v1 at zero and would drop the restart fault-node velocities '
+            '(fric 31-36); run the case serially (python-jax) or with the Fortran binary')
 
     inv, finv, tp, hist_w = build_invariants(S, nsteps)
     nftnd_l = int(finv['nftnd'])
