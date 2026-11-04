@@ -50,13 +50,13 @@ S-dict provenance, field by field:
   ndof, eq_ids                   -- meshgen.py M3
   nsmp1, nsmp2, un, us, ud, arn  -- meshgen.py M4
   fric_init                      -- readInputFiles.read_on_fault_vars
-  v1_init                        -- assembleGlobalMass.init_vel. NOTE
-                                    (pre-existing): driver.run zero-inits v1
-                                    and never reads this. For mode==1 with
-                                    fric(31:36) identically 0.0 that is a
-                                    verified no-op; a case with mode==2 or
-                                    nonzero fric(31:36) WOULD need it wired
-                                    in. Flagged, not silently worked around.
+  v1_init                        -- assembleGlobalMass.init_vel, from
+                                    fric(31:36). mode==1: identically 0.0.
+                                    mode==2: fric(31:36) come from fault.r.nc
+                                    (netcdf_io.read_on_fault_restart) and
+                                    driver.run starts v1 from v1_init, as
+                                    Fortran's init_vel does. The MPI path
+                                    (driver.run_mpi) refuses mode==2.
 
 C_elastic==0 (test.drv.a6) additionally needs ccosphi/sinphi/tv
 (readInputFiles.f90's readmaterial) and init_stress (meshgen.f90:201's
@@ -73,7 +73,7 @@ import time
 
 import numpy as np
 
-from . import assembleGlobalMass, checkInputConsistency, driver, func_lib, library_output, meshgen, readInputFiles
+from . import assembleGlobalMass, checkInputConsistency, driver, func_lib, library_output, meshgen, netcdf_io, readInputFiles
 from . import backend as _backend
 from . import profile_emit as _profile_emit
 
@@ -557,6 +557,15 @@ def build_solver_state(case_dir, part=None):
         [f['fxmin'] for f in faults_for_check], [f['fzmin'] for f in faults_for_check],
         params['dx'], params['dz'], meshCoor, nsmp,
         ntotft=g['ntotft'], fault_of=nsmp[:, 2].astype(np.int64) + 1)
+    # eqdyna3d.f90:133: `if (mode==2) call netcdf_read_on_fault_eqdyna_restart`,
+    # straight after the mode-1 read and before init_vel (below), which seeds
+    # v1 from the fric(31:36) slots this fills.
+    if g['mode'] == 2:
+        fric = netcdf_io.read_on_fault_restart(
+            os.path.join(case_dir, 'fault.r.nc'), fric, g['ntotft'],
+            [f['fxmin'] for f in faults_for_check], [f['fxmax'] for f in faults_for_check],
+            [f['fzmin'] for f in faults_for_check], [f['fzmax'] for f in faults_for_check],
+            params['dx'], params['dz'], meshCoor, nsmp)
 
     # calcGlobalShapeFunc.f90:22-28 (called unconditionally, for EVERY
     # element, from assembleGlobalMass.f90:35) special-cases elemTypeArr
@@ -663,7 +672,7 @@ def build_solver_state(case_dir, part=None):
                       pmlb['maxdx'], pmlb['maxdy'], pmlb['maxdz']])
 
     S = dict(
-        N=N, E=E, NEQ=total_eqs, nen=8, ned=3, nftnd=nftnd, ntotft=g['ntotft'],
+        N=N, E=E, NEQ=total_eqs, nen=8, ned=3, nftnd=nftnd, ntotft=g['ntotft'], mode=g['mode'],
         # Row 17 (multi-fault): the 0-indexed fault each row of
         # nsmp1/nsmp2/un/us/ud/arn/fric_init belongs to -- nsmp's 3rd column,
         # same row order. faulting.py's nucleation gating masks on this

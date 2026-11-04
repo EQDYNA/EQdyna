@@ -61,6 +61,9 @@ ERR_CFG_MATERIAL_GRID_INVALID = 17  # bMaterial.txt's 3D material grid (n2mat=6,
 ERR_CFG_FAULT_TS_INVALID = 18  # bGlobal.txt's fault time-series switch (par.outputFaultTimeSeries) is neither 0 nor 1 (raised by readInputFiles.read_bglobal)
 ERR_GEOM_MULTIFAULT_Y_BAD = 32  # a fault's y-plane is not vertical/planar, coincides with another fault's, or (row 17 rebased) a fault's y bound is not an integer multiple of dy from the union-derived uniform-y belt origin (raised by meshgen.py's one_dim_coor_array)
 ERR_GEOM_MULTIFAULT_XZ_BAD = 33  # (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line (raised as InputConsistencyError by meshgen.py's one_dim_coor_array)
+ERR_CFG_RESTART_DZ_NE_DX = 19  # a multi-fault (ntotft > 1) restart (mode = 2) needs dz == dx (raised by netcdf_io.read_on_fault_restart)
+ERR_INPUT_FILE_STALE = 22  # fault.r.nc holds a different number of faults than ntotft (raised by netcdf_io.read_on_fault_restart)
+ERR_NETCDF = 71  # a NetCDF open/lookup/read failed (raised by netcdf_io.read_on_fault_restart)
 ERR_NUM_NORMAL_STRESS_NONCOMPRESSIVE = 65  # rate-and-state (friclaw 3/4/5) normal traction on the fault became >= 0 (not compressive); raised by driver.run/run_mpi after the time loop with time, fault node coordinates and value
 
 # C_Q is never a case-input field (see module docstring) -- hardcoded here
