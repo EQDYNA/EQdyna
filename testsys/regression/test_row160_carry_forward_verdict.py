@@ -17,6 +17,12 @@ under test is never touched):
   3. key matches, verdict field malformed (cells not a list; n_success
      missing or a string) -> skip False, with a reason; no default.
 
+Row 161 adds: a key-matching all-green summary is still refused when
+tree_clean is not true, term != matrix.GATE_TERM_S, or the swept cell SET
+differs from check_pretag_ci.default_runnable_cells() (reduced or extra).
+The green fixture uses the REAL runnable set; each negative differs from it
+in that one field.
+
 Cheap (rule 9): a tmp git repo with one commit, a few small JSON files, no
 solver, no MPI. Well under 1 s. Exits non-zero on any failure.
 
@@ -34,7 +40,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 RUN_PY = os.path.join(ROOT, 'testsys', 'run.py')
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-from testsys import content_key  # noqa: E402
+from testsys import content_key, matrix  # noqa: E402
+from testsys.regression import check_pretag_ci  # noqa: E402
 
 
 def _load_run(path):
@@ -73,48 +80,95 @@ def _carry(run_py, summary):
         return mod._release_sweep_carry_forward()
 
 
-def _cells(verdicts):
-    return [{'case': 'test.c%d' % i, 'backend': 'fortran', 'verdict': v}
-            for i, v in enumerate(verdicts)]
+def _real_cells(verdicts=None):
+    """The REAL runnable cell set (row 161: the carry-forward now compares the
+    swept SET to matrix.py's). `verdicts` overrides the first cells' verdicts."""
+    cells = [{'case': c, 'backend': b, 'verdict': 'SUCCESS'}
+             for c, b in sorted(check_pretag_ci.default_runnable_cells())]
+    for i, v in enumerate(verdicts or []):
+        cells[i]['verdict'] = v
+    return cells
+
+
+def _green(**over):
+    """The one green fixture; every negative differs from it only in the
+    fields named in `over`."""
+    cells = _real_cells()
+    s = {'n_runnable': len(cells), 'n_success': len(cells), 'cells': cells,
+         'tree_clean': True, 'term': matrix.GATE_TERM_S}
+    s.update(over)
+    return s
+
+
+def _refused(run_py, summ, label, must_name):
+    skip, msg = _carry(run_py, summ)
+    if skip is not False:
+        raise AssertionError('%s was carried forward (skip=%r): %s'
+                             % (label, skip, msg))
+    for m in must_name:
+        if m not in msg:
+            raise AssertionError('%s: refusal does not name %r: %s'
+                                 % (label, m, msg))
 
 
 def check_failed_sweep_with_matching_key_is_not_carried(run_py=RUN_PY):
-    skip, msg = _carry(run_py, {'n_runnable': 3, 'n_success': 2,
-                                'cells': _cells(['SUCCESS', 'SUCCESS', 'FAIL'])})
-    if skip is not False:
-        raise AssertionError('a FAILED sweep with a matching key was carried '
-                             'forward (skip=%r): %s' % (skip, msg))
-    if 'FAILED sweep: 2/3' not in msg:
-        raise AssertionError('refusal does not say "FAILED sweep: 2/3": %s' % msg)
+    cells = _real_cells(['FAIL'])
+    n = len(cells)
+    _refused(run_py, _green(n_success=n - 1, cells=cells),
+             'a FAILED sweep', ['FAILED sweep: %d/%d' % (n - 1, n)])
 
 
 def check_green_sweep_with_matching_key_is_carried(run_py=RUN_PY):
-    skip, msg = _carry(run_py, {'n_runnable': 2, 'n_success': 2,
-                                'cells': _cells(['SUCCESS', 'SUCCESS'])})
+    skip, msg = _carry(run_py, _green())
     if skip is not True:
-        raise AssertionError('an all-green sweep with a matching key was not '
-                             'carried forward (skip=%r): %s' % (skip, msg))
+        raise AssertionError('an all-green real-cell-set sweep with a matching '
+                             'key was not carried forward (skip=%r): %s'
+                             % (skip, msg))
 
 
 def check_malformed_verdict_is_not_carried(run_py=RUN_PY):
+    n = len(_real_cells())
     for label, summ in (
-            ('cells not a list', {'n_runnable': 1, 'n_success': 1, 'cells': 'ok'}),
-            ('n_success missing', {'n_runnable': 1, 'cells': _cells(['SUCCESS'])}),
-            ('n_success a string', {'n_runnable': 1, 'n_success': '1',
-                                    'cells': _cells(['SUCCESS'])})):
-        skip, msg = _carry(run_py, summ)
-        if skip is not False:
-            raise AssertionError('malformed verdict (%s) was carried forward '
-                                 '(skip=%r): %s' % (label, skip, msg))
-        if 'FAILED sweep' not in msg:
-            raise AssertionError('malformed verdict (%s) gave no reason: %s'
-                                 % (label, msg))
+            ('cells not a list', _green(cells='ok')),
+            ('n_success missing', {k: v for k, v in _green().items()
+                                   if k != 'n_success'}),
+            ('n_success a string', _green(n_success=str(n)))):
+        _refused(run_py, summ, 'malformed verdict (%s)' % label, ['FAILED sweep'])
+
+
+def check_tree_dirty_is_not_carried(run_py=RUN_PY):
+    _refused(run_py, _green(tree_clean=False), 'tree_clean=False', ['tree_clean'])
+
+
+def check_wrong_term_is_not_carried(run_py=RUN_PY):
+    _refused(run_py, _green(term=matrix.GATE_TERM_S + 1.0), 'wrong term', ['term'])
+
+
+def check_reduced_cell_set_is_not_carried(run_py=RUN_PY):
+    cells = _real_cells()
+    dropped = cells.pop()
+    n = len(cells)
+    _refused(run_py, _green(n_runnable=n, n_success=n, cells=cells),
+             'reduced cell set',
+             ['cell SET', '%s/%s' % (dropped['case'], dropped['backend'])])
+
+
+def check_extra_cell_is_not_carried(run_py=RUN_PY):
+    cells = _real_cells() + [{'case': 'test.unknown', 'backend': 'fortran',
+                              'verdict': 'SUCCESS'}]
+    n = len(cells)
+    _refused(run_py, _green(n_runnable=n, n_success=n, cells=cells),
+             'extra cell', ['cell SET', 'test.unknown/fortran'])
 
 
 def main(run_py=RUN_PY):
     checks = [check_failed_sweep_with_matching_key_is_not_carried,
               check_green_sweep_with_matching_key_is_carried,
-              check_malformed_verdict_is_not_carried]
+              check_malformed_verdict_is_not_carried,
+              check_tree_dirty_is_not_carried,
+              check_wrong_term_is_not_carried,
+              check_reduced_cell_set_is_not_carried,
+              check_extra_cell_is_not_carried]
     failures = []
     for c in checks:
         try:

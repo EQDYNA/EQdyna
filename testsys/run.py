@@ -449,6 +449,12 @@ def _release_sweep_carry_forward():
     check_pretag_ci.sweep_verdict_reasons -- the tag-time gate's own
     predicate, board row 160). A failed or malformed-verdict summary adds a
     reason ("FAILED sweep: n_success/n_runnable ...") and the loop goes on.
+    Nor does a green verdict alone (board row 161): the summary must also
+    have tree_clean true, term == matrix.GATE_TERM_S, and a swept (case,
+    backend) cell SET equal to check_pretag_ci.default_runnable_cells()
+    (n_runnable and len(cells) consistent with it) -- the same conditions
+    evaluate_sweep_candidate applies at tag time. Each refusal appends a
+    reason naming the field and the loop goes on, never a default.
 
     Advisory only for THIS function's caller (run_release, deciding whether
     to spend the minutes-to-hours re-running run_e2e.py): the actual GATE
@@ -465,7 +471,7 @@ def _release_sweep_carry_forward():
     before anything heavier loads; a module-level import here would break
     that gate with an ImportError instead of the REFUSED it expects, for a
     tier -- `release` -- that sandboxed run never even selects)."""
-    from testsys import content_key
+    from testsys import content_key, matrix
     from testsys.regression import check_pretag_ci
     found = sorted(glob.glob(os.path.join(REPO_ROOT, 'docs', 'evidence',
                                           'sweep-*', 'summary.json')))
@@ -502,6 +508,33 @@ def _release_sweep_carry_forward():
             if not isinstance(data.get('cells'), list):
                 reasons.append('%s: FAILED sweep: "cells" is not a list, '
                                'verdict unreadable' % p)
+                continue
+            # Row 161: tree_clean, term and the swept cell SET, mirroring
+            # check_pretag_ci.evaluate_sweep_candidate.
+            scope_bad = []
+            if data.get('tree_clean') is not True:
+                scope_bad.append('tree_clean is %r, want true'
+                                 % (data.get('tree_clean'),))
+            if data.get('term') != matrix.GATE_TERM_S:
+                scope_bad.append('term is %r, want %r (matrix.GATE_TERM_S)'
+                                 % (data.get('term'), matrix.GATE_TERM_S))
+            want_set = check_pretag_ci.default_runnable_cells()
+            got_set = {(c.get('case'), c.get('backend'))
+                       for c in data['cells'] if isinstance(c, dict)}
+            if got_set != want_set:
+                scope_bad.append(
+                    'swept cell SET differs from matrix.py runnable set -- '
+                    'missing %s, extra %s' % (
+                        sorted('%s/%s' % cb for cb in want_set - got_set) or 'none',
+                        sorted('%s/%s' % cb for cb in got_set - want_set) or 'none'))
+            if data.get('n_runnable') != len(want_set):
+                scope_bad.append('n_runnable is %r, want %d'
+                                 % (data.get('n_runnable'), len(want_set)))
+            if len(data['cells']) != data.get('n_runnable'):
+                scope_bad.append('%d cell record(s) but n_runnable=%r'
+                                 % (len(data['cells']), data.get('n_runnable')))
+            if scope_bad:
+                reasons.append('%s: not carried: %s' % (p, '; '.join(scope_bad)))
                 continue
             verdict_bad = check_pretag_ci.sweep_verdict_reasons(p, data)
             if verdict_bad:
