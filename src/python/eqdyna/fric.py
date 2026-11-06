@@ -88,10 +88,11 @@ def rate_state_ageing_law(xp, V2, theta, fric, dt):
     # Exact solution of d(theta)/dt = 1 - V2*theta/L over dt, with no L/V2 term
     # (cancels to 0 at V2 ~ 1e-30; inf - inf = NaN at V2 = 0). Mirrors fric.f90:
     #   theta*exp(-x) + dt*g(x), x = V2*dt/L, g = (1 - exp(-x))/x,
-    # g the series 1 - x/2 + x^2/6 - x^3/24 below x = 1e-3. xs keeps the unused
-    # division branch finite at x == 0.
+    # g the series 1 - x/2 + x^2/6 - x^3/24 for |x| < 1e-3 (V2 = 1e-3*L/dt =
+    # 0.14 m/s at L = 0.14 m, dt = 1e-3 s; abs so a negative V2 cannot take the
+    # series at large |x|). xs keeps the unused division branch finite at x == 0.
     x = V2 * dt / L
-    small = x < 1.0e-3
+    small = xp.abs(x) < 1.0e-3
     xs = xp.where(small, 1.0, x)
     g = xp.where(small, 1.0 - x / 2.0 + x * x / 6.0 - x * x * x / 24.0,
                  (1.0 - xp.exp(-x)) / xs)

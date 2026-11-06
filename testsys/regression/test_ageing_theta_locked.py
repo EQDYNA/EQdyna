@@ -23,7 +23,11 @@ Checks (behaviour only, rule 10a):
   4. Fortran and python agree (rel 1e-13) with each other and with an
      independent oracle, theta*exp(-x) + dt*(-expm1(-x))/x, over V from 0 to
      1 m/s, including x straddling the 1e-3 series threshold. Both numbers
-     are printed.
+     are printed. The series threshold |x| = V*dt/L = 1e-3 is V = 0.14 m/s
+     here (L=0.14, dt=1e-3); the V list straddles it on both signs, so a
+     negative V (|x| large) must take the exact branch (the abs in the guard).
+  5. checks 1-2 and the python half of 3-4 run on numpy AND on jax (CPU, via
+     backend.array_module('jax'), the gated backend); jax == numpy to RTOL.
 Fails (never skips) when gfortran is missing.
 """
 import math
@@ -37,7 +41,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
-from eqdyna import faulting as F, fric as FR, globalvar as gv  # noqa: E402
+from eqdyna import backend as BK, faulting as F, fric as FR, globalvar as gv  # noqa: E402
 
 A, B, L, F0, V0, DT = 0.01, 0.014, 0.14, 0.6, 1e-6, 1e-3
 RTOL = 1e-13
@@ -100,24 +104,25 @@ def fric_arr(n=1):
     return f
 
 
-def py_chain(v, th0, n):
-    f = fric_arr()
-    th = np.array([th0])
+def py_chain(v, th0, n, xp=np):
+    f = xp.asarray(fric_arr())
+    th = xp.asarray(np.array([th0]))
     with np.errstate(all='ignore'):
         for _ in range(n):
-            xmu, dxmudv, th = FR.rate_state_ageing_law(np, np.array([v]), th, f, DT)
+            xmu, dxmudv, th = FR.rate_state_ageing_law(xp, xp.asarray(np.array([v])), th, f, DT)
     return float(th[0]), float(xmu[0]), float(dxmudv[0])
 
 
-def newton_chain(v0, theta0, trial_mag, nsteps):
+def newton_chain(v0, theta0, trial_mag, nsteps, xp=np):
     """faulting.NewtonRaphson stepped like the time loop: state0 <- state_out."""
-    f = fric_arr()
-    v = np.array([v0]); th = np.array([theta0]); tp = np.array([50e6])
-    tn = np.array([-50e6]); tc = np.array([1e-9]); tm = np.array([trial_mag])
+    a = xp.asarray
+    f = a(fric_arr())
+    v = a(np.array([v0])); th = a(np.array([theta0])); tp = a(np.array([50e6]))
+    tn = a(np.array([-50e6])); tc = a(np.array([1e-9])); tm = a(np.array([trial_mag]))
     hist = []
     with np.errstate(all='ignore'):
         for _ in range(nsteps):
-            v, _, th, _ = F.NewtonRaphson(np, 3, f, v, th, tp, tn, tm, tc, DT)
+            v, _, th, _ = F.NewtonRaphson(xp, 3, f, v, th, tp, tn, tm, tc, DT)
             hist.append((float(v[0]), float(th[0])))
     return hist
 
@@ -130,46 +135,53 @@ def oracle(v, th, dt=DT):
 
 def check(exe):
     fails = []
+    XPS = [('numpy', np), ('jax', BK.array_module('jax'))]
 
     def bad(msg):
         fails.append(msg)
 
-    # 1. python NewtonRaphson, locked node at v_trial == 0
-    h = newton_chain(0.0, 1e5, 1e5, 3)
-    if not all(np.isfinite(a) and np.isfinite(b) for a, b in h):
-        bad('python NewtonRaphson, v_trial=0, locked: NaN/inf in (v, theta) %r' % h)
-    # 2. python NewtonRaphson, V=1e-30, no driving traction, 60 steps
-    n2, th0 = 60, 1e5
-    h = newton_chain(1e-30, th0, 0.0, n2)
-    if not all(np.isfinite(a) and np.isfinite(b) for a, b in h):
-        k = next(i for i, (a, b) in enumerate(h) if not (np.isfinite(a) and np.isfinite(b)))
-        bad('python NewtonRaphson, v_trial=1e-30, 60 steps: NaN/inf first at step %d: %r'
-            % (k + 1, h[k]))
-    elif not all(abs(b - (th0 + (i + 1) * DT)) < 0.01 * th0 for i, (a, b) in enumerate(h)):
-        bad('python NewtonRaphson, v_trial=1e-30: state left theta0 + steps*dt by >1%%: %r'
-            % h[-1])
+    for xn, xp in XPS:
+        # 1. python NewtonRaphson, locked node at v_trial == 0
+        h = newton_chain(0.0, 1e5, 1e5, 3, xp)
+        if not all(np.isfinite(a) and np.isfinite(b) for a, b in h):
+            bad('%s NewtonRaphson, v_trial=0, locked: NaN/inf in (v, theta) %r' % (xn, h))
+        # 2. python NewtonRaphson, V=1e-30, no driving traction, 60 steps
+        n2, th0 = 60, 1e5
+        h = newton_chain(1e-30, th0, 0.0, n2, xp)
+        if not all(np.isfinite(a) and np.isfinite(b) for a, b in h):
+            k = next(i for i, (a, b) in enumerate(h) if not (np.isfinite(a) and np.isfinite(b)))
+            bad('%s NewtonRaphson, v_trial=1e-30, 60 steps: NaN/inf first at step %d: %r'
+                % (xn, k + 1, h[k]))
+        elif not all(abs(b - (th0 + (i + 1) * DT)) < 0.01 * th0 for i, (a, b) in enumerate(h)):
+            bad('%s NewtonRaphson, v_trial=1e-30: state left theta0 + steps*dt by >1%%: %r'
+                % (xn, h[-1]))
     # 3. Fortran and python chains on the locked inputs
     for v, th0, n in [(0.0, 1e5, 3), (1e-30, 1e5, 60), (1e-30, 1e9, 1)]:
         ft, fx, fd = fortran(exe, [(v, th0, n)])[0]
         pt, px, pd = py_chain(v, th0, n)
+        jt, jx, _ = py_chain(v, th0, n, XPS[1][1])
+        if not (jt == pt or abs(jt - pt) <= RTOL * abs(pt)):
+            bad('jax theta %.17e != numpy %.17e at V=%g n=%d' % (jt, pt, v, n))
         want = th0 + n * DT
         print('  V=%g theta0=%g n=%d  fortran theta=%.17e xmu=%.6e  python theta=%.17e xmu=%.6e'
               % (v, th0, n, ft, fx, pt, px))
-        for tag, t, x in (('fortran', ft, fx), ('python', pt, px)):
+        for tag, t, x in (('fortran', ft, fx), ('python', pt, px), ('jax', jt, jx)):
             if not (math.isfinite(t) and math.isfinite(x)):
                 bad('%s chain V=%g n=%d: theta/xmu not finite (%r, %r)' % (tag, v, n, t, x))
             elif abs(t - want) > 1e-6 * th0:
                 bad('%s chain V=%g n=%d: theta %.9e != theta0+n*dt %.9e' % (tag, v, n, t, want))
     # 4. Fortran vs python vs oracle across V
-    vs = [0.0, 1e-30, 1e-20, 1e-12, 1e-9, 1e-7, 1.37e-6, 1.39e-6, 1.4e-6,
-          1e-5, 1e-3, 1e-1, 1.0]
+    pos = [0.0, 1e-30, 1e-20, 1e-12, 1e-9, 1e-7, 1e-5, 1e-3, 1e-1,
+           0.139, 0.1399, 0.1401, 0.141, 1.0]
+    vs = pos + [-v for v in pos[1:]] + [-10.0, -1e3]
     cases = [(v, th, 1) for v in vs for th in (1e2, 1e5, 1e9)]
     frows = fortran(exe, cases)
     worst = 0.0
     for (v, th, _), (ft, _, _) in zip(cases, frows):
         pt = py_chain(v, th, 1)[0]
+        jt = py_chain(v, th, 1, XPS[1][1])[0]
         ot = oracle(v, th)
-        for tag, t in (('fortran', ft), ('python', pt)):
+        for tag, t in (('fortran', ft), ('python', pt), ('jax', jt)):
             e = abs(t - ot) / abs(ot)
             worst = max(worst, e)
             if not e <= RTOL:
