@@ -58,4 +58,10 @@ EXCLUDED_FROM_SWEEP = frozenset({
     # seconds-scale, same reasoning as test_release_complete.py above. See
     # the file's own module docstring.
     'test_row148_tpv23_jaxmpi_solve.py',
+    # Board row 165 (2026-11-05): reproducer, a 4-rank Fortran + serial
+    # python-jax pair at nt=1 and nt=240 on a synthetic locked-node variant
+    # of test.restart2; needs mpirun and the built eqdyna on PATH and takes
+    # minutes (wall time in the PR). By-hand / e2e-tier, excluded from the
+    # everyday and CI sweep; it exits nonzero when mpirun/eqdyna is missing.
+    'test_row165_locked_variant_parity.py',
 })
