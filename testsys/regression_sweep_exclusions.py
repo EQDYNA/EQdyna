@@ -64,4 +64,8 @@ EXCLUDED_FROM_SWEEP = frozenset({
     # minutes (wall time in the PR). By-hand / e2e-tier, excluded from the
     # everyday and CI sweep; it exits nonzero when mpirun/eqdyna is missing.
     'test_row165_locked_variant_parity.py',
+    # Row 166 probe: runs the numpy solver on the row-165 variant (~2 s/step,
+    # ~10 s at the default 2 steps); by hand, excluded from the everyday and
+    # CI sweep. It exits nonzero if |slip rate| reaches the floor.
+    'test_row166_locked_v_floor.py',
 })

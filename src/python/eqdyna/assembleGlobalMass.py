@@ -96,9 +96,9 @@ element loop does), `compute_hourglass` (`calcSSPhi4Hrgls`'s `ss`/`phi`
 hourglass-control tensors, including a port of `func_lib.f90`'s `vlm`
 Belytschko-formula element volume), and `init_vel` (`eqdyna3d.f90`'s
 fault-node velocity seeding of the 1D solver-state vector `v1` from
-`fric(31:36)` via the equation-number map -- mode==1 (non-restart) only,
-matching this port's case scope; mode==2 restart fric(31:36) are read by
-`netcdf_io.py` and seeded in `driver.py`).
+`fric(31:36)` via the equation-number map; the same call serves mode 1 (slots
+are exactly 0.0) and mode 2 (slots carry the restart velocities read by
+`netcdf_io.py`, PR #245)).
 
 Verified against `testsys/parity/fixtures/test_tpv8_serial/
 pydump_elemgeo.txt` (eledet/eleshp/ss/phi per element) and
@@ -630,8 +630,9 @@ def compute_hourglass(xl, xs, mat, eleshp):
 
 
 def init_vel(nsmp, eq_nums, fric, n_equations):
-    """Milestone 7.5: port of eqdyna3d.f90's init_vel, mode==1 (non-restart)
-    case only; mode==2's fric(31:36) come from `netcdf_io.py` (PR #245).
+    """Milestone 7.5: port of eqdyna3d.f90's init_vel, for both modes:
+    mode 1 leaves fric(31:36) at 0.0; mode 2 has them filled from the restart
+    file by `netcdf_io.py` (PR #245), and this function seeds v1 from them.
 
     Seeds the 1D solver-state velocity vector v1 at fault-node equations
     from fric(31:36) (FRIC_SLOT_VEL_MASTER_X/Y/Z=31/32/33,

@@ -20,7 +20,8 @@ under test is never touched):
 Row 161 adds: a key-matching all-green summary is still refused when
 tree_clean is not true, term != matrix.GATE_TERM_S, or the swept cell SET
 differs from check_pretag_ci.default_runnable_cells() (reduced or extra).
-The green fixture uses the REAL runnable set; each negative differs from it
+Row 161a adds the same-size swap (one cell replaced by another, counts
+unchanged). The green fixture uses the REAL runnable set; each negative differs from it
 in that one field.
 
 Cheap (rule 9): a tmp git repo with one commit, a few small JSON files, no
@@ -161,6 +162,22 @@ def check_extra_cell_is_not_carried(run_py=RUN_PY):
              'extra cell', ['cell SET', 'test.unknown/fortran'])
 
 
+def check_swapped_cell_same_size_is_not_carried(run_py=RUN_PY):
+    """Row 161a: one real cell replaced by a different one, so n_runnable,
+    len(cells) and n_success all still equal the real count -- only the cell
+    SET differs. Neither the count checks nor the verdict can catch it."""
+    cells = _real_cells()
+    dropped = cells.pop()
+    cells.append({'case': 'test.swapped', 'backend': dropped['backend'],
+                  'verdict': 'SUCCESS'})
+    n = len(cells)
+    assert n == len(_real_cells()), 'fixture must be same-size'
+    _refused(run_py, _green(n_runnable=n, n_success=n, cells=cells),
+             'same-size swapped cell',
+             ['cell SET', 'missing', '%s/%s' % (dropped['case'], dropped['backend']),
+              'extra', 'test.swapped/%s' % dropped['backend']])
+
+
 def main(run_py=RUN_PY):
     checks = [check_failed_sweep_with_matching_key_is_not_carried,
               check_green_sweep_with_matching_key_is_carried,
@@ -168,7 +185,8 @@ def main(run_py=RUN_PY):
               check_tree_dirty_is_not_carried,
               check_wrong_term_is_not_carried,
               check_reduced_cell_set_is_not_carried,
-              check_extra_cell_is_not_carried]
+              check_extra_cell_is_not_carried,
+              check_swapped_cell_same_size_is_not_carried]
     failures = []
     for c in checks:
         try:
