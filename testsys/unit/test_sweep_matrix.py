@@ -73,10 +73,13 @@ def test_unsupported_table_is_exactly_the_mpi_opt_outs(monkeypatch):
     }
     assert set(matrix.UNSUPPORTED) == expected_unsupported_backend_pairs
     assert len(matrix.UNSUPPORTED) == len(matrix.CASES) - len(matrix.PY_MPI_RANKS)
-    # every one of those entries carries the SAME recorded policy reason --
-    # a per-case ad-hoc reason here would mean the exclusion is a coverage
-    # gap being rationalised case by case rather than one stated policy.
-    reasons = set(matrix.UNSUPPORTED.values())
+    # every one of those entries carries the SAME recorded policy reason,
+    # except the one mode = 2 case, whose reason is a measured code refusal
+    # (driver.run_mpi raises on mode 2) and is pinned separately below.
+    mode2_key = ('test.restart2', 'python-jax-mpi')
+    assert mode2_key in matrix.UNSUPPORTED
+    assert 'driver.run_mpi refuses mode = 2' in matrix.UNSUPPORTED[mode2_key]
+    reasons = {r for k, r in matrix.UNSUPPORTED.items() if k != mode2_key}
     assert len(reasons) == 1
     assert 'not opted into the optional MPI execution mode' in next(iter(reasons))
     # no case outside python-jax-mpi is unsupported: the two remaining
