@@ -75,6 +75,8 @@ first, and that is item 76, owner-scoped.
 
 **OWNER DECISION 2026-10-13, later (typed in the main session), on row 149:** told that option A found no hourglass defect (the KF78 phi vectors are already the Flanagan-Belytschko projection, giving ~1e-14 force for a linear field on the real 60-degree corner elements; stiffness/(E dx) is resolution-independent), that no hourglass variant converges dp000 n-stress to FaultMod +1.52 MPa (as-is -11.8/+2.0/+8.4, corner-off -11.8/-7.0/-2.4 at 500/200/100 m), and offered A (drop hourglass work; investigate the fault-traction / free-surface conflict at the trace node), B (corner hourglass-off heuristic) or C (known limitation), the owner answered "A".
 
+**OWNER DECISION 2026-11-06c (typed in the main session), right after 11-06/11-06b:** "/autopilot clear them" -- budget: until rows 166, 161a, 16d, 149 and 155 are cleared or honestly blocked.
+
 **OWNER DECISION 2026-11-06b (typed in the main session), same message thread:** "and work on tpv12 and 13 issues" -- row 149 (TPV12/13 dp000 surface stress) and its dependent row 155 (TPV13 fault-edge border unpin, owner 2A: lands with 149) are back in scope; PRs #212/#186/#187 and branch fix/fault-edge-master-node may now be worked on.
 
 **OWNER DECISION 2026-11-06 (typed in the main session), asked whether to clear the three small P3 follow-ups now (row 166 locked-variant noise suspects, row 161a carry-forward wrong-cell-set test, row 16d stale mode=2 docstrings):** "yes"
