@@ -59,10 +59,13 @@ subroutine rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   ! Exact solution of d(theta)/dt = 1 - V2*theta/L over dt, written without the
   ! L/V2 term (which cancels to 0 at V2 ~ 1e-30 and is inf-inf = NaN at V2 = 0):
   !   theta*exp(-x) + dt*g(x),  x = V2*dt/L,  g(x) = (1 - exp(-x))/x.
-  ! Below x = 1d-3, g is the series 1 - x/2 + x**2/6 - x**3/24 (error < x**4/120,
-  ! 8e-15 at the threshold; 1 - exp(-x) loses eps/x above it, 5e-14 there).
+  ! For |x| < 1d-3, g is the series 1 - x/2 + x**2/6 - x**3/24 (error < x**4/120,
+  ! 8e-15 at the threshold; 1 - exp(-x) loses eps/(2|x|) above it: bound 1.1e-13,
+  ! measured worst 5.6e-14 at |x| = 1e-3, 400k points vs a 40 decimal oracle).
+  ! |x| = 1e-3 is V2 = 1e-3*L/dt = 0.14 m/s for L = 0.14 m, dt = 1e-3 s
+  ! (the abs keeps a negative V2 from taking the series at large |x|).
   x = V2*dt/L
-  if (x < 1.0d-3) then
+  if (abs(x) < 1.0d-3) then
       g = 1.0d0 - x/2.0d0 + x*x/6.0d0 - x*x*x/24.0d0
   else
       g = (1.0d0 - dexp(-x))/x
