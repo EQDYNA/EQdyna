@@ -75,6 +75,8 @@ first, and that is item 76, owner-scoped.
 
 **OWNER DECISION 2026-10-13, later (typed in the main session), on row 149:** told that option A found no hourglass defect (the KF78 phi vectors are already the Flanagan-Belytschko projection, giving ~1e-14 force for a linear field on the real 60-degree corner elements; stiffness/(E dx) is resolution-independent), that no hourglass variant converges dp000 n-stress to FaultMod +1.52 MPa (as-is -11.8/+2.0/+8.4, corner-off -11.8/-7.0/-2.4 at 500/200/100 m), and offered A (drop hourglass work; investigate the fault-traction / free-surface conflict at the trace node), B (corner hourglass-off heuristic) or C (known limitation), the owner answered "A".
 
+**OWNER DECISION 2026-11-05 (typed in the main session), on TPV35 at 100 m ts-body PARTIAL (8 of 41 off-fault stations >10% low in peak velocity vs own published EQdyna 4.1.3 (2017), body059st213 mismatched; plot `docs/evidence/fine-grid-archive-2026-10-13/tpv35/tpv35_ts_body_eqdyna413.png` shown):** "tpv35 is pretty good" -- read as option B: accepted as is, the gap recorded, no investigation or re-run.
+
 **OWNER DECISION 2026-11-04c (typed in the main session), after being told the conductor was clearing rows 161/162/16c/19(c):** "Others /autopilot clear them" -- read as: every other open row the conductor can fix is in scope too, until the board is green; row 149 (TPV12/13 surface stress) and row 155 (deferred to land with 149) stay excluded per 2026-11-02 and 2026-11-03 2A.
 
 **OWNER DECISION 2026-11-04b (typed in the main session), on the HPC ask open since 2026-10-14 ("2A", TPV36/37 at 50 m):** "No need for 36/37 at 50m" -- not run; the ask is closed.
