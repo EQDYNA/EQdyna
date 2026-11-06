@@ -97,8 +97,8 @@ hourglass-control tensors, including a port of `func_lib.f90`'s `vlm`
 Belytschko-formula element volume), and `init_vel` (`eqdyna3d.f90`'s
 fault-node velocity seeding of the 1D solver-state vector `v1` from
 `fric(31:36)` via the equation-number map -- mode==1 (non-restart) only,
-matching this port's case scope; mode==2 restart reads `fric(31:36)` from
-a restart netCDF this port does not read, out of scope).
+matching this port's case scope; mode==2 restart fric(31:36) are read by
+`netcdf_io.py` and seeded in `driver.py`).
 
 Verified against `testsys/parity/fixtures/test_tpv8_serial/
 pydump_elemgeo.txt` (eledet/eleshp/ss/phi per element) and
@@ -631,8 +631,7 @@ def compute_hourglass(xl, xs, mat, eleshp):
 
 def init_vel(nsmp, eq_nums, fric, n_equations):
     """Milestone 7.5: port of eqdyna3d.f90's init_vel, mode==1 (non-restart)
-    case only -- matching this port's scope (mode==2 reads fric(31:36) from
-    a restart netCDF this port does not read).
+    case only; mode==2's fric(31:36) come from `netcdf_io.py` (PR #245).
 
     Seeds the 1D solver-state velocity vector v1 at fault-node equations
     from fric(31:36) (FRIC_SLOT_VEL_MASTER_X/Y/Z=31/32/33,

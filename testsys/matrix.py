@@ -349,6 +349,14 @@ GATE_STATIONS = {
                'faultst120dp075.txt'),
         'off': ('body010st000dp000.txt', 'body030st120dp000.txt'),
     },
+    # test.restart2 (row 16c): the mode = 2 restart gate. Stations placed by
+    # par.st_coor_on_fault/off_fault in its params: on-fault (x, z) km
+    # (0,-0.5), (0,-2), (5,-1.5); off-fault (0,2,0), (5,-3,0).
+    'test.restart2': {
+        'on': ('faultst000dp005.txt', 'faultst000dp020.txt',
+               'faultst050dp015.txt'),
+        'off': ('body020st000dp000.txt', 'body-030st050dp000.txt'),
+    },
 }
 
 # STATION_ZERO_FLOOR -- the absolute floor a per-column scale S_q is clamped
@@ -445,6 +453,10 @@ STATION_BOUND = {
     # magnitude above 1.3649e-14 * ~121.5 (1.66e-12), same headroom
     # convention as every other near-machine-epsilon case here.
     'test.tpv13': 1e-10,
+    # test.restart2 (row 16c): measured python-jax vs the fortran reference -- worst
+    # station e 2.0e-15 (off v-vel, floor-clamped S_q; the rest 0.0), fortran e 0.0.
+    # 1e-10, the smallest bound in use, is >4 orders above that.
+    'test.restart2': 1e-10,
 }
 
 # STATION_UNSUPPORTED -- (case, backend) cells whose station comparison is refused
@@ -543,6 +555,8 @@ NSTRESS_CONVENTION = {
                    'text), "Positive means extension." -- confirmed by '
                    'case.setup\'s own printed declaration for this case '
                    '(station n-stress sign = +1).'),
+    'test.restart2': ('extension', 'no SCEC spec (an EQsimu restart case); SCEC '
+                      'default (Signconvention3d: normal slip > 0 for extension)'),
 }
 
 # python-jax-mpi is a FOURTH value on the `backend` axis: real MPI (one
@@ -912,6 +926,10 @@ CASE_BOUND = {
     # bound-already-in-use at or above 1.247106e-07 * ~121.5 (1.52e-5), as
     # for test.tpv12's same-shape roundoff.
     'test.tpv13': 1e-4,
+    # test.restart2 (row 16c): measured python-jax vs the fortran reference -- frt
+    # max|diff| 1.0e-18 (frt prints 7 digits, every printed digit agrees), nc
+    # max|diff| 1.0e-18 (vzm), fortran rerun 0.0. 1e-10, the smallest bound in use.
+    'test.restart2': 1e-10,
 }
 # test.tpv30 was held out of the gate from 2026-09-17 to 2026-09-23 by a real
 # divergence (numpy==jax, both != Fortran by up to 4.0e8 Pa at t=20 s). It was
@@ -946,6 +964,7 @@ GATE = {
     'test.tpv33': 'abs-max',
     'test.tpv12': 'abs-max',
     'test.tpv13': 'abs-max',
+    'test.restart2': 'abs-max',
 }
 
 # test.drv.a6's flip-budget gate. These numbers are measured, not chosen;
@@ -1000,8 +1019,17 @@ UNSUPPORTED = {
     # ARE covered for every case; python-jax-mpi is an optional execution mode
     # of python-jax and only test.tpv8 has been gated on it so far.
     (c, 'python-jax-mpi'): _MPI_OPT_IN_REASON
-    for c in _NAME_LIST if c not in PY_MPI_RANKS
+    for c in _NAME_LIST if c not in PY_MPI_RANKS and c != 'test.restart2'
 }
+# test.restart2 is the one case that cannot opt in: driver.run_mpi refuses
+# mode = 2 (src/python/eqdyna/driver.py, `if S['mode'] == 2: raise
+# NotImplementedError`) because the MPI carry starts v1 at zero and would
+# drop the restart fault-node velocities (fric 31-36).
+UNSUPPORTED[('test.restart2', 'python-jax-mpi')] = (
+    'driver.run_mpi refuses mode = 2 (restart): the MPI carry starts v1 at '
+    'zero and would drop the restart fault-node velocities (fric 31-36); '
+    'restart is wired for serial python-jax and the Fortran binary only '
+    '(board row 16c).')
 
 # RELEASE_ONLY -- RETIRED 2026-09-23 (owner decision, same session as the
 # numpy-axis removal above). Its only two occupants ever were

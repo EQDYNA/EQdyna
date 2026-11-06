@@ -5,8 +5,9 @@ nameList = ['test.drv.a6',   'test.tpv8', 'test.tpv10', 'test.tpv104',
             'test.tpv29', 'test.tpv36', 'test.tpv37', 'test.tpv30',
             'test.tpv22', 'test.tpv23', 'test.tpv35', 'test.tpv34',
             'test.tpv26', 'test.tpv27', 'test.tpv31', 'test.tpv32',
-            'test.tpv33', 'test.tpv12', 'test.tpv13']
-coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+            'test.tpv33', 'test.tpv12', 'test.tpv13',
+            'test.restart2']
+coreNumList = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
 # test.tpv12 (SCEC TPV12, 60-degree dipping planar normal fault, linear
 # elastic) REGISTERED 2026-10-07 (board row 149, owner pairing decision):
 # TPV12 is the METHOD 1 (C_elastic=1, stress change, no gravity) half of the
