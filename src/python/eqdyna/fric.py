@@ -85,7 +85,17 @@ def rate_state_ageing_law(xp, V2, theta, fric, dt):
     tmp = (V2 + 1.0e-30) * tmpc                      # the 1e-30 is the Fortran's, verbatim
     xmu = A * xp.log(tmp + xp.sqrt(tmp ** 2 + 1.0))  # arcsinh(z) = ln(z + sqrt(z^2+1))
     dxmudv = A * tmpc / xp.sqrt(1.0 + tmp ** 2)
-    theta_new = L / V2 + (theta - L / V2) * xp.exp(-V2 * dt / L)
+    # Exact solution of d(theta)/dt = 1 - V2*theta/L over dt, with no L/V2 term
+    # (cancels to 0 at V2 ~ 1e-30; inf - inf = NaN at V2 = 0). Mirrors fric.f90:
+    #   theta*exp(-x) + dt*g(x), x = V2*dt/L, g = (1 - exp(-x))/x,
+    # g the series 1 - x/2 + x^2/6 - x^3/24 below x = 1e-3. xs keeps the unused
+    # division branch finite at x == 0.
+    x = V2 * dt / L
+    small = x < 1.0e-3
+    xs = xp.where(small, 1.0, x)
+    g = xp.where(small, 1.0 - x / 2.0 + x * x / 6.0 - x * x * x / 24.0,
+                 (1.0 - xp.exp(-x)) / xs)
+    theta_new = theta * xp.exp(-x) + dt * g
     return xmu, dxmudv, theta_new
 
 
