@@ -62,8 +62,6 @@ def test_crop_refuses_missing_variable_and_bad_window(tmp_path):
     _write_source(src)
     with pytest.raises(ValueError):
         crf.crop(src, str(tmp_path / 'x.nc'), 0, 99, 0, 3)
-    with netCDF4.Dataset(src, 'a') as ds:
-        pass
     bad = str(tmp_path / 'bad.nc')
     with netCDF4.Dataset(bad, 'w', format='NETCDF3_CLASSIC') as ds:
         ds.createDimension('nid_dip', 2)

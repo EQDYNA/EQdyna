@@ -1,6 +1,6 @@
 # test.restart2
 
-The mode = 2 (EQsimu restart) end-to-end gate gate. A 20 km x 4 km
+The mode = 2 (EQsimu restart) end-to-end gate. A 20 km x 4 km
 planar vertical strike-slip fault (81 x 17 nodes, dx = 250 m), rate-and-state
 aging law (friclaw 3), no artificial nucleation, restarted from a real
 EQquasi fault.r.nc. Gated on fortran (4 ranks) and python-jax (serial);
@@ -31,3 +31,9 @@ mode = 1 twin of the case starts from. Nothing ruptures in the 5 s gate term
 (slip rates 1e-6 to 6e-6 m/s); the gate compares the frt columns (slip,
 tractions, peak slip rate, velocities), the on/off-fault station series and
 fault.dyna.r.nc.
+
+Source provenance: sha256 of the EQquasi source file (read-only, outside the repo) is
+2ccbd164edc58bf3d5e004afc73480c792aad8dff42856777b1ca1f461dd5ceb; the fixture is its
+unaltered slice (`testsys/crop_restart_fixture.py`). Negative control (conductor, 2026-11-05):
+zeroing vxm/vxs/vym/vys/vzm/vzs in the fixture turns the fortran cell red
+(station worst e=3.3e3 vs bound 1e-10), so the gate is sensitive to the velocity seeding.
