@@ -44,7 +44,7 @@ subroutine rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   real (kind = dp) :: V2,theta
   real (kind = dp) :: A,B,L,f0,V0
   real (kind = dp),dimension(100) :: fricsgl
-  real (kind = dp) :: tmp, tmpc
+  real (kind = dp) :: tmp, tmpc, x, g
   !
   A  = fricsgl(FRIC_SLOT_RSF_A)
   B  = fricsgl(FRIC_SLOT_RSF_B)
@@ -56,7 +56,18 @@ subroutine rate_state_ageing_law(V2,theta,fricsgl,xmu,dxmudv)
   tmp = (V2+1.d-30) * tmpc
   xmu = A * dlog(tmp + sqrt(tmp**2 + 1.0d0)) !arcsinh(z)= ln(z+sqrt(z^2+1))
   dxmudv = A * tmpc / sqrt(1.0d0 + tmp**2) ! d(arcsinh(z))/dz = 1/sqrt(1+z^2)
-  theta = L/V2 + (theta - L/V2)*dexp(-V2*dt/L)
+  ! Exact solution of d(theta)/dt = 1 - V2*theta/L over dt, written without the
+  ! L/V2 term (which cancels to 0 at V2 ~ 1e-30 and is inf-inf = NaN at V2 = 0):
+  !   theta*exp(-x) + dt*g(x),  x = V2*dt/L,  g(x) = (1 - exp(-x))/x.
+  ! Below x = 1d-3, g is the series 1 - x/2 + x**2/6 - x**3/24 (error < x**4/120,
+  ! 8e-15 at the threshold; 1 - exp(-x) loses eps/x above it, 5e-14 there).
+  x = V2*dt/L
+  if (x < 1.0d-3) then
+      g = 1.0d0 - x/2.0d0 + x*x/6.0d0 - x*x*x/24.0d0
+  else
+      g = (1.0d0 - dexp(-x))/x
+  endif
+  theta = theta*dexp(-x) + dt*g
   !
 end subroutine rate_state_ageing_law
 
