@@ -1,0 +1,71 @@
+diff -u a/src/fortran/driver.f90 b/src/fortran/driver.f90
+--- a/src/fortran/driver.f90
++++ b/src/fortran/driver.f90
+@@ -1,8 +1,51 @@
+ ! Copyright (C) 2006 Benchun Duan, Dunyu Liu
+ ! MIT
++module diagTraceMod
++    use globalvar, only: dp
++    real (kind = dp), allocatable :: diagKU(:), diagHG(:)
++end module diagTraceMod
++
++subroutine diagTrace
++    use globalvar
++    use diagTraceMod
++    implicit none
++    integer (kind = 4) :: i, k, ift
++    integer (kind = 8) :: ns, nm, es, em
++    real (kind = dp) :: kuS(3), kuM(3), hgS(3), hgM(3), dv(3), du(3)
++    character (len = 64) :: fname
++    logical, save :: opened = .false.
++    ift = 1
++    if (.not. opened) then
++        write(fname,'(A,I4.4,A)') 'diagTrace.', me, '.txt'
++        open(9933, file = trim(fname), status = 'replace')
++        opened = .true.
++    endif
++    do i = 1, nftnd(ift)
++        ns = nsmp(1,i,ift)
++        nm = nsmp(2,i,ift)
++        if (abs(meshCoor(1,ns)) > 1.0d0) cycle
++        if (meshCoor(3,ns) < -8.5d0*dz) cycle
++        do k = 1, 3
++            es = eqNumIndexArr(eqNumStartIndexLoc(ns)+k)
++            em = eqNumIndexArr(eqNumStartIndexLoc(nm)+k)
++            kuS(k) = diagKU(es)
++            kuM(k) = diagKU(em)
++            hgS(k) = diagHG(es)
++            hgM(k) = diagHG(em)
++            dv(k) = velArr(k,nm) - velArr(k,ns)
++            du(k) = dispArr(k,nm) - dispArr(k,ns)
++        enddo
++        write(9933,'(I7,40ES17.8)') nt, timeElapsed, meshCoor(3,ns), arn(i,ift), fnms(ns), fnms(nm), &
++            un(1:3,i,ift), ud(1:3,i,ift), kuS, kuM, hgS, hgM, dv, du, &
++            velArr(1:3,ns), velArr(1:3,nm)
++    enddo
++    if (nt == nstep) close(9933)
++end subroutine diagTrace
++
+ subroutine driver
+ 
+     use globalvar
++    use diagTraceMod
+     use errorCodes
+     implicit none
+     include 'mpif.h'
+@@ -23,8 +66,14 @@
+         nodalForceArr = 0.0d0
+         
+         call assembleGlobalKU
+-        call calcHourglassResist   
++        if (.not. allocated(diagKU)) allocate(diagKU(totalNumOfEquations), diagHG(totalNumOfEquations))
++        diagKU = nodalForceArr(1:totalNumOfEquations)
++        call calcHourglassResist
++        diagHG = nodalForceArr(1:totalNumOfEquations) - diagKU
+         call MPI4NodalQuant(nodalForceArr, 3)
++        call MPI4NodalQuant(diagKU, 3)
++        call MPI4NodalQuant(diagHG, 3)
++        call diagTrace
+         if (friclaw == 5) call updateThermalPressurization
+         call faulting
+         nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/nodalMassArr(1:totalNumOfEquations)
