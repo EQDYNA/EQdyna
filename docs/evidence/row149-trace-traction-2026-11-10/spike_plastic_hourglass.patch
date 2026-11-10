@@ -1,0 +1,154 @@
+diff -u a/src/fortran/assembleGlobalKU.f90 b/src/fortran/assembleGlobalKU.f90
+--- a/src/fortran/assembleGlobalKU.f90
++++ b/src/fortran/assembleGlobalKU.f90
+@@ -15,6 +15,11 @@
+     real (kind = dp) :: tStageStart
+     tStageStart = MPI_WTIME()
+     
++    if (.not. allocated(hgRjust)) then
++        allocate(hgRjust(totalNumOfElements), hgQe(3,4,totalNumOfElements))
++        hgRjust = 1.0d0
++        hgQe = 0.0d0
++    endif
+     do nel = 1, totalNumOfElements
+         !al(1:ned,1:nen) = 0.0d0
+         al(1:ned,1:nen) = rdampm*velArr(1:ned,nodeElemIdRelation(1:nen,nel))
+@@ -29,6 +34,7 @@
+                         elresf, -eledet(nel), eleporep(nel), pstrinc, &
+                         meshCoor(1:3,nodeElemIdRelation(1:8,nel)))
+             pstrain(nel) = pstrain(nel) + pstrinc
++            hgRjust(nel) = lastRjust
+            
+             do i = 1, nen
+                 do j = 1, ned
+diff -u a/src/fortran/calcElemKU.f90 b/src/fortran/calcElemKU.f90
+--- a/src/fortran/calcElemKU.f90
++++ b/src/fortran/calcElemKU.f90
+@@ -21,6 +21,7 @@
+     integer (kind = 4)::k,ip,iq,ir
+     !
+     pstrmag = 0.0d0
++    lastRjust = 1.0d0
+     stressrate = 0.0d0
+     strain=0.0d0
+     cc=0.0d0
+@@ -140,6 +141,7 @@
+             !rjust = yield/taomax  !adjust ratio
+             !implement viscoplasticity now. B.D. 6/2/12
+             rjust=yield/taomax + (1-yield/taomax)*exp(-dt/tv)
++            lastRjust = rjust
+             do i=1,6  !adjust stress
+                 stress(i) =strdev(i) * rjust
+                 !calculate plastic strain increment components
+diff -u a/src/fortran/calcHourglassResist.f90 b/src/fortran/calcHourglassResist.f90
+--- a/src/fortran/calcHourglassResist.f90
++++ b/src/fortran/calcHourglassResist.f90
+@@ -26,12 +26,25 @@
+             do itmp = 1, 4
+                 fhr = 0.0d0
+                 !... calculate sum(phi*dl)
++                if (C_elastic == 0) then
++                    ! hourglass generalized stress follows the element's
++                    ! deviatoric return: Qe <- rjust*(Qe + phi.dv*dt)
++                    do i = 1,ned
++                        phid(i) = 0.0d0
++                        do j = 1,nen
++                            phid(i) = phid(i) + phi(j,itmp,nel) * vl(i,j)
++                        enddo
++                        hgQe(i,itmp,nel) = hgRjust(nel)*(hgQe(i,itmp,nel) + phid(i)*dt)
++                        phid(i) = hgQe(i,itmp,nel) + rdampk*phid(i)
++                    enddo
++                else
+                 do i = 1,ned
+                     phid(i) = 0.0d0
+                     do j = 1,nen
+                         phid(i) = phid(i) + phi(j,itmp,nel) * dl(i,j)
+                     enddo
+                 enddo
++                endif
+                 !... calculate hourglass resistence
+                 do i = 1,nen
+                     fhr(1,i) = phi(i,itmp,nel) * (ss(1,nel)*phid(1)  &
+diff -u a/src/fortran/driver.f90 b/src/fortran/driver.f90
+--- a/src/fortran/driver.f90
++++ b/src/fortran/driver.f90
+@@ -1,8 +1,51 @@
+ ! Copyright (C) 2006 Benchun Duan, Dunyu Liu
+ ! MIT
++module diagTraceMod
++    use globalvar, only: dp
++    real (kind = dp), allocatable :: diagKU(:), diagHG(:)
++end module diagTraceMod
++
++subroutine diagTrace
++    use globalvar
++    use diagTraceMod
++    implicit none
++    integer (kind = 4) :: i, k, ift
++    integer (kind = 8) :: ns, nm, es, em
++    real (kind = dp) :: kuS(3), kuM(3), hgS(3), hgM(3), dv(3), du(3)
++    character (len = 64) :: fname
++    logical, save :: opened = .false.
++    ift = 1
++    if (.not. opened) then
++        write(fname,'(A,I4.4,A)') 'diagTrace.', me, '.txt'
++        open(9933, file = trim(fname), status = 'replace')
++        opened = .true.
++    endif
++    do i = 1, nftnd(ift)
++        ns = nsmp(1,i,ift)
++        nm = nsmp(2,i,ift)
++        if (abs(meshCoor(1,ns)) > 1.0d0) cycle
++        if (meshCoor(3,ns) < -8.5d0*dz) cycle
++        do k = 1, 3
++            es = eqNumIndexArr(eqNumStartIndexLoc(ns)+k)
++            em = eqNumIndexArr(eqNumStartIndexLoc(nm)+k)
++            kuS(k) = diagKU(es)
++            kuM(k) = diagKU(em)
++            hgS(k) = diagHG(es)
++            hgM(k) = diagHG(em)
++            dv(k) = velArr(k,nm) - velArr(k,ns)
++            du(k) = dispArr(k,nm) - dispArr(k,ns)
++        enddo
++        write(9933,'(I7,40ES17.8)') nt, timeElapsed, meshCoor(3,ns), arn(i,ift), fnms(ns), fnms(nm), &
++            un(1:3,i,ift), ud(1:3,i,ift), kuS, kuM, hgS, hgM, dv, du, &
++            velArr(1:3,ns), velArr(1:3,nm)
++    enddo
++    if (nt == nstep) close(9933)
++end subroutine diagTrace
++
+ subroutine driver
+ 
+     use globalvar
++    use diagTraceMod
+     use errorCodes
+     implicit none
+     include 'mpif.h'
+@@ -23,8 +66,14 @@
+         nodalForceArr = 0.0d0
+         
+         call assembleGlobalKU
+-        call calcHourglassResist   
++        if (.not. allocated(diagKU)) allocate(diagKU(totalNumOfEquations), diagHG(totalNumOfEquations))
++        diagKU = nodalForceArr(1:totalNumOfEquations)
++        call calcHourglassResist
++        diagHG = nodalForceArr(1:totalNumOfEquations) - diagKU
+         call MPI4NodalQuant(nodalForceArr, 3)
++        call MPI4NodalQuant(diagKU, 3)
++        call MPI4NodalQuant(diagHG, 3)
++        call diagTrace
+         if (friclaw == 5) call updateThermalPressurization
+         call faulting
+         nodalForceArr(1:totalNumOfEquations) = nodalForceArr(1:totalNumOfEquations)/nodalMassArr(1:totalNumOfEquations)
+diff -u a/src/fortran/globalvar.f90 b/src/fortran/globalvar.f90
+--- a/src/fortran/globalvar.f90
++++ b/src/fortran/globalvar.f90
+@@ -209,6 +209,8 @@
+         !   nPML/R=6/0.01;10/0.001;20/0.0001. Collino & Tsogka (2001)
+     real (kind = dp) :: PMLb(8), vmaxPML
+     real (kind = dp) :: rdampm=0.0d0, rdampk        ! Rayleigh mass-/stiffness-proportional damping coefficients
++    real (kind = dp), allocatable :: hgQe(:,:,:), hgRjust(:)
++    real (kind = dp) :: lastRjust = 1.0d0
+     real (kind = dp) :: kapa_hg = 0.1d0             ! viscous-hourglass coefficient; typical range 0.05-0.15 (Goudreau & Hallquist, 1982)
+ 
+     !=====================================================================

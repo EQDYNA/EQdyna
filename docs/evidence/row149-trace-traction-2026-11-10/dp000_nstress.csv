@@ -1,0 +1,13 @@
+run,case,dx_m,variant,t_s,nstress_MPa,nstress_t0_MPa,slip_dip_m
+t12_dx150_diag,tpv12,150,master+instrumentation,3.9998,-2.2977,0.0000,7.8283
+t12_dx200_diag,tpv12,200,master+instrumentation,3.9998,-3.9865,0.0000,7.6400
+t12_dx500_diag,tpv12,500,master+instrumentation,4.0150,-9.2340,0.0000,6.5270
+t13_dx150_diag,tpv13,150,master+instrumentation,3.9998,5.4215,-0.5536,7.1531
+t13_dx150_hgp,tpv13,150,spike,3.9998,-0.2087,-0.5536,7.1805
+t13_dx200_base,tpv13,200,master,3.9998,1.9555,-0.7379,7.0368
+t13_dx200_diag,tpv13,200,master+instrumentation,3.9998,1.9555,-0.7379,7.0368
+t13_dx200_hgp,tpv13,200,spike,3.9998,-3.4215,-0.7379,7.0520
+t13_dx250_diag,tpv13,250,master+instrumentation,3.9960,-2.5297,-0.9221,6.8283
+t13_dx500_base,tpv13,500,master,4.0150,-11.7612,-1.8410,6.2741
+t13_dx500_diag,tpv13,500,master+instrumentation,4.0150,-11.7612,-1.8410,6.2741
+t13_dx500_hgp,tpv13,500,spike,4.0150,-13.6868,-1.8410,6.2815
