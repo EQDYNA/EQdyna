@@ -1,0 +1,5 @@
+wedge_run,insertion_run,wedge_nodes,insertion_nodes,matched_nodes,wedge_ruptured,insertion_ruptured,both_ruptured,abs_dt_median_s,abs_dt_p95_s,abs_dt_max_s
+w12_dx500,t12_dx500_diag,1891,1891,1891,1695,1540,1540,0.2822,0.5060,0.6382
+w12_dx500_p212,t12_dx500_diag,1891,1891,1891,1695,1540,1540,0.2822,0.5060,0.6382
+w12_dx200,t12_dx200,11476,11476,11476,10952,10642,10638,0.1084,0.2057,0.3640
+w12_dx150,t12_dx150,20301,20301,20301,19743,19300,19300,0.0786,0.1438,0.1946
