@@ -60,8 +60,7 @@ Not measured: tpv36/37 at finer than 200 m, term beyond 13 s (tpv36) / 9 s (tpv3
 ## Not done / limits
 
 - No independent oracle at the trace: the shared dataset has no TPV36/37 submission from another code; the only baseline is EQdyna's own 50 m
-  archive (`scec_archive`, read-only), so this is MEASURED against own data, not VERIFIED. `scec_compare.py` overlays were not produced for that reason
-  (an own-archive overlay of tpv36/37 exists under `case_input/test.tpv36/cmp_tpv36_dd.png`); figures here are `fig_tpv36_trace.png`, `fig_tpv37_trace.png`.
+  archive (`scec_archive`, read-only), so this is MEASURED against own data, not VERIFIED. `scec_compare.py` overlays were not produced for that reason; figures here are `fig_tpv36_trace.png`, `fig_tpv37_trace.png`.
 - Grids: 500 m at 4 ranks (2,1,2); 250 / 200 m at 16 ranks (4,1,4), one thread per rank, `flock`-serialised, load measured before each
   (13-30 on 64 cores, a foreign 8-rank job present). Walls in `runs.csv`.
 - Rebuild: `queue.sh cases_coarse.txt`, `queue.sh cases_fine.txt` (env `WT_ROOT`, `WT_TREE`, `WT_LOCK`), then
