@@ -3,6 +3,7 @@ usage: set_case.py <kind> <case_dir> <dx> <nx> <ny> <nz> <term> <wedge_params_sr
 kind: w12c4  TPV12 wedge variant (row149 params file), fric_cohesion 0.2e6 -> 4.0e6
       i12c4  TPV12 insertion (case copy), fric_cohesion 0.2e6 -> 4.0e6
       i12c02 TPV12 insertion (case copy), unchanged cohesion (baseline control)
+      w12c02 TPV12 wedge variant, unchanged cohesion (decomposition control)
       t36c02 test.tpv36, cohesionSlope 0.0005e6 -> 0.000025e6 (trace 4 -> 0.2 MPa)
       t36c4  test.tpv36, unchanged cohesion (baseline control)"""
 import re, sys
@@ -22,7 +23,7 @@ if kind.startswith(("w12", "i12")):
     s = sub(s, r"(?m)^par\.nx, par\.ny, par\.nz *= *[0-9]+, *[0-9]+, *[0-9]+", "par.nx, par.ny, par.nz = %s, %s, %s" % (nx, ny, nz), "part")
     if kind.endswith("c4"):
         s = sub(s, r"(?m)^par\.fric_cohesion     = 0\.2e6$", "par.fric_cohesion     = 4.0e6  # SURFACE-STRENGTH TEST: was 0.2e6", "coh")
-    elif kind != "i12c02":
+    elif kind not in ("i12c02", "w12c02"):
         raise SystemExit("unknown kind " + kind)
     open(d + "/user_defined_params.py", "w").write(s)
     for line in s.splitlines():
