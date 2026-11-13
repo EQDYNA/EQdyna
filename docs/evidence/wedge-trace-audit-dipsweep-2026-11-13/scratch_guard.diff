@@ -1,0 +1,40 @@
+--- a/src/fortran/meshgen.f90
++++ b/src/fortran/meshgen.f90
+@@ -1187 +1187,2 @@
+-        if (nodeCoor(1)>(fltxyz(1,1,iFault)-tol) .and. nodeCoor(1)<(fltxyz(2,1,iFault)+dx+tol) .and. &
++        if (faultDegenStyle(iFault)==0 .and. &  ! SCRATCH GUARD (row 149 audit): vertical-fault rule only
++            nodeCoor(1)>(fltxyz(1,1,iFault)-tol) .and. nodeCoor(1)<(fltxyz(2,1,iFault)+dx+tol) .and. &
+--- a/src/fortran/driver.f90
++++ b/src/fortran/driver.f90
+@@ -2,0 +3,29 @@
++subroutine diagAudit
++    ! SCRATCH DIAGNOSTIC (row 149 trace-node audit): dump fault pairs near x=0 and every element touching them.
++    use globalvar
++    implicit none
++    integer (kind = 4) :: i, k, ift
++    integer (kind = 8) :: e, ns, nm
++    logical, allocatable :: sel(:)
++    character (len = 64) :: fname
++    ift = 1
++    allocate(sel(totalNumOfNodes)); sel = .false.
++    write(fname,'(A,I4.4,A)') 'audit_pairs.', me, '.txt'
++    open(9941, file = trim(fname), status = 'replace')
++    write(9941,'(A,6ES16.8,I6)') '# dx dy dz tol faultDegenAngle fymin nftnd', dx, dy, dz, tol, faultDegenAngle(ift), fltxyz(1,2,ift), nftnd(ift)
++    do i = 1, nftnd(ift)
++        ns = nsmp(1,i,ift); nm = nsmp(2,i,ift)
++        if (abs(meshCoor(1,ns)) > 1.0d0) cycle
++        sel(ns) = .true.; sel(nm) = .true.
++        write(9941,'(I8,2I10,3ES16.8,40ES16.8)') i, ns, nm, meshCoor(1:3,ns), arn(i,ift), fnms(ns), fnms(nm), un(1:3,i,ift), us(1:3,i,ift), ud(1:3,i,ift)
++    enddo
++    close(9941)
++    write(fname,'(A,I4.4,A)') 'audit_elems.', me, '.txt'
++    open(9942, file = trim(fname), status = 'replace')
++    do e = 1, totalNumOfElements
++        if (.not. any(sel(nodeElemIdRelation(1:nen,e)))) cycle
++        write(9942,'(I10,I5,8I10,24ES16.8)') e, elemTypeArr(e), nodeElemIdRelation(1:nen,e), (meshCoor(2,nodeElemIdRelation(k,e)), meshCoor(3,nodeElemIdRelation(k,e)), k=1,nen)
++    enddo
++    close(9942)
++end subroutine diagAudit
++
+@@ -9,0 +39 @@
++    call diagAudit
