@@ -21,13 +21,17 @@ if kind.startswith(("w12", "i12")):
     s = sub(s, r"(?m)^par\.dx *= *[0-9.]+", "par.dx = %s." % dx, "dx")
     s = sub(s, r"(?m)^par\.term *= *[0-9.]+", "par.term = %s" % term, "term")
     s = sub(s, r"(?m)^par\.nx, par\.ny, par\.nz *= *[0-9]+, *[0-9]+, *[0-9]+", "par.nx, par.ny, par.nz = %s, %s, %s" % (nx, ny, nz), "part")
-    if kind.endswith("c4"):
+    if kind.endswith("u4"):   # UNIFORM 4 MPa: measured degenerate (no nucleation); kept only as the 500 m evidence run
         s = sub(s, r"(?m)^par\.fric_cohesion     = 0\.2e6$", "par.fric_cohesion     = 4.0e6  # SURFACE-STRENGTH TEST: was 0.2e6", "coh")
+    elif kind.endswith("c4"):  # surface-only: 4 MPa at the trace, linear to the unchanged 0.2 MPa at 8 km down dip (nucleation at 10.5-13.5 km untouched)
+        s = sub(s, r"(?m)^(    par\.on_fault_vars\[iz,ix,4\] *= *)par\.fric_cohesion$",
+                r"\g<1>par.fric_cohesion + (4.0e6 - par.fric_cohesion)*(0.0 if downDipDistance >= 8.0e3 else 1.0 - downDipDistance/8.0e3)"
+                r"  # SURFACE-STRENGTH TEST: 4 MPa at trace, linear to 0.2 MPa at 8 km down dip", "coh")
     elif kind not in ("i12c02", "w12c02"):
         raise SystemExit("unknown kind " + kind)
     open(d + "/user_defined_params.py", "w").write(s)
     for line in s.splitlines():
-        if re.match(r"par\.(dx|dy|term|C_degen|insertFaultType|dt|fric_cohesion) |par\.nx, par\.ny", line):
+        if re.match(r"par\.(dx|dy|term|C_degen|insertFaultType|dt|fric_cohesion) |par\.nx, par\.ny|\s+par\.on_fault_vars\[iz,ix,4\]", line):
             print(line)
 elif kind.startswith("t36"):
     p = d + "/tpv36_37_common.py"

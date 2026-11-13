@@ -26,11 +26,14 @@ RUNS = [  # label, root, dir, case, mesh, trace cohesion MPa, dx
     ("wedge c=0.2 (baseline)", WB, "w12_dx500", "tpv12", "wedge", 0.2, 500),
     ("wedge c=0.2 (baseline)", WB, "w12_dx200", "tpv12", "wedge", 0.2, 200),
     ("wedge c=0.2 (baseline)", WB, "w12_dx150", "tpv12", "wedge", 0.2, 150),
-    ("wedge c=4 (test 1)", SS, "w12c4_dx500", "tpv12", "wedge", 4.0, 500),
-    ("wedge c=4 (test 1)", SS, "w12c4_dx200", "tpv12", "wedge", 4.0, 200),
-    ("wedge c=4 (test 1)", SS, "w12c4_dx150", "tpv12", "wedge", 4.0, 150),
-    ("insertion c=4", SS, "i12c4_dx200", "tpv12", "insertion", 4.0, 200),
-    ("insertion c=4", SS, "i12c4_dx150", "tpv12", "insertion", 4.0, 150),
+    ("wedge c=0.2 (16-rank decomposition control)", SS, "w12c02_dx500_p422", "tpv12", "wedge", 0.2, 500),
+    ("wedge c=4 uniform (degenerate)", SS, "w12u4_dx500", "tpv12", "wedge", 4.0, 500),
+    ("wedge c=4 taper (test 1)", SS, "w12c4_dx500", "tpv12", "wedge", 4.0, 500),
+    ("wedge c=4 taper (test 1)", SS, "w12c4_dx200", "tpv12", "wedge", 4.0, 200),
+    ("wedge c=4 taper (test 1)", SS, "w12c4_dx150", "tpv12", "wedge", 4.0, 150),
+    ("insertion c=4 taper", SS, "i12c4_dx500", "tpv12", "insertion", 4.0, 500),
+    ("insertion c=4 taper", SS, "i12c4_dx200", "tpv12", "insertion", 4.0, 200),
+    ("insertion c=4 taper", SS, "i12c4_dx150", "tpv12", "insertion", 4.0, 150),
     ("insertion c=0.2 (rerun)", SS, "i12c02_dx150", "tpv12", "insertion", 0.2, 150),
     ("wedge c=4 (baseline rerun)", SS, "t36c4_dx500", "tpv36", "wedge", 4.0, 500),
     ("wedge c=4 (baseline rerun)", SS, "t36c4_dx250", "tpv36", "wedge", 4.0, 250),
@@ -58,13 +61,18 @@ def station(p):
     return np.array(rows)
 
 
-def cohesion(case, c_trace, dd):
-    if case == "tpv12":
-        return c_trace
+UNIFORM = {"w12u4_dx500"}   # uniform 4 MPa (degenerate, no nucleation); every other tpv12 c=4 run is the surface taper
+
+
+def cohesion(case, c_trace, dd, uniform=False):
+    if case == "tpv12":   # test 1: c_trace at the trace, linear to the unchanged 0.2 MPa at 8 km down dip (set_case.py), or uniform
+        if uniform or c_trace <= 0.2:
+            return c_trace
+        return 0.2 + (c_trace - 0.2) * (0.0 if dd >= 8000.0 else 1.0 - dd / 8000.0)
     return c_trace / 8000.0 * (8000.0 - dd) if dd <= 8000.0 else 0.0   # tpv36: slope*(8e3 - dd), slope = c_trace/8e3
 
 
-def metrics(a, case, c_trace, dd):
+def metrics(a, case, c_trace, dd, uniform=False):
     dip, te, mus, mud, d0 = CASE[case]
     rate = np.hypot(a[:, 2], a[:, 5])
     on = np.flatnonzero(rate > 1e-3)
@@ -72,7 +80,7 @@ def metrics(a, case, c_trace, dd):
     i = int(np.argmin(np.abs(a[:, 0] - te))) if case == "tpv12" else int(np.searchsorted(a[:, 0], te, side="right") - 1)
     slip = np.hypot(a[:, 1], a[:, 4])
     mu = mus - (mus - mud) * np.minimum(slip, d0) / d0
-    c = cohesion(case, c_trace, dd)
+    c = cohesion(case, c_trace, dd, uniform)
     strength = c - mu * np.minimum(a[:, 7], 0.0)
     shear = np.hypot(a[:, 3], a[:, 6])
     ratio = shear / np.maximum(strength, 1e-9)
@@ -123,7 +131,7 @@ for lab, root, nm, case, mesh, c0, dx in RUNS:
     for s in stns:
         a = station(os.path.join(rd, "faultst%s.txt" % s))
         dd = float(s[5:]) * 100.0
-        m = metrics(a, case, c0, dd)
+        m = metrics(a, case, c0, dd, nm in UNIFORM)
         series[(nm, s)] = a
         row = [nm, lab, mesh, "%g" % c0, dx, s, "%g" % dd] + ["%.6g" % m[k] for k in KEYS]
         row += ["%.6g" % pr[k] if (pr and s == "000dp000") else "" for k in PK]
@@ -156,10 +164,18 @@ for r in wt:
         nm = "t36c4_dx" + r["dx_m"]
         print("  %-13s %s n_max %s [%s] slip13 %s [%s] arrival %s [%s]" % (nm, r["station"], "%.5g" % get("tpv36", nm, r["station"], "n_max_MPa"), r["n_max_MPa"],
               "%.5g" % get("tpv36", nm, r["station"], "slip_m"), r["slip_at_t_eval_m"], "%.5g" % get("tpv36", nm, r["station"], "arrival_s"), r["arrival_s"]))
+nm0 = "w12c02_dx500_p422"
+print("\nDECOMPOSITION CONTROL (16 ranks 4x2x2 vs baseline 4 ranks 2x2x1, wedge c=0.2, 500 m)")
+for s_ in ("000dp000", "000dp015", "000dp075"):
+    print("  %s n %+.5f vs %+.5f  dip slip %.5f vs %.5f" % (s_, get("tpv12", nm0, s_, "n_MPa"), get("tpv12", "w12_dx500", s_, "n_MPa"),
+          get("tpv12", nm0, s_, "dip_slip_m"), get("tpv12", "w12_dx500", s_, "dip_slip_m")))
 print("\nKILL-CRITERION INPUTS")
 for dx in (200, 150):
     w, i = get("tpv12", "w12c4_dx%d" % dx, "000dp000", "n_MPa"), get("tpv12", "i12c4_dx%d" % dx, "000dp000", "n_MPa")
-    print("  C1 dx %d: wedge c=4 dp000 n %+.4f, insertion c=4 %+.4f, excess %+.4f MPa -> %s" % (dx, w, i, w - i, "PASS" if (w <= 0 or w - i <= 5.0) else "FAIL"))
+    sw, si = get("tpv12", "w12c4_dx%d" % dx, "000dp075", "dip_slip_m"), get("tpv12", "i12c4_dx%d" % dx, "000dp075", "dip_slip_m")
+    live = sw > 0.1 and si > 0.1   # a run with no rupture would pass C1 vacuously
+    print("  C1 dx %d: wedge c=4 dp000 n %+.4f, insertion c=4 %+.4f, excess %+.4f MPa (dp075 slip %.3f / %.3f m) -> %s" % (
+        dx, w, i, w - i, sw, si, ("PASS" if (w <= 0 or w - i <= 5.0) else "FAIL") if live else "DEGENERATE (no rupture)"))
 for s in ("000dp015", "000dp030", "000dp000"):
     w, i, i2 = (get("tpv12", n, s, "dip_slip_m") for n in ("w12c4_dx150", "i12c4_dx150", "i12c02_dx150"))
     print("  C2 dx 150 %s: wedge c=4 %.4f m, insertion c=4 %.4f m (loss %.1f %%), insertion c=0.2 %.4f m (loss %.1f %%)%s" % (
@@ -190,6 +206,6 @@ for case, fn, runs, panels in (
     for x in ax:
         x.set_xlabel("t (s)"); x.grid(alpha=.3)
     ax[0].axhline(0, color="k", lw=.5); ax[0].legend(fontsize=6)
-    fig.suptitle("%s wedge mesh: surface strength %s (dashed = baseline)" % (case, "0.2 -> 4 MPa" if case == "tpv12" else "4 -> 0.2 MPa"), fontsize=10)
+    fig.suptitle("%s wedge mesh: surface strength %s (dashed = baseline)" % (case, "0.2 -> 4 MPa at trace, tapered to 0.2 MPa at 8 km down dip" if case == "tpv12" else "4 -> 0.2 MPa"), fontsize=10)
     fig.tight_layout(); fig.savefig(os.path.join(OUT, fn), dpi=120); plt.close(fig)
     print("wrote", os.path.join(OUT, fn))

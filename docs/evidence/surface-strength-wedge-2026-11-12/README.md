@@ -42,6 +42,27 @@ Trace n-stress (positive = tension) at the evaluation time (TPV12 4 s, tpv36 13 
 `dp015`, `dp030`; tpv36: 1 km, `dp010`); trace arrival (1 mm/s); per-side stress-divergence / hourglass parts of the trace-node
 traction from the instrumented dump. Baselines re-derived from raw runs by the same script before any comparison.
 
+## Amendment 1 (2026-11-12, before any Test 1 result at 200/150 m; the kill criteria above are NOT changed)
+
+The pre-registered Test 1 change (`par.fric_cohesion` 0.2e6 -> 4.0e6, uniform over the fault) was run first at 500 m on the wedge
+mesh (4 ranks, 120 s, rc=0) and is **degenerate**: every fault node has slip 0 at every station, `frt.txt*` rupture time = 99999
+everywhere, n-stress = 0 at the trace. TPV12's nucleation patch (10.5-13.5 km down dip, `mu_s` 0.54) is only just over strength with
+0.2 MPa cohesion, so a uniform 4 MPa removes the nucleation too; criteria 1 and 2 would then pass vacuously (0 MPa of tension, 0 m of
+slip loss on a fault that never moves), a green that tests nothing. The 200/150 m cells of that design were not run. That run is kept as
+`w12u4_dx500`.
+
+Test 1 is therefore run as the surface-only reading of the owner's wording ("raise TPV12's surface strength to 4 MPa"): cohesion
+`0.2 + 3.8 * max(0, 1 - downDipDistance/8 km)` MPa, i.e. 4 MPa at the trace falling linearly to the **unchanged** 0.2 MPa at 8 km down
+dip and below (the TPV36 taper shape with a 0.2 MPa floor, so nothing below 8 km differs from the baseline, nucleation patch
+included). One line changes (`par.on_fault_vars[iz,ix,4] = ...`, wedge variant `:234`, insertion case `:223`), in the scratch copy only.
+The criteria read the same: trace n-stress at 4 s, slip at `dp015`, both against the insertion run at 4 MPa-at-trace, plus a guard that
+a run with no rupture is reported DEGENERATE, not PASS. Test 2 is unchanged (its taper already extends only to 8 km).
+
+Other execution changes, none of which touch a criterion: 16 ranks (4,2,2) for the 200/150 m TPV12 cells, validated by a 500 m
+16-rank control of the baseline wedge case (`w12c02_dx500_p422`) against the committed 4-rank run; the 4 MPa tpv36 baseline is rerun
+only at 500 m (the 250 m and 200 m values come from the committed wedge-trace evidence); the insertion 0.2 MPa rerun at 150 m is the
+last queue entry (committed row-149 numbers are quoted otherwise).
+
 ## Verdict
 
 PENDING (runs not started when this file was committed).
