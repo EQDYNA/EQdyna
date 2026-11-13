@@ -86,7 +86,7 @@ The headline numbers below were also re-read from the raw `faultst*.txt` station
 | tpv36 c=0.2, dp000 slip at 13 s (m), arrival (s) | 0.481, 6.08 | 0.437, 6.09 | 0.423, 6.10 | |
 | tpv36 c=0.2, tensile-and-pinned fraction (C3: > 1 MPa tension or pinned in tension) | 0 | 0 | 0 | |
 
-- Criterion 1 fails: raising the trace strength from 0.2 to 4 MPa lowers the wedge trace tension by only 7 to 10 % (84.97 -> 76.79, 110.51 -> 98.82 MPa),
+- Criterion 1 fails: raising the trace strength from 0.2 to 4 MPa lowers the wedge trace tension by only 6 to 11 % (30.06 -> 28.31, 84.97 -> 76.79, 110.51 -> 98.82 MPa),
   and the node stays pinned (shear/strength 1.000, tensile and at strength for 95 % of the post-arrival record at 200 and 150 m), 75 to 95 MPa above the insertion run.
 - Criterion 2 fails: at 150 m the wedge dp015 slip is 27 % short of the insertion run at the same 4 MPa (38 % short of the 0.2 MPa insertion run); at the trace itself
   the loss is 80 %.
