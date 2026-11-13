@@ -63,6 +63,40 @@ Other execution changes, none of which touch a criterion: 16 ranks (4,2,2) for t
 only at 500 m (the 250 m and 200 m values come from the committed wedge-trace evidence); the insertion 0.2 MPa rerun at 150 m is the
 last queue entry (committed row-149 numbers are quoted otherwise).
 
-## Verdict
+## Verdict (2026-11-12): strength is NOT the cause (criteria applied as written)
 
-PENDING (runs not started when this file was committed).
+Baselines re-derived from the raw runs by `ss_ana.py` reproduce the committed numbers to every printed digit (w12 dx500/200/150 dp000 n-stress
++30.0603 / +84.9702 / +110.5110 MPa; insertion 0.2 MPa dx150 -2.2977 MPa; tpv36 4 MPa dx500 n max +0.019248 MPa), and the 16-rank (4,2,2) 500 m
+wedge control equals the committed 4-rank (2,2,1) run at dp000/dp015/dp075 to the printed 6 digits, so the rank change is not a variable.
+The headline numbers below were also re-read from the raw `faultst*.txt` station files with an independent awk pass.
+
+| quantity (4 s, TPV12 wedge; 13 s, tpv36) | 500 m | 250 m | 200 m | 150 m |
+|---|---|---|---|---|
+| TPV12 wedge c=0.2 baseline, dp000 n-stress (MPa) | +30.06 | | +84.97 | +110.51 |
+| **TPV12 wedge c=4 taper (test 1)**, dp000 n-stress | +28.31 | | +76.79 | +98.82 |
+| TPV12 insertion c=4 taper, dp000 n-stress | -3.88 | | +2.06 | +3.82 |
+| C1 excess, wedge minus insertion (limit 5 MPa) | +32.2 | | +74.7 FAIL | +95.0 FAIL |
+| wedge c=4 shear/strength at trace, tensile-and-pinned fraction after arrival | 0.83 | | 0.95 | 0.95 |
+| dp000 dip slip: wedge c=4 / insertion c=4 (m) | 1.59 / 5.21 | | 1.39 / 6.29 | 1.32 / 6.48 |
+| dp015 (1.5 km) dip slip: wedge c=4 / insertion c=4 / insertion c=0.2 (m) | 3.80 / 5.74 / n.a. | | no dp015 station | 5.18 / 7.10 / 8.38 |
+| C2 slip loss at dp015, wedge vs insertion c=4 (limit 5 %) | 33.7 % | | | 27.0 % FAIL |
+| dp030 (3 km) dip slip: wedge c=4 / insertion c=4 (m) | 6.05 / 6.55 | | 6.97 / 7.87 | 7.15 / 8.06 |
+| tpv36 c=4 baseline, dp000 n max / slip at 13 s (m) | +0.019 / 0.089 | +0.002 / 0.127 | +0.001 / 0.133 | |
+| **tpv36 c=0.2 (test 2)**, dp000 n max after arrival (MPa) | -0.147 | -0.116 | -0.107 | |
+| tpv36 c=0.2, dp000 slip at 13 s (m), arrival (s) | 0.481, 6.08 | 0.437, 6.09 | 0.423, 6.10 | |
+| tpv36 c=0.2, tensile-and-pinned fraction (C3: > 1 MPa tension or pinned in tension) | 0 | 0 | 0 | |
+
+- Criterion 1 fails: raising the trace strength from 0.2 to 4 MPa lowers the wedge trace tension by only 7 to 10 % (84.97 -> 76.79, 110.51 -> 98.82 MPa),
+  and the node stays pinned (shear/strength 1.000, tensile and at strength for 95 % of the post-arrival record at 200 and 150 m), 75 to 95 MPa above the insertion run.
+- Criterion 2 fails: at 150 m the wedge dp015 slip is 27 % short of the insertion run at the same 4 MPa (38 % short of the 0.2 MPa insertion run); at the trace itself
+  the loss is 80 %.
+- Criterion 3 fails (no tension, no pinning): lowering tpv36 to 0.2 MPa at the trace leaves the trace compressive after arrival at 500, 250 and 200 m (n max
+  -0.15 / -0.12 / -0.11 MPa), never pinned in tension. It does change the rupture (trace arrival 9.06 -> 6.08 s at 500 m, trace slip 0.089 -> 0.481 m,
+  1 km slip 0.52 -> 1.17 m at 500 m), so the strength was a live variable there; it just does not produce the TPV12 signature.
+- By the pre-registered rule: Test 1 leaves tension (> 5 MPa above insertion) AND slip loss (>= 5 % at 1.5 km), Test 2 shows neither -> **not the cause**.
+  Mesh/geometry (60 deg wedge elements at the trace) stays the open suspect; nothing here points at a treatment.
+
+Scope and limits: Test 1 is the amended taper (see Amendment 1), not the uniform-4 MPa variant, which never nucleates (`w12u4_dx500`). The tpv36 4 MPa baseline
+is rerun at 500 m only (250/200 m values are the committed wedge-trace numbers). One mesh family per test, term as in the baselines. Diagnostic only: row 149 stays P4
+paused; no source, case, test or reference changed. Figures: `fig_test1_tpv12.png`, `fig_test2_tpv36.png`; tables `test1_tpv12.csv`, `test2_tpv36.csv` (every station, every run);
+run wall times and ranks in `runs.csv`.

@@ -99,7 +99,7 @@ def parts(rd, dip, te):
     files = [f for f in sorted(glob.glob(os.path.join(rd, "diagTrace.*.txt"))) if os.path.getsize(f)]
     if not files:
         return None
-    a = np.vstack([np.loadtxt(f, ndmin=2) for f in files])
+    a = np.vstack([np.array([[fl(x) for x in l.split()] for l in open(f) if l.strip()]) for f in files])   # fl: Fortran 3-digit exponent without E
     t = np.round(a[:, 1], 9)
     z = np.round(a[:, 2], 3) + 0.0
     tu = np.unique(t)
@@ -172,9 +172,9 @@ for s_ in ("000dp000", "000dp015", "000dp075"):
 print("\nKILL-CRITERION INPUTS")
 for dx in (200, 150):
     w, i = get("tpv12", "w12c4_dx%d" % dx, "000dp000", "n_MPa"), get("tpv12", "i12c4_dx%d" % dx, "000dp000", "n_MPa")
-    sw, si = get("tpv12", "w12c4_dx%d" % dx, "000dp075", "dip_slip_m"), get("tpv12", "i12c4_dx%d" % dx, "000dp075", "dip_slip_m")
+    sw, si = get("tpv12", "w12c4_dx%d" % dx, "000dp030", "dip_slip_m"), get("tpv12", "i12c4_dx%d" % dx, "000dp030", "dip_slip_m")
     live = sw > 0.1 and si > 0.1   # a run with no rupture would pass C1 vacuously
-    print("  C1 dx %d: wedge c=4 dp000 n %+.4f, insertion c=4 %+.4f, excess %+.4f MPa (dp075 slip %.3f / %.3f m) -> %s" % (
+    print("  C1 dx %d: wedge c=4 dp000 n %+.4f, insertion c=4 %+.4f, excess %+.4f MPa (dp030 slip %.3f / %.3f m) -> %s" % (
         dx, w, i, w - i, sw, si, ("PASS" if (w <= 0 or w - i <= 5.0) else "FAIL") if live else "DEGENERATE (no rupture)"))
 for s in ("000dp015", "000dp030", "000dp000"):
     w, i, i2 = (get("tpv12", n, s, "dip_slip_m") for n in ("w12c4_dx150", "i12c4_dx150", "i12c02_dx150"))
