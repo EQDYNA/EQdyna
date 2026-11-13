@@ -1,0 +1,52 @@
+### a60_dx500
+pair0 y=-0.0 z=0.0 arn=1.25e+05 (x0.500 ref) mass s/m=4.871e+10/4.871e+10 (x0.500 / x0.500 ref) un=[-0.   0.9  0.5] us=[1. 0. 0.] ud=[-0.  -0.5  0.9]
+pair1 y=250.0 z=-433.0 arn=2.5e+05 (x1.000 ref) mass s/m=6.089e+10/1.34e+11 (x0.625 / x1.375 ref) un=[-0.   0.9  0.5] us=[1. 0. 0.] ud=[-0.  -0.5  0.9]
+pair0 slave  n_elem=4  {(1, 'FW'): 2, (11, 'FW'): 2}
+pair0 master n_elem=2  {(12, 'HW'): 2}
+pair1 slave  n_elem=4  {(11, 'FW'): 4}
+pair1 master n_elem=8  {(1, 'FW'): 2, (12, 'HW'): 4, (13, 'HW'): 2}
+pair2 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair2 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+pair3 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair3 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+VERDICT a60_dx500: master-attached elems on FW/MIXED side: 2 of 22; slave-attached on HW/MIXED side: 0 of 20; distinct (node id, element) pairs 42; elements read 244
+  MISWIRE? {'node': 1275450, 'kind': 'master', 'pair': 1, 'elem': 619441, 'type': 1, 'cy': 124.99999999999997, 'cz': -649.519053, 'side': 'FW', 'n_off': 6}
+  MISWIRE? {'node': 1275450, 'kind': 'master', 'pair': 1, 'elem': 629959, 'type': 1, 'cy': 124.99999999999997, 'cz': -649.519053, 'side': 'FW', 'n_off': 6}
+### a15_dx500
+pair0 y=0.0 z=-0.0 arn=1.25e+05 (x0.500 ref) mass s/m=2.781e+10/2.781e+10 (x0.500 / x0.500 ref) un=[-0.   0.3  1. ] us=[1. 0. 0.] ud=[-0.  -1.   0.3]
+pair1 y=483.0 z=-129.4 arn=2.5e+05 (x1.000 ref) mass s/m=3.477e+10/7.648e+10 (x0.625 / x1.375 ref) un=[-0.   0.3  1. ] us=[1. 0. 0.] ud=[-0.  -1.   0.3]
+pair0 slave  n_elem=4  {(1, 'FW'): 2, (11, 'FW'): 2}
+pair0 master n_elem=2  {(12, 'HW'): 2}
+pair1 slave  n_elem=4  {(11, 'FW'): 4}
+pair1 master n_elem=8  {(1, 'FW'): 2, (12, 'HW'): 4, (13, 'HW'): 2}
+pair2 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair2 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+pair3 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair3 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+VERDICT a15_dx500: master-attached elems on FW/MIXED side: 2 of 22; slave-attached on HW/MIXED side: 0 of 20; distinct (node id, element) pairs 42; elements read 452
+  MISWIRE? {'node': 975466, 'kind': 'master', 'pair': 1, 'elem': 473722, 'type': 1, 'cy': 241.48145650000006, 'cz': -194.114284, 'side': 'FW', 'n_off': 6}
+  MISWIRE? {'node': 975466, 'kind': 'master', 'pair': 1, 'elem': 484272, 'type': 1, 'cy': 241.48145650000006, 'cz': -194.114284, 'side': 'FW', 'n_off': 6}
+### g60_dx500
+pair0 y=-0.0 z=0.0 arn=1.25e+05 (x0.500 ref) mass s/m=4.871e+10/4.871e+10 (x0.500 / x0.500 ref) un=[-0.   0.9  0.5] us=[1. 0. 0.] ud=[-0.  -0.5  0.9]
+pair1 y=250.0 z=-433.0 arn=2.5e+05 (x1.000 ref) mass s/m=9.743e+10/9.743e+10 (x1.000 / x1.000 ref) un=[-0.   0.9  0.5] us=[1. 0. 0.] ud=[-0.  -0.5  0.9]
+pair0 slave  n_elem=4  {(1, 'FW'): 2, (11, 'FW'): 2}
+pair0 master n_elem=2  {(12, 'HW'): 2}
+pair1 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair1 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+pair2 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair2 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+pair3 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair3 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+VERDICT g60_dx500: master-attached elems on FW/MIXED side: 0 of 20; slave-attached on HW/MIXED side: 0 of 22; distinct (node id, element) pairs 42; elements read 244
+### g15_dx500
+pair0 y=0.0 z=-0.0 arn=1.25e+05 (x0.500 ref) mass s/m=2.781e+10/2.781e+10 (x0.500 / x0.500 ref) un=[-0.   0.3  1. ] us=[1. 0. 0.] ud=[-0.  -1.   0.3]
+pair1 y=483.0 z=-129.4 arn=2.5e+05 (x1.000 ref) mass s/m=5.562e+10/5.562e+10 (x1.000 / x1.000 ref) un=[-0.   0.3  1. ] us=[1. 0. 0.] ud=[-0.  -1.   0.3]
+pair0 slave  n_elem=4  {(1, 'FW'): 2, (11, 'FW'): 2}
+pair0 master n_elem=2  {(12, 'HW'): 2}
+pair1 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair1 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+pair2 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair2 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+pair3 slave  n_elem=6  {(1, 'FW'): 2, (11, 'FW'): 4}
+pair3 master n_elem=6  {(12, 'HW'): 4, (13, 'HW'): 2}
+VERDICT g15_dx500: master-attached elems on FW/MIXED side: 0 of 20; slave-attached on HW/MIXED side: 0 of 22; distinct (node id, element) pairs 42; elements read 452
