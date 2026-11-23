@@ -544,6 +544,14 @@ def build_solver_state(case_dir, part=None):
         xline, yline, zline, params, pmlb, model_bound=model_bound)
     un, us, ud, arn = meshgen.build_fault_geometry(
         xline, yline, zline, params, nsmp, model_bound=model_bound)
+    # Post-meshing screen (meshgen.f90's screenMesh, same point: after the
+    # area accumulation, before MPI4arn). Raises MeshScreenError, which main()
+    # turns into the FATAL block and the check's own exit code; on the MPI path
+    # it also MPI_Aborts, as the failing rank's partners would otherwise hang.
+    # No switch, no fallback: a mesh that fails is never solved.
+    meshgen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, us, ud, arn,
+                        (xline, yline, zline), params['tol'],
+                        [params.get('insertFaultType', 0) == 0] * g['ntotft'])
 
     # Row 17: nsmp's 3rd column is the 0-indexed fault id, in the SAME row
     # order read_on_fault_vars indexes fric by -- +1 for the 1-indexed
@@ -1049,7 +1057,7 @@ def _select_device(device):
             % (device, got, jax.devices(), device, device))
 
 
-def _abort(exc, rank=0):
+def _abort(exc, rank=0, comm=None):
     """checkInputConsistency.InputConsistencyError -> the FATAL block
     errorCodes.f90:153-162 (abortRun) prints: on STDOUT, with the rank line
     (Fortran always has MPI up, so a serial run is rank 0), then
@@ -1067,6 +1075,12 @@ def _abort(exc, rank=0):
     print('  See docs/user/troubleshooting.md for what this code means.')
     print(' =======================================================')
     print(flush=True)
+    if comm is not None:
+        # A rank-local refusal (the mesh screen runs on each rank's own box):
+        # MPI_Abort, exactly as errorCodes.f90's abortRun, so partners waiting
+        # in a collective die with the same status instead of hanging.
+        sys.stdout.flush(); sys.stderr.flush()
+        comm.Abort(exc.code)
     raise SystemExit(exc.code)
 
 
@@ -1127,6 +1141,8 @@ def main():
                                         profile=prof)
         except checkInputConsistency.InputConsistencyError as exc:
             _abort(exc, rank=comm.Get_rank())
+        except meshgen.MeshScreenError as exc:
+            _abort(exc, rank=comm.Get_rank(), comm=comm)
         except BaseException:
             # A failure on ONE rank -- its own box's mesh, its own faces --
             # while the others wait in a Sendrecv would otherwise hang the job
@@ -1183,7 +1199,7 @@ def main():
     try:
         path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend,
                         profile=prof)
-    except checkInputConsistency.InputConsistencyError as exc:
+    except (checkInputConsistency.InputConsistencyError, meshgen.MeshScreenError) as exc:
         _abort(exc)
     print('backend=%s device=%s' % (args.backend, active_device(args.backend)))
     if args.profile:

@@ -2173,6 +2173,370 @@ def build_station_matching(xline, yline, zline, params, xonfs, x4nds,
     return anonfs, off_fault_matches, z_valid
 
 
+# ---------------------------------------------------------------------------
+# Post-meshing screening (owner decision 2026-11-23, row "wedge-mesh
+# mis-wiring" step 1). Counterpart: meshgen.f90's `screenMesh`, called after
+# the node/element loops and the fault-area accumulation and BEFORE MPI4arn,
+# so `arn` is this rank's partial sum exactly as `build_fault_geometry`
+# returns it. Both backends STOP the run (hard error, no switch, no fallback)
+# when a check fails; nothing here repairs a mesh.
+#
+# Five checks, each its own named failure with its own exit code (81-85,
+# src/fortran/errorCodes.f90). All five are evaluated, so one message lists
+# every check that failed; the first failing check's code is the exit status.
+#   sides        a cell attached to a pair's MASTER node has its centre on the
+#                +normal (hanging-wall) side of the local fault plane, a cell
+#                attached to its SLAVE node on the -normal side.
+#   bridging     no cell holds both nodes of one pair; the two nodes of a pair
+#                coincide to the mesh tolerance `tol`.
+#   fault_area   each pair's arn equals a quarter of the vector areas of the
+#                meshed facets (element faces whose four nodes are all master
+#                ids; slave ids where no master-side cell exists) touching it;
+#                for a planar fault also: one plane, a full rectangular
+#                lattice, corner/edge/interior facet counts 1/2/4 (the trace
+#                and edge fractions), and sum = Lx*Lz*sqrt(1+b^2+c^2).
+#   volume_mass  every cell's trilinear Jacobian is positive at all 8 Gauss
+#                points, cell volumes sum to the rank box volume taken from
+#                the node layers, each fault node's volume share is positive
+#                on both sides with master/slave ratio inside a measured band.
+#   normals      un, us, ud are an orthonormal triple and un is parallel to
+#                the area-weighted normal of the meshed facets at the node.
+# Tolerances are measured on the registered cases (see
+# docs/evidence/mesh-screening-2026-11-23/), not chosen to pass.
+# ---------------------------------------------------------------------------
+ERR_MESH_SCREEN_SIDES = 81
+ERR_MESH_SCREEN_BRIDGING = 82
+ERR_MESH_SCREEN_FAULT_AREA = 83
+ERR_MESH_SCREEN_VOLUME_MASS = 84
+ERR_MESH_SCREEN_NORMALS = 85
+SCREEN_CODES = {'sides': ERR_MESH_SCREEN_SIDES, 'bridging': ERR_MESH_SCREEN_BRIDGING,
+                'fault_area': ERR_MESH_SCREEN_FAULT_AREA,
+                'volume_mass': ERR_MESH_SCREEN_VOLUME_MASS,
+                'normals': ERR_MESH_SCREEN_NORMALS}
+
+# Tolerances, each set from the corpus measurement of the 23 registered cases
+# (docs/evidence/mesh-screening-2026-11-23/measured.txt: worst measured value,
+# the limit chosen, and the margin). meshgen.f90's screenMesh carries the SAME
+# numbers; test_mesh_screening.py reads both files and fails if they differ.
+#   measured worst (registered vertical/rough/sheared cases)  -> limit
+SCREEN_SIDE_MIN = 0.0            # min signed cos 0.335 (tpv29 rough)  -> strictly positive
+SCREEN_PLANE_TOL = 1.0e-6        # plane residual 1.3e-11 m            -> 1e-6 m
+SCREEN_AREA_REL = 1.0e-12        # area rel 4.4e-16 (facet identity), 1.99e-16 (analytic) -> 1e-12
+SCREEN_VOL_REL = 1.0e-10         # domain volume rel 1.8e-15           -> 1e-10
+SCREEN_DET_MIN = 0.1             # min detJ/mean 0.997 vertical (0.423 wedge) -> 0.1
+SCREEN_VOL_RATIO_MAX = 2.0       # interior master/slave share 1.49 (sheared tpv10/12/13) -> 2.0
+SCREEN_NORMAL_TOL = 1.0e-9       # orthonormal dev 4.4e-16, planar facet sin 6.1e-16 -> 1e-9
+SCREEN_NORMAL_TOL_ROUGH = 0.2    # facet sin 0.090 (rough tpv29/30), 0.036 drv.a6 -> 0.2
+
+_HEX_FACES = ((0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7))
+_HEX_A = np.array([[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+                   [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]], dtype=float)
+
+
+class MeshScreenError(RuntimeError):
+    """Raised by screen_mesh. `.failures` maps each failed check name to its
+    message; `.code` is the exit status of the FIRST failed check in
+    SCREEN_CODES order (the number meshgen.f90's screenMesh aborts with)."""
+
+    def __init__(self, failures):
+        self.failures = dict(failures)
+        first = next(k for k in SCREEN_CODES if k in self.failures)
+        self.code = SCREEN_CODES[first]
+        super().__init__('mesh screening FAILED: ' + ' | '.join(
+            '[%s] %s' % (k, self.failures[k]) for k in SCREEN_CODES if k in self.failures))
+
+
+def _hex_gauss_detj(xc):
+    """det J of the trilinear brick map at the 2x2x2 Gauss points, (E, 8)."""
+    g = 1.0 / np.sqrt(3.0)
+    out = np.empty((xc.shape[0], 8))
+    k = 0
+    for sz in (-g, g):
+        for sy in (-g, g):
+            for sx in (-g, g):
+                f = 1.0 + _HEX_A * np.array([sx, sy, sz])
+                dn = np.empty((8, 3))
+                dn[:, 0] = _HEX_A[:, 0] * f[:, 1] * f[:, 2] / 8.0
+                dn[:, 1] = _HEX_A[:, 1] * f[:, 0] * f[:, 2] / 8.0
+                dn[:, 2] = _HEX_A[:, 2] * f[:, 0] * f[:, 1] / 8.0
+                jac = np.einsum('ij,eik->ejk', dn, xc)
+                out[:, k] = np.linalg.det(jac)
+                k += 1
+    return out
+
+
+def _lattice_index(v, tol):
+    """Cluster 1-D coordinates closer than tol; returns (label per entry, count)."""
+    order = np.argsort(v, kind='stable')
+    s = v[order]
+    new = np.concatenate(([0], (np.diff(s) > tol).astype(np.int64)))
+    lab_sorted = np.cumsum(new)
+    lab = np.empty(v.size, dtype=np.int64)
+    lab[order] = lab_sorted
+    return lab, (int(lab_sorted[-1]) + 1 if v.size else 0)
+
+
+def _screen_measure(meshCoor, conn, elem_type, nsmp, un, us, ud, arn, lines, tol, planar):
+    """Evaluate the five checks. Returns (m, failures): m the measured scalars
+    (what the tolerances above were set from), failures {check: msg}.
+    meshCoor (N+1,3) and un/us/ud/arn (nft+1,...) keep the 1-indexed row-0
+    convention of build_node_coordinates/build_fault_geometry; conn is (E,8)
+    1-indexed; nsmp (nft,3) is [slave, master, 0-indexed fault]; lines is the
+    rank's (xline, yline, zline); planar[ift] says fault ift is a plane."""
+    xline, yline, zline = lines
+    nx, ny, nz = len(xline), len(yline), len(zline)
+    X = np.asarray(meshCoor, dtype=float)
+    conn = np.asarray(conn, dtype=np.int64)
+    nsmp = np.asarray(nsmp, dtype=np.int64)
+    nft = nsmp.shape[0]
+    nnode = X.shape[0]
+    fail = {}
+    m = {}
+
+    def bad(name, msg):
+        fail.setdefault(name, []).append(msg)
+
+    role = np.zeros(nnode, dtype=np.int8)     # 1 slave, 2 master
+    pid = np.full(nnode, -1, dtype=np.int64)  # 0-based pair row
+    role[nsmp[:, 0]] = 1
+    role[nsmp[:, 1]] = 2
+    pid[nsmp[:, 0]] = np.arange(nft)
+    pid[nsmp[:, 1]] = np.arange(nft)
+    flt = nsmp[:, 2]
+    unp, usp, udp, arnp = un[1:nft + 1], us[1:nft + 1], ud[1:nft + 1], arn[1:nft + 1]
+
+    # per-pair extent of its fault's patch in strike (x) and depth (z): a cell
+    # whose centre lies beyond it touches the fault only through an unsplit
+    # edge node (both y-sides share the slave id there), and an edge pair has
+    # no complete interior neighbourhood, so neither enters the side or the
+    # volume-ratio checks.
+    xm_, zm_ = X[nsmp[:, 1], 0], X[nsmp[:, 1], 2]
+    x_lo, x_hi, z_lo, z_hi = (np.empty(nft) for _ in range(4))
+    for ift in np.unique(flt):
+        s_ = flt == ift
+        x_lo[s_], x_hi[s_] = xm_[s_].min(), xm_[s_].max()
+        z_lo[s_], z_hi[s_] = zm_[s_].min(), zm_[s_].max()
+    on_edge = ((np.abs(xm_ - x_lo) <= tol) | (np.abs(xm_ - x_hi) <= tol) |
+               (np.abs(zm_ - z_lo) <= tol) | (np.abs(zm_ - z_hi) <= tol))
+
+    rc = role[conn]
+    touch = np.nonzero((rc != 0).any(axis=1))[0]
+    ct = conn[touch]
+    cen = X[ct].mean(axis=1)
+
+    # ---- sides ------------------------------------------------------------
+    ci, cj = np.nonzero(rc[touch] != 0)
+    nodes = ct[ci, cj]
+    uq = np.unique(np.stack([ci, nodes], axis=1), axis=0)
+    ci, nodes = uq[:, 0], uq[:, 1]
+    pp = pid[nodes]
+    dv = cen[ci] - X[nodes]
+    dn = np.einsum('ij,ij->i', dv, unp[pp])
+    nv = np.sqrt(np.einsum('ij,ij->i', dv, dv))
+    cosd = dn / np.where(nv > 0, nv, 1.0)
+    sgn = np.where(role[nodes] == 2, 1.0, -1.0)
+    margin = sgn * cosd
+    inside = ((cen[ci, 0] >= x_lo[pp]) & (cen[ci, 0] <= x_hi[pp]) &
+              (cen[ci, 2] >= z_lo[pp]) & (cen[ci, 2] <= z_hi[pp]))
+    ci, nodes, pp, margin = ci[inside], nodes[inside], pp[inside], margin[inside]
+    m['sides_min_margin'] = float(margin.min()) if margin.size else float('nan')
+    m['sides_attachments'] = int(margin.size)
+    wrong = np.nonzero(~(margin > SCREEN_SIDE_MIN))[0]
+    m['sides_wrong_master'] = 0
+    m['sides_wrong_slave'] = 0
+    if wrong.size:
+        mw = wrong[role[nodes[wrong]] == 2]
+        sw = wrong[role[nodes[wrong]] == 1]
+        m['sides_wrong_master'] = int(mw.size)
+        m['sides_wrong_slave'] = int(sw.size)
+        ex = wrong[np.argsort(margin[wrong])][:3]
+        bad('sides', '%d of %d (cell,node) attachments on the wrong side of the fault plane '
+            '(%d master-attached on the footwall side, %d slave-attached on the hanging-wall side); '
+            'worst: %s' % (wrong.size, margin.size, mw.size, sw.size, '; '.join(
+                'element %d (type %d) holds %s node %d of pair %d (fault %d), margin %.4g' % (
+                    touch[ci[e]] + 1, elem_type[touch[ci[e]]],
+                    'master' if role[nodes[e]] == 2 else 'slave', nodes[e], pp[e] + 1,
+                    flt[pp[e]] + 1, margin[e]) for e in ex)))
+
+    # ---- bridging / coincidence -------------------------------------------
+    sp = np.where(rc[touch] == 1, pid[ct], -1)
+    mp = np.where(rc[touch] == 2, pid[ct], -1)
+    both = ((sp[:, :, None] == mp[:, None, :]) & (sp[:, :, None] >= 0)).any(axis=(1, 2))
+    m['bridging_cells'] = int(both.sum())
+    if both.any():
+        e = touch[np.nonzero(both)[0][:3]]
+        bad('bridging', '%d cell(s) hold both nodes of a split pair, e.g. element %s' % (
+            int(both.sum()), ', '.join('%d (type %d)' % (i + 1, elem_type[i]) for i in e)))
+    sep = np.abs(X[nsmp[:, 0]] - X[nsmp[:, 1]]).max(axis=1) if nft else np.zeros(0)
+    m['coincidence_max'] = float(sep.max()) if nft else 0.0
+    if nft and not (sep.max() <= tol):
+        w = int(np.argmax(sep))
+        bad('bridging', 'pair %d (fault %d) nodes %d/%d are %.6g m apart (tol %.3g)' % (
+            w + 1, flt[w] + 1, nsmp[w, 0], nsmp[w, 1], sep[w], tol))
+
+    # ---- facets: element faces whose four nodes are all master (else slave) ids
+    fnodes = ct[:, list(_HEX_FACES)].reshape(-1, 4)
+    fr = role[fnodes]
+    distinct = np.ones(fnodes.shape[0], dtype=bool)
+    for a in range(4):
+        for b in range(a + 1, 4):
+            distinct &= fnodes[:, a] != fnodes[:, b]
+    fcnt = np.zeros(nft, dtype=np.int64)
+    fexp = np.zeros(nft)
+    nacc = np.zeros((nft, 3))
+    for r in (2, 1):
+        sel = np.nonzero(distinct & (fr == r).all(axis=1))[0]
+        fn = fnodes[sel]
+        va = 0.5 * np.cross(X[fn[:, 2]] - X[fn[:, 0]], X[fn[:, 3]] - X[fn[:, 1]])
+        ar = np.sqrt(np.einsum('ij,ij->i', va, va))
+        c_r = np.zeros(nft, dtype=np.int64)
+        e_r = np.zeros(nft)
+        n_r = np.zeros((nft, 3))
+        for k in range(4):
+            p = pid[fn[:, k]]
+            np.add.at(c_r, p, 1)
+            np.add.at(e_r, p, 0.25 * ar)
+            sg = np.sign(np.einsum('ij,ij->i', va, unp[p]))
+            sg[sg == 0] = 1.0
+            np.add.at(n_r, p, va * sg[:, None])
+        if r == 2:
+            fcnt, fexp, nacc = c_r, e_r, n_r
+        else:
+            use = fcnt == 0
+            fcnt = np.where(use, c_r, fcnt)
+            fexp = np.where(use, e_r, fexp)
+            nacc = np.where(use[:, None], n_r, nacc)
+
+    # ---- fault_area -------------------------------------------------------
+    nofacet = np.nonzero(fcnt == 0)[0]
+    if nofacet.size:
+        bad('fault_area', '%d pair(s) have no meshed facet on either side, e.g. pair %d (fault %d)' % (
+            nofacet.size, nofacet[0] + 1, flt[nofacet[0]] + 1))
+    rel = np.where(fcnt > 0, np.abs(arnp - fexp) / np.where(fexp > 0, fexp, 1.0), 0.0)
+    m['area_facet_rel_max'] = float(rel.max()) if nft else 0.0
+    for ift in np.unique(flt):
+        sel = np.nonzero(flt == ift)[0]
+        isplanar = bool(planar[ift])
+        lim = SCREEN_AREA_REL
+        w = sel[np.argmax(rel[sel])]
+        m['area_facet_rel_max_f%d' % (ift + 1)] = float(rel[w])
+        if not rel[w] <= lim:
+            bad('fault_area', 'fault %d: node area of pair %d is %.9g but the incident facets give %.9g '
+                '(rel %.3g > %.3g); %d of %d pairs off' % (
+                    ift + 1, w + 1, arnp[w], fexp[w], rel[w], lim, int((rel[sel] > lim).sum()), sel.size))
+        if not isplanar:
+            continue
+        Xm = X[nsmp[sel, 1]]
+        A = np.column_stack([np.ones(sel.size), Xm[:, 0], Xm[:, 2]])
+        coef = np.linalg.lstsq(A, Xm[:, 1], rcond=None)[0]
+        resid = float(np.abs(A @ coef - Xm[:, 1]).max())
+        m['plane_resid_f%d' % (ift + 1)] = resid
+        if not resid <= SCREEN_PLANE_TOL:
+            bad('fault_area', 'fault %d is declared planar but its pair nodes are %.6g m off the best-fit '
+                'plane (limit %.3g)' % (ift + 1, resid, SCREEN_PLANE_TOL))
+        iu, nu = _lattice_index(Xm[:, 0], tol)
+        iv, nv_ = _lattice_index(Xm[:, 2], tol)
+        if nu * nv_ != sel.size or len(set(zip(iu.tolist(), iv.tolist()))) != sel.size:
+            bad('fault_area', 'fault %d pair nodes are not a full %d x %d lattice (%d pairs)' % (
+                ift + 1, nu, nv_, sel.size))
+        else:
+            ex = np.where((iu == 0) | (iu == nu - 1), 1, 2) * np.where((iv == 0) | (iv == nv_ - 1), 1, 2)
+            wrongc = np.nonzero(fcnt[sel] != ex)[0]
+            m['facet_count_wrong_f%d' % (ift + 1)] = int(wrongc.size)
+            if wrongc.size:
+                q = sel[wrongc[0]]
+                bad('fault_area', 'fault %d: %d pair(s) carry the wrong corner/edge/interior facet count, '
+                    'e.g. pair %d has %d facets, expected %d' % (
+                        ift + 1, wrongc.size, q + 1, fcnt[q], ex[wrongc[0]]))
+        Lx = Xm[:, 0].max() - Xm[:, 0].min()
+        Lz = Xm[:, 2].max() - Xm[:, 2].min()
+        ana = Lx * Lz * np.sqrt(1.0 + coef[1] ** 2 + coef[2] ** 2)
+        tot = float(arnp[sel].sum())
+        r_tot = abs(tot - ana) / ana if ana > 0 else float('inf')
+        m['area_total_rel_f%d' % (ift + 1)] = float(r_tot)
+        if not r_tot <= SCREEN_AREA_REL:
+            bad('fault_area', 'fault %d: node areas sum to %.9g m^2, the analytic planar patch is %.9g m^2 '
+                '(rel %.3g > %.3g)' % (ift + 1, tot, ana, r_tot, SCREEN_AREA_REL))
+
+    # ---- normals ----------------------------------------------------------
+    def dot(a, b):
+        return np.einsum('ij,ij->i', a, b)
+    dev = np.maximum.reduce([np.abs(np.sqrt(dot(v, v)) - 1.0) for v in (unp, usp, udp)] +
+                            [np.abs(dot(unp, usp)), np.abs(dot(unp, udp)), np.abs(dot(usp, udp))])
+    nn = np.sqrt(dot(nacc, nacc))
+    nf = nacc / np.where(nn > 0, nn, 1.0)[:, None]
+    cr = np.cross(unp, nf)
+    ang = np.where(fcnt > 0, np.sqrt(dot(cr, cr)), 0.0)
+    for ift in np.unique(flt):
+        sel = np.nonzero(flt == ift)[0]
+        lim = SCREEN_NORMAL_TOL if planar[ift] else SCREEN_NORMAL_TOL_ROUGH
+        m['normal_orthonormal_dev_f%d' % (ift + 1)] = float(dev[sel].max())
+        m['normal_facet_sin_f%d' % (ift + 1)] = float(ang[sel].max())
+        w = sel[np.argmax(dev[sel])]
+        if not dev[w] <= SCREEN_NORMAL_TOL:
+            bad('normals', 'fault %d: (un,us,ud) of pair %d is not orthonormal (worst deviation %.3g > %.3g)' % (
+                ift + 1, w + 1, dev[w], SCREEN_NORMAL_TOL))
+        w = sel[np.argmax(ang[sel])]
+        if not ang[w] <= lim:
+            bad('normals', 'fault %d: un of pair %d is not perpendicular to its meshed facets '
+                '(sin angle %.3g > %.3g); %d of %d pairs off' % (
+                    ift + 1, w + 1, ang[w], lim, int((ang[sel] > lim).sum()), sel.size))
+
+    # ---- volume_mass ------------------------------------------------------
+    nel = conn.shape[0]
+    vol = np.empty(nel)
+    detmin = np.empty(nel)
+    for s in range(0, nel, 200000):
+        dj = _hex_gauss_detj(X[conn[s:s + 200000]])
+        vol[s:s + 200000] = dj.sum(axis=1)
+        detmin[s:s + 200000] = dj.min(axis=1)
+    rel_det = detmin / np.where(vol > 0, vol / 8.0, 1.0)
+    m['det_min_rel'] = float(rel_det.min()) if nel else float('nan')
+    badj = np.nonzero(~(rel_det > SCREEN_DET_MIN))[0]
+    if badj.size:
+        bad('volume_mass', '%d of %d cells have a non-positive Jacobian at a Gauss point, e.g. element %d '
+            '(type %d, volume %.6g)' % (badj.size, nel, badj[0] + 1, elem_type[badj[0]], vol[badj[0]]))
+    gid = (np.arange(nx)[:, None, None] * nz + np.arange(nz)[None, :, None]) * ny + \
+        np.arange(ny)[None, None, :] + 1
+    h = X[gid[:, :, ny - 1], 1] - X[gid[:, :, 0], 1]
+    hc = 0.25 * (h[:-1, :-1] + h[1:, :-1] + h[:-1, 1:] + h[1:, 1:])
+    vexp = float(np.sum(np.diff(np.asarray(xline, dtype=float))[:, None] *
+                        np.diff(np.asarray(zline, dtype=float))[None, :] * hc))
+    vsum = float(vol.sum())
+    m['volume_rel'] = abs(vsum - vexp) / vexp
+    if not m['volume_rel'] <= SCREEN_VOL_REL:
+        bad('volume_mass', 'cell volumes sum to %.9g m^3 but the rank box holds %.9g m^3 (rel %.3g > %.3g)' % (
+            vsum, vexp, m['volume_rel'], SCREEN_VOL_REL))
+    share = np.zeros(nnode)
+    np.add.at(share, conn.ravel(), np.repeat(vol / 8.0, 8))
+    vs, vm = share[nsmp[:, 0]], share[nsmp[:, 1]]
+    iy_s = (nsmp[:, 0] - 1) % ny
+    edge_y = (iy_s == 0) | (iy_s == ny - 1)
+    empty = np.nonzero(((vs <= 0) | (vm <= 0)) & ~edge_y)[0]
+    if empty.size:
+        bad('volume_mass', '%d fault node(s) have zero volume share on a side, e.g. pair %d (fault %d): '
+            'slave %.6g, master %.6g' % (empty.size, empty[0] + 1, flt[empty[0]] + 1, vs[empty[0]], vm[empty[0]]))
+    both_ok = (vs > 0) & (vm > 0) & ~on_edge
+    ratio = np.where(both_ok, vm / np.where(vs > 0, vs, 1.0), 1.0)
+    lr = np.abs(np.log(ratio))
+    m['mass_ratio_max'] = float(np.exp(lr.max())) if nft else 1.0
+    if nft and not lr.max() <= np.log(SCREEN_VOL_RATIO_MAX):
+        w = int(np.argmax(lr))
+        bad('volume_mass', 'fault node pair %d (fault %d) has master/slave volume share %.4g '
+            '(limit %.4g); %d pairs outside' % (w + 1, flt[w] + 1, ratio[w], SCREEN_VOL_RATIO_MAX,
+                                                int((lr > np.log(SCREEN_VOL_RATIO_MAX)).sum())))
+    return m, {k: ' ; '.join(v) for k, v in fail.items()}
+
+
+def screen_mesh(meshCoor, conn, elem_type, nsmp, un, us, ud, arn, lines, tol, planar):
+    """Post-meshing screen; raises MeshScreenError if any check fails, returns
+    the measured margins otherwise (see the block comment above)."""
+    m, fail = _screen_measure(meshCoor, conn, elem_type, nsmp, un, us, ud, arn, lines, tol, planar)
+    if fail:
+        raise MeshScreenError(fail)
+    return m
+
+
 # ---- TODO for the next milestones (explicitly not done here) ----
 # - M7: frt.txt writer, '(1x,22e18.7e4)' Fortran exponent-width format.
 # - eledet/eleshp/ss/phi (assembleGlobalKU's FEM-kernel inputs, beyond the
