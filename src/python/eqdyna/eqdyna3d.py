@@ -73,7 +73,7 @@ import time
 
 import numpy as np
 
-from . import assembleGlobalMass, checkInputConsistency, driver, func_lib, library_output, meshgen, netcdf_io, readInputFiles
+from . import assembleGlobalMass, checkInputConsistency, driver, func_lib, library_output, meshgen, meshscreen, netcdf_io, readInputFiles
 from . import backend as _backend
 from . import profile_emit as _profile_emit
 
@@ -306,7 +306,7 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
     return on_dropped, off_dropped
 
 
-def build_solver_state(case_dir, part=None):
+def build_solver_state(case_dir, part=None, mesh_only=False):
     """Builds the full `S` dict eqdyna/driver.py's `run()` expects,
     reading ONLY case-input files (bGlobal.txt/bModelGeometry.txt/
     bFaultGeometry.txt/bMaterial.txt/on_fault_vars_input.nc) via
@@ -549,9 +549,13 @@ def build_solver_state(case_dir, part=None):
     # turns into the FATAL block and the check's own exit code; on the MPI path
     # it also MPI_Aborts, as the failing rank's partners would otherwise hang.
     # No switch, no fallback: a mesh that fails is never solved.
-    meshgen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, us, ud, arn,
-                        (xline, yline, zline), params['tol'],
-                        [params.get('insertFaultType', 0) == 0] * g['ntotft'])
+    screen = meshscreen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, us, ud, arn,
+                                    (xline, yline, zline), params['tol'],
+                                    [g['insertFaultType'] == 0] * g['ntotft'])
+    if mesh_only:
+        # Mesh generation + screen, no solve (serial only: part must be None
+        # or the rank's own box). Returns the measured screen scalars.
+        return screen, None
 
     # Row 17: nsmp's 3rd column is the 0-indexed fault id, in the SAME row
     # order read_on_fault_vars indexes fric by -- +1 for the 1-indexed
@@ -1101,6 +1105,12 @@ def _device_arg(value):
     return value
 
 
+def _fmt_screen(meas):
+    """One greppable line of measured screen scalars (ints as is, floats %.3E)."""
+    return ' '.join('%s=%s' % (k, v if isinstance(v, int) else '%.3E' % v)
+                    for k, v in meas.items())
+
+
 def main():
     ap = argparse.ArgumentParser(prog='python3 -m eqdyna')
     ap.add_argument('case_dir')
@@ -1118,6 +1128,11 @@ def main():
                           'so one-time cost and per-step cost cannot be '
                           'confused. JAX phases are synchronised, so the '
                           'numbers are compute, not queue submission.')
+    ap.add_argument('--mesh-only', action='store_true',
+                     help='generate the mesh and run the post-meshing screen '
+                          '(meshscreen.py, the counterpart of screenMesh.f90), '
+                          'then exit 0 without solving; a failed screen exits '
+                          'with its own code (81-85). Serial only.')
     ap.add_argument('--mpi', action='store_true',
                      help='one process per rank, Fortran-style domain '
                           'decomposition, jax owning the local element kernel '
@@ -1128,6 +1143,16 @@ def main():
                           'mpirun is a legal 1-rank run, not a silent serial '
                           'demotion.')
     args = ap.parse_args()
+    if args.mesh_only:
+        if args.mpi or args.nsteps is not None:
+            raise SystemExit('--mesh-only is serial and takes no nsteps and no --mpi')
+        try:
+            meas, _ = build_solver_state(args.case_dir, mesh_only=True)
+        except meshscreen.MeshScreenError as exc:
+            print('mesh-screen: FAIL checks=%s %s' % (','.join(exc.failures), _fmt_screen(exc.measured)))
+            _abort(exc)
+        print('mesh-screen: PASS checks=none %s' % _fmt_screen(meas))
+        return
     if args.mpi:
         if args.backend != 'jax':
             raise SystemExit('--mpi is implemented for --backend jax only '
@@ -1141,7 +1166,7 @@ def main():
                                         profile=prof)
         except checkInputConsistency.InputConsistencyError as exc:
             _abort(exc, rank=comm.Get_rank())
-        except meshgen.MeshScreenError as exc:
+        except meshscreen.MeshScreenError as exc:
             _abort(exc, rank=comm.Get_rank(), comm=comm)
         except BaseException:
             # A failure on ONE rank -- its own box's mesh, its own faces --
@@ -1199,7 +1224,7 @@ def main():
     try:
         path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend,
                         profile=prof)
-    except (checkInputConsistency.InputConsistencyError, meshgen.MeshScreenError) as exc:
+    except (checkInputConsistency.InputConsistencyError, meshscreen.MeshScreenError) as exc:
         _abort(exc)
     print('backend=%s device=%s' % (args.backend, active_device(args.backend)))
     if args.profile:
