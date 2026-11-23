@@ -254,9 +254,15 @@ subroutine meshgen
                 enddo
             enddo
         endif
+    enddo
 
+    ! Post-meshing screen (board row "wedge-mesh mis-wiring"): after the area
+    ! accumulation, BEFORE MPI4arn, on this rank's own box; stops the run.
+    call screenMesh(nodeCount, elemCount, nx, ny, nz, xline, yline, zline, nftnd0)
+
+    do ift=1,ntotft
         call MPI4arn(nx, ny, nz, mex, mey, mez, nftnd0(ift), ift)
-    enddo  
+    enddo
 end subroutine meshgen
 !==================================================================================================
 !**************************************************************************************************

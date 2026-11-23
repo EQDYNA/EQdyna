@@ -25,6 +25,8 @@ program EQdyna
     ! computing either as a total-minus-everything-else remainder.
     real (kind = dp) :: mpiCommSetup, mpiWaitSetup, mpiCommLoop, mpiWaitLoop, tLoopStart, loopS
     character (len = 32) :: envval
+    character (len = 64) :: argStr
+    integer :: iArg
     character (len = 16) :: envStatusStr, envLengthStr
     integer (kind = 4) :: envStatus, envLength
 
@@ -123,7 +125,17 @@ program EQdyna
     call countMeshEntities
     call allocInit
     call memory_estimate
+    do iArg = 1, command_argument_count()
+        call get_command_argument(iArg, argStr)
+        if (trim(argStr) == '--mesh-only') meshOnly = .true.
+    enddo
     call meshgen
+    if (meshOnly) then
+        ! Mesh generation + screenMesh only (a failing screen has already
+        ! stopped the run inside meshgen); no solve, no output files.
+        call MPI_Finalize(iMPIerr)
+        call exit(0)
+    endif
     call checkFaultMPIAlignment
     call checkOffFaultStationCoverage
     call checkOnFaultStationCoverage

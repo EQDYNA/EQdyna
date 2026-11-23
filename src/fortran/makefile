@@ -53,7 +53,7 @@ print-%:
 OPT  = -c ${FFLAGS}
 OPT1 = ${FFLAGS}
 
-OBJ  = eqdyna3d.o  globalvar.o errorCodes.o countMeshEntities.o  meshgen.o   calcLocalShapeFunc.o    \
+OBJ  = eqdyna3d.o  globalvar.o errorCodes.o countMeshEntities.o  meshgen.o   screenMesh.o   calcLocalShapeFunc.o    \
        driver.o    assembleGlobalMass.o     calcGlobalShapeFunc.o                calcB.o      \
        assembleGlobalKU.o        calcElemMass.o    calcElemKU.o     calcHourglassResist.o    fric.o      \
        faulting.o              computePMLDampingVector.o  calcQAttenuationCoeff.o             \
@@ -105,7 +105,10 @@ errorCodes.o: errorCodes.f90
 	$(FC) $(OPT) errorCodes.f90
 countMeshEntities.o: countMeshEntities.f90 globalvar.o library_degeneration.o
 	$(FC) $(OPT) countMeshEntities.f90
-meshgen.o: meshgen.f90 globalvar.o func_lib.o library_degeneration.o errorCodes.o
+screenMesh.o: screenMesh.f90 globalvar.o errorCodes.o
+	$(FC) $(OPT) screenMesh.f90
+
+meshgen.o: meshgen.f90 globalvar.o func_lib.o library_degeneration.o errorCodes.o screenMesh.o
 	$(FC) $(OPT) meshgen.f90
 calcLocalShapeFunc.o: calcLocalShapeFunc.f90 globalvar.o
 	$(FC) $(OPT) calcLocalShapeFunc.f90		
