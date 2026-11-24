@@ -26,6 +26,7 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 9. Cheap targeted check before expensive run.
 10. Every bug gets a regression test before the fix ships.
 10a. A regression guard asserts on BEHAVIOUR, not on the source text of the fix.
+10b. A count is not pinned on a failing multi-rank run, and a screen is not checked by its own inequality.
 11. Docs move with the code, in the same change.
 12. Untracked build artifacts never accumulate in the working tree.
 13. File permission changes are reviewed individually, never bulk-applied.
@@ -64,10 +65,10 @@ Index — read this list first; jump to a rule only when it's load-bearing.
 
 Count, stated so a heading-shape grep does not undercount it again (that
 undercount happened twice in one night, 2026-09-21/22): 27 numbered rules
-(1-27) plus thirty-two lettered sub-rules (1a, 2a, 3a, 3b, 3c, 4a, 4b, 4c,
-4d, 4e, 5a, 5b, 6a, 10a, 14a, 15a, 15b, 15c, 15d, 15e, 15f, 15g, 20a, 20b,
-20c, 21a, 21b, 21c, 21d, 21e, 24a, 25a) — 59 `## ` headings total. Verify:
-`grep -c '^## ' PROJECT_RULES.md` reads 59; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
+(1-27) plus thirty-three lettered sub-rules (1a, 2a, 3a, 3b, 3c, 4a, 4b, 4c,
+4d, 4e, 5a, 5b, 6a, 10a, 10b, 14a, 15a, 15b, 15c, 15d, 15e, 15f, 15g, 20a, 20b,
+20c, 21a, 21b, 21c, 21d, 21e, 24a, 25a) — 60 `## ` headings total. Verify:
+`grep -c '^## ' PROJECT_RULES.md` reads 60; `grep -c '^## [0-9]*\. ' PROJECT_RULES.md`
 (numbered rules only, no letter suffix) reads 27.
 A count that greps only `^## [0-9]` and calls it "the rules" will silently
 drop every lettered sub-rule — read this index's own list, don't re-derive
@@ -876,6 +877,40 @@ assertion that pins an implementation from one that has no behavioural route.
 A cheap review signal exists: a guard that opens a source file and compares
 strings is the shape to look at, and each one should carry a docstring line
 saying why behaviour was not reachable.
+
+---
+
+## 10b. A count is not pinned on a failing multi-rank run, and a screen is not checked by its own inequality
+
+Two guard shapes produced a green or red that meant nothing in row 167's work.
+(1) A test that pins HOW MANY ranks print a failure line races: MPI aborts the
+other ranks before all of them have printed, so the count varies run to run and
+by MPI. Pin a count only for a serial run; for a multi-rank failing run assert
+that at least one rank printed the expected line and that the exit code is the
+expected one. (2) A screen that tests the same inequality the code under test
+uses cannot disagree with it. Check a screen against an independent oracle (a
+different formulation of the same geometry, or a planted defect), never against
+its own predicate.
+
+**Rationale**: a count that races turns a correct change red on another MPI;
+a circular check turns a wrong mesh green.
+
+**Incident (2026-11-24)**: PR #280's 2-rank Fortran case pinned the number of
+`mesh-screen:` FAIL lines; CI on mpich went red because the abort beat the
+second rank's print (fixed in `1ac6afc`, one extra CI round). Row 167 step 2's
+side test and the screen share one inequality, so the screen alone could not
+catch a wrong side test; an independent oracle is
+`test_side_oracle` in `testsys/regression/test_mesh_screening.py` (its own
+gaps are board row 169 (i)).
+
+**How to apply**: before writing `assert count == N` on multi-rank output, ask
+whether any rank can be killed first; before trusting a screen, name the oracle
+that does not share its formula.
+
+**Tier**: Tier 3, a norm. No check can tell a circular predicate from a shared
+helper, and none refuses a count pin on multi-rank output; no mechanical proxy
+exists yet. It would need a lint that flags a count assertion on a test run
+with more than one rank.
 
 ---
 
