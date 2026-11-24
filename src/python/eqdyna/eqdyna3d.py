@@ -549,9 +549,7 @@ def build_solver_state(case_dir, part=None, mesh_only=False):
     # turns into the FATAL block and the check's own exit code; on the MPI path
     # it also MPI_Aborts, as the failing rank's partners would otherwise hang.
     # No switch, no fallback: a mesh that fails is never solved.
-    screen = meshscreen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, us, ud, arn,
-                                    (xline, yline, zline), params['tol'],
-                                    [g['insertFaultType'] == 0] * g['ntotft'])
+    screen = meshscreen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, params['tol'])
     if mesh_only:
         # Mesh generation + screen, no solve (serial only: part must be None
         # or the rank's own box). Returns the measured screen scalars.
@@ -1132,7 +1130,7 @@ def main():
                      help='generate the mesh and run the post-meshing screen '
                           '(meshscreen.py, the counterpart of screenMesh.f90), '
                           'then exit 0 without solving; a failed screen exits '
-                          'with its own code (81-85). Serial only.')
+                          'with its own code (81-82). Serial only.')
     ap.add_argument('--mpi', action='store_true',
                      help='one process per rank, Fortran-style domain '
                           'decomposition, jax owning the local element kernel '

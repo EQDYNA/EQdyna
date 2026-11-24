@@ -59,12 +59,9 @@ re-running `./case.setup` is enough to change the rank count.
 ## Checking the mesh without solving
 
 Both solvers screen the mesh right after it is built: each fault node must be
-wired to cells on its own side of the fault, no cell may hold both nodes of a
-split pair, fault-node areas must match the meshed facets, cell volumes and
-Jacobians must be sane, and the fault-node frames must be orthonormal and
-perpendicular to the fault. A mesh that fails stops the run with exit code
-81 (sides), 82 (bridging), 83 (fault area), 84 (volume/mass) or 85 (normals),
-and the `FATAL` block lists every check that failed; see
+wired to cells on its own side of the fault, and no cell may hold both nodes
+of a split pair. A mesh that fails stops the run with exit code 81 (sides) or
+82 (bridging), and the `FATAL` block lists every check that failed; see
 [Troubleshooting](troubleshooting.md).
 
 `--mesh-only` runs the mesh build and this screen and then exits 0 without

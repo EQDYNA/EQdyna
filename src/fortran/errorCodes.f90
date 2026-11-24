@@ -111,9 +111,6 @@ MODULE errorCodes
     ! --- 81-89 post-meshing screen (screenMesh.f90) --------------------
     integer, parameter :: ERR_MESH_SCREEN_SIDES       = 81  ! post-meshing screen: a cell is attached to a fault node of the opposite side (wedge mis-wiring)
     integer, parameter :: ERR_MESH_SCREEN_BRIDGING   = 82  ! post-meshing screen: a cell holds both nodes of one split pair, or a pair does not coincide
-    integer, parameter :: ERR_MESH_SCREEN_FAULT_AREA = 83  ! post-meshing screen: a fault-node area disagrees with the meshed facets, or a node has no facet
-    integer, parameter :: ERR_MESH_SCREEN_VOLUME_MASS = 84 ! post-meshing screen: bad Jacobian, volume sum, or master/slave volume-share ratio at a fault node
-    integer, parameter :: ERR_MESH_SCREEN_NORMALS    = 85  ! post-meshing screen: (un,us,ud) not orthonormal, or un not perpendicular to the meshed facets
 
 CONTAINS
 
