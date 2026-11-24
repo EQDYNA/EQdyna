@@ -111,7 +111,7 @@ def _screen_measure(meshCoor, conn, elem_type, nsmp, un, us, ud, arn, lines, tol
     nft = nsmp.shape[0]
     nnode = X.shape[0]
     fail = {}
-    m = {}
+    m = {'elements': int(conn.shape[0]), 'nodes': int(nnode - 1), 'fault_pairs': int(nft)}
 
     def bad(name, msg):
         fail.setdefault(name, []).append(msg)

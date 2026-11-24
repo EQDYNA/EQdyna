@@ -436,7 +436,8 @@ subroutine screenMesh(nnode, nel, nx, ny, nz, xline, yline, zline, nftnd0)
     endif
     maxRatio = exp(lrMax)
 
-    meas = 'sides_attachments='//trim(ii(natt))//' sides_min_margin='//trim(fe(minM))//' sides_wrong_master='//trim(ii(nmw))// &
+    meas = 'elements='//trim(ii(nel))//' nodes='//trim(ii(nnode))//' fault_pairs='//trim(ii(nft))// &
+           ' sides_attachments='//trim(ii(natt))//' sides_min_margin='//trim(fe(minM))//' sides_wrong_master='//trim(ii(nmw))// &
            ' sides_wrong_slave='//trim(ii(nsw))//' bridging_cells='//trim(ii(nbr))//' coincidence_max='//trim(fe(sepMax))// &
            ' area_nofacet_pairs='//trim(ii(nNoFacet))//' area_badcount_pairs='//trim(ii(nBadCnt))//' area_facet_rel_max='// &
            trim(fe(relMax))//' normal_orthonormal_dev_max='//trim(fe(devMax))//' normal_facet_sin_max='//trim(fe(angMax))// &

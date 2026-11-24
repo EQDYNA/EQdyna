@@ -1031,6 +1031,24 @@ UNSUPPORTED[('test.restart2', 'python-jax-mpi')] = (
     'restart is wired for serial python-jax and the Fortran binary only '
     '(board row 16c).')
 
+# Wedge-mesh cases: the post-meshing screen (src/fortran/screenMesh.f90,
+# src/python/eqdyna/meshscreen.py) stops the run with exit code 81 because
+# the wedge mesh wires footwall cells to hanging-wall nodes (board row 167).
+# A cell that cannot run is UNSUPPORTED with its reason, not skipped.
+# testsys/regression/test_mesh_screening.py WEDGE_EXPECTED_RED is the one list
+# step 2 of row 167 edits, together with deleting these entries, when the
+# wiring is fixed and the references are re-derived.
+_WEDGE_SCREEN_REASON = (
+    'mesh screening code 8x, row 167 step 1; restored by step 2: the wedge '
+    'mesh wires footwall cells to hanging-wall fault nodes, so '
+    'screenMesh.f90 / meshscreen.py stop the run (exit 81, check "sides") '
+    'before the solve. The committed reference was produced on that mesh '
+    'and is untouched.'
+)
+for _c in ('test.tpv36', 'test.tpv37'):
+    for _b in ('fortran', 'python-jax'):
+        UNSUPPORTED[(_c, _b)] = _WEDGE_SCREEN_REASON
+
 # RELEASE_ONLY -- RETIRED 2026-09-23 (owner decision, same session as the
 # numpy-axis removal above). Its only two occupants ever were
 # ('test.tpv36', 'python-numpy') and ('test.tpv37', 'python-numpy') -- a

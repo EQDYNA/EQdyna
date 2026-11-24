@@ -106,6 +106,7 @@ RANGES = [
     (51, 59, 'MPI and domain decomposition'),
     (61, 69, 'Numerics and runtime state'),
     (71, 79, 'External libraries'),
+    (81, 89, 'Post-meshing screen'),
 ]
 TROUBLESHOOTING = os.path.join(ROOT, 'docs', 'user', 'troubleshooting.md')
 BEGIN = '<!-- BEGIN EXIT CODES (generated from src/fortran/errorCodes.f90; do not edit by hand) -->'

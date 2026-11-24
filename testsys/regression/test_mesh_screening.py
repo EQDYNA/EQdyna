@@ -6,32 +6,48 @@ Regression guard (board row 167, deliverable 1): the post-meshing screen
 test.tpv36/test.tpv37, whose footwall cells are wired to hanging-wall nodes,
 and each of its five checks (meshscreen.SCREEN_CODES) can actually fire.
 
-Four tests:
+Tests (every one a hard failure, none skips):
 
-  1. ALL CASES. `python3 -m eqdyna <case> --mesh-only` for every name in
+  1. ALL CASES, both backends. `python3 -m eqdyna <case> --mesh-only` and
+     `mpirun -np 1 eqdyna --mesh-only` for every name in
      testNameList.nameList (the list is iterated itself, never a shorter hand
-     copy). Every case exits 0 and prints `mesh-screen: PASS`, except
-     WEDGE_EXPECTED, which must exit 81 with exactly the measured failing
-     checks. That expectation is an explicit expected failure: when the
-     wiring is fixed the wedge cases turn green and THIS test goes red with a
-     message telling the fixer to update WEDGE_EXPECTED and the row 167 step.
-  2. PLANTED DEFECTS. One defect per check, applied to the in-memory mesh of
-     test.tpv8 (the exact arrays the run hands to screen_mesh); each must trip
-     its own check, and the set it trips is compared with PLANT_EXPECTED. The
-     unplanted mesh passes (control). A plant that trips more than its own
-     check is recorded in PLANT_EXPECTED, not softened: the table is exact in
-     both directions.
-  3. FORTRAN/PYTHON PARITY. `mpirun -np 1 <binary> --mesh-only` on tpv8
-     (green) and tpv36 (red): same verdict, same failing checks, same exit
-     code as the Python backend. A missing binary is a failure, never a skip.
-     The binary is src/fortran/eqdyna, built by `make` there if absent
-     (bin/eqdyna is never touched).
-  4. THRESHOLDS. SCREEN_* limits in meshscreen.py equal those in
+     copy). Every case exits 0 and prints `mesh-screen: PASS`, except the
+     cases in WEDGE_EXPECTED_RED, which must exit with exactly the listed
+     code and failing checks. Both backends must agree on verdict, exit code,
+     failing checks and the element/node/fault-pair counts; every verdict
+     line is printed with those counts and the number of (cell,node)
+     attachments tested, and a verdict over zero of them is refused (a screen
+     that compared nothing proves nothing).
+     WEDGE_EXPECTED_RED is THE list step 2 of row 167 edits: when the wiring
+     is fixed the wedge cases turn green and this test goes red with a message
+     naming the list; deleting the entry (and the matching UNSUPPORTED cells in
+     testsys/matrix.py) is the whole edit.
+  2. JUDGE BOTH WAYS (rule 14a). The function that turns a run into a verdict
+     (judge) is fed a green wedge case, a wedge case failing the wrong check,
+     a red non-wedge case and a green non-wedge case; it must flag the first
+     three and pass the fourth, and the same for the parsed measurement.
+  3. PLANTED DEFECTS, Python. One defect per check, applied to the in-memory
+     mesh of test.tpv8 (the exact arrays the run hands to screen_mesh); each
+     trips its own check, the tripped set is compared with PLANT_EXPECTED
+     exactly (a plant that trips two checks is recorded as two, not softened),
+     and the unplanted mesh is the control.
+  4. PLANTED DEFECTS, Fortran. The same planted meshes are dumped to a raw
+     stream file and fed to testsys/parity/screen_mesh_dump_driver.f90, which
+     links the PRODUCTION screenMesh.o (no hook in the production binary); the
+     process exit status must equal the code of the first expected check.
+  5. 2-RANK FORTRAN. `mpirun -np 2` on tpv8 (green) and tpv36 (red, 81): the
+     screen runs per rank on its own box.
+  6. THRESHOLDS. SCREEN_* limits in meshscreen.py equal those in
      screenMesh.f90 (both parsed), and so do the check names and order.
+
+mpirun on this class of box needs `env -u DISPLAY HWLOC_COMPONENTS=-gl,...` (a
+dead X server blocks hwloc GL discovery forever) and is always wrapped in
+`timeout -s KILL`.
 """
 import concurrent.futures
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -48,20 +64,33 @@ from eqdyna import eqdyna3d, meshscreen  # noqa: E402
 
 MESHSCREEN_PY = os.path.join(ROOT, 'src', 'python', 'eqdyna', 'meshscreen.py')
 SCREENMESH_F90 = os.path.join(ROOT, 'src', 'fortran', 'screenMesh.f90')
+DRIVER_F90 = os.path.join(ROOT, 'testsys', 'parity', 'screen_mesh_dump_driver.f90')
 FORTRAN_DIR = os.path.join(ROOT, 'src', 'fortran')
 FORTRAN_BIN = os.path.join(FORTRAN_DIR, 'eqdyna')
+MPIRUN_TIMEOUT_S = 1500
 
-# Measured 2026-11-23 (python mesh-only, screen commit 937ceb9):
-# {case: (exit code, failing checks in SCREEN_CODES order)}.
-WEDGE_EXPECTED = {
-@@WEDGE@@
+# THE expected-red list (row 167 step 1). {case: (exit code, failing checks in
+# SCREEN_CODES order)}. Measured 2026-11-24 on both backends: the wedge mesh
+# wires 120 footwall (master-attached) attachments to the wrong side, and the
+# master/slave volume share ratio of 59 fault-node pairs exceeds 2 (peak 2.33).
+# Step 2 of row 167 deletes these entries when the wiring is fixed.
+WEDGE_EXPECTED_RED = {
+    'test.tpv36': (81, ('sides', 'volume_mass')),
+    'test.tpv37': (81, ('sides', 'volume_mass')),
 }
 ROW167 = ('board row 167 (wedge-mesh mis-wiring, pathway_forward.md): the footwall brick is '
           'wired to hanging-wall nodes in the wedge mesh')
 
 # plant name -> set of checks it trips on the planted tpv8 mesh (measured).
 PLANT_EXPECTED = {
-@@PLANT@@
+    'sides': {'sides'},
+    'sides_swap_node': {'sides', 'fault_area'},
+    'bridging': {'bridging'},
+    'bridging_cell': {'bridging', 'sides', 'volume_mass'},
+    'fault_area': {'fault_area'},
+    'normals': {'normals'},
+    'volume_mass_coord': {'volume_mass'},
+    'volume_mass_conn': {'volume_mass'},
 }
 
 COARSE_EXTRA = ''
@@ -72,8 +101,9 @@ def env():
     e['EQDYNAROOT'] = ROOT
     e['PATH'] = os.pathsep.join([os.path.join(ROOT, 'scripts'), e.get('PATH', '')])
     e['PYTHONPATH'] = os.path.join(ROOT, 'src', 'python')
-    e['HWLOC_COMPONENTS'] = '-gl'
-    e['OMP_NUM_THREADS'] = e['OPENBLAS_NUM_THREADS'] = '4'
+    e.pop('DISPLAY', None)
+    e['HWLOC_COMPONENTS'] = '-gl,-opencl,-cuda,-nvml'
+    e['OMP_NUM_THREADS'] = e['OPENBLAS_NUM_THREADS'] = e['MKL_NUM_THREADS'] = '1'
     return e
 
 
@@ -95,25 +125,39 @@ def make_case(case, case_dir, extra=''):
 
 
 def parse_verdict(out, rc, who):
-    """(verdict, checks tuple) from the `mesh-screen:` line; raises if absent."""
+    """(verdict, checks tuple, measured dict, first raw line) from the
+    `mesh-screen:` line(s); raises if there is none. One line per rank: the
+    verdict is FAIL if any rank failed, the checks are the union, and the four
+    COUNT_KEYS are summed over ranks (the other fields are the first rank's)."""
     lines = [l for l in out.splitlines() if l.startswith('mesh-screen:')]
-    assert len(lines) == 1, '%s: expected exactly one mesh-screen line (rc %d), got %d; tail:\n%s' % (
-        who, rc, len(lines), out[-1200:])
-    m = re.match(r'mesh-screen: (PASS|FAIL) checks=(\S+)', lines[0])
-    assert m, '%s: unparsable mesh-screen line: %r' % (who, lines[0])
-    checks = () if m.group(2) == 'none' else tuple(m.group(2).split(','))
-    return m.group(1), checks
+    assert lines, '%s: no mesh-screen line (rc %d); tail:\n%s' % (who, rc, out[-1200:])
+    verdict, checks, meas = 'PASS', set(), None
+    for l in lines:
+        m = re.match(r'mesh-screen: (PASS|FAIL) checks=(\S+) (.*)$', l)
+        assert m, '%s: unparsable mesh-screen line: %r' % (who, l)
+        if m.group(1) == 'FAIL':
+            verdict = 'FAIL'
+        if m.group(2) != 'none':
+            checks |= set(m.group(2).split(','))
+        kv = dict(x.split('=') for x in m.group(3).split())
+        if meas is None:
+            meas = kv
+        else:
+            for k in COUNT_KEYS:
+                meas[k] = str(int(meas[k]) + int(kv[k]))
+    return verdict, ordered(checks), meas, lines[0]
 
 
 def run_python_mesh_only(case_dir):
     r = subprocess.run([sys.executable, '-m', 'eqdyna', case_dir, '--mesh-only'], env=env(),
-                       capture_output=True, text=True, timeout=1500)
+                       capture_output=True, text=True, timeout=3000)
     return r.returncode, r.stdout + r.stderr
 
 
-def run_fortran_mesh_only(case_dir):
-    r = subprocess.run(['mpirun', '-np', '1', FORTRAN_BIN, '--mesh-only'], cwd=case_dir, env=env(),
-                       capture_output=True, text=True, timeout=1500)
+def run_fortran_mesh_only(case_dir, ranks=1):
+    r = subprocess.run(['timeout', '-s', 'KILL', str(MPIRUN_TIMEOUT_S), 'mpirun', '-np', str(ranks),
+                        FORTRAN_BIN, '--mesh-only'], cwd=case_dir, env=env(),
+                       capture_output=True, text=True)
     return r.returncode, r.stdout + r.stderr
 
 
@@ -121,42 +165,102 @@ def ordered(checks):
     return tuple(k for k in meshscreen.SCREEN_CODES if k in checks)
 
 
+COUNT_KEYS = ('elements', 'nodes', 'fault_pairs', 'sides_attachments')
+
+
+def judge(case, rc, verdict, checks, meas):
+    """Error string for one backend's result on one case, or None. The ONLY
+    place a run becomes a verdict; test_judge_both_ways feeds it known-bad
+    inputs."""
+    counts = {k: int(meas[k]) for k in COUNT_KEYS}
+    empty = [k for k, v in counts.items() if v <= 0]
+    if empty:
+        return '%s: screen compared nothing (%s == 0): a vacuous verdict' % (case, ','.join(empty))
+    if case in WEDGE_EXPECTED_RED:
+        code, want = WEDGE_EXPECTED_RED[case]
+        if verdict == 'PASS' and rc == 0:
+            return ('%s: WEDGE EXPECTATION FLIPPED -- the screen is now GREEN on %s. The wiring has been '
+                    'fixed: delete %s from WEDGE_EXPECTED_RED in testsys/regression/test_mesh_screening.py '
+                    '(and its UNSUPPORTED cells in testsys/matrix.py) and close the matching step of %s.'
+                    % (case, case, case, ROW167))
+        if (rc, ordered(checks)) != (code, want):
+            return '%s: expected FAIL rc=%d checks=%s (%s), got %s rc=%d checks=%s' % (
+                case, code, ','.join(want), ROW167, verdict, rc, ','.join(checks))
+        return None
+    if not (verdict == 'PASS' and rc == 0):
+        return '%s: must be GREEN, got %s rc=%d checks=%s' % (case, verdict, rc, ','.join(checks))
+    return None
+
+
+def test_judge_both_ways():
+    meas = {'elements': '10', 'nodes': '20', 'fault_pairs': '3', 'sides_attachments': '12'}
+    wedge = sorted(WEDGE_EXPECTED_RED)[0]
+    code, want = WEDGE_EXPECTED_RED[wedge]
+    green = [c for c in testNameList.nameList if c not in WEDGE_EXPECTED_RED][0]
+    assert judge(wedge, code, 'FAIL', want, meas) is None, 'expected-red result must be accepted'
+    assert judge(green, 0, 'PASS', (), meas) is None, 'green result on a green case must be accepted'
+    bad = {
+        'green wedge case': judge(wedge, 0, 'PASS', (), meas),
+        'wedge case, wrong check': judge(wedge, 82, 'FAIL', ('bridging',), meas),
+        'wedge case, wrong code': judge(wedge, 85, 'FAIL', want, meas),
+        'red non-wedge case': judge(green, 81, 'FAIL', ('sides',), meas),
+        'vacuous (no attachments)': judge(green, 0, 'PASS', (), dict(meas, sides_attachments='0')),
+        'vacuous (no fault pairs)': judge(green, 0, 'PASS', (), dict(meas, fault_pairs='0')),
+    }
+    missed = [k for k, v in bad.items() if v is None]
+    assert not missed, 'judge failed to flag: %s' % missed
+    assert 'FLIPPED' in bad['green wedge case'] and 'WEDGE_EXPECTED_RED' in bad['green wedge case']
+
+
 # ---------------------------------------------------------------------------
+def fortran_binary():
+    if not os.path.exists(FORTRAN_BIN):
+        r = subprocess.run(['make'], cwd=FORTRAN_DIR, env=dict(env(), MACHINE='ubuntu'),
+                           capture_output=True, text=True, timeout=900)
+        assert r.returncode == 0 and os.path.exists(FORTRAN_BIN), (
+            'Fortran binary %s missing and `make` in src/fortran failed (rc %d):\n%s' % (
+                FORTRAN_BIN, r.returncode, (r.stdout + r.stderr)[-1500:]))
+    return FORTRAN_BIN
+
+
 def test_all_cases(tmp):
     names = list(testNameList.nameList)
     assert names, 'testNameList.nameList is empty'
-    assert set(WEDGE_EXPECTED) <= set(names), 'WEDGE_EXPECTED names a case not in nameList'
+    assert set(WEDGE_EXPECTED_RED) <= set(names), 'WEDGE_EXPECTED_RED names a case not in nameList'
+    fortran_binary()
     dirs = {}
     for c in names:
         dirs[c] = os.path.join(tmp, 'all_' + c)
         make_case(c, dirs[c])
     t0 = time.time()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-        futs = {c: ex.submit(run_python_mesh_only, dirs[c]) for c in names}
+
+    def both(c):
+        return run_python_mesh_only(dirs[c]), run_fortran_mesh_only(dirs[c])
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+        futs = {c: ex.submit(both, c) for c in names}
         res = {c: f.result() for c, f in futs.items()}
-    print('all-cases: %d cases meshed in %.0f s' % (len(names), time.time() - t0))
+    print('all-cases: %d cases, python + fortran, in %.0f s' % (len(names), time.time() - t0))
     errs = []
     for c in names:
-        rc, out = res[c]
-        verdict, checks = parse_verdict(out, rc, c)
-        line = [l for l in out.splitlines() if l.startswith('mesh-screen:')][0][:300]
-        if c in WEDGE_EXPECTED:
-            code, want = WEDGE_EXPECTED[c]
-            if verdict == 'PASS' and rc == 0:
-                errs.append('%s: WEDGE EXPECTATION FLIPPED -- the screen is now GREEN on %s. The wedge '
-                            'wiring has been fixed: remove %s from WEDGE_EXPECTED in this file and '
-                            'close the matching step of %s.' % (c, c, c, ROW167))
-            elif (rc, ordered(checks)) != (code, want):
-                errs.append('%s: expected FAIL rc=%d checks=%s (%s), got %s rc=%d checks=%s; %s' % (
-                    c, code, ','.join(want), ROW167, verdict, rc, ','.join(checks), line))
-            else:
-                print('  %-18s RED as expected  rc=%d checks=%s' % (c, rc, ','.join(checks)))
-        else:
-            if not (verdict == 'PASS' and rc == 0):
-                errs.append('%s: must be GREEN, got %s rc=%d checks=%s; %s' % (
-                    c, verdict, rc, ','.join(checks), line))
-            else:
-                print('  %-18s GREEN' % c)
+        (prc, pout), (frc, fout) = res[c]
+        pv = parse_verdict(pout, prc, 'python ' + c)
+        fv = parse_verdict(fout, frc, 'fortran ' + c)
+        mp = pv[2]
+        print('  %-18s %s rc=%-2d checks=%-18s elements=%s nodes=%s fault_pairs=%s attachments=%s | fortran %s rc=%d' % (
+            c, pv[0], prc, ','.join(pv[1]) or 'none', mp['elements'], mp['nodes'], mp['fault_pairs'],
+            mp['sides_attachments'], fv[0], frc))
+        for who, rc, v in (('python', prc, pv), ('fortran', frc, fv)):
+            e = judge(c, rc, v[0], v[1], v[2])
+            if e:
+                errs.append('[%s] %s; %s' % (who, e, v[3][:300]))
+        if (pv[0], pv[1], prc) != (fv[0], fv[1], frc):
+            errs.append('%s: PARITY BROKEN python %s rc=%d %s vs fortran %s rc=%d %s' % (
+                c, pv[0], prc, ','.join(pv[1]), fv[0], frc, ','.join(fv[1])))
+        for k in COUNT_KEYS[:3] + ('det_bad_cells', 'sides_wrong_master', 'sides_wrong_slave', 'bridging_cells',
+                                   'area_nofacet_pairs', 'area_badcount_pairs', 'share_empty_pairs',
+                                   'mass_ratio_out_pairs', 'sides_attachments'):
+            if pv[2][k] != fv[2][k]:
+                errs.append('%s: count %s differs, python %s fortran %s' % (c, k, pv[2][k], fv[2][k]))
     assert not errs, 'all-cases failed:\n' + '\n'.join(errs)
 
 
@@ -205,15 +309,27 @@ def far_node(a):
 
 
 def plant(a, name):
-    """Apply ONE defect to the argument list a (in place)."""
+    """Apply ONE defect to the argument list a (in place). The plain-named
+    plant of each check is the single-cause one the PLANT_EXPECTED table says
+    trips only that check; the *_swap_node / *_cell / *_conn plants are the
+    realistic wiring defects, which unavoidably disturb a second quantity and
+    are recorded as exactly the set they trip."""
     X, conn, et, nsmp, un, us, ud, arn = a[:8]
     p = interior_pair(a)
     s, m = int(nsmp[p, 0]), int(nsmp[p, 1])
     if name == 'sides':
-        # one hanging-wall cell holds the pair's SLAVE node in place of its master
+        # the pair's frame points the other way: every attached cell is on the wrong side
+        un[p + 1] = -un[p + 1]
+    elif name == 'sides_swap_node':
+        # one hanging-wall cell holds the pair's SLAVE node in place of its master (coincident, so
+        # no geometry changes; the cell loses a master facet)
         e = int(np.nonzero((conn == m).any(axis=1))[0][0])
         conn[e][conn[e] == m] = s
     elif name == 'bridging':
+        # the slave node is 1 m from its master in strike (a sheared vertex: volumes and the
+        # master-side facets are untouched)
+        X[s, 0] += 1.0
+    elif name == 'bridging_cell':
         # one cell holds BOTH nodes of the pair: a corner of it off the fault plane becomes the slave
         e = int(np.nonzero((conn == m).any(axis=1))[0][0])
         k = int(np.nonzero(np.abs(X[conn[e], 1] - X[m, 1]) > 0)[0][0])
@@ -227,75 +343,124 @@ def plant(a, name):
         n0, s0 = un[p + 1].copy(), us[p + 1].copy()
         un[p + 1] = c * n0 + sn * s0
         us[p + 1] = -sn * n0 + c * s0
-    elif name == 'normals_flip':
-        un[p + 1] = -un[p + 1]
     elif name == 'volume_mass_coord':
         # a +y-face node dragged through its cell (inverted Jacobian)
         far = far_node(a)
         e = int(np.nonzero((conn == far).any(axis=1))[0][0])
         X[far] = X[far] + 1.5 * (X[conn[e]].mean(axis=0) - X[far])
-    elif name == 'volume_mass_box':
-        # a +y-face node pushed outward: cell volumes no longer sum to the rank box
-        X[far_node(a), 1] += 0.1 * (X[1:, 1].max() - X[1:, 1].min()) / 100.0
+    elif name == 'volume_mass_conn':
+        # a far cell's corner wired to its neighbour corner's node: the cell collapses, volumes no
+        # longer sum to the rank box
+        far = far_node(a)
+        e = int(np.nonzero(conn == far)[0][0])
+        k = int(np.nonzero(conn[e] == far)[0][0])
+        base = 4 * int(k > 3)
+        conn[e][base + (k + 2) % 4] = conn[e][base + (k + 1) % 4]
     else:
         raise AssertionError('unknown plant ' + name)
 
 
-PLANTS = ('sides', 'bridging', 'fault_area', 'normals', 'normals_flip',
-          'volume_mass_coord', 'volume_mass_box')
-OWN = {'sides': 'sides', 'bridging': 'bridging', 'fault_area': 'fault_area', 'normals': 'normals',
-       'normals_flip': 'normals', 'volume_mass_coord': 'volume_mass', 'volume_mass_box': 'volume_mass'}
+PLANTS = ('sides', 'sides_swap_node', 'bridging', 'bridging_cell', 'fault_area', 'normals',
+          'volume_mass_coord', 'volume_mass_conn')
+OWN = {'sides': 'sides', 'sides_swap_node': 'sides', 'bridging': 'bridging', 'bridging_cell': 'bridging',
+       'fault_area': 'fault_area', 'normals': 'normals',
+       'volume_mass_coord': 'volume_mass', 'volume_mass_conn': 'volume_mass'}
+
+
+def dump_mesh(a, path):
+    """Raw stream dump in the layout screen_mesh_dump_driver.f90 reads."""
+    X, conn, et, nsmp, un, us, ud, arn, lines, tol, planar = a
+    xline, yline, zline = (np.asarray(v, dtype='<f8') for v in lines)
+    nft = nsmp.shape[0]
+    with open(path, 'wb') as f:
+        f.write(np.array([X.shape[0] - 1, conn.shape[0]], dtype='<i8').tobytes())
+        f.write(np.array([len(xline), len(yline), len(zline)], dtype='<i4').tobytes())
+        f.write(np.array([nft], dtype='<i8').tobytes())
+        f.write(np.array([0 if planar[0] else 1], dtype='<i4').tobytes())
+        f.write(np.array([tol], dtype='<f8').tobytes())
+        for v in (xline, yline, zline):
+            f.write(v.tobytes())
+        f.write(np.ascontiguousarray(X[1:], dtype='<f8').tobytes())
+        f.write(np.ascontiguousarray(conn, dtype='<i8').tobytes())
+        f.write(np.ascontiguousarray(et, dtype='<i4').tobytes())
+        f.write(np.ascontiguousarray(nsmp[:, :2], dtype='<i8').tobytes())
+        for v in (un, us, ud):
+            f.write(np.ascontiguousarray(v[1:nft + 1], dtype='<f8').tobytes())
+        f.write(np.ascontiguousarray(arn[1:nft + 1], dtype='<f8').tobytes())
+
+
+def build_driver(tmp):
+    fortran_binary()          # builds globalvar.o / errorCodes.o / screenMesh.o / .mod files in src/fortran
+    exe = os.path.join(tmp, 'screen_mesh_dump_driver')
+    r = subprocess.run(['mpif90', '-fopenmp', '-ffree-line-length-none', '-O1', '-I' + FORTRAN_DIR, '-J' + tmp,
+                        DRIVER_F90, os.path.join(FORTRAN_DIR, 'globalvar.o'),
+                        os.path.join(FORTRAN_DIR, 'errorCodes.o'), os.path.join(FORTRAN_DIR, 'screenMesh.o'),
+                        '-o', exe], capture_output=True, text=True, timeout=600, env=env())
+    assert r.returncode == 0, 'driver build failed:\n' + (r.stdout + r.stderr)[-1500:]
+    return exe
+
+
+def mesh_args_ok(a):
+    nsmp = a[3]
+    assert a[1].shape[0] > 0 and a[0].shape[0] > 1 and nsmp.shape[0] > 0, 'empty mesh handed to the screen'
 
 
 def test_planted_defects(tmp):
     d = os.path.join(tmp, 'plant_tpv8')
     make_case('test.tpv8', d, COARSE_EXTRA)
     mesh = Mesh(d)
+    mesh_args_ok(mesh.a)
+    exe = build_driver(tmp)
+    # control: the unplanted mesh passes in BOTH implementations, driver exit 0
     got, fail = screen_set(mesh.copy())
     assert got == set(), 'control (unplanted tpv8) must pass, tripped %s: %s' % (sorted(got), fail)
+    cpath = os.path.join(tmp, 'control.dump')
+    dump_mesh(mesh.copy(), cpath)
+    r = subprocess.run([exe, cpath], capture_output=True, text=True, env=env(), timeout=600)
+    assert r.returncode == 0 and 'returned (no abort)' in r.stdout, (
+        'Fortran control (unplanted tpv8 dump) must pass, rc %d:\n%s' % (r.returncode, r.stdout[-800:]))
     errs = []
     for name in PLANTS:
         a = mesh.copy()
         plant(a, name)
         got, fail = screen_set(a)
         want = set(PLANT_EXPECTED[name])
-        print('  plant %-18s trips %-34s expected %s' % (name, sorted(got), sorted(want)))
+        path = os.path.join(tmp, name + '.dump')
+        dump_mesh(a, path)
+        r = subprocess.run([exe, path], capture_output=True, text=True, env=env(), timeout=600)
+        want_code = meshscreen.SCREEN_CODES[ordered(want)[0]]
+        print('  plant %-18s python trips %-14s expected %-14s | fortran rc=%d expected %d' % (
+            name, ','.join(sorted(got)), ','.join(sorted(want)), r.returncode, want_code))
         if got != want:
             errs.append('plant %s tripped %s, expected %s; messages %s' % (name, sorted(got), sorted(want), fail))
         if OWN[name] not in got:
             errs.append('plant %s did not trip its own check %s' % (name, OWN[name]))
+        if r.returncode != want_code:
+            errs.append('plant %s: Fortran driver rc %d, expected %d; tail %s' % (
+                name, r.returncode, want_code, r.stdout[-500:]))
+        else:
+            fchecks = re.search(r'mesh-screen: FAIL checks=(\S+)', r.stdout)
+            if not fchecks or ordered(fchecks.group(1).split(',')) != ordered(want):
+                errs.append('plant %s: Fortran failing checks %s, expected %s' % (
+                    name, fchecks.group(1) if fchecks else None, ordered(want)))
     assert not errs, 'planted defects:\n' + '\n'.join(errs)
 
 
 # ---------------------------------------------------------------------------
-def fortran_binary():
-    if not os.path.exists(FORTRAN_BIN):
-        r = subprocess.run(['make'], cwd=FORTRAN_DIR, env=dict(env(), MACHINE='ubuntu'),
-                           capture_output=True, text=True, timeout=600)
-        assert r.returncode == 0 and os.path.exists(FORTRAN_BIN), (
-            'Fortran binary %s missing and `make` in src/fortran failed (rc %d):\n%s' % (
-                FORTRAN_BIN, r.returncode, (r.stdout + r.stderr)[-1500:]))
-    return FORTRAN_BIN
-
-
-def test_fortran_python_parity(tmp):
+def test_two_rank_fortran(tmp):
     fortran_binary()
     errs = []
     for case in ('test.tpv8', 'test.tpv36'):
-        d = os.path.join(tmp, 'parity_' + case)
-        make_case(case, d)
-        prc, pout = run_python_mesh_only(d)
-        frc, fout = run_fortran_mesh_only(d)
-        pv = parse_verdict(pout, prc, 'python ' + case)
-        fv = parse_verdict(fout, frc, 'fortran ' + case)
-        print('  %-12s python rc=%d %s | fortran rc=%d %s' % (case, prc, pv, frc, fv))
-        want_red = case in WEDGE_EXPECTED
-        if (pv[0] == 'FAIL') != want_red:
-            errs.append('%s: python verdict %s, expected %s' % (case, pv[0], 'FAIL' if want_red else 'PASS'))
-        if ordered(fv[1]) != ordered(pv[1]) or fv[0] != pv[0] or frc != prc:
-            errs.append('%s: PARITY BROKEN python rc=%d %s checks=%s vs fortran rc=%d %s checks=%s' % (
-                case, prc, pv[0], ','.join(pv[1]), frc, fv[0], ','.join(fv[1])))
-    assert not errs, 'parity:\n' + '\n'.join(errs)
+        d = os.path.join(tmp, 'two_' + case)
+        make_case(case, d, 'par.nx = 2\n')
+        rc, out = run_fortran_mesh_only(d, ranks=2)
+        v = parse_verdict(out, rc, 'fortran %s 2 ranks' % case)
+        print('  %-12s 2 ranks: %s rc=%d checks=%s elements=%s fault_pairs=%s attachments=%s' % (
+            case, v[0], rc, ','.join(v[1]) or 'none', v[2]['elements'], v[2]['fault_pairs'], v[2]['sides_attachments']))
+        e = judge(case, rc, v[0], v[1], v[2])
+        if e:
+            errs.append('2 ranks: ' + e)
+    assert not errs, '2-rank:\n' + '\n'.join(errs)
 
 
 # ---------------------------------------------------------------------------
@@ -316,9 +481,17 @@ def test_thresholds_equal():
 
 def main():
     tmp = tempfile.mkdtemp(prefix='mesh_screening_')
+    try:
+        run_all(tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def run_all(tmp):
     tests = [('thresholds_equal', lambda: test_thresholds_equal()),
+             ('judge_both_ways', lambda: test_judge_both_ways()),
              ('planted_defects', lambda: test_planted_defects(tmp)),
-             ('fortran_python_parity', lambda: test_fortran_python_parity(tmp)),
+             ('two_rank_fortran', lambda: test_two_rank_fortran(tmp)),
              ('all_cases', lambda: test_all_cases(tmp))]
     sel = sys.argv[1:]
     bad = 0
