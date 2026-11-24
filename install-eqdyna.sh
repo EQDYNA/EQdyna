@@ -1,7 +1,7 @@
 #! /bin/bash
 # Build EQdyna (src/fortran -> bin/eqdyna) and set its environment.
 #
-# Machines: ls6 (TACC Lonestar6), grace (TAMU Grace), ubuntu (22.04), macos.
+# Machines: ls6 (TACC Lonestar6), vista (TACC Vista, aarch64), grace (TAMU Grace), ubuntu (22.04), macos.
 #
 #   ./install-eqdyna.sh -m <machine>   build
 #   ./install-eqdyna.sh -e <machine>   install dependencies, then build (ubuntu, macos, ls6)
@@ -47,6 +47,11 @@ if [ -n "$MACH" ]; then
                      "one. Continuing with the module's bare python3, which" \
                      "lacks jax/mpi4py/netCDF4." >&2
             fi ;;
+        vista)
+            # aarch64 Grace-Grace; the default nvidia + openmpi modules supply
+            # mpif90 (nvfortran). Fortran solver only; no Python venv yet.
+            module load netcdf
+            echo "netCDF: $TACC_NETCDF_INC $TACC_NETCDF_LIB" ;;
         grace)
             module load netCDF
             echo "netCDF: ${EBROOTNETCDF}/include ${EBROOTNETCDF}/lib64" ;;
@@ -70,7 +75,7 @@ if [ -n "$MACH" ]; then
                 pip3 install --break-system-packages numpy netCDF4 matplotlib xarray
             fi ;;
         *)
-            echo "install-eqdyna.sh: unknown machine '$MACHINE' (ls6, grace, ubuntu, macos)" >&2
+            echo "install-eqdyna.sh: unknown machine '$MACHINE' (ls6, vista, grace, ubuntu, macos)" >&2
             return 1 2>/dev/null || exit 1 ;;
     esac
 
