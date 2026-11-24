@@ -57,11 +57,14 @@ import time
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
 
 from eqdyna import MPI4NodalQuant as MQ   # noqa: E402
 from eqdyna import eqdyna3d, meshgen      # noqa: E402
 from eqdyna import readInputFiles         # noqa: E402
+from eqdyna import meshscreen             # noqa: E402
+from testsys.regression.test_mesh_screening import WEDGE_EXPECTED_RED  # noqa: E402
 
 # test.tpv23 (ntotft=2, item 145/PR #78 follow-up) at its native 250 m dx
 # costs ~4 min just to build its serial mesh (measured: 236 s at test.tpv22's
@@ -380,6 +383,23 @@ def _run_check_censuses(part, S, mesh, owned_rows, live):
 def check_case(label, case, overrides, rank_counts, must_reach, tmp):
     case_dir = os.path.join(tmp, label)
     _make_case(case, case_dir, overrides)
+    if case in WEDGE_EXPECTED_RED:
+        # Row 167 step 1: the wedge mesh is mis-wired; the post-meshing screen
+        # must stop the serial build with the listed check. The comparison below
+        # runs for every case NOT in WEDGE_EXPECTED_RED (step 2 empties it).
+        code, want = WEDGE_EXPECTED_RED[case]
+        try:
+            eqdyna3d.build_solver_state(case_dir)
+        except meshscreen.MeshScreenError as exc:
+            if (exc.code, tuple(k for k in meshscreen.SCREEN_CODES if k in exc.failures)) != (code, want):
+                raise AssertionError('%s: screen stopped with code %d checks %s, expected %d %s'
+                                     % (label, exc.code, sorted(exc.failures), code, want))
+            print('  %s: screen stop code %d checks %s as WEDGE_EXPECTED_RED declares'
+                  % (label, exc.code, ','.join(want)))
+            return
+        raise AssertionError('%s: build_solver_state did not raise MeshScreenError but %s is in '
+                             'WEDGE_EXPECTED_RED -- wiring fixed? empty the list (row 167 step 2)'
+                             % (label, case))
     t0 = time.time()
     S_s, mesh_s = eqdyna3d.build_solver_state(case_dir)
     params, _g = readInputFiles.build_params(case_dir)

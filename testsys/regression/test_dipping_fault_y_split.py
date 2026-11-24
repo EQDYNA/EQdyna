@@ -70,6 +70,8 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
+from testsys.regression.test_mesh_screening import WEDGE_EXPECTED_RED  # noqa: E402
+
 CASE = 'test.tpv36'
 # 0.5 s (~46 of this case's dt), bisected against a real mutation -- see the
 # module docstring. Not derivable from dt alone (the effect this guards
@@ -99,7 +101,10 @@ def _binary():
     return None
 
 
-def _run(tmp, tag, decomp):
+def _run(tmp, tag, decomp, expect_stop=None):
+    """expect_stop=(exit code, checks): the run must be stopped by the mesh
+    screen with exactly that code and failing checks (row 167 step 1: the wedge
+    mesh is mis-wired, WEDGE_EXPECTED_RED); returns None then."""
     case_dir = os.path.join(tmp, tag)
     r = subprocess.run([sys.executable, os.path.join(ROOT, 'scripts', 'create.newcase'),
                         case_dir, CASE], env=_env(), capture_output=True, text=True)
@@ -117,6 +122,18 @@ def _run(tmp, tag, decomp):
     mpirun = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
     r = subprocess.run([mpirun, '-np', str(nranks), _binary()],
                        cwd=case_dir, env=_env(), capture_output=True, text=True)
+    if expect_stop is not None:
+        code, want = expect_stop
+        out = r.stdout + r.stderr
+        fails = [l for l in out.splitlines() if l.startswith('mesh-screen: FAIL')]
+        got = sorted({l.split('checks=')[1].split()[0] for l in fails})
+        if r.returncode != code or got != [','.join(want)]:
+            raise AssertionError(
+                '%s at %r: expected the mesh screen to stop the run with exit %d '
+                'checks=%s (WEDGE_EXPECTED_RED, board row 167), got exit %d, '
+                'failing-check lines %r.\n%s'
+                % (tag, decomp, code, ','.join(want), r.returncode, got, out[-1200:]))
+        return None
     if r.returncode != 0:
         raise AssertionError(
             'eqdyna exited %d for %s at decomposition %r.\n%s'
@@ -136,6 +153,22 @@ def main():
         return 1
     from testsys import frt_canonical
     import numpy as np
+    if CASE in WEDGE_EXPECTED_RED:
+        # Row 167 step 1: the wedge mesh is mis-wired and the screen stops the
+        # run, so the y-split-vs-unsplit comparison below cannot run. Step 2
+        # deletes the case from WEDGE_EXPECTED_RED and the comparison returns.
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                _run(tmp, 'ysplit', (2, 2, 1), expect_stop=WEDGE_EXPECTED_RED[CASE])
+        except AssertionError as e:
+            print('  FAIL  %s' % e)
+            print('\nFAIL test_dipping_fault_y_split')
+            return 1
+        print('\nSUCCESS test_dipping_fault_y_split (wedge mesh stopped by the '
+              'screen, exit %d, as WEDGE_EXPECTED_RED declares; DIVIDE '
+              'comparison resumes when row 167 step 2 empties the list)'
+              % WEDGE_EXPECTED_RED[CASE][0])
+        return 0
     try:
         with tempfile.TemporaryDirectory() as tmp:
             d_split = _run(tmp, 'ysplit', (2, 2, 1))     # y IS split: DIVIDE path
