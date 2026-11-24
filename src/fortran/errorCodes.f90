@@ -82,6 +82,8 @@ MODULE errorCodes
     integer, parameter :: ERR_GEOM_MULTIFAULT_XZ_BAD  = 33  ! (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line
     integer, parameter :: ERR_GEOM_DEGEN_UNSUPPORTED  = 34  ! bGlobal.txt's C_degen is outside the accepted set {0} union (3, infinity) -- that is 0<C_degen<=3 AND every negative value -- a case checkIsOnFault takes neither if (==0) nor elseif (>3) branch for; no node would be on the fault; refused rather than silently becoming a vertical planar fault (faultDegenStyle=0). Python's meshgen.py raises NotImplementedError for the same accepted set.
 
+    integer, parameter :: ERR_GEOM_STRIKE_UNSUPPORTED  = 35  ! bGlobal.txt's strike (par.strike) is not 270: the mesh splits every fault along an x-aligned y-plane with the master on +y, which only un=(0,sin dip,cos dip) of strike 270 describes; any other strike (even -90, equal mod 360) puts un off the plane normal and flips the cell-side test
+
     ! --- 41-49 mesh generation and element quality --------------------
     integer, parameter :: ERR_MESH_STRESS_ARR_SMALL  = 41  ! sizeOfStressDofIndexArr exceeds 5*sizeOfEqNumIndexArr
     integer, parameter :: ERR_MESH_COUNT_MISMATCH    = 42  ! meshgen's node/element/equation tallies disagree

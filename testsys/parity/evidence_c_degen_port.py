@@ -158,14 +158,15 @@ def run_python_mesh(case_dir):
     xline, yline, zline, pmlb, _ = meshgen.build_grid_lines(params)
     meshCoor, nftnd, nsmp = meshgen.build_node_coordinates(xline, yline, zline, params)
 
+    un = meshgen.build_fault_geometry(xline, yline, zline, params, nsmp)[0]
     t0 = time.time()
     conn, elem_type, mat, depth = meshgen.build_elements(
-        xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
+        xline, yline, zline, params, pmlb, nsmp, material, meshCoor, un)
     vec_elapsed = time.time() - t0
 
     t0 = time.time()
     conn_s, elem_type_s, mat_s, depth_s = meshgen._build_elements_scalar(
-        xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
+        xline, yline, zline, params, pmlb, nsmp, material, meshCoor, un)
     scalar_elapsed = time.time() - t0
 
     scalar_vs_vector_ok = (np.array_equal(conn, conn_s) and

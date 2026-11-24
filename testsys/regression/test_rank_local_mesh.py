@@ -57,21 +57,18 @@ import time
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
 
 from eqdyna import MPI4NodalQuant as MQ   # noqa: E402
 from eqdyna import eqdyna3d, meshgen      # noqa: E402
 from eqdyna import readInputFiles         # noqa: E402
-from eqdyna import meshscreen             # noqa: E402
-from testsys.regression.test_mesh_screening import WEDGE_EXPECTED_RED  # noqa: E402
 
 # test.tpv23 (ntotft=2, item 145/PR #78 follow-up) at its native 250 m dx
 # costs ~4 min just to build its serial mesh (measured: 236 s at test.tpv22's
 # 200 m, same O(N) shape) -- far too slow for this file's "run constantly"
 # tier. Coarsened to dx=1000 m (same value test.tpv36 already coarsens to,
 # below): commensurate with BOTH fault boxes' extents (30000/1000=30),
-# fault #2's y-stepover (moved to 2000 m, see below: 2000/1000=2) and the domain extents
+# fault #2's own 1000 m y-stepover (1000/1000=1) and the domain extents
 # (64000/1000=64, 20000/1000=20, 27000/1000=27) -- every commensurability
 # checkInputConsistency enforces still holds, so this is the same benchmark
 # geometry at a coarser sample, not a different one. `on_fault_vars` (and
@@ -100,20 +97,7 @@ nfx2 = round((common.FAULT2_XRANGE[1] - common.FAULT2_XRANGE[0]) / par.dx + 1)
 fx2 = np.linspace(common.FAULT2_XRANGE[0], common.FAULT2_XRANGE[1], nfx2)
 fault2_vars = common.build_on_fault_vars(fx2, par.fz, nfx2, par.nfz)
 par.onFaultVarsPerFault = [par.on_fault_vars, fault2_vars]
-# Fault #2 moves from the native y=+1000 to y=+2000: at dx=1000 the native
-# stepover is ONE cell, a configuration no gated case has, and it exposes a
-# second wedge-path mis-wiring (board row 167: the one-cell flag is OR-ed over
-# faults, meshgen.py:1068-1074). Two cells apart, the screen passes (0 wrong).
-f2 = par.faultgeom[1]
-par.faultgeom[1] = (f2[0], f2[1], 2000.0, 2000.0, f2[4], f2[5])
 ''' % (_TPV23_COARSE_DX, _TPV23_COARSE_DX, _TPV23_COARSE_DX)
-
-# MEASURED sides failure of the coarse (dx=1000) wedge case; a different count
-# is not the expected failure (same discipline as WEDGE_SIDES_PIN, full mesh).
-WEDGE_COARSE_SIDES = {
-    'test.tpv36': '60 of 20160 (cell,node) attachments on the wrong side of the fault plane '
-                  '(60 master-attached on the footwall side, 0 slave-attached',
-}
 
 # (label, case, par overrides, decompositions by rank count, arn paths it must reach)
 CASES = (
@@ -131,7 +115,7 @@ CASES = (
     # test.tpv23 (ntotft=2): the only multi-fault case this file covers
     # (victor-reyes PR #78 audit, item 145 follow-up). 2 ranks picks
     # MPI4NodalQuant.DECOMP[2] = (2, 1, 1) -- npy=1, so a rank's box spans
-    # BOTH faults' y (fault #1 at y=0, fault #2 at y=+2000 m) and, wherever
+    # BOTH faults' y (fault #1 at y=0, fault #2 at y=+1000 m) and, wherever
     # its x-slab meets the two faults' 10 km x-overlap band, owns fault rows
     # from BOTH faults in SCAN order (interleaved: fault_id goes 0,1,0,1,...
     # down each shared (x,z) column) -- the exact shape build_faces' Row 17
@@ -396,26 +380,6 @@ def _run_check_censuses(part, S, mesh, owned_rows, live):
 def check_case(label, case, overrides, rank_counts, must_reach, tmp):
     case_dir = os.path.join(tmp, label)
     _make_case(case, case_dir, overrides)
-    if case in WEDGE_EXPECTED_RED:
-        # Row 167 step 1: the wedge mesh is mis-wired; the post-meshing screen
-        # must stop the serial build with the listed check. The comparison below
-        # runs for every case NOT in WEDGE_EXPECTED_RED (step 2 empties it).
-        code, want = WEDGE_EXPECTED_RED[case]
-        try:
-            eqdyna3d.build_solver_state(case_dir)
-        except meshscreen.MeshScreenError as exc:
-            if (exc.code, tuple(k for k in meshscreen.SCREEN_CODES if k in exc.failures)) != (code, want):
-                raise AssertionError('%s: screen stopped with code %d checks %s, expected %d %s'
-                                     % (label, exc.code, sorted(exc.failures), code, want))
-            if WEDGE_COARSE_SIDES[case] not in exc.failures['sides']:
-                raise AssertionError('%s: a DIFFERENT sides failure than the pinned wedge one: got %r, '
-                                     'pinned %r' % (label, exc.failures['sides'], WEDGE_COARSE_SIDES[case]))
-            print('  %s: screen stop code %d checks %s as WEDGE_EXPECTED_RED declares'
-                  % (label, exc.code, ','.join(want)))
-            return
-        raise AssertionError('%s: build_solver_state did not raise MeshScreenError but %s is in '
-                             'WEDGE_EXPECTED_RED -- wiring fixed? empty the list (row 167 step 2)'
-                             % (label, case))
     t0 = time.time()
     S_s, mesh_s = eqdyna3d.build_solver_state(case_dir)
     params, _g = readInputFiles.build_params(case_dir)

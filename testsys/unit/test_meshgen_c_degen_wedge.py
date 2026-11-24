@@ -45,7 +45,7 @@ def _small_c_degen36_params(dip=15.0, dx=500.0, n_dip_steps=6):
         xmin=-3 * dx, xmax=3 * dx, ymin=-2 * dy, ymax=(dis4uniB + 2) * dy,
         zmin=fzmin - 3 * dz, zmax=0.0,
         rat=1.025, nPML=6, tol=1.0e-5, R=0.01,
-        fstrike=0.0, C_degen=dip, insertFaultType=0, rough=None,
+        fstrike=270.0, C_degen=dip, insertFaultType=0, rough=None,
     )
     return params
 
@@ -56,8 +56,9 @@ def small_mesh():
     material = np.array([[6000.0, 3464.0, 2670.0]])
     xline, yline, zline, pmlb, _ = meshgen.build_grid_lines(params)
     meshCoor, nftnd, nsmp = meshgen.build_node_coordinates(xline, yline, zline, params)
+    un = meshgen.build_fault_geometry(xline, yline, zline, params, nsmp)[0]
     return dict(params=params, material=material, xline=xline, yline=yline,
-                zline=zline, pmlb=pmlb, meshCoor=meshCoor, nftnd=nftnd, nsmp=nsmp)
+                zline=zline, pmlb=pmlb, meshCoor=meshCoor, nftnd=nftnd, nsmp=nsmp, un=un)
 
 
 class TestIsOnFaultCDegenBranch:
@@ -148,10 +149,10 @@ class TestBuildElementsWedgeSplit:
         m = small_mesh
         conn_v, et_v, mat_v, depth_v = meshgen.build_elements(
             m['xline'], m['yline'], m['zline'], m['params'], m['pmlb'],
-            m['nsmp'], m['material'], m['meshCoor'])
+            m['nsmp'], m['material'], m['meshCoor'], m['un'])
         conn_s, et_s, mat_s, depth_s = meshgen._build_elements_scalar(
             m['xline'], m['yline'], m['zline'], m['params'], m['pmlb'],
-            m['nsmp'], m['material'], m['meshCoor'])
+            m['nsmp'], m['material'], m['meshCoor'], m['un'])
 
         assert np.array_equal(conn_v, conn_s)
         assert np.array_equal(et_v, et_s)
@@ -175,7 +176,7 @@ class TestBuildElementsWedgeSplit:
         n_brick = (nx - 1) * (ny - 1) * (nz - 1)
         conn_v, et_v, _, _ = meshgen.build_elements(
             m['xline'], m['yline'], m['zline'], m['params'], m['pmlb'],
-            m['nsmp'], m['material'], m['meshCoor'])
+            m['nsmp'], m['material'], m['meshCoor'], m['un'])
         n_triggers = int(np.sum(et_v == 11))
         assert conn_v.shape[0] == n_brick + n_triggers
 
@@ -185,24 +186,21 @@ class TestBuildElementsWedgeSplit:
         m = small_mesh
         conn_v, et_v, _, _ = meshgen.build_elements(
             m['xline'], m['yline'], m['zline'], m['params'], m['pmlb'],
-            m['nsmp'], m['material'], m['meshCoor'])
+            m['nsmp'], m['material'], m['meshCoor'], m['un'])
         wedge11 = conn_v[et_v == 11]
         assert wedge11.shape[0] > 0
         assert np.array_equal(wedge11[:, 2], wedge11[:, 3])
 
     def test_type11_never_gets_slave_master_substitution(self, small_mesh):
-        """meshgen.f90:733-736's replaceSlaveWithMasterNode guard: type-11
-        NEVER gets the substitution, type-12/13 ALWAYS do (unconditionally)
-        -- this is the OR-clause that was dead code for C_degen==0 and is
-        exercised for the first time by this port. A type-11 element's
-        corner ids must therefore be disjoint from nsmp's MASTER column
-        (nsmp[:,1]) unless a master id coincidentally also appears as a
-        regular grid node id, which cannot happen since master ids are
-        appended after all regular node ids."""
+        """The side test (row 167 step 2) attaches a cell to a MASTER node only
+        when the cell centre is on the +un side: a type-11 (below-fault) wedge
+        never is. Its corner ids must therefore be disjoint from nsmp's MASTER
+        column (nsmp[:,1]); master ids are appended after all regular node
+        ids, so a coincidence is impossible."""
         m = small_mesh
         conn_v, et_v, _, _ = meshgen.build_elements(
             m['xline'], m['yline'], m['zline'], m['params'], m['pmlb'],
-            m['nsmp'], m['material'], m['meshCoor'])
+            m['nsmp'], m['material'], m['meshCoor'], m['un'])
         master_ids = set(m['nsmp'][:, 1].tolist())
         wedge11_nodes = set(conn_v[et_v == 11].ravel().tolist())
         assert wedge11_nodes.isdisjoint(master_ids)
@@ -220,7 +218,7 @@ class TestUnsupportedCDegenRaisesLoudly:
         bad_params['C_degen'] = 2.0
         with pytest.raises(NotImplementedError):
             meshgen.build_elements(m['xline'], m['yline'], m['zline'], bad_params,
-                                    m['pmlb'], m['nsmp'], m['material'], m['meshCoor'])
+                                    m['pmlb'], m['nsmp'], m['material'], m['meshCoor'], m['un'])
 
     def test_build_elements_scalar_raises_for_0_lt_c_degen_le_3(self, small_mesh):
         m = small_mesh
@@ -228,7 +226,7 @@ class TestUnsupportedCDegenRaisesLoudly:
         bad_params['C_degen'] = 2.0
         with pytest.raises(NotImplementedError):
             meshgen._build_elements_scalar(m['xline'], m['yline'], m['zline'], bad_params,
-                                            m['pmlb'], m['nsmp'], m['material'], m['meshCoor'])
+                                            m['pmlb'], m['nsmp'], m['material'], m['meshCoor'], m['un'])
 
 
 class TestEqdyna3dGuards:

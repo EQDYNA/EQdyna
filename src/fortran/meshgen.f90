@@ -1161,55 +1161,51 @@ end subroutine createElement
 
  subroutine replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
     use globalvar
-    use errorCodes
     implicit none
     integer (kind = 8) :: elemCount
-    integer (kind = 4) :: iFault, iFaultNodePair, nftnd0(ntotft), k
-    real (kind = dp) :: nodeCoor(10)
-    logical :: isAboveSomeFaultPlane
-    ! The default grids only contain slave nodes.
-    ! This subroutine will replace slave nodes with corresponding master nodes.
-
-    ! Row 17 (multi-fault): the y-test used to be `nodeCoor(2)>0.0d0 .and.
-    ! abs(nodeCoor(2)-dy)<tol` -- one cell above fault 1's plane (y=0) alone.
-    ! For ntotft>1 an element one cell above fault 2's plane (or any fault's)
-    ! never matched, so its slave-node references were never swapped for
-    ! master-node ones -- the mesh stayed disconnected across fault 2's
-    ! split, which showed up downstream as a zero/singular mass entry and a
-    ! NaN velocity at a fault-2 node within the first 2 steps (measured on
-    ! test.multifault2, rank 1/3, nodes at fault 2's z-edges). Generalized to
-    ! ANY fault's plane-plus-one-cell.
-    !
-    ! Row 17 rebased: x/z bounds USED to stay keyed to fault 1's box alone
-    ! (checkInputConsistency.f90 used to require every fault share it) --
-    ! now getLocalOneDimCoorArrAndSize meshes the UNION of every fault's x/z
-    ! extent, so a fault whose x/z differs from fault 1's (TPV22/23's two
-    ! faults, e.g.) needs its OWN x/z tested alongside its OWN y-plane, one
-    ! fault at a time, not fault 1's x/z paired with any(...) fault's y.
-    ! Reduces to the old any(...)-across-y test bit-for-bit at ntotft==1 (one
-    ! fault, so "test fault i's own x/z and y" IS "test fault 1's x/z and y").
-    isAboveSomeFaultPlane = .false.
-    do iFault = 1, ntotft
-        if (nodeCoor(1)>(fltxyz(1,1,iFault)-tol) .and. nodeCoor(1)<(fltxyz(2,1,iFault)+dx+tol) .and. &
-            nodeCoor(3)>(fltxyz(1,3,iFault)-tol) .and. &
-            abs(nodeCoor(2) - (fltxyz(1,2,iFault) + dy)) < tol) then
-            isAboveSomeFaultPlane = .true.
-            exit
-        endif
+    integer (kind = 4) :: nftnd0(ntotft), iFault, k, lo, hi, mid
+    integer (kind = 8) :: node
+    real (kind = dp) :: nodeCoor(10), cen(3)
+    logical :: windowed
+    ! The default grids only contain slave nodes. A cell keeps a fault node's
+    ! SLAVE id or takes its MASTER id by ONE geometric side test (board row 167
+    ! step 2): master iff the cell centre -- the mean of the cell's own 8
+    ! corners, so a wedge cell's duplicated corners put it on its own side --
+    ! lies on the +un side of that node's pair. Decided per corner and by that
+    ! corner's OWN fault (screenMesh's `sides` check is the same inequality;
+    ! the independent oracle is test_mesh_screening's test_side_oracle). Only the
+    ! window below and the wedge bypass depend on element type. The swap stays inside each fault's
+    ! own x/z extent window (xmin-tol < x < xmax+dx+tol, z > zmin-tol, at the
+    ! cell's top node), except for wedge cells (11/12/13), which never had one.
+    ! Slave ids of a fault are created in
+    ! ascending order, so nsmp(1,:,iFault) is searched by bisection.
+    cen = 0.0d0
+    do k = 1,nen
+        cen = cen + meshCoor(1:3,nodeElemIdRelation(k,elemCount))
     enddo
-    if ((elemTypeArr(elemCount) == 1 .and. isAboveSomeFaultPlane) &
-         .or. elemTypeArr(elemCount)==12 .or. elemTypeArr(elemCount)==13 ) then
+    cen = cen/8.0d0
+    windowed = elemTypeArr(elemCount) /= 11 .and. elemTypeArr(elemCount) /= 12 .and. elemTypeArr(elemCount) /= 13
+    do k = 1,nen
+        node = nodeElemIdRelation(k,elemCount)
         do iFault = 1, ntotft
-            do iFaultNodePair = 1, nftnd0(iFault)
-                do k = 1,nen
-                    if(nodeElemIdRelation(k,elemCount)==nsmp(1,iFaultNodePair,iFault)) then
-                        nodeElemIdRelation(k,elemCount) = nsmp(2,iFaultNodePair,iFault)  !use master node for the node!
-                    endif
-                enddo
+            lo = 1
+            hi = nftnd0(iFault)
+            do while (lo <= hi)
+                mid = (lo + hi)/2
+                if (nsmp(1,mid,iFault) < node) then
+                    lo = mid + 1
+                else if (nsmp(1,mid,iFault) > node) then
+                    hi = mid - 1
+                else
+                    if ((.not. windowed .or. (nodeCoor(1) > fltxyz(1,1,iFault)-tol .and. &
+                         nodeCoor(1) < fltxyz(2,1,iFault)+dx+tol .and. nodeCoor(3) > fltxyz(1,3,iFault)-tol)) .and. &
+                        dot_product(cen - meshCoor(1:3,node), un(1:3,mid,iFault)) > 0.0d0) &
+                        nodeElemIdRelation(k,elemCount) = nsmp(2,mid,iFault)
+                    exit
+                endif
             enddo
         enddo
-    endif      
-    
+    enddo
 end subroutine replaceSlaveWithMasterNode
 
 subroutine checkIsOnFault(nodeCoor, iFault, isOnFault)

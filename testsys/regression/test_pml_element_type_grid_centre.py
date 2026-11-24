@@ -115,7 +115,8 @@ def check_python():
                                                  g['nmat'], g['n2mat'])
     xl, yl, zl, pmlb, _ = meshgen.build_grid_lines(params)
     mc, _, nsmp = meshgen.build_node_coordinates(xl, yl, zl, params)
-    conn, et, _, _ = meshgen.build_elements(xl, yl, zl, params, pmlb, nsmp, material, mc)
+    un = meshgen.build_fault_geometry(xl, yl, zl, params, nsmp)[0]
+    conn, et, _, _ = meshgen.build_elements(xl, yl, zl, params, pmlb, nsmp, material, mc, un)
     nd = np.asarray(meshgen.build_equation_numbers(xl, yl, zl, params, pmlb)[0])
     if nd.shape[0] == mc.shape[0] - 1:
         nd = np.concatenate([[0], nd])

@@ -1,29 +1,35 @@
 #! /usr/bin/env python3
 """
-Regression guard (board row 167, step 1): the post-meshing screen
+Regression guard (board row 167): the post-meshing screen
 (src/python/eqdyna/meshscreen.py + src/fortran/screenMesh.f90; exit 81 sides,
-82 bridging) is GREEN on every registered case except the wedge-mesh cases
-test.tpv36/test.tpv37, and each of its two checks can actually fire.
+82 bridging) is GREEN on every registered case, and each of its two checks can
+actually fire.
 
 Tests (every one a hard failure, none skips):
 
   1. ALL CASES, both backends: `python3 -m eqdyna <case> --mesh-only` and
      `mpirun -np 1 eqdyna --mesh-only` for every name in testNameList.nameList.
-     Every case exits 0 and prints `mesh-screen: PASS`, except the cases in
-     WEDGE_EXPECTED_RED, which must exit with exactly the listed code and
-     checks. Both backends must agree on verdict, exit code, failing checks and
-     every count; a verdict over zero elements, nodes, fault pairs or
-     attachments is refused (a screen that compared nothing proves nothing).
-     WEDGE_EXPECTED_RED is THE list step 2 of row 167 edits: when the wiring is
-     fixed the wedge cases turn green and this test goes red with a message
-     naming the list.
+     Every case exits 0 and prints `mesh-screen: PASS`. Both backends must
+     agree on verdict, exit code, failing checks and every count; a verdict
+     over zero elements, nodes, fault pairs or attachments is refused (a screen
+     that compared nothing proves nothing).
   2. JUDGE BOTH WAYS (rule 14a): judge() is fed good and bad results and must
      accept the good and flag every bad one.
   3. PLANTED DEFECTS on the in-memory tpv8 mesh, Python and Fortran (the dump
      goes to screen_mesh_dump_driver.f90, linked against the production
      screenMesh.o): one defect per check trips exactly that check; the
      unplanted mesh is the control.
-  4. 2-RANK FORTRAN: tpv8 (green) and tpv36 (red, 81) at mpirun -np 2.
+  4. 2-RANK FORTRAN: tpv8 and tpv36 (wedge mesh) at mpirun -np 2.
+  5. INDEPENDENT SIDE ORACLE (python backend, the Fortran connectivity being
+     held identical by test 1's counts): screen_mesh's `sides` check and the
+     meshgen side test share one inequality and one `un`, so they cannot catch
+     an error in either. oracle_sides() takes each fault's plane normal from the pair
+     nodes' OWN coordinates (cross product of the in-plane spans, oriented to
+     +y: the declared dip direction) and tests every (cell,node) attachment against THAT plane.
+     Run on every registered case's gate mesh, and on the small C_degen
+     fixture, where the same oracle must flag the wrong attachments of the
+     SAME mesh built with fstrike=0 (un then points along +x: a wrong rule
+     input the screen passes).
 
 mpirun on this class of box needs `env -u DISPLAY HWLOC_COMPONENTS=-gl,...` (a
 dead X server blocks hwloc GL discovery forever) and is wrapped in
@@ -54,20 +60,6 @@ DRIVER_F90 = os.path.join(ROOT, 'testsys', 'parity', 'screen_mesh_dump_driver.f9
 MPIRUN_TIMEOUT_S = 1500
 COUNT_KEYS = ('elements', 'nodes', 'fault_pairs', 'sides_attachments')
 PARITY_KEYS = COUNT_KEYS + ('sides_wrong_master', 'sides_wrong_slave', 'bridging_cells')
-
-# THE expected-red list (row 167 step 1): {case: (exit code, failing checks)}.
-# Step 2 of row 167 deletes these entries when the wiring is fixed.
-WEDGE_EXPECTED_RED = {
-    'test.tpv36': (81, ('sides',)),
-    'test.tpv37': (81, ('sides',)),
-}
-# MEASURED counts of the wedge failure (both backends, serial; 2026-11-24): a
-# DIFFERENT `sides` failure (other count) is not the expected one and is refused.
-WEDGE_SIDES_PIN = {
-    'test.tpv36': {'sides_wrong_master': 120, 'sides_wrong_slave': 0, 'sides_attachments': 40320},
-    'test.tpv37': {'sides_wrong_master': 120, 'sides_wrong_slave': 0, 'sides_attachments': 40320},
-}
-ROW167 = 'board row 167 (wedge-mesh mis-wiring, pathway_forward.md)'
 
 # plant -> checks it must trip on the planted tpv8 mesh. bridging_cell is the
 # realistic wiring defect: one of the two nodes is always on the wrong side.
@@ -143,26 +135,12 @@ def run_fortran(case_dir, ranks=1):
     return r.returncode, r.stdout + r.stderr
 
 
-def judge(case, rc, verdict, checks, counts, pin=True):
+def judge(case, rc, verdict, checks, counts):
     """Error string for one backend's result on one case, or None. The ONLY
     place a run becomes a verdict; test_judge_both_ways feeds it known-bad input."""
     empty = [k for k in COUNT_KEYS if counts[k] <= 0]
     if empty:
         return '%s: screen compared nothing (%s == 0): a vacuous verdict' % (case, ','.join(empty))
-    if case in WEDGE_EXPECTED_RED:
-        code, want = WEDGE_EXPECTED_RED[case]
-        if verdict == 'PASS' and rc == 0:
-            return ('%s: WEDGE EXPECTATION FLIPPED -- the screen is now GREEN on %s. The wiring has been fixed: '
-                    'delete %s from WEDGE_EXPECTED_RED in testsys/regression/test_mesh_screening.py (and its '
-                    'UNSUPPORTED cells in testsys/matrix.py, ROW167_WEDGE_UNSUPPORTED in '
-                    'testsys/unit/test_sweep_matrix.py) and close the matching step of %s.' % (case, case, case, ROW167))
-        if (rc, checks) != (code, want):
-            return '%s: expected FAIL rc=%d checks=%s (%s), got %s rc=%d checks=%s' % (
-                case, code, ','.join(want), ROW167, verdict, rc, ','.join(checks))
-        off = {k: (counts[k], v) for k, v in WEDGE_SIDES_PIN[case].items() if pin and counts[k] != v}
-        if off:
-            return '%s: a DIFFERENT sides failure than the pinned wedge one (got, pinned): %s' % (case, off)
-        return None
     if not (verdict == 'PASS' and rc == 0):
         return '%s: must be GREEN, got %s rc=%d checks=%s' % (case, verdict, rc, ','.join(checks))
     return None
@@ -170,28 +148,21 @@ def judge(case, rc, verdict, checks, counts, pin=True):
 
 def test_judge_both_ways():
     counts = dict.fromkeys(PARITY_KEYS, 5)
-    wedge = sorted(WEDGE_EXPECTED_RED)[0]
-    code, want = WEDGE_EXPECTED_RED[wedge]
-    pinned = dict(counts, **WEDGE_SIDES_PIN[wedge])
-    green = [c for c in testNameList.nameList if c not in WEDGE_EXPECTED_RED][0]
-    assert judge(wedge, code, 'FAIL', want, pinned) is None
-    assert judge(green, 0, 'PASS', (), counts) is None
+    case = testNameList.nameList[0]
+    assert judge(case, 0, 'PASS', (), counts) is None
     bad = {
-        'green wedge case': judge(wedge, 0, 'PASS', (), pinned),
-        'wedge case, wrong check': judge(wedge, 82, 'FAIL', ('bridging',), pinned),
-        'wedge case, different sides count': judge(wedge, code, 'FAIL', want, dict(pinned, sides_wrong_master=121)),
-        'red non-wedge case': judge(green, 81, 'FAIL', ('sides',), counts),
-        'vacuous (no attachments)': judge(green, 0, 'PASS', (), dict(counts, sides_attachments=0)),
-        'vacuous (no fault pairs)': judge(green, 0, 'PASS', (), dict(counts, fault_pairs=0)),
+        'red case (sides)': judge(case, 81, 'FAIL', ('sides',), counts),
+        'red case (bridging)': judge(case, 82, 'FAIL', ('bridging',), counts),
+        'vacuous (no attachments)': judge(case, 0, 'PASS', (), dict(counts, sides_attachments=0)),
+        'vacuous (no fault pairs)': judge(case, 0, 'PASS', (), dict(counts, fault_pairs=0)),
     }
     missed = [k for k, v in bad.items() if v is None]
     assert not missed, 'judge failed to flag: %s' % missed
-    assert 'FLIPPED' in bad['green wedge case'] and 'WEDGE_EXPECTED_RED' in bad['green wedge case']
 
 
 def test_all_cases(tmp):
     names = list(testNameList.nameList)
-    assert names and set(WEDGE_EXPECTED_RED) <= set(names), 'nameList empty or WEDGE_EXPECTED_RED names a stranger'
+    assert names, 'nameList empty'
     fortran_binary()
     dirs = {c: os.path.join(tmp, 'all_' + c) for c in names}
 
@@ -326,6 +297,103 @@ def test_planted_defects(tmp):
     assert not errs, 'planted defects:\n' + '\n'.join(errs)
 
 
+def oracle_sides(X, conn, nsmp, tol):
+    """(attachments, wrong_master, wrong_slave, min_margin) of every distinct
+    (cell,node) attachment to a pair node whose cell centre is inside the
+    fault patch window, judged by the plane spanned by the fault's own master
+    nodes (never by un). X is 1-indexed (row 0 unused); conn (E,8) 1-indexed."""
+    nft = nsmp.shape[0]
+    role = np.zeros(X.shape[0], dtype=np.int8)
+    pid = np.full(X.shape[0], -1, dtype=np.int64)
+    role[nsmp[:, 0]], role[nsmp[:, 1]] = 1, 2
+    pid[nsmp[:, 0]] = pid[nsmp[:, 1]] = np.arange(nft)
+    normal, lo, hi = np.zeros((nft, 3)), np.zeros((nft, 3)), np.zeros((nft, 3))
+    for f in np.unique(nsmp[:, 2]):
+        sel = np.nonzero(nsmp[:, 2] == f)[0]
+        P = X[nsmp[sel, 1]]
+        assert np.abs(X[nsmp[sel, 0]] - P).max() <= tol, 'fault %d pair does not coincide' % f
+        # local normal from the fault nodes' own in-plane spans (central differences
+        # along the fault's x and z grid lines): exact for a plane, local for a rough fault
+        ix, iz = (np.unique(P[:, k], return_inverse=True)[1].ravel() for k in (0, 2))
+        G = np.full((ix.max() + 1, iz.max() + 1), -1)
+        G[ix, iz] = np.arange(sel.size)
+
+        def nb(dx_, dz_):
+            j = G[np.clip(ix + dx_, 0, G.shape[0] - 1), np.clip(iz + dz_, 0, G.shape[1] - 1)]
+            return np.where(j >= 0, j, np.arange(sel.size))
+        n = np.cross(P[nb(1, 0)] - P[nb(-1, 0)], P[nb(0, 1)] - P[nb(0, -1)])
+        n /= np.linalg.norm(n, axis=1)[:, None]
+        n = np.where(n[:, 1:2] > 0, n, -n)         # declared dip direction: master side is +y
+        normal[sel], lo[sel], hi[sel] = n, P.min(axis=0), P.max(axis=0)
+    ce, sl = np.nonzero(role[conn] != 0)
+    ce, nodes = np.unique(np.stack([ce, conn[ce, sl]], axis=1), axis=0).T
+    pp, rl = pid[nodes], role[nodes]
+    cen = X[conn[ce]].sum(axis=1) / 8.0
+    ok = ((cen[:, [0, 2]] >= lo[pp][:, [0, 2]]) & (cen[:, [0, 2]] <= hi[pp][:, [0, 2]])).all(axis=1)
+    ce, nodes, pp, rl, cen = ce[ok], nodes[ok], pp[ok], rl[ok], cen[ok]
+    margin = np.where(rl == 2, 1.0, -1.0) * np.einsum('ij,ij->i', cen - X[nodes], normal[pp])
+    wrong = ~(margin > 0.0)
+    return (int(margin.size), int((wrong & (rl == 2)).sum()), int((wrong & (rl == 1)).sum()),
+            float(margin.min()) if margin.size else float('nan'))
+
+
+def fixture_mesh(fstrike):
+    """The small C_degen fixture (testsys/unit/test_meshgen_c_degen_wedge.py) meshed
+    with the given fstrike: (X, conn, nsmp, un, tol)."""
+    from eqdyna import meshgen
+    sys.path.insert(0, os.path.join(ROOT, 'testsys', 'unit'))
+    from test_meshgen_c_degen_wedge import _small_c_degen36_params
+    p = dict(_small_c_degen36_params(), fstrike=fstrike)
+    xl, yl, zl, pmlb, _ = meshgen.build_grid_lines(p)
+    X, _, nsmp = meshgen.build_node_coordinates(xl, yl, zl, p)
+    un = meshgen.build_fault_geometry(xl, yl, zl, p, nsmp)[0]
+    conn = meshgen.build_elements(xl, yl, zl, p, pmlb, nsmp, np.array([[6000.0, 3464.0, 2670.0]]), X, un)[0]
+    return X, conn, nsmp, un, p['tol']
+
+
+def test_side_oracle(tmp):
+    errs = []
+    # fixture, both ways: fstrike 270 (valid) is clean, fstrike 0 must be flagged
+    X, conn, nsmp, un, tol = fixture_mesh(270.0)
+    good = oracle_sides(X, conn, nsmp, tol)
+    X, conn, nsmp, un, tol = fixture_mesh(0.0)
+    bad = oracle_sides(X, conn, nsmp, tol)
+    scr = meshscreen._screen_measure(X, conn, np.zeros(conn.shape[0], dtype=int), nsmp, un, tol)[1]
+    print('  fixture oracle: fstrike=270 %s ; fstrike=0 %s ; screen on the fstrike=0 mesh: %s' % (
+        good, bad, 'FAIL ' + ','.join(scr) if scr else 'PASS (blind)'))
+    if good[0] == 0 or good[1] + good[2] != 0:
+        errs.append('fixture fstrike=270: oracle must see attachments and zero wrong, got %s' % (good,))
+    if bad[1] + bad[2] == 0:
+        errs.append('oracle did not flag the fixture meshed with fstrike=0 (it must: un points along x)')
+    for c in testNameList.nameList:
+        d = os.path.join(tmp, 'oracle_' + c)
+        make_case(c, d)
+        a = Mesh(d).a
+        r = oracle_sides(a[0], a[1], a[3], a[5])
+        print('  %-18s oracle attachments=%d wrong_master=%d wrong_slave=%d min_margin=%.3E' % ((c,) + r))
+        if r[0] == 0 or r[1] + r[2] != 0:
+            errs.append('%s: oracle attachments=%d wrong_master=%d wrong_slave=%d' % ((c,) + r[:3]))
+        shutil.rmtree(d, ignore_errors=True)
+    assert not errs, 'side oracle:\n' + '\n'.join(errs)
+
+
+def test_strike_refused(tmp):
+    """par.strike drives un, hence the side test: only exactly 270 is accepted, both
+    backends exit 35 (ERR_GEOM_STRIKE_UNSUPPORTED) naming par.strike on every other
+    value, including -90 (equal mod 360, but it moves tie cells at the patch edge)."""
+    fortran_binary()
+    errs = []
+    for strike, want in ((270.0, 0), (0.0, 35), (90.0, 35), (-90.0, 35)):
+        d = os.path.join(tmp, 'strike_%g' % strike)
+        make_case('test.tpv8', d, 'par.strike = %r\n' % strike)
+        for who, (rc, out) in (('python', run_python(d)), ('fortran', run_fortran(d))):
+            named = 'par.strike' in out
+            print('  strike %6g %-8s rc=%d (expected %d)' % (strike, who, rc, want))
+            if rc != want or (want and not named):
+                errs.append('strike %g %s: rc %d, expected %d, par.strike named: %s' % (strike, who, rc, want, named))
+    assert not errs, 'strike refusal:\n' + '\n'.join(errs)
+
+
 def test_two_rank_fortran(tmp):
     fortran_binary()
     errs = []
@@ -336,9 +404,7 @@ def test_two_rank_fortran(tmp):
         v = parse_verdict(out, rc, 'fortran %s 2 ranks' % case)
         print('  %-12s 2 ranks: %s rc=%d checks=%s %s' % (
             case, v[0], rc, ','.join(v[1]) or 'none', ' '.join('%s=%d' % (k, v[2][k]) for k in PARITY_KEYS)))
-        # A failing screen stops the run inside meshgen, so a rank can die before it prints its line (seen on
-        # CI's mpich: half the serial counts): the sides pin is serial-only, rc and checks are the 2-rank claim.
-        e = judge(case, rc, *v, pin=False)
+        e = judge(case, rc, *v)
         if e:
             errs.append('2 ranks: ' + e)
     assert not errs, '2-rank:\n' + '\n'.join(errs)
@@ -348,7 +414,9 @@ def main():
     tmp = tempfile.mkdtemp(prefix='mesh_screening_')
     tests = [('judge_both_ways', lambda: test_judge_both_ways()),
              ('planted_defects', lambda: test_planted_defects(tmp)),
+             ('strike_refused', lambda: test_strike_refused(tmp)),
              ('two_rank_fortran', lambda: test_two_rank_fortran(tmp)),
+             ('side_oracle', lambda: test_side_oracle(tmp)),
              ('all_cases', lambda: test_all_cases(tmp))]
     sel = sys.argv[1:]
     bad = 0
