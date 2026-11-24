@@ -177,7 +177,7 @@ subroutine meshgen
                         endif
                     enddo
                     
-                    call replaceSlaveWithMasterNode(elemCount, nftnd0)
+                    call replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
                     ! Defect C (board PR #164, 2026-10-09): this call used to add an
                     ! unexplained "+ 7.3215d0" to the element-center depth below,
                     ! uniformly shifting every Method-2 (C_elastic==0) element's
@@ -1159,26 +1159,31 @@ subroutine createElement(elemCount, stressDofCount, iy, iz, elementCenterCoor, x
     ! update elemCount, stressDofCount
 end subroutine createElement
 
- subroutine replaceSlaveWithMasterNode(elemCount, nftnd0)
+ subroutine replaceSlaveWithMasterNode(nodeCoor, elemCount, nftnd0)
     use globalvar
     implicit none
     integer (kind = 8) :: elemCount
     integer (kind = 4) :: nftnd0(ntotft), iFault, k, lo, hi, mid
     integer (kind = 8) :: node
-    real (kind = dp) :: cen(3)
+    real (kind = dp) :: nodeCoor(10), cen(3)
+    logical :: windowed
     ! The default grids only contain slave nodes. A cell keeps a fault node's
     ! SLAVE id or takes its MASTER id by ONE geometric side test (board row 167
     ! step 2): master iff the cell centre -- the mean of the cell's own 8
     ! corners, so a wedge cell's duplicated corners put it on its own side --
     ! lies on the +un side of that node's pair. Decided per corner and by that
     ! corner's OWN fault; no element type or grid position enters (screenMesh's
-    ! `sides` check is the same inequality). Slave ids of a fault are created in
+    ! `sides` check is the same inequality). The swap stays inside each fault's
+    ! own x/z extent window (xmin-tol < x < xmax+dx+tol, z > zmin-tol, at the
+    ! cell's top node), except for wedge cells (11/12/13), which never had one.
+    ! Slave ids of a fault are created in
     ! ascending order, so nsmp(1,:,iFault) is searched by bisection.
     cen = 0.0d0
     do k = 1,nen
         cen = cen + meshCoor(1:3,nodeElemIdRelation(k,elemCount))
     enddo
     cen = cen/8.0d0
+    windowed = elemTypeArr(elemCount) /= 11 .and. elemTypeArr(elemCount) /= 12 .and. elemTypeArr(elemCount) /= 13
     do k = 1,nen
         node = nodeElemIdRelation(k,elemCount)
         do iFault = 1, ntotft
@@ -1191,7 +1196,9 @@ end subroutine createElement
                 else if (nsmp(1,mid,iFault) > node) then
                     hi = mid - 1
                 else
-                    if (dot_product(cen - meshCoor(1:3,node), un(1:3,mid,iFault)) > 0.0d0) &
+                    if ((.not. windowed .or. (nodeCoor(1) > fltxyz(1,1,iFault)-tol .and. &
+                         nodeCoor(1) < fltxyz(2,1,iFault)+dx+tol .and. nodeCoor(3) > fltxyz(1,3,iFault)-tol)) .and. &
+                        dot_product(cen - meshCoor(1:3,node), un(1:3,mid,iFault)) > 0.0d0) &
                         nodeElemIdRelation(k,elemCount) = nsmp(2,mid,iFault)
                     exit
                 endif

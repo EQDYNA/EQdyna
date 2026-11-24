@@ -1036,23 +1036,33 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor, 
     # node of a fault pair iff its centre -- the mean of its own 8 corners, so a
     # wedge cell's duplicated corners put it on its own side -- lies on the +un
     # side of that pair, otherwise it keeps the slave node. Decided per corner
-    # and by that corner's OWN fault; no element type or grid position enters
-    # (the screen's `sides` check is the same inequality). `un` is
+    # and by that corner's OWN fault (the screen's `sides` check is the same
+    # inequality). `un` is
     # build_fault_geometry's.
+    # The swap stays inside each fault's own x/z extent window (old clause:
+    # xmin-tol < x < xmax+dx+tol, z > zmin-tol, at the cell's top node), except
+    # for wedge cells (13 and the 11/12 splice rows), which never had one.
+    boxes = _fault_boxes(p)
+    xcoor, zcoor = xline[IX], zline[IZ]
+    win = np.stack([(xcoor > b[0] - tol) & (xcoor < b[1] + dx + tol) & (zcoor > b[4] - tol)
+                    for b in boxes], axis=1)
     pair = np.zeros(meshCoor.shape[0], dtype=np.int64)       # 1-indexed un row; 0 = not a slave node
     pair[nsmp[:, 0]] = np.arange(1, nsmp.shape[0] + 1)
     lut = np.arange(meshCoor.shape[0], dtype=np.int64)
     lut[nsmp[:, 0]] = nsmp[:, 1]
 
-    def to_master(c):
+    def to_master(c, bypass=None, win=None):
         rows = np.nonzero((pair[c] > 0).any(axis=1))[0]
         cr = c[rows]
+        pr = pair[cr]
         dv = meshCoor[cr].sum(axis=1)[:, None, :] / 8.0 - meshCoor[cr]
-        above = (pair[cr] > 0) & (np.einsum('nkj,nkj->nk', dv, un[pair[cr]]) > 0.0)
+        ok = np.ones(pr.shape, bool) if win is None else bypass[rows, None] | np.take_along_axis(
+            win[rows], nsmp[np.maximum(pr - 1, 0), 2], axis=1)
+        above = (pr > 0) & ok & (np.einsum('nkj,nkj->nk', dv, un[pr]) > 0.0)
         c[rows] = np.where(above, lut[cr], cr)
         return c
 
-    conn = to_master(conn)
+    conn = to_master(conn, elem_type == 13, win)
     if wedge12_conn is not None:
         wedge11_conn = to_master(wedge11_conn)
         wedge12_conn = to_master(wedge12_conn)
@@ -1254,10 +1264,14 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
     slave2master = {int(s): int(m) for s, m in nsmp[:, :2]}
     slave2row = {int(s): i + 1 for i, s in enumerate(nsmp[:, 0])}   # 1-indexed un row
 
-    def to_master(c):
-        # build_elements' side test, one cell at a time
+    boxes = _fault_boxes(p)
+
+    def to_master(c, inwin=None):
+        # build_elements' side test, one cell at a time; inwin(fault_id) is the
+        # node's fault's x/z window (None: wedge rows, never windowed)
         cen = meshCoor[c].sum(axis=0) / 8.0
         return np.array([slave2master[n] if n in slave2master and
+                         (inwin is None or inwin(int(nsmp[slave2row[n] - 1, 2]))) and
                          np.dot(cen - meshCoor[n], un[slave2row[n]]) > 0.0 else n
                          for n in (int(v) for v in c)], dtype=np.int64)
     wedge12_mat_row = _wedge_material_row(material) if c_degen > 3.0 else None
@@ -1414,7 +1428,9 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
                                 etype = 13
 
                     if not wedge_fired:
-                        conn_rows.append(to_master(c))
+                        conn_rows.append(to_master(c, None if etype == 13 else
+                            lambda f: (xcoor > boxes[f][0] - tol and xcoor < boxes[f][1] + dx + tol
+                                       and zcoor > boxes[f][4] - tol)))
                         elem_type_rows.append(etype)
                         mat_rows.append(material_for(cz, cy, cx))
                         depth_rows.append(depth_val)
