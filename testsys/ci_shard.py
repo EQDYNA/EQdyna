@@ -331,6 +331,7 @@ SHARDS = {
         "test_station_header_location_stamp.py",
         "test_stress_i0_carry_aliasing.py",
         "test_version_banner.py",
+        "test_unknown_cli_arg.py",  # added 2026-11-24 (row 169 a): static scan + two 1-rank runs of the built binary
         "test_root_allowlist.py",  # added 2026-09-24 (wei-lin, root-notes move): one git ls-files, <1 s
         "test_text_line_format.py",  # 2026-09-29: static scan of src/fortran, <1 s
         "test_mesh_screening.py",  # added 2026-11-24 (row 167 step 1), moved to
