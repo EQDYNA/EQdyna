@@ -1064,6 +1064,9 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor, 
 
     conn = to_master(conn, elem_type == 13, win)
     if wedge12_conn is not None:
+        # Fortran never side-tests a type-11 cell (replaceSlaveWithMasterNode runs once per
+        # brick, after wedge() advanced elemCount); for a valid un (strike 270) this is a no-op:
+        # a type-11 cell lies below the plane, so no corner passes the +un test.
         wedge11_conn = to_master(wedge11_conn)
         wedge12_conn = to_master(wedge12_conn)
 

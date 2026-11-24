@@ -1172,8 +1172,9 @@ end subroutine createElement
     ! step 2): master iff the cell centre -- the mean of the cell's own 8
     ! corners, so a wedge cell's duplicated corners put it on its own side --
     ! lies on the +un side of that node's pair. Decided per corner and by that
-    ! corner's OWN fault; no element type or grid position enters (screenMesh's
-    ! `sides` check is the same inequality). The swap stays inside each fault's
+    ! corner's OWN fault (screenMesh's `sides` check is the same inequality;
+    ! the independent oracle is test_mesh_screening's test_side_oracle). Only the
+    ! window below and the wedge bypass depend on element type. The swap stays inside each fault's
     ! own x/z extent window (xmin-tol < x < xmax+dx+tol, z > zmin-tol, at the
     ! cell's top node), except for wedge cells (11/12/13), which never had one.
     ! Slave ids of a fault are created in

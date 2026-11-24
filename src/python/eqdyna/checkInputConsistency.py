@@ -61,6 +61,7 @@ ERR_CFG_MATERIAL_GRID_INVALID = 17  # bMaterial.txt's 3D material grid (n2mat=6,
 ERR_CFG_FAULT_TS_INVALID = 18  # bGlobal.txt's fault time-series switch (par.outputFaultTimeSeries) is neither 0 nor 1 (raised by readInputFiles.read_bglobal)
 ERR_GEOM_MULTIFAULT_Y_BAD = 32  # a fault's y-plane is not vertical/planar, coincides with another fault's, or (row 17 rebased) a fault's y bound is not an integer multiple of dy from the union-derived uniform-y belt origin (raised by meshgen.py's one_dim_coor_array)
 ERR_GEOM_MULTIFAULT_XZ_BAD = 33  # (row 17 rebased) a fault's x or z bound is not an integer multiple of dx/dz from the union-derived uniform x/z belt origin -- independent per-fault x/z extents are supported, but each must land on a mesh node line (raised as InputConsistencyError by meshgen.py's one_dim_coor_array)
+ERR_GEOM_STRIKE_UNSUPPORTED = 35  # bGlobal.txt's strike (par.strike) is not exactly 270 (raised by check_strike)
 ERR_CFG_RESTART_DZ_NE_DX = 19  # a multi-fault (ntotft > 1) restart (mode = 2) needs dz == dx (raised by netcdf_io.read_on_fault_restart)
 ERR_INPUT_FILE_STALE = 22  # fault.r.nc holds a different number of faults than ntotft (raised by netcdf_io.read_on_fault_restart)
 ERR_NETCDF = 71  # a NetCDF open/lookup/read failed (raised by netcdf_io.read_on_fault_restart)
@@ -90,6 +91,17 @@ def check(C_elastic, output_plastic, rat, C_Q=C_Q):
         raise InputConsistencyError(
             ERR_CFG_PLASTIC_OUTPUT,
             'Plastic strains are only output for C_elastic=0. Set output_plastic=0 or C_elastic=0.')
+
+
+def check_strike(fstrike):
+    """checkInputConsistency.f90's strike guard (row 167 step 2): meshgen's side
+    test uses un built from strike and dip, which is the +y plane normal of the
+    x-aligned split only for strike exactly 270 (-90 differs at round-off ties)."""
+    if fstrike != 270.0:
+        raise InputConsistencyError(
+            ERR_GEOM_STRIKE_UNSUPPORTED,
+            'bGlobal.txt: strike (par.strike) = %.3f is not supported; it must be exactly 270 '
+            '(master nodes on +y), the only strike for which the mesh split and the side test agree.' % fstrike)
 
 
 def check_multifault(faults, dy, dis4uniF, dis4uniB, C_degen, tol=1.0e-5):

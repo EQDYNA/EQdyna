@@ -45,7 +45,7 @@ def _small_c_degen36_params(dip=15.0, dx=500.0, n_dip_steps=6):
         xmin=-3 * dx, xmax=3 * dx, ymin=-2 * dy, ymax=(dis4uniB + 2) * dy,
         zmin=fzmin - 3 * dz, zmax=0.0,
         rat=1.025, nPML=6, tol=1.0e-5, R=0.01,
-        fstrike=-90.0, C_degen=dip, insertFaultType=0, rough=None,
+        fstrike=270.0, C_degen=dip, insertFaultType=0, rough=None,
     )
     return params
 

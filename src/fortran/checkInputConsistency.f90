@@ -21,6 +21,15 @@ subroutine checkInputConsistency
             'Plastic strains are only output for C_elastic=0. Set output_plastic=0 or C_elastic=0.')
     endif
 
+    ! Row 167 step 2: meshgen's side test decides master vs slave by un, built from
+    ! fstrike and the dip; only strike 270 gives the +y plane normal of the x-aligned
+    ! split (-90 is equal mod 360 but changes tie cells at the patch edge at round-off).
+    if (fstrike /= 270.0d0) then
+        call abortRun(ERR_GEOM_STRIKE_UNSUPPORTED, &
+            'bGlobal.txt: strike (par.strike) = '//trim(dtoa(fstrike))//' is not supported; it must be exactly 270 ' // &
+            '(master nodes on +y), the only strike for which the mesh split and the side test agree.')
+    endif
+
     ! Row 17 (multi-fault) guards, modelled on eqquasi's eeac6f9 (fault plane
     ! must land on a mesh node line) and a761f33 (x/z bound commensurability).
     ! No-op at ntotft==1 (every loop below is over a single fault, and the
