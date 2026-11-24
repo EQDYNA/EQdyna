@@ -143,7 +143,7 @@ def run_fortran(case_dir, ranks=1):
     return r.returncode, r.stdout + r.stderr
 
 
-def judge(case, rc, verdict, checks, counts):
+def judge(case, rc, verdict, checks, counts, pin=True):
     """Error string for one backend's result on one case, or None. The ONLY
     place a run becomes a verdict; test_judge_both_ways feeds it known-bad input."""
     empty = [k for k in COUNT_KEYS if counts[k] <= 0]
@@ -159,7 +159,7 @@ def judge(case, rc, verdict, checks, counts):
         if (rc, checks) != (code, want):
             return '%s: expected FAIL rc=%d checks=%s (%s), got %s rc=%d checks=%s' % (
                 case, code, ','.join(want), ROW167, verdict, rc, ','.join(checks))
-        off = {k: (counts[k], v) for k, v in WEDGE_SIDES_PIN[case].items() if counts[k] != v}
+        off = {k: (counts[k], v) for k, v in WEDGE_SIDES_PIN[case].items() if pin and counts[k] != v}
         if off:
             return '%s: a DIFFERENT sides failure than the pinned wedge one (got, pinned): %s' % (case, off)
         return None
@@ -336,7 +336,9 @@ def test_two_rank_fortran(tmp):
         v = parse_verdict(out, rc, 'fortran %s 2 ranks' % case)
         print('  %-12s 2 ranks: %s rc=%d checks=%s %s' % (
             case, v[0], rc, ','.join(v[1]) or 'none', ' '.join('%s=%d' % (k, v[2][k]) for k in PARITY_KEYS)))
-        e = judge(case, rc, *v)
+        # A failing screen stops the run inside meshgen, so a rank can die before it prints its line (seen on
+        # CI's mpich: half the serial counts): the sides pin is serial-only, rc and checks are the 2-rank claim.
+        e = judge(case, rc, *v, pin=False)
         if e:
             errs.append('2 ranks: ' + e)
     assert not errs, '2-rank:\n' + '\n'.join(errs)
