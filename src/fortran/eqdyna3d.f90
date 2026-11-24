@@ -127,7 +127,14 @@ program EQdyna
     call memory_estimate
     do iArg = 1, command_argument_count()
         call get_command_argument(iArg, argStr)
-        if (trim(argStr) == '--mesh-only') meshOnly = .true.
+        if (trim(argStr) == '--mesh-only') then
+            meshOnly = .true.
+        else
+            ! Row 169 (a): a mistyped flag used to be ignored and a full solve ran.
+            write(0,*) 'eqdyna: unknown command-line argument "'//trim(argStr)//'"'
+            call abortRun(ERR_GENERIC, 'unknown command-line argument "'//trim(argStr)// &
+                '"; the only argument eqdyna accepts is --mesh-only.')
+        endif
     enddo
     call meshgen
     if (meshOnly) then
