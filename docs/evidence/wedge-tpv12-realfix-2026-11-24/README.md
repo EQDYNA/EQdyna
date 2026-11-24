@@ -6,14 +6,8 @@ term 4.5 s, cases built exactly as `docs/evidence/row149-wedge-mesh-2026-11-11/`
 OMP/BLAS threads 1, `HWLOC_COMPONENTS=-gl,-opencl,-cuda,-nvml`. Column 8 of `faultst000dp000` is n-stress, + = tension.
 
 ```
-Traceback (most recent call last):
-  File "/home/utig5/dliu/EQdyna/.claude/worktrees/cond-e/docs/evidence/wedge-tpv12-realfix-2026-11-24/trace_stats.py", line 9, in <module>
-    print(f"{sys.argv[1].split('/')[-2]}: samples {len(t)} t_end {t[-1]:.3f}  n_max {n[i]:+.4f} MPa at t={t[i]:.3f}  n(4s) {n[k]:+.4f}  n_min {n.min():+.4f}  samples>0.1MPa {(n>0.1).sum()}  >1MPa {(n>1).sum()}  last-slip(col6?) see file")
-IndexError: list index out of range
-Traceback (most recent call last):
-  File "/home/utig5/dliu/EQdyna/.claude/worktrees/cond-e/docs/evidence/wedge-tpv12-realfix-2026-11-24/trace_stats.py", line 9, in <module>
-    print(f"{sys.argv[1].split('/')[-2]}: samples {len(t)} t_end {t[-1]:.3f}  n_max {n[i]:+.4f} MPa at t={t[i]:.3f}  n(4s) {n[k]:+.4f}  n_min {n.min():+.4f}  samples>0.1MPa {(n>0.1).sum()}  >1MPa {(n>1).sum()}  last-slip(col6?) see file")
-IndexError: list index out of range
+faultst000dp000_dx500.txt: samples 206 t_end 4.505  n_max +5.0989 MPa at t=2.580  n(4s) -11.1134  n_min -11.1668  samples>0.1MPa 27  >1MPa 18  
+faultst000dp000_dx200.txt: samples 514 t_end 4.496  n_max +9.8515 MPa at t=2.414  n(4s) -5.7244  n_min -7.6966  samples>0.1MPa 65  >1MPa 40  
 ```
 
 Verdict: NO. The fix removes the grid-divergent steady tension (as built, PR #269 archive: +30.06 / +84.97 MPa at 4 s at 500 / 200 m;
