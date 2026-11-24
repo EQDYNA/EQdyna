@@ -88,6 +88,10 @@ def _screen_measure(meshCoor, conn, elem_type, nsmp, un, tol):
         fail['bridging'] = ' ; '.join(bad)
 
     # ---- sides: cell centre on the own side of the fault plane
+    # Cells beyond the patch edge are exempt: the fxmax+dx edge-weld convention puts slave attachments one
+    # cell past the patch in x (and one corner cell in z). Measured without this exemption: tpv8 61, tpv10/12/13 61,
+    # tpv29 81, tpv23 161 wrong-side attachments on valid meshes. Blind spot: tpv36's 3 wrong master attachments
+    # outside the patch are hidden too.
     cen = X[conn[ce]].sum(axis=1) / 8.0
     inside = ((cen[:, 0] >= x_lo[pp]) & (cen[:, 0] <= x_hi[pp]) &
               (cen[:, 2] >= z_lo[pp]) & (cen[:, 2] <= z_hi[pp]))

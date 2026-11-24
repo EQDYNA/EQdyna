@@ -65,6 +65,7 @@ subroutine screenMesh(nnode, nel, nftnd0)
                     if (role(c(k)) == 2 .and. pf(c(k)) == ift .and. pn(c(k)) == pn(c(i))) br = .true.
                 enddo
             endif
+            ! Exempt beyond the patch (fxmax+dx edge-weld convention; same measured reason as meshscreen.py).
             if (.not. (cen(1) >= xlo(ift) .and. cen(1) <= xhi(ift) .and. cen(3) >= zlo(ift) .and. cen(3) <= zhi(ift))) cycle
             dv = cen - meshCoor(1:3,c(i))
             nv = sqrt(dot_product(dv, dv))
