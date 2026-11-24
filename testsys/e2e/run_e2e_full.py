@@ -48,7 +48,7 @@ RANKS = 16
 sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from testsys import runlock  # noqa: E402
-from testsys.common import MACHINE  # noqa: E402
+from testsys.common import MACHINE, mpi_child_env  # noqa: E402
 from full_specs import FULL_SPECS, EXCLUDED  # noqa: E402
 
 
@@ -152,7 +152,7 @@ def main():
         print(f'e2e-full: preserved previous run as {prev_dir}')
     os.makedirs(test_dir)
 
-    env = dict(os.environ)
+    env = mpi_child_env(os.environ)
     env['EQDYNAROOT'] = REPO_ROOT
     env['PATH'] = os.pathsep.join([
         os.path.join(REPO_ROOT, 'bin'),

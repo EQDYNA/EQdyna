@@ -433,7 +433,8 @@ def cmd_submit(args):
         'hpc-scaling-%s-%s-%s-%s' % (args.machine, args.backend, args.test, args.level))
     os.makedirs(out_dir, exist_ok=True)
 
-    env = dict(os.environ)
+    from testsys.common import mpi_child_env
+    env = mpi_child_env(os.environ)
     env['EQDYNAROOT'] = REPO_ROOT
     env['PATH'] = os.pathsep.join([os.path.join(REPO_ROOT, 'bin'),
                                    os.path.join(REPO_ROOT, 'scripts'),
