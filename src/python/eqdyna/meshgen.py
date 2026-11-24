@@ -838,7 +838,7 @@ def build_node_coordinates(xline, yline, zline, params, model_bound=None):
     nsmp = np.array(nsmp, dtype=np.int64).reshape(-1, 3)  # (nftnd, 3): [slave, master, fault_id]
     return meshCoor, nftnd, nsmp
 
-def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
+def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor, un):
     """Milestone 2: port of meshgen.f90's createElement + setElementMaterial +
     replaceSlaveWithMasterNode, single planar fault (ntotft==1), homogeneous
     or 1D-layered material (setElementMaterial's two branches), for BOTH
@@ -921,7 +921,7 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
     p = params
     nx, ny, nz = len(xline), len(yline), len(zline)
     tol = p['tol']
-    dx, dy = p['dx'], p['dy']
+    dx = p['dx']
     fxmin, fxmax, fzmin = p['fxmin'], p['fxmax'], p['fzmin']
     fymin, fymax, fzmax = p['fymin'], p['fymax'], p['fzmax']
     c_degen = p['C_degen']
@@ -1024,58 +1024,38 @@ def build_elements(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
         # neworder=(5,1,4,4,6,2,3,3) for the type-11 (below-fault) wedge,
         # (4,8,5,5,3,7,6,6) for type-12 (above-fault) -- corner k is
         # `conn[:, k-1]`. Gathered from the conn snapshot ABOVE, i.e. before
-        # `replace` (built below) can mutate it in place.
+        # `to_master` (below) can mutate it in place.
         wedge11_conn = conn[:, [4, 0, 3, 3, 5, 1, 2, 2]]
         wedge12_conn = conn[:, [3, 7, 4, 4, 2, 6, 5, 5]]
         wedge12_mat_row = _wedge_material_row(material)
 
     elem_type = np.where(retag13, 13, elem_type)
 
-    # ---- replaceSlaveWithMasterNode (meshgen.f90:733-736's full guard:
-    # (elemTypeArr==1 AND geometric) OR elemTypeArr==12 OR elemTypeArr==13.
-    # The OR-clause is unreachable dead code for C_degen==0 (elemTypeArr
-    # never takes 11/12/13 then) and is exercised here for the first time;
-    # elemTypeArr==12 doesn't exist at this per-brick-row granularity yet
-    # (it is only created by the splice below) so it is applied directly to
-    # `wedge12_conn` there instead -- UNCONDITIONALLY, matching the Fortran;
-    # elemTypeArr==11 NEVER gets this substitution, also matching the
-    # Fortran, and is intentionally absent from both masks below.)
-    # Test uses the element's "top" node coords (this ix,iy,iz), matching
-    # Fortran's `nodeCoor` at the point createElement/replaceSlave... run.
-    # Row 17 (multi-fault): meshgen.f90's replaceSlaveWithMasterNode is a
-    # `do ift=1,ntotft` loop testing x/z/y ALL THREE against THAT fault's own
-    # box (fltxyz(1,1,iFault)/fltxyz(2,1,iFault)/fltxyz(1,3,iFault)/
-    # fltxyz(1,2,iFault)) in the SAME iteration. The first row-17 pass here
-    # generalized only the y-match (looping `fault_y`) while leaving x/z
-    # bounded by fault 1's own fxmin/fxmax/fzmin alone -- correct at
-    # ntotft==1, but for ntotft>1 faults whose x-extent reaches beyond fault
-    # 1's own (test.tpv22/test.tpv23's real stepover geometry: fault 2 spans
-    # x up to 25000 m, fault 1 only to 5000 m), the one-cell-above-fault
-    # elements beyond fault 1's xmax never had this substitution applied,
-    # leaving fault 2's own MASTER node at those positions unreferenced by
-    # any element -- zero mass, driver.run's loud "lumped nodal masses are
-    # <= 0" refusal (9999 orphaned nodes measured on test.tpv22's own mesh,
-    # exactly the fault-2 y-plane x>5000 region, before this fix). Fixed by
-    # looping ALL THREE bounds per fault together, mirroring the Fortran
-    # loop exactly instead of generalizing y alone. `faults` falls back to
-    # the single fault-1 box when `params['faults']` is absent (every
-    # ntotft==1 caller, including every pre-row-17 unit fixture), so this
-    # reduces to the untouched single-fault mask bit-for-bit there.
-    xcoor, ycoor, zcoor = xline[IX], yline[IY], zline[IZ]
-    faults = p.get('faults', [dict(fxmin=fxmin, fxmax=fxmax, fzmin=fzmin, fymin=fymin)])
-    one_cell_above_any_fault = np.zeros(xcoor.shape[0], dtype=bool)
-    for f in faults:
-        one_cell_above_any_fault |= (
-            (xcoor > f['fxmin'] - tol) & (xcoor < f['fxmax'] + dx + tol) &
-            (zcoor > f['fzmin'] - tol) &
-            (np.abs(ycoor - (f['fymin'] + dy)) < tol))
-    replace = ((elem_type == 1) & one_cell_above_any_fault) | (elem_type == 13)
+    # ---- replaceSlaveWithMasterNode: ONE geometric side test (board row 167
+    # step 2), the counterpart of meshgen.f90's. A cell attaches to the MASTER
+    # node of a fault pair iff its centre -- the mean of its own 8 corners, so a
+    # wedge cell's duplicated corners put it on its own side -- lies on the +un
+    # side of that pair, otherwise it keeps the slave node. Decided per corner
+    # and by that corner's OWN fault; no element type or grid position enters
+    # (the screen's `sides` check is the same inequality). `un` is
+    # build_fault_geometry's.
+    pair = np.zeros(meshCoor.shape[0], dtype=np.int64)       # 1-indexed un row; 0 = not a slave node
+    pair[nsmp[:, 0]] = np.arange(1, nsmp.shape[0] + 1)
     lut = np.arange(meshCoor.shape[0], dtype=np.int64)
     lut[nsmp[:, 0]] = nsmp[:, 1]
-    if replace.any():
-        conn[replace] = lut[conn[replace]]
+
+    def to_master(c):
+        rows = np.nonzero((pair[c] > 0).any(axis=1))[0]
+        cr = c[rows]
+        dv = meshCoor[cr].sum(axis=1)[:, None, :] / 8.0 - meshCoor[cr]
+        above = (pair[cr] > 0) & (np.einsum('nkj,nkj->nk', dv, un[pair[cr]]) > 0.0)
+        c[rows] = np.where(above, lut[cr], cr)
+        return c
+
+    conn = to_master(conn)
     if wedge12_conn is not None:
-        wedge12_conn = lut[wedge12_conn]
+        wedge11_conn = to_master(wedge11_conn)
+        wedge12_conn = to_master(wedge12_conn)
 
     # ---- setElementMaterial ----
     nmat, n2mat = material.shape
@@ -1250,7 +1230,7 @@ def _splice_wedge_elements(conn, elem_type, mat, depth, wedge_trigger,
     return final_conn, final_elem_type, final_mat, final_depth
 
 
-def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, meshCoor):
+def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, meshCoor, un):
     """The original verbatim scalar port of createElement/setElementMaterial/
     replaceSlaveWithMasterNode, kept as the bit-for-bit ORACLE for
     `build_elements`' vectorization (see that function's docstring). Not used
@@ -1260,7 +1240,7 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
     p = params
     nx, ny, nz = len(xline), len(yline), len(zline)
     tol = p['tol']
-    dx, dy = p['dx'], p['dy']
+    dx = p['dx']
     fxmin, fxmax, fzmin = p['fxmin'], p['fxmax'], p['fzmin']
     fymin, fymax, fzmax = p['fymin'], p['fymax'], p['fzmax']
     c_degen = p['C_degen']
@@ -1272,6 +1252,14 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
     zmin0 = pmlb['zmin0']
 
     slave2master = {int(s): int(m) for s, m in nsmp[:, :2]}
+    slave2row = {int(s): i + 1 for i, s in enumerate(nsmp[:, 0])}   # 1-indexed un row
+
+    def to_master(c):
+        # build_elements' side test, one cell at a time
+        cen = meshCoor[c].sum(axis=0) / 8.0
+        return np.array([slave2master[n] if n in slave2master and
+                         np.dot(cen - meshCoor[n], un[slave2row[n]]) > 0.0 else n
+                         for n in (int(v) for v in c)], dtype=np.int64)
     wedge12_mat_row = _wedge_material_row(material) if c_degen > 3.0 else None
 
     conn_rows = []       # dynamic: a wedge_trigger emits 2 rows per (ix,iy,iz)
@@ -1406,13 +1394,11 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
                             wedge_fired = True
                             c11 = c[[4, 0, 3, 3, 5, 1, 2, 2]]
                             c12 = c[[3, 7, 4, 4, 2, 6, 5, 5]]
-                            conn_rows.append(c11)
+                            conn_rows.append(to_master(c11))
                             elem_type_rows.append(11)
                             mat_rows.append(material_for(cz, cy, cx))
                             depth_rows.append(depth_val)
-                            c12 = np.array([slave2master.get(int(v), int(v)) for v in c12],
-                                            dtype=np.int64)
-                            conn_rows.append(c12)
+                            conn_rows.append(to_master(c12))
                             elem_type_rows.append(12)
                             mat_rows.append(wedge12_mat_row)
                             depth_rows.append(depth_val)
@@ -1428,15 +1414,7 @@ def _build_elements_scalar(xline, yline, zline, params, pmlb, nsmp, material, me
                                 etype = 13
 
                     if not wedge_fired:
-                        if (etype == 1 and (xcoor > fxmin - tol and xcoor < fxmax + dx + tol
-                                             and zcoor > fzmin - tol and ycoor > 0.0
-                                             and abs(ycoor - dy) < tol)) or etype == 13:
-                            for k in range(8):
-                                nid = int(c[k])
-                                if nid in slave2master:
-                                    c[k] = slave2master[nid]
-
-                        conn_rows.append(c)
+                        conn_rows.append(to_master(c))
                         elem_type_rows.append(etype)
                         mat_rows.append(material_for(cz, cy, cx))
                         depth_rows.append(depth_val)

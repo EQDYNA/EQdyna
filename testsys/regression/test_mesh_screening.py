@@ -1,29 +1,25 @@
 #! /usr/bin/env python3
 """
-Regression guard (board row 167, step 1): the post-meshing screen
+Regression guard (board row 167): the post-meshing screen
 (src/python/eqdyna/meshscreen.py + src/fortran/screenMesh.f90; exit 81 sides,
-82 bridging) is GREEN on every registered case except the wedge-mesh cases
-test.tpv36/test.tpv37, and each of its two checks can actually fire.
+82 bridging) is GREEN on every registered case, and each of its two checks can
+actually fire.
 
 Tests (every one a hard failure, none skips):
 
   1. ALL CASES, both backends: `python3 -m eqdyna <case> --mesh-only` and
      `mpirun -np 1 eqdyna --mesh-only` for every name in testNameList.nameList.
-     Every case exits 0 and prints `mesh-screen: PASS`, except the cases in
-     WEDGE_EXPECTED_RED, which must exit with exactly the listed code and
-     checks. Both backends must agree on verdict, exit code, failing checks and
-     every count; a verdict over zero elements, nodes, fault pairs or
-     attachments is refused (a screen that compared nothing proves nothing).
-     WEDGE_EXPECTED_RED is THE list step 2 of row 167 edits: when the wiring is
-     fixed the wedge cases turn green and this test goes red with a message
-     naming the list.
+     Every case exits 0 and prints `mesh-screen: PASS`. Both backends must
+     agree on verdict, exit code, failing checks and every count; a verdict
+     over zero elements, nodes, fault pairs or attachments is refused (a screen
+     that compared nothing proves nothing).
   2. JUDGE BOTH WAYS (rule 14a): judge() is fed good and bad results and must
      accept the good and flag every bad one.
   3. PLANTED DEFECTS on the in-memory tpv8 mesh, Python and Fortran (the dump
      goes to screen_mesh_dump_driver.f90, linked against the production
      screenMesh.o): one defect per check trips exactly that check; the
      unplanted mesh is the control.
-  4. 2-RANK FORTRAN: tpv8 (green) and tpv36 (red, 81) at mpirun -np 2.
+  4. 2-RANK FORTRAN: tpv8 and tpv36 (wedge mesh) at mpirun -np 2.
 
 mpirun on this class of box needs `env -u DISPLAY HWLOC_COMPONENTS=-gl,...` (a
 dead X server blocks hwloc GL discovery forever) and is wrapped in
@@ -54,20 +50,6 @@ DRIVER_F90 = os.path.join(ROOT, 'testsys', 'parity', 'screen_mesh_dump_driver.f9
 MPIRUN_TIMEOUT_S = 1500
 COUNT_KEYS = ('elements', 'nodes', 'fault_pairs', 'sides_attachments')
 PARITY_KEYS = COUNT_KEYS + ('sides_wrong_master', 'sides_wrong_slave', 'bridging_cells')
-
-# THE expected-red list (row 167 step 1): {case: (exit code, failing checks)}.
-# Step 2 of row 167 deletes these entries when the wiring is fixed.
-WEDGE_EXPECTED_RED = {
-    'test.tpv36': (81, ('sides',)),
-    'test.tpv37': (81, ('sides',)),
-}
-# MEASURED counts of the wedge failure (both backends, serial; 2026-11-24): a
-# DIFFERENT `sides` failure (other count) is not the expected one and is refused.
-WEDGE_SIDES_PIN = {
-    'test.tpv36': {'sides_wrong_master': 120, 'sides_wrong_slave': 0, 'sides_attachments': 40320},
-    'test.tpv37': {'sides_wrong_master': 120, 'sides_wrong_slave': 0, 'sides_attachments': 40320},
-}
-ROW167 = 'board row 167 (wedge-mesh mis-wiring, pathway_forward.md)'
 
 # plant -> checks it must trip on the planted tpv8 mesh. bridging_cell is the
 # realistic wiring defect: one of the two nodes is always on the wrong side.
@@ -143,26 +125,12 @@ def run_fortran(case_dir, ranks=1):
     return r.returncode, r.stdout + r.stderr
 
 
-def judge(case, rc, verdict, checks, counts, pin=True):
+def judge(case, rc, verdict, checks, counts):
     """Error string for one backend's result on one case, or None. The ONLY
     place a run becomes a verdict; test_judge_both_ways feeds it known-bad input."""
     empty = [k for k in COUNT_KEYS if counts[k] <= 0]
     if empty:
         return '%s: screen compared nothing (%s == 0): a vacuous verdict' % (case, ','.join(empty))
-    if case in WEDGE_EXPECTED_RED:
-        code, want = WEDGE_EXPECTED_RED[case]
-        if verdict == 'PASS' and rc == 0:
-            return ('%s: WEDGE EXPECTATION FLIPPED -- the screen is now GREEN on %s. The wiring has been fixed: '
-                    'delete %s from WEDGE_EXPECTED_RED in testsys/regression/test_mesh_screening.py (and its '
-                    'UNSUPPORTED cells in testsys/matrix.py, ROW167_WEDGE_UNSUPPORTED in '
-                    'testsys/unit/test_sweep_matrix.py) and close the matching step of %s.' % (case, case, case, ROW167))
-        if (rc, checks) != (code, want):
-            return '%s: expected FAIL rc=%d checks=%s (%s), got %s rc=%d checks=%s' % (
-                case, code, ','.join(want), ROW167, verdict, rc, ','.join(checks))
-        off = {k: (counts[k], v) for k, v in WEDGE_SIDES_PIN[case].items() if pin and counts[k] != v}
-        if off:
-            return '%s: a DIFFERENT sides failure than the pinned wedge one (got, pinned): %s' % (case, off)
-        return None
     if not (verdict == 'PASS' and rc == 0):
         return '%s: must be GREEN, got %s rc=%d checks=%s' % (case, verdict, rc, ','.join(checks))
     return None
@@ -170,28 +138,21 @@ def judge(case, rc, verdict, checks, counts, pin=True):
 
 def test_judge_both_ways():
     counts = dict.fromkeys(PARITY_KEYS, 5)
-    wedge = sorted(WEDGE_EXPECTED_RED)[0]
-    code, want = WEDGE_EXPECTED_RED[wedge]
-    pinned = dict(counts, **WEDGE_SIDES_PIN[wedge])
-    green = [c for c in testNameList.nameList if c not in WEDGE_EXPECTED_RED][0]
-    assert judge(wedge, code, 'FAIL', want, pinned) is None
-    assert judge(green, 0, 'PASS', (), counts) is None
+    case = testNameList.nameList[0]
+    assert judge(case, 0, 'PASS', (), counts) is None
     bad = {
-        'green wedge case': judge(wedge, 0, 'PASS', (), pinned),
-        'wedge case, wrong check': judge(wedge, 82, 'FAIL', ('bridging',), pinned),
-        'wedge case, different sides count': judge(wedge, code, 'FAIL', want, dict(pinned, sides_wrong_master=121)),
-        'red non-wedge case': judge(green, 81, 'FAIL', ('sides',), counts),
-        'vacuous (no attachments)': judge(green, 0, 'PASS', (), dict(counts, sides_attachments=0)),
-        'vacuous (no fault pairs)': judge(green, 0, 'PASS', (), dict(counts, fault_pairs=0)),
+        'red case (sides)': judge(case, 81, 'FAIL', ('sides',), counts),
+        'red case (bridging)': judge(case, 82, 'FAIL', ('bridging',), counts),
+        'vacuous (no attachments)': judge(case, 0, 'PASS', (), dict(counts, sides_attachments=0)),
+        'vacuous (no fault pairs)': judge(case, 0, 'PASS', (), dict(counts, fault_pairs=0)),
     }
     missed = [k for k, v in bad.items() if v is None]
     assert not missed, 'judge failed to flag: %s' % missed
-    assert 'FLIPPED' in bad['green wedge case'] and 'WEDGE_EXPECTED_RED' in bad['green wedge case']
 
 
 def test_all_cases(tmp):
     names = list(testNameList.nameList)
-    assert names and set(WEDGE_EXPECTED_RED) <= set(names), 'nameList empty or WEDGE_EXPECTED_RED names a stranger'
+    assert names, 'nameList empty'
     fortran_binary()
     dirs = {c: os.path.join(tmp, 'all_' + c) for c in names}
 
@@ -336,9 +297,7 @@ def test_two_rank_fortran(tmp):
         v = parse_verdict(out, rc, 'fortran %s 2 ranks' % case)
         print('  %-12s 2 ranks: %s rc=%d checks=%s %s' % (
             case, v[0], rc, ','.join(v[1]) or 'none', ' '.join('%s=%d' % (k, v[2][k]) for k in PARITY_KEYS)))
-        # A failing screen stops the run inside meshgen, so a rank can die before it prints its line (seen on
-        # CI's mpich: half the serial counts): the sides pin is serial-only, rc and checks are the 2-rank claim.
-        e = judge(case, rc, *v, pin=False)
+        e = judge(case, rc, *v)
         if e:
             errs.append('2 ranks: ' + e)
     assert not errs, '2-rank:\n' + '\n'.join(errs)

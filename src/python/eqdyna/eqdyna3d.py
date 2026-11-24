@@ -538,12 +538,12 @@ def build_solver_state(case_dir, part=None, mesh_only=False):
         # diagnostic) -- see docs/notes/NOTES_row120.md.
         report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
                                  off_z_valid, params['tol'])
-    conn, elem_type, mat, elem_depth = meshgen.build_elements(
-        xline, yline, zline, params, pmlb, nsmp, material, meshCoor)
-    num_dof, eq_start, eq_nums, total_eqs = meshgen.build_equation_numbers(
-        xline, yline, zline, params, pmlb, model_bound=model_bound)
     un, us, ud, arn = meshgen.build_fault_geometry(
         xline, yline, zline, params, nsmp, model_bound=model_bound)
+    conn, elem_type, mat, elem_depth = meshgen.build_elements(
+        xline, yline, zline, params, pmlb, nsmp, material, meshCoor, un)
+    num_dof, eq_start, eq_nums, total_eqs = meshgen.build_equation_numbers(
+        xline, yline, zline, params, pmlb, model_bound=model_bound)
     # Post-meshing screen (meshgen.f90's screenMesh, same point: after the
     # area accumulation, before MPI4arn). Raises MeshScreenError, which main()
     # turns into the FATAL block and the check's own exit code; on the MPI path
