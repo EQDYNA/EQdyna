@@ -147,6 +147,14 @@ FRT_SHAPE = {
     ('tpv36', 2): (2, 0), ('tpv36', 4): (4, 0), ('tpv36', 8): (6, 2),
     ('tpv23-2fault', 2): (2, 0), ('tpv23-2fault', 4): (4, 0),
 }
+# Labels whose serial build is EXPECTED to stop in the mesh screen (board row
+# 167: one-cell flag OR-ed over faults, so the cell between tpv23's two faults
+# at dx=1000 gets fault 1's footwall nodes swapped to masters). Board row 167
+# step 2 (one geometric side test) is the ONE place that empties this set; the
+# comparison assertions below then run for the entry again.
+ROW167_EXPECTED_STOP = {'tpv23-2fault'}
+ROW167_SIDES_COUNTS = ('880 of 9600 (cell,node) attachments on the wrong side of the fault plane '
+                       '(880 master-attached on the footwall side, 0 slave-attached')
 ELEM_KEYS = ('elemType', 'mat', 'eledet', 'eleshp', 'ss', 'phi', 'init_stress')
 FAULT_KEYS = ('un', 'us', 'ud', 'fric_init')
 REL = 1e-14
@@ -400,6 +408,25 @@ def check_case(label, case, overrides, rank_counts, must_reach, tmp):
         raise AssertionError('%s: build_solver_state did not raise MeshScreenError but %s is in '
                              'WEDGE_EXPECTED_RED -- wiring fixed? empty the list (row 167 step 2)'
                              % (label, case))
+    if label in ROW167_EXPECTED_STOP:
+        # Row 167: at dx=1000 the two tpv23 faults are one cell apart, meshgen's
+        # one-cell flag is OR-ed over faults and its swap hits every fault's
+        # pairs, so the screen stops the build. Exact counts are asserted so a
+        # different failure is not accepted as the expected one.
+        try:
+            eqdyna3d.build_solver_state(case_dir)
+        except meshscreen.MeshScreenError as exc:
+            got = (exc.code, tuple(k for k in meshscreen.SCREEN_CODES if k in exc.failures))
+            if got != (81, ('sides',)) or ROW167_SIDES_COUNTS not in exc.failures['sides']:
+                raise AssertionError('%s: screen stopped with %r / %r, expected code 81 checks '
+                                     "('sides',) with %r" % (label, got, exc.failures,
+                                                            ROW167_SIDES_COUNTS))
+            print('  %s: screen stop code 81 [sides] %s as ROW167_EXPECTED_STOP declares'
+                  % (label, ROW167_SIDES_COUNTS))
+            return
+        raise AssertionError('%s: build_solver_state did not raise MeshScreenError but %s is in '
+                             'ROW167_EXPECTED_STOP -- wiring fixed? empty the set (row 167 step 2)'
+                             % (label, label))
     t0 = time.time()
     S_s, mesh_s = eqdyna3d.build_solver_state(case_dir)
     params, _g = readInputFiles.build_params(case_dir)
