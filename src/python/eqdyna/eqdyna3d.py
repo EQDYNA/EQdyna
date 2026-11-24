@@ -73,7 +73,7 @@ import time
 
 import numpy as np
 
-from . import assembleGlobalMass, checkInputConsistency, driver, func_lib, library_output, meshgen, netcdf_io, readInputFiles
+from . import assembleGlobalMass, checkInputConsistency, driver, func_lib, library_output, meshgen, meshscreen, netcdf_io, readInputFiles
 from . import backend as _backend
 from . import profile_emit as _profile_emit
 
@@ -306,7 +306,7 @@ def report_dropped_stations(xonfs, x4nds, anonfs, off_matches, meshCoor,
     return on_dropped, off_dropped
 
 
-def build_solver_state(case_dir, part=None):
+def build_solver_state(case_dir, part=None, mesh_only=False):
     """Builds the full `S` dict eqdyna/driver.py's `run()` expects,
     reading ONLY case-input files (bGlobal.txt/bModelGeometry.txt/
     bFaultGeometry.txt/bMaterial.txt/on_fault_vars_input.nc) via
@@ -544,6 +544,16 @@ def build_solver_state(case_dir, part=None):
         xline, yline, zline, params, pmlb, model_bound=model_bound)
     un, us, ud, arn = meshgen.build_fault_geometry(
         xline, yline, zline, params, nsmp, model_bound=model_bound)
+    # Post-meshing screen (meshgen.f90's screenMesh, same point: after the
+    # area accumulation, before MPI4arn). Raises MeshScreenError, which main()
+    # turns into the FATAL block and the check's own exit code; on the MPI path
+    # it also MPI_Aborts, as the failing rank's partners would otherwise hang.
+    # No switch, no fallback: a mesh that fails is never solved.
+    screen = meshscreen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, params['tol'])
+    if mesh_only:
+        # Mesh generation + screen, no solve (serial only: part must be None
+        # or the rank's own box). Returns the measured screen scalars.
+        return screen, None
 
     # Row 17: nsmp's 3rd column is the 0-indexed fault id, in the SAME row
     # order read_on_fault_vars indexes fric by -- +1 for the 1-indexed
@@ -1049,7 +1059,7 @@ def _select_device(device):
             % (device, got, jax.devices(), device, device))
 
 
-def _abort(exc, rank=0):
+def _abort(exc, rank=0, comm=None):
     """checkInputConsistency.InputConsistencyError -> the FATAL block
     errorCodes.f90:153-162 (abortRun) prints: on STDOUT, with the rank line
     (Fortran always has MPI up, so a serial run is rank 0), then
@@ -1067,6 +1077,12 @@ def _abort(exc, rank=0):
     print('  See docs/user/troubleshooting.md for what this code means.')
     print(' =======================================================')
     print(flush=True)
+    if comm is not None:
+        # A rank-local refusal (the mesh screen runs on each rank's own box):
+        # MPI_Abort, exactly as errorCodes.f90's abortRun, so partners waiting
+        # in a collective die with the same status instead of hanging.
+        sys.stdout.flush(); sys.stderr.flush()
+        comm.Abort(exc.code)
     raise SystemExit(exc.code)
 
 
@@ -1087,6 +1103,12 @@ def _device_arg(value):
     return value
 
 
+def _fmt_screen(meas):
+    """One greppable line of measured screen scalars (ints as is, floats %.3E)."""
+    return ' '.join('%s=%s' % (k, v if isinstance(v, int) else '%.3E' % v)
+                    for k, v in meas.items())
+
+
 def main():
     ap = argparse.ArgumentParser(prog='python3 -m eqdyna')
     ap.add_argument('case_dir')
@@ -1104,6 +1126,11 @@ def main():
                           'so one-time cost and per-step cost cannot be '
                           'confused. JAX phases are synchronised, so the '
                           'numbers are compute, not queue submission.')
+    ap.add_argument('--mesh-only', action='store_true',
+                     help='generate the mesh and run the post-meshing screen '
+                          '(meshscreen.py, the counterpart of screenMesh.f90), '
+                          'then exit 0 without solving; a failed screen exits '
+                          'with its own code (81-82). Serial only.')
     ap.add_argument('--mpi', action='store_true',
                      help='one process per rank, Fortran-style domain '
                           'decomposition, jax owning the local element kernel '
@@ -1114,6 +1141,16 @@ def main():
                           'mpirun is a legal 1-rank run, not a silent serial '
                           'demotion.')
     args = ap.parse_args()
+    if args.mesh_only:
+        if args.mpi or args.nsteps is not None:
+            raise SystemExit('--mesh-only is serial and takes no nsteps and no --mpi')
+        try:
+            meas, _ = build_solver_state(args.case_dir, mesh_only=True)
+        except meshscreen.MeshScreenError as exc:
+            print('mesh-screen: FAIL checks=%s %s' % (','.join(exc.failures), _fmt_screen(exc.measured)))
+            _abort(exc)
+        print('mesh-screen: PASS checks=none %s' % _fmt_screen(meas))
+        return
     if args.mpi:
         if args.backend != 'jax':
             raise SystemExit('--mpi is implemented for --backend jax only '
@@ -1127,6 +1164,8 @@ def main():
                                         profile=prof)
         except checkInputConsistency.InputConsistencyError as exc:
             _abort(exc, rank=comm.Get_rank())
+        except meshscreen.MeshScreenError as exc:
+            _abort(exc, rank=comm.Get_rank(), comm=comm)
         except BaseException:
             # A failure on ONE rank -- its own box's mesh, its own faces --
             # while the others wait in a Sendrecv would otherwise hang the job
@@ -1183,7 +1222,7 @@ def main():
     try:
         path = run_case(args.case_dir, nsteps=args.nsteps, backend=args.backend,
                         profile=prof)
-    except checkInputConsistency.InputConsistencyError as exc:
+    except (checkInputConsistency.InputConsistencyError, meshscreen.MeshScreenError) as exc:
         _abort(exc)
     print('backend=%s device=%s' % (args.backend, active_device(args.backend)))
     if args.profile:

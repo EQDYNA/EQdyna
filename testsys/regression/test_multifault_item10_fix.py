@@ -64,7 +64,7 @@ from testsys.common import MACHINE, make_var  # noqa: E402
 # eqdyna3d.o cannot leave an unresolved symbol.
 OBJS = [
     'globalvar.o', 'errorCodes.o', 'countMeshEntities.o', 'meshgen.o',
-    'calcLocalShapeFunc.o', 'driver.o', 'assembleGlobalMass.o',
+    'screenMesh.o', 'calcLocalShapeFunc.o', 'driver.o', 'assembleGlobalMass.o',
     'calcGlobalShapeFunc.o', 'calcB.o', 'assembleGlobalKU.o',
     'calcElemMass.o', 'calcElemKU.o', 'calcHourglassResist.o', 'fric.o',
     'faulting.o', 'computePMLDampingVector.o', 'calcQAttenuationCoeff.o',

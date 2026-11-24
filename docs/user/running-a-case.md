@@ -56,6 +56,20 @@ The number of MPI ranks is `nx * ny * nz` from `user_defined_params.py`
 into `run.sh`'s `mpirun` line automatically, so changing `nx`/`ny`/`nz` and
 re-running `./case.setup` is enough to change the rank count.
 
+## Checking the mesh without solving
+
+Both solvers screen the mesh right after it is built: each fault node must be
+wired to cells on its own side of the fault, and no cell may hold both nodes
+of a split pair. A mesh that fails stops the run with exit code 81 (sides) or
+82 (bridging), and the `FATAL` block lists every check that failed; see
+[Troubleshooting](troubleshooting.md).
+
+`--mesh-only` runs the mesh build and this screen and then exits 0 without
+solving or writing outputs. From the case directory, `mpirun -np 1 eqdyna
+--mesh-only` runs the Fortran binary, `python3 -m eqdyna . --mesh-only` the
+Python port (serial only). Either prints one `mesh-screen: PASS` or
+`mesh-screen: FAIL` line with the measured quantities.
+
 ## The Python/JAX backend
 
 `run.sh` always runs the Fortran solver. The same case can instead be run

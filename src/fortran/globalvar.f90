@@ -250,6 +250,7 @@ MODULE globalvar
         ! the exchange bucket so exchange and wait are disjoint.
     real (kind = dp) :: totmemcost, memcost = 0.0d0  ! memory-cost bookkeeping
     real (kind = dp) :: pi = 4*atan(1.0_dp)
+    logical :: meshOnly = .false.        ! --mesh-only: mesh generation + screenMesh, no solve
     logical :: profileEnabled = .true.   ! EQDYNA_PROFILE off switch, read ONCE
         ! at startup (eqdyna3d.f90, right after MPI_Init) into this module
         ! logical -- never re-read via get_environment_variable per step.

@@ -108,6 +108,10 @@ MODULE errorCodes
     ! --- 71-79 external libraries -------------------------------------
     integer, parameter :: ERR_NETCDF                 = 71  ! a NetCDF call returned an error
 
+    ! --- 81-89 post-meshing screen (screenMesh.f90) --------------------
+    integer, parameter :: ERR_MESH_SCREEN_SIDES       = 81  ! post-meshing screen: a cell is attached to a fault node of the opposite side (wedge mis-wiring)
+    integer, parameter :: ERR_MESH_SCREEN_BRIDGING   = 82  ! post-meshing screen: a cell holds both nodes of one split pair, or a pair does not coincide
+
 CONTAINS
 
 !-----------------------------------------------------------------------

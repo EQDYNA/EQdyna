@@ -91,6 +91,13 @@ authoritative; the specific number is advisory under `srun`.
 |-----:|------|---------|
 | 71 | `ERR_NETCDF` | a NetCDF call returned an error |
 
+**Post-meshing screen** (81-89)
+
+| code | name | meaning |
+|-----:|------|---------|
+| 81 | `ERR_MESH_SCREEN_SIDES` | post-meshing screen: a cell is attached to a fault node of the opposite side (wedge mis-wiring) |
+| 82 | `ERR_MESH_SCREEN_BRIDGING` | post-meshing screen: a cell holds both nodes of one split pair, or a pair does not coincide |
+
 Exit status 0 means the run completed. Every fatal path goes through
 `abortRun` in `src/fortran/errorCodes.f90`, which calls `MPI_Abort` so the whole job
 ends instead of one rank stopping while the others block in a collective.

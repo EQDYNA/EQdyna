@@ -11,6 +11,12 @@ import pytest
 from conftest import REPO_ROOT  # noqa: F401  (puts the repo root on sys.path)
 from testsys import matrix
 
+# Board row 167 step 1: the post-meshing screen stops the wedge-mesh cases, so
+# matrix.UNSUPPORTED declares them. Step 2 of row 167 deletes this set (and the
+# matrix.py entries) when the wiring is fixed.
+ROW167_WEDGE_UNSUPPORTED = {(c, b) for c in ('test.tpv36', 'test.tpv37')
+                            for b in ('fortran', 'python-jax')}
+
 
 def test_every_gated_case_declares_a_bound_and_a_gate():
     # testNameList.py is the case list; matrix.py must cover it exactly.
@@ -70,22 +76,26 @@ def test_unsupported_table_is_exactly_the_mpi_opt_outs(monkeypatch):
     expected_unsupported_backend_pairs = {
         (c, 'python-jax-mpi') for c in matrix.CASES
         if c not in matrix.PY_MPI_RANKS
-    }
+    } | ROW167_WEDGE_UNSUPPORTED
     assert set(matrix.UNSUPPORTED) == expected_unsupported_backend_pairs
-    assert len(matrix.UNSUPPORTED) == len(matrix.CASES) - len(matrix.PY_MPI_RANKS)
+    assert len(matrix.UNSUPPORTED) == (len(matrix.CASES) - len(matrix.PY_MPI_RANKS)
+                                       + len(ROW167_WEDGE_UNSUPPORTED))
+    assert all('row 167' in matrix.UNSUPPORTED[k] for k in ROW167_WEDGE_UNSUPPORTED)
     # every one of those entries carries the SAME recorded policy reason,
     # except the one mode = 2 case, whose reason is a measured code refusal
     # (driver.run_mpi raises on mode 2) and is pinned separately below.
     mode2_key = ('test.restart2', 'python-jax-mpi')
     assert mode2_key in matrix.UNSUPPORTED
     assert 'driver.run_mpi refuses mode = 2' in matrix.UNSUPPORTED[mode2_key]
-    reasons = {r for k, r in matrix.UNSUPPORTED.items() if k != mode2_key}
+    reasons = {r for k, r in matrix.UNSUPPORTED.items()
+               if k != mode2_key and k not in ROW167_WEDGE_UNSUPPORTED}
     assert len(reasons) == 1
     assert 'not opted into the optional MPI execution mode' in next(iter(reasons))
-    # no case outside python-jax-mpi is unsupported: the two remaining
-    # backend implementations (fortran, python-jax) still cover every case
+    # no case outside python-jax-mpi is unsupported, except the named row-167
+    # wedge cells: fortran and python-jax cover every other case
     # (python-numpy left the axis entirely 2026-09-23, owner decision).
-    assert all(b == 'python-jax-mpi' for _c, b in matrix.UNSUPPORTED)
+    assert all(b == 'python-jax-mpi' for _c, b in matrix.UNSUPPORTED
+               if (_c, b) not in ROW167_WEDGE_UNSUPPORTED)
 
     monkeypatch.setitem(matrix.UNSUPPORTED, ('test.tpv8', 'python-jax'),
                         'synthetic reason for this test')
@@ -109,11 +119,13 @@ def test_every_cell_runs_except_the_declared_mpi_opt_outs():
     runnable, unsupported = matrix.cells()
     total = len(matrix.CASES) * len(matrix.BACKENDS)
     n_opted_in = len(matrix.PY_MPI_RANKS)
-    n_opted_out = len(matrix.CASES) - n_opted_in
+    n_opted_out = len(matrix.CASES) - n_opted_in + len(ROW167_WEDGE_UNSUPPORTED)
     assert len(unsupported) == n_opted_out
     assert len(runnable) == total - n_opted_out
-    # nothing outside python-jax-mpi is ever declared unsupported
-    assert all(b == 'python-jax-mpi' for _c, b, _r in unsupported)
+    # nothing outside python-jax-mpi is ever declared unsupported, except the
+    # named row-167 wedge cells
+    assert all(b == 'python-jax-mpi' for _c, b, _r in unsupported
+               if (_c, b) not in ROW167_WEDGE_UNSUPPORTED)
 
 
 def test_unsupported_reason_raises_for_a_supported_cell():
