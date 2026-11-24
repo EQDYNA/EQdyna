@@ -1039,7 +1039,7 @@ UNSUPPORTED[('test.restart2', 'python-jax-mpi')] = (
 # step 2 of row 167 edits, together with deleting these entries, when the
 # wiring is fixed and the references are re-derived.
 _WEDGE_SCREEN_REASON = (
-    'mesh screening code 8x, row 167 step 1; restored by step 2: the wedge '
+    'mesh screening code 81, row 167 step 1; restored by step 2: the wedge '
     'mesh wires footwall cells to hanging-wall fault nodes, so '
     'screenMesh.f90 / meshscreen.py stop the run (exit 81, check "sides") '
     'before the solve. The committed reference was produced on that mesh '

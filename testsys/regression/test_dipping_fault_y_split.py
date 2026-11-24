@@ -73,6 +73,9 @@ sys.path.insert(0, ROOT)
 from testsys.regression.test_mesh_screening import WEDGE_EXPECTED_RED  # noqa: E402
 
 CASE = 'test.tpv36'
+# MEASURED sides failure at the 2x2x1 decomposition, on EACH failing rank's
+# mesh-screen line: a different count is not the expected wedge failure.
+WEDGE_RANK_PIN = {'sides_wrong_master': 60, 'sides_wrong_slave': 0, 'sides_attachments': 10020}
 # 0.5 s (~46 of this case's dt), bisected against a real mutation -- see the
 # module docstring. Not derivable from dt alone (the effect this guards
 # against is a rupture-propagation-time property, not a mesh-time one).
@@ -127,6 +130,13 @@ def _run(tmp, tag, decomp, expect_stop=None):
         out = r.stdout + r.stderr
         fails = [l for l in out.splitlines() if l.startswith('mesh-screen: FAIL')]
         got = sorted({l.split('checks=')[1].split()[0] for l in fails})
+        # per FAILING rank line, not summed: MPI_Abort races the other ranks'
+        # output, so how many failing ranks print varies (measured 1 or 2).
+        per_rank = [{k: int(v) for k, _, v in (kv.partition('=') for kv in l.split())
+                     if k in WEDGE_RANK_PIN} for l in fails]
+        if r.returncode == code and got == [','.join(want)] and any(c != WEDGE_RANK_PIN for c in per_rank):
+            raise AssertionError('%s at %r: a DIFFERENT sides failure than the pinned wedge one: got %r, '
+                                 'pinned per rank %r' % (tag, decomp, per_rank, WEDGE_RANK_PIN))
         if r.returncode != code or got != [','.join(want)]:
             raise AssertionError(
                 '%s at %r: expected the mesh screen to stop the run with exit %d '

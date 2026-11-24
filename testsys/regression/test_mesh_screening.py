@@ -39,11 +39,13 @@ import tempfile
 
 import numpy as np
 
+OBJS = ('globalvar.o', 'errorCodes.o', 'screenMesh.o')
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
 
 import testNameList  # noqa: E402
+from testsys.common import MACHINE  # noqa: E402
 from eqdyna import eqdyna3d, meshscreen  # noqa: E402
 
 FORTRAN_DIR = os.path.join(ROOT, 'src', 'fortran')
@@ -58,6 +60,12 @@ PARITY_KEYS = COUNT_KEYS + ('sides_wrong_master', 'sides_wrong_slave', 'bridging
 WEDGE_EXPECTED_RED = {
     'test.tpv36': (81, ('sides',)),
     'test.tpv37': (81, ('sides',)),
+}
+# MEASURED counts of the wedge failure (both backends, serial; 2026-11-24): a
+# DIFFERENT `sides` failure (other count) is not the expected one and is refused.
+WEDGE_SIDES_PIN = {
+    'test.tpv36': {'sides_wrong_master': 120, 'sides_wrong_slave': 0, 'sides_attachments': 40320},
+    'test.tpv37': {'sides_wrong_master': 120, 'sides_wrong_slave': 0, 'sides_attachments': 40320},
 }
 ROW167 = 'board row 167 (wedge-mesh mis-wiring, pathway_forward.md)'
 
@@ -151,6 +159,9 @@ def judge(case, rc, verdict, checks, counts):
         if (rc, checks) != (code, want):
             return '%s: expected FAIL rc=%d checks=%s (%s), got %s rc=%d checks=%s' % (
                 case, code, ','.join(want), ROW167, verdict, rc, ','.join(checks))
+        off = {k: (counts[k], v) for k, v in WEDGE_SIDES_PIN[case].items() if counts[k] != v}
+        if off:
+            return '%s: a DIFFERENT sides failure than the pinned wedge one (got, pinned): %s' % (case, off)
         return None
     if not (verdict == 'PASS' and rc == 0):
         return '%s: must be GREEN, got %s rc=%d checks=%s' % (case, verdict, rc, ','.join(checks))
@@ -161,12 +172,14 @@ def test_judge_both_ways():
     counts = dict.fromkeys(PARITY_KEYS, 5)
     wedge = sorted(WEDGE_EXPECTED_RED)[0]
     code, want = WEDGE_EXPECTED_RED[wedge]
+    pinned = dict(counts, **WEDGE_SIDES_PIN[wedge])
     green = [c for c in testNameList.nameList if c not in WEDGE_EXPECTED_RED][0]
-    assert judge(wedge, code, 'FAIL', want, counts) is None
+    assert judge(wedge, code, 'FAIL', want, pinned) is None
     assert judge(green, 0, 'PASS', (), counts) is None
     bad = {
-        'green wedge case': judge(wedge, 0, 'PASS', (), counts),
-        'wedge case, wrong check': judge(wedge, 82, 'FAIL', ('bridging',), counts),
+        'green wedge case': judge(wedge, 0, 'PASS', (), pinned),
+        'wedge case, wrong check': judge(wedge, 82, 'FAIL', ('bridging',), pinned),
+        'wedge case, different sides count': judge(wedge, code, 'FAIL', want, dict(pinned, sides_wrong_master=121)),
         'red non-wedge case': judge(green, 81, 'FAIL', ('sides',), counts),
         'vacuous (no attachments)': judge(green, 0, 'PASS', (), dict(counts, sides_attachments=0)),
         'vacuous (no fault pairs)': judge(green, 0, 'PASS', (), dict(counts, fault_pairs=0)),
@@ -181,10 +194,16 @@ def test_all_cases(tmp):
     assert names and set(WEDGE_EXPECTED_RED) <= set(names), 'nameList empty or WEDGE_EXPECTED_RED names a stranger'
     fortran_binary()
     dirs = {c: os.path.join(tmp, 'all_' + c) for c in names}
-    for c in names:
+
+    def one(c):
         make_case(c, dirs[c])
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-        futs = {c: ex.submit(lambda c=c: (run_python(dirs[c]), run_fortran(dirs[c]))) for c in names}
+        return run_python(dirs[c]), run_fortran(dirs[c])
+    # independent cases through a pool of half the cores (cap 8: a 3.5M-element
+    # case needs GBs); every worker is single-threaded (env()), so a 4-core
+    # runner runs 2 at a time. No case, backend or count comparison is dropped.
+    workers = min(max(1, len(os.sched_getaffinity(0)) // 2), 8)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {c: ex.submit(one, c) for c in names}
         res = {c: f.result() for c, f in futs.items()}
     errs = []
     for c in names:
@@ -263,9 +282,12 @@ def dump_mesh(a, path):
 
 def build_driver(tmp):
     fortran_binary()
+    mk = dict(env(), MACHINE=MACHINE)
+    r = subprocess.run(['make', *OBJS], cwd=FORTRAN_DIR, env=mk, capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, 'make %s failed:\n%s' % (' '.join(OBJS), (r.stdout + r.stderr)[-1500:])
     exe = os.path.join(tmp, 'screen_mesh_dump_driver')
     r = subprocess.run(['mpif90', '-fopenmp', '-ffree-line-length-none', '-O1', '-I' + FORTRAN_DIR, '-J' + tmp,
-                        DRIVER_F90, *[os.path.join(FORTRAN_DIR, o) for o in ('globalvar.o', 'errorCodes.o', 'screenMesh.o')],
+                        DRIVER_F90, *[os.path.join(FORTRAN_DIR, o) for o in OBJS],
                         '-o', exe], capture_output=True, text=True, timeout=600, env=env())
     assert r.returncode == 0, 'driver build failed:\n' + (r.stdout + r.stderr)[-1500:]
     return exe

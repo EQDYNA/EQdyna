@@ -233,9 +233,6 @@ SHARDS = {
                                  # (real clone + real run, ~2-4 min) only
                                  # fires under EQDYNA_README_GATE=full, set
                                  # by `run.py readme`, never by this shard.
-        "test_mesh_screening.py",  # added 2026-11-24 (row 167 step 1): every
-                                 # case mesh-only on both backends + planted
-                                 # defects; needs the Fortran binary.
         "test_rank_local_mesh.py",  # added 2026-09-24 (mira-volkov, item 64):
                                  # 3 serial case builds + 6 decompositions'
                                  # rank-local builds in one process, no MPI;
@@ -336,6 +333,11 @@ SHARDS = {
         "test_version_banner.py",
         "test_root_allowlist.py",  # added 2026-09-24 (wei-lin, root-notes move): one git ls-files, <1 s
         "test_text_line_format.py",  # 2026-09-29: static scan of src/fortran, <1 s
+        "test_mesh_screening.py",  # added 2026-11-24 (row 167 step 1), moved to
+                                 # the lightest shard 2026-11-24: ~115 s on a
+                                 # CI runner (all cases, both backends, a
+                                 # 2-rank run, a driver build); needs the
+                                 # Fortran binary.
     ],
 }
 UNIT_PYTEST_SHARD = "3"
