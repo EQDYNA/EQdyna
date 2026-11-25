@@ -8,6 +8,7 @@
 #     ls6
 #     ubuntu
 #     grace
+#     vista
 SYSTEM = ${MACHINE}
 
 ifeq ($(SYSTEM), ubuntu)
@@ -33,6 +34,12 @@ else ifeq ($(SYSTEM), grace)
     INC        = ${EBROOTNETCDF}/include
     NETCDF_INC = -I${INC}
     NETCDF_LIB = -L${LIB} -lnetcdf -L${LIB} -lnetcdff 
+
+else ifeq ($(SYSTEM), vista)
+    FFLAGS     = -O2
+    FC         = mpif90
+    NETCDF_INC = -I${TACC_NETCDF_INC}
+    NETCDF_LIB = -L${TACC_NETCDF_LIB} -lnetcdf -lnetcdff
 
 else ifeq ($(SYSTEM), macos)
     FFLAGS     = -O3 -ffast-math -ftree-vectorize 

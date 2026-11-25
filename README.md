@@ -40,7 +40,7 @@ support, see [docs/user/getting-started.md](docs/user/getting-started.md).
 ```
 git clone https://github.com/EQDYNA/EQdyna.git
 cd EQdyna
-./install-eqdyna.sh -m ubuntu      # -e macos on a Mac; -m ls6 on TACC Lonestar6
+./install-eqdyna.sh -m ubuntu      # -e macos on a Mac; -m ls6 on TACC Lonestar6, -m vista on TACC Vista
 export EQDYNAROOT=$(pwd)
 export PATH=$EQDYNAROOT/bin:$EQDYNAROOT/scripts:$PATH
 export PYTHONPATH=$EQDYNAROOT/src/python

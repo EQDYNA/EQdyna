@@ -33,6 +33,11 @@ install the system and Python dependencies listed above.
   interactive allocation, without `--submit`). Its results land in
   `scratch/submit_eqdyna_sweep_ls6.sh` (the generated job script) and
   `eqdyna_sweep_<jobid>.tgz` (log plus the perf/profile rows it appended).
+* **TACC Vista** (aarch64 Grace-Grace, Fortran solver only):
+  `./install-eqdyna.sh -m vista` loads the `netcdf` module and builds with the
+  default nvidia/openmpi stack. Build and run under `$SCRATCH`. `scripts/machines.py`
+  declares queue `gg` (144 cores/node); its `mpirun` is not yet measured, so
+  `--submit` on `vista` refuses until it is set.
 * **Texas A&M Grace**: `./install-eqdyna.sh -m grace` loads the cluster's
   netCDF module and builds.
 * **macOS**: `./install-eqdyna.sh -e macos` installs `mpich` and `python`
