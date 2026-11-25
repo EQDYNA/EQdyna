@@ -4,3 +4,4 @@ rows changed (cols11-13): 22022 max depth-coord of changed rows 7246.933
 tpv37 200 (22022, 22) (22022, 22)
 cols with diff: [(5, 7.008289999999998e-16), (6, 1.1379789999999998e-15), (7, 3.33067e-16), (8, 3.949118e-16), (9, 4.815592e-15), (10, 1.402592e-14), (11, 3.878926e-14), (12, 5977820.0), (13, 1454617.0), (14, 12535180.0)]
 rows changed (cols11-13): 7489 max depth-coord of changed rows 7246.933
+rows with any of frt columns 12-14 differing by >1 Pa (dx 200 m): tpv36 22022 of 22022 (max 5.70e6, 1.47e6, 1.19e7); tpv37 264 of 22022 (max 5.98e6, 1.45e6, 1.25e7), deepest 7143 m
