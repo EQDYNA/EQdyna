@@ -718,7 +718,7 @@ def base_env():
         os.path.join(REPO_ROOT, 'scripts'),
         env.get('PATH', ''),
     ])
-    return env
+    return common.mpi_child_env(env)
 
 
 # --------------------------------------------------------------------------

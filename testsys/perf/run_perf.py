@@ -79,7 +79,8 @@ LOCK_CONSEQUENCE = [
 
 
 def pinned_env():
-    env = dict(os.environ)
+    from testsys.common import mpi_child_env
+    env = mpi_child_env(os.environ)
     env['OMP_NUM_THREADS'] = '1'
     env['OPENBLAS_NUM_THREADS'] = '1'
     env['MKL_NUM_THREADS'] = '1'

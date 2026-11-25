@@ -143,7 +143,8 @@ def fortran_rank_totals_s(case_dir, cpus, node_map, ranks, profile_flag):
     for name in os.listdir(case_dir):
         if name.startswith('compTime'):
             os.remove(os.path.join(case_dir, name))
-    env = dict(os.environ)
+    from testsys.common import mpi_child_env
+    env = mpi_child_env(os.environ)
     env['EQDYNA_PROFILE'] = profile_flag
     cmd = _mpi_pinned_cmd(ranks, cpus, node_map, [binary])
     r = subprocess.run(cmd, shell=True, text=True, capture_output=True,
@@ -178,7 +179,8 @@ def jaxmpi_rank_totals_s(case_dir, cpus, node_map, ranks, nsteps, profile_flag):
     line (`_JAXMPI_RANK_RE`) -- unconditional on EQDYNA_PROFILE exactly like
     the fortran arm's compTime file, so both arms of the A/B read a real
     per-rank number regardless of which side of the switch is being timed."""
-    env = dict(os.environ)
+    from testsys.common import mpi_child_env
+    env = mpi_child_env(os.environ)
     env['PYTHONPATH'] = rs.PYTHON_PKG
     env['PYTHONUNBUFFERED'] = '1'
     env['JAX_PLATFORMS'] = 'cpu'

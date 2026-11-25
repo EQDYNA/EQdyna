@@ -478,7 +478,8 @@ def time_one_py(case_dir, nsteps, cpus, node_map, backend):
         "import time; t0 = time.time()\n"
         "eqdyna3d.run_case(%r, nsteps=%d, verbose=False, backend=%r)\n"
         "print('WALL', time.time() - t0)\n" % (PYTHON_PKG, case_dir, nsteps, backend))
-    env = dict(os.environ)
+    from testsys.common import mpi_child_env
+    env = mpi_child_env(os.environ)
     env['JAX_PLATFORMS'] = 'cpu'
     # Do NOT force XLA_FLAGS/OMP_NUM_THREADS/OPENBLAS_NUM_THREADS: both XLA and
     # OpenBLAS auto-size their thread pools from the process's cpu affinity at

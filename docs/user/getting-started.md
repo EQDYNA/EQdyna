@@ -63,6 +63,8 @@ This needs `pip install pytest` in the same environment. It takes about 4
 minutes (246 s measured on 2026-09-25 on a shared 64-core workstation) and must
 end with `SUCCESS unit` and `SUCCESS regression`.
 
+Every `mpirun` that `testsys` launches runs with `HWLOC_COMPONENTS=-gl,-opencl,-cuda,-nvml` (unless you set it) and no `DISPLAY`, in the child environment only, because GL discovery can hang `mpirun` at 0% CPU.
+
 Every `testsys/run.py` invocation's own console log, and the sweep's run
 output, land in `<repo>/test/` (previous run preserved in `test.prev/`) --
 the same place on every machine: Ubuntu, LS6, and Docker alike. In Docker
