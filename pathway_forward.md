@@ -79,6 +79,8 @@ first, and that is item 76, owner-scoped.
 
 **OWNER DECISION 2026-11-25 (typed in the main session):** "/autopilot" with no budget argument, after a relayed request worded "achieve the grand goals, self-paced" -- read as: autopilot resumes, budget `until the board is green`, self-paced; start from the HANDOFF STATE 2026-11-24 entry; everything the owner paused (rows 149, 153, 155 and their PRs) stays BLOCKED(owner).
 
+**OWNER DECISION 2026-11-25b (typed in the main session, just after autopilot launched):** "self develop" -- read (the session's interpretation, not the owner's words) as: autopilot picks and develops the next major items itself, in board priority order, without waiting for a per-item go; it does not release anything the owner paused (rows 149, 153, 155), the 16-node Vista sweep, or any other open owner question.
+
 **OWNER DECISION 2026-11-24g (typed in the main session), told that the 100/200-step pair cancels setup time out of the per-step cost:** "but make sure to time overhead as well" / "for a robust scaling report" -- read as: the deliverable of row 142 is a scaling report that stands on its own; the fixed cost is a result, not something to difference away and discard; every row 142 Vista run reports its overhead (MPI init, meshing, input and netCDF open, output) beside the per-step cost, per rank count.
 
 **OWNER DECISION 2026-11-24f (typed in the main session), on sizing the row 142 Vista runs against the small allocation balance:** "you can time maybe 100 or 200 steps" -- read as: each timed Vista run is short, about 100 or 200 solver steps rather than a full gate term; the two step counts double as the pair the per-step-by-difference metric needs (each rank's own solve time, differenced over the two counts).
