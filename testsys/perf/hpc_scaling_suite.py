@@ -20,6 +20,16 @@ ONE SCRIPT, THREE MODES, NEVER MIXED IN ONE INVOCATION:
       profiled run in this repo is held to) and packs manifest.json plus
       every validated profile file into one tarball.
 
+  Row 142 additions (owner 2026-11-24): step pair settable (--nsteps-lo/-hi,
+  default 100/200), --repeats N, --dry-run (writes the job script, builds
+  nothing, submits nothing; prints the sbatch line with the placeholder
+  <ALLOC>), --module/--mpirun/--walltime/--work-root/--bin for a machine whose
+  registry entry is incomplete. The allocation is used only to build the
+  sbatch command line: it is never written to the manifest or a job script.
+  The manifest carries a provenance stamp; --collect records a parity verdict
+  per timed run; --analyze reports overhead (MPI init + setup split + io)
+  per rank count and refuses a profile without the setup split.
+
   --analyze TGZ
       Runs LOCALLY. Unpacks the tarball and computes the metrics this
       module's `analyze()` documents below.
@@ -54,7 +64,7 @@ cost -- fixed cost (interpreter start, MPI init, netCDF open, case load,
 XLA compile where applicable) must be differenced out over TWO step counts,
 and a non-positive result from that difference is a BUG to raise on, never a
 number to report. Every point this suite submits is therefore actually TWO
-runs, POINT_NSTEPS_LO and POINT_NSTEPS_HI, each recorded as its own run
+runs, the lo and hi step counts (default 100/200), each recorded as its own run
 directory in the manifest, so --analyze can call
 `testsys.perf.run_numa_scaling.per_step_and_fixed(t_lo, t_hi, n_lo, n_hi)`
 -- the ONE copy of this arithmetic already shared by run_scaling.py,
@@ -96,6 +106,7 @@ regression test, never a from-scratch "sweep dx until OOM" run.
 """
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -135,7 +146,7 @@ def _load_machines():
 machines = _load_machines()
 
 MANIFEST_NAME = 'manifest.json'
-SUITE_SCHEMA_ID = 'eqdyna-hpc-scaling-suite/1'
+SUITE_SCHEMA_ID = 'eqdyna-hpc-scaling-suite/2'
 
 BACKENDS = ('fortran', 'python-jax-mpi')
 TEST_TYPES = ('strong', 'weak', 'size')
@@ -167,8 +178,9 @@ DOMAIN_VOLUME_M3 = DOMAIN_X_M * DOMAIN_Y_M * DOMAIN_Z_M
 # small on purpose: this suite's job is to measure PER-STEP cost and bucket
 # breakdown, not to run a case to physical completion -- see run_scaling.py's
 # own n_lo/n_hi defaults for the same reasoning.
-POINT_NSTEPS_LO = 5
-POINT_NSTEPS_HI = 15
+DEFAULT_NSTEPS_LO = 100   # owner 2026-11-24: 100/200 for the HPC levels; --nsteps-lo/-hi
+DEFAULT_NSTEPS_HI = 200
+ALLOC_PLACEHOLDER = '<ALLOC>'
 
 DEFAULT_CASE = 'test.tpv8'
 
@@ -374,54 +386,160 @@ def run_point_python_jax_mpi(case_dir, ranks, env=None):
 
 
 # --------------------------------------------------------------------------
+# helpers: job id, provenance, job script
+# --------------------------------------------------------------------------
+def parse_job_id(stdout):
+    """The job id out of sbatch's stdout. Vista's sbatch prints a multi-line
+    banner before (or around) the id, so the whole output is NOT the id (the
+    old code stored the banner). The id is the LAST line that is all digits;
+    failing that (`--parsable` may print `<id>;<cluster>`, the classic reply
+    is `Submitted batch job <id>`), the last all-digit token. Nothing found
+    -> raise; the error text never quotes the output (a banner can carry the
+    allocation name)."""
+    text = stdout.decode() if isinstance(stdout, bytes) else stdout
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    for ln in reversed(lines):
+        if ln.isdigit():
+            return ln
+    tokens = [t for ln in lines for t in ln.replace(';', ' ').split()]
+    for t in reversed(tokens):
+        if t.isdigit():
+            return t
+    raise SuiteError('no all-digit job id in sbatch output (%d non-empty line(s)); '
+                     'output deliberately not echoed' % len(lines))
+
+
+def _git(*args):
+    return subprocess.check_output(['git', '-C', REPO_ROOT] + list(args)).decode().strip()
+
+
+def provenance(machine, nsteps_lo, nsteps_hi, repeats, points):
+    """The stamp every manifest carries (item 142 (f)). Deliberately has NO
+    account/allocation field and no hostname: the manifest ends up in
+    docs/evidence. A failing `git` raises -- an unstamped suite is not
+    written."""
+    return dict(
+        git_sha=_git('rev-parse', 'HEAD'),
+        git_dirty=bool(_git('status', '--porcelain')),
+        machine=machine,
+        loaded_modules=[m for m in os.environ.get('LOADEDMODULES', '').split(':') if m],
+        nsteps_lo=nsteps_lo, nsteps_hi=nsteps_hi, repeats=repeats,
+        rank_layout=[dict(point_id=p['point_id'], ranks=p['ranks'], nnodes=p['nnodes'],
+                          decomp=list(p['decomp'])) for p in points],
+        date_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))
+
+
+_MODULE_RE = re.compile(r'^[A-Za-z0-9_.+/-]+$')
+_WALLTIME_RE = re.compile(r'^\d{1,3}:[0-5]\d:[0-5]\d$')
+
+
+def run_name(tag, repeat):
+    return '%s_r%d' % (tag, repeat)
+
+
+def job_commands(point, backend, mpirun, bin_path, work_root, repeats):
+    """The run lines of a point's job script: lo then hi, for every repeat."""
+    cmds = []
+    for k in range(repeats):
+        for tag in ('lo', 'hi'):
+            rd = '%s/%s/%s' % (work_root.rstrip('/'), point['point_id'], run_name(tag, k))
+            if backend == 'fortran':
+                cmds.append('cd %s && %s -np %d %s' % (rd, mpirun, point['ranks'], bin_path))
+            else:
+                cmds.append('cd %s && %s -np %d python3 -m eqdyna --backend jax --mpi'
+                            % (rd, mpirun, point['ranks']))
+    return cmds
+
+
+def write_job_script(path, *, jobname, nnodes, ranks, partition, walltime, modules, commands):
+    """The sbatch script. It carries NO `#SBATCH -A`: the allocation is passed
+    on the sbatch command line only (item 142 (i)), so it can never be written
+    into a file that is later committed."""
+    for m in modules:
+        if not _MODULE_RE.match(m):
+            raise SuiteError('module name %r is not a plain module name' % (m,))
+    if not _WALLTIME_RE.match(walltime):
+        raise SuiteError('walltime %r is not HH:MM:SS' % (walltime,))
+    with open(path, 'w') as f:
+        f.write('#! /bin/bash\n')
+        f.write('#SBATCH -J %s\n#SBATCH -o a.eqdyna.log%%j\n#SBATCH -N %d\n#SBATCH -n %d\n'
+                '#SBATCH -p %s\n#SBATCH -t %s\n' % (jobname, nnodes, ranks, partition, walltime))
+        f.write('set -euo pipefail\n')
+        for m in modules:
+            f.write('module load %s\n' % m)
+        for c in commands:
+            f.write(c + '\n')
+
+
+# --------------------------------------------------------------------------
 # --submit
 # --------------------------------------------------------------------------
-def submit_point(point, backend, case_name, machine, machine_cfg, account, out_dir, env):
-    """Builds the point's two (lo/hi nsteps) cases and either sbatch's a
-    job script (scheduler machine) or runs both in place (no-scheduler
-    machine). Returns the point's manifest entry."""
+def submit_point(point, backend, case_name, machine, machine_cfg, account, out_dir, env, opts):
+    """Builds the point's lo/hi cases for every repeat and either sbatch's a
+    job script (scheduler machine) or runs them in place (no-scheduler
+    machine). `account` is used only to build the sbatch command line.
+    Returns the point's manifest entry. `opts` carries nsteps_lo/nsteps_hi/
+    repeats/modules/mpirun/bin_path/walltime/work_root/dry_run."""
     entry = dict(point)
     entry['backend'] = backend
-    entry['runs'] = {}
-    for tag, nsteps in (('lo', POINT_NSTEPS_LO), ('hi', POINT_NSTEPS_HI)):
-        run_dir = os.path.join(out_dir, point['point_id'], tag)
-        build_point_case(run_dir, case_name, point['dx'], point['decomp'], nsteps, env)
-        entry['runs'][tag] = dict(run_dir=run_dir, nsteps=nsteps)
+    entry['runs'] = {'lo': [], 'hi': []}
+    work_root = opts['work_root'] or out_dir
+    for k in range(opts['repeats']):
+        for tag, nsteps in (('lo', opts['nsteps_lo']), ('hi', opts['nsteps_hi'])):
+            name = run_name(tag, k)
+            run_dir = os.path.join(out_dir, point['point_id'], name)
+            if not opts['dry_run']:
+                build_point_case(run_dir, case_name, point['dx'], point['decomp'], nsteps, env)
+            entry['runs'][tag].append(dict(name=name, run_dir=run_dir, nsteps=nsteps))
 
     if machine_cfg['scheduler'] == 'slurm':
+        mpirun = opts['mpirun'] or machine_cfg['mpirun']
+        if mpirun is None:
+            raise SuiteError(
+                "machine %r has no verified launcher (scripts/machines.py "
+                "mpirun=None) -- pass --mpirun explicitly; --submit refuses to "
+                "guess one" % (machine,))
+        os.makedirs(os.path.join(out_dir, point['point_id']), exist_ok=True)
         script_path = os.path.join(out_dir, point['point_id'], 'submit.sh')
-        with open(script_path, 'w') as f:
-            machines.write_slurm_header(
-                f, jobname='hpcscale-%s' % point['point_id'], nnode=point['nnodes'],
-                ncpu=point['ranks'], queue=machine_cfg['partition'] or 'normal',
-                walltime=machine_cfg['walltime'] or '02:00:00', account=account, email='')
-            mpirun = machine_cfg['mpirun']
-            if mpirun is None:
-                raise SuiteError(
-                    "machine %r has no verified launcher (scripts/machines.py "
-                    "mpirun=None) -- --submit refuses to guess one" % (machine,))
-            for tag in ('lo', 'hi'):
-                rd = entry['runs'][tag]['run_dir']
-                if backend == 'fortran':
-                    f.write('cd %s && %s -np %d %s\n'
-                            % (rd, mpirun, point['ranks'],
-                               os.path.join(REPO_ROOT, 'bin', 'eqdyna')))
-                else:
-                    f.write('cd %s && %s -np %d python3 -m eqdyna --backend jax --mpi\n'
-                            % (rd, mpirun, point['ranks']))
+        write_job_script(
+            script_path, jobname='hpcscale-%s' % point['point_id'], nnodes=point['nnodes'],
+            ranks=point['ranks'], partition=machine_cfg['partition'] or 'normal',
+            walltime=opts['walltime'] or machine_cfg['walltime'] or '02:00:00',
+            modules=opts['modules'],
+            commands=job_commands(point, backend, mpirun,
+                                  opts['bin_path'] or os.path.join(REPO_ROOT, 'bin', 'eqdyna'),
+                                  work_root, opts['repeats']))
         entry['submit_script'] = script_path
-        out = subprocess.check_output(['sbatch', script_path], cwd=out_dir, env=env)
-        entry['job_id'] = out.decode().strip()
+        if opts['dry_run']:
+            entry['job_id'] = None
+        else:
+            out = subprocess.check_output(['sbatch', '--parsable', '-A', account, script_path],
+                                          cwd=out_dir, env=env)
+            entry['job_id'] = parse_job_id(out)
     else:
+        if opts['dry_run']:
+            raise SuiteError('--dry-run writes a job script; machine %r has no scheduler' % machine)
         runner = run_point_fortran if backend == 'fortran' else run_point_python_jax_mpi
         for tag in ('lo', 'hi'):
-            runner(entry['runs'][tag]['run_dir'], point['ranks'], env)
+            for run in entry['runs'][tag]:
+                runner(run['run_dir'], point['ranks'], env)
         entry['job_id'] = None
     return entry
 
 
+def _check_steps(lo, hi, repeats):
+    if not (isinstance(lo, int) and isinstance(hi, int) and 1 <= lo < hi):
+        raise SuiteError('--nsteps-lo %r / --nsteps-hi %r must be ints with 1 <= lo < hi' % (lo, hi))
+    if not (isinstance(repeats, int) and repeats >= 1):
+        raise SuiteError('--repeats %r must be an int >= 1' % (repeats,))
+
+
 def cmd_submit(args):
     _validate_combo(args.test, args.level, args.backend)
+    _check_steps(args.nsteps_lo, args.nsteps_hi, args.repeats)
+    if args.dry_run and args.account is not None:
+        raise SuiteError('--dry-run takes no --account: the printed sbatch line carries the '
+                         'placeholder %s and the real allocation is typed by hand' % ALLOC_PLACEHOLDER)
     machine_cfg = machines.machine(args.machine)
     max_nodes = args.max_nodes
     if max_nodes is None:
@@ -439,26 +557,83 @@ def cmd_submit(args):
     env['PATH'] = os.pathsep.join([os.path.join(REPO_ROOT, 'bin'),
                                    os.path.join(REPO_ROOT, 'scripts'),
                                    env.get('PATH', '')])
+    opts = dict(nsteps_lo=args.nsteps_lo, nsteps_hi=args.nsteps_hi, repeats=args.repeats,
+                modules=args.module or [], mpirun=args.mpirun, bin_path=args.bin,
+                walltime=args.walltime, work_root=args.work_root, dry_run=args.dry_run)
 
     entries = [submit_point(p, args.backend, args.case, args.machine, machine_cfg,
-                            args.account, out_dir, env) for p in points]
+                            args.account, out_dir, env, opts) for p in points]
+    if args.dry_run:
+        for e in entries:
+            print('hpc_scaling_suite: DRY RUN (nothing submitted) -- script %s\n'
+                  '  sbatch -A %s %s' % (e['submit_script'], ALLOC_PLACEHOLDER, e['submit_script']))
+        return 0
 
     manifest = dict(schema=SUITE_SCHEMA_ID, machine=args.machine, backend=args.backend,
-                     test=args.test, level=args.level, case=args.case,
-                     account=args.account, max_nodes=max_nodes,
-                     nsteps_lo=POINT_NSTEPS_LO, nsteps_hi=POINT_NSTEPS_HI,
-                     created_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-                     points=entries)
+                    test=args.test, level=args.level, case=args.case, max_nodes=max_nodes,
+                    nsteps_lo=args.nsteps_lo, nsteps_hi=args.nsteps_hi, repeats=args.repeats,
+                    created_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                    provenance=provenance(args.machine, args.nsteps_lo, args.nsteps_hi,
+                                          args.repeats, points),
+                    points=entries)
     with open(os.path.join(out_dir, MANIFEST_NAME), 'w') as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
     print('hpc_scaling_suite: submitted %d point(s) to %s -- manifest at %s'
-         % (len(entries), out_dir, os.path.join(out_dir, MANIFEST_NAME)))
+          % (len(entries), out_dir, os.path.join(out_dir, MANIFEST_NAME)))
     return 0
+
+
+# --------------------------------------------------------------------------
+# parity (recorded at --collect, where the run directories exist)
+# --------------------------------------------------------------------------
+def _case_gate_dx(case):
+    """The dx the case's committed reference was frozen at: `par.dx` in
+    case_input/<case>/user_defined_params.py. Raises if it states none."""
+    path = os.path.join(REPO_ROOT, 'case_input', case, 'user_defined_params.py')
+    with open(path) as f:
+        m = re.search(r'^par\.dx\s*=\s*([0-9.eE+-]+)', f.read(), flags=re.M)
+    if not m:
+        raise SuiteError('%s states no par.dx; the gate resolution is unknown' % path)
+    return float(m.group(1))
+
+
+def parity_record(case, backend, run_dir, dx):
+    """{'status': pass|fail|declared, 'lines': [...]} for one timed run.
+    A timed run is comparable to the case's reference only if it ran at the
+    reference's term (matrix.gate_term_for) AND mesh (the case's own par.dx);
+    otherwise it is DECLARED with the measured mismatch, never skipped. A
+    comparable run that compare_cell fails (or raises on) is `fail`."""
+    mbackend = 'python-jax' if backend == 'python-jax-mpi' else backend
+    if not matrix.is_supported(case, mbackend):
+        return dict(status='declared', lines=['parity: %s x %s is not a gated cell in '
+                                              'matrix.py' % (case, mbackend)])
+    term, dt = (float(x) for x in
+                open(os.path.join(run_dir, 'bGlobal.txt')).read().splitlines()[15:17])
+    gate_term, gate_dx = matrix.gate_term_for(case), _case_gate_dx(case)
+    reasons = []
+    if not math.isclose(term, gate_term, rel_tol=1e-6):
+        reasons.append('timed term %.6g s (dt %.6g) != reference term %.6g s' % (term, dt, gate_term))
+    if not math.isclose(dx, gate_dx, rel_tol=1e-9):
+        reasons.append('timed dx %.6g m != reference dx %.6g m' % (dx, gate_dx))
+    if reasons:
+        return dict(status='declared',
+                    lines=['parity: not comparable to the case reference: ' + '; '.join(reasons)])
+    try:
+        ok, lines = compare.compare_cell(case, mbackend, run_dir)
+    except Exception as e:  # compare_cell raises on a missing artifact: itself a finding
+        return dict(status='fail', lines=['parity: compare_cell raised on %s x %s at %s: %r'
+                                          % (case, mbackend, run_dir, e)])
+    return dict(status='pass' if ok else 'fail', lines=list(lines))
 
 
 # --------------------------------------------------------------------------
 # --collect
 # --------------------------------------------------------------------------
+def _runs(point):
+    """[(tag, run)] over every repeat of a manifest point (lo and hi lists)."""
+    return [(tag, run) for tag in ('lo', 'hi') for run in point['runs'][tag]]
+
+
 def cmd_collect(args):
     suite_dir = args.suite_dir
     manifest_path = os.path.join(suite_dir, MANIFEST_NAME)
@@ -469,22 +644,24 @@ def cmd_collect(args):
         manifest = json.load(f)
     if manifest.get('schema') != SUITE_SCHEMA_ID:
         raise SuiteError('manifest schema %r != %r' % (manifest.get('schema'), SUITE_SCHEMA_ID))
-
-    backends_seen = {manifest['backend']}
-    if len(backends_seen) != 1:
-        raise SuiteError('a suite directory must carry exactly one backend; '
-                         'saw %s -- backends run SEPARATELY' % (backends_seen,))
+    if 'account' in manifest:
+        raise SuiteError('manifest carries an `account` field; it must never be written')
 
     validated = 0
     for point in manifest['points']:
-        for tag, run in point['runs'].items():
+        for tag, run in _runs(point):
             rows = profile_schema.validate_run_dir(run['run_dir'])  # raises on any problem
             if rows[0]['backend'] != manifest['backend']:
                 raise SuiteError(
                     'point %s run %s: profile files report backend=%r but '
-                    'manifest says backend=%r' % (point['point_id'], tag,
+                    'manifest says backend=%r' % (point['point_id'], run['name'],
                                                   rows[0]['backend'], manifest['backend']))
             validated += len(rows)
+            if tag == 'hi':
+                run['parity'] = parity_record(manifest['case'], manifest['backend'],
+                                              run['run_dir'], point['dx'])
+    with open(manifest_path, 'w') as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
 
     out_tgz = args.out or os.path.join(
         suite_dir, 'hpc_scaling_%s_%s_%s_%s.tgz'
@@ -492,54 +669,63 @@ def cmd_collect(args):
     with tarfile.open(out_tgz, 'w:gz') as tar:
         tar.add(manifest_path, arcname=MANIFEST_NAME)
         for point in manifest['points']:
-            for tag, run in point['runs'].items():
+            for tag, run in _runs(point):
                 for name in sorted(os.listdir(run['run_dir'])):
                     if profile_schema._RANK_FILE_RE.match(name):
-                        arcname = os.path.join(point['point_id'], tag, name)
+                        arcname = os.path.join(point['point_id'], run['name'], name)
                         tar.add(os.path.join(run['run_dir'], name), arcname=arcname)
     print('hpc_scaling_suite: collected %d profile file(s) from %d point(s) into %s'
-         % (validated, len(manifest['points']), out_tgz))
+          % (validated, len(manifest['points']), out_tgz))
     return 0
 
 
 # --------------------------------------------------------------------------
 # --analyze
 # --------------------------------------------------------------------------
-def _load_point_profiles(tmpdir, manifest, point):
-    """{'lo': [rows by rank], 'hi': [rows by rank]} for one manifest point,
-    read back from the unpacked tarball."""
-    out = {}
-    for tag in ('lo', 'hi'):
-        run_dir = os.path.join(tmpdir, point['point_id'], tag)
-        out[tag] = profile_schema.validate_run_dir(run_dir)
-    return out
+def _load_run_profiles(tmpdir, point, tag):
+    """[rows by rank] for every repeat of `tag`, from the unpacked tarball."""
+    return [profile_schema.validate_run_dir(os.path.join(tmpdir, point['point_id'], run['name']))
+            for run in point['runs'][tag]]
 
 
-# profile_emit.py's buckets split into two different KINDS of cost (same
-# distinction CLAUDE.md draws for `setup`/`io` vs the step-loop buckets):
-# PER_STEP_BUCKETS accumulate once per solver step and scale with nsteps, so
-# per_step_and_fixed's differencing is the right arithmetic for them;
-# FIXED_BUCKETS (setup, io) are a ONE-TIME cost each run pays regardless of
-# how many steps it takes and do NOT scale with nsteps -- differencing them
-# over nsteps is not "small", it is the WRONG QUESTION (lo and hi both pay
-# roughly the same setup/io cost, so the difference is noise around zero and
-# per_step_and_fixed correctly refuses it as non-positive/invalid). Fixed
-# buckets are instead reported directly from the HI run (the longer, more
-# representative measurement of the two).
+# profile_emit.py's buckets split into two KINDS of cost. PER_STEP_BUCKETS
+# accumulate once per solver step, so per_step_and_fixed's differencing is the
+# right arithmetic for them; FIXED_BUCKETS (setup, io) are a ONE-TIME cost
+# each run pays regardless of nsteps -- differencing them is the WRONG
+# QUESTION (lo and hi pay the same, the difference is noise around zero and
+# per_step_and_fixed correctly refuses it). Fixed buckets are reported
+# directly from the HI run.
 PER_STEP_BUCKETS = ('element', 'fault', 'exchange', 'wait')
 FIXED_BUCKETS = ('setup', 'io')
 assert set(PER_STEP_BUCKETS) | set(FIXED_BUCKETS) == set(profile_schema.BUCKET_KEYS)
 
+# The `setup_detail_s` keys each backend's profile must carry (item 142 (b),
+# (c)). Fortran times all five; python-jax-mpi fuses input read + meshing in
+# build_solver_state and has no netCDF open, and its MPI is initialised at
+# mpi4py import, outside any timer -- so it carries two keys and `mpi_init`
+# is DECLARED not measured (overhead.init is null), never zero.
+DETAIL_KEYS = {
+    'fortran': ('mpi_init', 'input_read', 'meshing', 'netcdf_open', 'mass_assembly'),
+    'python-jax-mpi': ('input_mesh', 'setup_exchange'),
+}
+DETAIL_SETUP_FLOOR_S = 0.05
+DETAIL_SETUP_REL = 0.05
+
+
+def _stats(vals):
+    return dict(min=min(vals), mean=sum(vals) / len(vals), max=max(vals))
+
 
 def per_rank_metrics(lo_rows, hi_rows):
-    """Per-rank per-step-by-difference metrics for one point: total per-step
-    cost, per-step-bucket breakdown (element/fault/exchange/wait), the fixed
-    (non-per-step-scaling) intercept of the TOTAL, and the fixed buckets
-    (setup/io) read directly off the hi run -- see PER_STEP_BUCKETS/
-    FIXED_BUCKETS above for why those two groups are handled differently.
-    All per-step arithmetic goes through run_numa_scaling.per_step_and_fixed,
-    the ONE copy of it in this repo; it raises on any non-positive
-    difference -- never reported as a number."""
+    """Per-rank metrics for one (lo, hi) pair of runs. Per-step cost is the
+    difference of each rank's OWN `loop_s` over the two step counts (never a
+    wrapper clock, never total_s: CLAUDE.md "per-step-by-difference breaks at
+    >=4 ranks"); run_numa_scaling.per_step_and_fixed raises on a non-positive
+    result. Overhead = MPI init (if the backend times it) + setup + io of the
+    hi run, with the setup split (`setup_detail_s`) carried per rank. A
+    profile with no/incomplete `setup_detail_s` raises: it came from a solver
+    that cannot give the split, and a report without it is not the report the
+    owner asked for."""
     if len(lo_rows) != len(hi_rows):
         raise SuiteError('lo/hi profile rank counts differ: %d vs %d'
                          % (len(lo_rows), len(hi_rows)))
@@ -548,17 +734,39 @@ def per_rank_metrics(lo_rows, hi_rows):
         if lo['rank'] != hi['rank']:
             raise SuiteError('lo/hi rank mismatch: %r vs %r' % (lo['rank'], hi['rank']))
         n_lo, n_hi = lo['nsteps'], hi['nsteps']
-        ps_total, fixed_total = numa.per_step_and_fixed(lo['total_s'], hi['total_s'], n_lo, n_hi)
+        ps_total, _ = numa.per_step_and_fixed(lo['loop_s'], hi['loop_s'], n_lo, n_hi)
         buckets_per_step = {}
         for key in PER_STEP_BUCKETS:
             ps, _fixed = numa.per_step_and_fixed(
                 lo['buckets_s'][key], hi['buckets_s'][key], n_lo, n_hi)
             buckets_per_step[key] = ps
         buckets_fixed = {key: hi['buckets_s'][key] for key in FIXED_BUCKETS}
-        per_rank.append(dict(rank=lo['rank'], host=lo['host'],
-                             per_step_s=ps_total, fixed_s=fixed_total,
+
+        backend = hi['backend']
+        if backend not in DETAIL_KEYS:
+            raise SuiteError('backend %r has no declared setup_detail_s keys' % (backend,))
+        detail = hi.get('setup_detail_s')
+        want = DETAIL_KEYS[backend]
+        if not isinstance(detail, dict) or set(detail) != set(want):
+            raise SuiteError(
+                'rank %d (%s): setup_detail_s %r != required keys %s -- the profile '
+                'comes from a solver build without the setup split'
+                % (hi['rank'], backend, None if detail is None else sorted(detail), list(want)))
+        in_setup = sum(v for k, v in detail.items() if k != 'mpi_init')
+        setup = hi['buckets_s']['setup']
+        slack = max(DETAIL_SETUP_REL * setup, DETAIL_SETUP_FLOOR_S)
+        if not (in_setup <= setup + slack) or (backend == 'fortran' and not (in_setup >= setup - slack)):
+            raise SuiteError(
+                'rank %d (%s): setup_detail_s parts sum to %.6g s but buckets_s.setup is '
+                '%.6g s (allowed slack %.3g s) -- the split does not account for setup'
+                % (hi['rank'], backend, in_setup, setup, slack))
+        init = detail.get('mpi_init')
+        overhead = dict(init_s=init, setup_s=setup, io_s=hi['buckets_s']['io'],
+                        total_s=(init or 0.0) + setup + hi['buckets_s']['io'])
+        per_rank.append(dict(rank=lo['rank'], host=lo['host'], per_step_s=ps_total,
                              buckets_per_step_s=buckets_per_step,
-                             buckets_fixed_s=buckets_fixed))
+                             buckets_fixed_s=buckets_fixed,
+                             setup_detail_s=dict(detail), overhead=overhead))
     return per_rank
 
 
@@ -568,75 +776,86 @@ def imbalance(per_rank):
     return dict(max_s=max(vals), mean_s=mean, max_over_mean=max(vals) / mean)
 
 
-def parity_for_point(manifest, point, tmpdir):
-    """(status, lines): reuses testsys/compare.py's compare_cell against
-    the HI run, but ONLY when this point's mesh is the case's unmodified
-    gate resolution (dx == None sentinel meaning 'not overridden' is not
-    tracked here, so the test is: is this the very FIRST point of a
-    strong-scaling suite, at the level's own dx, for a case/backend the
-    matrix table actually gates?). Every other point is DECLARED
-    incomparable, with its own dx printed, per this repo's no-silent-skip
-    rule -- never silently omitted."""
-    case, backend = manifest['case'], manifest['backend']
-    if not matrix.is_supported(case, backend):
-        return 'declared', ['parity: %s x %s is not a gated cell in matrix.py '
-                            '-- not applicable' % (case, backend)]
-    if manifest['test'] != 'strong' or point['point_id'] != manifest['points'][0]['point_id']:
-        return 'declared', [
-            'parity: point %s ran at dx=%.3fm (%s test, level %s), which is '
-            'NOT the case\'s registered gate resolution -- a mesh refined or '
-            'coarsened away from the gate reference is not comparable to it; '
-            'declared, not skipped' % (point['point_id'], point['dx'],
-                                       manifest['test'], manifest['level'])]
-    run_dir = os.path.join(tmpdir, point['point_id'], 'hi')
-    try:
-        ok, lines = compare.compare_cell(case, backend, run_dir)
-    except Exception as e:
-        # compare_cell raises (rather than returning ok=False) when the run
-        # directory is missing an artifact it expected (e.g. no frt file at
-        # all). That is itself a real finding -- surface it as a declared
-        # failure with the exception text, never let it take the whole
-        # --analyze command down for every other point in the suite.
-        return 'fail', ['parity: compare_cell raised on %s x %s at %s: %r'
-                        % (case, backend, run_dir, e)]
-    return ('pass' if ok else 'fail'), lines
+def point_parity(point):
+    """(status, lines) over every repeat's hi run, read from the manifest
+    (recorded at --collect). A run with no record raises: an unchecked timed
+    point is not reported as anything."""
+    recs = []
+    for run in point['runs']['hi']:
+        if 'parity' not in run:
+            raise SuiteError('point %s run %s carries no parity record -- re-run --collect'
+                             % (point['point_id'], run['name']))
+        recs.append(run['parity'])
+    statuses = {r['status'] for r in recs}
+    if not statuses <= {'pass', 'fail', 'declared'}:
+        raise SuiteError('point %s: unknown parity status %s' % (point['point_id'], sorted(statuses)))
+    status = 'fail' if 'fail' in statuses else ('declared' if 'declared' in statuses else 'pass')
+    lines = []
+    for r in recs:
+        for ln in r['lines']:
+            if ln not in lines:
+                lines.append(ln)
+    return status, lines
+
+
+def _mean(vals):
+    return sum(vals) / len(vals)
 
 
 def analyze(tgz_path):
-    """The report dict --analyze prints/returns. Pure function over an
-    already-unpacked tarball's manifest+profiles (no argparse/CLI concerns),
-    so it is directly unit-testable."""
+    """The report dict --analyze prints/returns. Pure function over the
+    unpacked tarball's manifest+profiles, directly unit-testable."""
     tmpdir = tempfile.mkdtemp(prefix='hpc_scaling_analyze_')
     try:
         with tarfile.open(tgz_path, 'r:gz') as tar:
             tar.extractall(tmpdir)
         with open(os.path.join(tmpdir, MANIFEST_NAME)) as f:
             manifest = json.load(f)
+        if manifest.get('schema') != SUITE_SCHEMA_ID:
+            raise SuiteError('manifest schema %r != %r' % (manifest.get('schema'), SUITE_SCHEMA_ID))
+        if 'provenance' not in manifest:
+            raise SuiteError('manifest has no provenance stamp')
 
-        report = dict(schema='eqdyna-hpc-scaling-report/1', machine=manifest['machine'],
+        report = dict(schema='eqdyna-hpc-scaling-report/2', machine=manifest['machine'],
                       backend=manifest['backend'], test=manifest['test'],
-                      level=manifest['level'], case=manifest['case'], points=[])
+                      level=manifest['level'], case=manifest['case'],
+                      provenance=manifest['provenance'], points=[])
 
         for point in manifest['points']:
-            profiles = _load_point_profiles(tmpdir, manifest, point)
-            per_rank = per_rank_metrics(profiles['lo'], profiles['hi'])
-            imb = imbalance(per_rank)
-            parity_status, parity_lines = parity_for_point(manifest, point, tmpdir)
-            setup_io_fixed = sum(r['buckets_fixed_s']['setup'] + r['buckets_fixed_s']['io']
-                                 for r in per_rank) / len(per_rank)
+            lo_runs = _load_run_profiles(tmpdir, point, 'lo')
+            hi_runs = _load_run_profiles(tmpdir, point, 'hi')
+            if len(lo_runs) != len(hi_runs):
+                raise SuiteError('point %s: %d lo repeat(s) vs %d hi'
+                                 % (point['point_id'], len(lo_runs), len(hi_runs)))
+            reps = [per_rank_metrics(lo, hi) for lo, hi in zip(lo_runs, hi_runs)]
+            imbs = [imbalance(pr) for pr in reps]
+            rep_means = [i['mean_s'] for i in imbs]
+            parity_status, parity_lines = point_parity(point)
+            samples = [r['overhead'] for pr in reps for r in pr]
+            detail_keys = list(reps[0][0]['setup_detail_s'])
             report['points'].append(dict(
                 point_id=point['point_id'], ranks=point['ranks'], nnodes=point['nnodes'],
-                dx=point['dx'], decomp=point['decomp'],
-                mean_per_step_s=sum(r['per_step_s'] for r in per_rank) / len(per_rank),
-                max_per_step_s=imb['max_s'], max_over_mean=imb['max_over_mean'],
-                setup_and_io_fixed_s=setup_io_fixed,
+                dx=point['dx'], decomp=point['decomp'], repeats=len(reps),
+                mean_per_step_s=_mean(rep_means),
+                max_per_step_s=max(i['max_s'] for i in imbs),
+                max_over_mean=_mean([i['max_over_mean'] for i in imbs]),
+                repeat_per_step_s=rep_means,
+                repeat_rel_range=(None if len(reps) == 1 else
+                                  (max(rep_means) - min(rep_means)) / _mean(rep_means)),
+                overhead_s=dict(
+                    init=(None if samples[0]['init_s'] is None
+                          else _stats([s['init_s'] for s in samples])),
+                    setup=_stats([s['setup_s'] for s in samples]),
+                    io=_stats([s['io_s'] for s in samples]),
+                    total=_stats([s['total_s'] for s in samples])),
+                setup_detail_mean_s={k: _mean([r['setup_detail_s'][k] for pr in reps for r in pr])
+                                     for k in detail_keys},
                 bucket_breakdown_per_step_s={
-                    key: sum(r['buckets_per_step_s'][key] for r in per_rank) / len(per_rank)
+                    key: _mean([r['buckets_per_step_s'][key] for pr in reps for r in pr])
                     for key in PER_STEP_BUCKETS},
                 parity_status=parity_status, parity_lines=parity_lines,
             ))
 
-        # 128->256-node step boundary, if the suite's own points span it.
         by_nnodes = {p['nnodes']: p for p in report['points']}
         if 128 in by_nnodes and 256 in by_nnodes:
             a, b = by_nnodes[128]['mean_per_step_s'], by_nnodes[256]['mean_per_step_s']
@@ -644,7 +863,6 @@ def analyze(tgz_path):
                 per_step_s_128=a, per_step_s_256=b, ratio_256_over_128=b / a)
         else:
             report['node_boundary_128_256'] = None
-
         return report
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -685,6 +903,16 @@ def build_parser():
     p.add_argument('--out-dir')
     p.add_argument('--suite-dir')
     p.add_argument('--out')
+    p.add_argument('--nsteps-lo', type=int, default=DEFAULT_NSTEPS_LO)
+    p.add_argument('--nsteps-hi', type=int, default=DEFAULT_NSTEPS_HI)
+    p.add_argument('--repeats', type=int, default=1)
+    p.add_argument('--dry-run', action='store_true',
+                   help='write the job script(s) only; build no case, submit nothing')
+    p.add_argument('--work-root', help='run-directory root as the JOB sees it (may contain $SCRATCH)')
+    p.add_argument('--bin', help='solver binary as the JOB sees it (may contain $SCRATCH)')
+    p.add_argument('--walltime', help='HH:MM:SS, overrides the machine default')
+    p.add_argument('--module', action='append', help='`module load <name>` in the job (repeatable)')
+    p.add_argument('--mpirun', help='launcher, overrides an unverified machine entry')
     return p
 
 
@@ -692,9 +920,11 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
         if args.submit:
-            for name, val in (('--machine', args.machine), ('--account', args.account),
-                              ('--backend', args.backend), ('--test', args.test),
-                              ('--level', args.level)):
+            required = [('--machine', args.machine), ('--backend', args.backend),
+                        ('--test', args.test), ('--level', args.level)]
+            if not args.dry_run:
+                required.append(('--account', args.account))
+            for name, val in required:
                 if val is None:
                     raise SuiteError('--submit requires %s' % name)
             return cmd_submit(args)

@@ -209,6 +209,18 @@ def validate(path_or_dict):
 
     check_buckets(context, row['total_s'], row['buckets_s'], row['unaccounted_s'])
 
+    # Optional (row 142): a split of the `setup` bucket. Keys differ per backend
+    # (see profile_emit.build_row), so only the shape is checked here; the suite
+    # analyzer (testsys/perf/hpc_scaling_suite.py) holds each backend to its keys.
+    if 'setup_detail_s' in row:
+        det = row['setup_detail_s']
+        if not (isinstance(det, dict) and det):
+            raise ValueError('%s: setup_detail_s %r must be a non-empty dict' % (context, det))
+        for k, v in det.items():
+            if not (isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0):
+                raise ValueError('%s: setup_detail_s[%r] = %r must be a non-negative number'
+                                 % (context, k, v))
+
     return row
 
 

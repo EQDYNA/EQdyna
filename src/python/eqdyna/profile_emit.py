@@ -146,7 +146,7 @@ def enabled():
 
 
 def build_row(backend, rank, nranks, nsteps, buckets_s, loop_s, total_s,
-              sampling_every=1):
+              sampling_every=1, setup_detail_s=None):
     """Build one validated-shape profile row. Raises (does not default) on a
     missing bucket key -- callers must supply all six, 0.0 where genuinely
     zero or folded elsewhere (documented at the call site and in this
@@ -158,7 +158,7 @@ def build_row(backend, rank, nranks, nsteps, buckets_s, loop_s, total_s,
                          % (missing, BUCKET_KEYS))
     cpus = cpus_allowed()
     unaccounted = total_s - sum(buckets_s[k] for k in BUCKET_KEYS)
-    return {
+    row = {
         'schema': SCHEMA_ID,
         'backend': backend,
         'rank': int(rank),
@@ -174,16 +174,29 @@ def build_row(backend, rank, nranks, nsteps, buckets_s, loop_s, total_s,
         'total_s': float(total_s),
         'unaccounted_s': float(unaccounted),
     }
+    if setup_detail_s is not None:
+        # Row 142 (c): an OPTIONAL split of `setup` (fields may be added, never
+        # renamed). Fortran writes mpi_init/input_read/meshing/netcdf_open/
+        # mass_assembly; python-jax-mpi writes input_mesh/setup_exchange (input
+        # read + meshing are fused in build_solver_state, there is no netCDF
+        # open, and MPI is initialised at mpi4py import, outside any timer).
+        bad = {k: v for k, v in setup_detail_s.items()
+               if not (isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0)}
+        if bad:
+            raise ValueError('profile_emit.build_row: setup_detail_s entries must be '
+                             'non-negative numbers, got %r' % (bad,))
+        row['setup_detail_s'] = {k: float(v) for k, v in setup_detail_s.items()}
+    return row
 
 
 def write_profile(run_dir, backend, rank, nranks, nsteps, buckets_s, loop_s,
-                  total_s, sampling_every=1):
+                  total_s, sampling_every=1, setup_detail_s=None):
     """Write `<run_dir>/profile.rank<rank>.json`. No-op (returns None) when
     EQDYNA_PROFILE=0, identical off-switch contract to the Fortran side."""
     if not enabled():
         return None
     row = build_row(backend, rank, nranks, nsteps, buckets_s, loop_s, total_s,
-                    sampling_every=sampling_every)
+                    sampling_every=sampling_every, setup_detail_s=setup_detail_s)
     path = os.path.join(run_dir, 'profile.rank%d.json' % rank)
     with open(path, 'w') as f:
         json.dump(row, f, indent=None, separators=(',', ':'))
