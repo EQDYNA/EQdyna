@@ -36,8 +36,9 @@ install the system and Python dependencies listed above.
 * **TACC Vista** (aarch64 Grace-Grace, Fortran solver only):
   `./install-eqdyna.sh -m vista` loads the `netcdf` module and builds with the
   default nvidia/openmpi stack. Build and run under `$SCRATCH`. `scripts/machines.py`
-  declares queue `gg` (144 cores/node); its `mpirun` is not yet measured, so
-  `--submit` on `vista` refuses until it is set.
+  declares queue `gg` (144 cores/node); its `mpirun` is `mpirun -np N` (Open MPI prterun,
+  measured under sbatch: 144 ranks launched), so `--submit --machine vista` is accepted; give the allocation on the command line
+  only, it is never stored.
 * **Texas A&M Grace**: `./install-eqdyna.sh -m grace` loads the cluster's
   netCDF module and builds.
 * **macOS**: `./install-eqdyna.sh -e macos` installs `mpich` and `python`
