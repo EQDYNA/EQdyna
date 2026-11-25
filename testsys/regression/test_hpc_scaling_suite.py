@@ -493,7 +493,7 @@ def check_vista_dry_run_script():
     with open(os.path.join(tmpd, 'strong_n0001', 'submit.sh')) as f:
         script = f.read()
     for want in ('#SBATCH -N 1\n', '#SBATCH -n 144\n', '#SBATCH -p gg\n', '#SBATCH -t 00:15:00\n',
-                 'module load netcdf\n',
+                 'module load netcdf || exit 1\n',
                  'cd $SCRATCH/eqdyna-scaling/v1/strong_n0001/lo_r0 && mpirun -np 144 $SCRATCH/eqdyna-vista/bin/eqdyna\n',
                  'cd $SCRATCH/eqdyna-scaling/v1/strong_n0001/hi_r0 && mpirun -np 144 $SCRATCH/eqdyna-vista/bin/eqdyna\n',
                  'cd $SCRATCH/eqdyna-scaling/v1/parity/gate && mpirun -np 4 $SCRATCH/eqdyna-vista/bin/eqdyna\n'):
@@ -700,6 +700,150 @@ def check_parity_block_verdicts_and_exit_codes():
           'counts and per-point declarations printed; collect refuses a suite with no parity point')
 
 
+# --------------------------------------------------------------------------
+# Row 142 Vista smoke findings: dx must mesh, job script, netCDF4, installer
+# --------------------------------------------------------------------------
+RAW_VISTA_DX = 170.30165587605515   # the dx the first Vista smoke wrote; solver exit 33 on every rank
+LEVEL_MAX_NODES = {'medium': 16, 'large': 64, 'big': 256}
+ELEMENT_ERROR_BOUND = 0.015         # measured max 0.98% (large); bound = 1.5x margin
+
+
+def _point_targets(test, level, points, cores):
+    tgt = h.LEVEL_TARGET_ELEMENTS[level]
+    if test == 'strong':
+        return [tgt for _ in points]
+    if test == 'weak':
+        return [tgt * p['ranks'] / float(cores) for p in points]
+    return [tgt * f for f in (0.1, 0.3, 1.0, 3.0, 10.0)]
+
+
+def check_every_point_dx_meshes_and_stays_near_target():
+    cfg = dict(cores_per_node=144)
+    for level, max_nodes in LEVEL_MAX_NODES.items():
+        for test in ('strong', 'weak', 'size'):
+            points = h.build_points(test, level, cfg, max_nodes)
+            for p, target in zip(points, _point_targets(test, level, points, 144)):
+                try:
+                    h.grid_line_check(h.DEFAULT_CASE, p['dx'])
+                except h.SuiteError as e:
+                    raise AssertionError('%s/%s point %s dx=%r does not mesh: %s'
+                                         % (level, test, p['point_id'], p['dx'], e))
+                err = abs(h.elements_for_dx(p['dx']) / target - 1.0)
+                assert err < ELEMENT_ERROR_BOUND, (
+                    '%s/%s point %s: snapped dx %r is %.2f%% off the target element count '
+                    '(bound %.1f%%)' % (level, test, p['point_id'], p['dx'], 100 * err,
+                                        100 * ELEMENT_ERROR_BOUND))
+    try:
+        h.grid_line_check(h.DEFAULT_CASE, RAW_VISTA_DX)
+    except h.SuiteError as e:
+        assert 'not an integer multiple' in str(e), e
+    else:
+        raise AssertionError('the solver rule accepted the raw dx %r that Vista refused: the '
+                             'check cannot fail' % RAW_VISTA_DX)
+    assert h.dx_for_target_elements(h.LEVEL_TARGET_ELEMENTS['medium']) == RAW_VISTA_DX, (
+        'RAW_VISTA_DX no longer is the unsnapped medium dx; update this test')
+    print('  PASS  every point of every test x level (%s) meshes under the solver rule; snapped dx '
+          'stays within %.1f%% of target; the raw Vista dx is refused' % (
+              ', '.join(LEVEL_MAX_NODES), 100 * ELEMENT_ERROR_BOUND))
+
+
+def check_medium_smallest_points_build_and_mesh_lines():
+    """create.newcase + case.setup (build_point_case) for the smallest point of each
+    medium test type, then the Python setup/consistency check on the BUILT case (the
+    solver's per-axis belt rule on the files the solver will read). large/big smallest
+    points are 1e9+ elements: their dx is covered by the pure check above, not built."""
+    from testsys.common import mpi_child_env
+    env = mpi_child_env(os.environ)
+    env['EQDYNAROOT'] = REPO_ROOT
+    env['PATH'] = os.pathsep.join([os.path.join(REPO_ROOT, 'bin'), os.path.join(REPO_ROOT, 'scripts'),
+                                   env.get('PATH', '')])
+    cfg = dict(cores_per_node=144)
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_build_')
+    for test in ('strong', 'weak', 'size'):
+        pts = h.build_points(test, 'medium', cfg, 1)
+        p = pts[0]
+        try:
+            case = h.build_point_case(os.path.join(tmpd, p['point_id']), h.DEFAULT_CASE,
+                                      p['dx'], p['decomp'], 100, env)
+        except (h.SuiteError, RuntimeError) as e:
+            raise AssertionError('medium/%s smallest point %s (dx=%r) did not build/mesh: %s'
+                                 % (test, p['point_id'], p['dx'], e))
+        with open(os.path.join(case, 'bModelGeometry.txt')) as f:
+            assert repr(p['dx']) in f.read(), 'built case does not carry the point dx %r' % p['dx']
+    print('  PASS  medium smallest points (strong/weak/size) build and pass the solver axis rule')
+
+
+def check_job_script_parity_first_no_errexit_and_rc_recorded():
+    import subprocess
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_job_')
+    d1, d2, d3 = (os.path.join(tmpd, n) for n in ('parity', 'lo', 'hi'))
+    for d in (d1, d2, d3):
+        os.makedirs(d)
+    path = os.path.join(tmpd, 'submit.sh')
+    h.write_job_script(path, jobname='j', nnodes=1, ranks=4, partition='gg', walltime='00:05:00',
+                       modules=[], commands=['cd %s && true' % d1, 'cd %s && false' % d2,
+                                             'cd %s && true' % d3])
+    with open(path) as f:
+        script = f.read()
+    assert 'set -e' not in script and 'set -euo' not in script, 'errexit hides every point after a failure'
+    r = subprocess.run(['bash', path], capture_output=True, text=True)
+    out = r.stdout.splitlines()
+    want = ['%s %s 0' % (h.POINT_RC_TAG, d1), '%s %s 1' % (h.POINT_RC_TAG, d2),
+            '%s %s 0' % (h.POINT_RC_TAG, d3)]
+    assert out == want, 'per-point rc lines %r != %r (stderr %r)' % (out, want, r.stderr)
+    assert r.returncode == 1, 'a failed point must fail the job, got rc %d' % r.returncode
+    # order: the suite's first job runs the parity line before the timed lines
+    tmpd2 = tempfile.mkdtemp(prefix='test_hpc_scaling_order_')
+    argv = ['--submit', '--dry-run', '--machine', 'vista', '--backend', 'fortran', '--test', 'strong',
+            '--level', 'medium', '--max-nodes', '1', '--out-dir', tmpd2, '--bin', '/b/eqdyna']
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert h.main(argv) == 0
+    with open(os.path.join(tmpd2, 'strong_n0001', 'submit.sh')) as f:
+        lines = f.read().splitlines()
+    runs = [ln for ln in lines if ln.startswith('cd ')]
+    assert '/parity/gate && ' in runs[0], 'parity point is not the first run line: %r' % runs
+    assert len(runs) == 3, runs
+    assert 'mpirun -np 144' in runs[1], runs
+    print('  PASS  job script: parity line first, no errexit, every point rc recorded, a failed point '
+          'fails the job (rc 1) after the rest ran')
+
+
+def check_missing_netcdf4_is_a_clear_hard_failure():
+    saved = sys.modules.get('netCDF4', None)
+    had = 'netCDF4' in sys.modules
+    sys.modules['netCDF4'] = None          # import netCDF4 -> ImportError
+    try:
+        try:
+            h.require_netcdf4()
+        except h.SuiteError as e:
+            assert 'netCDF4' in str(e) and 'install-eqdyna.sh -e vista' in str(e), e
+        else:
+            raise AssertionError('a missing netCDF4 did not raise')
+    finally:
+        if had:
+            sys.modules['netCDF4'] = saved
+        else:
+            del sys.modules['netCDF4']
+    h.require_netcdf4()                    # present here: must not raise
+    print('  PASS  missing netCDF4 raises SuiteError naming `install-eqdyna.sh -e vista`')
+
+
+def check_installer_vista_branch_creates_pinned_venv():
+    import subprocess
+    path = os.path.join(REPO_ROOT, 'install-eqdyna.sh')
+    r = subprocess.run(['bash', '-n', path], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    with open(path) as f:
+        text = f.read()
+    block = text[text.index('        vista)'):text.index('        grace)')]
+    for want in ('python3 -m venv "$VENV"', 'numpy==2.0.2', 'netCDF4==1.7.2', 'xarray==2024.7.0',
+                 '${EQDYNA_VENV:-$SCRATCH/eqdyna-venv}', 'if [ -n "$ENV" ]'):
+        assert want in block, 'install-eqdyna.sh vista branch lacks %r' % want
+    print('  PASS  install-eqdyna.sh -e vista: venv under $SCRATCH with numpy/netCDF4/xarray pinned')
+
+
 def main():
     print('Regression guard: testsys/perf/hpc_scaling_suite.py (item 142)')
     checks = [check_bucket_partition,
@@ -721,7 +865,12 @@ def main():
               check_collect_analyze_overhead_repeats_and_parity_point,
               check_analyze_python_jax_mpi_suite,
               check_unmeasured_bucket_only_while_zero_and_setup_sum_two_sided,
-              check_parity_block_verdicts_and_exit_codes]
+              check_parity_block_verdicts_and_exit_codes,
+              check_every_point_dx_meshes_and_stays_near_target,
+              check_medium_smallest_points_build_and_mesh_lines,
+              check_job_script_parity_first_no_errexit_and_rc_recorded,
+              check_missing_netcdf4_is_a_clear_hard_failure,
+              check_installer_vista_branch_creates_pinned_venv]
     failures = []
     for c in checks:
         try:
