@@ -1,0 +1,8 @@
+wedge  dx   500 samples  205 n_max  +5.0989 MPa t 2.580  sr@peak 7.064 sr_max 8.922 m/s  |tau|@peak 0.200 MPa  n(4s) -11.113
+wedge  dx   300 samples  342 n_max  +7.7259 MPa t 2.493  sr@peak 10.195 sr_max 10.473 m/s  |tau|@peak 0.200 MPa  n(4s) -7.861
+wedge  dx   250 samples  411 n_max  +8.7191 MPa t 2.460  sr@peak 10.795 sr_max 10.987 m/s  |tau|@peak 0.200 MPa  n(4s) -6.905
+wedge  dx   200 samples  514 n_max  +9.8515 MPa t 2.414  sr@peak 11.472 sr_max 11.634 m/s  |tau|@peak 0.200 MPa  n(4s) -5.724
+log fit n_max = 5.094 + 5.197*ln(500/dx): residuals [ 0.005 -0.023  0.023 -0.004] max|res| 0.023 MPa
+power p=0.5: n_max = 5.194 + 8.256*((500/dx)^0.5-1): max|res| 0.140 MPa
+power p=1.0: n_max = 5.321 + 3.193*((500/dx)^1.0-1): max|res| 0.276 MPa
+predict from 500+200 only: {500: 5.099, 300: 7.748, 250: 8.694, 200: 9.851} measured {500: 5.099, 300: 7.726, 250: 8.719, 200: 9.851}
