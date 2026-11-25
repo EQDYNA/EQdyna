@@ -26,8 +26,8 @@ ONE SCRIPT, THREE MODES, NEVER MIXED IN ONE INVOCATION:
   <ALLOC>), --module/--mpirun/--walltime/--work-root/--bin for a machine whose
   registry entry is incomplete. The allocation is used only to build the
   sbatch command line: it is never written to the manifest or a job script.
-  The manifest carries a provenance stamp; --collect records a parity verdict
-  per timed run; --analyze reports overhead (MPI init + setup split + io)
+  The manifest carries a provenance stamp (incl. the SHA of the bin used) and is
+  written before any job is submitted; --collect compares the parity point; --analyze reports overhead (MPI init + setup split + io)
   per rank count and refuses a profile without the setup split.
 
   --analyze TGZ
@@ -69,7 +69,7 @@ directory in the manifest, so --analyze can call
 `testsys.perf.run_numa_scaling.per_step_and_fixed(t_lo, t_hi, n_lo, n_hi)`
 -- the ONE copy of this arithmetic already shared by run_scaling.py,
 run_shard_scaling.py and run_numa_scaling.py's own `per_step` -- on each
-RANK'S OWN `total_s` (never a wrapper wall clock: that is exactly the
+RANK'S OWN `loop_s` (never a wrapper wall clock: that is exactly the
 >=4-rank pitfall this same CLAUDE.md section names, measured there as a
 negative per-step figure). The same arithmetic is applied per-bucket
 (`buckets_s`) to get a per-step BUCKET breakdown, not just a per-step total.
@@ -86,13 +86,17 @@ reached through the manifest (nothing here invents a metric
     it (reported, never fabricated when absent)
   - setup-and-io cost vs rank count (the "fixed" intercept
     `per_step_and_fixed` already separates out, tracked across points)
-  - a parity check of every timed (hi) run against its case's registered
-    e2e reference, reusing testsys/compare.py's `compare_cell` -- the ONE
-    comparison in this repo, not a second one written here. A point whose
-    mesh was refined away from the case's gate resolution (weak/size tests,
-    and every strong-scaling point past the first) is NOT comparable to
-    that reference; those points are DECLARED (not silently skipped), with
-    the measured dx that makes them incomparable printed in the report.
+  - PARITY (methodology decision awaiting owner confirmation): no timed
+    point can match the case's committed reference (100/200 steps, scaling
+    mesh), so each suite carries exactly ONE parity point per backend: the
+    gate case at its own mesh and gate term, 4 ranks, one node, run in the
+    same job as the first point on the same binary, compared with
+    testsys/compare.py's compare_cell. Every timed point is labelled
+    `declared: dx/term differ from the reference` in the manifest and in
+    --analyze; --analyze prints a PARITY block (compared vs declared counts)
+    and exits non-zero unless the parity point passed.
+  - buckets a backend declares unmeasured (python-jax-mpi: fault, wait) are
+    reported "not measured", never differenced.
 
 WHAT THIS SESSION DELIBERATELY DID NOT RUN (2026-10-06, general-purpose-hpc-
 scaling): the box this was built on measured swap already full (31Gi/31Gi)
@@ -146,7 +150,7 @@ def _load_machines():
 machines = _load_machines()
 
 MANIFEST_NAME = 'manifest.json'
-SUITE_SCHEMA_ID = 'eqdyna-hpc-scaling-suite/2'
+SUITE_SCHEMA_ID = 'eqdyna-hpc-scaling-suite/3'
 
 BACKENDS = ('fortran', 'python-jax-mpi')
 TEST_TYPES = ('strong', 'weak', 'size')
@@ -350,6 +354,7 @@ def build_point_case(dst, case_name, dx, decomp, nsteps, env=None):
     that case's own dt. Returns the case directory."""
     if os.path.exists(dst):
         shutil.rmtree(dst)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
     npx, npy, npz = decomp
     _sh(['create.newcase', dst, case_name], cwd=os.path.dirname(dst), env=env)
     params = os.path.join(dst, 'user_defined_params.py')
@@ -388,39 +393,76 @@ def run_point_python_jax_mpi(case_dir, ranks, env=None):
 # --------------------------------------------------------------------------
 # helpers: job id, provenance, job script
 # --------------------------------------------------------------------------
-def parse_job_id(stdout):
-    """The job id out of sbatch's stdout. Vista's sbatch prints a multi-line
-    banner before (or around) the id, so the whole output is NOT the id (the
-    old code stored the banner). The id is the LAST line that is all digits;
-    failing that (`--parsable` may print `<id>;<cluster>`, the classic reply
-    is `Submitted batch job <id>`), the last all-digit token. Nothing found
-    -> raise; the error text never quotes the output (a banner can carry the
-    allocation name)."""
+def parse_job_id(stdout, redact=None):
+    """The job id out of sbatch's stdout: the LAST non-empty line that is all
+    ASCII digits (`sbatch --parsable` prints the bare id; Vista prints a
+    multi-line banner around it). No fallback to a word inside a sentence --
+    a banner line like 'valid through 2026' is not a job id. Nothing found ->
+    SuiteError quoting the output, with `redact` (the allocation) replaced by
+    the placeholder, because a banner can echo it."""
     text = stdout.decode() if isinstance(stdout, bytes) else stdout
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     for ln in reversed(lines):
-        if ln.isdigit():
+        if ln.isascii() and ln.isdigit():
             return ln
-    tokens = [t for ln in lines for t in ln.replace(';', ' ').split()]
-    for t in reversed(tokens):
-        if t.isdigit():
-            return t
-    raise SuiteError('no all-digit job id in sbatch output (%d non-empty line(s)); '
-                     'output deliberately not echoed' % len(lines))
+    shown = text.replace(redact, ALLOC_PLACEHOLDER) if redact else text
+    raise SuiteError('no all-digit job id line in sbatch output: %r' % (shown,))
+
+
+def run_sbatch(account, script_path, cwd, env):
+    """sbatch with the allocation on its command line; returns the job id. A
+    failure raises SuiteError carrying the exit code and sbatch's stderr (the
+    allocation redacted), NEVER the argv: a CalledProcessError would put the
+    allocation on stderr through its args."""
+    try:
+        r = subprocess.run(['sbatch', '--parsable', '-A', account, script_path],
+                           cwd=cwd, env=env, capture_output=True, text=True)
+    except OSError as e:
+        raise SuiteError('cannot execute sbatch: %s' % (e.strerror,))
+    if r.returncode != 0:
+        err = r.stderr.strip().replace(account, ALLOC_PLACEHOLDER) if account else r.stderr.strip()
+        raise SuiteError('sbatch exited %d for %s; stderr: %s'
+                         % (r.returncode, os.path.basename(os.path.dirname(script_path)), err))
+    return parse_job_id(r.stdout, redact=account)
 
 
 def _git(*args):
     return subprocess.check_output(['git', '-C', REPO_ROOT] + list(args)).decode().strip()
 
 
-def provenance(machine, nsteps_lo, nsteps_hi, repeats, points):
+UNKNOWN_BIN_SHA = 'unknown (bin not in a git tree)'
+
+
+def solver_git_sha(backend, bin_path):
+    """The git SHA of the tree the solver the jobs run comes from. Fortran:
+    the tree containing the binary (`--bin`, default <repo>/bin/eqdyna),
+    resolved here; if it does not resolve or is not in a git tree the answer
+    is the explicit string UNKNOWN_BIN_SHA, never the repo HEAD (that would
+    claim a build the binary may not come from). python-jax-mpi runs this
+    repo's source: HEAD."""
+    if backend == 'python-jax-mpi':
+        return _git('rev-parse', 'HEAD')
+    path = os.path.expandvars(os.path.expanduser(
+        bin_path or os.path.join(REPO_ROOT, 'bin', 'eqdyna')))
+    d = os.path.dirname(os.path.abspath(path))
+    if '$' in path or not os.path.isdir(d):
+        return UNKNOWN_BIN_SHA
+    try:
+        return subprocess.check_output(['git', '-C', d, 'rev-parse', 'HEAD'],
+                                       stderr=subprocess.DEVNULL).decode().strip()
+    except subprocess.CalledProcessError:
+        return UNKNOWN_BIN_SHA
+
+
+def provenance(machine, nsteps_lo, nsteps_hi, repeats, points, backend, bin_path):
     """The stamp every manifest carries (item 142 (f)). Deliberately has NO
     account/allocation field and no hostname: the manifest ends up in
-    docs/evidence. A failing `git` raises -- an unstamped suite is not
-    written."""
+    docs/evidence. A failing `git` of the repo raises -- an unstamped suite is
+    not written. `solver_git_sha` is the tree of the bin the jobs use."""
     return dict(
         git_sha=_git('rev-parse', 'HEAD'),
         git_dirty=bool(_git('status', '--porcelain')),
+        solver_git_sha=solver_git_sha(backend, bin_path),
         machine=machine,
         loaded_modules=[m for m in os.environ.get('LOADEDMODULES', '').split(':') if m],
         nsteps_lo=nsteps_lo, nsteps_hi=nsteps_hi, repeats=repeats,
@@ -437,18 +479,17 @@ def run_name(tag, repeat):
     return '%s_r%d' % (tag, repeat)
 
 
+def run_line(rd, ranks, backend, mpirun, bin_path):
+    if backend == 'fortran':
+        return 'cd %s && %s -np %d %s' % (rd, mpirun, ranks, bin_path)
+    return 'cd %s && %s -np %d python3 -m eqdyna --backend jax --mpi' % (rd, mpirun, ranks)
+
+
 def job_commands(point, backend, mpirun, bin_path, work_root, repeats):
     """The run lines of a point's job script: lo then hi, for every repeat."""
-    cmds = []
-    for k in range(repeats):
-        for tag in ('lo', 'hi'):
-            rd = '%s/%s/%s' % (work_root.rstrip('/'), point['point_id'], run_name(tag, k))
-            if backend == 'fortran':
-                cmds.append('cd %s && %s -np %d %s' % (rd, mpirun, point['ranks'], bin_path))
-            else:
-                cmds.append('cd %s && %s -np %d python3 -m eqdyna --backend jax --mpi'
-                            % (rd, mpirun, point['ranks']))
-    return cmds
+    return [run_line('%s/%s/%s' % (work_root.rstrip('/'), point['point_id'], run_name(tag, k)),
+                     point['ranks'], backend, mpirun, bin_path)
+            for k in range(repeats) for tag in ('lo', 'hi')]
 
 
 def write_job_script(path, *, jobname, nnodes, ranks, partition, walltime, modules, commands):
@@ -472,33 +513,115 @@ def write_job_script(path, *, jobname, nnodes, ranks, partition, walltime, modul
 
 
 # --------------------------------------------------------------------------
+# the parity point (methodology decision awaiting owner confirmation, row 142)
+# --------------------------------------------------------------------------
+# Every timed point runs at a mesh/term chosen for scaling (100/200 steps, a
+# refined dx), so NONE can match the case's committed reference. Rather than
+# declare everything and check nothing, each suite carries exactly ONE parity
+# point per backend: the gate case at its own mesh and gate term, 4 ranks on
+# one node, run in the SAME job as the suite's first point, on the SAME
+# binary, and compared with testsys/compare.py's real comparison. Every timed
+# point carries TIMED_PARITY_DECLARATION in the manifest and in --analyze.
+PARITY_POINT_ID = 'parity'
+PARITY_RUN_NAME = 'gate'
+PARITY_RANKS = 4
+TIMED_PARITY_DECLARATION = 'declared: dx/term differ from the reference'
+
+
+def _case_gate_dx(case):
+    """The dx the case's committed reference was frozen at: `par.dx` in
+    case_input/<case>/user_defined_params.py. Raises if it states none."""
+    path = os.path.join(REPO_ROOT, 'case_input', case, 'user_defined_params.py')
+    with open(path) as f:
+        m = re.search(r'^par\.dx\s*=\s*([0-9.eE+-]+)', f.read(), flags=re.M)
+    if not m:
+        raise SuiteError('%s states no par.dx; the gate resolution is unknown' % path)
+    return float(m.group(1))
+
+
+def _mbackend(backend):
+    return 'python-jax' if backend == 'python-jax-mpi' else backend
+
+
+def parity_entry(case, backend, machine_cfg, points, run_root):
+    """The manifest's parity_point: the gate case, its own dx, gate term, 4
+    ranks, hosted by the suite's first (one-node) point's job."""
+    if not matrix.is_supported(case, _mbackend(backend)):
+        raise SuiteError('%s x %s is not a gated cell in matrix.py: this suite would have no '
+                         'parity point' % (case, _mbackend(backend)))
+    first = points[0]
+    if first['nnodes'] != 1 or machine_cfg['cores_per_node'] < PARITY_RANKS:
+        raise SuiteError('the parity point needs a one-node first point with >= %d cores'
+                         % PARITY_RANKS)
+    return dict(point_id=PARITY_POINT_ID, ranks=PARITY_RANKS, nnodes=1,
+                dx=_case_gate_dx(case), decomp=list(GATED_DECOMP[PARITY_RANKS]),
+                term_s=matrix.gate_term_for(case), backend=backend,
+                host_point=first['point_id'],
+                run=dict(name=PARITY_RUN_NAME,
+                         run_dir=os.path.join(run_root, PARITY_POINT_ID, PARITY_RUN_NAME)))
+
+
+def build_parity_case(dst, case_name, decomp, term, env=None):
+    """create.newcase + the case's OWN mesh + par.term = the gate term +
+    case.setup (the same override mechanism testsys/e2e/run_e2e.py's
+    apply_term_override uses)."""
+    if os.path.exists(dst):
+        shutil.rmtree(dst)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    _sh(['create.newcase', dst, case_name], cwd=os.path.dirname(dst), env=env)
+    with open(os.path.join(dst, 'user_defined_params.py'), 'a') as f:
+        f.write('\n# hpc_scaling_suite.py parity point: the case mesh, the gate term\n'
+                'par.nx, par.ny, par.nz = %d, %d, %d\npar.term = %r\n' % (tuple(decomp) + (term,)))
+    _sh(['./case.setup'], cwd=dst, env=env)
+
+
+# --------------------------------------------------------------------------
 # --submit
 # --------------------------------------------------------------------------
-def submit_point(point, backend, case_name, machine, machine_cfg, account, out_dir, env, opts):
-    """Builds the point's lo/hi cases for every repeat and either sbatch's a
-    job script (scheduler machine) or runs them in place (no-scheduler
-    machine). `account` is used only to build the sbatch command line.
-    Returns the point's manifest entry. `opts` carries nsteps_lo/nsteps_hi/
-    repeats/modules/mpirun/bin_path/walltime/work_root/dry_run."""
+def _roots(opts, out_dir):
+    """(run_root, job_root): where the cases are built HERE and the root the
+    JOB cds into. Equal unless --work-root is given, in which case the cases
+    are built at the expanded --work-root (the job cds there; the job script
+    keeps the literal string so the job expands it itself)."""
+    wr = opts['work_root']
+    if not wr:
+        return out_dir, out_dir
+    local = os.path.expandvars(os.path.expanduser(wr))
+    if '$' in local and not opts['dry_run']:
+        raise SuiteError('--work-root %r does not resolve here (unset variable): cases are built '
+                         'where the job cds, so it must resolve' % (wr,))
+    return local, wr
+
+
+def _mpirun_for(machine, machine_cfg, opts):
+    mpirun = opts['mpirun'] or machine_cfg['mpirun']
+    if mpirun is None:
+        raise SuiteError(
+            "machine %r has no verified launcher (scripts/machines.py "
+            "mpirun=None) -- pass --mpirun explicitly; --submit refuses to "
+            "guess one" % (machine,))
+    return mpirun
+
+
+def prepare_point(point, backend, case_name, machine, machine_cfg, out_dir, run_root, job_root,
+                  env, opts, extra_commands=()):
+    """Builds the point's lo/hi cases for every repeat (at run_root) and, on a
+    scheduler machine, writes its job script (which also runs
+    `extra_commands`). Nothing is submitted. Returns the manifest entry."""
     entry = dict(point)
     entry['backend'] = backend
+    entry['parity_declaration'] = TIMED_PARITY_DECLARATION
     entry['runs'] = {'lo': [], 'hi': []}
-    work_root = opts['work_root'] or out_dir
     for k in range(opts['repeats']):
         for tag, nsteps in (('lo', opts['nsteps_lo']), ('hi', opts['nsteps_hi'])):
             name = run_name(tag, k)
-            run_dir = os.path.join(out_dir, point['point_id'], name)
+            run_dir = os.path.join(run_root, point['point_id'], name)
             if not opts['dry_run']:
                 build_point_case(run_dir, case_name, point['dx'], point['decomp'], nsteps, env)
             entry['runs'][tag].append(dict(name=name, run_dir=run_dir, nsteps=nsteps))
 
     if machine_cfg['scheduler'] == 'slurm':
-        mpirun = opts['mpirun'] or machine_cfg['mpirun']
-        if mpirun is None:
-            raise SuiteError(
-                "machine %r has no verified launcher (scripts/machines.py "
-                "mpirun=None) -- pass --mpirun explicitly; --submit refuses to "
-                "guess one" % (machine,))
+        mpirun = _mpirun_for(machine, machine_cfg, opts)
         os.makedirs(os.path.join(out_dir, point['point_id']), exist_ok=True)
         script_path = os.path.join(out_dir, point['point_id'], 'submit.sh')
         write_job_script(
@@ -508,23 +631,24 @@ def submit_point(point, backend, case_name, machine, machine_cfg, account, out_d
             modules=opts['modules'],
             commands=job_commands(point, backend, mpirun,
                                   opts['bin_path'] or os.path.join(REPO_ROOT, 'bin', 'eqdyna'),
-                                  work_root, opts['repeats']))
+                                  job_root, opts['repeats']) + list(extra_commands))
         entry['submit_script'] = script_path
-        if opts['dry_run']:
-            entry['job_id'] = None
-        else:
-            out = subprocess.check_output(['sbatch', '--parsable', '-A', account, script_path],
-                                          cwd=out_dir, env=env)
-            entry['job_id'] = parse_job_id(out)
-    else:
-        if opts['dry_run']:
-            raise SuiteError('--dry-run writes a job script; machine %r has no scheduler' % machine)
-        runner = run_point_fortran if backend == 'fortran' else run_point_python_jax_mpi
-        for tag in ('lo', 'hi'):
-            for run in entry['runs'][tag]:
-                runner(run['run_dir'], point['ranks'], env)
-        entry['job_id'] = None
+    elif opts['dry_run']:
+        raise SuiteError('--dry-run writes a job script; machine %r has no scheduler' % machine)
+    entry['job_id'] = None
     return entry
+
+
+def launch_point(entry, backend, machine_cfg, account, out_dir, env):
+    """sbatch the point's script, or (no-scheduler machine) run its lo/hi runs
+    in place. Sets entry['job_id']."""
+    if machine_cfg['scheduler'] == 'slurm':
+        entry['job_id'] = run_sbatch(account, entry['submit_script'], out_dir, env)
+        return
+    runner = run_point_fortran if backend == 'fortran' else run_point_python_jax_mpi
+    for tag in ('lo', 'hi'):
+        for run in entry['runs'][tag]:
+            runner(run['run_dir'], entry['ranks'], env)
 
 
 def _check_steps(lo, hi, repeats):
@@ -532,6 +656,11 @@ def _check_steps(lo, hi, repeats):
         raise SuiteError('--nsteps-lo %r / --nsteps-hi %r must be ints with 1 <= lo < hi' % (lo, hi))
     if not (isinstance(repeats, int) and repeats >= 1):
         raise SuiteError('--repeats %r must be an int >= 1' % (repeats,))
+
+
+def _write_manifest(path, manifest):
+    with open(path, 'w') as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
 
 
 def cmd_submit(args):
@@ -560,9 +689,23 @@ def cmd_submit(args):
     opts = dict(nsteps_lo=args.nsteps_lo, nsteps_hi=args.nsteps_hi, repeats=args.repeats,
                 modules=args.module or [], mpirun=args.mpirun, bin_path=args.bin,
                 walltime=args.walltime, work_root=args.work_root, dry_run=args.dry_run)
+    run_root, job_root = _roots(opts, out_dir)
+    bin_for_job = opts['bin_path'] or os.path.join(REPO_ROOT, 'bin', 'eqdyna')
 
-    entries = [submit_point(p, args.backend, args.case, args.machine, machine_cfg,
-                            args.account, out_dir, env, opts) for p in points]
+    parity = parity_entry(args.case, args.backend, machine_cfg, points, run_root)
+    extra = []
+    if machine_cfg['scheduler'] == 'slurm':
+        mpirun = _mpirun_for(args.machine, machine_cfg, opts)
+        extra = [run_line('%s/%s/%s' % (job_root.rstrip('/'), PARITY_POINT_ID, PARITY_RUN_NAME),
+                          PARITY_RANKS, args.backend, mpirun, bin_for_job)]
+    if not args.dry_run:
+        build_parity_case(parity['run']['run_dir'], args.case, parity['decomp'],
+                          parity['term_s'], env)
+
+    entries = [prepare_point(p, args.backend, args.case, args.machine, machine_cfg, out_dir,
+                             run_root, job_root, env, opts,
+                             extra_commands=extra if i == 0 else ())
+               for i, p in enumerate(points)]
     if args.dry_run:
         for e in entries:
             print('hpc_scaling_suite: DRY RUN (nothing submitted) -- script %s\n'
@@ -574,55 +717,33 @@ def cmd_submit(args):
                     nsteps_lo=args.nsteps_lo, nsteps_hi=args.nsteps_hi, repeats=args.repeats,
                     created_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                     provenance=provenance(args.machine, args.nsteps_lo, args.nsteps_hi,
-                                          args.repeats, points),
-                    points=entries)
-    with open(os.path.join(out_dir, MANIFEST_NAME), 'w') as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
-    print('hpc_scaling_suite: submitted %d point(s) to %s -- manifest at %s'
-          % (len(entries), out_dir, os.path.join(out_dir, MANIFEST_NAME)))
+                                          args.repeats, points, args.backend, args.bin),
+                    parity_point=parity, points=entries)
+    manifest_path = os.path.join(out_dir, MANIFEST_NAME)
+    _write_manifest(manifest_path, manifest)        # BEFORE any job exists
+    for e in entries:
+        launch_point(e, args.backend, machine_cfg, args.account, out_dir, env)
+        _write_manifest(manifest_path, manifest)    # job id recorded as soon as known
+    if machine_cfg['scheduler'] != 'slurm':
+        runner = run_point_fortran if args.backend == 'fortran' else run_point_python_jax_mpi
+        runner(parity['run']['run_dir'], PARITY_RANKS, env)
+    print('hpc_scaling_suite: submitted %d point(s) + the parity point to %s -- manifest at %s'
+          % (len(entries), out_dir, manifest_path))
     return 0
 
 
 # --------------------------------------------------------------------------
 # parity (recorded at --collect, where the run directories exist)
 # --------------------------------------------------------------------------
-def _case_gate_dx(case):
-    """The dx the case's committed reference was frozen at: `par.dx` in
-    case_input/<case>/user_defined_params.py. Raises if it states none."""
-    path = os.path.join(REPO_ROOT, 'case_input', case, 'user_defined_params.py')
-    with open(path) as f:
-        m = re.search(r'^par\.dx\s*=\s*([0-9.eE+-]+)', f.read(), flags=re.M)
-    if not m:
-        raise SuiteError('%s states no par.dx; the gate resolution is unknown' % path)
-    return float(m.group(1))
-
-
-def parity_record(case, backend, run_dir, dx):
-    """{'status': pass|fail|declared, 'lines': [...]} for one timed run.
-    A timed run is comparable to the case's reference only if it ran at the
-    reference's term (matrix.gate_term_for) AND mesh (the case's own par.dx);
-    otherwise it is DECLARED with the measured mismatch, never skipped. A
-    comparable run that compare_cell fails (or raises on) is `fail`."""
-    mbackend = 'python-jax' if backend == 'python-jax-mpi' else backend
-    if not matrix.is_supported(case, mbackend):
-        return dict(status='declared', lines=['parity: %s x %s is not a gated cell in '
-                                              'matrix.py' % (case, mbackend)])
-    term, dt = (float(x) for x in
-                open(os.path.join(run_dir, 'bGlobal.txt')).read().splitlines()[15:17])
-    gate_term, gate_dx = matrix.gate_term_for(case), _case_gate_dx(case)
-    reasons = []
-    if not math.isclose(term, gate_term, rel_tol=1e-6):
-        reasons.append('timed term %.6g s (dt %.6g) != reference term %.6g s' % (term, dt, gate_term))
-    if not math.isclose(dx, gate_dx, rel_tol=1e-9):
-        reasons.append('timed dx %.6g m != reference dx %.6g m' % (dx, gate_dx))
-    if reasons:
-        return dict(status='declared',
-                    lines=['parity: not comparable to the case reference: ' + '; '.join(reasons)])
+def parity_record(case, backend, run_dir):
+    """{'status': pass|fail, 'lines': [...]} for the parity run:
+    compare.compare_cell (the ONE e2e comparison) against the committed
+    reference. A compare_cell that raises (a missing artifact) is `fail`."""
     try:
-        ok, lines = compare.compare_cell(case, mbackend, run_dir)
+        ok, lines = compare.compare_cell(case, _mbackend(backend), run_dir)
     except Exception as e:  # compare_cell raises on a missing artifact: itself a finding
         return dict(status='fail', lines=['parity: compare_cell raised on %s x %s at %s: %r'
-                                          % (case, mbackend, run_dir, e)])
+                                          % (case, _mbackend(backend), run_dir, e)])
     return dict(status='pass' if ok else 'fail', lines=list(lines))
 
 
@@ -632,6 +753,12 @@ def parity_record(case, backend, run_dir, dx):
 def _runs(point):
     """[(tag, run)] over every repeat of a manifest point (lo and hi lists)."""
     return [(tag, run) for tag in ('lo', 'hi') for run in point['runs'][tag]]
+
+
+def _pack_profiles(tar, run_dir, arcdir):
+    for name in sorted(os.listdir(run_dir)):
+        if profile_schema._RANK_FILE_RE.match(name):
+            tar.add(os.path.join(run_dir, name), arcname=os.path.join(arcdir, name))
 
 
 def cmd_collect(args):
@@ -646,6 +773,10 @@ def cmd_collect(args):
         raise SuiteError('manifest schema %r != %r' % (manifest.get('schema'), SUITE_SCHEMA_ID))
     if 'account' in manifest:
         raise SuiteError('manifest carries an `account` field; it must never be written')
+    pp = manifest.get('parity_point')
+    if pp is None:
+        raise SuiteError('manifest has no parity_point: a suite with nothing compared against '
+                         'the reference is not collected')
 
     validated = 0
     for point in manifest['points']:
@@ -657,11 +788,13 @@ def cmd_collect(args):
                     'manifest says backend=%r' % (point['point_id'], run['name'],
                                                   rows[0]['backend'], manifest['backend']))
             validated += len(rows)
-            if tag == 'hi':
-                run['parity'] = parity_record(manifest['case'], manifest['backend'],
-                                              run['run_dir'], point['dx'])
-    with open(manifest_path, 'w') as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
+    prows = profile_schema.validate_run_dir(pp['run']['run_dir'])
+    if prows[0]['backend'] != manifest['backend']:
+        raise SuiteError('parity run reports backend=%r but manifest says %r'
+                         % (prows[0]['backend'], manifest['backend']))
+    validated += len(prows)
+    pp['result'] = parity_record(manifest['case'], manifest['backend'], pp['run']['run_dir'])
+    _write_manifest(manifest_path, manifest)
 
     out_tgz = args.out or os.path.join(
         suite_dir, 'hpc_scaling_%s_%s_%s_%s.tgz'
@@ -670,12 +803,10 @@ def cmd_collect(args):
         tar.add(manifest_path, arcname=MANIFEST_NAME)
         for point in manifest['points']:
             for tag, run in _runs(point):
-                for name in sorted(os.listdir(run['run_dir'])):
-                    if profile_schema._RANK_FILE_RE.match(name):
-                        arcname = os.path.join(point['point_id'], run['name'], name)
-                        tar.add(os.path.join(run['run_dir'], name), arcname=arcname)
-    print('hpc_scaling_suite: collected %d profile file(s) from %d point(s) into %s'
-          % (validated, len(manifest['points']), out_tgz))
+                _pack_profiles(tar, run['run_dir'], os.path.join(point['point_id'], run['name']))
+        _pack_profiles(tar, pp['run']['run_dir'], os.path.join(PARITY_POINT_ID, pp['run']['name']))
+    print('hpc_scaling_suite: collected %d profile file(s) from %d point(s) + the parity point '
+          'into %s' % (validated, len(manifest['points']), out_tgz))
     return 0
 
 
@@ -699,14 +830,34 @@ PER_STEP_BUCKETS = ('element', 'fault', 'exchange', 'wait')
 FIXED_BUCKETS = ('setup', 'io')
 assert set(PER_STEP_BUCKETS) | set(FIXED_BUCKETS) == set(profile_schema.BUCKET_KEYS)
 
+# Buckets a backend DECLARES it does not measure (docs/run_profile.md): the
+# emitter writes 0.0 for them. python-jax-mpi folds `fault` into `element`,
+# and has no barrier on the default path so `wait` is not timed. Such a
+# bucket is reported "not measured" (None), never differenced -- differencing
+# two zeros is NonPositiveMeasurement. The declaration only applies while the
+# data agree (lo == hi == 0.0): a nonzero value means the backend DID measure
+# it and it is differenced like any other.
+UNMEASURED_BUCKETS = {
+    'fortran': (),
+    'python-jax-mpi': ('fault', 'wait'),
+}
+
 # The `setup_detail_s` keys each backend's profile must carry (item 142 (b),
-# (c)). Fortran times all five; python-jax-mpi fuses input read + meshing in
-# build_solver_state and has no netCDF open, and its MPI is initialised at
-# mpi4py import, outside any timer -- so it carries two keys and `mpi_init`
-# is DECLARED not measured (overhead.init is null), never zero.
+# (c)). Fortran times five (eqdyna3d.f90): `mpi_init` is the MPI_Init call
+# itself and lies OUTSIDE buckets_s.setup; `input_read` = readglobal ..
+# checkInputConsistency; `meshing` = shape functions, counts, allocInit,
+# meshgen and mesh checks; `netcdf_open` is a historical name for a wider
+# stage -- the on-fault netCDF read, surface-node ids and allocInitAfterMeshGen
+# (it is NOT only the netCDF open); `mass_assembly` = assembleGlobalMass.
+# python-jax-mpi fuses input read + meshing in build_solver_state
+# (`input_mesh`), then `setup_exchange` (MPI4arn/MPI4NodalQuant), then
+# `driver_setup` (driver.run_mpi's pre-loop invariants/to_device/jit span,
+# rep['setup_s']); its MPI is initialised at mpi4py import, outside any
+# timer, so `mpi_init` is DECLARED not measured (overhead.init is null).
+# Excluding mpi_init, the parts sum to buckets_s.setup (two-sided check).
 DETAIL_KEYS = {
     'fortran': ('mpi_init', 'input_read', 'meshing', 'netcdf_open', 'mass_assembly'),
-    'python-jax-mpi': ('input_mesh', 'setup_exchange'),
+    'python-jax-mpi': ('input_mesh', 'setup_exchange', 'driver_setup'),
 }
 DETAIL_SETUP_FLOOR_S = 0.05
 DETAIL_SETUP_REL = 0.05
@@ -721,11 +872,12 @@ def per_rank_metrics(lo_rows, hi_rows):
     difference of each rank's OWN `loop_s` over the two step counts (never a
     wrapper clock, never total_s: CLAUDE.md "per-step-by-difference breaks at
     >=4 ranks"); run_numa_scaling.per_step_and_fixed raises on a non-positive
-    result. Overhead = MPI init (if the backend times it) + setup + io of the
-    hi run, with the setup split (`setup_detail_s`) carried per rank. A
-    profile with no/incomplete `setup_detail_s` raises: it came from a solver
-    that cannot give the split, and a report without it is not the report the
-    owner asked for."""
+    result. A bucket the backend declares unmeasured (UNMEASURED_BUCKETS) is
+    reported None ("not measured"), not differenced. Overhead = MPI init (if
+    the backend times it) + setup + io of the hi run, with the setup split
+    (`setup_detail_s`) carried per rank. A profile with no/incomplete
+    `setup_detail_s` raises: it came from a solver that cannot give the
+    split, and a report without it is not the report the owner asked for."""
     if len(lo_rows) != len(hi_rows):
         raise SuiteError('lo/hi profile rank counts differ: %d vs %d'
                          % (len(lo_rows), len(hi_rows)))
@@ -733,18 +885,21 @@ def per_rank_metrics(lo_rows, hi_rows):
     for lo, hi in zip(lo_rows, hi_rows):
         if lo['rank'] != hi['rank']:
             raise SuiteError('lo/hi rank mismatch: %r vs %r' % (lo['rank'], hi['rank']))
+        backend = hi['backend']
+        if backend not in DETAIL_KEYS:
+            raise SuiteError('backend %r has no declared setup_detail_s keys' % (backend,))
         n_lo, n_hi = lo['nsteps'], hi['nsteps']
         ps_total, _ = numa.per_step_and_fixed(lo['loop_s'], hi['loop_s'], n_lo, n_hi)
         buckets_per_step = {}
         for key in PER_STEP_BUCKETS:
-            ps, _fixed = numa.per_step_and_fixed(
-                lo['buckets_s'][key], hi['buckets_s'][key], n_lo, n_hi)
+            lo_v, hi_v = lo['buckets_s'][key], hi['buckets_s'][key]
+            if key in UNMEASURED_BUCKETS[backend] and lo_v == 0.0 and hi_v == 0.0:
+                buckets_per_step[key] = None
+                continue
+            ps, _fixed = numa.per_step_and_fixed(lo_v, hi_v, n_lo, n_hi)
             buckets_per_step[key] = ps
         buckets_fixed = {key: hi['buckets_s'][key] for key in FIXED_BUCKETS}
 
-        backend = hi['backend']
-        if backend not in DETAIL_KEYS:
-            raise SuiteError('backend %r has no declared setup_detail_s keys' % (backend,))
         detail = hi.get('setup_detail_s')
         want = DETAIL_KEYS[backend]
         if not isinstance(detail, dict) or set(detail) != set(want):
@@ -755,7 +910,7 @@ def per_rank_metrics(lo_rows, hi_rows):
         in_setup = sum(v for k, v in detail.items() if k != 'mpi_init')
         setup = hi['buckets_s']['setup']
         slack = max(DETAIL_SETUP_REL * setup, DETAIL_SETUP_FLOOR_S)
-        if not (in_setup <= setup + slack) or (backend == 'fortran' and not (in_setup >= setup - slack)):
+        if not (abs(in_setup - setup) <= slack):
             raise SuiteError(
                 'rank %d (%s): setup_detail_s parts sum to %.6g s but buckets_s.setup is '
                 '%.6g s (allowed slack %.3g s) -- the split does not account for setup'
@@ -776,26 +931,44 @@ def imbalance(per_rank):
     return dict(max_s=max(vals), mean_s=mean, max_over_mean=max(vals) / mean)
 
 
-def point_parity(point):
-    """(status, lines) over every repeat's hi run, read from the manifest
-    (recorded at --collect). A run with no record raises: an unchecked timed
-    point is not reported as anything."""
-    recs = []
-    for run in point['runs']['hi']:
-        if 'parity' not in run:
-            raise SuiteError('point %s run %s carries no parity record -- re-run --collect'
-                             % (point['point_id'], run['name']))
-        recs.append(run['parity'])
-    statuses = {r['status'] for r in recs}
-    if not statuses <= {'pass', 'fail', 'declared'}:
-        raise SuiteError('point %s: unknown parity status %s' % (point['point_id'], sorted(statuses)))
-    status = 'fail' if 'fail' in statuses else ('declared' if 'declared' in statuses else 'pass')
-    lines = []
-    for r in recs:
-        for ln in r['lines']:
-            if ln not in lines:
-                lines.append(ln)
-    return status, lines
+def parity_block(manifest):
+    """The PARITY block: the one parity point's verdict plus every timed
+    point's declaration, with the counts. status is pass | fail | absent
+    (the manifest has no parity point) | missing (it has one but no result);
+    only `pass` is green."""
+    declared = []
+    for p in manifest['points']:
+        if p.get('parity_declaration') != TIMED_PARITY_DECLARATION:
+            raise SuiteError('point %s carries no %r label' % (p['point_id'], TIMED_PARITY_DECLARATION))
+        declared.append(dict(point_id=p['point_id'], declaration=p['parity_declaration']))
+    pp = manifest.get('parity_point')
+    if pp is None:
+        status, lines, desc = 'absent', ['no parity point in the manifest: nothing was checked '
+                                         'against the reference'], None
+    elif 'result' not in pp:
+        status, lines, desc = 'missing', ['the parity point has no result: --collect did not '
+                                          'compare it'], pp
+    else:
+        status, lines, desc = pp['result']['status'], list(pp['result']['lines']), pp
+        if status not in ('pass', 'fail'):
+            raise SuiteError('parity result status %r is not pass/fail' % (status,))
+    return dict(status=status, compared=1 if status in ('pass', 'fail') else 0,
+                declared_count=len(declared), declared_points=declared, lines=lines,
+                parity_point=None if desc is None else dict(
+                    point_id=desc['point_id'], ranks=desc['ranks'], dx=desc['dx'],
+                    term_s=desc['term_s']))
+
+
+def format_parity_block(block):
+    out = ['PARITY: %s -- compared against the reference: %d point(s); declared not comparable: %d'
+           % (block['status'].upper(), block['compared'], block['declared_count'])]
+    pp = block['parity_point']
+    if pp is not None:
+        out.append('  parity point %s (%d ranks, dx %g m, term %g s): %s'
+                   % (pp['point_id'], pp['ranks'], pp['dx'], pp['term_s'], block['status']))
+    out += ['    ' + ln for ln in block['lines']]
+    out += ['  %s: %s' % (d['point_id'], d['declaration']) for d in block['declared_points']]
+    return '\n'.join(out)
 
 
 def _mean(vals):
@@ -816,10 +989,11 @@ def analyze(tgz_path):
         if 'provenance' not in manifest:
             raise SuiteError('manifest has no provenance stamp')
 
-        report = dict(schema='eqdyna-hpc-scaling-report/2', machine=manifest['machine'],
+        report = dict(schema='eqdyna-hpc-scaling-report/3', machine=manifest['machine'],
                       backend=manifest['backend'], test=manifest['test'],
                       level=manifest['level'], case=manifest['case'],
-                      provenance=manifest['provenance'], points=[])
+                      provenance=manifest['provenance'], points=[],
+                      parity=parity_block(manifest))
 
         for point in manifest['points']:
             lo_runs = _load_run_profiles(tmpdir, point, 'lo')
@@ -830,9 +1004,12 @@ def analyze(tgz_path):
             reps = [per_rank_metrics(lo, hi) for lo, hi in zip(lo_runs, hi_runs)]
             imbs = [imbalance(pr) for pr in reps]
             rep_means = [i['mean_s'] for i in imbs]
-            parity_status, parity_lines = point_parity(point)
             samples = [r['overhead'] for pr in reps for r in pr]
             detail_keys = list(reps[0][0]['setup_detail_s'])
+            breakdown = {}
+            for key in PER_STEP_BUCKETS:
+                vals = [r['buckets_per_step_s'][key] for pr in reps for r in pr]
+                breakdown[key] = None if any(v is None for v in vals) else _mean(vals)
             report['points'].append(dict(
                 point_id=point['point_id'], ranks=point['ranks'], nnodes=point['nnodes'],
                 dx=point['dx'], decomp=point['decomp'], repeats=len(reps),
@@ -850,10 +1027,9 @@ def analyze(tgz_path):
                     total=_stats([s['total_s'] for s in samples])),
                 setup_detail_mean_s={k: _mean([r['setup_detail_s'][k] for pr in reps for r in pr])
                                      for k in detail_keys},
-                bucket_breakdown_per_step_s={
-                    key: _mean([r['buckets_per_step_s'][key] for pr in reps for r in pr])
-                    for key in PER_STEP_BUCKETS},
-                parity_status=parity_status, parity_lines=parity_lines,
+                bucket_breakdown_per_step_s=breakdown,
+                buckets_not_measured=[k for k, v in breakdown.items() if v is None],
+                parity_declaration=point['parity_declaration'],
             ))
 
         by_nnodes = {p['nnodes']: p for p in report['points']}
@@ -875,9 +1051,9 @@ def cmd_analyze(args):
     if args.out:
         with open(args.out, 'w') as f:
             f.write(text + '\n')
-    failed = [p['point_id'] for p in report['points'] if p['parity_status'] == 'fail']
-    if failed:
-        print('hpc_scaling_suite: FAIL -- parity mismatch at point(s): %s' % failed)
+    print(format_parity_block(report['parity']))
+    if report['parity']['status'] != 'pass':
+        print('hpc_scaling_suite: FAIL -- parity %s' % report['parity']['status'])
         return 1
     return 0
 

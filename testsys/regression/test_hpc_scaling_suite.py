@@ -25,10 +25,12 @@ PER_STEP_BUCKETS are differenced, FIXED_BUCKETS are read undifferenced off
 the hi run.
 
 Also pins: `level=big` refuses `backend=python-jax-mpi` IN CODE (the
-owner's spec), and `--analyze` never crashes the whole report when one
-point's parity check raises (e.g. a run directory with no frt output at
-all) -- it declares that point 'fail' with the exception text and keeps
-going.
+owner's spec); `--analyze` on a python-jax-mpi suite (fault/wait declared
+unmeasured, reported "not measured", never differenced); a failing sbatch is a
+SuiteError that never carries the allocation; the job id is the last all-digit
+line or an error; and the PARITY block: one parity point per suite compared
+with compare_cell, every timed point declared, `--analyze` non-zero unless the
+parity point passed.
 
 Cheap (rule 9): no solver launch, no subprocess, no real sbatch -- pure
 in-memory/tempdir arithmetic against committed fixtures and synthetic
@@ -59,11 +61,13 @@ def _load_fixture_row():
         return json.load(f)
 
 
-def _scaled_row(base, nsteps, per_step_scale, mpi_init=0.5):
+def _scaled_row(base, nsteps, per_step_scale, mpi_init=0.5, backend='fortran'):
     """A synthetic row derived from the real fixture: PER_STEP_BUCKETS scaled
     by (nsteps/base_nsteps)*per_step_scale (so lo/hi differ only in step
     count, as a real run would), FIXED_BUCKETS held at the fixture's own
-    value (a one-time cost does not grow with nsteps)."""
+    value (a one-time cost does not grow with nsteps). backend='python-jax-mpi'
+    reshapes it the way that emitter writes: fault and wait are 0.0 (declared
+    unmeasured), the setup split has the python keys and no mpi_init."""
     row = copy.deepcopy(base)
     base_nsteps = base['nsteps']
     buckets = dict(row['buckets_s'])
@@ -78,10 +82,20 @@ def _scaled_row(base, nsteps, per_step_scale, mpi_init=0.5):
     row['total_s'] = per_step_total + fixed_total
     row['loop_s'] = per_step_total
     row['unaccounted_s'] = 0.0
-    s = base['buckets_s']['setup']   # the four setup parts partition the setup bucket exactly
-    row['setup_detail_s'] = dict(mpi_init=mpi_init, input_read=0.4 * s, meshing=0.3 * s,
-                                 netcdf_open=0.2 * s, mass_assembly=0.1 * s)
+    s = base['buckets_s']['setup']   # the setup parts partition the setup bucket exactly
+    if backend == 'fortran':
+        row['setup_detail_s'] = dict(mpi_init=mpi_init, input_read=0.4 * s, meshing=0.3 * s,
+                                     netcdf_open=0.2 * s, mass_assembly=0.1 * s)
+    else:
+        row['backend'] = backend
+        buckets['fault'] = 0.0
+        buckets['wait'] = 0.0
+        row['loop_s'] = buckets['element'] + buckets['exchange']
+        row['total_s'] = row['loop_s'] + fixed_total
+        row['setup_detail_s'] = dict(input_mesh=0.5 * s, setup_exchange=0.3 * s, driver_setup=0.2 * s)
     return row
+
+
 
 
 def check_bucket_partition():
@@ -195,24 +209,26 @@ FAKE_ACCOUNT = 'FAKE-ACCT-7731'
 
 
 def _write_suite(suite_dir, specs, repeats=2, case='test.tpv8', backend='fortran',
-                 nlo=100, nhi=200):
+                 nlo=100, nhi=200, parity='pass'):
     """A synthetic suite directory + manifest (as --submit writes it) over
-    `specs` = [(point_id, ranks, term_s)]. Every run dir carries real-fixture-
-    derived profile files and a bGlobal.txt whose lines 15/16 are term and dt."""
+    `specs` = [(point_id, ranks)]. Every run dir carries real-fixture-derived
+    profile files. `parity` = 'absent' writes no parity_point; anything else
+    writes one (its profile files under parity/gate, no result yet: --collect
+    adds it)."""
     base = _load_fixture_row()
     points = []
-    for pid, ranks, term in specs:
+    for pid, ranks in specs:
         point = dict(point_id=pid, ranks=ranks, nnodes=1, dx=500.0, decomp=[ranks, 1, 1],
-                     backend=backend, runs={'lo': [], 'hi': []})
+                     backend=backend, parity_declaration=h.TIMED_PARITY_DECLARATION,
+                     runs={'lo': [], 'hi': []})
         for k in range(repeats):
             for tag, nsteps in (('lo', nlo), ('hi', nhi)):
                 name = h.run_name(tag, k)
                 rd = os.path.join(suite_dir, pid, name)
                 os.makedirs(rd)
-                with open(os.path.join(rd, 'bGlobal.txt'), 'w') as f:
-                    f.write('0\n' * 15 + '%r\n0.005\n' % term)
                 for r in range(ranks):
-                    row = _scaled_row(base, nsteps, 1.0 + 0.1 * k, mpi_init=0.25 * ranks)
+                    row = _scaled_row(base, nsteps, 1.0 + 0.1 * k, mpi_init=0.25 * ranks,
+                                      backend=backend)
                     row['rank'], row['nranks'], row['backend'] = r, ranks, backend
                     with open(os.path.join(rd, 'profile.rank%d.json' % r), 'w') as f:
                         json.dump(row, f)
@@ -221,13 +237,59 @@ def _write_suite(suite_dir, specs, repeats=2, case='test.tpv8', backend='fortran
     manifest = dict(schema=h.SUITE_SCHEMA_ID, machine='ubuntu', backend=backend,
                     test='strong', level='medium', case=case, max_nodes=1,
                     nsteps_lo=nlo, nsteps_hi=nhi, repeats=repeats, created_utc='test',
-                    provenance=dict(git_sha='0' * 40, git_dirty=False, machine='ubuntu',
-                                    loaded_modules=[], nsteps_lo=nlo, nsteps_hi=nhi,
-                                    repeats=repeats, rank_layout=[], date_utc='test'),
+                    provenance=dict(git_sha='0' * 40, git_dirty=False, solver_git_sha='0' * 40,
+                                    machine='ubuntu', loaded_modules=[], nsteps_lo=nlo,
+                                    nsteps_hi=nhi, repeats=repeats, rank_layout=[],
+                                    date_utc='test'),
                     points=points)
+    if parity != 'absent':
+        rd = os.path.join(suite_dir, 'parity', 'gate')
+        os.makedirs(rd)
+        for r in range(4):
+            row = _scaled_row(base, 50, 1.0, backend=backend)
+            row['rank'], row['nranks'], row['backend'] = r, 4, backend
+            with open(os.path.join(rd, 'profile.rank%d.json' % r), 'w') as f:
+                json.dump(row, f)
+        manifest['parity_point'] = dict(point_id='parity', ranks=4, nnodes=1, dx=500.0,
+                                        decomp=[2, 2, 1], term_s=5.0, backend=backend,
+                                        host_point=specs[0][0],
+                                        run=dict(name='gate', run_dir=rd))
     with open(os.path.join(suite_dir, h.MANIFEST_NAME), 'w') as f:
         json.dump(manifest, f)
     return manifest
+
+
+def _collect(suite_dir, ok=True, raises=None):
+    """cmd_collect with compare_cell stubbed; returns the list of
+    (case, backend, run_dir) it was called with."""
+    import argparse
+    calls = []
+
+    def stub(case, backend, run_dir):
+        calls.append((case, backend, run_dir))
+        if raises:
+            raise raises
+        return ok, ([] if ok else ['frt: STUB MISMATCH']) + ['frt: STUB COMPARED']
+    real = h.compare.compare_cell
+    h.compare.compare_cell = stub
+    try:
+        h.cmd_collect(argparse.Namespace(suite_dir=suite_dir, out=None))
+    finally:
+        h.compare.compare_cell = real
+    return calls
+
+
+def _tar_suite(suite_dir, tgz):
+    """Pack manifest + profile files as they are (no --collect)."""
+    with tarfile.open(tgz, 'w:gz') as tar:
+        tar.add(os.path.join(suite_dir, h.MANIFEST_NAME), arcname=h.MANIFEST_NAME)
+        for dp, _dn, fns in os.walk(suite_dir):
+            for fn in sorted(fns):
+                if fn.startswith('profile.rank'):
+                    full = os.path.join(dp, fn)
+                    tar.add(full, arcname=os.path.relpath(full, suite_dir))
+
+
 
 
 def check_step_pair_cli_defaults_and_validation():
@@ -245,36 +307,6 @@ def check_step_pair_cli_defaults_and_validation():
     print('  PASS  --nsteps-lo/-hi default 100/200, settable, a bad pair or repeats refused')
 
 
-def check_job_id_is_last_all_digit_line():
-    banner = (b'-----------------------------------------------------------------\n'
-              b'          Welcome to the Vista Supercomputer, project 12345 here\n'
-              b'-> Submission accepted\n12345\n  \n4242\n')
-    assert h.parse_job_id(banner) == '4242', 'banner/digit-line output parsed to %r' % h.parse_job_id(banner)
-    assert h.parse_job_id(b'Submitted batch job 987\n') == '987'
-    assert h.parse_job_id(b'555;vista\n') == '555'
-    try:
-        h.parse_job_id(b'sbatch: error: invalid account FAKE\n')
-    except h.SuiteError as e:
-        assert 'FAKE' not in str(e), 'error text echoed sbatch output'
-    else:
-        raise AssertionError('output with no job id was accepted')
-    print('  PASS  parse_job_id takes the last all-digit line, then the last all-digit token, else raises')
-
-
-class _FakeSbatch:
-    """Stands in for subprocess.check_output: `git` passes through to the real
-    one; `sbatch` is recorded and answers with a banner that ECHOES the account
-    (the worst case for the account-leak guard) before the id."""
-    def __init__(self, real):
-        self.real, self.sbatch_argv = real, []
-
-    def __call__(self, cmd, *a, **kw):
-        if cmd[0] == 'sbatch':
-            self.sbatch_argv.append(list(cmd))
-            return ('Welcome to Vista. Charging account %s\n7001\n' % FAKE_ACCOUNT).encode()
-        return self.real(cmd, *a, **kw)
-
-
 def _all_text(root):
     out = []
     for dp, _dn, fns in os.walk(root):
@@ -284,46 +316,166 @@ def _all_text(root):
     return out
 
 
-def check_submit_never_stores_the_account():
+def check_job_id_is_last_all_digit_line_and_nothing_else():
+    banner = (b'-----------------------------------------------------------------\n'
+              b'          Welcome to the Vista Supercomputer, project 12345 here\n'
+              b'-> Submission accepted\n12345\n  \n4242\n')
+    assert h.parse_job_id(banner) == '4242', 'banner/digit-line output parsed to %r' % h.parse_job_id(banner)
+    assert h.parse_job_id(b'7\n') == '7'
+    for bad in (b'Welcome to Vista, valid through 2026 for this allocation\n',
+                b'Submitted batch job 987\n', b'555;vista\n', b'', b'12 34\n'):
+        try:
+            h.parse_job_id(bad)
+        except h.SuiteError as e:
+            assert bad.decode().strip() in str(e) or bad == b'', 'error does not quote the output: %s' % e
+        else:
+            raise AssertionError('output %r with no all-digit line was accepted' % bad)
+    try:
+        h.parse_job_id(('acct %s nope\n' % FAKE_ACCOUNT).encode(), redact=FAKE_ACCOUNT)
+    except h.SuiteError as e:
+        assert FAKE_ACCOUNT not in str(e) and h.ALLOC_PLACEHOLDER in str(e), str(e)
+    else:
+        raise AssertionError('a no-id output was accepted')
+    print('  PASS  parse_job_id: last all-digit line only, no word fallback, error quotes the output '
+          '(allocation redacted)')
+
+
+def _fake_sbatch_dir(root, mode):
+    """A directory with an executable `sbatch` to put first on PATH. Modes:
+    ok (banner echoing the account, then the id), fail (exit 3, stderr echoes
+    the account), banner (exit 0, a sentence containing 2026, no id line)."""
+    d = os.path.join(root, 'fakebin_' + mode)
+    os.makedirs(d)
+    body = {
+        'ok': 'echo "Welcome. Charging account %s"\necho 7001\n' % FAKE_ACCOUNT,
+        'fail': 'echo "sbatch: error: invalid account %s" >&2\nexit 3\n' % FAKE_ACCOUNT,
+        'banner': 'echo "Welcome to Vista, valid through 2026, account %s"\n' % FAKE_ACCOUNT,
+    }[mode]
+    path = os.path.join(d, 'sbatch')
+    with open(path, 'w') as f:
+        f.write('#! /bin/bash\n' + body)
+    os.chmod(path, 0o755)
+    return d
+
+
+def _run_submit(tmpd, mode, extra=(), default_bin=False):
+    """h.main --submit on vista with a fake sbatch (a real executable on PATH,
+    so the real subprocess code runs) and the case builders stubbed to mkdir.
+    Returns (rc, stdout, stderr)."""
     import contextlib
     import io
-    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_submit_')
-    fake = _FakeSbatch(h.subprocess.check_output)
-    real_co, real_build = h.subprocess.check_output, h.build_point_case
-    h.subprocess.check_output = fake
+    fake = _fake_sbatch_dir(tmpd, mode)
+    real_build, real_pbuild, real_path = h.build_point_case, h.build_parity_case, os.environ['PATH']
     h.build_point_case = lambda dst, case, dx, decomp, nsteps, env=None: os.makedirs(dst)
-    buf = io.StringIO()
+    h.build_parity_case = lambda dst, case, decomp, term, env=None: os.makedirs(dst)
+    os.environ['PATH'] = fake + os.pathsep + real_path
+    out, err = io.StringIO(), io.StringIO()
+    argv = ['--submit', '--machine', 'vista', '--account', FAKE_ACCOUNT,
+            '--backend', 'fortran', '--test', 'strong', '--level', 'medium',
+            '--max-nodes', '1', '--repeats', '2', '--out-dir', os.path.join(tmpd, 'suite'),
+            '--module', 'netcdf', '--mpirun', 'mpirun'] + list(extra)
+    if not default_bin:
+        argv += ['--bin', os.path.join(tmpd, 'nogit', 'bin', 'eqdyna')]
     try:
-        with contextlib.redirect_stdout(buf):
-            rc = h.main(['--submit', '--machine', 'vista', '--account', FAKE_ACCOUNT,
-                         '--backend', 'fortran', '--test', 'strong', '--level', 'medium',
-                         '--max-nodes', '1', '--repeats', '2', '--out-dir', tmpd,
-                         '--module', 'netcdf', '--mpirun', 'mpirun'])
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = h.main(argv)
     finally:
-        h.subprocess.check_output, h.build_point_case = real_co, real_build
-    assert rc == 0, 'submit failed rc=%r: %s' % (rc, buf.getvalue())
-    assert len(fake.sbatch_argv) == 1 and fake.sbatch_argv[0][:4] == ['sbatch', '--parsable', '-A', FAKE_ACCOUNT], (
-        'the account must reach sbatch on its command line: %r' % fake.sbatch_argv)
-    leaks = [p for p, t in _all_text(tmpd) if FAKE_ACCOUNT in t]
+        h.build_point_case, h.build_parity_case, os.environ['PATH'] = real_build, real_pbuild, real_path
+    return rc, out.getvalue(), err.getvalue()
+
+
+def check_submit_never_stores_the_account():
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_submit_')
+    os.makedirs(os.path.join(tmpd, 'nogit', 'bin'))
+    rc, out, err = _run_submit(tmpd, 'ok')
+    assert rc == 0, 'submit failed rc=%r: %s %s' % (rc, out, err)
+    suite = os.path.join(tmpd, 'suite')
+    leaks = [p for p, t in _all_text(suite) if FAKE_ACCOUNT in t]
     assert not leaks, 'account string written into %r' % leaks
-    assert FAKE_ACCOUNT not in buf.getvalue(), 'account string echoed on stdout'
-    with open(os.path.join(tmpd, h.MANIFEST_NAME)) as f:
+    assert FAKE_ACCOUNT not in out + err, 'account string echoed on stdout/stderr'
+    with open(os.path.join(suite, h.MANIFEST_NAME)) as f:
         manifest = json.load(f)
     assert 'account' not in manifest
     assert manifest['points'][0]['job_id'] == '7001', 'job_id is %r' % manifest['points'][0]['job_id']
     prov = manifest['provenance']
     assert len(prov['git_sha']) == 40 and isinstance(prov['git_dirty'], bool), prov
+    assert prov['solver_git_sha'] == h.UNKNOWN_BIN_SHA == 'unknown (bin not in a git tree)', prov['solver_git_sha']
     assert (prov['nsteps_lo'], prov['nsteps_hi'], prov['repeats'], prov['machine']) == (100, 200, 2, 'vista')
     assert prov['rank_layout'] == [dict(point_id='strong_n0001', ranks=144, nnodes=1,
                                         decomp=list(h._decompose(144)))], prov['rank_layout']
     assert prov['date_utc'].endswith('Z')
     runs = manifest['points'][0]['runs']
     assert [r['name'] for r in runs['lo']] == ['lo_r0', 'lo_r1'] and [r['nsteps'] for r in runs['hi']] == [200, 200]
-    with open(os.path.join(tmpd, 'strong_n0001', 'submit.sh')) as f:
+    pp = manifest['parity_point']
+    assert (pp['ranks'], pp['decomp'], pp['term_s'], pp['dx'], pp['host_point']) == (
+        4, [2, 2, 1], 5.0, 500.0, 'strong_n0001'), pp
+    assert all(p['parity_declaration'] == 'declared: dx/term differ from the reference'
+               for p in manifest['points'])
+    with open(os.path.join(suite, 'strong_n0001', 'submit.sh')) as f:
         script = f.read()
     assert script.count('-np 144') == 4, 'two repeats x lo/hi = 4 run lines: %r' % script
-    print('  PASS  submit: account only on the sbatch line (not in manifest, script, stdout), '
-          'job id parsed from the banner, provenance stamped, repeats built')
+    assert 'cd %s/parity/gate && mpirun -np 4 ' % suite in script, 'parity run not in the first job: %r' % script
+    print('  PASS  submit: account only on the sbatch line (not in manifest, script, stdout, stderr), '
+          'job id parsed from the banner, provenance + parity point stamped, parity run in the same job')
+
+
+def check_solver_sha_of_the_bin():
+    sha = h._git('rev-parse', 'HEAD')
+    got = h.solver_git_sha('fortran', os.path.join(TESTSYS, 'perf', 'eqdyna'))   # a path inside this git tree
+    assert got == sha, 'bin inside the tree: %r != HEAD %r' % (got, sha)
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_sha_')
+    assert h.solver_git_sha('fortran', os.path.join(tmpd, 'eqdyna')) == h.UNKNOWN_BIN_SHA
+    assert h.solver_git_sha('fortran', '$SCRATCH_UNSET_XYZ/bin/eqdyna') == h.UNKNOWN_BIN_SHA
+    print('  PASS  solver_git_sha: the bin\'s tree HEAD, else "unknown (bin not in a git tree)"')
+
+
+def check_failed_sbatch_raises_suite_error_without_account():
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_sbfail_')
+    os.makedirs(os.path.join(tmpd, 'nogit', 'bin'))
+    rc, out, err = _run_submit(tmpd, 'fail')
+    suite = os.path.join(tmpd, 'suite')
+    assert rc == 1, 'a failing sbatch must exit 1 (SuiteError), got %r: %s %s' % (rc, out, err)
+    assert 'exited 3' in out and h.ALLOC_PLACEHOLDER in out, 'exit code / redacted stderr missing: %r' % out
+    leaks = [p for p, t in _all_text(tmpd) if FAKE_ACCOUNT in t and 'fakebin_' not in p]
+    assert FAKE_ACCOUNT not in out + err and not leaks, 'account leaked: out/err %r, files %r' % (out + err, leaks)
+    with open(os.path.join(suite, h.MANIFEST_NAME)) as f:
+        manifest = json.load(f)
+    assert manifest['points'][0]['job_id'] is None, 'manifest must exist BEFORE any submit (job_id still null)'
+    print('  PASS  sbatch failure: SuiteError with exit code + redacted stderr, no argv, no account anywhere; '
+          'manifest already written')
+
+
+def check_banner_only_sbatch_reply_raises():
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_banner_')
+    os.makedirs(os.path.join(tmpd, 'nogit', 'bin'))
+    rc, out, err = _run_submit(tmpd, 'banner')
+    assert rc == 1 and 'no all-digit job id line' in out and 'valid through 2026' in out, (
+        'a banner-only reply was not refused with the output quoted: rc=%r %r' % (rc, out))
+    assert FAKE_ACCOUNT not in out + err, 'account echoed from the banner'
+    print('  PASS  banner-only sbatch reply (a sentence containing 2026) raises, output quoted, account redacted')
+
+
+def check_work_root_cases_built_where_the_job_cds():
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_wr_')
+    os.makedirs(os.path.join(tmpd, 'nogit', 'bin'))
+    wr = os.path.join(tmpd, 'workroot')
+    rc, out, err = _run_submit(tmpd, 'ok', extra=['--work-root', wr])
+    assert rc == 0, out + err
+    suite = os.path.join(tmpd, 'suite')
+    with open(os.path.join(suite, h.MANIFEST_NAME)) as f:
+        manifest = json.load(f)
+    run_dir = manifest['points'][0]['runs']['lo'][0]['run_dir']
+    assert run_dir == os.path.join(wr, 'strong_n0001', 'lo_r0') and os.path.isdir(run_dir), run_dir
+    assert manifest['parity_point']['run']['run_dir'] == os.path.join(wr, 'parity', 'gate')
+    with open(os.path.join(suite, 'strong_n0001', 'submit.sh')) as f:
+        assert 'cd %s && mpirun -np 144' % run_dir in f.read(), 'the job does not cd where the case was built'
+    tmp2 = tempfile.mkdtemp(prefix='test_hpc_scaling_wr2_')
+    os.makedirs(os.path.join(tmp2, 'nogit', 'bin'))
+    rc, out, err = _run_submit(tmp2, 'ok', extra=['--work-root', '$NO_SUCH_VAR_HPC_142/x'])
+    assert rc == 1 and 'does not resolve' in out, 'an unresolvable --work-root was accepted: %r' % out
+    print('  PASS  --work-root: cases built (and recorded) where the job cds; an unresolved variable refused')
+
+
 
 
 def check_vista_dry_run_script():
@@ -343,7 +495,8 @@ def check_vista_dry_run_script():
     for want in ('#SBATCH -N 1\n', '#SBATCH -n 144\n', '#SBATCH -p gg\n', '#SBATCH -t 00:15:00\n',
                  'module load netcdf\n',
                  'cd $SCRATCH/eqdyna-scaling/v1/strong_n0001/lo_r0 && mpirun -np 144 $SCRATCH/eqdyna-vista/bin/eqdyna\n',
-                 'cd $SCRATCH/eqdyna-scaling/v1/strong_n0001/hi_r0 && mpirun -np 144 $SCRATCH/eqdyna-vista/bin/eqdyna\n'):
+                 'cd $SCRATCH/eqdyna-scaling/v1/strong_n0001/hi_r0 && mpirun -np 144 $SCRATCH/eqdyna-vista/bin/eqdyna\n',
+                 'cd $SCRATCH/eqdyna-scaling/v1/parity/gate && mpirun -np 4 $SCRATCH/eqdyna-vista/bin/eqdyna\n'):
         assert want in script, 'job script lacks %r:\n%s' % (want, script)
     assert '#SBATCH -A' not in script
     assert 'sbatch -A <ALLOC> %s' % os.path.join(tmpd, 'strong_n0001', 'submit.sh') in buf.getvalue()
@@ -407,33 +560,25 @@ def check_profile_schema_setup_detail_shape():
     print('  PASS  profile_schema: setup_detail_s optional, shape checked')
 
 
-def check_collect_analyze_overhead_repeats_parity():
-    """cmd_collect -> analyze on two points (2 and 4 ranks) x 2 repeats. Point 0
-    runs at term 0.5 s != the reference's 5 s -> DECLARED with the measured
-    mismatch; point 1 claims the reference term and mesh, so compare_cell runs
-    (stubbed to FAIL) -> the point is flagged and --analyze exits non-zero."""
-    import argparse
-    import contextlib
-    import io
+def check_collect_analyze_overhead_repeats_and_parity_point():
+    """cmd_collect -> analyze on two points (2 and 4 ranks) x 2 repeats plus
+    the parity point: repeats packed, per-rank-count overhead and spread
+    reported, compare_cell called ONCE (the parity run, never a timed run),
+    every timed point declared."""
     tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_suite_')
     suite_dir = os.path.join(tmpd, 'suite')
     os.makedirs(suite_dir)
-    _write_suite(suite_dir, [('strong_n0001', 2, 0.5), ('strong_n0002', 4, 5.0)])
-    real_cc = h.compare.compare_cell
-    h.compare.compare_cell = lambda case, backend, run_dir: (False, ['frt: STUB MISMATCH'])
-    try:
-        h.cmd_collect(argparse.Namespace(suite_dir=suite_dir, out=None))
-    finally:
-        h.compare.compare_cell = real_cc
+    _write_suite(suite_dir, [('strong_n0001', 2), ('strong_n0002', 4)])
+    calls = _collect(suite_dir, ok=True)
+    assert calls == [('test.tpv8', 'fortran', os.path.join(suite_dir, 'parity', 'gate'))], (
+        'compare_cell must run on exactly the parity run: %r' % calls)
     tgz = os.path.join(suite_dir, 'hpc_scaling_ubuntu_fortran_strong_medium.tgz')
     with tarfile.open(tgz, 'r:gz') as tar:
         names = tar.getnames()
-    assert 'strong_n0002/hi_r1/profile.rank3.json' in names, 'repeat run dirs not packed: %r' % names[:6]
+    assert 'strong_n0002/hi_r1/profile.rank3.json' in names and 'parity/gate/profile.rank3.json' in names, names[:8]
     report = h.analyze(tgz)
     p0, p1 = report['points']
     assert report['provenance']['git_sha'] == '0' * 40
-    assert p0['parity_status'] == 'declared' and 'timed term 0.5' in ' '.join(p0['parity_lines']), p0['parity_lines']
-    assert p1['parity_status'] == 'fail' and 'STUB MISMATCH' in ' '.join(p1['parity_lines']), p1['parity_lines']
     assert abs(p0['overhead_s']['init']['mean'] - 0.5) < 1e-9 and abs(p1['overhead_s']['init']['mean'] - 1.0) < 1e-9, (
         'overhead init per rank count: %r / %r' % (p0['overhead_s']['init'], p1['overhead_s']['init']))
     assert set(p0['setup_detail_mean_s']) == set(h.DETAIL_KEYS['fortran'])
@@ -441,18 +586,118 @@ def check_collect_analyze_overhead_repeats_parity():
         assert p['repeats'] == 2 and len(p['repeat_per_step_s']) == 2
         assert p['repeat_rel_range'] > 0.05, 'repeats scaled 1.0/1.1 must show spread: %r' % p['repeat_rel_range']
         assert p['overhead_s']['total']['max'] >= p['overhead_s']['total']['mean'] >= p['overhead_s']['total']['min'] > 0
+        assert p['parity_declaration'] == 'declared: dx/term differ from the reference'
+        assert p['buckets_not_measured'] == [], 'fortran measures every bucket: %r' % p['buckets_not_measured']
+    print('  PASS  collect+analyze: repeats packed, overhead/spread per rank count, compare_cell on the '
+          'parity run only, every timed point declared')
+
+
+def check_analyze_python_jax_mpi_suite():
+    """M1: --analyze on a synthetic python-jax-mpi suite (fault=0.0, wait=0.0
+    in every profile, setup split input_mesh/setup_exchange/driver_setup)."""
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_pyjax_')
+    suite_dir = os.path.join(tmpd, 'suite')
+    os.makedirs(suite_dir)
+    _write_suite(suite_dir, [('strong_n0001', 4), ('strong_n0002', 8)], repeats=1,
+                 backend='python-jax-mpi')
+    calls = _collect(suite_dir, ok=True)
+    assert calls[0][1] == 'python-jax', 'parity must compare against the python-jax cell: %r' % calls
+    tgz = os.path.join(suite_dir, 'hpc_scaling_ubuntu_python-jax-mpi_strong_medium.tgz')
+    report = h.analyze(tgz)
+    for p in report['points']:
+        assert p['mean_per_step_s'] > 0, 'per-step must come from loop_s: %r' % p['mean_per_step_s']
+        assert p['buckets_not_measured'] == ['fault', 'wait'], p['buckets_not_measured']
+        assert p['bucket_breakdown_per_step_s']['fault'] is None and p['bucket_breakdown_per_step_s']['wait'] is None
+        assert p['bucket_breakdown_per_step_s']['element'] > 0 and p['bucket_breakdown_per_step_s']['exchange'] > 0
+        assert p['overhead_s']['init'] is None, 'python-jax-mpi mpi_init is declared not measured'
+        assert set(p['setup_detail_mean_s']) == {'input_mesh', 'setup_exchange', 'driver_setup'}
+        assert abs(sum(p['setup_detail_mean_s'].values()) - p['overhead_s']['setup']['mean']) < 1e-9
+    import argparse
+    import contextlib
+    import io
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = h.cmd_analyze(argparse.Namespace(tgz=tgz, out=None))
-    assert rc == 1 and 'strong_n0002' in buf.getvalue().splitlines()[-1], 'a failed parity point did not fail --analyze'
+    assert rc == 0, 'a clean python-jax-mpi suite must analyse green: %s' % buf.getvalue()[-400:]
+    print('  PASS  --analyze on a python-jax-mpi suite: fault/wait reported "not measured", per-step from '
+          'loop_s, setup split incl. driver_setup sums to setup')
+
+
+def check_unmeasured_bucket_only_while_zero_and_setup_sum_two_sided():
+    base = _load_fixture_row()
+    lo = _scaled_row(base, 100, 1.0, backend='python-jax-mpi')
+    hi = _scaled_row(base, 200, 1.0, backend='python-jax-mpi')
+    lo['buckets_s']['wait'] = 0.5    # a nonzero wait is a measurement: it is differenced (0.5 -> 0.0 is non-positive) -> refused
     try:
-        h.point_parity(dict(point_id='x', runs={'hi': [dict(name='hi_r0')]}))
+        h.per_rank_metrics([lo], [hi])
+    except numa.NonPositiveMeasurement:
+        pass
+    else:
+        raise AssertionError('a nonzero wait was waved through as "not measured"')
+    s = base['buckets_s']['setup']
+    for backend in ('fortran', 'python-jax-mpi'):
+        lo = _scaled_row(base, 100, 1.0, backend=backend)
+        hi = _scaled_row(base, 200, 1.0, backend=backend)
+        hi['buckets_s']['setup'] += 1.0 + s     # parts now SHORT of setup: the sum check is two-sided
+        try:
+            h.per_rank_metrics([lo], [hi])
+        except h.SuiteError:
+            continue
+        raise AssertionError('%s: setup parts short of setup were accepted' % backend)
+    print('  PASS  unmeasured only while zero in both runs; setup-split sum is two-sided for both backends')
+
+
+def check_parity_block_verdicts_and_exit_codes():
+    import argparse
+    import contextlib
+    import io
+
+    def analyse(parity, ok=True, raises=None, collect=True):
+        tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_par_')
+        suite_dir = os.path.join(tmpd, 'suite')
+        os.makedirs(suite_dir)
+        _write_suite(suite_dir, [('strong_n0001', 2), ('strong_n0002', 4)], repeats=1, parity=parity)
+        if collect:
+            _collect(suite_dir, ok=ok, raises=raises)
+            tgz = os.path.join(suite_dir, 'hpc_scaling_ubuntu_fortran_strong_medium.tgz')
+        else:
+            tgz = os.path.join(tmpd, 'raw.tgz')
+            _tar_suite(suite_dir, tgz)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = h.cmd_analyze(argparse.Namespace(tgz=tgz, out=None))
+        return rc, buf.getvalue()
+
+    rc, text = analyse('pass')
+    assert rc == 0 and 'PARITY: PASS -- compared against the reference: 1 point(s); declared not comparable: 2' in text, text[-700:]
+    for pid in ('strong_n0001', 'strong_n0002'):
+        assert '  %s: declared: dx/term differ from the reference' % pid in text, 'declaration not printed for %s' % pid
+    rc, text = analyse('pass', ok=False)
+    assert rc == 1 and 'PARITY: FAIL' in text and 'STUB MISMATCH' in text, 'a failed parity point did not fail --analyze'
+    rc, text = analyse('pass', raises=RuntimeError('no frt'))
+    assert rc == 1 and 'PARITY: FAIL' in text and 'no frt' in text, 'a compare_cell that raises must be a failed parity point'
+    rc, text = analyse('absent', collect=False)
+    assert rc == 1 and 'PARITY: ABSENT -- compared against the reference: 0 point(s); declared not comparable: 2' in text, text[-500:]
+    rc, text = analyse('missing', collect=False)
+    assert rc == 1 and 'PARITY: MISSING' in text and 'compared against the reference: 0 point(s)' in text, text[-500:]
+
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_par2_')
+    os.makedirs(os.path.join(tmpd, 's'))
+    _write_suite(os.path.join(tmpd, 's'), [('strong_n0001', 2)], repeats=1, parity='absent')
+    try:
+        _collect(os.path.join(tmpd, 's'))
     except h.SuiteError:
         pass
     else:
-        raise AssertionError('a timed run with no parity record was accepted')
-    print('  PASS  collect+analyze: repeats packed, per-rank-count overhead and spread reported, '
-          'declared vs failed parity, failed parity exits non-zero, unchecked run refused')
+        raise AssertionError('--collect accepted a manifest with no parity point')
+    try:
+        h.parity_block(dict(points=[dict(point_id='x')], parity_point=None))
+    except h.SuiteError:
+        pass
+    else:
+        raise AssertionError('a timed point without its declaration label was accepted')
+    print('  PASS  PARITY block: pass exits 0; fail, raising compare, absent and missing exit 1; '
+          'counts and per-point declarations printed; collect refuses a suite with no parity point')
 
 
 def main():
@@ -463,13 +708,20 @@ def main():
               check_fixed_buckets_would_trip_guard_if_differenced,
               check_build_points_strong_weak_size,
               check_step_pair_cli_defaults_and_validation,
-              check_job_id_is_last_all_digit_line,
+              check_job_id_is_last_all_digit_line_and_nothing_else,
               check_submit_never_stores_the_account,
+              check_solver_sha_of_the_bin,
+              check_failed_sbatch_raises_suite_error_without_account,
+              check_banner_only_sbatch_reply_raises,
+              check_work_root_cases_built_where_the_job_cds,
               check_vista_dry_run_script,
               check_per_step_from_loop_s_and_nonpositive_raises,
               check_overhead_and_setup_split_required,
               check_profile_schema_setup_detail_shape,
-              check_collect_analyze_overhead_repeats_parity]
+              check_collect_analyze_overhead_repeats_and_parity_point,
+              check_analyze_python_jax_mpi_suite,
+              check_unmeasured_bucket_only_while_zero_and_setup_sum_two_sided,
+              check_parity_block_verdicts_and_exit_codes]
     failures = []
     for c in checks:
         try:

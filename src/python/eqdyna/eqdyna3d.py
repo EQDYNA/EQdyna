@@ -893,7 +893,8 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         _profile_emit.write_profile(case_dir, 'python-jax-mpi', rank, nranks,
                                     rep['nsteps'], buckets,
                                     loop_s=rep['solve_s'], total_s=total_s,
-                                    setup_detail_s=setup_detail)
+                                    setup_detail_s=dict(setup_detail,
+                                                        driver_setup=rep.get('setup_s', 0.0)))
 
     # Row 120: station output, INDEPENDENT of fault-node ownership below --
     # an off-fault station can sit in a box that never touches the fault at
