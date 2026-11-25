@@ -395,7 +395,11 @@ jobs:
         # MPI` (deliberately uncaught ImportError, not a fallback) --
         # test_ci_dependencies.py scans for exactly this and needs it real,
         # not just declared.
-        pip install numpy scipy netCDF4 matplotlib xarray pytest mpi4py
+        pip install numpy scipy netCDF4 matplotlib xarray pytest
+        # mpi4py from source against the runner's own mpich: the prebuilt wheel links
+        # libmpi.so.12 (MPICH ABI), which this runner's mpich 4.0 does not provide, so
+        # `from mpi4py import MPI` died with ImportError (seen on PR #293, test_mpi_abort).
+        pip install --no-binary mpi4py mpi4py
         pip install --upgrade numpy
         # jax LAST: it pins a numpy range, and `--upgrade numpy` above would
         # otherwise move numpy out from under it after the fact.

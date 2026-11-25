@@ -20,6 +20,13 @@ Tests (every one a hard failure, none skips):
      screenMesh.o): one defect per check trips exactly that check; the
      unplanted mesh is the control.
   4. 2-RANK FORTRAN: tpv8 and tpv36 (wedge mesh) at mpirun -np 2.
+  6. PASS LINE ON A NORMAL RUN (row 169 (e)): a solving run (python numpy, fortran
+     1 and 2 ranks, a 1-2 step term) prints exactly one `mesh-screen: PASS`
+     line (rank 0), the two backends with the same counts.
+  7. jax-MPI ABORT (row 169 (f)): a real 2-rank mpi4py run in which the screen
+     fails on rank 1 only must MPI_Abort with exit status 81, not hang.
+  8. STRIKE -90 TIE CELLS (row 169 (h)): -90 moves only round-off tie cells;
+     the error text must not say it flips the side test.
   5. INDEPENDENT SIDE ORACLE (python backend, the Fortran connectivity being
      held identical by test 1's counts): screen_mesh's `sides` check and the
      meshgen side test share one inequality and one `un`, so they cannot catch
@@ -67,6 +74,9 @@ PLANT_EXPECTED = {
     'sides_swap_node': ('sides',),
     'bridging_shear': ('bridging',),
     'bridging_cell': ('sides', 'bridging'),
+    # a MASTER node attached to a cell beyond the fault patch on the footwall side (row 169 (b)):
+    # the patch-edge exemption used to hide this; only slave attachments are exempt there now
+    'sides_outside_master': ('sides',),
 }
 
 
@@ -129,9 +139,9 @@ def run_python(case_dir):
     return r.returncode, r.stdout + r.stderr
 
 
-def run_fortran(case_dir, ranks=1):
+def run_fortran(case_dir, ranks=1, args=('--mesh-only',)):
     r = subprocess.run(['timeout', '-s', 'KILL', str(MPIRUN_TIMEOUT_S), 'mpirun', '-np', str(ranks),
-                        FORTRAN_BIN, '--mesh-only'], cwd=case_dir, env=env(), capture_output=True, text=True)
+                        FORTRAN_BIN, *args], cwd=case_dir, env=env(), capture_output=True, text=True)
     return r.returncode, r.stdout + r.stderr
 
 
@@ -166,16 +176,17 @@ def test_all_cases(tmp):
     fortran_binary()
     dirs = {c: os.path.join(tmp, 'all_' + c) for c in names}
 
-    def one(c):
-        make_case(c, dirs[c])
-        return run_python(dirs[c]), run_fortran(dirs[c])
-    # independent cases through a pool of half the cores (cap 8: a 3.5M-element
-    # case needs GBs); every worker is single-threaded (env()), so a 4-core
-    # runner runs 2 at a time. No case, backend or count comparison is dropped.
-    workers = min(max(1, len(os.sched_getaffinity(0)) // 2), 8)
+    # Independent runs through one pool of half the cores (cap 8: a 3.5M-element case needs GBs); every
+    # worker is single-threaded (env()), so a 4-core runner runs 2 at a time. Row 169 (g): the unit of work
+    # is a (case, backend) run, not a case: the one-task-per-case pool ran a case's python and fortran
+    # back to back, so the chain of the largest case set the floor of the shard. Python runs are queued
+    # first (the numpy mesh build is the longer of the two). No case, backend or count comparison is dropped.
+    workers = min(max(1, len(os.sched_getaffinity(0))), 8)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {c: ex.submit(one, c) for c in names}
-        res = {c: f.result() for c, f in futs.items()}
+        list(ex.map(lambda c: make_case(c, dirs[c]), names))
+        futs = {(c, 'python'): ex.submit(run_python, dirs[c]) for c in names}
+        futs.update({(c, 'fortran'): ex.submit(run_fortran, dirs[c]) for c in names})
+        res = {c: (futs[(c, 'python')].result(), futs[(c, 'fortran')].result()) for c in names}
     errs = []
     for c in names:
         (prc, pout), (frc, fout) = res[c]
@@ -233,8 +244,27 @@ def plant(a, name):
         # one cell holds BOTH nodes: a corner off the fault plane becomes the slave
         k = int(np.nonzero(np.abs(X[conn[e], 1] - X[m, 1]) > 0)[0][0])
         conn[e][k] = s
+    elif name == 'sides_outside_master':
+        # a cell beyond the patch's left edge, below the plane, holds the MASTER node instead of the slave
+        e, s, m = outside_cell(X, conn, nsmp, un)
+        conn[e][conn[e] == s] = m
     else:
         raise AssertionError('unknown plant ' + name)
+
+
+def outside_cell(X, conn, nsmp, un):
+    """(cell, slave node, master node): a cell beyond the left edge of the patch in x,
+    below the fault plane (its centre on the -un side), holding the slave node of a
+    left-edge pair at mid depth."""
+    xm, zm = X[nsmp[:, 1], 0], X[nsmp[:, 1], 2]
+    edge = np.nonzero(xm == xm.min())[0]
+    p = int(edge[np.argmin(np.abs(zm[edge] - 0.5 * (zm.min() + zm.max())))])
+    s, m = int(nsmp[p, 0]), int(nsmp[p, 1])
+    cells = np.nonzero((conn == s).any(axis=1))[0]
+    cen = X[conn[cells]].sum(axis=1) / 8.0
+    below = ((cen - X[s]) @ un[p + 1] < 0) & (cen[:, 0] < xm.min())
+    assert below.any(), 'no cell beyond the patch edge below the plane holds slave node %d' % s
+    return int(cells[np.nonzero(below)[0][0]]), s, m
 
 
 def dump_mesh(a, path):
@@ -299,9 +329,12 @@ def test_planted_defects(tmp):
 
 def oracle_sides(X, conn, nsmp, tol):
     """(attachments, wrong_master, wrong_slave, min_margin) of every distinct
-    (cell,node) attachment to a pair node whose cell centre is inside the
-    fault patch window, judged by the plane spanned by the fault's own master
-    nodes (never by un). X is 1-indexed (row 0 unused); conn (E,8) 1-indexed."""
+    (cell,node) attachment to a pair node, judged by the plane spanned by the
+    fault's own master nodes (never by un): every MASTER attachment, wherever
+    the cell is (the one-cell margin past the patch, where the replace loop
+    still swaps, included), and every SLAVE attachment whose cell centre is
+    inside the patch window (slave attachments beyond it are the edge-weld
+    convention, exempt like the screen's). X is 1-indexed (row 0 unused); conn (E,8) 1-indexed."""
     nft = nsmp.shape[0]
     role = np.zeros(X.shape[0], dtype=np.int8)
     pid = np.full(X.shape[0], -1, dtype=np.int64)
@@ -329,10 +362,15 @@ def oracle_sides(X, conn, nsmp, tol):
     ce, nodes = np.unique(np.stack([ce, conn[ce, sl]], axis=1), axis=0).T
     pp, rl = pid[nodes], role[nodes]
     cen = X[conn[ce]].sum(axis=1) / 8.0
-    ok = ((cen[:, [0, 2]] >= lo[pp][:, [0, 2]]) & (cen[:, [0, 2]] <= hi[pp][:, [0, 2]])).all(axis=1)
-    ce, nodes, pp, rl, cen = ce[ok], nodes[ok], pp[ok], rl[ok], cen[ok]
+    inside = ((cen[:, [0, 2]] >= lo[pp][:, [0, 2]]) & (cen[:, [0, 2]] <= hi[pp][:, [0, 2]])).all(axis=1)
+    ok = inside | (rl == 2)
+    ce, nodes, pp, rl, cen, inside = ce[ok], nodes[ok], pp[ok], rl[ok], cen[ok], inside[ok]
     margin = np.where(rl == 2, 1.0, -1.0) * np.einsum('ij,ij->i', cen - X[nodes], normal[pp])
-    wrong = ~(margin > 0.0)
+    # A master attachment beyond the patch whose cell centre is within the mesh tolerance of the plane is a
+    # round-off tie (wedge cells at the patch edge: |margin| 1e-14 m against >= 100 m for every decided
+    # attachment, measured on the gate meshes), decided by rounding, not a side: not judged. Inside the patch
+    # the test stays strict.
+    wrong = ~(margin > 0.0) & ~(~inside & (margin > -tol))
     return (int(margin.size), int((wrong & (rl == 2)).sum()), int((wrong & (rl == 1)).sum()),
             float(margin.min()) if margin.size else float('nan'))
 
@@ -373,6 +411,14 @@ def test_side_oracle(tmp):
         print('  %-18s oracle attachments=%d wrong_master=%d wrong_slave=%d min_margin=%.3E' % ((c,) + r))
         if r[0] == 0 or r[1] + r[2] != 0:
             errs.append('%s: oracle attachments=%d wrong_master=%d wrong_slave=%d' % ((c,) + r[:3]))
+        if c == 'test.tpv8':
+            # the margin must be checked: a wrong-side master attachment beyond the patch edge is flagged
+            pl = [np.array(v, copy=True) for v in a[:5]] + [a[5]]
+            plant(pl, 'sides_outside_master')
+            pr = oracle_sides(pl[0], pl[1], pl[3], pl[5])
+            print('  %-18s oracle on the planted outside master: wrong_master=%d (clean mesh %d)' % (c, pr[1], r[1]))
+            if pr[1] != 1:
+                errs.append('oracle missed (or over-counted) the planted outside-patch master attachment: wrong_master=%d' % pr[1])
         shutil.rmtree(d, ignore_errors=True)
     assert not errs, 'side oracle:\n' + '\n'.join(errs)
 
@@ -410,6 +456,97 @@ def test_two_rank_fortran(tmp):
     assert not errs, '2-rank:\n' + '\n'.join(errs)
 
 
+def test_pass_line_normal_run(tmp):
+    """Row 169 (e): a SOLVING run logs the screen too: exactly one PASS line, rank 0 only."""
+    fortran_binary()
+    d = os.path.join(tmp, 'pass_line')
+    make_case('test.tpv8', d, 'par.term = 0.05\n')       # dt = 0.0417 s: 2 steps
+    r = subprocess.run([sys.executable, '-m', 'eqdyna', d, '2', '--backend', 'numpy'], env=env(),
+                       capture_output=True, text=True, timeout=3000)
+    assert r.returncode == 0, 'python numpy run failed rc=%d:\n%s' % (r.returncode, (r.stdout + r.stderr)[-1500:])
+    got = {'python': r.stdout}
+    d2 = os.path.join(tmp, 'pass_line2')
+    make_case('test.tpv8', d2, 'par.term = 0.05\npar.nx = 2\n')
+    for who, dd, ranks in (('fortran 1 rank', d, 1), ('fortran 2 ranks', d2, 2)):
+        rc, out = run_fortran(dd, ranks, args=())
+        assert rc == 0, '%s normal run failed rc=%d:\n%s' % (who, rc, out[-1500:])
+        got[who] = out
+    counts = {}
+    for who, out in got.items():
+        n = sum(l.startswith('mesh-screen: PASS') for l in out.splitlines())
+        print('  %-16s mesh-screen PASS lines: %d' % (who, n))
+        assert n == 1, '%s: expected exactly one mesh-screen: PASS line on a normal run, got %d' % (who, n)
+        counts[who] = parse_verdict(out, 0, who)
+    assert counts['python'][2] == counts['fortran 1 rank'][2], 'python vs fortran counts differ: %s' % counts
+
+
+MPI_ABORT_DRIVER = """
+import sys
+sys.path.insert(0, %(src)r)
+from mpi4py import MPI
+from eqdyna import eqdyna3d, meshscreen
+real = meshscreen.screen_mesh
+def failing_on_rank_1(*a):
+    if MPI.COMM_WORLD.Get_rank() == 1:      # a rank-local verdict: the mesh each rank screens is its own box
+        raise meshscreen.MeshScreenError({'sides': 'planted failure on rank 1'}, {})
+    return real(*a)
+meshscreen.screen_mesh = failing_on_rank_1
+sys.argv = ['eqdyna', %(case)r, '--mpi', '--backend', 'jax']
+eqdyna3d.main()
+"""
+
+
+def test_mpi_abort(tmp):
+    """Row 169 (f): eqdyna3d.main's jax-MPI `except MeshScreenError` -> _abort(comm=comm) ->
+    comm.Abort(81), driven by a real 2-rank mpi4py job. The stand-in is the failure itself
+    (screen_mesh raises on rank 1 only; a real rank-local defect cannot be planted without
+    editing meshgen); everything after it is the production code. Without the Abort rank 0
+    waits in the setup exchange (a hang, killed by the timeout: rc 137) or the launcher
+    reports a plain process exit instead of an MPI abort."""
+    d = os.path.join(tmp, 'mpi_abort')
+    make_case('test.tpv8', d, 'par.nx = 2\n')
+    drv = os.path.join(tmp, 'mpi_abort_driver.py')
+    with open(drv, 'w') as f:
+        f.write(MPI_ABORT_DRIVER % dict(src=os.path.join(ROOT, 'src', 'python'), case=d))
+    r = subprocess.run(['timeout', '-s', 'KILL', '600', 'mpirun', '-np', '2', sys.executable, drv],
+                       cwd=d, env=env(), capture_output=True, text=True)
+    out = r.stdout + r.stderr
+    print('  mpirun rc=%d, MPI abort reported: %s, FATAL block: %s' % (
+        r.returncode, bool(re.search(r'MPI_ABORT|MPI_Abort', out)), 'EQdyna: FATAL' in out))
+    assert r.returncode == meshscreen.ERR_MESH_SCREEN_SIDES, (
+        'expected exit %d (MPI_Abort with the check code), got %d (137 = hung and killed):\n%s' % (
+            meshscreen.ERR_MESH_SCREEN_SIDES, r.returncode, out[-1500:]))
+    assert 'EQdyna: FATAL' in out and 'planted failure on rank 1' in out, 'FATAL block missing:\n' + out[-1500:]
+    assert re.search(r'MPI_ABORT|MPI_Abort', out), 'the job did not end in an MPI abort:\n' + out[-1500:]
+
+
+def test_strike_minus90_ties():
+    """Row 169 (h): -90 is equal to 270 mod 360 and moves only round-off tie cells of the
+    side test (measured on the gate meshes: 0 differing elements on tpv8 and tpv23, 3 on
+    tpv36), it does NOT flip the cell-side test. Every element whose connectivity differs
+    between the two spellings must have a centre within round-off of the plane; the strike
+    error text (errorCodes.f90, docs/user/troubleshooting.md) must not claim a flip."""
+    X, c270, nsmp, un, tol = fixture_mesh(270.0)
+    _, cm90, _, un90, _ = fixture_mesh(-90.0)
+    diff = np.nonzero((c270 != cm90).any(axis=1))[0]
+    pair = np.zeros(X.shape[0], dtype=np.int64)
+    pair[nsmp[:, 0]] = np.arange(1, nsmp.shape[0] + 1)
+    worst = 0.0
+    for e in diff:
+        for k in np.nonzero(c270[e] != cm90[e])[0]:
+            n = c270[e][k]
+            cen = X[c270[e]].sum(axis=0) / 8.0
+            worst = max(worst, abs(float((cen - X[n]) @ un[pair[n]])) / max(float(np.linalg.norm(cen - X[n])), 1e-300))
+    print('  fixture: un max |270 - (-90)| = %.3E ; %d differing elements, worst tie |cos| %.3E' % (
+        np.abs(un - un90).max(), diff.size, worst))
+    assert np.abs(un - un90).max() < 1e-12, 'un differs by more than round-off between 270 and -90'
+    assert worst < 1e-9, 'a cell that differs between -90 and 270 is not a round-off tie (|cos| %.3E)' % worst
+    for path in ('docs/user/troubleshooting.md', 'src/fortran/errorCodes.f90'):
+        with open(os.path.join(ROOT, path)) as f:
+            text = f.read()
+        assert 'flips the cell-side' not in text, path + ' says -90 flips the cell-side test; measured: only round-off ties move'
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix='mesh_screening_')
     tests = [('judge_both_ways', lambda: test_judge_both_ways()),
@@ -417,6 +554,9 @@ def main():
              ('strike_refused', lambda: test_strike_refused(tmp)),
              ('two_rank_fortran', lambda: test_two_rank_fortran(tmp)),
              ('side_oracle', lambda: test_side_oracle(tmp)),
+             ('strike_minus90_ties', lambda: test_strike_minus90_ties()),
+             ('pass_line_normal_run', lambda: test_pass_line_normal_run(tmp)),
+             ('mpi_abort', lambda: test_mpi_abort(tmp)),
              ('all_cases', lambda: test_all_cases(tmp))]
     sel = sys.argv[1:]
     bad = 0

@@ -7,8 +7,9 @@ subroutine screenMesh(nnode, nel, nftnd0)
     ! mesh STOPS the run (abortRun, codes 81-82); no switch, no fallback.
     !   sides     a (cell,node) attachment to a pair's MASTER node has the cell
     !             centre on the +un side, one to its SLAVE node on the -un side
-    !             (signed cosine strictly > 0); cells whose centre is beyond the
-    !             fault patch in x or z are not tested.
+    !             (signed cosine strictly > 0). Beyond the fault patch (cell centre
+    !             outside it in x or z) only MASTER attachments are tested; slave
+    !             attachments there are exempt (edge-weld convention).
     !   bridging  no cell holds both nodes of one pair; pair nodes coincide to tol.
     use globalvar
     use errorCodes
@@ -65,8 +66,10 @@ subroutine screenMesh(nnode, nel, nftnd0)
                     if (role(c(k)) == 2 .and. pf(c(k)) == ift .and. pn(c(k)) == pn(c(i))) br = .true.
                 enddo
             endif
-            ! Exempt beyond the patch (fxmax+dx edge-weld convention; same measured reason as meshscreen.py).
-            if (.not. (cen(1) >= xlo(ift) .and. cen(1) <= xhi(ift) .and. cen(3) >= zlo(ift) .and. cen(3) <= zhi(ift))) cycle
+            ! Slave attachments beyond the patch are exempt (fxmax+dx edge-weld convention; same measured
+            ! reason as meshscreen.py); master attachments are tested everywhere (row 169 (b)).
+            if (role(c(i)) == 1 .and. .not. (cen(1) >= xlo(ift) .and. cen(1) <= xhi(ift) .and. &
+                cen(3) >= zlo(ift) .and. cen(3) <= zhi(ift))) cycle
             dv = cen - meshCoor(1:3,c(i))
             nv = sqrt(dot_product(dv, dv))
             cosd = dot_product(dv, un(1:3,pn(c(i)),ift))
@@ -133,7 +136,8 @@ subroutine screenMesh(nnode, nel, nftnd0)
             write(*,'(a)') 'mesh-screen: FAIL checks='//trim(names)//' '//trim(meas)
             call abortRun(code, 'mesh screening FAILED: '//trim(reason))
         endif
-        if (meshOnly) write(*,'(a)') 'mesh-screen: PASS checks=none '//trim(meas)
+        ! --mesh-only: every rank prints; a normal run: rank 0 only (row 169 (e)), so a solve shows the screen ran.
+        if (meshOnly .or. me == 0) write(*,'(a)') 'mesh-screen: PASS checks=none '//trim(meas)
     end block
     deallocate(role, pn, pf)
 
