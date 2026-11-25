@@ -8,8 +8,11 @@ subroutine screenMesh(nnode, nel, nftnd0)
     !   sides     a (cell,node) attachment to a pair's MASTER node has the cell
     !             centre on the +un side, one to its SLAVE node on the -un side
     !             (signed cosine strictly > 0). Beyond the fault patch (cell centre
-    !             outside it in x or z) only MASTER attachments are tested; slave
-    !             attachments there are exempt (edge-weld convention).
+    !             outside it in x or z) only MASTER attachments are tested for side;
+    !             slave attachments there are exempt (edge-weld convention). Either
+    !             role, a centre more than MARGIN of the cell's own width past the
+    !             patch is wrong, and a beyond-patch centre within tol of the fault
+    !             plane is a round-off tie, not judged (row 169 (b), (k)).
     !   bridging  no cell holds both nodes of one pair; pair nodes coincide to tol.
     use globalvar
     use errorCodes
@@ -21,10 +24,11 @@ subroutine screenMesh(nnode, nel, nftnd0)
     integer (kind = 4), allocatable :: pn(:), pf(:)
     real (kind = dp) :: xlo(ntotft), xhi(ntotft), zlo(ntotft), zhi(ntotft)
     character (len = 2000) :: msgSides, msgBridge
-    integer (kind = 8) :: e, c(8), s, m, nft, natt, nwrong, nmw, nsw, nbr, firstWrong, firstBr, wS, wM
+    integer (kind = 8) :: e, c(8), s, m, nft, natt, nwrong, nmw, nsw, nbr, nfar, firstWrong, firstBr, wS, wM
     integer (kind = 4) :: ift, i, j, k
-    real (kind = dp) :: cen(3), dv(3), nv, cosd, margin, minM, sep, sepMax
-    logical :: br
+    real (kind = dp) :: cen(3), dv(3), nv, cosd, margin, minM, sep, sepMax, cmin(3), cmax(3), beyond
+    real (kind = dp), parameter :: MARGIN_CELLS = 0.5d0 + 1.0d-6   ! same constant as meshscreen.py MARGIN
+    logical :: br, far
 
     nft = sum(int(nftnd0, 8))
     allocate(role(nnode), pn(nnode), pf(nnode))
@@ -45,7 +49,7 @@ subroutine screenMesh(nnode, nel, nftnd0)
         enddo
     enddo
 
-    natt = 0; nwrong = 0; nmw = 0; nsw = 0; nbr = 0; firstWrong = 0; firstBr = 0; minM = huge(1.0d0)
+    natt = 0; nfar = 0; nwrong = 0; nmw = 0; nsw = 0; nbr = 0; firstWrong = 0; firstBr = 0; minM = huge(1.0d0)
     do e = 1, nel
         c = nodeElemIdRelation(1:8,e)
         if (all(role(c) == 0)) cycle
@@ -55,6 +59,7 @@ subroutine screenMesh(nnode, nel, nftnd0)
                 cen(j) = cen(j) + meshCoor(j,c(i))
             enddo
             cen(j) = cen(j)/8.0d0
+            cmin(j) = minval(meshCoor(j,c)); cmax(j) = maxval(meshCoor(j,c))
         enddo
         br = .false.
         do i = 1, 8
@@ -67,21 +72,26 @@ subroutine screenMesh(nnode, nel, nftnd0)
                 enddo
             endif
             ! Slave attachments beyond the patch are exempt (fxmax+dx edge-weld convention; same measured
-            ! reason as meshscreen.py); master attachments are tested everywhere (row 169 (b)).
-            if (role(c(i)) == 1 .and. .not. (cen(1) >= xlo(ift) .and. cen(1) <= xhi(ift) .and. &
-                cen(3) >= zlo(ift) .and. cen(3) <= zhi(ift))) cycle
+            ! reason as meshscreen.py) unless the centre is beyond MARGIN_CELLS; master attachments are tested
+            ! everywhere (row 169 (b)); a beyond-patch centre within tol of the plane is a round-off tie (k).
+            beyond = max(0.0d0, (xlo(ift) - cen(1))/(cmax(1) - cmin(1)), (cen(1) - xhi(ift))/(cmax(1) - cmin(1)), &
+                                (zlo(ift) - cen(3))/(cmax(3) - cmin(3)), (cen(3) - zhi(ift))/(cmax(3) - cmin(3)))
+            far = beyond > MARGIN_CELLS
+            if (role(c(i)) == 1 .and. beyond > 0.0d0 .and. .not. far) cycle
             dv = cen - meshCoor(1:3,c(i))
             nv = sqrt(dot_product(dv, dv))
             cosd = dot_product(dv, un(1:3,pn(c(i)),ift))
+            if (beyond > 0.0d0 .and. .not. far .and. abs(cosd) <= tol) cycle
             if (nv > 0.0d0) cosd = cosd/nv
             margin = cosd
             if (role(c(i)) == 1) margin = -cosd
             natt = natt + 1
             minM = min(minM, margin)
-            if (.not. (margin > 0.0d0)) then
+            if (far .or. .not. (margin > 0.0d0)) then
                 nwrong = nwrong + 1
                 if (role(c(i)) == 2) nmw = nmw + 1
                 if (role(c(i)) == 1) nsw = nsw + 1
+                if (far) nfar = nfar + 1
                 if (firstWrong == 0) firstWrong = e
             endif
         enddo
@@ -94,7 +104,7 @@ subroutine screenMesh(nnode, nel, nftnd0)
     msgSides = ' '; msgBridge = ' '
     if (nwrong > 0) then
         msgSides = trim(ii(nwrong))//' of '//trim(ii(natt))//' (cell,node) attachments on the wrong side of the fault plane ('// &
-            trim(ii(nmw))//' master-attached on the footwall side, '//trim(ii(nsw))//' slave-attached on the hanging-wall side)'// &
+            trim(ii(nmw))//' master-attached on the footwall side, '//trim(ii(nsw))//' slave-attached on the hanging-wall side; '//trim(ii(nfar))//' of them beyond the one-cell margin past the patch)'// &
             ', first element '//trim(ii(firstWrong))//' (type '//trim(ii(int(elemTypeArr(firstWrong),8)))//')'
     endif
     if (nbr > 0) then

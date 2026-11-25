@@ -10,14 +10,21 @@ the exit status.
   sides     a (cell,node) attachment to the MASTER node of a pair has the cell
             centre on the +un side of the pair, one to its SLAVE node on the -un
             side (signed cosine strictly > 0). Beyond the fault patch (cell
-            centre outside it in x or z) only MASTER attachments are tested: a
-            master node on the footwall side is a wrong wiring wherever it is,
-            while slave attachments there are exempt (edge-weld convention).
+            centre outside it in x or z) only MASTER attachments are tested
+            for side: a master node on the footwall side is a wrong wiring
+            wherever it is, while slave attachments there are exempt
+            (edge-weld convention). Either role, a cell whose centre is more
+            than MARGIN of its own width past the patch is wrong (the
+            convention reaches half a cell, measured on every registered
+            case), and a beyond-patch attachment whose centre lies within tol
+            of the fault plane is a round-off tie, decided by rounding and
+            not judged (row 169 (b), (k)).
   bridging  no cell holds both nodes of one pair; the two nodes of a pair
             coincide to the mesh tolerance tol.
 """
 import numpy as np
 
+MARGIN = 0.5 + 1e-6   # cells; same constant in screenMesh.f90
 ERR_MESH_SCREEN_SIDES = 81
 ERR_MESH_SCREEN_BRIDGING = 82
 SCREEN_CODES = {'sides': ERR_MESH_SCREEN_SIDES, 'bridging': ERR_MESH_SCREEN_BRIDGING}
@@ -91,28 +98,36 @@ def _screen_measure(meshCoor, conn, elem_type, nsmp, un, tol):
 
     # ---- sides: cell centre on the own side of the fault plane
     # Beyond the patch edge SLAVE attachments are exempt: the fxmax+dx edge-weld convention puts slave attachments
-    # one cell past the patch in x (and one corner cell in z). Measured without this exemption: tpv8 61, tpv10/12/13 61,
-    # tpv29 81, tpv23 161 wrong-side attachments on valid meshes, every one of them role slave (row 169 (b): no
-    # registered mesh has a wrong-side MASTER attachment beyond the patch), so master attachments are tested
-    # everywhere. Remaining blind spot: a wrong slave attachment beyond the patch.
-    cen = X[conn[ce]].sum(axis=1) / 8.0
-    inside = ((cen[:, 0] >= x_lo[pp]) & (cen[:, 0] <= x_hi[pp]) &
-              (cen[:, 2] >= z_lo[pp]) & (cen[:, 2] <= z_hi[pp]))
-    tested = inside | (rl == 2)
-    ce, nodes, pp, rl, cen = ce[tested], nodes[tested], pp[tested], rl[tested], cen[tested]
+    # half a cell past the patch in x (and one corner cell in z). Measured without this exemption: tpv8 61, tpv10/12/13
+    # 61, tpv29 81, tpv23 161 wrong-side attachments on valid meshes, every one of them role slave, so master
+    # attachments are tested everywhere. The exemption is bounded: no registered case has a centre more than 0.500
+    # of its own width past the patch, so beyond MARGIN is wrong in either role. Beyond the patch, a centre within
+    # tol of the plane is a round-off tie (tpv36/37: 224, |dist| <= 1.5e-12 m against >= 1.5 m for every decided
+    # attachment): not judged.
+    corners = X[conn[ce]]
+    cen = corners.sum(axis=1) / 8.0
+    ext = corners.max(axis=1) - corners.min(axis=1)
+    beyond = np.maximum.reduce([(x_lo[pp] - cen[:, 0]) / ext[:, 0], (cen[:, 0] - x_hi[pp]) / ext[:, 0],
+                                (z_lo[pp] - cen[:, 2]) / ext[:, 2], (cen[:, 2] - z_hi[pp]) / ext[:, 2],
+                                np.zeros(pp.size)])
+    inside, far = beyond <= 0.0, beyond > MARGIN
     dv = cen - X[nodes]
     nv = np.sqrt(np.einsum('ij,ij->i', dv, dv))
     cosd = np.einsum('ij,ij->i', dv, un[1:nft + 1][pp]) / np.where(nv > 0, nv, 1.0)
-    margin = np.where(rl == 2, cosd, -cosd)
-    wrong = np.nonzero(~(margin > 0.0))[0]
+    tie = ~inside & ~far & (np.abs(cosd * nv) <= tol)
+    tested = (inside | (rl == 2) | far) & ~tie
+    ce, nodes, pp, rl, far = ce[tested], nodes[tested], pp[tested], rl[tested], far[tested]
+    margin = np.where(rl == 2, cosd[tested], -cosd[tested])
+    wrong = np.nonzero(far | ~(margin > 0.0))[0]
     mw, sw = int((rl[wrong] == 2).sum()), int((rl[wrong] == 1).sum())
     m.update(sides_attachments=int(margin.size),
              sides_min_margin=float(margin.min()) if margin.size else float('nan'),
              sides_wrong_master=mw, sides_wrong_slave=sw)
     if wrong.size:
         fail['sides'] = ('%d of %d (cell,node) attachments on the wrong side of the fault plane '
-                         '(%d master-attached on the footwall side, %d slave-attached on the hanging-wall side), '
-                         'first element %d (type %d)' % (wrong.size, margin.size, mw, sw,
+                         '(%d master-attached on the footwall side, %d slave-attached on the hanging-wall side; '
+                         '%d of them beyond the one-cell margin past the patch), '
+                         'first element %d (type %d)' % (wrong.size, margin.size, mw, sw, int(far.sum()),
                                                          ce[wrong[0]] + 1, elem_type[ce[wrong[0]]]))
     return m, fail
 
