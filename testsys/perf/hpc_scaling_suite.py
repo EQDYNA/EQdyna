@@ -345,7 +345,7 @@ def snap_dx(target_dx, case=DEFAULT_CASE):
     return G / k
 
 
-def grid_line_check(case, dx):
+def _grid_lines(case, dx):
     """Run the solver's own per-axis belt rule (meshgen.build_grid_lines ->
     one_dim_coor_array, the Python port of meshgen.f90's) for `case` at
     dx=dy=dz. A refusal is re-raised as SuiteError quoting it."""
@@ -360,9 +360,24 @@ def grid_line_check(case, dx):
                   zmin=par.zmin, zmax=par.zmax, rat=par.enlarging_ratio, nPML=SUITE_NPML,
                   faults=faults, C_degen=par.C_degen, tol=1.0e-5)
     try:
-        meshgen.build_grid_lines(params)
+        return meshgen.build_grid_lines(params)
     except checkInputConsistency.InputConsistencyError as e:
         raise SuiteError('%s at dx = %r does not mesh: %s' % (case, dx, e))
+
+
+def grid_line_check(case, dx):
+    """_grid_lines, result discarded: raises SuiteError if `case` does not mesh at dx."""
+    _grid_lines(case, dx)
+
+
+def grid_line_elements(case, dx):
+    """Total elements of the mesh the solver builds for `case` at dx: cells of
+    the solver's own grid lines (meshgen.build_grid_lines), PML and
+    enlarging-ratio layers included. `elements_for_dx` (volume / dx^3) is only
+    a sizing estimate and misses both (about 4x to 8x too high on test.tpv8);
+    this is the count a point's manifest entry reports."""
+    xl, yl, zl = _grid_lines(case, dx)[:3]
+    return (len(xl) - 1) * (len(yl) - 1) * (len(zl) - 1)
 
 
 def snapped_dx_for_target_elements(target_elements, case=DEFAULT_CASE):
@@ -406,7 +421,7 @@ def build_points(test, level, machine_cfg, max_nodes, case=DEFAULT_CASE):
         for nnodes in _node_counts(max_nodes, cores_per_node):
             ranks = nnodes * cores_per_node
             points.append(dict(point_id='strong_n%04d' % nnodes, ranks=ranks,
-                                nnodes=nnodes, dx=dx,
+                                nnodes=nnodes, dx=dx, elements=grid_line_elements(case, dx),
                                 decomp=_decompose(ranks)))
     elif test == 'weak':
         # Elements-per-core fixed: dx refines (shrinks) as ranks grow so
@@ -417,7 +432,7 @@ def build_points(test, level, machine_cfg, max_nodes, case=DEFAULT_CASE):
             this_target = target * (ranks / float(base_ranks))
             dx = snapped_dx_for_target_elements(this_target, case)
             points.append(dict(point_id='weak_n%04d' % nnodes, ranks=ranks,
-                                nnodes=nnodes, dx=dx,
+                                nnodes=nnodes, dx=dx, elements=grid_line_elements(case, dx),
                                 decomp=_decompose(ranks)))
     else:  # size
         # Fixed core count (one node's worth, by default); dx swept across
@@ -431,7 +446,7 @@ def build_points(test, level, machine_cfg, max_nodes, case=DEFAULT_CASE):
         for i, factor in enumerate((0.1, 0.3, 1.0, 3.0, 10.0)):
             dx = snapped_dx_for_target_elements(target * factor, case)
             points.append(dict(point_id='size_f%02d' % i, ranks=ranks,
-                                nnodes=nnodes, dx=dx,
+                                nnodes=nnodes, dx=dx, elements=grid_line_elements(case, dx),
                                 decomp=_decompose(ranks)))
     return points
 

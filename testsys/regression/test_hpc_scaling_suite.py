@@ -39,6 +39,8 @@ data. Exits non-zero on any failure.
 import copy
 import json
 import os
+import re
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -49,6 +51,7 @@ for _p in (TESTSYS, REPO_ROOT, os.path.join(REPO_ROOT, 'src', 'python')):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from testsys.common import mpi_child_env  # noqa: E402
 from testsys.perf import hpc_scaling_suite as h  # noqa: E402
 import run_numa_scaling as numa                   # noqa: E402
 
@@ -951,6 +954,35 @@ def check_mixed_unmeasured_and_noisy_bucket_raises():
     print('  PASS  mixed unmeasured/noisy bucket: raises, not folded into "not measured"')
 
 
+def check_point_elements_equal_the_solvers_own_count():
+    """A point's `elements` is the solver's element count, not volume/dx^3: a serial
+    `eqdyna --mesh-only` of test.tpv8 at dx 500 prints `mesh-screen: ... elements=N`
+    (whole mesh on one rank); the suite's grid_line_elements must equal that N, and
+    the volume estimate must NOT (it is ~5x high, which is why it is not reported)."""
+    import tempfile
+    root = h.REPO_ROOT
+    exe = os.path.join(root, 'bin', 'eqdyna')
+    if not os.path.isfile(exe):
+        raise AssertionError('%s missing: run ./install-eqdyna.sh -m ubuntu first' % exe)
+    env = dict(os.environ, PATH=os.pathsep.join([os.path.join(root, 'scripts'), os.path.join(root, 'bin'),
+                                                  os.environ.get('PATH', '')]), EQDYNAROOT=root)
+    with tempfile.TemporaryDirectory(prefix='hpcElems.') as tmp:
+        case_dir = h.build_point_case(os.path.join(tmp, 'tpv8'), 'test.tpv8', 500.0, (1, 1, 1), 2, env=env)
+        r = subprocess.run(['timeout', '-s', 'KILL', '900', 'mpirun', '-np', '1', exe, '--mesh-only'], cwd=case_dir,
+                           env=mpi_child_env(env), capture_output=True, text=True)
+    lines = [l for l in (r.stdout + r.stderr).splitlines() if l.startswith('mesh-screen:')]
+    assert r.returncode == 0 and len(lines) == 1, 'solver rc %d, %d mesh-screen lines' % (r.returncode, len(lines))
+    solver = int(re.search(r'\belements=(\d+)', lines[0]).group(1))
+    suite = h.grid_line_elements('test.tpv8', 500.0)
+    est = h.elements_for_dx(500.0)
+    assert solver == suite, 'solver %d vs suite %d' % (solver, suite)
+    assert est > 2.0 * solver, 'volume estimate %.0f no longer far from the solver count %d' % (est, solver)
+    pts = h.build_points('strong', 'medium', dict(cores_per_node=128), 1)
+    assert all(isinstance(p['elements'], int) and p['elements'] > 0 for p in pts), pts
+    print('  PASS  point elements = solver mesh-screen elements (%d); volume estimate %.0f is %.1fx high'
+          % (solver, est, est / solver))
+
+
 def main():
     print('Regression guard: testsys/perf/hpc_scaling_suite.py (item 142)')
     checks = [check_bucket_partition,
@@ -958,6 +990,7 @@ def main():
               check_per_rank_metrics_fixed_vs_per_step,
               check_fixed_buckets_would_trip_guard_if_differenced,
               check_build_points_strong_weak_size,
+              check_point_elements_equal_the_solvers_own_count,
               check_step_pair_cli_defaults_and_validation,
               check_job_id_is_last_all_digit_line_and_nothing_else,
               check_submit_never_stores_the_account,
