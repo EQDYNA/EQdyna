@@ -550,7 +550,7 @@ def build_solver_state(case_dir, part=None, mesh_only=False):
     # turns into the FATAL block and the check's own exit code; on the MPI path
     # it also MPI_Aborts, as the failing rank's partners would otherwise hang.
     # No switch, no fallback: a mesh that fails is never solved.
-    screen = meshscreen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, params['tol'])
+    screen = meshscreen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, params['tol'], params['dx'])
     if mesh_only:
         # Mesh generation + screen, no solve (serial only: part must be None
         # or the rank's own box). Returns the measured screen scalars.
