@@ -586,13 +586,19 @@ def provenance(machine, nsteps_lo, nsteps_hi, repeats, points, backend, bin_path
     not written. `solver_git_sha` is the tree of the bin the jobs use."""
     return dict(
         git_sha=_git('rev-parse', 'HEAD'),
-        git_dirty=bool(_git('status', '--porcelain')),
+        # Tracked modifications only: the installer leaves build.log and bin/
+        # untracked, which made a clean clone read dirty (Vista smoke,
+        # 2026-11-24). Untracked files are counted, not hidden.
+        git_dirty=bool(_git('status', '--porcelain', '--untracked-files=no')),
+        git_untracked_count=len([ln for ln in _git('status', '--porcelain',
+                                                   '--untracked-files=normal').splitlines()
+                                 if ln.startswith('??')]),
         solver_git_sha=solver_git_sha(backend, bin_path),
         machine=machine,
         loaded_modules=[m for m in os.environ.get('LOADEDMODULES', '').split(':') if m],
         nsteps_lo=nsteps_lo, nsteps_hi=nsteps_hi, repeats=repeats,
         rank_layout=[dict(point_id=p['point_id'], ranks=p['ranks'], nnodes=p['nnodes'],
-                          decomp=list(p['decomp'])) for p in points],
+                          decomp=list(p['decomp']), dx=p['dx']) for p in points],
         date_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))
 
 
@@ -621,7 +627,8 @@ POINT_RC_TAG = 'EQDYNA_POINT_RC'
 _CD_RE = re.compile(r'^cd (\S+) &&')
 
 
-def write_job_script(path, *, jobname, nnodes, ranks, partition, walltime, modules, commands):
+def write_job_script(path, *, jobname, nnodes, ranks, partition, walltime, modules, commands,
+                     host_label):
     """The sbatch script. It carries NO `#SBATCH -A`: the allocation is passed
     on the sbatch command line only (item 142 (i)), so it can never be written
     into a file that is later committed.
@@ -643,6 +650,11 @@ def write_job_script(path, *, jobname, nnodes, ranks, partition, walltime, modul
         f.write('#SBATCH -J %s\n#SBATCH -o a.eqdyna.log%%j\n#SBATCH -N %d\n#SBATCH -n %d\n'
                 '#SBATCH -p %s\n#SBATCH -t %s\n' % (jobname, nnodes, ranks, partition, walltime))
         f.write('set -uo pipefail\n')
+        # profile_emit's host label defaults to 'workstation' (no real hostname
+        # in evidence); on a cluster that mislabels the run, so name the machine.
+        if not _MODULE_RE.match(host_label):
+            raise SuiteError('host label %r is not a plain name' % (host_label,))
+        f.write('export EQDYNA_HOST_LABEL=%s\n' % host_label)
         for m in modules:
             f.write('module load %s || exit 1\n' % m)
         f.write('first_rc=0\n')
@@ -772,7 +784,7 @@ def prepare_point(point, backend, case_name, machine, machine_cfg, out_dir, run_
             script_path, jobname='hpcscale-%s' % point['point_id'], nnodes=point['nnodes'],
             ranks=point['ranks'], partition=machine_cfg['partition'] or 'normal',
             walltime=opts['walltime'] or machine_cfg['walltime'] or '02:00:00',
-            modules=opts['modules'],
+            modules=opts['modules'], host_label=machine,
             commands=list(extra_commands) + job_commands(
                 point, backend, mpirun,
                 opts['bin_path'] or os.path.join(REPO_ROOT, 'bin', 'eqdyna'),
@@ -984,6 +996,8 @@ assert set(PER_STEP_BUCKETS) | set(FIXED_BUCKETS) == set(profile_schema.BUCKET_K
 # two zeros is NonPositiveMeasurement. The declaration only applies while the
 # data agree (lo == hi == 0.0): a nonzero value means the backend DID measure
 # it and it is differenced like any other.
+BELOW_NOISE = 'below_noise'   # a rank's sub-bucket whose lo/hi difference is non-positive
+
 UNMEASURED_BUCKETS = {
     'fortran': (),
     'python-jax-mpi': ('fault', 'wait'),
@@ -1038,13 +1052,21 @@ def per_rank_metrics(lo_rows, hi_rows):
         n_lo, n_hi = lo['nsteps'], hi['nsteps']
         ps_total, _ = numa.per_step_and_fixed(lo['loop_s'], hi['loop_s'], n_lo, n_hi)
         buckets_per_step = {}
+        bucket_lohi = {}
         for key in PER_STEP_BUCKETS:
             lo_v, hi_v = lo['buckets_s'][key], hi['buckets_s'][key]
             if key in UNMEASURED_BUCKETS[backend] and lo_v == 0.0 and hi_v == 0.0:
                 buckets_per_step[key] = None
                 continue
-            ps, _fixed = numa.per_step_and_fixed(lo_v, hi_v, n_lo, n_hi)
+            # loop_s above keeps the hard raise (the rule). A sub-bucket is a
+            # small share of it, so its lo/hi difference can be noise on one
+            # rank: mark it and let analyze() difference the rank-MEAN.
+            try:
+                ps, _fixed = numa.per_step_and_fixed(lo_v, hi_v, n_lo, n_hi)
+            except numa.NonPositiveMeasurement:
+                ps = BELOW_NOISE
             buckets_per_step[key] = ps
+            bucket_lohi[key] = (lo_v, hi_v)
         buckets_fixed = {key: hi['buckets_s'][key] for key in FIXED_BUCKETS}
 
         detail = hi.get('setup_detail_s')
@@ -1067,6 +1089,7 @@ def per_rank_metrics(lo_rows, hi_rows):
                         total_s=(init or 0.0) + setup + hi['buckets_s']['io'])
         per_rank.append(dict(rank=lo['rank'], host=lo['host'], per_step_s=ps_total,
                              buckets_per_step_s=buckets_per_step,
+                             bucket_lohi_s=bucket_lohi, nsteps=(n_lo, n_hi),
                              buckets_fixed_s=buckets_fixed,
                              setup_detail_s=dict(detail), overhead=overhead))
     return per_rank
@@ -1153,10 +1176,32 @@ def analyze(tgz_path):
             rep_means = [i['mean_s'] for i in imbs]
             samples = [r['overhead'] for pr in reps for r in pr]
             detail_keys = list(reps[0][0]['setup_detail_s'])
-            breakdown = {}
+            breakdown, below_noise = {}, {}
+            rows = [r for pr in reps for r in pr]
             for key in PER_STEP_BUCKETS:
-                vals = [r['buckets_per_step_s'][key] for pr in reps for r in pr]
-                breakdown[key] = None if any(v is None for v in vals) else _mean(vals)
+                vals = [r['buckets_per_step_s'][key] for r in rows]
+                if any(v is None for v in vals):
+                    if any(v == BELOW_NOISE for v in vals):
+                        raise SuiteError(
+                            'point %s bucket %r: declared unmeasured on some ranks (0.0/0.0) '
+                            'but measured nonzero and non-positive on others -- a real bad '
+                            'measurement, not "not measured"' % (point['point_id'], key))
+                    breakdown[key] = None
+                    continue
+                noisy = sum(1 for v in vals if v == BELOW_NOISE)
+                if noisy == 0:
+                    breakdown[key] = _mean(vals)
+                    continue
+                n_lo, n_hi = rows[0]['nsteps']
+                try:
+                    mean_ps, _ = numa.per_step_and_fixed(
+                        _mean([r['bucket_lohi_s'][key][0] for r in rows]),
+                        _mean([r['bucket_lohi_s'][key][1] for r in rows]), n_lo, n_hi)
+                except numa.NonPositiveMeasurement:
+                    mean_ps = None
+                breakdown[key] = mean_ps
+                below_noise[key] = dict(ranks_below_noise=noisy, ranks_total=len(vals),
+                                        rank_mean_per_step_s=mean_ps)
             report['points'].append(dict(
                 point_id=point['point_id'], ranks=point['ranks'], nnodes=point['nnodes'],
                 dx=point['dx'], decomp=point['decomp'], repeats=len(reps),
@@ -1175,7 +1220,9 @@ def analyze(tgz_path):
                 setup_detail_mean_s={k: _mean([r['setup_detail_s'][k] for pr in reps for r in pr])
                                      for k in detail_keys},
                 bucket_breakdown_per_step_s=breakdown,
-                buckets_not_measured=[k for k, v in breakdown.items() if v is None],
+                buckets_below_noise=below_noise,
+                buckets_not_measured=[k for k, v in breakdown.items()
+                                      if v is None and k not in below_noise],
                 parity_declaration=point['parity_declaration'],
             ))
 

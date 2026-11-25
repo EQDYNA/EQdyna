@@ -402,7 +402,7 @@ def check_submit_never_stores_the_account():
     assert prov['solver_git_sha'] == h.UNKNOWN_BIN_SHA == 'unknown (bin not in a git tree)', prov['solver_git_sha']
     assert (prov['nsteps_lo'], prov['nsteps_hi'], prov['repeats'], prov['machine']) == (100, 200, 2, 'vista')
     assert prov['rank_layout'] == [dict(point_id='strong_n0001', ranks=144, nnodes=1,
-                                        decomp=list(h._decompose(144)))], prov['rank_layout']
+                                        decomp=list(h._decompose(144)), dx=prov['rank_layout'][0]['dx'])], prov['rank_layout']
     assert prov['date_utc'].endswith('Z')
     runs = manifest['points'][0]['runs']
     assert [r['name'] for r in runs['lo']] == ['lo_r0', 'lo_r1'] and [r['nsteps'] for r in runs['hi']] == [200, 200]
@@ -627,13 +627,9 @@ def check_unmeasured_bucket_only_while_zero_and_setup_sum_two_sided():
     base = _load_fixture_row()
     lo = _scaled_row(base, 100, 1.0, backend='python-jax-mpi')
     hi = _scaled_row(base, 200, 1.0, backend='python-jax-mpi')
-    lo['buckets_s']['wait'] = 0.5    # a nonzero wait is a measurement: it is differenced (0.5 -> 0.0 is non-positive) -> refused
-    try:
-        h.per_rank_metrics([lo], [hi])
-    except numa.NonPositiveMeasurement:
-        pass
-    else:
-        raise AssertionError('a nonzero wait was waved through as "not measured"')
+    lo['buckets_s']['wait'] = 0.5    # a nonzero wait is a measurement: it is differenced (0.5 -> 0.0 is non-positive) -> below noise, NOT "not measured" (None)
+    got = h.per_rank_metrics([lo], [hi])[0]['buckets_per_step_s']['wait']
+    assert got == h.BELOW_NOISE, 'a nonzero wait was waved through as %r' % (got,)
     s = base['buckets_s']['setup']
     for backend in ('fortran', 'python-jax-mpi'):
         lo = _scaled_row(base, 100, 1.0, backend=backend)
@@ -782,7 +778,7 @@ def check_job_script_parity_first_no_errexit_and_rc_recorded():
     path = os.path.join(tmpd, 'submit.sh')
     h.write_job_script(path, jobname='j', nnodes=1, ranks=4, partition='gg', walltime='00:05:00',
                        modules=[], commands=['cd %s && true' % d1, 'cd %s && false' % d2,
-                                             'cd %s && true' % d3])
+                                             'cd %s && true' % d3], host_label='ubuntu')
     with open(path) as f:
         script = f.read()
     assert 'set -e' not in script and 'set -euo' not in script, 'errexit hides every point after a failure'
@@ -844,6 +840,117 @@ def check_installer_vista_branch_creates_pinned_venv():
     print('  PASS  install-eqdyna.sh -e vista: venv under $SCRATCH with numpy/netCDF4/xarray pinned')
 
 
+def check_noisy_bucket_reported_below_noise_not_refused():
+    """Row 142 (Vista smoke, 2026-11-24): one rank's tiny sub-bucket came out
+    lo > hi and --analyze refused the WHOLE report. A sub-bucket is now
+    reported below noise with the count of ranks affected and differenced on
+    the rank-MEAN; loop_s keeps its hard raise (check_per_step_from_loop_s_...)."""
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_noise_')
+    suite_dir = os.path.join(tmpd, 'suite')
+    os.makedirs(suite_dir)
+    _write_suite(suite_dir, [('strong_n0001', 4)], repeats=1)
+    lo_path = os.path.join(suite_dir, 'strong_n0001', 'lo_r0', 'profile.rank0.json')
+    hi_path = os.path.join(suite_dir, 'strong_n0001', 'hi_r0', 'profile.rank0.json')
+    with open(lo_path) as f:
+        lo = json.load(f)
+    with open(hi_path) as f:
+        hi = json.load(f)
+    # lo exchange now exceeds hi (negative difference on rank 0) but the 4-rank mean stays
+    # clearly positive: 3 ranks give +e, rank 0 gives -2e (delta=1.5*hi; 2.0 summed to exactly 0)
+    delta = 1.5 * hi['buckets_s']['exchange']
+    lo['buckets_s']['exchange'] += delta
+    lo['loop_s'] += delta
+    lo['total_s'] += delta
+    with open(lo_path, 'w') as f:
+        json.dump(lo, f)
+    assert lo['loop_s'] < hi['loop_s'], 'fixture must keep loop_s positive: %r %r' % (lo['loop_s'], hi['loop_s'])
+    try:
+        numa.per_step_and_fixed(lo['buckets_s']['exchange'], hi['buckets_s']['exchange'],
+                                lo['nsteps'], hi['nsteps'])
+    except numa.NonPositiveMeasurement:
+        pass
+    else:
+        raise AssertionError('fixture rank 0 exchange must difference non-positive')
+    tgz = os.path.join(tmpd, 'noisy.tgz')
+    with tarfile.open(tgz, 'w:gz') as tar:
+        tar.add(suite_dir, arcname='.')
+    report = h.analyze(tgz)
+    pt = report['points'][0]
+    bn = pt['buckets_below_noise']
+    assert list(bn) == ['exchange'] and bn['exchange']['ranks_below_noise'] == 1 \
+        and bn['exchange']['ranks_total'] == 4, bn
+    assert bn['exchange']['rank_mean_per_step_s'] > 0 and \
+        pt['bucket_breakdown_per_step_s']['exchange'] == bn['exchange']['rank_mean_per_step_s'], (
+        bn, pt['bucket_breakdown_per_step_s'])
+    assert 'exchange' not in pt['buckets_not_measured'], pt['buckets_not_measured']
+    print('  PASS  noisy sub-bucket: reported below noise (1 of 4 ranks), rank-mean differenced, '
+          'report not refused')
+
+
+def check_job_script_sets_host_label_to_machine():
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_host_')
+    path = os.path.join(tmpd, 'submit.sh')
+    h.write_job_script(path, jobname='j', nnodes=1, ranks=4, partition='gg', walltime='00:05:00',
+                       modules=[], commands=['cd %s && true' % tmpd], host_label='vista')
+    with open(path) as f:
+        text = f.read()
+    assert 'export EQDYNA_HOST_LABEL=vista\n' in text, text
+    print('  PASS  job script exports EQDYNA_HOST_LABEL=<machine> (profile host is not "workstation")')
+
+
+def check_provenance_dirty_ignores_untracked():
+    import subprocess
+    repo = tempfile.mkdtemp(prefix='test_hpc_scaling_prov_')
+    g = ['git', '-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t']
+    subprocess.check_call(g + ['init', '-q'])
+    with open(os.path.join(repo, 'a.txt'), 'w') as f:
+        f.write('x\n')
+    subprocess.check_call(g + ['add', 'a.txt'])
+    subprocess.check_call(g + ['commit', '-q', '-m', 'm'])
+    pts = [dict(point_id='strong_n0001', ranks=4, nnodes=1, dx=500.0, decomp=[4, 1, 1])]
+    old = h.REPO_ROOT
+    h.REPO_ROOT = repo
+    try:
+        with open(os.path.join(repo, 'build.log'), 'w') as f:
+            f.write('artifact\n')
+        clean = h.provenance('ubuntu', 100, 200, 1, pts, 'fortran', '/nonexistent/bin/eqdyna')
+        with open(os.path.join(repo, 'a.txt'), 'w') as f:
+            f.write('changed\n')
+        dirty = h.provenance('ubuntu', 100, 200, 1, pts, 'fortran', '/nonexistent/bin/eqdyna')
+    finally:
+        h.REPO_ROOT = old
+    assert clean['git_dirty'] is False and clean['git_untracked_count'] == 1, clean
+    assert dirty['git_dirty'] is True, dirty
+    print('  PASS  provenance: untracked build artifacts do not make git_dirty (counted instead); '
+          'a tracked edit does')
+
+
+def check_mixed_unmeasured_and_noisy_bucket_raises():
+    """Audit MAJOR: python-jax-mpi declares `wait` unmeasured (0.0/0.0). One rank
+    that measured it nonzero and differenced non-positive, beside ranks that read
+    0.0/0.0, must raise -- never be folded into "not measured"."""
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_mixed_')
+    suite_dir = os.path.join(tmpd, 'suite')
+    os.makedirs(suite_dir)
+    _write_suite(suite_dir, [('strong_n0001', 4)], repeats=1, backend='python-jax-mpi')
+    lo_path = os.path.join(suite_dir, 'strong_n0001', 'lo_r0', 'profile.rank0.json')
+    with open(lo_path) as f:
+        lo = json.load(f)
+    lo['buckets_s']['wait'] = 0.5
+    lo['total_s'] += 0.5          # keep unaccounted_s == total_s - sum(buckets_s)
+    with open(lo_path, 'w') as f:
+        json.dump(lo, f)
+    tgz = os.path.join(tmpd, 'mixed.tgz')
+    _tar_suite(suite_dir, tgz)
+    try:
+        h.analyze(tgz)
+    except h.SuiteError as e:
+        assert 'declared unmeasured on some ranks' in str(e), str(e)
+    else:
+        raise AssertionError('a nonzero non-positive wait beside 0/0 ranks was reported as not measured')
+    print('  PASS  mixed unmeasured/noisy bucket: raises, not folded into "not measured"')
+
+
 def main():
     print('Regression guard: testsys/perf/hpc_scaling_suite.py (item 142)')
     checks = [check_bucket_partition,
@@ -870,7 +977,11 @@ def main():
               check_medium_smallest_points_build_and_mesh_lines,
               check_job_script_parity_first_no_errexit_and_rc_recorded,
               check_missing_netcdf4_is_a_clear_hard_failure,
-              check_installer_vista_branch_creates_pinned_venv]
+              check_installer_vista_branch_creates_pinned_venv,
+              check_noisy_bucket_reported_below_noise_not_refused,
+              check_job_script_sets_host_label_to_machine,
+              check_provenance_dirty_ignores_untracked,
+              check_mixed_unmeasured_and_noisy_bucket_raises]
     failures = []
     for c in checks:
         try:
