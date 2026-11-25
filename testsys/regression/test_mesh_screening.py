@@ -28,7 +28,7 @@ Tests (every one a hard failure, none skips):
      jax-MPI PASS LINE (row 169 (n)): the same job unplanted exits 0 with exactly one PASS line.
      Both run in their own session; a timeout SIGKILLs the whole process group.
   10. +X WINDOW (audit MAJOR): the slave +x exemption is meshgen's window, not wider: a swap on test.drv.a6's
-     first +x cell (ratio 1) is flagged by both screens; the same swap on test.tpv8 (ratio > 1) is not judged.
+     first +x cell (ratio 1) is flagged by both screens; the the exempt slave attachment past the edge on test.tpv8 (ratio > 1, no swap is constructible there) is not judged.
   9. ROUND-OFF TIES (row 169 (k)): noise on tpv36's non-fault nodes leaves the screen green with the
      tie rule and trips it without (tol = 0).
   8. STRIKE -90 TIE CELLS (row 169 (h)): -90 moves only round-off tie cells;
@@ -425,30 +425,35 @@ def test_planted_defects(tmp):
     assert not errs, 'planted defects:\n' + '\n'.join(errs)
 
 
-def plusx_swap(a):
-    """Plant a slave/master swap on the first cell past the patch's +x edge: the cell beyond xhi on the +un side
-    holding the MASTER node of a +x-edge pair at mid depth gets the coincident SLAVE node. Returns (cell, cell max x,
-    xhi + dx + tol), the last two being meshgen's window edge against the cell's top-x corner."""
+def plusx_swap(a, swap=True):
+    """Plant, past the patch's +x edge, the slave attachment meshgen's window may or may not judge. swap=True (ratio 1):
+    the first cell beyond xhi on the +un side holding the MASTER node of a +x-edge pair at mid depth gets the
+    coincident SLAVE node (meshgen side-tests it, so this is a wrong-side attachment). swap=False (ratio > 1): no
+    master is held beyond the edge on the +un side (meshgen never tests there, the clean mesh already holds the SLAVE),
+    so the mesh is left as built and the cell holding the slave is the exempt attachment, asserted to exist. Returns
+    (cell, cell max x, xhi + dx + tol), the last two being the cell's top-x corner against meshgen's window edge."""
     X, conn, et, nsmp, un, tol, dx = a
     xm, zm = X[nsmp[:, 1], 0], X[nsmp[:, 1], 2]
     edge = np.nonzero(xm == xm.max())[0]
     p = int(edge[np.argmin(np.abs(zm[edge] - 0.5 * (zm.min() + zm.max())))])
     s, m = int(nsmp[p, 0]), int(nsmp[p, 1])
-    cells = np.nonzero((conn == m).any(axis=1))[0]
+    held = m if swap else s
+    cells = np.nonzero((conn == held).any(axis=1))[0]
     cen = X[conn[cells]].sum(axis=1) / 8.0
-    ok = ((cen - X[m]) @ un[p + 1] > 0) & (cen[:, 0] > xm.max())
-    assert ok.any(), 'no cell beyond the +x edge on the +un side holds master node %d' % m
+    ok = ((cen - X[held]) @ un[p + 1] > 0) & (cen[:, 0] > xm.max())
+    assert ok.any(), 'no cell beyond the +x edge on the +un side holds node %d (%s)' % (held, 'master' if swap else 'slave')
     cells = cells[ok]
     cmax = X[conn[cells]][:, :, 0].max(axis=1)
     e = int(cells[np.argmin(cmax)])
-    conn[e][conn[e] == m] = s
+    if swap:
+        conn[e][conn[e] == m] = s
     return e, float(cmax.min()), float(xm.max() + dx + tol)
 
 
 def test_plusx_swap(tmp):
     """The +x exemption mirrors meshgen's window (audit MAJOR): where enlarging_ratio == 1 (test.drv.a6) the first cell
     past the patch's +x edge IS side-tested by meshgen, so a swap there must be flagged (python and Fortran), while
-    where the ratio is > 1 (test.tpv8) that cell is outside the window and the same swap is, by convention, not judged."""
+    where the ratio is > 1 (test.tpv8) that cell is outside the window and the exempt slave attachment there is, by convention, not judged."""
     exe = build_driver(tmp)
     errs = []
     for case, want_fail in (('test.drv.a6', True), ('test.tpv8', False)):
@@ -456,7 +461,7 @@ def test_plusx_swap(tmp):
         make_case(case, d)
         mesh = Mesh(d)
         a = mesh.copy()
-        e, cmax, edge = plusx_swap(a)
+        e, cmax, edge = plusx_swap(a, want_fail)
         _, fail = meshscreen._screen_measure(*a)
         rc, fchecks = run_driver(exe, a, os.path.join(tmp, 'plusx_%s.dump' % case))
         want = ('sides',) if want_fail else ()
