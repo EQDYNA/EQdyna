@@ -51,6 +51,7 @@ for _p in (TESTSYS, REPO_ROOT, os.path.join(REPO_ROOT, 'src', 'python')):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from testsys.common import mpi_child_env  # noqa: E402
 from testsys.perf import hpc_scaling_suite as h  # noqa: E402
 import run_numa_scaling as numa                   # noqa: E402
 
@@ -964,13 +965,11 @@ def check_point_elements_equal_the_solvers_own_count():
     if not os.path.isfile(exe):
         raise AssertionError('%s missing: run ./install-eqdyna.sh -m ubuntu first' % exe)
     env = dict(os.environ, PATH=os.pathsep.join([os.path.join(root, 'scripts'), os.path.join(root, 'bin'),
-                                                  os.environ.get('PATH', '')]), EQDYNAROOT=root,
-               HWLOC_COMPONENTS='-gl,-opencl,-cuda,-nvml')
-    env.pop('DISPLAY', None)  # a dead X server blocks hwloc GL discovery in mpirun forever
+                                                  os.environ.get('PATH', '')]), EQDYNAROOT=root)
     with tempfile.TemporaryDirectory(prefix='hpcElems.') as tmp:
         case_dir = h.build_point_case(os.path.join(tmp, 'tpv8'), 'test.tpv8', 500.0, (1, 1, 1), 2, env=env)
         r = subprocess.run(['timeout', '-s', 'KILL', '900', 'mpirun', '-np', '1', exe, '--mesh-only'], cwd=case_dir,
-                           env=env, capture_output=True, text=True)
+                           env=mpi_child_env(env), capture_output=True, text=True)
     lines = [l for l in (r.stdout + r.stderr).splitlines() if l.startswith('mesh-screen:')]
     assert r.returncode == 0 and len(lines) == 1, 'solver rc %d, %d mesh-screen lines' % (r.returncode, len(lines))
     solver = int(re.search(r'\belements=(\d+)', lines[0]).group(1))
