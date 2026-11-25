@@ -284,7 +284,8 @@ def jax_mpi_once(case_dir, nsteps, cpus, ranks, sync, platform='cpu'):
     the per-step device_get of the halo, and XLA dispatch -- and leaving it
     unpinned puts it on whatever the box's foreign tenancy leaves free.
     """
-    env = dict(os.environ)
+    from testsys.common import mpi_child_env
+    env = mpi_child_env(os.environ)
     env['JAX_PLATFORMS'] = platform
     env['EQDYNA_MPI_SYNC'] = sync
     env['PYTHONPATH'] = PYTHON_PKG + os.pathsep + env.get('PYTHONPATH', '')

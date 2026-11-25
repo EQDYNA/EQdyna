@@ -1,0 +1,162 @@
+{
+  "backend": "fortran",
+  "case": "test.tpv8",
+  "created_utc": "2026-11-25T16:14:49Z",
+  "level": "medium",
+  "machine": "vista",
+  "max_nodes": 1,
+  "nsteps_hi": 200,
+  "nsteps_lo": 100,
+  "parity_point": {
+    "backend": "fortran",
+    "decomp": [
+      2,
+      2,
+      1
+    ],
+    "dx": 500.0,
+    "host_point": "strong_n0001",
+    "nnodes": 1,
+    "point_id": "parity",
+    "ranks": 4,
+    "result": {
+      "lines": [
+        "max|diff|=1.000000e-07 bound=1.0e-08 at row 940 col 13 (ref 6.743715000e-01 vs run 6.743714000e-01), 1891 fault nodes compared",
+        "FAILED the bound by 10.0x -- a bound is never moved to make this pass (rule 5)",
+        "nc: FAIL missing $SCRATCH/eqdyna-scaling/rep1/parity/gate/fault.dyna.r.nc -- plotRuptureDynamics did not run or did not write it",
+        "nsign: positive means extension (uploadTPV89 requests no n-stress field; SCEC default (Signconvention3d: normal slip > 0 for extension)); 5 buried on-fault stations, first-step n-stress in [-88.536, -33.201] MPa",
+        "station: 3 on-fault + 2 off-fault file(s), worst e=1.5721e-10 bound=1.0e-07 (on v-slip-rate at faultst000dp120.txt)",
+        "  on  h-slip           S_q=3.8291e+00 diff=1.1070e-16 e=2.8911e-17/1.0e-07 ok",
+        "  on  h-slip-rate      S_q=6.4469e+00 diff=1.0593e-15 e=1.6431e-16/1.0e-07 ok",
+        "  on  h-shear-stress   S_q=6.8287e+01 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok",
+        "  on  v-slip           S_q=3.4924e-08 (FLOOR-clamped) diff=1.0000e-16 e=1.0000e-10/1.0e-07 ok",
+        "  on  v-slip-rate      S_q=8.7286e-08 (FLOOR-clamped) diff=1.5721e-16 e=1.5721e-10/1.0e-07 ok",
+        "  on  v-shear-stress   S_q=3.7444e-01 diff=1.0000e-13 e=2.6707e-13/1.0e-07 ok",
+        "  on  n-stress         S_q=8.8536e+01 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok",
+        "  off h-disp           S_q=4.6640e-02 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok",
+        "  off h-vel            S_q=4.0086e-02 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok",
+        "  off v-disp           S_q=5.7191e-02 diff=4.8698e-18 e=8.5151e-17/1.0e-07 ok",
+        "  off v-vel            S_q=6.8638e-02 diff=1.0000e-16 e=1.4569e-15/1.0e-07 ok",
+        "  off n-disp           S_q=4.9002e-03 diff=1.0760e-17 e=2.1958e-15/1.0e-07 ok",
+        "  off n-vel            S_q=2.0470e-02 diff=1.1740e-16 e=5.7353e-15/1.0e-07 ok"
+      ],
+      "status": "fail"
+    },
+    "run": {
+      "name": "gate",
+      "run_dir": "$SCRATCH/eqdyna-scaling/rep1/parity/gate"
+    },
+    "term_s": 5.0
+  },
+  "points": [
+    {
+      "backend": "fortran",
+      "decomp": [
+        6,
+        6,
+        4
+      ],
+      "dx": 170.45454545454547,
+      "elements": 2874510,
+      "job_id": "1169859",
+      "nnodes": 1,
+      "parity_declaration": "declared: dx/term differ from the reference",
+      "point_id": "strong_n0001",
+      "ranks": 144,
+      "runs": {
+        "hi": [
+          {
+            "name": "hi_r0",
+            "nsteps": 200,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/hi_r0"
+          },
+          {
+            "name": "hi_r1",
+            "nsteps": 200,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/hi_r1"
+          },
+          {
+            "name": "hi_r2",
+            "nsteps": 200,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/hi_r2"
+          },
+          {
+            "name": "hi_r3",
+            "nsteps": 200,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/hi_r3"
+          },
+          {
+            "name": "hi_r4",
+            "nsteps": 200,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/hi_r4"
+          }
+        ],
+        "lo": [
+          {
+            "name": "lo_r0",
+            "nsteps": 100,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/lo_r0"
+          },
+          {
+            "name": "lo_r1",
+            "nsteps": 100,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/lo_r1"
+          },
+          {
+            "name": "lo_r2",
+            "nsteps": 100,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/lo_r2"
+          },
+          {
+            "name": "lo_r3",
+            "nsteps": 100,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/lo_r3"
+          },
+          {
+            "name": "lo_r4",
+            "nsteps": 100,
+            "run_dir": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/lo_r4"
+          }
+        ]
+      },
+      "submit_script": "$SCRATCH/eqdyna-scaling/rep1/strong_n0001/submit.sh"
+    }
+  ],
+  "provenance": {
+    "date_utc": "2026-11-25T16:14:50Z",
+    "git_dirty": false,
+    "git_sha": "dcf50e32bdec4e03751d9bc57e6f4168fa3203fe",
+    "git_untracked_count": 0,
+    "loaded_modules": [
+      "nvidia/24.7",
+      "nvpl/24.7",
+      "ucc/1.9.0",
+      "ucx/1.22.0",
+      "openmpi/5.0.5",
+      "cmake/4.1.1",
+      "xalt/3.1",
+      "TACC"
+    ],
+    "machine": "vista",
+    "nsteps_hi": 200,
+    "nsteps_lo": 100,
+    "rank_layout": [
+      {
+        "decomp": [
+          6,
+          6,
+          4
+        ],
+        "dx": 170.45454545454547,
+        "nnodes": 1,
+        "point_id": "strong_n0001",
+        "ranks": 144
+      }
+    ],
+    "repeats": 5,
+    "solver_git_sha": "dcf50e32bdec4e03751d9bc57e6f4168fa3203fe"
+  },
+  "repeats": 5,
+  "schema": "eqdyna-hpc-scaling-suite/3",
+  "test": "strong"
+}

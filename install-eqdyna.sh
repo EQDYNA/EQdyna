@@ -1,10 +1,10 @@
 #! /bin/bash
 # Build EQdyna (src/fortran -> bin/eqdyna) and set its environment.
 #
-# Machines: ls6 (TACC Lonestar6), grace (TAMU Grace), ubuntu (22.04), macos.
+# Machines: ls6 (TACC Lonestar6), vista (TACC Vista, aarch64), grace (TAMU Grace), ubuntu (22.04), macos.
 #
 #   ./install-eqdyna.sh -m <machine>   build
-#   ./install-eqdyna.sh -e <machine>   install dependencies, then build (ubuntu, macos, ls6)
+#   ./install-eqdyna.sh -e <machine>   install dependencies, then build (ubuntu, macos, ls6, vista)
 #   ./install-eqdyna.sh -c <machine>   set up the environment only, no build
 #   source install-eqdyna.sh -c <m>    set modules, venv, EQDYNAROOT and PATH in this shell
 
@@ -47,6 +47,29 @@ if [ -n "$MACH" ]; then
                      "one. Continuing with the module's bare python3, which" \
                      "lacks jax/mpi4py/netCDF4." >&2
             fi ;;
+        vista)
+            # aarch64 Grace-Grace; the default nvidia + openmpi modules supply
+            # mpif90 (nvfortran). The solver is Fortran; case setup is Python and
+            # needs netCDF4, which the system Python lacks, so -e creates a venv
+            # under $SCRATCH (pins measured working, Python 3.9).
+            module load netcdf
+            echo "netCDF: $TACC_NETCDF_INC $TACC_NETCDF_LIB"
+            if [ -z "${EQDYNA_VENV:-}" ] && [ -z "${SCRATCH:-}" ]; then
+                echo "install-eqdyna.sh: SCRATCH is unset and EQDYNA_VENV is not given; cannot place the vista venv" >&2
+                return 1 2>/dev/null || exit 1
+            fi
+            VENV=${EQDYNA_VENV:-$SCRATCH/eqdyna-venv}
+            if [ -n "$ENV" ]; then
+                python3 -m venv "$VENV" || { echo "install-eqdyna.sh: venv creation failed at $VENV" >&2; return 1 2>/dev/null || exit 1; }
+                "$VENV/bin/pip" install numpy==2.0.2 netCDF4==1.7.2 xarray==2024.7.0 \
+                    || { echo "install-eqdyna.sh: pip install failed" >&2; return 1 2>/dev/null || exit 1; }
+            fi
+            if [ -f "$VENV/bin/activate" ]; then
+                source "$VENV/bin/activate"
+            else
+                echo "install-eqdyna.sh: $VENV/bin/activate not found -- the case-setup" \
+                     "venv (netCDF4) was never created; run '$0 -e vista' first." >&2
+            fi ;;
         grace)
             module load netCDF
             echo "netCDF: ${EBROOTNETCDF}/include ${EBROOTNETCDF}/lib64" ;;
@@ -70,7 +93,7 @@ if [ -n "$MACH" ]; then
                 pip3 install --break-system-packages numpy netCDF4 matplotlib xarray
             fi ;;
         *)
-            echo "install-eqdyna.sh: unknown machine '$MACHINE' (ls6, grace, ubuntu, macos)" >&2
+            echo "install-eqdyna.sh: unknown machine '$MACHINE' (ls6, vista, grace, ubuntu, macos)" >&2
             return 1 2>/dev/null || exit 1 ;;
     esac
 

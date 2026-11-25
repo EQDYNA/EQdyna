@@ -1,0 +1,2 @@
+ins    dx   500 samples  118 n_max  +9.3827 MPa t 2.879  sr@peak 7.737 sr_max 8.662 m/s  |tau|@peak 0.200 MPa  n(4s) -9.234
+ins    dx   250 samples  237 n_max +13.7161 MPa t 2.538  sr@peak 10.223 sr_max 10.223 m/s  |tau|@peak 0.200 MPa  n(4s) -5.803

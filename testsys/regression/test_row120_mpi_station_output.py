@@ -68,7 +68,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FSRC = os.path.join(ROOT, 'src', 'fortran')
 
 sys.path.insert(0, ROOT)
-from testsys.common import MACHINE  # noqa: E402
+from testsys.common import MACHINE, mpi_child_env  # noqa: E402
 PYSRC = os.path.join(ROOT, 'src', 'python')
 sys.path.insert(0, PYSRC)
 
@@ -144,7 +144,7 @@ def _station_files(case_dir):
 
 def run_fortran(binpath, case_dir):
     r = subprocess.run([MPIRUN, '-np', str(RANKS), binpath], cwd=case_dir,
-                       capture_output=True, text=True, timeout=180)
+                       env=mpi_child_env(os.environ), capture_output=True, text=True, timeout=180)
     if r.returncode != 0:
         raise RuntimeError('fortran 4-rank run exited %d:\n%s'
                            % (r.returncode, (r.stdout + r.stderr)[-3000:]))

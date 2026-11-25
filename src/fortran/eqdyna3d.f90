@@ -29,8 +29,14 @@ program EQdyna
     integer :: iArg
     character (len = 16) :: envStatusStr, envLengthStr
     integer (kind = 4) :: envStatus, envLength
+    ! Row 142 (b)(c): setup split, written as "setup_detail_s" by output_profile.
+    integer (kind = 8) :: clkInit0, clkInit1, clkRate
+    real (kind = dp) :: mpiInitS, tStageMark, inputReadS, meshS, netcdfS, massS
 
+    call system_clock(clkInit0, clkRate)   ! MPI_WTIME is not callable before MPI_Init
     call MPI_Init(iMPIerr)
+    call system_clock(clkInit1)
+    mpiInitS = real(clkInit1 - clkInit0, dp) / real(clkRate, dp)
     call mpi_comm_rank(MPI_COMM_WORLD,me,iMPIerr)
     call mpi_comm_size(MPI_COMM_WORLD,totalNumOfMPIProcs,iMPIerr)
 
@@ -118,6 +124,8 @@ program EQdyna
     call readstations2
     if (insertFaultType > 0) call read_fault_rough_geometry
     call checkInputConsistency
+    inputReadS = MPI_WTIME() - startTimeStamp   ! readglobal .. checkInputConsistency
+    tStageMark = MPI_WTIME()
     
     allocate(nftnd(ntotft),localShapeFunc(nrowsh,nen))
     
@@ -127,7 +135,14 @@ program EQdyna
     call memory_estimate
     do iArg = 1, command_argument_count()
         call get_command_argument(iArg, argStr)
-        if (trim(argStr) == '--mesh-only') meshOnly = .true.
+        if (trim(argStr) == '--mesh-only') then
+            meshOnly = .true.
+        else
+            ! Row 169 (a): a mistyped flag used to be ignored and a full solve ran.
+            write(0,*) 'eqdyna: unknown command-line argument "'//trim(argStr)//'"'
+            call abortRun(ERR_GENERIC, 'unknown command-line argument "'//trim(argStr)// &
+                '"; the only argument eqdyna accepts is --mesh-only.')
+        endif
     enddo
     call meshgen
     if (meshOnly) then
@@ -140,17 +155,21 @@ program EQdyna
     call checkOffFaultStationCoverage
     call checkOnFaultStationCoverage
     call checkMeshMaterial
+    meshS = MPI_WTIME() - tStageMark   ! shape funcs, counts, allocInit, meshgen, mesh checks
+    tStageMark = MPI_WTIME()
     !call checkArrSize  ! disabled for productive runs
     call netcdf_read_on_fault_eqdyna
     if (mode==2) call netcdf_read_on_fault_eqdyna_restart
     if (outputGroundMotion == 1 .or. outputFinalSurfDisp == 1) call find_surfaceNodeIdArr
     
     call allocInitAfterMeshGen
+    netcdfS = MPI_WTIME() - tStageMark   ! on-fault netCDF read, surface ids, allocInitAfterMeshGen
     compTimeInSeconds(1) = MPI_WTIME() - startTimeStamp
 
     startTimeStamp = MPI_WTIME()
     call assembleGlobalMass
     compTimeInSeconds(2) = MPI_WTIME() - startTimeStamp
+    massS = compTimeInSeconds(2)
 
     call init_vel ! Initiate on-fault node velocities
 
@@ -203,7 +222,8 @@ program EQdyna
     call output_profile(compTimeInSeconds(1) + compTimeInSeconds(2), &
                          compTimeInSeconds(3) + compTimeInSeconds(4) + compTimeInSeconds(5), &
                          compTimeInSeconds(6), mpiCommLoop - mpiWaitLoop, mpiWaitLoop, &
-                         compTimeInSeconds(8), loopS, compTimeInSeconds(9), nstep, 1)
+                         compTimeInSeconds(8), loopS, compTimeInSeconds(9), nstep, 1, &
+                         mpiInitS, inputReadS, meshS, netcdfS, massS)
 
     if (writeCompTime == 1) call output_timeanalysis
     

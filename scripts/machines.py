@@ -47,6 +47,18 @@ MACHINES = {
               'under `mpirun -np N`. Pass --partition normal for a '
               'production-queue submission (development is the default '
               'here for a quick check).'),
+    'vista': dict(
+        scheduler='slurm', partition='gg', cores_per_node=144,
+        walltime='02:00:00', mpirun='mpirun',
+        notes='TACC Vista Grace-Grace (aarch64, 144 cores/node, 0.33 SU '
+              'per node-hour, 48 h and 32 nodes max); install-eqdyna.sh -m '
+              'vista builds the Fortran solver with the default nvidia/'
+              'openmpi stack (nvfortran) + netcdf module; -e vista also '
+              'creates the case-setup venv (numpy, netCDF4, xarray) under '
+              '$SCRATCH. mpirun measured under sbatch on the real machine: '
+              '`mpirun -np N` (Open MPI prterun) launched 144 ranks. Submit '
+              'with the allocation on the command line only, never stored. '
+              'Build and run under $SCRATCH (/work is near full).'),
     'grace': dict(
         scheduler='slurm', partition=None, cores_per_node=None,
         walltime='02:00:00', mpirun=None,

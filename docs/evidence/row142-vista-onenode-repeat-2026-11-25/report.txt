@@ -1,0 +1,149 @@
+{
+  "backend": "fortran",
+  "case": "test.tpv8",
+  "level": "medium",
+  "machine": "vista",
+  "node_boundary_128_256": null,
+  "parity": {
+    "compared": 1,
+    "declared_count": 1,
+    "declared_points": [
+      {
+        "declaration": "declared: dx/term differ from the reference",
+        "point_id": "strong_n0001"
+      }
+    ],
+    "lines": [
+      "max|diff|=1.000000e-07 bound=1.0e-08 at row 940 col 13 (ref 6.743715000e-01 vs run 6.743714000e-01), 1891 fault nodes compared",
+      "FAILED the bound by 10.0x -- a bound is never moved to make this pass (rule 5)",
+      "nc: FAIL missing $SCRATCH/eqdyna-scaling/rep1/parity/gate/fault.dyna.r.nc -- plotRuptureDynamics did not run or did not write it",
+      "nsign: positive means extension (uploadTPV89 requests no n-stress field; SCEC default (Signconvention3d: normal slip > 0 for extension)); 5 buried on-fault stations, first-step n-stress in [-88.536, -33.201] MPa",
+      "station: 3 on-fault + 2 off-fault file(s), worst e=1.5721e-10 bound=1.0e-07 (on v-slip-rate at faultst000dp120.txt)",
+      "  on  h-slip           S_q=3.8291e+00 diff=1.1070e-16 e=2.8911e-17/1.0e-07 ok",
+      "  on  h-slip-rate      S_q=6.4469e+00 diff=1.0593e-15 e=1.6431e-16/1.0e-07 ok",
+      "  on  h-shear-stress   S_q=6.8287e+01 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok",
+      "  on  v-slip           S_q=3.4924e-08 (FLOOR-clamped) diff=1.0000e-16 e=1.0000e-10/1.0e-07 ok",
+      "  on  v-slip-rate      S_q=8.7286e-08 (FLOOR-clamped) diff=1.5721e-16 e=1.5721e-10/1.0e-07 ok",
+      "  on  v-shear-stress   S_q=3.7444e-01 diff=1.0000e-13 e=2.6707e-13/1.0e-07 ok",
+      "  on  n-stress         S_q=8.8536e+01 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok",
+      "  off h-disp           S_q=4.6640e-02 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok",
+      "  off h-vel            S_q=4.0086e-02 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok",
+      "  off v-disp           S_q=5.7191e-02 diff=4.8698e-18 e=8.5151e-17/1.0e-07 ok",
+      "  off v-vel            S_q=6.8638e-02 diff=1.0000e-16 e=1.4569e-15/1.0e-07 ok",
+      "  off n-disp           S_q=4.9002e-03 diff=1.0760e-17 e=2.1958e-15/1.0e-07 ok",
+      "  off n-vel            S_q=2.0470e-02 diff=1.1740e-16 e=5.7353e-15/1.0e-07 ok"
+    ],
+    "parity_point": {
+      "dx": 500.0,
+      "point_id": "parity",
+      "ranks": 4,
+      "term_s": 5.0
+    },
+    "status": "fail"
+  },
+  "points": [
+    {
+      "bucket_breakdown_per_step_s": {
+        "element": 0.015075077283374988,
+        "exchange": 0.0009064278092499985,
+        "fault": 5.118240488888885e-05,
+        "wait": 0.0027826236076805553
+      },
+      "buckets_below_noise": {
+        "exchange": {
+          "rank_mean_per_step_s": 0.0009064278092499985,
+          "ranks_below_noise": 65,
+          "ranks_total": 720
+        }
+      },
+      "buckets_not_measured": [],
+      "decomp": [
+        6,
+        6,
+        4
+      ],
+      "dx": 170.45454545454547,
+      "max_over_mean": 1.0000309288763607,
+      "max_per_step_s": 0.01962542051,
+      "mean_per_step_s": 0.019135964875249996,
+      "nnodes": 1,
+      "overhead_s": {
+        "init": {
+          "max": 1.8525679,
+          "mean": 1.6363892866666665,
+          "min": 1.428008
+        },
+        "io": {
+          "max": 1.546759059,
+          "mean": 0.022582222977777785,
+          "min": 2.56e-07
+        },
+        "setup": {
+          "max": 0.139356694,
+          "mean": 0.12472084120277774,
+          "min": 0.103033041
+        },
+        "total": {
+          "max": 3.279589692,
+          "mean": 1.7836923508472244,
+          "min": 1.5666059049999999
+        }
+      },
+      "parity_declaration": "declared: dx/term differ from the reference",
+      "point_id": "strong_n0001",
+      "ranks": 144,
+      "repeat_per_step_s": [
+        0.017826042061180557,
+        0.01962463100048611,
+        0.01916981797624999,
+        0.019464761090347213,
+        0.019594572247986122
+      ],
+      "repeat_rel_range": 0.09398997913252893,
+      "repeats": 5,
+      "setup_detail_mean_s": {
+        "input_read": 0.03757681237222218,
+        "mass_assembly": 0.014647932719444458,
+        "meshing": 0.01135077459583333,
+        "mpi_init": 1.6363892866666665,
+        "netcdf_open": 0.061143751465277854
+      }
+    }
+  ],
+  "provenance": {
+    "date_utc": "2026-11-25T16:14:50Z",
+    "git_dirty": false,
+    "git_sha": "dcf50e32bdec4e03751d9bc57e6f4168fa3203fe",
+    "git_untracked_count": 0,
+    "loaded_modules": [
+      "nvidia/24.7",
+      "nvpl/24.7",
+      "ucc/1.9.0",
+      "ucx/1.22.0",
+      "openmpi/5.0.5",
+      "cmake/4.1.1",
+      "xalt/3.1",
+      "TACC"
+    ],
+    "machine": "vista",
+    "nsteps_hi": 200,
+    "nsteps_lo": 100,
+    "rank_layout": [
+      {
+        "decomp": [
+          6,
+          6,
+          4
+        ],
+        "dx": 170.45454545454547,
+        "nnodes": 1,
+        "point_id": "strong_n0001",
+        "ranks": 144
+      }
+    ],
+    "repeats": 5,
+    "solver_git_sha": "dcf50e32bdec4e03751d9bc57e6f4168fa3203fe"
+  },
+  "schema": "eqdyna-hpc-scaling-report/3",
+  "test": "strong"
+}

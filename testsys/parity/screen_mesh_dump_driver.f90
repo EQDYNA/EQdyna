@@ -4,7 +4,7 @@
 ! linked against the production globalvar.o, errorCodes.o and screenMesh.o (no
 ! hook in the production binary). The verdict is this process's exit status
 ! (abortRun -> exit(code); 0 on a pass).
-! Dump layout (native little-endian): nnode i8, nel i8, nft i8, tol f8,
+! Dump layout (native little-endian): nnode i8, nel i8, nft i8, tol f8, dx f8,
 !   meshCoor(3,nnode) f8, nodeElemIdRelation(8,nel) i8, elemTypeArr(nel) i4,
 !   nsmp(2,nft) i8, un(3,nft) f8
 program screenMeshDumpDriver
@@ -21,7 +21,7 @@ program screenMeshDumpDriver
     endif
     call get_command_argument(1, path)
     open(newunit=u, file=trim(path), access='stream', form='unformatted', status='old', action='read')
-    read(u) nnode, nel, nft, tol
+    read(u) nnode, nel, nft, tol, dx
     ntotft = 1
     meshOnly = .true.
     allocate(nftnd0(1), meshCoor(3,nnode), nodeElemIdRelation(8,nel), elemTypeArr(nel), nsmp(2,nft,1), un(3,nft,1))

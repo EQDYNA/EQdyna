@@ -51,6 +51,12 @@ def test_ls6_mpirun_is_measured_plain_mpirun_not_ibrun():
     assert machines.machine('ls6')['mpirun'] == 'mpirun'
 
 
+def test_vista_mpirun_is_measured_mpirun():
+    """Measured under sbatch on the real machine: `mpirun -np N` (Open MPI
+    prterun) launched 144 ranks. Must be the string, not None."""
+    assert machines.machine('vista')['mpirun'] == 'mpirun'
+
+
 def test_grace_mpirun_is_unverified():
     """Not measured on grace -- None, not a guessed value (rule 2); callers
     (testsys/run.py's --machine/--submit) must refuse rather than treat

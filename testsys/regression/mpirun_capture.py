@@ -15,6 +15,10 @@ import glob
 import os
 import shlex
 import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from testsys.common import mpi_child_env  # noqa: E402
 
 PATTERN = 'eqdyna-stdout.*.txt'
 
@@ -27,7 +31,8 @@ def run_rank_files(mpirun, binary, cwd, np=1, env=None, timeout=120):
     propagates to the caller."""
     before = set(glob.glob(os.path.join(glob.escape(cwd), PATTERN)))
     shell = 'exec %s > eqdyna-stdout.$$.txt 2>&1' % shlex.quote(binary)
-    r = subprocess.run([mpirun, '-np', str(np), 'sh', '-c', shell], cwd=cwd, env=env,
+    r = subprocess.run([mpirun, '-np', str(np), 'sh', '-c', shell], cwd=cwd,
+                       env=mpi_child_env(os.environ if env is None else env),
                        capture_output=True, timeout=timeout)
     launcher = (r.stdout + r.stderr).decode(errors='replace')
     files = sorted(set(glob.glob(os.path.join(glob.escape(cwd), PATTERN))) - before)

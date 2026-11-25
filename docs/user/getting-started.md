@@ -33,6 +33,12 @@ install the system and Python dependencies listed above.
   interactive allocation, without `--submit`). Its results land in
   `scratch/submit_eqdyna_sweep_ls6.sh` (the generated job script) and
   `eqdyna_sweep_<jobid>.tgz` (log plus the perf/profile rows it appended).
+* **TACC Vista** (aarch64 Grace-Grace, Fortran solver only):
+  `./install-eqdyna.sh -m vista` loads the `netcdf` module and builds with the
+  default nvidia/openmpi stack. Build and run under `$SCRATCH`. `scripts/machines.py`
+  declares queue `gg` (144 cores/node); its `mpirun` is `mpirun -np N` (Open MPI prterun,
+  measured under sbatch: 144 ranks launched), so `--submit --machine vista` is accepted; give the allocation on the command line
+  only, it is never stored.
 * **Texas A&M Grace**: `./install-eqdyna.sh -m grace` loads the cluster's
   netCDF module and builds.
 * **macOS**: `./install-eqdyna.sh -e macos` installs `mpich` and `python`
@@ -62,6 +68,8 @@ python3 testsys/run.py unit regression
 This needs `pip install pytest` in the same environment. It takes about 4
 minutes (246 s measured on 2026-09-25 on a shared 64-core workstation) and must
 end with `SUCCESS unit` and `SUCCESS regression`.
+
+Every `mpirun` that `testsys` launches runs with `HWLOC_COMPONENTS=-gl,-opencl,-cuda,-nvml` (unless you set it) and no `DISPLAY`, in the child environment only, because GL discovery can hang `mpirun` at 0% CPU.
 
 Every `testsys/run.py` invocation's own console log, and the sweep's run
 output, land in `<repo>/test/` (previous run preserved in `test.prev/`) --

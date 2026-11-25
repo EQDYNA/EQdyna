@@ -18,8 +18,10 @@ import netCDF4
 import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, 'testsys'))
 import frt_canonical  # noqa: E402
+from testsys.common import mpi_child_env  # noqa: E402
 
 CASE = 'test.restart2'
 FIXTURE = os.path.join(REPO, 'case_input', CASE, 'fault.r.nc')
@@ -67,7 +69,7 @@ def run_fortran(case_dir, ranks=4, timeout=600, bin_env=None):
     env = _env()
     env.update(bin_env or {})
     subprocess.run(['./case.setup'], cwd=case_dir, env=env, check=True, stdout=subprocess.DEVNULL, timeout=timeout)
-    subprocess.run(['mpirun', '-np', str(ranks), 'eqdyna'], cwd=case_dir, env=env, check=True,
+    subprocess.run(['mpirun', '-np', str(ranks), 'eqdyna'], cwd=case_dir, env=mpi_child_env(env), check=True,
                    stdout=open(os.path.join(case_dir, 'run.out'), 'w'), stderr=subprocess.STDOUT, timeout=timeout)
     return frt_canonical.canonical_from_case(case_dir)
 

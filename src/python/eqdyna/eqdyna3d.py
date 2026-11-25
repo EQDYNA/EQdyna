@@ -550,7 +550,7 @@ def build_solver_state(case_dir, part=None, mesh_only=False):
     # turns into the FATAL block and the check's own exit code; on the MPI path
     # it also MPI_Aborts, as the failing rank's partners would otherwise hang.
     # No switch, no fallback: a mesh that fails is never solved.
-    screen = meshscreen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, params['tol'])
+    screen = meshscreen.screen_mesh(meshCoor, conn, elem_type, nsmp, un, params['tol'], params['dx'])
     if mesh_only:
         # Mesh generation + screen, no solve (serial only: part must be None
         # or the rank's own box). Returns the measured screen scalars.
@@ -731,7 +731,7 @@ def build_solver_state(case_dir, part=None, mesh_only=False):
         st_off_x_actual_m=st_off_actual_m[:, 0], st_off_y_actual_m=st_off_actual_m[:, 1],
         st_off_z_actual_m=st_off_actual_m[:, 2],
     )
-    mesh = dict(meshCoor=meshCoor, nsmp=nsmp)
+    mesh = dict(meshCoor=meshCoor, nsmp=nsmp, screen=screen)
     # Row 17 (multi-fault, board item 145): the python-jax-mpi rank-local MPI
     # fault-boundary bookkeeping (meshgen.fault_boundary_lists/mpi4arn/
     # fault_census/equation_census, MPI4NodalQuant.build_faces) is now
@@ -860,8 +860,14 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     with prof.phase('setup (mesh+input)'):
         # THIS RANK'S BOX only (meshgen.f90's rank-local build), then the
         # setup exchanges Fortran does (MPI4arn, MPI4NodalQuant on mass/fnms).
+        t_state0 = time.perf_counter()
         S, mesh = build_solver_state(case_dir, part=part)
+        t_state1 = time.perf_counter()
+        if part.rank == 0:
+            print('mesh-screen: PASS checks=none %s' % _fmt_screen(mesh['screen']), flush=True)
         plan = MQ.setup_exchange(comm, part, S, mesh)
+        setup_detail = dict(input_mesh=t_state1 - t_state0,
+                            setup_exchange=time.perf_counter() - t_state1)  # row 142 (c)
     with prof.phase('solve'):
         out = driver.run_mpi(S, comm, part, plan, nsteps=nsteps, verbose=verbose,
                              xp=_backend.array_module('jax'))
@@ -886,7 +892,9 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         total_s = time.perf_counter() - run_t0
         _profile_emit.write_profile(case_dir, 'python-jax-mpi', rank, nranks,
                                     rep['nsteps'], buckets,
-                                    loop_s=rep['solve_s'], total_s=total_s)
+                                    loop_s=rep['solve_s'], total_s=total_s,
+                                    setup_detail_s=dict(setup_detail,
+                                                        driver_setup=rep.get('setup_s', 0.0)))
 
     # Row 120: station output, INDEPENDENT of fault-node ownership below --
     # an off-fault station can sit in a box that never touches the fault at
@@ -960,6 +968,7 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     prof = profile if profile is not None else Profile(backend)
     with prof.phase('setup (mesh+input)'):
         S, mesh = build_solver_state(case_dir)
+    print('mesh-screen: PASS checks=none %s' % _fmt_screen(mesh['screen']), flush=True)
     with prof.phase('resolve solver'):
         solver = _resolve_solver(S['friclaw'], backend)
     with prof.phase('solve'):

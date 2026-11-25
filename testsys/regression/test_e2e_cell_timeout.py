@@ -49,6 +49,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, 'testsys', 'e2e'))
 
 import run_e2e  # noqa: E402
+from testsys.common import mpi_child_env  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -213,7 +214,7 @@ def check_hung_cell_is_killed_reported_and_actually_gone():
 # --------------------------------------------------------------------------
 def _mpi_tree_fn(cb, tmp, env):
     t0 = time.time()
-    rc = run_e2e._run(['mpirun', '-np', '2', 'sleep', '20'], tmp, env)
+    rc = run_e2e._run(['mpirun', '-np', '2', 'sleep', '20'], tmp, mpi_child_env(env))
     return (cb[0], cb[1], rc == 0, time.time() - t0, ['mpirun exited %d' % rc])
 
 

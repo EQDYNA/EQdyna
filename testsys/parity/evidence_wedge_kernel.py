@@ -92,8 +92,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(TESTSYS))
 PROBE_SRC = os.path.join(TESTSYS, 'probe_wedge_kernel.f90')
 FSRC = os.path.join(REPO_ROOT, 'src', 'fortran')
 
+sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
 from eqdyna import assembleGlobalKU, assembleGlobalMass  # noqa: E402
+from testsys.common import mpi_child_env  # noqa: E402
 
 RTOL, ATOL = 1e-10, 1e-9
 
@@ -239,7 +241,7 @@ def build_fresh_fortran_and_probe():
 def run_fortran(probe_bin):
     stdin_text = build_stdin()
     r = subprocess.run(['mpirun', '-np', '1', probe_bin], input=stdin_text,
-                        capture_output=True, text=True, timeout=60)
+                        env=mpi_child_env(os.environ), capture_output=True, text=True, timeout=60)
     if r.returncode != 0:
         raise SystemExit('FAIL: probe_wedge_kernel exited %d\nSTDOUT:\n%s\nSTDERR:\n%s'
                          % (r.returncode, r.stdout[-4000:], r.stderr[-4000:]))

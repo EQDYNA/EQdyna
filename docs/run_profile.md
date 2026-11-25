@@ -161,6 +161,27 @@ inside (and subtracted back out of) `exchange` -- the same nesting
 relationship, minus the sub-timer, because there is no separate call here to
 subtract one out of.
 
+## `setup_detail_s` -- the optional split of `setup`
+
+Optional object (schema `eqdyna-profile/1`), written so a scaling report can
+say where fixed cost goes. The parts other than `mpi_init` partition
+`buckets_s.setup` (two-sided check, `testsys/perf/hpc_scaling_suite.py`).
+
+| backend | keys |
+|---|---|
+| Fortran (`output_profile`) | `mpi_init` (outside `buckets_s.setup`), `input_read`, `meshing`, `netcdf_open`, `mass_assembly` |
+| python-jax-mpi | `input_mesh`, `setup_exchange`, `driver_setup` (= `rep['setup_s']`, the decompose/mass-check/`to_device`/jit-construction span) |
+
+`netcdf_open` is a historical name: the stage it times is the wider
+output-file open and per-rank output setup between meshing and mass assembly,
+not the netCDF open call alone. Renaming it needs the Fortran emitter and the
+schema to change together, so the name is kept and documented here.
+
+Measured (test.tpv8, dx 1000, 4 ranks, 20 steps, Fortran): `setup` 0.049 s;
+parts `input_read` 0.0004 + `meshing` 0.020 + `netcdf_open` 0.009-0.012 +
+`mass_assembly` 0.018-0.021 sum to `setup` within 1e-4 s; `mpi_init`
+0.048-0.071 s lies outside it.
+
 ## Measured on test.tpv8 (canonical case), 2026-09-23, this box, NUMA nodes 2-3
 
 | backend | ranks | max `|unaccounted_s / total_s|` | schema validate |

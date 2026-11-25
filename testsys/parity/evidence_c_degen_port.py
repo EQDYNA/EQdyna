@@ -30,6 +30,7 @@ sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, 'testsys', 'e2e'))
 sys.path.insert(0, os.path.join(REPO_ROOT, 'src', 'python'))
 import run_e2e
+from testsys.common import mpi_child_env  # noqa: E402
 from eqdyna import eqdyna3d, meshgen, readInputFiles
 
 CASE_NAME = 'test.tpv36'
@@ -114,7 +115,7 @@ def run_probe(probe_bin, case_dir):
         os.remove(out_txt)
     t0 = time.time()
     r = subprocess.run(['mpirun', '-np', '1', dst], cwd=case_dir,
-                        capture_output=True, text=True)
+                        env=mpi_child_env(os.environ), capture_output=True, text=True)
     elapsed = time.time() - t0
     if r.returncode != 0:
         print(r.stdout[-4000:])

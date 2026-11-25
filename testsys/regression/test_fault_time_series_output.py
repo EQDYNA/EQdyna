@@ -34,7 +34,9 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+from testsys.common import mpi_child_env  # noqa: E402
 
 CASE = 'test.tpv8'
 NSTEP = 6
@@ -68,7 +70,7 @@ def _make_case(case_dir, env, flag):
 
 
 def _run(case_dir, env):
-    r = subprocess.run(['mpirun', '-np', '1', 'eqdyna'], cwd=case_dir, env=env,
+    r = subprocess.run(['mpirun', '-np', '1', 'eqdyna'], cwd=case_dir, env=mpi_child_env(env),
                        capture_output=True, text=True, timeout=180)
     if r.returncode != 0:
         raise AssertionError('eqdyna exited %d:\n%s' % (r.returncode, (r.stdout + r.stderr)[-2000:]))

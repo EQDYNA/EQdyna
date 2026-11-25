@@ -173,6 +173,7 @@ SHARDS = {
         "test_nstress_sign_convention.py",  # added 2026-09-24 (wei-lin, row 22a): 11 case-param subprocesses + tempdir gate checks, ~1 s
         "test_threadprobe.py",  # added 2026-09-24 (wei-lin, item 47a): pure function, <1 s
         "test_no_hardcoded_paths.py",  # added 2026-10-07 (path scrub, owner decision 2026-10-06): one git grep subprocess, <1 s
+        "test_no_scheduler_dump.py",  # added 2026-11-25 (rule 28): regex scan of tracked text files, <2 s
         "test_host_label_writers.py",  # added 2026-11-03 (row 162, owner 1A): one git ls-files + two tiny interpreters, <2 s
         "test_defect_c_depth_offset_removed.py",  # added 2026-10-09 (mira-volkov,
                                  # board PR #164, Defect C): pure regex/text
@@ -331,6 +332,7 @@ SHARDS = {
         "test_station_header_location_stamp.py",
         "test_stress_i0_carry_aliasing.py",
         "test_version_banner.py",
+        "test_unknown_cli_arg.py",  # added 2026-11-24 (row 169 a): static scan + two 1-rank runs of the built binary
         "test_root_allowlist.py",  # added 2026-09-24 (wei-lin, root-notes move): one git ls-files, <1 s
         "test_text_line_format.py",  # 2026-09-29: static scan of src/fortran, <1 s
         "test_mesh_screening.py",  # added 2026-11-24 (row 167 step 1), moved to

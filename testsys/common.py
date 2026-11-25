@@ -15,6 +15,22 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MACHINE = os.environ.get('EQDYNA_TEST_MACHINE') or os.environ.get('MACHINE', 'ubuntu')
 
 
+# hwloc component discovery of GL/OpenCL/CUDA/NVML hangs mpirun at 0% CPU on some
+# boxes (no rank children ever start; cost three gates). Every testsys mpirun child
+# gets these excluded and no X display, in the CHILD env only.
+HWLOC_COMPONENTS_EXCLUDE = '-gl,-opencl,-cuda,-nvml'
+
+
+def mpi_child_env(env):
+    """Return a copy of `env` safe to hand to an mpirun child: HWLOC_COMPONENTS
+    defaults to HWLOC_COMPONENTS_EXCLUDE (a value already set is kept) and DISPLAY
+    is removed. Never touches os.environ."""
+    out = dict(env)
+    out.setdefault('HWLOC_COMPONENTS', HWLOC_COMPONENTS_EXCLUDE)
+    out.pop('DISPLAY', None)
+    return out
+
+
 def banner(msg):
     print(f'\n==== testsys: {msg} ====')
 
