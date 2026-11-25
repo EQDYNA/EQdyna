@@ -14,3 +14,7 @@ Cross-version consistency, not validation against an independent code.
 - `scec_compare.py --plot ts-fault` keeps only stations exactly on the node grid (its documented rule, `scec_plots.py:station_table`: never snapped); at dx 249.999 m 18 of 19 stations are 0.016 m off-grid and excluded, hence `ts_own` (same file name in both runs). The figure tool was not changed.
 
 Runs: `scripts/run_case.sh`, `scripts/set_case.py`, `scripts/queue2.sh`; run metadata `meta/*.run.meta`.
+
+## Independent four-cell re-run on the PR content head (conductor, 2026-11-24 21:52 CST)
+
+`meta/four_cell_rerun_3628339.txt`: `run_e2e.py --cases test.tpv36,test.tpv37 --backends fortran,python-jax` on a clean tree at `3628339` (binary md5 in `meta/binaries.txt`, post): 4 of 4 cells SUCCESS against the regenerated references, exit 0, 271.6 s. Evidence-only commits since `3628339` change nothing under src/ or testsys/.
