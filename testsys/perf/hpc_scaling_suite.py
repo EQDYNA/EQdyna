@@ -109,6 +109,8 @@ synthetic profile.rank*.json fixtures built in-memory by this module's own
 regression test, never a from-scratch "sweep dx until OOM" run.
 """
 import argparse
+import importlib
+import importlib.util
 import json
 import math
 import os
@@ -119,6 +121,7 @@ import sys
 import tarfile
 import tempfile
 import time
+from fractions import Fraction
 
 HERE = os.path.dirname(os.path.abspath(__file__))              # testsys/perf
 TESTSYS = os.path.dirname(HERE)                                 # testsys/
@@ -132,6 +135,7 @@ import run_numa_scaling as numa          # noqa: E402  (per_step_and_fixed, NonP
 import profile_schema                    # noqa: E402  (validate_run_dir -- the one profile guard)
 from testsys import matrix, compare      # noqa: E402  (the one e2e comparison)
 from eqdyna.MPI4NodalQuant import DECOMP as GATED_DECOMP  # noqa: E402  (Fortran's own decomposition table)
+from eqdyna import meshgen, readInputFiles, checkInputConsistency  # noqa: E402  (the solver's own axis rule)
 
 
 def _load_machines():
@@ -273,6 +277,102 @@ def elements_for_dx(dx):
 
 
 # --------------------------------------------------------------------------
+# dx must put every fault bound on a node line
+# --------------------------------------------------------------------------
+# The solver refuses (meshgen.f90 getLocalOneDimCoorArrAndSize, exit 33
+# ERR_GEOM_MULTIFAULT_XZ_BAD; Python port meshgen.one_dim_coor_array) a fault
+# bound that is not an integer number of grid sizes from its axis' belt origin
+# (the min over faults of that axis' lower bound). A dx taken from an element
+# count alone (dx_for_target_elements: 170.30165587605515 m) violates it on
+# test.tpv8 (30000 m / 170.3 = 176.15) and every rank aborted at solver start.
+# This suite therefore never hands a raw dx to a case: `snap_dx` moves it to
+# the nearest G/k, G the largest length every fault offset is a whole multiple
+# of, and `grid_line_check` runs the solver's own rule (the Python port, not a
+# second copy of it) on the result.
+SNAP_DENOM_LIMIT = 1000     # offsets are metres; resolve them to 1 mm
+SUITE_NPML = 6              # globalvar.f90 nPML, as readInputFiles.build_params hardcodes it
+
+
+def _case_par(case):
+    """The `par` of case_input/<case>/user_defined_params.py (loaded by path;
+    scripts/ is put on sys.path for its `from defaultParameters import`)."""
+    scripts = os.path.join(REPO_ROOT, 'scripts')
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    path = os.path.join(REPO_ROOT, 'case_input', case, 'user_defined_params.py')
+    if not os.path.isfile(path):
+        raise SuiteError('no %s: unknown --case %r' % (path, case))
+    spec = importlib.util.spec_from_file_location('hpc_suite_case_par_%s' % case.replace('.', '_'), path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.par
+
+
+def _axis_offsets(par):
+    """[(axis, [offset, ...])]: every fault bound's distance from its axis'
+    belt origin, positive ones only (meshgen.one_dim_coor_array's rule; the y
+    axis is exempt when C_degen /= 0, as there)."""
+    import lib                                            # scripts/lib.py
+    boxes = lib.resolveFaultGeom(par)
+    out = []
+    for axis, (ilo, ihi) in (('x', (0, 1)), ('y', (2, 3)), ('z', (4, 5))):
+        if axis == 'y' and par.C_degen != 0.0:
+            continue
+        lo = min(b[ilo] for b in boxes)
+        offs = [b[i] - lo for b in boxes for i in (ilo, ihi)]
+        out.append((axis, [o for o in offs if o > 0.0]))
+    return out
+
+
+def snap_dx(target_dx, case=DEFAULT_CASE):
+    """The dx nearest `target_dx` for which every fault offset is a whole
+    number of cells: G/k, G = gcd of all offsets (to SNAP_DENOM_LIMIT), k =
+    round(G/target) >= 1. Relative dx error <= 0.5/k. No offset -> target."""
+    if target_dx <= 0:
+        raise SuiteError('dx %r must be > 0' % (target_dx,))
+    fracs = [Fraction(o).limit_denominator(SNAP_DENOM_LIMIT)
+             for _axis, offs in _axis_offsets(_case_par(case)) for o in offs]
+    if not fracs:
+        return float(target_dx)
+    den = 1
+    for f in fracs:
+        den = den * f.denominator // math.gcd(den, f.denominator)
+    g = 0
+    for f in fracs:
+        g = math.gcd(g, int(f * den))
+    G = float(Fraction(g, den))
+    k = max(1, int(round(G / target_dx)))
+    return G / k
+
+
+def grid_line_check(case, dx):
+    """Run the solver's own per-axis belt rule (meshgen.build_grid_lines ->
+    one_dim_coor_array, the Python port of meshgen.f90's) for `case` at
+    dx=dy=dz. A refusal is re-raised as SuiteError quoting it."""
+    par = _case_par(case)
+    if not (par.dy == par.dx and par.dz == par.dx):
+        raise SuiteError('%s: dy/dz differ from dx; this suite sweeps one isotropic dx' % case)
+    import lib
+    faults = [dict(zip(('fxmin', 'fxmax', 'fymin', 'fymax', 'fzmin', 'fzmax'), b))
+              for b in lib.resolveFaultGeom(par)]
+    params = dict(dx=dx, dy=dx, dz=dx, dis4uniF=par.nuni_y_minus, dis4uniB=par.nuni_y_plus,
+                  xmin=par.xmin, xmax=par.xmax, ymin=par.ymin, ymax=par.ymax,
+                  zmin=par.zmin, zmax=par.zmax, rat=par.enlarging_ratio, nPML=SUITE_NPML,
+                  faults=faults, C_degen=par.C_degen, tol=1.0e-5)
+    try:
+        meshgen.build_grid_lines(params)
+    except checkInputConsistency.InputConsistencyError as e:
+        raise SuiteError('%s at dx = %r does not mesh: %s' % (case, dx, e))
+
+
+def snapped_dx_for_target_elements(target_elements, case=DEFAULT_CASE):
+    """dx_for_target_elements, snapped (snap_dx) and verified (grid_line_check)."""
+    dx = snap_dx(dx_for_target_elements(target_elements), case)
+    grid_line_check(case, dx)
+    return dx
+
+
+# --------------------------------------------------------------------------
 # points: the suite's table of (ranks, dx) configurations
 # --------------------------------------------------------------------------
 def _node_counts(max_nodes, cores_per_node):
@@ -292,7 +392,7 @@ def _node_counts(max_nodes, cores_per_node):
     return out
 
 
-def build_points(test, level, machine_cfg, max_nodes):
+def build_points(test, level, machine_cfg, max_nodes, case=DEFAULT_CASE):
     """[(point_id, ranks, nnodes, dx, (npx,npy,npz)), ...] for one
     (test, level) combination. Pure function (no filesystem/subprocess), so
     it is directly unit-testable."""
@@ -302,7 +402,7 @@ def build_points(test, level, machine_cfg, max_nodes):
 
     if test == 'strong':
         # Fixed total elements; only the decomposition changes.
-        dx = dx_for_target_elements(target)
+        dx = snapped_dx_for_target_elements(target, case)
         for nnodes in _node_counts(max_nodes, cores_per_node):
             ranks = nnodes * cores_per_node
             points.append(dict(point_id='strong_n%04d' % nnodes, ranks=ranks,
@@ -315,7 +415,7 @@ def build_points(test, level, machine_cfg, max_nodes):
         for nnodes in _node_counts(max_nodes, cores_per_node):
             ranks = nnodes * cores_per_node
             this_target = target * (ranks / float(base_ranks))
-            dx = dx_for_target_elements(this_target)
+            dx = snapped_dx_for_target_elements(this_target, case)
             points.append(dict(point_id='weak_n%04d' % nnodes, ranks=ranks,
                                 nnodes=nnodes, dx=dx,
                                 decomp=_decompose(ranks)))
@@ -329,7 +429,7 @@ def build_points(test, level, machine_cfg, max_nodes):
         ranks = cores_per_node
         nnodes = 1
         for i, factor in enumerate((0.1, 0.3, 1.0, 3.0, 10.0)):
-            dx = dx_for_target_elements(target * factor)
+            dx = snapped_dx_for_target_elements(target * factor, case)
             points.append(dict(point_id='size_f%02d' % i, ranks=ranks,
                                 nnodes=nnodes, dx=dx,
                                 decomp=_decompose(ranks)))
@@ -344,6 +444,30 @@ def _sh(cmd, cwd, env=None):
     rc = subprocess.call(cmd, shell=isinstance(cmd, str), cwd=cwd, env=env)
     if rc != 0:
         raise RuntimeError('`%s` (cwd=%s) exited %d' % (cmd, cwd, rc))
+
+
+def require_netcdf4():
+    """case.setup writes on_fault_vars_input.nc with netCDF4. Missing -> a hard
+    SuiteError naming the fix, before any case is attempted."""
+    try:
+        importlib.import_module('netCDF4')
+    except ImportError as e:
+        raise SuiteError(
+            'Python netCDF4 cannot be imported (%s): case.setup needs it, and the system '
+            'Python on a TACC login node lacks it. Run `./install-eqdyna.sh -e vista` (or '
+            '`-e ls6`) to create the venv, activate it, and re-run.' % (e,))
+
+
+def mesh_lines_check_built_case(case_dir):
+    """The solver's per-axis belt rule (meshgen.build_grid_lines, the Python
+    port of meshgen.f90's) on the case AS BUILT: the bGlobal/bModelGeometry/
+    bFaultGeometry files the solver will read. A refusal is a SuiteError, so a
+    non-meshing point is stopped here, before any sbatch."""
+    params, _g = readInputFiles.build_params(case_dir)
+    try:
+        meshgen.build_grid_lines(params)
+    except checkInputConsistency.InputConsistencyError as e:
+        raise SuiteError('built case %s does not mesh: %s' % (case_dir, e))
 
 
 def build_point_case(dst, case_name, dx, decomp, nsteps, env=None):
@@ -375,6 +499,7 @@ def build_point_case(dst, case_name, dx, decomp, nsteps, env=None):
             % (term, nsteps, dt)
     open(params, 'w').write(text)
     _sh(['./case.setup'], cwd=dst, env=env)
+    mesh_lines_check_built_case(dst)
     return dst
 
 
@@ -492,10 +617,22 @@ def job_commands(point, backend, mpirun, bin_path, work_root, repeats):
             for k in range(repeats) for tag in ('lo', 'hi')]
 
 
+POINT_RC_TAG = 'EQDYNA_POINT_RC'
+_CD_RE = re.compile(r'^cd (\S+) &&')
+
+
 def write_job_script(path, *, jobname, nnodes, ranks, partition, walltime, modules, commands):
     """The sbatch script. It carries NO `#SBATCH -A`: the allocation is passed
     on the sbatch command line only (item 142 (i)), so it can never be written
-    into a file that is later committed."""
+    into a file that is later committed.
+
+    No `set -e`: one failed timed point must not hide the points after it. Each
+    run line is followed by a line recording its exit code in the job output
+    (`EQDYNA_POINT_RC <run dir> <rc>`), the first failing rc is kept, and the
+    script exits with it after every line has run -- the job is FAILED if any
+    point failed, never silently green. `commands` run in the order given (the
+    caller puts the parity point first). A failing `module load` ends the job
+    at once: nothing after it can run."""
     for m in modules:
         if not _MODULE_RE.match(m):
             raise SuiteError('module name %r is not a plain module name' % (m,))
@@ -505,11 +642,18 @@ def write_job_script(path, *, jobname, nnodes, ranks, partition, walltime, modul
         f.write('#! /bin/bash\n')
         f.write('#SBATCH -J %s\n#SBATCH -o a.eqdyna.log%%j\n#SBATCH -N %d\n#SBATCH -n %d\n'
                 '#SBATCH -p %s\n#SBATCH -t %s\n' % (jobname, nnodes, ranks, partition, walltime))
-        f.write('set -euo pipefail\n')
+        f.write('set -uo pipefail\n')
         for m in modules:
-            f.write('module load %s\n' % m)
+            f.write('module load %s || exit 1\n' % m)
+        f.write('first_rc=0\n')
         for c in commands:
+            m = _CD_RE.match(c)
+            if not m:
+                raise SuiteError('run line %r does not start with `cd <run dir> &&`' % (c,))
             f.write(c + '\n')
+            f.write('rc=$?; echo "%s %s $rc"; [ "$rc" -eq 0 ] || [ "$first_rc" -ne 0 ] || first_rc=$rc\n'
+                    % (POINT_RC_TAG, m.group(1)))
+        f.write('exit $first_rc\n')
 
 
 # --------------------------------------------------------------------------
@@ -629,9 +773,10 @@ def prepare_point(point, backend, case_name, machine, machine_cfg, out_dir, run_
             ranks=point['ranks'], partition=machine_cfg['partition'] or 'normal',
             walltime=opts['walltime'] or machine_cfg['walltime'] or '02:00:00',
             modules=opts['modules'],
-            commands=job_commands(point, backend, mpirun,
-                                  opts['bin_path'] or os.path.join(REPO_ROOT, 'bin', 'eqdyna'),
-                                  job_root, opts['repeats']) + list(extra_commands))
+            commands=list(extra_commands) + job_commands(
+                point, backend, mpirun,
+                opts['bin_path'] or os.path.join(REPO_ROOT, 'bin', 'eqdyna'),
+                job_root, opts['repeats']))
         entry['submit_script'] = script_path
     elif opts['dry_run']:
         raise SuiteError('--dry-run writes a job script; machine %r has no scheduler' % machine)
@@ -670,11 +815,13 @@ def cmd_submit(args):
         raise SuiteError('--dry-run takes no --account: the printed sbatch line carries the '
                          'placeholder %s and the real allocation is typed by hand' % ALLOC_PLACEHOLDER)
     machine_cfg = machines.machine(args.machine)
+    if not args.dry_run:
+        require_netcdf4()
     max_nodes = args.max_nodes
     if max_nodes is None:
         max_nodes = {'medium': 16, 'large': 64, 'big': 256}[args.level]
 
-    points = build_points(args.test, args.level, machine_cfg, max_nodes)
+    points = build_points(args.test, args.level, machine_cfg, max_nodes, args.case)
     out_dir = args.out_dir or os.path.join(
         REPO_ROOT, 'docs', 'evidence',
         'hpc-scaling-%s-%s-%s-%s' % (args.machine, args.backend, args.test, args.level))
