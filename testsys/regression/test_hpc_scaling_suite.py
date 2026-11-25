@@ -855,7 +855,9 @@ def check_noisy_bucket_reported_below_noise_not_refused():
         lo = json.load(f)
     with open(hi_path) as f:
         hi = json.load(f)
-    delta = 2.0 * hi['buckets_s']['exchange']       # lo exchange now exceeds hi: negative difference
+    # lo exchange now exceeds hi (negative difference on rank 0) but the 4-rank mean stays
+    # clearly positive: 3 ranks give +e, rank 0 gives -2e (delta=1.5*hi; 2.0 summed to exactly 0)
+    delta = 1.5 * hi['buckets_s']['exchange']
     lo['buckets_s']['exchange'] += delta
     lo['loop_s'] += delta
     lo['total_s'] += delta
