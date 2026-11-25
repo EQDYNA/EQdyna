@@ -37,6 +37,8 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+from testsys.common import mpi_child_env  # noqa: E402
 SRC = os.path.join(ROOT, 'src', 'fortran')
 REGISTRY = os.path.join(SRC, 'errorCodes.f90')
 
@@ -314,7 +316,7 @@ def probe_real_binary():
     with tempfile.TemporaryDirectory() as d:
         try:
             p = subprocess.run([mpirun, '-np', '2', binary], cwd=d,
-                               capture_output=True, timeout=120)
+                               env=mpi_child_env(os.environ), capture_output=True, timeout=120)
         except FileNotFoundError:
             print('  real-binary probe SKIPPED (%s not found)' % mpirun)
             return None
@@ -346,7 +348,7 @@ def probe_real_binary():
     with tempfile.TemporaryDirectory() as d:
         try:
             q = subprocess.run([mpirun, '-np', '2', 'sh', '-c', shell], cwd=d,
-                               capture_output=True, timeout=120)
+                               env=mpi_child_env(os.environ), capture_output=True, timeout=120)
         except subprocess.TimeoutExpired:
             problems.append('the refused run HUNG under %s with redirected'
                             ' output instead of aborting' % mpirun)
