@@ -1,0 +1,2 @@
+nodes 13673 max diff by col: 3:0 4:5.62e-16 5:1.03e-15 6:3.05e-16 11:6.89e+06 12:1.46e+06 13:1.11e+07
+rows with |dtnrm|>1 kPa: 209 z range (-7182.2, 0.0)

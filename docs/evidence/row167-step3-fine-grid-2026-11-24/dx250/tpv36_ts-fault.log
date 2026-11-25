@@ -1,0 +1,24 @@
+<site-packages> UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+=== models (style assigned by position in --models) ===
+  [0] eqdyna   <runs>/pre_tpv36_dx250  reader=eqdyna-frt-ranks
+        label="pre-fix"  colour=#0072B2  linestyle=-
+  [1] eqdyna   <runs>/post_tpv36_dx250  reader=eqdyna-frt-ranks
+        label="post-fix"  colour=#D55E00  linestyle=--
+=== on-fault stations: 1 comparable, 18 excluded (by-product; the figure is the result) ===
+  discovered in pre-fix, dx 249.999 m: 19
+  discovered in post-fix, dx 249.999 m: 19
+  plotted: faultst000dp000
+  excluded x18: coordinates not on the node grid of pre-fix, dx 249.999 m (dx 249.999 m), post-fix, dx 249.999 m (dx 249.999 m)
+
+wrote <scratch>/fine/overlays/tpv36_dx250_ts-fault.png
+  canvas 7.48 x 3.14 in at 400 dpi = 2992 x 1256 px; print width 190 mm -> k = canvas/print = 1.000, so the set font sizes ARE the printed point sizes (labels 9, ticks 7.5, titles 9, legend 7.5, caption 7); 400 dpi at print width.
+
+--- caption as placed on the figure (every number computed from the plotted arrays) ---
+CROSS-VERSION CONSISTENCY CHECK between EQdyna results -- NOT an independent validation, NOT an accuracy claim: agreement
+    certifies no run against the benchmark.
+on-fault stations, h-component; rows are stations, columns quantities, y-range shared down each column. Node spacings: pre-fix, dx
+    249.999 m, post-fix, dx 249.999 m.
+1 of 1 comparable stations shown (evenly sampled from the sorted list); 18 of 19 discovered stations excluded because their
+    coordinates are not shared exactly -- none snapped, none interpolated.
+Peak |h| over the panels shown: slip 3.101e-15 m; slip rate 4.872e-15 m/s; shear stress 1.63e-13 MPa; traces span 0-13.00 s.

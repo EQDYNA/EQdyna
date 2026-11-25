@@ -1,0 +1,5 @@
+pre  d720df6 bin/eqdyna eff04c1825854c9011652ccdff909512
+post 3628339 bin/eqdyna 4efa26ea03ecf5e1f2de4fba0cbcca88
+screen-only build ecb8ccb (pre-fix meshgen + screenMesh) bin/eqdyna b8c137c92dd9e59cdf8984ec30671fd4
+pre_tpv37_dx250 frt.txt1 md5 ed2f6cd206313d6575b42494de5a3aee
+post_tpv37_dx250 frt.txt1 md5 000a78fa61e13fefddea70f3e733e701

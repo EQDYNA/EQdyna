@@ -1,0 +1,29 @@
+<site-packages> UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+=== models (style assigned by position in --models) ===
+  [0] eqdyna   <runs>/pre_tpv36_dx250  reader=eqdyna-frt-ranks
+        label="pre-fix"  colour=#0072B2  linestyle=-
+  [1] eqdyna   <runs>/post_tpv36_dx250  reader=eqdyna-frt-ranks
+        label="post-fix"  colour=#D55E00  linestyle=--
+=== per-model summary (by-product; the figure is the result) ===
+  pre-fix, dx 249.999 m
+      source=12 x frt.txt<rank>  13868/14260 nodes ruptured  area=866.7 km2  latest=9.247 s
+      never-ruptured fill: 99999 s (detected, 392 nodes)   dipping fault (corr(y,z)=-1.000): down-dip = hypot(y,z)
+  post-fix, dx 249.999 m
+      source=12 x frt.txt<rank>  13888/14260 nodes ruptured  area=868.0 km2  latest=9.069 s
+      never-ruptured fill: 99999 s (detected, 372 nodes)   dipping fault (corr(y,z)=-1.000): down-dip = hypot(y,z)
+=== pairwise, EXACT coordinate matches only (no snapping, no interpolation) ===
+  post-fix, dx 249.999 m vs pre-fix, dx 249.999 m: common=13673 both_ruptured=13288 only_ref=0 only_other=20 median|dt|=0.000s max|dt|=0.717s overlap=99.8%
+
+wrote <scratch>/fine/overlays/tpv36_dx250_cplot.png
+  canvas 7.48 x 8.37 in at 400 dpi = 2992 x 3347 px; print width 190 mm -> k = canvas/print = 1.000, so the set font sizes ARE the printed point sizes (labels 9, ticks 7.5, titles 9, legend 7.5, caption 7); 400 dpi at print width.
+
+--- caption as placed on the figure (every number computed from the plotted arrays) ---
+CROSS-VERSION CONSISTENCY CHECK between EQdyna results -- NOT an independent validation, NOT an accuracy claim: agreement
+    certifies no run against the benchmark.
+Rupture-time contours, 2 s interval, labelled every 4 s on pre-fix, dx 249.999 m. Each model is contoured on its OWN node grid;
+    nothing is interpolated or resampled. Node spacings: 249.999 m, 249.999 m.
+Ruptured nodes / ruptured area / latest arrival, in legend order: 13868/14260, 867 km2, 9.25 s; 13888/14260, 868 km2, 9.07 s.
+    Never-ruptured fill detected per file, legend order: 99999, 99999 s.
+Against pre-fix, dx 249.999 m on EXACTLY-shared node coordinates only -- median |dt| / max |dt| / rupture-extent overlap:
+    post-fix, dx 249.999 m: 13673 nodes, 0.000 / 0.72 s, 99.8%.
