@@ -9,7 +9,8 @@ subroutine screenMesh(nnode, nel, nftnd0)
     !             centre on the +un side, one to its SLAVE node on the -un side
     !             (signed cosine strictly > 0). Master attachments are tested
     !             everywhere; a SLAVE attachment beyond the fault patch is tested too
-    !             unless its cell centre is beyond the patch's +x edge (edge-weld
+    !             unless its cell is outside meshgen's side-test window past the patch's +x
+    !             edge (centre beyond xhi and max x >= xhi + dx + tol: the edge-weld
     !             convention, the only place a decided beyond-patch slave attachment
     !             sits on the +un side, measured on all registered cases). Either
     !             role, a centre more than MARGIN of the cell's own width past the
@@ -73,13 +74,13 @@ subroutine screenMesh(nnode, nel, nftnd0)
                     if (role(c(k)) == 2 .and. pf(c(k)) == ift .and. pn(c(k)) == pn(c(i))) br = .true.
                 enddo
             endif
-            ! A slave attachment whose centre is beyond the patch's +x edge is exempt (fxmax+dx edge-weld
-            ! convention; same measured rule as meshscreen.py) unless beyond MARGIN_CELLS; every other
+            ! A slave attachment whose centre is beyond the patch's +x edge AND whose max x >= xhi+dx+tol
+            ! (outside meshgen's side-test window, fxmax+dx edge-weld; same rule as meshscreen.py) is exempt unless beyond MARGIN_CELLS; every other
             ! attachment is tested (row 169 (b)); a beyond-patch centre within tol of the plane is a round-off tie (k).
             beyond = max(0.0d0, (xlo(ift) - cen(1))/(cmax(1) - cmin(1)), (cen(1) - xhi(ift))/(cmax(1) - cmin(1)), &
                                 (zlo(ift) - cen(3))/(cmax(3) - cmin(3)), (cen(3) - zhi(ift))/(cmax(3) - cmin(3)))
             far = beyond > MARGIN_CELLS
-            if (role(c(i)) == 1 .and. cen(1) > xhi(ift) .and. .not. far) cycle
+            if (role(c(i)) == 1 .and. cen(1) > xhi(ift) .and. cmax(1) >= xhi(ift) + dx + tol .and. .not. far) cycle
             dv = cen - meshCoor(1:3,c(i))
             nv = sqrt(dot_product(dv, dv))
             cosd = dot_product(dv, un(1:3,pn(c(i)),ift))
