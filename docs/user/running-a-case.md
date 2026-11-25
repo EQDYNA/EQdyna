@@ -67,8 +67,10 @@ of a split pair. A mesh that fails stops the run with exit code 81 (sides) or
 `--mesh-only` runs the mesh build and this screen and then exits 0 without
 solving or writing outputs. From the case directory, `mpirun -np 1 eqdyna
 --mesh-only` runs the Fortran binary, `python3 -m eqdyna . --mesh-only` the
-Python port (serial only). Either prints one `mesh-screen: PASS` or
-`mesh-screen: FAIL` line with the measured quantities.
+Python port (serial only). A passing run prints one `mesh-screen: PASS` line
+per rank with the measured quantities; a failing screen prints one
+`mesh-screen: FAIL` line per failing rank. A normal (solving) run prints the
+`PASS` line from rank 0 only, so the log shows the screen ran.
 
 ## The Python/JAX backend
 

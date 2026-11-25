@@ -9,8 +9,10 @@ the exit status.
 
   sides     a (cell,node) attachment to the MASTER node of a pair has the cell
             centre on the +un side of the pair, one to its SLAVE node on the -un
-            side (signed cosine strictly > 0). Cells whose centre is beyond the
-            fault patch in x or z are not tested.
+            side (signed cosine strictly > 0). Beyond the fault patch (cell
+            centre outside it in x or z) only MASTER attachments are tested: a
+            master node on the footwall side is a wrong wiring wherever it is,
+            while slave attachments there are exempt (edge-weld convention).
   bridging  no cell holds both nodes of one pair; the two nodes of a pair
             coincide to the mesh tolerance tol.
 """
@@ -88,14 +90,16 @@ def _screen_measure(meshCoor, conn, elem_type, nsmp, un, tol):
         fail['bridging'] = ' ; '.join(bad)
 
     # ---- sides: cell centre on the own side of the fault plane
-    # Cells beyond the patch edge are exempt: the fxmax+dx edge-weld convention puts slave attachments one
-    # cell past the patch in x (and one corner cell in z). Measured without this exemption: tpv8 61, tpv10/12/13 61,
-    # tpv29 81, tpv23 161 wrong-side attachments on valid meshes. Blind spot: tpv36's 3 wrong master attachments
-    # outside the patch are hidden too.
+    # Beyond the patch edge SLAVE attachments are exempt: the fxmax+dx edge-weld convention puts slave attachments
+    # one cell past the patch in x (and one corner cell in z). Measured without this exemption: tpv8 61, tpv10/12/13 61,
+    # tpv29 81, tpv23 161 wrong-side attachments on valid meshes, every one of them role slave (row 169 (b): no
+    # registered mesh has a wrong-side MASTER attachment beyond the patch), so master attachments are tested
+    # everywhere. Remaining blind spot: a wrong slave attachment beyond the patch.
     cen = X[conn[ce]].sum(axis=1) / 8.0
     inside = ((cen[:, 0] >= x_lo[pp]) & (cen[:, 0] <= x_hi[pp]) &
               (cen[:, 2] >= z_lo[pp]) & (cen[:, 2] <= z_hi[pp]))
-    ce, nodes, pp, rl, cen = ce[inside], nodes[inside], pp[inside], rl[inside], cen[inside]
+    tested = inside | (rl == 2)
+    ce, nodes, pp, rl, cen = ce[tested], nodes[tested], pp[tested], rl[tested], cen[tested]
     dv = cen - X[nodes]
     nv = np.sqrt(np.einsum('ij,ij->i', dv, dv))
     cosd = np.einsum('ij,ij->i', dv, un[1:nft + 1][pp]) / np.where(nv > 0, nv, 1.0)

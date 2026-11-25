@@ -731,7 +731,7 @@ def build_solver_state(case_dir, part=None, mesh_only=False):
         st_off_x_actual_m=st_off_actual_m[:, 0], st_off_y_actual_m=st_off_actual_m[:, 1],
         st_off_z_actual_m=st_off_actual_m[:, 2],
     )
-    mesh = dict(meshCoor=meshCoor, nsmp=nsmp)
+    mesh = dict(meshCoor=meshCoor, nsmp=nsmp, screen=screen)
     # Row 17 (multi-fault, board item 145): the python-jax-mpi rank-local MPI
     # fault-boundary bookkeeping (meshgen.fault_boundary_lists/mpi4arn/
     # fault_census/equation_census, MPI4NodalQuant.build_faces) is now
@@ -861,6 +861,8 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         # THIS RANK'S BOX only (meshgen.f90's rank-local build), then the
         # setup exchanges Fortran does (MPI4arn, MPI4NodalQuant on mass/fnms).
         S, mesh = build_solver_state(case_dir, part=part)
+        if part.rank == 0:
+            print('mesh-screen: PASS checks=none %s' % _fmt_screen(mesh['screen']), flush=True)
         plan = MQ.setup_exchange(comm, part, S, mesh)
     with prof.phase('solve'):
         out = driver.run_mpi(S, comm, part, plan, nsteps=nsteps, verbose=verbose,
@@ -960,6 +962,7 @@ def run_case(case_dir, nsteps=None, verbose=True, backend=DEFAULT_BACKEND,
     prof = profile if profile is not None else Profile(backend)
     with prof.phase('setup (mesh+input)'):
         S, mesh = build_solver_state(case_dir)
+    print('mesh-screen: PASS checks=none %s' % _fmt_screen(mesh['screen']), flush=True)
     with prof.phase('resolve solver'):
         solver = _resolve_solver(S['friclaw'], backend)
     with prof.phase('solve'):
