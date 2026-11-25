@@ -9,16 +9,20 @@ the exit status.
 
   sides     a (cell,node) attachment to the MASTER node of a pair has the cell
             centre on the +un side of the pair, one to its SLAVE node on the -un
-            side (signed cosine strictly > 0). Beyond the fault patch (cell
-            centre outside it in x or z) only MASTER attachments are tested
-            for side: a master node on the footwall side is a wrong wiring
-            wherever it is, while slave attachments there are exempt
-            (edge-weld convention). Either role, a cell whose centre is more
-            than MARGIN of its own width past the patch is wrong (the
-            convention reaches half a cell, measured on every registered
-            case), and a beyond-patch attachment whose centre lies within tol
-            of the fault plane is a round-off tie, decided by rounding and
-            not judged (row 169 (b), (k)).
+            side (signed cosine strictly > 0). Master attachments are tested
+            everywhere. A SLAVE attachment beyond the fault patch (cell centre
+            outside it in x or z) is tested too, except when the centre is
+            beyond the patch's +x edge: the fxmax+dx edge-weld convention puts
+            slave attachments on the +un side there (20 of the 23 registered
+            cases; measured on all 23: a decided beyond-patch slave attachment
+            is on the +un side only beyond +x, never beyond -x or in z), so a
+            slave/master swap on a cell next to the patch's -x, -z or +z edge is flagged and one next to its +x edge is not (the swap
+            is indistinguishable from the convention there). Either role, a
+            cell whose centre is more than MARGIN of its own width past the
+            patch is wrong (the convention reaches half a cell), and a
+            beyond-patch attachment whose centre lies within tol of the fault
+            plane is a round-off tie, decided by rounding and not judged
+            (row 169 (b), (k)).
   bridging  no cell holds both nodes of one pair; the two nodes of a pair
             coincide to the mesh tolerance tol.
 """
@@ -97,13 +101,12 @@ def _screen_measure(meshCoor, conn, elem_type, nsmp, un, tol):
         fail['bridging'] = ' ; '.join(bad)
 
     # ---- sides: cell centre on the own side of the fault plane
-    # Beyond the patch edge SLAVE attachments are exempt: the fxmax+dx edge-weld convention puts slave attachments
-    # half a cell past the patch in x (and one corner cell in z). Measured without this exemption: tpv8 61, tpv10/12/13
-    # 61, tpv29 81, tpv23 161 wrong-side attachments on valid meshes, every one of them role slave, so master
-    # attachments are tested everywhere. The exemption is bounded: no registered case has a centre more than 0.500
-    # of its own width past the patch, so beyond MARGIN is wrong in either role. Beyond the patch, a centre within
-    # tol of the plane is a round-off tie (tpv36/37: 224, |dist| <= 1.5e-12 m against >= 1.5 m for every decided
-    # attachment): not judged.
+    # Beyond the patch a SLAVE attachment is exempt only when the centre is beyond the patch's +x edge (the
+    # fxmax+dx edge-weld convention; measured on all 23 registered cases, the only decided beyond-patch slave
+    # attachments on the +un side are there: tpv8 61, tpv10/12/13 61, tpv29 81, tpv22 201, never -x, z).
+    # Master attachments are tested everywhere. Beyond MARGIN is wrong in either role. Beyond the patch, a centre
+    # within tol of the plane is a round-off tie (tpv36/37: 224, |dist| <= 1.5e-12 m against >= 1.5 m for every
+    # decided attachment): not judged.
     corners = X[conn[ce]]
     cen = corners.sum(axis=1) / 8.0
     ext = corners.max(axis=1) - corners.min(axis=1)
@@ -115,7 +118,8 @@ def _screen_measure(meshCoor, conn, elem_type, nsmp, un, tol):
     nv = np.sqrt(np.einsum('ij,ij->i', dv, dv))
     cosd = np.einsum('ij,ij->i', dv, un[1:nft + 1][pp]) / np.where(nv > 0, nv, 1.0)
     tie = ~inside & ~far & (np.abs(cosd * nv) <= tol)
-    tested = (inside | (rl == 2) | far) & ~tie
+    weld = (rl == 1) & ~far & (cen[:, 0] > x_hi[pp])     # slave beyond the +x edge: edge-weld convention, exempt
+    tested = ~weld & ~tie
     ce, nodes, pp, rl, far = ce[tested], nodes[tested], pp[tested], rl[tested], far[tested]
     margin = np.where(rl == 2, cosd[tested], -cosd[tested])
     wrong = np.nonzero(far | ~(margin > 0.0))[0]
@@ -126,7 +130,7 @@ def _screen_measure(meshCoor, conn, elem_type, nsmp, un, tol):
     if wrong.size:
         fail['sides'] = ('%d of %d (cell,node) attachments on the wrong side of the fault plane '
                          '(%d master-attached on the footwall side, %d slave-attached on the hanging-wall side; '
-                         '%d of them beyond the one-cell margin past the patch), '
+                         '%d of them beyond the half-cell margin past the patch), '
                          'first element %d (type %d)' % (wrong.size, margin.size, mw, sw, int(far.sum()),
                                                          ce[wrong[0]] + 1, elem_type[ce[wrong[0]]]))
     return m, fail

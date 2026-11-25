@@ -83,9 +83,12 @@ PLANT_EXPECTED = {
     # a MASTER node attached to a cell beyond the fault patch on the footwall side (row 169 (b)):
     # the patch-edge exemption used to hide this; only slave attachments are exempt there now
     'sides_outside_master': ('sides',),
-    # a SLAVE attachment 1.5 cells past the patch edge (row 169 (b)): the edge-weld exemption used to hide any
-    # slave attachment beyond the patch; only the half-cell margin is exempt now
+    # a SLAVE attachment two cells out from the patch edge (row 169 (b)): beyond the half-cell margin in either role
     'sides_far_slave': ('sides',),
+    # a genuine slave/master SIDE SWAP on a patch-edge cell (row 169 (b), audit MAJOR): the cell beyond the patch's -x
+    # edge, on the +un side, holds the coincident SLAVE node in place of the master. Coordinates are unchanged, the
+    # cell centre stays 0.500 cell past the patch (the far bound cannot see it); only the beyond-patch slave side test does
+    'sides_edge_swap': ('sides',),
 }
 
 
@@ -275,6 +278,9 @@ def plant(a, name):
     elif name == 'sides_far_slave':
         e, s = far_cell(X, conn, nsmp, un)
         conn[e][0] = s
+    elif name == 'sides_edge_swap':
+        e, s, m = edge_swap_cell(X, conn, nsmp, un)
+        conn[e][conn[e] == m] = s
     else:
         raise AssertionError('unknown plant ' + name)
 
@@ -294,10 +300,35 @@ def outside_cell(X, conn, nsmp, un):
     return int(cells[np.nonzero(below)[0][0]]), s, m
 
 
+def edge_swap_cell(X, conn, nsmp, un):
+    """(cell, slave node, master node): a cell beyond the left edge of the patch in x, on the +un side of the
+    plane (clean mesh: it holds the MASTER node of a left-edge pair at mid depth)."""
+    xm, zm = X[nsmp[:, 1], 0], X[nsmp[:, 1], 2]
+    edge = np.nonzero(xm == xm.min())[0]
+    p = int(edge[np.argmin(np.abs(zm[edge] - 0.5 * (zm.min() + zm.max())))])
+    s, m = int(nsmp[p, 0]), int(nsmp[p, 1])
+    cells = np.nonzero((conn == m).any(axis=1))[0]
+    cen = X[conn[cells]].sum(axis=1) / 8.0
+    above = ((cen - X[m]) @ un[p + 1] > 0) & (cen[:, 0] < xm.min())
+    assert above.any(), 'no cell beyond the patch edge above the plane holds master node %d' % m
+    return int(cells[np.nonzero(above)[0][0]]), s, m
+
+
+def beyond_cells(X, conn, nsmp, cells):
+    """Distance of each cell's centre past the fault patch box (master-node extent in x and z), in units of the
+    cell's own width, 0 inside: the screen's own `beyond` (single-fault meshes)."""
+    xm, zm = X[nsmp[:, 1], 0], X[nsmp[:, 1], 2]
+    c = X[conn[cells]]
+    cen, ext = c.sum(axis=1) / 8.0, c.max(axis=1) - c.min(axis=1)
+    return np.maximum.reduce([(xm.min() - cen[:, 0]) / ext[:, 0], (cen[:, 0] - xm.max()) / ext[:, 0],
+                              (zm.min() - cen[:, 2]) / ext[:, 2], (cen[:, 2] - zm.max()) / ext[:, 2],
+                              np.zeros(len(cells))])
+
+
 def far_cell(X, conn, nsmp, un):
-    """(cell, slave node): the neighbouring cell of outside_cell's one further out in -x (same y and z; its
-    centre is then more than 1.5 of its own widths past the patch edge, the mesh being graded there), and the
-    left-edge slave node it is planted to hold."""
+    """(cell, slave node): the neighbouring cell of outside_cell's one further out in -x (same y and z; the
+    mesh is graded there: test_planted_defects prints its measured distance past the patch, in its own widths,
+    against the clean-mesh maximum), and the left-edge slave node it is planted to hold."""
     e0, s, _ = outside_cell(X, conn, nsmp, un)
     cen = X[conn].sum(axis=1) / 8.0
     same = np.nonzero((np.abs(cen[:, 1:] - cen[e0, 1:]).max(axis=1) <= 1e-6) & (cen[:, 0] < cen[e0, 0]))[0]
@@ -362,6 +393,32 @@ def test_planted_defects(tmp):
             errs.append('plant %s: python tripped %s, expected %s: %s' % (name, ordered(fail), want, fail))
         if (rc, fchecks) != (want_code, want):
             errs.append('plant %s: fortran rc %d checks %s, expected %d %s' % (name, rc, fchecks, want_code, want))
+    # extreme fixture values, both sides of the far bound and of the slave side test (printed, and asserted)
+    X, conn = mesh.a[0], mesh.a[1]
+    att = np.nonzero(np.isin(conn, np.concatenate([mesh.a[3][:, 0], mesh.a[3][:, 1]])).any(axis=1))[0]
+    clean_far = float(beyond_cells(X, conn, mesh.a[3], att).max())
+    ac = mesh.copy()
+    e_sw, _, _ = edge_swap_cell(ac[0], ac[1], ac[3], ac[4])
+    sw_beyond = float(beyond_cells(ac[0], ac[1], ac[3], [e_sw])[0])
+    e_fa, _ = far_cell(ac[0], ac[1], ac[3], ac[4])
+    fa_beyond = float(beyond_cells(ac[0], ac[1], ac[3], [e_fa])[0])
+    m_clean = meshscreen._screen_measure(*mesh.copy())[0]
+    pw = mesh.copy()
+    plant(pw, 'sides_edge_swap')
+    m_swap = meshscreen._screen_measure(*pw)[0]
+    print('  beyond-patch distance (own cell widths): clean-mesh max %.6f | edge-swap cell %.6f | far_cell %.6f '
+          '(far bound %.6f)' % (clean_far, sw_beyond, fa_beyond, meshscreen.MARGIN))
+    print('  sides_min_margin (m): clean mesh %.6E | edge-swap plant %.6E' % (
+        m_clean['sides_min_margin'], m_swap['sides_min_margin']))
+    if not (clean_far <= meshscreen.MARGIN):
+        errs.append('clean tpv8 has a cell %.6f widths past the patch, beyond the far bound' % clean_far)
+    if not (sw_beyond <= meshscreen.MARGIN):
+        errs.append('the edge-swap plant is %.6f widths out: it must sit INSIDE the far bound (it is a swap, not a far corner)' % sw_beyond)
+    if not (fa_beyond > meshscreen.MARGIN):
+        errs.append('far_cell is only %.6f widths out, not beyond the far bound' % fa_beyond)
+    if not (m_clean['sides_min_margin'] > 0.0 > m_swap['sides_min_margin']):
+        errs.append('sides_min_margin does not separate clean (%.3E) from the edge swap (%.3E)' % (
+            m_clean['sides_min_margin'], m_swap['sides_min_margin']))
     assert not errs, 'planted defects:\n' + '\n'.join(errs)
 
 
@@ -370,9 +427,9 @@ def oracle_sides(X, conn, nsmp, tol):
     (cell,node) attachment to a pair node, judged by the plane spanned by the
     fault's own master nodes (never by un): every MASTER attachment, wherever
     the cell is (the one-cell margin past the patch, where the replace loop
-    still swaps, included), and every SLAVE attachment whose cell centre is
-    inside the patch window (slave attachments beyond it are the edge-weld
-    convention, exempt like the screen's, unless the centre is more than half a cell past it). X is 1-indexed (row 0 unused); conn (E,8) 1-indexed."""
+    still swaps, included), and every SLAVE attachment except those whose cell
+    centre is beyond the patch's +x edge (the edge-weld convention, exempt like the
+    screen's, unless the centre is more than half a cell past the patch). X is 1-indexed (row 0 unused); conn (E,8) 1-indexed."""
     nft = nsmp.shape[0]
     role = np.zeros(X.shape[0], dtype=np.int8)
     pid = np.full(X.shape[0], -1, dtype=np.int64)
@@ -404,7 +461,7 @@ def oracle_sides(X, conn, nsmp, tol):
     w = np.ptp(X[conn[ce]], axis=1)[:, [0, 2]]       # the cell's own width in x and z
     out = np.maximum(lo[pp][:, [0, 2]] - cen[:, [0, 2]], cen[:, [0, 2]] - hi[pp][:, [0, 2]]).clip(min=0.0) / w
     far = (out > 0.5 + 1e-6).any(axis=1)             # beyond the half-cell edge-weld margin: wrong in either role
-    ok = inside | (rl == 2) | far
+    ok = ~((rl == 1) & ~far & (cen[:, 0] > hi[pp][:, 0]))
     ce, nodes, pp, rl, cen, inside, far = ce[ok], nodes[ok], pp[ok], rl[ok], cen[ok], inside[ok], far[ok]
     margin = np.where(rl == 2, 1.0, -1.0) * np.einsum('ij,ij->i', cen - X[nodes], normal[pp])
     # A master attachment beyond the patch whose cell centre is within the mesh tolerance of the plane is a
@@ -466,6 +523,12 @@ def test_side_oracle(tmp):
             print('  %-18s oracle on the planted far slave: wrong_slave=%d (clean mesh %d)' % (c, pf[2], r[2]))
             if pf[2] != 1:
                 errs.append('oracle missed (or over-counted) the planted far slave attachment: wrong_slave=%d' % pf[2])
+            pl = [np.array(v, copy=True) for v in a[:5]] + [a[5]]
+            plant(pl, 'sides_edge_swap')
+            ps = oracle_sides(pl[0], pl[1], pl[3], pl[5])
+            print('  %-18s oracle on the planted edge swap: wrong_slave=%d (clean mesh %d)' % (c, ps[2], r[2]))
+            if ps[2] != 1:
+                errs.append('oracle missed (or over-counted) the planted edge swap: wrong_slave=%d' % ps[2])
         shutil.rmtree(d, ignore_errors=True)
     assert not errs, 'side oracle:\n' + '\n'.join(errs)
 
@@ -628,15 +691,26 @@ def test_round_off_ties(tmp):
     X, conn, et, nsmp, un, tol = Mesh(d).a
     free = np.ones(X.shape[0], dtype=bool)
     free[0], free[nsmp[:, 0]], free[nsmp[:, 1]] = False, False, False
-    on, off = [], []
+    on, off, noisy = [], [], {}
     for seed in range(6):
         Xn = X.copy()
         Xn[free] += np.random.default_rng(seed).uniform(-3e-12, 3e-12, (int(free.sum()), 3))
         on.append(sorted(meshscreen._screen_measure(Xn, conn, et, nsmp, un, tol)[1]))
         off.append(sorted(meshscreen._screen_measure(Xn, conn, et, nsmp, un, 0.0)[1]))
+        if 'sides' in off[-1] and not noisy:
+            noisy[seed] = Xn
     print('  tpv36 ties, 6 noise seeds: tol=%g fails %s ; tol=0 fails %s' % (tol, on, off))
     assert not any(on), 'round-off noise made the screen fail with the tie rule on: %s' % on
-    assert any(off), 'noise never moved a tie across the plane with the tie rule off: the test proves nothing'
+    assert any('sides' in o for o in off), 'noise never moved a tie across the plane (no `sides` failure) with the tie rule off: the test proves nothing'
+    # Fortran's tie line (screenMesh.f90, `abs(cosd) <= tol`): the same noisy mesh, tol as built and tol = 0
+    (seed, Xn), = noisy.items()
+    exe = build_driver(tmp)
+    rc_on, ck_on = run_driver(exe, [Xn, conn, et, nsmp, un, tol], os.path.join(tmp, 'ties_on.dump'))
+    rc_off, ck_off = run_driver(exe, [Xn, conn, et, nsmp, un, 0.0], os.path.join(tmp, 'ties_off.dump'))
+    print('  tpv36 ties, Fortran, seed %d: tol=%g rc=%d %s ; tol=0 rc=%d %s' % (seed, tol, rc_on, ','.join(ck_on), rc_off, ','.join(ck_off)))
+    assert (rc_on, ck_on) == (0, ()), 'Fortran judged round-off ties with the tie rule on: rc %d %s' % (rc_on, ck_on)
+    assert (rc_off, ck_off) == (meshscreen.SCREEN_CODES['sides'], ('sides',)), (
+        'Fortran did not trip `sides` on the noisy mesh with the tie rule off: rc %d %s' % (rc_off, ck_off))
 
 
 def main():
