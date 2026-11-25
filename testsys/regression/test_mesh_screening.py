@@ -27,6 +27,8 @@ Tests (every one a hard failure, none skips):
      fails on rank 1 only must MPI_Abort with exit status 81, not hang.
      jax-MPI PASS LINE (row 169 (n)): the same job unplanted exits 0 with exactly one PASS line.
      Both run in their own session; a timeout SIGKILLs the whole process group.
+  9. ROUND-OFF TIES (row 169 (k)): noise on tpv36's non-fault nodes leaves the screen green with the
+     tie rule and trips it without (tol = 0).
   8. STRIKE -90 TIE CELLS (row 169 (h)): -90 moves only round-off tie cells;
      the error text must not say it flips the side test.
   5. INDEPENDENT SIDE ORACLE (python backend, the Fortran connectivity being
@@ -81,6 +83,9 @@ PLANT_EXPECTED = {
     # a MASTER node attached to a cell beyond the fault patch on the footwall side (row 169 (b)):
     # the patch-edge exemption used to hide this; only slave attachments are exempt there now
     'sides_outside_master': ('sides',),
+    # a SLAVE attachment 1.5 cells past the patch edge (row 169 (b)): the edge-weld exemption used to hide any
+    # slave attachment beyond the patch; only the half-cell margin is exempt now
+    'sides_far_slave': ('sides',),
 }
 
 
@@ -267,6 +272,9 @@ def plant(a, name):
         # a cell beyond the patch's left edge, below the plane, holds the MASTER node instead of the slave
         e, s, m = outside_cell(X, conn, nsmp, un)
         conn[e][conn[e] == s] = m
+    elif name == 'sides_far_slave':
+        e, s = far_cell(X, conn, nsmp, un)
+        conn[e][0] = s
     else:
         raise AssertionError('unknown plant ' + name)
 
@@ -284,6 +292,17 @@ def outside_cell(X, conn, nsmp, un):
     below = ((cen - X[s]) @ un[p + 1] < 0) & (cen[:, 0] < xm.min())
     assert below.any(), 'no cell beyond the patch edge below the plane holds slave node %d' % s
     return int(cells[np.nonzero(below)[0][0]]), s, m
+
+
+def far_cell(X, conn, nsmp, un):
+    """(cell, slave node): the neighbouring cell of outside_cell's one further out in -x (same y and z; its
+    centre is then more than 1.5 of its own widths past the patch edge, the mesh being graded there), and the
+    left-edge slave node it is planted to hold."""
+    e0, s, _ = outside_cell(X, conn, nsmp, un)
+    cen = X[conn].sum(axis=1) / 8.0
+    same = np.nonzero((np.abs(cen[:, 1:] - cen[e0, 1:]).max(axis=1) <= 1e-6) & (cen[:, 0] < cen[e0, 0]))[0]
+    assert same.size, 'no cell further out in -x than cell %d' % e0
+    return int(same[np.argmax(cen[same, 0])]), s
 
 
 def dump_mesh(a, path):
@@ -353,7 +372,7 @@ def oracle_sides(X, conn, nsmp, tol):
     the cell is (the one-cell margin past the patch, where the replace loop
     still swaps, included), and every SLAVE attachment whose cell centre is
     inside the patch window (slave attachments beyond it are the edge-weld
-    convention, exempt like the screen's). X is 1-indexed (row 0 unused); conn (E,8) 1-indexed."""
+    convention, exempt like the screen's, unless the centre is more than half a cell past it). X is 1-indexed (row 0 unused); conn (E,8) 1-indexed."""
     nft = nsmp.shape[0]
     role = np.zeros(X.shape[0], dtype=np.int8)
     pid = np.full(X.shape[0], -1, dtype=np.int64)
@@ -382,14 +401,17 @@ def oracle_sides(X, conn, nsmp, tol):
     pp, rl = pid[nodes], role[nodes]
     cen = X[conn[ce]].sum(axis=1) / 8.0
     inside = ((cen[:, [0, 2]] >= lo[pp][:, [0, 2]]) & (cen[:, [0, 2]] <= hi[pp][:, [0, 2]])).all(axis=1)
-    ok = inside | (rl == 2)
-    ce, nodes, pp, rl, cen, inside = ce[ok], nodes[ok], pp[ok], rl[ok], cen[ok], inside[ok]
+    w = np.ptp(X[conn[ce]], axis=1)[:, [0, 2]]       # the cell's own width in x and z
+    out = np.maximum(lo[pp][:, [0, 2]] - cen[:, [0, 2]], cen[:, [0, 2]] - hi[pp][:, [0, 2]]).clip(min=0.0) / w
+    far = (out > 0.5 + 1e-6).any(axis=1)             # beyond the half-cell edge-weld margin: wrong in either role
+    ok = inside | (rl == 2) | far
+    ce, nodes, pp, rl, cen, inside, far = ce[ok], nodes[ok], pp[ok], rl[ok], cen[ok], inside[ok], far[ok]
     margin = np.where(rl == 2, 1.0, -1.0) * np.einsum('ij,ij->i', cen - X[nodes], normal[pp])
     # A master attachment beyond the patch whose cell centre is within the mesh tolerance of the plane is a
     # round-off tie (wedge cells at the patch edge: |margin| 1e-14 m against >= 100 m for every decided
     # attachment, measured on the gate meshes), decided by rounding, not a side: not judged. Inside the patch
     # the test stays strict.
-    wrong = ~(margin > 0.0) & ~(~inside & (margin > -tol))
+    wrong = far | (~(margin > 0.0) & ~(~inside & (margin > -tol)))
     return (int(margin.size), int((wrong & (rl == 2)).sum()), int((wrong & (rl == 1)).sum()),
             float(margin.min()) if margin.size else float('nan'))
 
@@ -438,6 +460,12 @@ def test_side_oracle(tmp):
             print('  %-18s oracle on the planted outside master: wrong_master=%d (clean mesh %d)' % (c, pr[1], r[1]))
             if pr[1] != 1:
                 errs.append('oracle missed (or over-counted) the planted outside-patch master attachment: wrong_master=%d' % pr[1])
+            pl = [np.array(v, copy=True) for v in a[:5]] + [a[5]]
+            plant(pl, 'sides_far_slave')
+            pf = oracle_sides(pl[0], pl[1], pl[3], pl[5])
+            print('  %-18s oracle on the planted far slave: wrong_slave=%d (clean mesh %d)' % (c, pf[2], r[2]))
+            if pf[2] != 1:
+                errs.append('oracle missed (or over-counted) the planted far slave attachment: wrong_slave=%d' % pf[2])
         shutil.rmtree(d, ignore_errors=True)
     assert not errs, 'side oracle:\n' + '\n'.join(errs)
 
@@ -590,6 +618,27 @@ def test_strike_minus90_ties():
         assert 'flips the cell-side' not in text, path + ' says -90 flips the cell-side test; measured: only round-off ties move'
 
 
+def test_round_off_ties(tmp):
+    """Row 169 (k): test.tpv36's beyond-patch master attachments whose centres lie ON the fault plane (224, |dist|
+    <= 1.5e-12 m against >= 1.5 m for every decided one) are not judged. Both ways: round-off-sized noise on the
+    non-fault nodes (fault pairs stay coincident) must leave the screen green for every seed, and the same noise
+    must trip `sides` for at least one seed when the tie rule is switched off (tol = 0), or the noise proves nothing."""
+    d = os.path.join(tmp, 'ties_tpv36')
+    make_case('test.tpv36', d)
+    X, conn, et, nsmp, un, tol = Mesh(d).a
+    free = np.ones(X.shape[0], dtype=bool)
+    free[0], free[nsmp[:, 0]], free[nsmp[:, 1]] = False, False, False
+    on, off = [], []
+    for seed in range(6):
+        Xn = X.copy()
+        Xn[free] += np.random.default_rng(seed).uniform(-3e-12, 3e-12, (int(free.sum()), 3))
+        on.append(sorted(meshscreen._screen_measure(Xn, conn, et, nsmp, un, tol)[1]))
+        off.append(sorted(meshscreen._screen_measure(Xn, conn, et, nsmp, un, 0.0)[1]))
+    print('  tpv36 ties, 6 noise seeds: tol=%g fails %s ; tol=0 fails %s' % (tol, on, off))
+    assert not any(on), 'round-off noise made the screen fail with the tie rule on: %s' % on
+    assert any(off), 'noise never moved a tie across the plane with the tie rule off: the test proves nothing'
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix='mesh_screening_')
     tests = [('judge_both_ways', lambda: test_judge_both_ways()),
@@ -598,6 +647,7 @@ def main():
              ('two_rank_fortran', lambda: test_two_rank_fortran(tmp)),
              ('side_oracle', lambda: test_side_oracle(tmp)),
              ('strike_minus90_ties', lambda: test_strike_minus90_ties()),
+             ('round_off_ties', lambda: test_round_off_ties(tmp)),
              ('pass_line_normal_run', lambda: test_pass_line_normal_run(tmp)),
              ('mpi_abort', lambda: test_mpi_abort(tmp)),
              ('mpi_pass_line', lambda: test_mpi_pass_line(tmp)),
