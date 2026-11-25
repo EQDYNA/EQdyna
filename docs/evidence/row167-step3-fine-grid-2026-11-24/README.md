@@ -18,3 +18,9 @@ Runs: `scripts/run_case.sh`, `scripts/set_case.py`, `scripts/queue2.sh`; run met
 ## Independent four-cell re-run on the PR content head (conductor, 2026-11-24 21:52 CST)
 
 `meta/four_cell_rerun_3628339.txt`: `run_e2e.py --cases test.tpv36,test.tpv37 --backends fortran,python-jax` on a clean tree at `3628339` (binary md5 in `meta/binaries.txt`, post): 4 of 4 cells SUCCESS against the regenerated references, exit 0, 271.6 s. Evidence-only commits since `3628339` change nothing under src/ or testsys/.
+
+## dx 200 m (par.dx 200; same runs/trees/ranks as dx 250 m; added 2026-11-25)
+
+- TPV36 (term 13 s): rupture time median |dt| 0 s, max 1.59 s; 21544 vs 21564 ruptured nodes; 99.9% overlap; station series differ at the surface (relative 0.99 at strike 12 km, dp000; 0.036 at dp030) and converge below (1.7e-06 at dp180).
+- TPV37 (term 9 s): rupture time and slip identical (max |dt| 0.000 s; station slip series <= 5e-10 relative), but the final stress columns (12-14 of frt, `meta/frt_diff_dx200.txt`) differ on 7489 of 22022 fault nodes at 0-7.2 km depth. Same mechanism as at dx 250 m: the term (9 s) ends before the shallow nodes affected by the mis-wired wedge cells rupture, so rupture-time/slip overlays cannot see the defect and the stress columns are where it shows.
+- Figures: `dx200/tpv3?_dx200_cplot.png` (scec_compare.py cplot, pre vs post), `dx200/tpv3?_dx200_ts_own.png` (same-name stations, `scripts/stdiff200.py`), logs alongside. Cross-version consistency, not validation.

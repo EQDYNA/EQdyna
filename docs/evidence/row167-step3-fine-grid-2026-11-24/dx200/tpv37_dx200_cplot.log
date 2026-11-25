@@ -1,0 +1,27 @@
+=== models (style assigned by position in --models) ===
+  [0] eqdyna   /tmp/claude-16759/-home-utig5-dliu-EQdyna/e618789a-38a5-4235-9ca3-c8a3a0fe9ba6/scratchpad/fine/runs/pre_tpv37_dx200  reader=eqdyna-frt-ranks
+        label="pre-fix"  colour=#0072B2  linestyle=-
+  [1] eqdyna   /tmp/claude-16759/-home-utig5-dliu-EQdyna/e618789a-38a5-4235-9ca3-c8a3a0fe9ba6/scratchpad/fine/runs/post_tpv37_dx200  reader=eqdyna-frt-ranks
+        label="post-fix"  colour=#D55E00  linestyle=--
+=== per-model summary (by-product; the figure is the result) ===
+  pre-fix, dx 200 m
+      source=12 x frt.txt<rank>  18638/22022 nodes ruptured  area=745.5 km2  latest=8.998 s
+      never-ruptured fill: 99999 s (detected, 3384 nodes)   dipping fault (corr(y,z)=-1.000): down-dip = hypot(y,z)
+  post-fix, dx 200 m
+      source=12 x frt.txt<rank>  18638/22022 nodes ruptured  area=745.5 km2  latest=8.998 s
+      never-ruptured fill: 99999 s (detected, 3384 nodes)   dipping fault (corr(y,z)=-1.000): down-dip = hypot(y,z)
+=== pairwise, EXACT coordinate matches only (no snapping, no interpolation) ===
+  post-fix, dx 200 m vs pre-fix, dx 200 m: common=21291 both_ruptured=17970 only_ref=0 only_other=0 median|dt|=0.000s max|dt|=0.000s overlap=100.0%
+
+wrote /tmp/claude-16759/-home-utig5-dliu-EQdyna/e618789a-38a5-4235-9ca3-c8a3a0fe9ba6/scratchpad/fine/overlays/tpv37_dx200_cplot.png
+  canvas 7.48 x 8.37 in at 400 dpi = 2992 x 3347 px; print width 190 mm -> k = canvas/print = 1.000, so the set font sizes ARE the printed point sizes (labels 9, ticks 7.5, titles 9, legend 7.5, caption 7); 400 dpi at print width.
+
+--- caption as placed on the figure (every number computed from the plotted arrays) ---
+CROSS-VERSION CONSISTENCY CHECK between EQdyna results -- NOT an independent validation, NOT an accuracy claim: agreement
+    certifies no run against the benchmark.
+Rupture-time contours, 1 s interval, labelled every 2 s on pre-fix, dx 200 m. Each model is contoured on its OWN node grid;
+    nothing is interpolated or resampled. Node spacings: 200 m, 200 m.
+Ruptured nodes / ruptured area / latest arrival, in legend order: 18638/22022, 746 km2, 9.00 s; 18638/22022, 746 km2, 9.00 s.
+    Never-ruptured fill detected per file, legend order: 99999, 99999 s.
+Against pre-fix, dx 200 m on EXACTLY-shared node coordinates only -- median |dt| / max |dt| / rupture-extent overlap: post-fix, dx
+    200 m: 21291 nodes, 0.000 / 0.00 s, 100.0%.
