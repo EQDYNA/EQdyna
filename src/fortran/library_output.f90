@@ -688,7 +688,8 @@ end subroutine faultTsFields
 
 !#10
 subroutine output_profile(setupBucket, elementBucket, faultBucket, exchangeBucket, &
-                           waitBucket, ioBucket, loopS, totalS, nstepsArg, samplingEvery)
+                           waitBucket, ioBucket, loopS, totalS, nstepsArg, samplingEvery, &
+                           mpiInitS, inputReadS, meshS, netcdfS, massS)
     ! ALWAYS-ON per-rank profile.rank<r>.json (docs/run_profile.md). Off
     ! switch EQDYNA_PROFILE=0 exists only for the overhead A/B; default on.
     ! Every value here is a directly-measured quantity or a difference of
@@ -698,6 +699,9 @@ subroutine output_profile(setupBucket, elementBucket, faultBucket, exchangeBucke
     implicit none
     real (kind = dp), intent(in) :: setupBucket, elementBucket, faultBucket, exchangeBucket, &
                                      waitBucket, ioBucket, loopS, totalS
+    ! Row 142 (b)(c): the setup split. mpiInitS is the MPI_Init call itself (system_clock,
+    ! taken before MPI_Init) and lies OUTSIDE totalS; the other four partition setupBucket.
+    real (kind = dp), intent(in) :: mpiInitS, inputReadS, meshS, netcdfS, massS
     integer (kind = 4), intent(in) :: nstepsArg, samplingEvery
     integer (kind = 4), parameter :: UNIT_PROFILE_BASE = 40009
     integer (kind = 4), allocatable :: cpuList(:), numaList(:)
@@ -748,6 +752,13 @@ subroutine output_profile(setupBucket, elementBucket, faultBucket, exchangeBucke
     write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"exchange": ', trim(jsonNum(exchangeBucket)), ','
     write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"wait": ', trim(jsonNum(waitBucket)), ','
     write(UNIT_PROFILE_BASE+me,'(A,A)') '"io": ', trim(jsonNum(ioBucket))
+    write(UNIT_PROFILE_BASE+me,'(A)') '},'
+    write(UNIT_PROFILE_BASE+me,'(A)') '"setup_detail_s": {'
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"mpi_init": ', trim(jsonNum(mpiInitS)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"input_read": ', trim(jsonNum(inputReadS)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"meshing": ', trim(jsonNum(meshS)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"netcdf_open": ', trim(jsonNum(netcdfS)), ','
+    write(UNIT_PROFILE_BASE+me,'(A,A)') '"mass_assembly": ', trim(jsonNum(massS))
     write(UNIT_PROFILE_BASE+me,'(A)') '},'
     write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"loop_s": ', trim(jsonNum(loopS)), ','
     write(UNIT_PROFILE_BASE+me,'(A,A,A)') '"total_s": ', trim(jsonNum(totalS)), ','

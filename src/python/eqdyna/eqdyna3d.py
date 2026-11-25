@@ -860,10 +860,14 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
     with prof.phase('setup (mesh+input)'):
         # THIS RANK'S BOX only (meshgen.f90's rank-local build), then the
         # setup exchanges Fortran does (MPI4arn, MPI4NodalQuant on mass/fnms).
+        t_state0 = time.perf_counter()
         S, mesh = build_solver_state(case_dir, part=part)
+        t_state1 = time.perf_counter()
         if part.rank == 0:
             print('mesh-screen: PASS checks=none %s' % _fmt_screen(mesh['screen']), flush=True)
         plan = MQ.setup_exchange(comm, part, S, mesh)
+        setup_detail = dict(input_mesh=t_state1 - t_state0,
+                            setup_exchange=time.perf_counter() - t_state1)  # row 142 (c)
     with prof.phase('solve'):
         out = driver.run_mpi(S, comm, part, plan, nsteps=nsteps, verbose=verbose,
                              xp=_backend.array_module('jax'))
@@ -888,7 +892,9 @@ def run_case_mpi(case_dir, comm, nsteps=None, verbose=True, profile=None):
         total_s = time.perf_counter() - run_t0
         _profile_emit.write_profile(case_dir, 'python-jax-mpi', rank, nranks,
                                     rep['nsteps'], buckets,
-                                    loop_s=rep['solve_s'], total_s=total_s)
+                                    loop_s=rep['solve_s'], total_s=total_s,
+                                    setup_detail_s=dict(setup_detail,
+                                                        driver_setup=rep.get('setup_s', 0.0)))
 
     # Row 120: station output, INDEPENDENT of fault-node ownership below --
     # an off-fault station can sit in a box that never touches the fault at
