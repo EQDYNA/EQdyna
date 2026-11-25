@@ -1,0 +1,43 @@
+head 36283391df774f50da103d0597e2f155d72b6e37 start 2026-11-24T21:11:49-06:00
+4efa26ea03ecf5e1f2de4fba0cbcca88  bin/eqdyna
+Post-processing frt.txt0 ... ...
+Generating rupture dynamics figure ...
+Generating restart file fault.dyna.r.nc ...
+plotRuptureDynamics: --skip-final-surf-disp -- final surface displacement NOT post-processed (outputFinalSurfDisp=1)
+
+-- cell: test.tpv36 x python-jax (269.5s) --
+   max|diff|=4.603285e-09 bound=1.0e-06 at row 1742 col 12 (ref -2.486889000e-09 vs run 2.116396000e-09), 3477 fault nodes compared
+   nc: SUCCESS <worktrees>/cond-pr/test.reference.results/test.tpv36/fault.dyna.r.nc <worktrees>/cond-pr/test/test.tpv36.python-jax/fault.dyna.r.nc (max|diff| <= CASE_BOUND 1e-06)
+   nsign: positive means extension (TPV36_37_Description_v12 (2024-07-15), n-stress: "Positive means extension."); 15 buried on-fault stations, first-step n-stress in [-101.76, -4.24] MPa
+   station: 3 on-fault + 2 off-fault file(s), worst e=1.6348e-10 bound=1.0e-07 (off h-vel at body010st000dp000.txt)
+     on  h-slip           S_q=5.4446e-16 (FLOOR-clamped) diff=1.0422e-17 e=1.0422e-11/1.0e-07 ok
+     on  h-slip-rate      S_q=1.8387e-16 (FLOOR-clamped) diff=5.6698e-17 e=5.6698e-11/1.0e-07 ok
+     on  h-shear-stress   S_q=2.4094e-02 diff=4.5585e-15 e=1.8920e-13/1.0e-07 ok
+     on  v-slip           S_q=1.2131e+00 diff=1.1514e-16 e=9.4909e-17/1.0e-07 ok
+     on  v-slip-rate      S_q=5.2049e-01 diff=8.5991e-16 e=1.6521e-15/1.0e-07 ok
+     on  v-shear-stress   S_q=3.8160e+01 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok
+     on  n-stress         S_q=7.9404e+01 diff=0.0000e+00 e=0.0000e+00/1.0e-07 ok
+     off h-disp           S_q=4.5425e-17 (FLOOR-clamped) diff=6.3675e-18 e=6.3675e-12/1.0e-07 ok
+     off h-vel            S_q=7.2963e-16 (FLOOR-clamped) diff=1.6348e-16 e=1.6348e-10/1.0e-07 ok
+     off v-disp           S_q=6.4521e-03 diff=1.0000e-16 e=1.5499e-14/1.0e-07 ok
+     off v-vel            S_q=1.2292e-02 diff=3.1613e-17 e=2.5718e-15/1.0e-07 ok
+     off n-disp           S_q=3.8966e-03 diff=1.0000e-17 e=2.5664e-15/1.0e-07 ok
+     off n-vel            S_q=7.2082e-03 diff=1.0000e-15 e=1.3873e-13/1.0e-07 ok
+SUCCESS test.tpv36 x python-jax
+
+==== e2e sweep: results ====
+case             backend       verdict   seconds  measure
+test.tpv36       fortran       SUCCESS     180.9  max|diff|=0.000000e+00 bound=1.0e-06 at row 0 col 0 (ref -1.500000000e+04 vs run -1.500000000e+04), 3477 fault nodes compared
+test.tpv36       python-jax    SUCCESS     269.5  max|diff|=4.603285e-09 bound=1.0e-06 at row 1742 col 12 (ref -2.486889000e-09 vs run 2.116396000e-09), 3477 fault nodes compared
+test.tpv37       fortran       SUCCESS     180.7  max|diff|=0.000000e+00 bound=1.0e-06 at row 0 col 0 (ref -1.500000000e+04 vs run -1.500000000e+04), 3477 fault nodes compared
+test.tpv37       python-jax    SUCCESS     266.6  max|diff|=3.561306e-09 bound=1.0e-06 at row 1732 col 12 (ref 3.815790000e-10 vs run -3.179727000e-09), 3477 fault nodes compared
+
+==== e2e sweep: SUMMARY ====
+selection : explicit: cases=test.tpv36,test.tpv37 backends=fortran,python-jax
+ran       : 4 of 69 cells in the 23 case x 3 backend table (4 passed, 0 failed, 0 of those timed out)
+not gated : 0 declared-unsupported cell(s): none
+release-only (not run in this everyday sweep): 0 cell(s): none
+wall clock: 271.6s
+perf ledger: 4 cell-wall-clock row(s) appended to docs/perf_ledger.jsonl (snapshot docs/perf_snapshots/e2e_cells_2026-11-24_215217_808351.json)
+e2e: SUCCESS - 4/4 selected cells matched test.reference.results/ (this states its own scope; see the coverage block above)
+rc=0 end 2026-11-24T21:52:17-06:00

@@ -1,0 +1,27 @@
+=== models (style assigned by position in --models) ===
+  [0] eqdyna   <scratch>/fine/runs/pre_tpv36_dx200  reader=eqdyna-frt-ranks
+        label="pre-fix"  colour=#0072B2  linestyle=-
+  [1] eqdyna   <scratch>/fine/runs/post_tpv36_dx200  reader=eqdyna-frt-ranks
+        label="post-fix"  colour=#D55E00  linestyle=--
+=== per-model summary (by-product; the figure is the result) ===
+  pre-fix, dx 200 m
+      source=12 x frt.txt<rank>  21544/22022 nodes ruptured  area=861.8 km2  latest=10.202 s
+      never-ruptured fill: 99999 s (detected, 478 nodes)   dipping fault (corr(y,z)=-1.000): down-dip = hypot(y,z)
+  post-fix, dx 200 m
+      source=12 x frt.txt<rank>  21564/22022 nodes ruptured  area=862.6 km2  latest=9.054 s
+      never-ruptured fill: 99999 s (detected, 458 nodes)   dipping fault (corr(y,z)=-1.000): down-dip = hypot(y,z)
+=== pairwise, EXACT coordinate matches only (no snapping, no interpolation) ===
+  post-fix, dx 200 m vs pre-fix, dx 200 m: common=21291 both_ruptured=20820 only_ref=0 only_other=20 median|dt|=0.000s max|dt|=1.587s overlap=99.9%
+
+wrote <scratch>/fine/overlays/tpv36_dx200_cplot.png
+  canvas 7.48 x 8.37 in at 400 dpi = 2992 x 3347 px; print width 190 mm -> k = canvas/print = 1.000, so the set font sizes ARE the printed point sizes (labels 9, ticks 7.5, titles 9, legend 7.5, caption 7); 400 dpi at print width.
+
+--- caption as placed on the figure (every number computed from the plotted arrays) ---
+CROSS-VERSION CONSISTENCY CHECK between EQdyna results -- NOT an independent validation, NOT an accuracy claim: agreement
+    certifies no run against the benchmark.
+Rupture-time contours, 2 s interval, labelled every 4 s on pre-fix, dx 200 m. Each model is contoured on its OWN node grid;
+    nothing is interpolated or resampled. Node spacings: 200 m, 200 m.
+Ruptured nodes / ruptured area / latest arrival, in legend order: 21544/22022, 862 km2, 10.20 s; 21564/22022, 863 km2, 9.05 s.
+    Never-ruptured fill detected per file, legend order: 99999, 99999 s.
+Against pre-fix, dx 200 m on EXACTLY-shared node coordinates only -- median |dt| / max |dt| / rupture-extent overlap: post-fix, dx
+    200 m: 21291 nodes, 0.000 / 1.59 s, 99.9%.
