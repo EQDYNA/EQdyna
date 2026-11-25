@@ -25,6 +25,8 @@ Tests (every one a hard failure, none skips):
      line (rank 0), the two backends with the same counts.
   7. jax-MPI ABORT (row 169 (f)): a real 2-rank mpi4py run in which the screen
      fails on rank 1 only must MPI_Abort with exit status 81, not hang.
+     jax-MPI PASS LINE (row 169 (n)): the same job unplanted exits 0 with exactly one PASS line.
+     Both run in their own session; a timeout SIGKILLs the whole process group.
   8. STRIKE -90 TIE CELLS (row 169 (h)): -90 moves only round-off tie cells;
      the error text must not say it flips the side test.
   5. INDEPENDENT SIDE ORACLE (python backend, the Fortran connectivity being
@@ -46,6 +48,7 @@ import concurrent.futures
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -65,6 +68,7 @@ FORTRAN_DIR = os.path.join(ROOT, 'src', 'fortran')
 FORTRAN_BIN = os.path.join(ROOT, 'bin', 'eqdyna')
 DRIVER_F90 = os.path.join(ROOT, 'testsys', 'parity', 'screen_mesh_dump_driver.f90')
 MPIRUN_TIMEOUT_S = 1500
+MPI_JOB_TIMEOUT_S = 600
 COUNT_KEYS = ('elements', 'nodes', 'fault_pairs', 'sides_attachments')
 PARITY_KEYS = COUNT_KEYS + ('sides_wrong_master', 'sides_wrong_slave', 'bridging_cells')
 
@@ -145,6 +149,21 @@ def run_fortran(case_dir, ranks=1, args=('--mesh-only',)):
     return r.returncode, r.stdout + r.stderr
 
 
+def run_group(cmd, cwd, timeout_s):
+    """Run cmd in its OWN session; on timeout SIGKILL the whole process group (mpirun AND its
+    ranks, which killing mpirun alone orphans) and fail loudly. Returns (rc, stdout + stderr)."""
+    p = subprocess.Popen(cmd, cwd=cwd, env=mpi_child_env(env()), stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        so, se = p.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        os.killpg(p.pid, signal.SIGKILL)
+        so, se = p.communicate()
+        raise AssertionError('%s: no exit within %d s, process group %d killed; tail:\n%s' % (
+            ' '.join(cmd[:4]), timeout_s, p.pid, (so + se)[-1500:]))
+    return p.returncode, so + se
+
+
 def judge(case, rc, verdict, checks, counts):
     """Error string for one backend's result on one case, or None. The ONLY
     place a run becomes a verdict; test_judge_both_ways feeds it known-bad input."""
@@ -181,7 +200,7 @@ def test_all_cases(tmp):
     # is a (case, backend) run, not a case: the one-task-per-case pool ran a case's python and fortran
     # back to back, so the chain of the largest case set the floor of the shard. Python runs are queued
     # first (the numpy mesh build is the longer of the two). No case, backend or count comparison is dropped.
-    workers = min(max(1, len(os.sched_getaffinity(0))), 8)
+    workers = max(1, min(len(os.sched_getaffinity(0)) // 2, 8))
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
         list(ex.map(lambda c: make_case(c, dirs[c]), names))
         futs = {(c, 'python'): ex.submit(run_python, dirs[c]) for c in names}
@@ -508,16 +527,40 @@ def test_mpi_abort(tmp):
     drv = os.path.join(tmp, 'mpi_abort_driver.py')
     with open(drv, 'w') as f:
         f.write(MPI_ABORT_DRIVER % dict(src=os.path.join(ROOT, 'src', 'python'), case=d))
-    r = subprocess.run(['timeout', '-s', 'KILL', '600', 'mpirun', '-np', '2', sys.executable, drv],
-                       cwd=d, env=mpi_child_env(env()), capture_output=True, text=True)
-    out = r.stdout + r.stderr
+    rc, out = run_group(['mpirun', '-np', '2', sys.executable, drv], d, MPI_JOB_TIMEOUT_S)
     print('  mpirun rc=%d, MPI abort reported: %s, FATAL block: %s' % (
-        r.returncode, bool(re.search(r'MPI_ABORT|MPI_Abort', out)), 'EQdyna: FATAL' in out))
-    assert r.returncode == meshscreen.ERR_MESH_SCREEN_SIDES, (
-        'expected exit %d (MPI_Abort with the check code), got %d (137 = hung and killed):\n%s' % (
-            meshscreen.ERR_MESH_SCREEN_SIDES, r.returncode, out[-1500:]))
+        rc, bool(re.search(r'MPI_ABORT|MPI_Abort', out)), 'EQdyna: FATAL' in out))
+    assert rc == meshscreen.ERR_MESH_SCREEN_SIDES, (
+        'expected exit %d (MPI_Abort with the check code), got %d:\n%s' % (
+            meshscreen.ERR_MESH_SCREEN_SIDES, rc, out[-1500:]))
     assert 'EQdyna: FATAL' in out and 'planted failure on rank 1' in out, 'FATAL block missing:\n' + out[-1500:]
     assert re.search(r'MPI_ABORT|MPI_Abort', out), 'the job did not end in an MPI abort:\n' + out[-1500:]
+
+
+MPI_CLEAN_DRIVER = """
+import sys
+sys.path.insert(0, %(src)r)
+from eqdyna import eqdyna3d
+sys.argv = ['eqdyna', %(case)r, '2', '--mpi', '--backend', 'jax']
+eqdyna3d.main()
+"""
+
+
+def test_mpi_pass_line(tmp):
+    """Row 169 (n): the jax-MPI rank-0 `mesh-screen: PASS` line, driven by a real 2-rank mpi4py
+    job on the unplanted tpv8 case (2 solver steps): exit 0 and exactly ONE PASS line (rank 0
+    only; a line from every rank would be 2), no FAIL line."""
+    d = os.path.join(tmp, 'mpi_pass')
+    make_case('test.tpv8', d, 'par.nx = 2\npar.term = 0.05\n')
+    drv = os.path.join(tmp, 'mpi_pass_driver.py')
+    with open(drv, 'w') as f:
+        f.write(MPI_CLEAN_DRIVER % dict(src=os.path.join(ROOT, 'src', 'python'), case=d))
+    rc, out = run_group(['mpirun', '-np', '2', sys.executable, drv], d, MPI_JOB_TIMEOUT_S)
+    lines = [l for l in out.splitlines() if l.startswith('mesh-screen:')]
+    print('  mpirun rc=%d, mesh-screen lines: %s' % (rc, lines))
+    assert rc == 0, 'clean 2-rank jax-MPI run failed rc=%d:\n%s' % (rc, out[-1500:])
+    n = sum(l.startswith('mesh-screen: PASS') for l in lines)
+    assert n == 1 and len(lines) == 1, 'expected exactly one mesh-screen: PASS line (rank 0), got %d PASS of %s' % (n, lines)
 
 
 def test_strike_minus90_ties():
@@ -557,6 +600,7 @@ def main():
              ('strike_minus90_ties', lambda: test_strike_minus90_ties()),
              ('pass_line_normal_run', lambda: test_pass_line_normal_run(tmp)),
              ('mpi_abort', lambda: test_mpi_abort(tmp)),
+             ('mpi_pass_line', lambda: test_mpi_pass_line(tmp)),
              ('all_cases', lambda: test_all_cases(tmp))]
     sel = sys.argv[1:]
     bad = 0
