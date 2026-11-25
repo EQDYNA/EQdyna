@@ -9,7 +9,7 @@ subroutine screenMesh(nnode, nel, nftnd0)
     !             centre on the +un side, one to its SLAVE node on the -un side
     !             (signed cosine strictly > 0). Master attachments are tested
     !             everywhere; a SLAVE attachment beyond the fault patch is tested too
-    !             unless its cell is outside meshgen's side-test window past the patch's +x
+    !             unless its cell is a non-wedge cell outside meshgen's side-test window past the patch's +x
     !             edge (centre beyond xhi and max x >= xhi + dx + tol: the edge-weld
     !             convention, the only place a decided beyond-patch slave attachment
     !             sits on the +un side, measured on all registered cases). Either
@@ -31,7 +31,7 @@ subroutine screenMesh(nnode, nel, nftnd0)
     integer (kind = 4) :: ift, i, j, k
     real (kind = dp) :: cen(3), dv(3), nv, cosd, margin, minM, sep, sepMax, cmin(3), cmax(3), beyond
     real (kind = dp), parameter :: MARGIN_CELLS = 0.5d0 + 1.0d-6   ! same constant as meshscreen.py MARGIN
-    logical :: br, far
+    logical :: br, far, windowed
 
     nft = sum(int(nftnd0, 8))
     allocate(role(nnode), pn(nnode), pf(nnode))
@@ -64,6 +64,8 @@ subroutine screenMesh(nnode, nel, nftnd0)
             cen(j) = cen(j)/8.0d0
             cmin(j) = minval(meshCoor(j,c)); cmax(j) = maxval(meshCoor(j,c))
         enddo
+        ! meshgen side-tests wedge cells (types 11, 12, 13) everywhere, with no x window (meshgen.f90 `windowed`): never exempt
+        windowed = elemTypeArr(e) /= 11 .and. elemTypeArr(e) /= 12 .and. elemTypeArr(e) /= 13
         br = .false.
         do i = 1, 8
             if (role(c(i)) == 0) cycle
@@ -75,12 +77,12 @@ subroutine screenMesh(nnode, nel, nftnd0)
                 enddo
             endif
             ! A slave attachment whose centre is beyond the patch's +x edge AND whose max x >= xhi+dx+tol
-            ! (outside meshgen's side-test window, fxmax+dx edge-weld; same rule as meshscreen.py) is exempt unless beyond MARGIN_CELLS; every other
+            ! (outside meshgen's side-test window, fxmax+dx edge-weld, and not a wedge cell: types 11-13 are side-tested everywhere; same rule as meshscreen.py) is exempt unless beyond MARGIN_CELLS; every other
             ! attachment is tested (row 169 (b)); a beyond-patch centre within tol of the plane is a round-off tie (k).
             beyond = max(0.0d0, (xlo(ift) - cen(1))/(cmax(1) - cmin(1)), (cen(1) - xhi(ift))/(cmax(1) - cmin(1)), &
                                 (zlo(ift) - cen(3))/(cmax(3) - cmin(3)), (cen(3) - zhi(ift))/(cmax(3) - cmin(3)))
             far = beyond > MARGIN_CELLS
-            if (role(c(i)) == 1 .and. cen(1) > xhi(ift) .and. cmax(1) >= xhi(ift) + dx + tol .and. .not. far) cycle
+            if (role(c(i)) == 1 .and. windowed .and. cen(1) > xhi(ift) .and. cmax(1) >= xhi(ift) + dx + tol .and. .not. far) cycle
             dv = cen - meshCoor(1:3,c(i))
             nv = sqrt(dot_product(dv, dv))
             cosd = dot_product(dv, un(1:3,pn(c(i)),ift))

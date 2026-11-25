@@ -13,7 +13,8 @@ the exit status.
             everywhere. A SLAVE attachment beyond the fault patch (cell centre
             outside it in x or z) is tested too, except when the cell lies outside
             meshgen's side-test window past the patch's +x edge (centre beyond xhi
-            and max x >= xhi + dx + tol; the fxmax+dx edge-weld convention puts slave
+            and max x >= xhi + dx + tol, and not a wedge cell, types 11-13, which meshgen
+            side-tests everywhere; the fxmax+dx edge-weld convention puts slave
             attachments on the +un side there). With enlarging_ratio > 1 the whole
             +x column is outside the window; with ratio 1 (test.drv.a6) the first
             cell is inside it and tested. A swap next to the -x, -z or +z edge, or in
@@ -105,7 +106,8 @@ def _screen_measure(meshCoor, conn, elem_type, nsmp, un, tol, dx):
     # Beyond the patch a SLAVE attachment is exempt only where meshgen never side-tests the cell: its centre is
     # beyond the patch's +x edge AND its max x >= xhi + dx + tol (meshgen's window, xcoor < fxmax+dx+tol at the
     # cell's top-x corner; the first cell past the patch is dx*enlarging_ratio wide, so it is outside the window
-    # only when the ratio is > 1). dx is the grid's uniform strike spacing (meshgen's dx). Re-measured on all 23
+    # only when the ratio is > 1). dx is the grid's uniform strike spacing (meshgen's dx). The edge is measured from the patch's master-node xhi, meshgen's
+    # from the configured fxmax: they differ by at most 1e-5 m, and no registered case has a cell within that of the edge. Re-measured on all 23
     # registered cases: the decided beyond-patch slave attachments on the +un side are only beyond +x, never -x, z.
     # Master attachments are tested everywhere. Beyond MARGIN is wrong in either role. Beyond the patch, a centre
     # within tol of the plane is a round-off tie (tpv36/37: 224, |dist| <= 1.5e-12 m against >= 1.5 m for every
@@ -121,7 +123,10 @@ def _screen_measure(meshCoor, conn, elem_type, nsmp, un, tol, dx):
     nv = np.sqrt(np.einsum('ij,ij->i', dv, dv))
     cosd = np.einsum('ij,ij->i', dv, un[1:nft + 1][pp]) / np.where(nv > 0, nv, 1.0)
     tie = ~inside & ~far & (np.abs(cosd * nv) <= tol)
-    weld = (rl == 1) & ~far & (cen[:, 0] > x_hi[pp]) & (corners[:, :, 0].max(axis=1) >= x_hi[pp] + dx + tol)  # outside meshgen's window: exempt
+    # meshgen skips its x window for wedge cells (types 11, 12, 13: `windowed` False, build_elements to_master(.., elem_type == 13, win))
+    # and side-tests them everywhere, so a wedge cell is never exempt, however far +x it sits.
+    windowed = ~np.isin(np.asarray(elem_type)[ce], (11, 12, 13))
+    weld = (rl == 1) & windowed & ~far & (cen[:, 0] > x_hi[pp]) & (corners[:, :, 0].max(axis=1) >= x_hi[pp] + dx + tol)  # outside meshgen's window: exempt
     tested = ~weld & ~tie
     ce, nodes, pp, rl, far = ce[tested], nodes[tested], pp[tested], rl[tested], far[tested]
     margin = np.where(rl == 2, cosd[tested], -cosd[tested])
