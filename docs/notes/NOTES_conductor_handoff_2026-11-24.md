@@ -12,15 +12,15 @@ correspondence line 44 (`386f998`), #296 route five launchers through `mpi_child
   `.claude/worktrees/agent-a5ff1f811f6cc183e`.** Audit done (no BLOCKER), four-cell re-run done 15:35 CST.
   Owed: fine-grid pre/post overlays. Pre tree = `.claude/worktrees/cond-pre` (`d720df6`), post tree =
   `.claude/worktrees/cond-pr` (`3628339`). dx 250 m done (scratch, volatile):
-  `/tmp/claude-16759/-home-utig5-dliu-EQdyna/e618789a-38a5-4235-9ca3-c8a3a0fe9ba6/scratchpad/fine/overlays/`
-  (`tpv36_dx250_cplot.png`, `tpv37_dx250_cplot.png`, `tpv3?_dx250_ts_own.png`; runs in `.../fine/runs/`).
+  `<scratchpad>/fine/overlays/`
+  (`tpv36_dx250_cplot.png`, `tpv37_dx250_cplot.png`, `tpv3?_dx250_ts_own.png`; runs in `<scratchpad>/fine/runs/`).
   Result at dx 250 m: TPV36 rupture time max |dt| 0.72 s, median 0, 99.8% extent overlap (13868 vs 13888
   ruptured nodes), the difference confined to shallow nodes; station series differ at 0-3 km depth
   (relative 0.96-0.997 at strike 4/8/12 km, dp000) and converge with depth (0.003 at dp120/dp180).
   TPV37 at dx 250 m: identical (max |dt| 0.00 s, station series <= 2e-8 relative), i.e. no wedge effect at
   this dx; check this against #284's 100 changed frt rows per case at the gate dx before merging.
   `scec_compare.py --plot ts-fault` refuses most stations at dx 249.999 m (not on the node grid); the
-  same-name station diff is `.../fine/stdiff.py`. Merge plan per the owner brief: full-lane CI, close step 3
+  same-name station diff is `<scratchpad>/fine/stdiff.py`. Merge plan per the owner brief: full-lane CI, close step 3
   only, row 167 stays open. The PR body still carries the hold marker "NOT merged: pending owner
   acceptance": the owner brief (merge on CI once overlays, audit, re-run exist) and that marker conflict;
   resolve it by asking the owner, do not merge past it silently.
