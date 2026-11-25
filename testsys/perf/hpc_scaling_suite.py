@@ -598,8 +598,7 @@ def provenance(machine, nsteps_lo, nsteps_hi, repeats, points, backend, bin_path
         loaded_modules=[m for m in os.environ.get('LOADEDMODULES', '').split(':') if m],
         nsteps_lo=nsteps_lo, nsteps_hi=nsteps_hi, repeats=repeats,
         rank_layout=[dict(point_id=p['point_id'], ranks=p['ranks'], nnodes=p['nnodes'],
-                          decomp=list(p['decomp']), dx=p['dx'],
-                          elements=round(elements_for_dx(p['dx']))) for p in points],
+                          decomp=list(p['decomp']), dx=p['dx']) for p in points],
         date_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))
 
 
@@ -1182,6 +1181,11 @@ def analyze(tgz_path):
             for key in PER_STEP_BUCKETS:
                 vals = [r['buckets_per_step_s'][key] for r in rows]
                 if any(v is None for v in vals):
+                    if any(v == BELOW_NOISE for v in vals):
+                        raise SuiteError(
+                            'point %s bucket %r: declared unmeasured on some ranks (0.0/0.0) '
+                            'but measured nonzero and non-positive on others -- a real bad '
+                            'measurement, not "not measured"' % (point['point_id'], key))
                     breakdown[key] = None
                     continue
                 noisy = sum(1 for v in vals if v == BELOW_NOISE)
@@ -1201,7 +1205,6 @@ def analyze(tgz_path):
             report['points'].append(dict(
                 point_id=point['point_id'], ranks=point['ranks'], nnodes=point['nnodes'],
                 dx=point['dx'], decomp=point['decomp'], repeats=len(reps),
-                elements=round(elements_for_dx(point['dx'])),
                 mean_per_step_s=_mean(rep_means),
                 max_per_step_s=max(i['max_s'] for i in imbs),
                 max_over_mean=_mean([i['max_over_mean'] for i in imbs]),

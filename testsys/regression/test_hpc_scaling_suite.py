@@ -401,10 +401,8 @@ def check_submit_never_stores_the_account():
     assert len(prov['git_sha']) == 40 and isinstance(prov['git_dirty'], bool), prov
     assert prov['solver_git_sha'] == h.UNKNOWN_BIN_SHA == 'unknown (bin not in a git tree)', prov['solver_git_sha']
     assert (prov['nsteps_lo'], prov['nsteps_hi'], prov['repeats'], prov['machine']) == (100, 200, 2, 'vista')
-    lay = prov['rank_layout']
-    assert len(lay) == 1 and lay[0]['elements'] == round(h.elements_for_dx(lay[0]['dx'])) and \
-        {k: v for k, v in lay[0].items() if k not in ('dx', 'elements')} == dict(
-            point_id='strong_n0001', ranks=144, nnodes=1, decomp=list(h._decompose(144))), lay
+    assert prov['rank_layout'] == [dict(point_id='strong_n0001', ranks=144, nnodes=1,
+                                        decomp=list(h._decompose(144)), dx=prov['rank_layout'][0]['dx'])], prov['rank_layout']
     assert prov['date_utc'].endswith('Z')
     runs = manifest['points'][0]['runs']
     assert [r['name'] for r in runs['lo']] == ['lo_r0', 'lo_r1'] and [r['nsteps'] for r in runs['hi']] == [200, 200]
@@ -898,7 +896,7 @@ def check_job_script_sets_host_label_to_machine():
     print('  PASS  job script exports EQDYNA_HOST_LABEL=<machine> (profile host is not "workstation")')
 
 
-def check_provenance_dirty_ignores_untracked_and_carries_elements():
+def check_provenance_dirty_ignores_untracked():
     import subprocess
     repo = tempfile.mkdtemp(prefix='test_hpc_scaling_prov_')
     g = ['git', '-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t']
@@ -921,9 +919,34 @@ def check_provenance_dirty_ignores_untracked_and_carries_elements():
         h.REPO_ROOT = old
     assert clean['git_dirty'] is False and clean['git_untracked_count'] == 1, clean
     assert dirty['git_dirty'] is True, dirty
-    assert clean['rank_layout'][0]['elements'] == round(h.elements_for_dx(500.0)), clean['rank_layout']
     print('  PASS  provenance: untracked build artifacts do not make git_dirty (counted instead); '
-          'a tracked edit does; rank_layout carries elements')
+          'a tracked edit does')
+
+
+def check_mixed_unmeasured_and_noisy_bucket_raises():
+    """Audit MAJOR: python-jax-mpi declares `wait` unmeasured (0.0/0.0). One rank
+    that measured it nonzero and differenced non-positive, beside ranks that read
+    0.0/0.0, must raise -- never be folded into "not measured"."""
+    tmpd = tempfile.mkdtemp(prefix='test_hpc_scaling_mixed_')
+    suite_dir = os.path.join(tmpd, 'suite')
+    os.makedirs(suite_dir)
+    _write_suite(suite_dir, [('strong_n0001', 4)], repeats=1, backend='python-jax-mpi')
+    lo_path = os.path.join(suite_dir, 'strong_n0001', 'lo_r0', 'profile.rank0.json')
+    with open(lo_path) as f:
+        lo = json.load(f)
+    lo['buckets_s']['wait'] = 0.5
+    lo['total_s'] += 0.5          # keep unaccounted_s == total_s - sum(buckets_s)
+    with open(lo_path, 'w') as f:
+        json.dump(lo, f)
+    tgz = os.path.join(tmpd, 'mixed.tgz')
+    _tar_suite(suite_dir, tgz)
+    try:
+        h.analyze(tgz)
+    except h.SuiteError as e:
+        assert 'declared unmeasured on some ranks' in str(e), str(e)
+    else:
+        raise AssertionError('a nonzero non-positive wait beside 0/0 ranks was reported as not measured')
+    print('  PASS  mixed unmeasured/noisy bucket: raises, not folded into "not measured"')
 
 
 def main():
@@ -955,7 +978,8 @@ def main():
               check_installer_vista_branch_creates_pinned_venv,
               check_noisy_bucket_reported_below_noise_not_refused,
               check_job_script_sets_host_label_to_machine,
-              check_provenance_dirty_ignores_untracked_and_carries_elements]
+              check_provenance_dirty_ignores_untracked,
+              check_mixed_unmeasured_and_noisy_bucket_raises]
     failures = []
     for c in checks:
         try:
