@@ -1,0 +1,7 @@
+tpv36: rewired elements 92 | meshCoor equal True | elem_type equal True | nsmp equal True
+tpv36: frt rows 3477 | cols with any change [4, 5, 6, 7, 8, 9, 10, 11, 12, 13] | max stress diff 231900.0
+tpv36: E (fault rows touched) 105 | R (stress changed >0.001) 100 | R-E 0 | E-R 5
+tpv37: rewired elements 92 | meshCoor equal True | elem_type equal True | nsmp equal True
+tpv37: frt rows 3477 | cols with any change [4, 5, 6, 7, 8, 9, 10, 11, 12, 13] | max stress diff 231900.0
+tpv37: E (fault rows touched) 105 | R (stress changed >0.001) 100 | R-E 0 | E-R 5
+dump_mesh.py pre: tree ecb8ccb (before #281), post: 97f9c62+ (a22b9dd); frt old=origin/master a22b9dd, new=PR #284 3628339; run 2026-11-24
