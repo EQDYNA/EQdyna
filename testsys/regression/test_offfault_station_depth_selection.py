@@ -60,6 +60,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
+from testsys.common import mpi_child_env  # noqa: E402
 
 CASE = 'test.tpv8'
 STATIONS_KM = [[0.0, 1.0, -12.0], [0.0, 1.0, -13.9], [0.0, 1.0, -10.25], [0.0, 1.0, -25.0]]
@@ -114,7 +115,7 @@ def main():
             print('FAIL test_offfault_station_depth_selection')
             print(' -', e)
             return 1
-        r = subprocess.run(['mpirun', '-np', '1', 'eqdyna'], cwd=case_dir, env=env,
+        r = subprocess.run(['mpirun', '-np', '1', 'eqdyna'], cwd=case_dir, env=mpi_child_env(env),
                            capture_output=True, text=True, timeout=120)
         if r.returncode != 0:
             print('FAIL test_offfault_station_depth_selection')

@@ -88,6 +88,7 @@ OUT_DIR = os.path.join(TESTSYS, 'evidence_output')
 sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, 'testsys', 'e2e'))
 from testsys import compare, matrix  # rule 1: reuse, don't duplicate
+from testsys.common import mpi_child_env  # noqa: E402
 import run_e2e                       # the sweep's cell runners (same rule)
 
 # CPU-pinned by default for part (a), exactly as the old accept tier was: a
@@ -154,7 +155,7 @@ def run_fortran_serial(binary, case_dir):
     shutil.copy(binary, dst)
     t0 = time.time()
     r = subprocess.run(['mpirun', '-np', '1', dst], cwd=case_dir,
-                        capture_output=True, text=True)
+                        env=mpi_child_env(os.environ), capture_output=True, text=True)
     elapsed = time.time() - t0
     if r.returncode != 0:
         print(r.stdout[-4000:]); print(r.stderr[-4000:])

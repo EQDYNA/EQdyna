@@ -58,7 +58,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
 
 import testNameList  # noqa: E402
-from testsys.common import MACHINE  # noqa: E402
+from testsys.common import MACHINE, mpi_child_env  # noqa: E402
 from eqdyna import eqdyna3d, meshscreen  # noqa: E402
 
 FORTRAN_DIR = os.path.join(ROOT, 'src', 'fortran')
@@ -141,7 +141,7 @@ def run_python(case_dir):
 
 def run_fortran(case_dir, ranks=1, args=('--mesh-only',)):
     r = subprocess.run(['timeout', '-s', 'KILL', str(MPIRUN_TIMEOUT_S), 'mpirun', '-np', str(ranks),
-                        FORTRAN_BIN, *args], cwd=case_dir, env=env(), capture_output=True, text=True)
+                        FORTRAN_BIN, *args], cwd=case_dir, env=mpi_child_env(env()), capture_output=True, text=True)
     return r.returncode, r.stdout + r.stderr
 
 
@@ -509,7 +509,7 @@ def test_mpi_abort(tmp):
     with open(drv, 'w') as f:
         f.write(MPI_ABORT_DRIVER % dict(src=os.path.join(ROOT, 'src', 'python'), case=d))
     r = subprocess.run(['timeout', '-s', 'KILL', '600', 'mpirun', '-np', '2', sys.executable, drv],
-                       cwd=d, env=env(), capture_output=True, text=True)
+                       cwd=d, env=mpi_child_env(env()), capture_output=True, text=True)
     out = r.stdout + r.stderr
     print('  mpirun rc=%d, MPI abort reported: %s, FATAL block: %s' % (
         r.returncode, bool(re.search(r'MPI_ABORT|MPI_Abort', out)), 'EQdyna: FATAL' in out))

@@ -117,7 +117,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FSRC = os.path.join(ROOT, 'src', 'fortran')
 
 sys.path.insert(0, ROOT)
-from testsys.common import MACHINE  # noqa: E402
+from testsys.common import MACHINE, mpi_child_env  # noqa: E402
 PYSRC = os.path.join(ROOT, 'src', 'python')
 sys.path.insert(0, PYSRC)
 
@@ -229,7 +229,7 @@ def run_fortran_per_rank(binpath, case_dir, nranks):
                 'exec %s\n' % (case_dir, binpath))
     os.chmod(wrapper, 0o755)
     r = subprocess.run([MPIRUN, '-np', str(nranks), wrapper], cwd=case_dir,
-                       capture_output=True, text=True, timeout=180)
+                       env=mpi_child_env(os.environ), capture_output=True, text=True, timeout=180)
     if r.returncode != 0:
         raise RuntimeError('fortran %d-rank run exited %d:\n%s'
                            % (nranks, r.returncode, (r.stdout + r.stderr)[-3000:]))

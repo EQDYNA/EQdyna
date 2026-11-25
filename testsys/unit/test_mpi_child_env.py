@@ -87,23 +87,22 @@ INLINE_LAUNCHERS = ('testsys/regression/mpirun_capture.py',
                     'testsys/regression/test_dipping_fault_y_split.py',
                     'testsys/regression/test_equilibrium_dump.py',
                     'testsys/regression/test_fault_mpi_boundary_arn.py',
-                    'testsys/regression/test_fault_time_series_output.py')
+                    'testsys/regression/test_fault_time_series_output.py',
+                    'testsys/parity/evidence_c_degen_port.py',
+                    'testsys/parity/evidence_drv_a6_chaos.py',
+                    'testsys/parity/evidence_wedge_kernel.py',
+                    'testsys/regression/row165_locked_variant.py',
+                    'testsys/regression/test_mesh_screening.py',
+                    'testsys/regression/test_offfault_station_depth_selection.py',
+                    'testsys/regression/test_pml_element_type_grid_centre.py',
+                    'testsys/regression/test_row120_mpi_station_output.py',
+                    'testsys/regression/test_row127_station_ownership.py',
+                    'testsys/regression/test_stop_exit_status.py',
+                    'testsys/regression/test_unknown_cli_arg.py')
 
-# regression/parity launchers that STILL bypass the helper (debt; fixing one means
-# moving it to INLINE_LAUNCHERS, which this test forces: a fixed file left here is stale)
-KNOWN_BYPASS = (
-    'testsys/parity/evidence_c_degen_port.py',
-    'testsys/parity/evidence_drv_a6_chaos.py',
-    'testsys/parity/evidence_wedge_kernel.py',
-    'testsys/regression/row165_locked_variant.py',
-    'testsys/regression/test_mesh_screening.py',
-    'testsys/regression/test_offfault_station_depth_selection.py',
-    'testsys/regression/test_pml_element_type_grid_centre.py',
-    'testsys/regression/test_row120_mpi_station_output.py',
-    'testsys/regression/test_row127_station_ownership.py',
-    'testsys/regression/test_stop_exit_status.py',
-    'testsys/regression/test_unknown_cli_arg.py',
-)
+# regression/parity launchers that STILL bypass the helper: none. A new bypass fails
+# test_no_unlisted_regression_or_parity_launcher_bypasses_helper; do not re-add a file here.
+KNOWN_BYPASS = ()
 _CALL = re.compile(r"subprocess\.run\(\s*\[[^\]]*\b(?:mpirun|MPIRUN|mpirun_bin)\b")
 
 
@@ -120,6 +119,11 @@ def _bypass_scan():
             if _CALL.search(src) or f == 'mpirun_capture.py':
                 (ok if re.search(r'env=mpi_child_env\(', src) else raw).add(rel)
     return raw, ok
+
+
+def test_e2e_cell_timeout_mpirun_cell_gets_helper_env():
+    src = open(os.path.join(REPO, 'testsys/regression/test_e2e_cell_timeout.py')).read()
+    assert "'sleep', '20'], tmp, mpi_child_env(env))" in src
 
 
 @pytest.mark.parametrize('rel', INLINE_LAUNCHERS)

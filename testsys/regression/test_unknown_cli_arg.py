@@ -26,6 +26,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
 sys.path.insert(0, os.path.join(ROOT, 'testsys', 'regression'))
+from testsys.common import mpi_child_env  # noqa: E402
 SRC = os.path.join(ROOT, 'src', 'fortran', 'eqdyna3d.f90')
 BIN = os.path.join(ROOT, 'bin', 'eqdyna')
 
@@ -62,7 +63,7 @@ def main():
         T.make_case('test.tpv8', d)
         for arg, want_zero in (('--bogus', False), ('--mesh-only', True)):
             r = subprocess.run(['timeout', '-s', 'KILL', '600', 'mpirun', '-np', '1', BIN, arg],
-                               cwd=d, env=T.env(), capture_output=True, text=True)
+                               cwd=d, env=mpi_child_env(T.env()), capture_output=True, text=True)
             out = r.stdout + r.stderr
             named = arg in out and 'unknown command-line argument' in out
             print('  %s rc=%d named=%s' % (arg, r.returncode, named))

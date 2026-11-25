@@ -56,7 +56,7 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'src', 'python'))
 sys.path.insert(0, ROOT)
-from testsys.common import MACHINE  # noqa: E402
+from testsys.common import MACHINE, mpi_child_env  # noqa: E402
 SRC = os.path.join(ROOT, 'src', 'fortran')
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 CASE = 'test.tpv13'
@@ -179,7 +179,7 @@ def residual(exe, tmp):
     env = _env()
     env['EQDYNA_DUMP_EQUIL'] = '1'
     env['OMP_NUM_THREADS'] = '1'
-    r = subprocess.run([MPIRUN, '-np', str(NRANKS), exe], cwd=cd, env=env,
+    r = subprocess.run([MPIRUN, '-np', str(NRANKS), exe], cwd=cd, env=mpi_child_env(env),
                        capture_output=True, text=True, timeout=300)
     files = sorted(glob.glob(os.path.join(glob.escape(cd), 'equilibriumDump.*.txt')))
     if r.returncode != 0 or len(files) != NRANKS:
