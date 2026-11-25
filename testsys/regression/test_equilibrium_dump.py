@@ -73,7 +73,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 SRC = os.path.join(ROOT, 'src', 'fortran')
 
 sys.path.insert(0, ROOT)
-from testsys.common import MACHINE  # noqa: E402
+from testsys.common import MACHINE, mpi_child_env  # noqa: E402
 MPIRUN = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
 
 # Fixture geometry constants the assertions derive from (keep in sync with
@@ -182,7 +182,7 @@ def run_case(case, n, dump_env):
     if dump_env is not None:
         env['EQDYNA_DUMP_EQUIL'] = dump_env
     eqdyna = os.path.join(SRC, 'eqdyna')
-    r = subprocess.run([MPIRUN, '-np', str(n), eqdyna], cwd=case, env=env,
+    r = subprocess.run([MPIRUN, '-np', str(n), eqdyna], cwd=case, env=mpi_child_env(env),
                        capture_output=True, text=True, timeout=120)
     return r.returncode, r.stdout + r.stderr
 

@@ -115,8 +115,9 @@ def _run(tmp, tag, decomp):
         raise AssertionError('case.setup failed for %s: %s' % (tag, (r.stderr or '')[-500:]))
     nranks = decomp[0] * decomp[1] * decomp[2]
     mpirun = os.environ.get('EQDYNA_MPIRUN', 'mpirun')
+    from testsys.common import mpi_child_env
     r = subprocess.run([mpirun, '-np', str(nranks), _binary()],
-                       cwd=case_dir, env=_env(), capture_output=True, text=True)
+                       cwd=case_dir, env=mpi_child_env(_env()), capture_output=True, text=True)
     if r.returncode != 0:
         raise AssertionError(
             'eqdyna exited %d for %s at decomposition %r.\n%s'
